@@ -132,4 +132,16 @@ export const config = {
     apiBaseUrl: process.env.BAKONG_API_BASE_URL ?? "https://api-bakong.nbc.gov.kh",
     useSit: (process.env.BAKONG_USE_SIT ?? "false") === "true",
   },
+  /**
+   * ChmabaPay (https://pay.chmaba.com) — KHQR / ABA PayWay payment provider for
+   * the user billing page (§3.7). There is no sandbox: every `ck_live_…` key
+   * moves real money. Checkout stays disabled until `apiKey` + `storeId` are set,
+   * and the webhook refuses any delivery it cannot verify with `webhookSecret`.
+   */
+  chmaba: {
+    apiKey: process.env.CHMABA_API_KEY ?? "",
+    webhookSecret: process.env.CHMABA_WEBHOOK_SECRET ?? "",
+    storeId: process.env.CHMABA_STORE_ID ?? "",
+    apiBaseUrl: process.env.CHMABA_API_BASE_URL ?? "https://pay.chmaba.com",
+  },
 };

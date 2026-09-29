@@ -2,7 +2,7 @@ import Fastify, { FastifyInstance, FastifyRequest, FastifyReply, FastifyServerOp
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
@@ -314,6 +314,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     requestTimeout: 600_000,
     connectionTimeout: 600_000,
     keepAliveTimeout: 600_000,
+  });
+
+  // Keep the exact JSON bytes alongside the parsed body: ChmabaPay signs
+  // `t=<unix>.<rawBody>`, so the webhook HMAC has to run over the bytes as
+  // received rather than a re-serialised object. Overriding the default JSON
+  // parser is the only way Fastify exposes the raw payload to a route.
+  app.addContentTypeParser("application/json", { parseAs: "string" }, (req, body, done) => {
+    const raw = body as string;
+    (req as FastifyRequest & { rawBody?: string }).rawBody = raw;
+    if (!raw || raw.trim() === "") return done(null, {});
+    try {
+      done(null, JSON.parse(raw));
+    } catch (err) {
+      done(err as Error, undefined);
+    }
   });
 
   // These must be registered before any route is declared: @fastify/rate-limit
@@ -5280,25 +5295,26 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   async function creditUser(
     q: QueryFn,
-    user: UserPayload,
+    userId: string,
     amount: number,
     apiKeyId?: string,
     txId?: string,
+    label = "KHQR",
   ): Promise<void> {
     if (apiKeyId) {
       await q(
         "UPDATE api_keys SET credits = credits + $1 WHERE id = $2 AND user_id = $3",
-        [amount, apiKeyId, user.id],
+        [amount, apiKeyId, userId],
       );
     } else {
       const keys = await q<{ id: string }>(
         "SELECT id FROM api_keys WHERE user_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1",
-        [user.id],
+        [userId],
       );
       if (keys.length === 0) {
         await q(
           `INSERT INTO api_keys (user_id, name, key_hash, key_prefix, credits) VALUES ($1, $2, $3, $4, $5)`,
-          [user.id, "Auto-Created Key", md5(randomUUID() + Date.now()), "auto_" + randomUUID().slice(0, 5), amount],
+          [userId, "Auto-Created Key", md5(randomUUID() + Date.now()), "auto_" + randomUUID().slice(0, 5), amount],
         );
       } else {
         await q(
@@ -5309,7 +5325,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     await q(
       `INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, 'purchase', $3)`,
-      [user.id, amount, txId ? `KHQR top-up (ref: ${txId})` : "KHQR top-up"],
+      [userId, amount, txId ? `${label} top-up (ref: ${txId})` : `${label} top-up`],
     );
   }
 
@@ -5427,7 +5443,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
                 [tx.id],
               );
               if (claimed.length === 0) return;
-              await creditUser(tq, u, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
+              await creditUser(tq, u.id, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
             });
           } catch (e) {
             const err = e instanceof Error ? e.message : String(e);
@@ -5488,7 +5504,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           [tx.id],
         );
         if (claimed.length === 0) return false;
-        await creditUser(tq, u, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
+        await creditUser(tq, u.id, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
         return true;
       });
       if (!credited) return reply.code(409).send({ error: "Transaction already processed." });
@@ -5496,6 +5512,281 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     } catch (e) {
       return reply.code(500).send({ error: e instanceof Error ? e.message : String(e) });
     }
+  });
+
+  // ============================================================
+  // ChmabaPay (KHQR / ABA PayWay) Payment Endpoints — REQUIREMENTS §3.7
+  // ============================================================
+  // ChmabaPay never holds funds: money settles straight into the store's own
+  // ABA PayWay link. There is no sandbox, so every key is live and credits are
+  // only ever granted from a signature-verified webhook or an authoritative
+  // status re-check. This extends the existing `payment_transactions` ledger
+  // (provider = 'chmaba') so /me/transactions and the admin views keep working.
+
+  type ChmabaPayment = {
+    id: string;
+    status: string;
+    qr_string?: string | null;
+    checkout_url?: string | null;
+    expires_at?: string | null;
+  };
+
+  const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+  function chmabaConfigured(): boolean {
+    return !!config.chmaba.apiKey && !!config.chmaba.storeId;
+  }
+
+  /** Thin fetch wrapper for the ChmabaPay REST API (Bearer auth + JSON). */
+  async function chmabaRequest<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
+    const base = config.chmaba.apiBaseUrl.replace(/\/+$/, "");
+    const res = await fetch(`${base}${path}`, {
+      method: init?.method ?? "GET",
+      headers: {
+        Authorization: `Bearer ${config.chmaba.apiKey}`,
+        ...(init?.body ? { "Content-Type": "application/json" } : {}),
+      },
+      body: init?.body ? JSON.stringify(init.body) : undefined,
+    });
+    const text = await res.text();
+    let parsed: unknown = null;
+    try {
+      parsed = text ? JSON.parse(text) : null;
+    } catch {
+      parsed = null;
+    }
+    if (!res.ok) {
+      const detail = (parsed as { detail?: string } | null)?.detail ?? text.slice(0, 200);
+      throw new Error(`ChmabaPay ${res.status}: ${detail || res.statusText}`);
+    }
+    return parsed as T;
+  }
+
+  /**
+   * Verify a ChmabaPay webhook. The `X-ChmabaPay-Signature` header is
+   * `t=<unix>,v1=<hex>` and the signed payload is `${t}.${rawBody}` (HMAC-SHA256
+   * with the endpoint's `whsec_…` secret); a ±5 minute window rejects replays.
+   */
+  function verifyChmabaSignature(rawBody: string, header: string | undefined): boolean {
+    const secret = config.chmaba.webhookSecret;
+    if (!secret || !header) return false;
+    const parts = header.split(",");
+    const t = parts.find((p) => p.startsWith("t="))?.slice(2);
+    const v1 = parts.find((p) => p.startsWith("v1="))?.slice(3);
+    if (!t || !v1 || !Number.isFinite(Number(t))) return false;
+    if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
+    const expected = createHmac("sha256", secret).update(`${t}.${rawBody}`, "utf8").digest("hex");
+    const a = Buffer.from(v1, "hex");
+    const b = Buffer.from(expected, "hex");
+    return a.length === b.length && timingSafeEqual(a, b);
+  }
+
+  /**
+   * Return the first string under `reference_id`, anywhere in the event. The
+   * delivery envelope is not documented field-by-field, so scanning for the id
+   * we set at checkout is what maps a webhook back to one of our transactions.
+   */
+  function findReferenceId(node: unknown, depth = 0): string | null {
+    if (depth > 8 || node === null || typeof node !== "object") return null;
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        const found = findReferenceId(item, depth + 1);
+        if (found) return found;
+      }
+      return null;
+    }
+    const rec = node as Record<string, unknown>;
+    if (typeof rec.reference_id === "string" && rec.reference_id.trim()) return rec.reference_id.trim();
+    for (const value of Object.values(rec)) {
+      const found = findReferenceId(value, depth + 1);
+      if (found) return found;
+    }
+    return null;
+  }
+
+  /**
+   * Claim a pending ChmabaPay transaction and grant its credits. The guarded
+   * UPDATE lets only the first caller win, so a webhook retry or a status poll
+   * racing the webhook credits exactly once.
+   */
+  async function settleChmabaPayment(txId: string): Promise<boolean> {
+    return withTransaction(async (tq) => {
+      const claimed = await tq<{ user_id: string; credit_amount: number; api_key_target_id: string | null }>(
+        `UPDATE payment_transactions SET status = 'paid', paid_at = now()
+         WHERE id = $1 AND status = 'pending'
+         RETURNING user_id, credit_amount, api_key_target_id`,
+        [txId],
+      );
+      if (claimed.length === 0) return false;
+      const row = claimed[0];
+      await creditUser(tq, row.user_id, row.credit_amount, row.api_key_target_id ?? undefined, txId, "ChmabaPay");
+      return true;
+    });
+  }
+
+  // POST /payments/chmaba/create — open a hosted ChmabaPay checkout for a pack.
+  app.post("/payments/chmaba/create", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    if (!chmabaConfigured()) {
+      return reply.code(503).send({ error: "Payments are not configured yet." });
+    }
+    const in_ = (req.body ?? {}) as Record<string, unknown>;
+    const packId = in_.pack_id as string | undefined;
+    const targetKeyId = in_.api_key_id as string | undefined;
+    if (!packId) return reply.code(400).send({ error: "pack_id is required." });
+
+    const pack = await queryOne<{ id: string; amount: number; price: string; currency: string }>(
+      "SELECT id, amount, price, currency FROM credit_packs WHERE id = $1 AND is_active = true",
+      [packId],
+    );
+    if (!pack) return reply.code(404).send({ error: "Pack not found or unavailable." });
+
+    const amount = Number(pack.price);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      return reply.code(400).send({ error: "Pack has no valid price." });
+    }
+
+    // Insert first so the row id doubles as the provider's reference_id,
+    // giving the webhook a stable handle back to this transaction.
+    const created = await queryOne<{ id: string }>(
+      `INSERT INTO payment_transactions
+         (user_id, pack_id, credit_amount, currency, amount, payment_method, provider, status, api_key_target_id)
+       VALUES ($1, $2, $3, $4, $5, 'chmaba', 'chmaba', 'pending', $6)
+       RETURNING id`,
+      [u.id, pack.id, pack.amount, pack.currency, amount, targetKeyId || null],
+    );
+    if (!created) return reply.code(500).send({ error: "Could not create transaction." });
+
+    try {
+      const payment = await chmabaRequest<ChmabaPayment>("/v1/payments", {
+        method: "POST",
+        body: {
+          amount,
+          reference_id: created.id,
+          idempotency_key: created.id,
+          store: config.chmaba.storeId,
+          metadata: { user_id: u.id, pack_id: pack.id, credits: pack.amount },
+        },
+      });
+      await query(
+        `UPDATE payment_transactions
+           SET provider_payment_id = $1, checkout_url = $2, qr_string = $3,
+               expires_at = COALESCE($4, expires_at)
+         WHERE id = $5`,
+        [payment.id, payment.checkout_url ?? null, payment.qr_string ?? null, payment.expires_at ?? null, created.id],
+      );
+      return {
+        transaction_id: created.id,
+        provider: "chmaba",
+        credits: pack.amount,
+        currency: pack.currency,
+        amount,
+        qr_string: payment.qr_string ?? null,
+        checkout_url: payment.checkout_url ?? null,
+        expires_at: payment.expires_at ?? null,
+      };
+    } catch (e) {
+      const err = e instanceof Error ? e.message : String(e);
+      await query(
+        "UPDATE payment_transactions SET status = 'failed', error_message = $1 WHERE id = $2 AND status = 'pending'",
+        [err, created.id],
+      );
+      req.log.error({ err }, "chmaba payment create failed");
+      return reply.code(502).send({ error: "Payment provider error. Please try again." });
+    }
+  });
+
+  // GET /payments/chmaba/status/:id — poll local state, reconciling with the
+  // provider while pending (webhooks can lag or be missed).
+  app.get("/payments/chmaba/status/:id", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const { id } = req.params as { id: string };
+    const tx = await queryOne<{
+      id: string; status: string; provider_payment_id: string | null; expires_at: string;
+      credit_amount: number; amount: string; currency: string; paid_at: string | null;
+    }>(
+      `SELECT id, status, provider_payment_id, expires_at, credit_amount, amount, currency, paid_at
+       FROM payment_transactions WHERE id = $1 AND user_id = $2 AND provider = 'chmaba'`,
+      [id, u.id],
+    );
+    if (!tx) return reply.code(404).send({ error: "Transaction not found." });
+
+    if (tx.status === "pending" && tx.provider_payment_id && chmabaConfigured()) {
+      try {
+        const check = await chmabaRequest<{ status: string }>(
+          `/v1/transactions/check-status/${encodeURIComponent(tx.provider_payment_id)}`,
+        );
+        if (check.status === "PAID") {
+          await settleChmabaPayment(tx.id);
+        } else if (check.status === "FAILED") {
+          await query("UPDATE payment_transactions SET status = 'failed' WHERE id = $1 AND status = 'pending'", [tx.id]);
+        } else if (new Date(tx.expires_at).getTime() < Date.now()) {
+          await query("UPDATE payment_transactions SET status = 'expired' WHERE id = $1 AND status = 'pending'", [tx.id]);
+        }
+      } catch (e) {
+        req.log.warn({ err: e }, "chmaba status reconcile failed");
+      }
+    }
+
+    const fresh = await queryOne<{ status: string; paid_at: string | null; error_message: string | null }>(
+      "SELECT status, paid_at, error_message FROM payment_transactions WHERE id = $1",
+      [tx.id],
+    );
+    return {
+      transaction_id: tx.id,
+      status: fresh?.status ?? tx.status,
+      credits: tx.credit_amount,
+      currency: tx.currency,
+      amount: Number(tx.amount),
+      paid_at: fresh?.paid_at ?? tx.paid_at,
+      expires_at: tx.expires_at,
+      error: fresh?.error_message ?? null,
+    };
+  });
+
+  // POST /payments/chmaba/webhook — PUBLIC, server-to-server. ChmabaPay has no
+  // session cookie or API key, so authenticity rests entirely on the HMAC
+  // signature; credits are granted only for a verified payment.completed.
+  app.post("/payments/chmaba/webhook", async (req, reply) => {
+    const raw = (req as FastifyRequest & { rawBody?: string }).rawBody ?? "";
+    const signature = req.headers["x-chmabapay-signature"] as string | undefined;
+    const event = (req.headers["x-chmabapay-event"] as string | undefined) ?? "";
+
+    if (!config.chmaba.webhookSecret) {
+      return reply.code(503).send({ error: "Webhook secret is not configured." });
+    }
+    if (!verifyChmabaSignature(raw, signature)) {
+      req.log.warn("chmaba webhook signature rejected");
+      return reply.code(400).send({ error: "Invalid signature." });
+    }
+
+    const referenceId = findReferenceId(req.body);
+
+    if (event === "payment.completed") {
+      if (!referenceId || !UUID_RE.test(referenceId)) return { ok: true, ignored: "unrecognized reference" };
+      try {
+        const credited = await settleChmabaPayment(referenceId);
+        return { ok: true, credited };
+      } catch (e) {
+        req.log.error({ err: e, referenceId }, "chmaba webhook settle failed");
+        // 500 so ChmabaPay retries the delivery.
+        return reply.code(500).send({ error: "Could not settle payment." });
+      }
+    }
+
+    if (event === "payment.reversed") {
+      if (referenceId && UUID_RE.test(referenceId)) {
+        await query(
+          "UPDATE payment_transactions SET status = 'refunded' WHERE id = $1 AND provider = 'chmaba' AND status = 'paid'",
+          [referenceId],
+        );
+      }
+      return { ok: true };
+    }
+
+    return { ok: true, ignored: event || "unknown event" };
   });
 
   return app;

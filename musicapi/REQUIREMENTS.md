@@ -68,9 +68,9 @@ Left sidebar navigation + bottom section.
 - `[DONE]` Tabs by type (audio, recovery, lyrics, subtitle, wav, vocal-removal, video, voice) — `/dashboard/logs` filters rows client-side per type; live in-flight jobs from `GET /me/jobs/running` are merged with `GET /me/logs` history.
 - `[DONE]` Result on hover (cover image, lyrics, download button) — hovering a row's Result cell reveals a preview card with the clip cover art, lyrics, and a Download MP3 button; clicking opens a playback modal.
 
-### 3.7 Billing `[PARTIAL]`
+### 3.7 Billing `[DONE]`
 - `[DONE]` Balance remaining, credit packs, API endpoint costs list (view docs).
-- `[PENDING]` Payment processing (Buy buttons are placeholders).
+- `[DONE]` Payment processing via ChmabaPay (KHQR / ABA PayWay). `POST /payments/chmaba/create` opens a hosted checkout (`reference_id`/`idempotency_key` = local transaction id) into the shared `payment_transactions` ledger (`provider='chmaba'`); `GET /payments/chmaba/status/:id` reconciles against the authoritative check-status endpoint; the public `POST /payments/chmaba/webhook` verifies the `X-ChmabaPay-Signature` HMAC (t/v1, ±5 min) and grants credits exactly once through a guarded `pending → paid` claim. Checkout stays disabled (503) until `CHMABA_API_KEY` + `CHMABA_STORE_ID` are set, and the webhook rejects any delivery it cannot verify while `CHMABA_WEBHOOK_SECRET` is unset.
 
 ### 3.8 Document `[DONE]`
 - Public API documentation at `/docs` (no auth required).

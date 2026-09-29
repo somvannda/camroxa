@@ -22,10 +22,16 @@ interface PricingRow {
   credit_cost: number;
 }
 
+interface Checkout {
+  transaction_id: string;
+  checkout_url: string | null;
+}
+
 export default function BillingPage() {
   const [billing, setBilling] = useState<Billing | null>(null);
   const [pricing, setPricing] = useState<PricingRow[]>([]);
   const [error, setError] = useState("");
+  const [busyPackId, setBusyPackId] = useState<string | null>(null);
 
   useEffect(() => {
     Promise.all([apiFetch<Billing>("/me/billing"), apiFetch<{ pricing: PricingRow[] }>("/pricing")])
@@ -35,6 +41,26 @@ export default function BillingPage() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
   }, []);
+
+  async function buy(pack: Pack) {
+    setError("");
+    setBusyPackId(pack.id);
+    try {
+      const checkout = await apiFetch<Checkout>("/payments/chmaba/create", {
+        method: "POST",
+        body: JSON.stringify({ pack_id: pack.id }),
+      });
+      if (checkout.checkout_url) {
+        window.location.href = checkout.checkout_url;
+        return;
+      }
+      setError("Checkout could not be started. Please try again.");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Checkout failed");
+    } finally {
+      setBusyPackId(null);
+    }
+  }
 
   return (
     <div>
@@ -56,8 +82,12 @@ export default function BillingPage() {
             <div className="mt-4 text-lg font-semibold text-white">
               {p.currency} {p.price}
             </div>
-            <button className="grad-bg mt-4 w-full rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-60" disabled title="Payment integration pending">
-              Buy
+            <button
+              className="grad-bg mt-4 w-full rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-60"
+              onClick={() => buy(p)}
+              disabled={busyPackId !== null}
+            >
+              {busyPackId === p.id ? "Starting…" : "Buy"}
             </button>
           </div>
         ))}
@@ -97,7 +127,7 @@ export default function BillingPage() {
         </table>
       </div>
 
-      <p className="mt-4 text-xs text-white/50">Payment processing is not yet connected — the Buy buttons are placeholders.</p>
+      <p className="mt-4 text-xs text-white/50">Payments are processed securely by ChmabaPay (KHQR / ABA PayWay). Credits are added to your account once payment is confirmed.</p>
     </div>
   );
 }
