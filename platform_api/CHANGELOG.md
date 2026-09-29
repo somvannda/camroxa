@@ -35,6 +35,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- `GET /users` accepts `search` (email / display name / id, `ILIKE`), `role`, `email_confirmed`, `plan_name`, and `is_free` query params, alongside the existing `status` / `date_from` / `date_to`. Plan matching covers active licenses **and** active web subscriptions; `is_free` matches users with neither. See `docs/changelog/2026-09-29-admin-users-search-filters.md`.
+
 ### Removed
 
 - Retired the legacy web-music free-daily settings. `web_music_free_daily_limit` (084) and `web_music_free_daily_credits` (095) are no longer read: the active **Free** plan row's `daily_credits` is the single source of truth (a missing row means 0). Alembic `123` deletes the residual `system_settings` rows. See `docs/changelog/2026-09-27-retire-web-music-free-daily-settings.md`.
