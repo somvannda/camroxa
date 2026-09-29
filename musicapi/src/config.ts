@@ -103,6 +103,14 @@ export const config = {
     windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000),
     /** Stricter budget for credential endpoints (`/auth/login`, `/auth/register`). */
     authMax: Number(process.env.RATE_LIMIT_AUTH_MAX ?? 10),
+    /**
+     * Per-user limits (req/min, req/day) read from the `rate_limits` table and
+     * enforced at the API-key choke point (`requireKey`), aggregated across all
+     * of a user's keys. Set to `false` to disable the check entirely.
+     */
+    perUserEnabled: (process.env.RATE_LIMIT_PER_USER_ENABLED ?? "true") === "true",
+    /** How long a user's `rate_limits` row is cached before re-reading the DB. */
+    perUserCacheMs: Number(process.env.RATE_LIMIT_PER_USER_CACHE_MS ?? 30_000),
   },
   bakong: {
     apiToken: process.env.BAKONG_API_TOKEN ?? "",

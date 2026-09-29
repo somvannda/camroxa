@@ -310,7 +310,142 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       reply.code(403).send({ error: "IP not allowed for this API key." });
       return null;
     }
+    if (config.rateLimit.perUserEnabled && !(await enforceUserRateLimit(key.user_id, reply))) {
+      return null;
+    }
     return key;
+  }
+
+  // --- per-user rate limiting ----------------------------------------------
+  // Limits live in the `rate_limits` table (req/min, req/day) and are enforced
+  // per *user*, so every key a user holds shares one budget. Rows are read
+  // lazily and cached briefly so the hot request path doesn't hit the DB each
+  // time. Counters are in-memory fixed windows, matching the edge limiter
+  // (a single-process deployment doesn't need a shared store).
+  interface UserRateLimits {
+    perMinute: number | null;
+    perDay: number | null;
+  }
+
+  const DAY_MS = 86_400_000;
+  const rateLimitCache = new Map<string, { limits: UserRateLimits | null; at: number }>();
+  const minuteWindows = new Map<string, { start: number; count: number }>();
+  const dayWindows = new Map<string, { start: number; count: number }>();
+  const RATE_LIMIT_MAP_CAP = Number(process.env.RATE_LIMIT_MAP_CAP ?? 20_000);
+
+  async function loadUserRateLimits(userId: string): Promise<UserRateLimits | null> {
+    const now = Date.now();
+    const cached = rateLimitCache.get(userId);
+    if (cached && now - cached.at < config.rateLimit.perUserCacheMs) return cached.limits;
+    const row = await queryOne<{ requests_per_minute: number | null; requests_per_day: number | null }>(
+      "SELECT requests_per_minute, requests_per_day FROM rate_limits WHERE user_id = $1 LIMIT 1",
+      [userId],
+    );
+    const limits =
+      row && (row.requests_per_minute != null || row.requests_per_day != null)
+        ? { perMinute: row.requests_per_minute, perDay: row.requests_per_day }
+        : null;
+    // Bound the cache: drop entries that no longer match the current window.
+    if (rateLimitCache.size > RATE_LIMIT_MAP_CAP) {
+      for (const [id, entry] of rateLimitCache) {
+        if (now - entry.at >= config.rateLimit.perUserCacheMs) rateLimitCache.delete(id);
+      }
+    }
+    rateLimitCache.set(userId, { limits, at: now });
+    return limits;
+  }
+
+  /** Increment the counter for `key` in the fixed window starting at `start`. */
+  function bumpWindow(
+    windows: Map<string, { start: number; count: number }>,
+    key: string,
+    start: number,
+  ): number {
+    const existing = windows.get(key);
+    const current = existing && existing.start === start ? existing : { start, count: 0 };
+    current.count += 1;
+    windows.set(key, current);
+    return current.count;
+  }
+
+  interface UserRateResult {
+    allowed: boolean;
+    exceeded: "minute" | "day" | null;
+    retryAfterSec: number;
+    minuteRemaining: number | null;
+    dayRemaining: number | null;
+  }
+
+  function checkUserRateLimit(userId: string, limits: UserRateLimits): UserRateResult {
+    const now = Date.now();
+    const windowMs = config.rateLimit.windowMs;
+    const minuteStart = now - (now % windowMs);
+    const day = new Date(now);
+    const dayStart = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
+    let minuteRemaining: number | null = null;
+    let dayRemaining: number | null = null;
+
+    if (limits.perMinute != null) {
+      if (minuteWindows.size > RATE_LIMIT_MAP_CAP) {
+        for (const [id, w] of minuteWindows) if (w.start !== minuteStart) minuteWindows.delete(id);
+      }
+      const count = bumpWindow(minuteWindows, userId, minuteStart);
+      minuteRemaining = Math.max(0, limits.perMinute - count);
+      if (count > limits.perMinute) {
+        return {
+          allowed: false,
+          exceeded: "minute",
+          retryAfterSec: Math.max(1, Math.ceil((minuteStart + windowMs - now) / 1000)),
+          minuteRemaining: 0,
+          dayRemaining,
+        };
+      }
+    }
+    if (limits.perDay != null) {
+      if (dayWindows.size > RATE_LIMIT_MAP_CAP) {
+        for (const [id, w] of dayWindows) if (w.start !== dayStart) dayWindows.delete(id);
+      }
+      const count = bumpWindow(dayWindows, userId, dayStart);
+      dayRemaining = Math.max(0, limits.perDay - count);
+      if (count > limits.perDay) {
+        return {
+          allowed: false,
+          exceeded: "day",
+          retryAfterSec: Math.max(1, Math.ceil((dayStart + DAY_MS - now) / 1000)),
+          minuteRemaining,
+          dayRemaining: 0,
+        };
+      }
+    }
+    return { allowed: true, exceeded: null, retryAfterSec: 0, minuteRemaining, dayRemaining };
+  }
+
+  /**
+   * Enforce the calling user's `rate_limits` row. Returns `true` when the request
+   * may proceed (also advertising the remaining budget), or sends a 429 and
+   * returns `false` when a limit is exceeded.
+   */
+  async function enforceUserRateLimit(userId: string, reply: FastifyReply): Promise<boolean> {
+    const limits = await loadUserRateLimits(userId);
+    if (!limits) return true;
+    const result = checkUserRateLimit(userId, limits);
+    if (limits.perMinute != null) {
+      reply.header("x-user-rate-limit", String(limits.perMinute));
+      reply.header("x-user-rate-remaining", String(result.minuteRemaining ?? 0));
+    }
+    if (limits.perDay != null) {
+      reply.header("x-user-rate-limit-day", String(limits.perDay));
+      reply.header("x-user-rate-remaining-day", String(result.dayRemaining ?? 0));
+    }
+    if (result.allowed) return true;
+    reply.header("retry-after", String(result.retryAfterSec));
+    reply.code(429).send({
+      error:
+        result.exceeded === "day"
+          ? `Daily request limit exceeded (${limits.perDay}/day).`
+          : `Request rate limit exceeded (${limits.perMinute}/min).`,
+    });
+    return false;
   }
 
   async function charge(key: DbApiKey, amount: number): Promise<boolean> {
@@ -2324,6 +2459,64 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       [id, amount, "Admin credit adjustment"],
     );
     return { ok: true, credits: updated?.credits ?? key!.credits };
+  });
+
+  app.get("/admin/users/:id/rate-limits", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const { id } = req.params as { id: string };
+    const row = await queryOne<{ requests_per_minute: number | null; requests_per_day: number | null }>(
+      "SELECT requests_per_minute, requests_per_day FROM rate_limits WHERE user_id = $1 LIMIT 1",
+      [id],
+    );
+    return {
+      user_id: id,
+      requests_per_minute: row?.requests_per_minute ?? null,
+      requests_per_day: row?.requests_per_day ?? null,
+    };
+  });
+
+  app.put("/admin/users/:id/rate-limits", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as {
+      requests_per_minute?: number | null;
+      requests_per_day?: number | null;
+    };
+    // A limit is a positive integer, or null to clear it.
+    const parseLimit = (value: unknown): { ok: true; value: number | null } | { ok: false } => {
+      if (value === null || value === undefined) return { ok: true, value: null };
+      if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return { ok: false };
+      return { ok: true, value };
+    };
+    const perMinute = parseLimit(body.requests_per_minute);
+    const perDay = parseLimit(body.requests_per_day);
+    if (!perMinute.ok || !perDay.ok) {
+      return reply
+        .code(400)
+        .send({ error: "requests_per_minute/requests_per_day must be positive integers or null." });
+    }
+    const user = await queryOne<{ id: string }>("SELECT id FROM users WHERE id = $1", [id]);
+    if (!user) return reply.code(404).send({ error: "User not found." });
+    if (perMinute.value === null && perDay.value === null) {
+      await query("DELETE FROM rate_limits WHERE user_id = $1", [id]);
+    } else {
+      await query(
+        `INSERT INTO rate_limits (user_id, requests_per_minute, requests_per_day)
+         VALUES ($1, $2, $3)
+         ON CONFLICT (user_id) DO UPDATE SET
+           requests_per_minute = EXCLUDED.requests_per_minute,
+           requests_per_day = EXCLUDED.requests_per_day`,
+        [id, perMinute.value, perDay.value],
+      );
+    }
+    // Drop the cached row so the new limits apply on the next request.
+    rateLimitCache.delete(id);
+    return {
+      ok: true,
+      user_id: id,
+      requests_per_minute: perMinute.value,
+      requests_per_day: perDay.value,
+    };
   });
 
   app.get("/admin/pricing", async (req, reply) => {

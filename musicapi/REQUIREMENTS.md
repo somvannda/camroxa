@@ -96,9 +96,9 @@ Left sidebar navigation + bottom section.
 - List / search, credits balance, status (active/suspended).
 - Manually add/remove credits, ban/unban.
 
-### 4.4 Rate limits & security `[PARTIAL]`
+### 4.4 Rate limits & security `[DONE]`
 - `[DONE]` Safe-spend limit, per-key IP whitelist.
-- `[PENDING]` Per-user rate limit (req/min, req/day).
+- `[DONE]` Per-user rate limit (req/min, req/day) — backed by `rate_limits`, enforced in `requireKey`, admin CRUD at `/admin/users/:id/rate-limits`.
 
 ### 4.5 Pricing / credit charge `[DONE]`
 - Cost per endpoint (and per model — schema supports it; charging uses endpoint-level).

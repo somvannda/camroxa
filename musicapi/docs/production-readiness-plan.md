@@ -450,12 +450,39 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ## Phase 5 — Feature completion (may follow launch)
 
-- Per-user/per-key rate limits (REQUIREMENTS §4.4)
-- Audit log for admin actions (§4.11)
-- Credit-pack admin CRUD (§4.5)
-- Real usage analytics (§4.7)
-- Admin settings + alert config (§4.10)
-- Suno account edit/remove + health badges (§4.2)
+- [x] Per-user/per-key rate limits (REQUIREMENTS §4.4) — `feat/musicapi-rate-limits`
+- [ ] Audit log for admin actions (§4.11)
+- [ ] Credit-pack admin CRUD (§4.5)
+- [ ] Real usage analytics (§4.7)
+- [ ] Admin settings + alert config (§4.10)
+- [ ] Suno account edit/remove + health badges (§4.2)
+
+> **Note (5.1):** wired the previously-unused `rate_limits` table
+> (`user_id`, `requests_per_minute`, `requests_per_day`) into `requireKey`
+> (`src/server.ts`). Limits are **per user**, so every key a user owns shares one
+> budget — looked up cache-first (`RATE_LIMIT_PER_USER_ENABLED`, default on;
+> `RATE_LIMIT_PER_USER_CACHE_MS`, default 30 s) with bounded in-memory
+> minute/day sliding windows (`RATE_LIMIT_MAP_CAP`, default 20 000 entries).
+> Allowed requests advertise `x-user-rate-limit` / `x-user-rate-remaining`
+> (and `-day`); over-limit replies are **429** with `retry-after` and a message
+> naming the minute/day budget. New admin CRUD:
+> `GET`/`PUT /admin/users/:id/rate-limits` (404 unknown user, 400 non-positive
+> input, upsert via `ON CONFLICT (user_id)`, both-null deletes the row and clears
+> the cache). Migration `0008_rate_limits_user_unique.sql` de-dupes existing rows
+> and adds a unique index on `user_id` so the upsert is well-defined.
+> **Verified on the sandbox** (`sync_musicapi_sandbox.py` → `MUSICAPI_SANDBOX_DEPLOYED`,
+> migration `0008` applied): a throwaway Node+pg harness minting admin JWTs and
+> fixture users/keys passed **19/19** checks — baseline unset → 200 with no header;
+> `PUT 3/100` → burst `200,200,200,429,429`; headers `x-user-rate-limit=3` /
+> `x-user-rate-remaining=2`; 429 `retry-after=60` + `Request rate limit exceeded
+> (3/min).`; a second key of the same user shares the budget (429); a separate day
+> user with `null/1` → 2nd call 429 `Daily request limit exceeded (1/day).`;
+> invalid `-3` → 400, unknown user → 404; clearing limits deletes the row and stops
+> enforcement. Fixtures cleaned up (0 leftover users/keys, 0 `rate_limits` rows).
+> **Caveat:** `camxora-musicapi-remote.sh` only `systemctl enable --now`s the units,
+> which is a no-op for an already-running service — a core redeploy silently keeps
+> the old `dist/server.js` until `systemctl restart camxora-musicapi` is run (done
+> manually here; worth fixing in the deploy chain). Production was **not** touched.
 
 ---
 
