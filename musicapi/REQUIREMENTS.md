@@ -106,7 +106,8 @@ Left sidebar navigation + bottom section.
 
 ### 4.6 Billing / Suno credit monitor `[PARTIAL]`
 - `[DONE]` Per-account live credits shown in Suno Accounts.
-- `[PENDING]` Aggregate summary + top-up alerts.
+- `[DONE]` Top-up alerts (Suno accounts at/below the configured low-credits threshold surface in the admin panel and push to the ops Telegram channel).
+- `[PENDING]` Aggregate summary.
 
 ### 4.7 Usage analytics `[PENDING]`
 - Per-endpoint, per-model, per-user; success/fail; revenue trends.
@@ -117,9 +118,9 @@ Left sidebar navigation + bottom section.
 ### 4.9 Logs (admin-wide) `[DONE]`
 - Same table as user logs, across all users.
 
-### 4.10 Settings & alerts `[PENDING]`
-- Brand name, docs URL, Telegram support link, languages.
-- Alerts: low credits, captcha-locked, failure-rate spike.
+### 4.10 Settings & alerts `[DONE]`
+- Brand name, docs URL, Telegram support link, languages — stored in `app_settings`, editable at `GET`/`PUT /admin/settings`.
+- Alerts: low credits, captcha-locked, failure-rate spike — evaluated at `GET /admin/alerts` and pushed to the ops Telegram channel on state change.
 
 ### 4.11 Audit log `[DONE]`
 - Record admin actions (top-up credits, ban user, change pricing) — append-only `audit_logs` table; all admin mutations write an entry (actor id+email, action, target, details JSONB, IP); readable at `GET /admin/audit`.

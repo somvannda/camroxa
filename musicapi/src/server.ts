@@ -11,6 +11,7 @@ import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE, serializeSessionCookie, serializeClearedSessionCookie, readCookie } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
+import { captchaRequired } from "./captcha.js";
 import { assertCallbackUrlAllowed, CallbackUrlError } from "./callbackUrl.js";
 
 // Methods that can mutate state; used for the cookie-session CSRF origin check.
@@ -63,6 +64,156 @@ export interface ApiKey {
   key: string;
   name: string;
   credits: number;
+}
+
+/**
+ * Operator-managed panel branding and support links (task 5.5, REQUIREMENTS
+ * §4.10). Stored as a JSONB document under the `brand` key of `app_settings`.
+ */
+export interface BrandSettings {
+  name: string;
+  docs_url: string;
+  support_telegram_url: string;
+  languages: string[];
+}
+
+/**
+ * Thresholds/switches for the three alerts the admin panel surfaces (task 5.5,
+ * REQUIREMENTS §4.10): Suno accounts running low on credits, Suno demanding a
+ * captcha, and a spike in the job failure rate.
+ */
+export interface AlertSettings {
+  enabled: boolean;
+  low_credits_threshold: number;
+  captcha_locked: boolean;
+  failure_rate_threshold: number;
+  failure_rate_min_requests: number;
+  window_minutes: number;
+}
+
+const DEFAULT_BRAND: BrandSettings = {
+  name: "Camxora Music API",
+  docs_url: "",
+  support_telegram_url: "",
+  languages: ["en"],
+};
+
+const DEFAULT_ALERTS: AlertSettings = {
+  enabled: true,
+  low_credits_threshold: 50,
+  captcha_locked: true,
+  failure_rate_threshold: 0.25,
+  failure_rate_min_requests: 20,
+  window_minutes: 60,
+};
+
+/**
+ * Normalize a stored/upstream `brand` document, falling back to defaults per
+ * field so a hand-edited row can never break the settings endpoint.
+ */
+function coerceBrand(value: unknown): BrandSettings {
+  const o = (value ?? {}) as Record<string, unknown>;
+  const languages = Array.isArray(o.languages)
+    ? o.languages.filter((l): l is string => typeof l === "string" && l.trim() !== "").map((l) => l.trim())
+    : [];
+  return {
+    name: typeof o.name === "string" && o.name.trim() ? o.name.trim() : DEFAULT_BRAND.name,
+    docs_url: typeof o.docs_url === "string" ? o.docs_url.trim() : DEFAULT_BRAND.docs_url,
+    support_telegram_url:
+      typeof o.support_telegram_url === "string" ? o.support_telegram_url.trim() : DEFAULT_BRAND.support_telegram_url,
+    languages: languages.length ? languages : [...DEFAULT_BRAND.languages],
+  };
+}
+
+function clampNumber(value: unknown, fallback: number, min: number, max: number): number {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.min(max, Math.max(min, value));
+}
+
+function clampInt(value: unknown, fallback: number, min: number, max: number): number {
+  return Math.round(clampNumber(value, fallback, min, max));
+}
+
+/** Normalize a stored/upstream `alerts` document with the same defensiveness. */
+function coerceAlerts(value: unknown): AlertSettings {
+  const o = (value ?? {}) as Record<string, unknown>;
+  return {
+    enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_ALERTS.enabled,
+    low_credits_threshold: clampInt(o.low_credits_threshold, DEFAULT_ALERTS.low_credits_threshold, 0, 1_000_000),
+    captcha_locked: typeof o.captcha_locked === "boolean" ? o.captcha_locked : DEFAULT_ALERTS.captcha_locked,
+    failure_rate_threshold: clampNumber(o.failure_rate_threshold, DEFAULT_ALERTS.failure_rate_threshold, 0, 1),
+    failure_rate_min_requests: clampInt(
+      o.failure_rate_min_requests,
+      DEFAULT_ALERTS.failure_rate_min_requests,
+      1,
+      1_000_000,
+    ),
+    window_minutes: clampInt(o.window_minutes, DEFAULT_ALERTS.window_minutes, 5, 1440),
+  };
+}
+
+/** Merge an admin-supplied `brand` patch onto the current values, validating types. */
+function mergeBrand(
+  current: BrandSettings,
+  patch: unknown,
+): { ok: true; value: BrandSettings } | { ok: false; error: string } {
+  if (typeof patch !== "object" || patch === null) return { ok: false, error: "brand must be an object." };
+  const o = patch as Record<string, unknown>;
+  const next: BrandSettings = { ...current, languages: [...current.languages] };
+  if (o.name !== undefined) {
+    if (typeof o.name !== "string" || !o.name.trim()) {
+      return { ok: false, error: "brand.name must be a non-empty string." };
+    }
+    next.name = o.name.trim();
+  }
+  if (o.docs_url !== undefined) {
+    if (typeof o.docs_url !== "string") return { ok: false, error: "brand.docs_url must be a string." };
+    next.docs_url = o.docs_url.trim();
+  }
+  if (o.support_telegram_url !== undefined) {
+    if (typeof o.support_telegram_url !== "string") {
+      return { ok: false, error: "brand.support_telegram_url must be a string." };
+    }
+    next.support_telegram_url = o.support_telegram_url.trim();
+  }
+  if (o.languages !== undefined) {
+    if (!Array.isArray(o.languages) || !o.languages.every((l) => typeof l === "string" && l.trim())) {
+      return { ok: false, error: "brand.languages must be an array of non-empty strings." };
+    }
+    next.languages = o.languages.map((l) => (l as string).trim());
+  }
+  return { ok: true, value: next };
+}
+
+/** Merge an admin-supplied `alerts` patch onto the current values, validating types. */
+function mergeAlerts(
+  current: AlertSettings,
+  patch: unknown,
+): { ok: true; value: AlertSettings } | { ok: false; error: string } {
+  if (typeof patch !== "object" || patch === null) return { ok: false, error: "alerts must be an object." };
+  const o = patch as Record<string, unknown>;
+  const next: AlertSettings = { ...current };
+  for (const key of ["enabled", "captcha_locked"] as const) {
+    if (o[key] !== undefined) {
+      if (typeof o[key] !== "boolean") return { ok: false, error: `alerts.${key} must be a boolean.` };
+      next[key] = o[key] as boolean;
+    }
+  }
+  const numeric: Array<[keyof AlertSettings, number, number]> = [
+    ["low_credits_threshold", 0, 1_000_000],
+    ["failure_rate_threshold", 0, 1],
+    ["failure_rate_min_requests", 1, 1_000_000],
+    ["window_minutes", 5, 1440],
+  ];
+  for (const [key, min, max] of numeric) {
+    if (o[key] === undefined) continue;
+    const value = o[key];
+    if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
+      return { ok: false, error: `alerts.${key} must be a number between ${min} and ${max}.` };
+    }
+    (next[key] as number) = key === "failure_rate_threshold" ? value : Math.round(value);
+  }
+  return { ok: true, value: next };
 }
 
 interface DbApiKey {
@@ -195,6 +346,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (reply.statusCode >= 500) requestCounters.serverErrors += 1;
     else if (reply.statusCode >= 400) requestCounters.clientErrors += 1;
   });
+
+  // Alert evaluator state (task 5.5, REQUIREMENTS §4.10). `alertState` maps an
+  // alert id to a fingerprint of its last-notified content so the Telegram push
+  // only fires on a state change (new alert, changed message, or recovery) — the
+  // same "notify once" behaviour the ops healthcheck script keeps in a state
+  // file, held in memory here because this process owns the alert lifecycle.
+  const alertState = new Map<string, string>();
+  let alertTimer: ReturnType<typeof setInterval> | null = null;
 
   // Terminal jobs only need to survive long enough for the client to poll their
   // result, so the in-memory map is kept bounded: finished jobs older than the
@@ -747,6 +906,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // reachable), before we start accepting requests.
   app.addHook("onReady", async () => {
     await recoverJobs();
+    startAlertLoop();
   });
 
   function newJob(type: Job["type"], callbackUrl?: string): Job {
@@ -915,6 +1075,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   app.addHook("onClose", async () => {
+    stopAlertLoop();
     await drainJobs();
   });
 
@@ -2355,6 +2516,206 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   });
 
+  // --- settings + alerts (task 5.5, REQUIREMENTS §4.10) --------------------
+  // Operator-managed settings live in `app_settings` as one JSONB document per
+  // logical group (`brand`, `alerts`). Reads run the stored value through the
+  // same validators used on write, so a hand-edited row can never break a caller.
+  async function readSettingsValue(key: string): Promise<unknown> {
+    const row = await queryOne<{ value: unknown }>("SELECT value FROM app_settings WHERE key = $1", [key]);
+    return row?.value ?? null;
+  }
+
+  async function writeSettingsValue(key: string, value: unknown, updatedBy: string): Promise<void> {
+    await query(
+      `INSERT INTO app_settings (key, value, updated_at, updated_by)
+       VALUES ($1, $2, now(), $3)
+       ON CONFLICT (key) DO UPDATE
+         SET value = EXCLUDED.value, updated_at = now(), updated_by = EXCLUDED.updated_by`,
+      [key, JSON.stringify(value), updatedBy],
+    );
+  }
+
+  async function loadBrandSettings(): Promise<BrandSettings> {
+    return coerceBrand(await readSettingsValue("brand"));
+  }
+
+  async function loadAlertSettings(): Promise<AlertSettings> {
+    return coerceAlerts(await readSettingsValue("alerts"));
+  }
+
+  type AlertType = "low_credits" | "captcha_locked" | "failure_rate";
+
+  interface AlertItem {
+    id: AlertType;
+    type: AlertType;
+    severity: "warning" | "critical";
+    message: string;
+    details: Record<string, unknown>;
+  }
+
+  interface AlertReport {
+    enabled: boolean;
+    checked_at: string;
+    thresholds: AlertSettings;
+    alerts: AlertItem[];
+    summary: {
+      low_credits: number;
+      captcha_locked: boolean;
+      failure_rate: number | null;
+      requests: number;
+      failures: number;
+    };
+  }
+
+  /**
+   * Evaluate the three §4.10 alert conditions against live state. Pure read — it
+   * never delivers anything — so both the admin endpoint and the background loop
+   * can call it freely; `syncAlertState` is what decides whether to notify.
+   */
+  async function evaluateAlerts(): Promise<AlertReport> {
+    const thresholds = await loadAlertSettings();
+    const checkedAt = new Date().toISOString();
+    const summary: AlertReport["summary"] = {
+      low_credits: 0,
+      captcha_locked: false,
+      failure_rate: null,
+      requests: 0,
+      failures: 0,
+    };
+    if (!thresholds.enabled) {
+      return { enabled: false, checked_at: checkedAt, thresholds, alerts: [], summary };
+    }
+
+    const alerts: AlertItem[] = [];
+
+    // 1. Suno accounts whose live credit balance is at or below the threshold.
+    const health = await pool.listHealth().catch(() => [] as Awaited<ReturnType<AccountPool["listHealth"]>>);
+    const low = health.filter((h) => h.credits <= thresholds.low_credits_threshold);
+    summary.low_credits = low.length;
+    if (low.length > 0) {
+      alerts.push({
+        id: "low_credits",
+        type: "low_credits",
+        severity: low.some((h) => h.credits <= 0) ? "critical" : "warning",
+        message: `${low.length} Suno account(s) at or below ${thresholds.low_credits_threshold} credits: ${low
+          .map((h) => `${h.id} (${h.credits})`)
+          .join(", ")}.`,
+        details: { accounts: low.map((h) => ({ id: h.id, credits: h.credits })) },
+      });
+    }
+
+    // 2. Suno currently demanding a captcha for generation.
+    if (thresholds.captcha_locked) {
+      const required = await captchaRequired();
+      summary.captcha_locked = required;
+      if (required) {
+        alerts.push({
+          id: "captcha_locked",
+          type: "captcha_locked",
+          severity: "warning",
+          message: "Suno is requiring a captcha for generation (captcha-locked).",
+          details: {},
+        });
+      }
+    }
+
+    // 3. Failure-rate spike over the configured sliding window.
+    const row = await queryOne<{ total: string; failed: string }>(
+      `SELECT count(*)::text AS total,
+              count(*) FILTER (WHERE status <> 'complete')::text AS failed
+       FROM usage_logs
+       WHERE created_at > now() - ($1 || ' minutes')::interval`,
+      [String(thresholds.window_minutes)],
+    );
+    const total = Number(row?.total ?? 0);
+    const failed = Number(row?.failed ?? 0);
+    summary.requests = total;
+    summary.failures = failed;
+    if (total >= thresholds.failure_rate_min_requests) {
+      const rate = total > 0 ? failed / total : 0;
+      summary.failure_rate = rate;
+      if (rate >= thresholds.failure_rate_threshold) {
+        alerts.push({
+          id: "failure_rate",
+          type: "failure_rate",
+          severity: rate >= 0.5 ? "critical" : "warning",
+          message: `Job failure rate ${(rate * 100).toFixed(1)}% over the last ${
+            thresholds.window_minutes
+          } min (${failed}/${total}), above the ${(thresholds.failure_rate_threshold * 100).toFixed(1)}% threshold.`,
+          details: { rate, failed, total, window_minutes: thresholds.window_minutes },
+        });
+      }
+    }
+
+    return { enabled: true, checked_at: checkedAt, thresholds, alerts, summary };
+  }
+
+  /** Deliver one Telegram message; false when creds are unset or delivery fails. */
+  async function sendTelegram(text: string): Promise<boolean> {
+    const { telegramBotToken, telegramChatId } = config.alerts;
+    if (!telegramBotToken || !telegramChatId) return false;
+    try {
+      const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ chat_id: telegramChatId, text, disable_web_page_preview: true }),
+      });
+      if (!res.ok) {
+        app.log.warn({ status: res.status }, "telegram alert delivery failed");
+        return false;
+      }
+      return true;
+    } catch (err) {
+      app.log.warn({ err }, "telegram alert delivery error");
+      return false;
+    }
+  }
+
+  /**
+   * Diff a fresh report against the last notified state and push only the
+   * differences: one message per newly-raised or changed alert, one per alert
+   * that has since cleared. Keeps the channel quiet while nothing changes.
+   */
+  async function syncAlertState(report: AlertReport): Promise<void> {
+    const current = new Map<string, string>();
+    for (const a of report.alerts) current.set(a.id, `${a.severity}|${a.message}`);
+    for (const alert of report.alerts) {
+      if (alertState.get(alert.id) !== current.get(alert.id)) {
+        if (await sendTelegram(`[ALERT] Camxora Music API — ${alert.type}\n${alert.message}`)) {
+          app.log.warn({ alert: alert.id }, "alert notification sent");
+        }
+      }
+    }
+    for (const id of [...alertState.keys()]) {
+      if (!current.has(id)) {
+        if (await sendTelegram(`[RESOLVED] Camxora Music API — ${id} cleared.`)) {
+          app.log.info({ alert: id }, "alert recovery notification sent");
+        }
+      }
+    }
+    alertState.clear();
+    for (const [id, fingerprint] of current) alertState.set(id, fingerprint);
+  }
+
+  /** Start the periodic evaluator; a non-positive interval leaves it disabled. */
+  function startAlertLoop(): void {
+    const intervalMs = config.alerts.checkIntervalMs;
+    if (!(intervalMs > 0) || alertTimer) return;
+    alertTimer = setInterval(() => {
+      void evaluateAlerts()
+        .then((report) => syncAlertState(report))
+        .catch((err) => app.log.warn({ err }, "alert evaluator failed"));
+    }, intervalMs);
+    alertTimer.unref?.();
+    app.log.info({ intervalMs }, "alert evaluator loop started");
+  }
+
+  function stopAlertLoop(): void {
+    if (!alertTimer) return;
+    clearInterval(alertTimer);
+    alertTimer = null;
+  }
+
   // --- admin routes --------------------------------------------------------
   app.get("/admin/keys", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
@@ -3007,6 +3368,64 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
        LIMIT $${params.length}`,
       params,
     );
+  });
+
+  // Operator-managed branding + alert thresholds (task 5.5, REQUIREMENTS §4.10).
+  // Both groups are returned as-is with defaults filled in, so the panel never
+  // has to special-case an empty store.
+  app.get("/admin/settings", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const [brand, alerts] = await Promise.all([loadBrandSettings(), loadAlertSettings()]);
+    return { brand, alerts };
+  });
+
+  app.put("/admin/settings", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const body = (req.body ?? {}) as { brand?: unknown; alerts?: unknown };
+    if (body.brand === undefined && body.alerts === undefined) {
+      return reply.code(400).send({ error: "Provide a brand and/or alerts patch." });
+    }
+
+    let brand = await loadBrandSettings();
+    let alerts = await loadAlertSettings();
+    const changed: string[] = [];
+
+    if (body.brand !== undefined) {
+      const merged = mergeBrand(brand, body.brand);
+      if (!merged.ok) return reply.code(400).send({ error: merged.error });
+      brand = merged.value;
+      await writeSettingsValue("brand", brand, admin.id);
+      changed.push("brand");
+    }
+    if (body.alerts !== undefined) {
+      const merged = mergeAlerts(alerts, body.alerts);
+      if (!merged.ok) return reply.code(400).send({ error: merged.error });
+      alerts = merged.value;
+      await writeSettingsValue("alerts", alerts, admin.id);
+      changed.push("alerts");
+    }
+
+    await recordAudit({
+      actor: admin,
+      action: "settings.update",
+      targetType: "settings",
+      targetId: changed.join(","),
+      details: { brand, alerts },
+      req,
+    });
+    return { brand, alerts };
+  });
+
+  // Live alert report for the panel. Notifying Telegram is a side effect here so
+  // that opening the panel acts as a manual check when the background loop is
+  // disabled (`ALERT_CHECK_INTERVAL_MS=0`); when the loop is on it is harmless,
+  // because `syncAlertState` only sends on an actual state change.
+  app.get("/admin/alerts", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const report = await evaluateAlerts();
+    await syncAlertState(report);
+    return report;
   });
 
   // --- v1 API (DB-backed keys) --------------------------------------------

@@ -112,6 +112,18 @@ export const config = {
     /** How long a user's `rate_limits` row is cached before re-reading the DB. */
     perUserCacheMs: Number(process.env.RATE_LIMIT_PER_USER_CACHE_MS ?? 30_000),
   },
+  /**
+   * Outbound alert delivery (task 5.5, REQUIREMENTS §4.10). Reuses the same
+   * Telegram bot the ops health probe uses; leaving either value unset keeps the
+   * evaluator running but silently skips delivery (alerts still surface in the
+   * admin panel). `checkIntervalMs` drives the in-process evaluator loop; set it
+   * to 0 to disable the loop entirely (the admin endpoints keep working).
+   */
+  alerts: {
+    telegramBotToken: process.env.ALERT_TELEGRAM_BOT_TOKEN ?? "",
+    telegramChatId: process.env.ALERT_TELEGRAM_CHAT_ID ?? "",
+    checkIntervalMs: Number(process.env.ALERT_CHECK_INTERVAL_MS ?? 300_000),
+  },
   bakong: {
     apiToken: process.env.BAKONG_API_TOKEN ?? "",
     accountId: process.env.BAKONG_ACCOUNT_ID ?? "",

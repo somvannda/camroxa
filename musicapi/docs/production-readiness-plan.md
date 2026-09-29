@@ -454,7 +454,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] Audit log for admin actions (§4.11) — `feat/musicapi-audit-log`
 - [x] Credit-pack admin CRUD (§4.5) — `feat/musicapi-credit-packs`
 - [x] Real usage analytics (§4.7) — `feat/musicapi-usage-analytics`
-- [ ] Admin settings + alert config (§4.10)
+- [x] Admin settings + alert config (§4.10) — `feat/musicapi-admin-settings`
 - [ ] Suno account edit/remove + health badges (§4.2)
 
 > **Note (5.1):** wired the previously-unused `rate_limits` table
@@ -560,6 +560,48 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > **Same caveat as 5.1–5.3:** the deploy chain only `enable --now`s the service,
 > so a manual `systemctl restart camxora-musicapi` was required for the new code
 > to take effect. Production was **not** touched.
+
+> **Note (5.5):** added operator settings + the §4.10 alerts (REQUIREMENTS §4.10) —
+> a new `app_settings` table (migration `0010_app_settings.sql`: `key TEXT PRIMARY
+> KEY`, `value JSONB`, `updated_at`, `updated_by UUID REFERENCES users(id) ON DELETE
+> SET NULL`) stores **one JSONB document per logical group** (`brand`, `alerts`) so a
+> new group needs no migration. `GET /admin/settings` returns both groups with
+> defaults filled in; `PUT /admin/settings` takes a partial `{brand}`/`{alerts}` patch,
+> validates it (400 on empty `brand.name`, non-string URLs, non-string/non-`[string]`
+> `languages`, non-boolean switches, or numeric thresholds outside their range),
+> merges onto the stored values, upserts the changed rows, and writes a
+> `settings.update` row via `recordAudit`. Brand = `name`, `docs_url`,
+> `support_telegram_url`, `languages[]`; alert config = `enabled`,
+> `low_credits_threshold`, `captcha_locked`, `failure_rate_threshold`,
+> `failure_rate_min_requests`, `window_minutes`.
+> The alert half evaluates the three §4.10 conditions in `evaluateAlerts()` —
+> Suno accounts at/below the credit threshold (`pool.listHealth()`), Suno currently
+> demanding a captcha (`captchaRequired()`), and a failure-rate spike over a sliding
+> window of `usage_logs` (only once `failure_rate_min_requests` is reached) — and
+> surfaces them via `GET /admin/alerts` as `{enabled, checked_at, thresholds,
+> alerts[], summary}`. Delivery reuses the **existing ops healthcheck bot**: a
+> `syncAlertState()` diff pushes to `ALERT_TELEGRAM_*` **only on state change**
+> (one message per newly-raised/changed alert, one `[RESOLVED]` per cleared alert),
+> driven either by a background loop (`ALERT_CHECK_INTERVAL_MS`, default 5 min; `0`
+> disables; started in `onReady`, cleared in `onClose`) or by opening the panel.
+> The `ComingSoon` placeholder `web-admin/app/admin/settings/page.tsx` was replaced
+> with a real page (brand + alert-config forms and a live alerts panel with
+> per-condition stat cards, a re-check button and severity-coloured alert list).
+> Both `musicapi` and `web-admin` typecheck clean.
+> **Verified on the sandbox** (`sync_musicapi_sandbox.py` →
+> `MUSICAPI_SANDBOX_DEPLOYED`; the admin build now emits the `/admin/settings`
+> route): a throwaway Node+pg harness ran **27/27** checks — anon → 401 and
+> non-admin → 403 on both endpoints, default setting shapes, six validation 400s,
+> a valid `PUT` round-tripping through a fresh `GET` (brand name/languages,
+> `low_credits_threshold`, `window_minutes`, `captcha_locked`), the `app_settings`
+> row persisted with `updated_by`, the `audit_logs` `settings.update` entry, the
+> `/admin/alerts` report shape (thresholds reflect saved settings, item shape), and
+> the disabled path (`enabled:false` → empty `alerts`). Fixtures cleaned up
+> (`app_settings` restored to its pre-run snapshot, fixture audit rows + users
+> deleted). **Same caveat as 5.1–5.4:** the deploy chain only `enable --now`s the
+> service, so a manual `systemctl restart camxora-musicapi` was required for the new
+> code to take effect (`SERVICE_BEFORE=active` / `SERVICE_AFTER=active`). Production
+> was **not** touched.
 
 ---
 
