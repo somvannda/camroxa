@@ -3,13 +3,24 @@
 import { useEffect, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
+interface AccountHealth {
+  total: number;
+  healthy: number;
+  disabled: number;
+  low_credits: number;
+  captcha_required: number;
+}
+
 interface Stats {
   users: number;
   keys: number;
   requests: number;
   credits: number;
   spent: number;
+  revenue: number;
+  credits_per_usd: number;
   accounts: number;
+  account_health: AccountHealth;
   series: { day: string; count: number }[];
 }
 
@@ -34,6 +45,15 @@ export default function AdminDashboard() {
     { label: "Total Requests", value: String(stats.requests) },
     { label: "Credits Held", value: String(stats.credits) },
     { label: "Credits Spent", value: String(stats.spent) },
+    { label: "Revenue", value: `$${stats.revenue.toFixed(2)}` },
+  ];
+
+  const h = stats.account_health;
+  const healthChips: Array<{ label: string; value: number; cls: string }> = [
+    { label: "Healthy", value: h.healthy, cls: "bg-emerald-500/15 text-emerald-300" },
+    { label: "Low credits", value: h.low_credits, cls: "bg-amber-500/15 text-amber-300" },
+    { label: "Captcha required", value: h.captcha_required, cls: "bg-amber-500/15 text-amber-300" },
+    { label: "Disabled", value: h.disabled, cls: "bg-red-500/15 text-red-300" },
   ];
 
   return (
@@ -50,6 +70,26 @@ export default function AdminDashboard() {
             <div className="grad-text mt-1 text-3xl font-bold">{c.value}</div>
           </div>
         ))}
+      </div>
+
+      <div className="glass rounded-xl p-5">
+        <h2 className="mb-4 text-sm font-semibold text-[var(--muted)]">
+          Suno accounts health — {h.total} total
+        </h2>
+        {h.total === 0 ? (
+          <p className="text-sm text-[var(--muted)]">No Suno accounts configured.</p>
+        ) : (
+          <div className="flex flex-wrap gap-3">
+            {healthChips.map((chip) => (
+              <div key={chip.label} className="rounded-lg border border-white/10 px-4 py-3">
+                <div className={`inline-block rounded px-2 py-0.5 text-xs font-medium ${chip.cls}`}>
+                  {chip.label}
+                </div>
+                <div className="mt-2 text-2xl font-bold">{chip.value}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="glass rounded-xl p-5">

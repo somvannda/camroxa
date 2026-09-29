@@ -283,6 +283,21 @@ function trustProxyOption(): FastifyServerOptions["trustProxy"] {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
+/**
+ * Credits-per-USD rate from the cheapest active credit pack — the same rate the
+ * user-facing `/me/usage` and the admin `/admin/analytics` endpoint use, so every
+ * revenue figure in the product agrees. Falls back to 200 credits/$1 when no
+ * active pack is configured.
+ */
+async function creditsPerUsdRate(): Promise<number> {
+  const pack = await queryOne<{ amount: string; price: string }>(
+    "SELECT amount::text, price::text FROM credit_packs WHERE is_active = true ORDER BY amount LIMIT 1",
+  );
+  return pack && Number(pack.amount) > 0 && Number(pack.price) > 0
+    ? Number(pack.amount) / Number(pack.price)
+    : 200;
+}
+
 export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance> {
   const app = Fastify({
     // JSON logs with request ids. Header redaction is defense-in-depth: Fastify's
@@ -2906,13 +2921,41 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const series = await query<{ day: string; count: string }>(
       "SELECT to_char(created_at, 'YYYY-MM-DD') AS day, count(*)::text AS count FROM usage_logs WHERE created_at > now() - interval '30 days' GROUP BY day ORDER BY day",
     );
+    // Suno account health summary (REQUIREMENTS §4.1). Uses the same flags and
+    // low-credits threshold as the Accounts page so the overview and the
+    // per-account badges never disagree. `healthy` = no flag at all.
+    const [accountRows, live, thresholds, creditsPerUsd] = await Promise.all([
+      query<{ label: string; is_active: boolean; credits_left: number | null }>(
+        "SELECT label, is_active, credits_left FROM suno_accounts",
+      ),
+      pool.listHealth().catch(() => [] as Awaited<ReturnType<AccountPool["listHealth"]>>),
+      loadAlertSettings(),
+      creditsPerUsdRate(),
+    ]);
+    const liveByLabel = new Map(live.map((l) => [l.id, l]));
+    const accountHealth = { total: accountRows.length, healthy: 0, disabled: 0, low_credits: 0, captcha_required: 0 };
+    for (const row of accountRows) {
+      const l = liveByLabel.get(row.label);
+      const liveCredits = l?.credits ?? row.credits_left ?? 0;
+      const disabled = !row.is_active;
+      const lowCredits = liveCredits <= thresholds.low_credits_threshold;
+      const captcha = l?.captchaRequired ?? false;
+      if (disabled) accountHealth.disabled += 1;
+      if (lowCredits) accountHealth.low_credits += 1;
+      if (captcha) accountHealth.captcha_required += 1;
+      if (!disabled && !lowCredits && !captcha) accountHealth.healthy += 1;
+    }
+    const spentCredits = Number(spent?.sum ?? 0);
     return {
       users: Number(users?.count ?? 0),
       keys: Number(keys?.count ?? 0),
       requests: Number(logs?.count ?? 0),
       credits: Number(credits?.sum ?? 0),
-      spent: Number(spent?.sum ?? 0),
+      spent: spentCredits,
+      revenue: spentCredits / creditsPerUsd,
+      credits_per_usd: creditsPerUsd,
       accounts: pool.size,
+      account_health: accountHealth,
       series: series.map((s) => ({ day: s.day, count: Number(s.count) })),
     };
   });
@@ -2927,12 +2970,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const daysParam = Number((req.query as { days?: string })?.days ?? 30);
     const days = Math.min(90, Math.max(7, daysParam || 30));
 
-    const pack = await queryOne<{ amount: string; price: string }>(
-      "SELECT amount::text, price::text FROM credit_packs WHERE is_active = true ORDER BY amount LIMIT 1",
-    );
-    const creditsPerUsd = pack && Number(pack.amount) > 0 && Number(pack.price) > 0
-      ? Number(pack.amount) / Number(pack.price)
-      : 200;
+    const creditsPerUsd = await creditsPerUsdRate();
 
     // A log row is a success when its job reached "complete" and a failure
     // otherwise, so the two buckets always add up to the total.
