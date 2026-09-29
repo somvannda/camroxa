@@ -109,8 +109,9 @@ Left sidebar navigation + bottom section.
 - `[DONE]` Top-up alerts (Suno accounts at/below the configured low-credits threshold surface in the admin panel and push to the ops Telegram channel).
 - `[DONE]` Aggregate summary — `GET /admin/stats` returns `suno_credits` (`active` = live credits on enabled accounts, `total` = including disabled); the dashboard shows a "Suno Credits" card plus the pool breakdown in the accounts-health panel.
 
-### 4.7 Usage analytics `[PENDING]`
-- Per-endpoint, per-model, per-user; success/fail; revenue trends.
+### 4.7 Usage analytics `[DONE]`
+- `[DONE]` Per-endpoint, per-model and per-user breakdowns; success/fail counts; daily revenue trends — `GET /admin/analytics?days=N` (admin-only; 7–90 day range, default 30) derived from `usage_logs`, with revenue converted using the same cheapest-active-pack rate as `/me/usage` (task 5.4, `feat/musicapi-usage-analytics`).
+- `[DONE]` Admin dashboard at `web-admin/app/admin/analytics` — 7/30/90-day toggle, summary cards (requests, success rate, failed, credits, revenue), daily revenue bar chart, and by-endpoint / by-model / by-user tables.
 
 ### 4.8 Content (API updates / blog) `[DONE]`
 - CRUD for blog posts shown in the user panel.
