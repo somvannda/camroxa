@@ -453,7 +453,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] Per-user/per-key rate limits (REQUIREMENTS §4.4) — `feat/musicapi-rate-limits`
 - [x] Audit log for admin actions (§4.11) — `feat/musicapi-audit-log`
 - [x] Credit-pack admin CRUD (§4.5) — `feat/musicapi-credit-packs`
-- [ ] Real usage analytics (§4.7)
+- [x] Real usage analytics (§4.7) — `feat/musicapi-usage-analytics`
 - [ ] Admin settings + alert config (§4.10)
 - [ ] Suno account edit/remove + health badges (§4.2)
 
@@ -534,6 +534,32 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > 5.1/5.2:** the deploy chain only `enable --now`s the service, so a manual
 > `systemctl restart camxora-musicapi` was required for the new code to take
 > effect. Production was **not** touched.
+
+> **Note (5.4):** added real usage analytics (REQUIREMENTS §4.7) —
+> `GET /admin/analytics?days=N` (admin-only) in `src/server.ts`, derived entirely
+> from `usage_logs`. Returns `range.days` (clamped **7–90**, default 30),
+> `credits_per_usd`, `totals`, and four breakdowns: `by_endpoint`, `by_model`,
+> `by_user` (top 50 by requests) and a daily `series`. Each bucket carries
+> `count`, `success`, `failed`, `credits` and `revenue`; a log counts as success
+> when its job reached `complete` and a failure otherwise, so success + failed
+> always equals the total. Revenue converts `credits_consumed` to USD using the
+> **same cheapest-active-pack rate** the user-facing `/me/usage` uses, so the
+> admin and user views never disagree. The `ComingSoon` placeholder
+> `web-admin/app/admin/analytics/page.tsx` was replaced with a real dashboard
+> (7/30/90-day range toggle, summary cards, a revenue bar chart and the three
+> breakdown tables). Both `musicapi` and `web-admin` typecheck clean.
+> **Verified on the sandbox** (`sync_musicapi_sandbox.py` →
+> `MUSICAPI_SANDBOX_DEPLOYED`; the admin build now emits the `/admin/analytics`
+> route): a throwaway Node+pg harness ran **24/24** checks — anon → 401,
+> non-admin → 403, response shape, `days=1` clamps to 7 and `days=500` to 90,
+> exact per-user (count 4 / success 3 / failed 1 / credits 22 at 90 d; the
+> 40-day-old row correctly excluded at 30 d), exact per-endpoint and per-model
+> buckets, window-independent consistency (sum of `by_endpoint`/`by_model`/
+> `series` equals `totals`, success + failed = count), and revenue equals
+> `credits / credits_per_usd`. Fixtures cleaned up (0 leftover usage rows/users).
+> **Same caveat as 5.1–5.3:** the deploy chain only `enable --now`s the service,
+> so a manual `systemctl restart camxora-musicapi` was required for the new code
+> to take effect. Production was **not** touched.
 
 ---
 

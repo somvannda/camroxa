@@ -2444,6 +2444,78 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   });
 
+  // Usage analytics (task 5.4, REQUIREMENTS §4.7): per-endpoint, per-model and
+  // per-user breakdowns plus success/failure counts and revenue trends, all
+  // derived from usage_logs. Revenue is credits_consumed converted to USD using
+  // the same cheapest-active-pack rate the user-facing /me/usage reports use, so
+  // the two views never disagree.
+  app.get("/admin/analytics", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const daysParam = Number((req.query as { days?: string })?.days ?? 30);
+    const days = Math.min(90, Math.max(7, daysParam || 30));
+
+    const pack = await queryOne<{ amount: string; price: string }>(
+      "SELECT amount::text, price::text FROM credit_packs WHERE is_active = true ORDER BY amount LIMIT 1",
+    );
+    const creditsPerUsd = pack && Number(pack.amount) > 0 && Number(pack.price) > 0
+      ? Number(pack.amount) / Number(pack.price)
+      : 200;
+
+    // A log row is a success when its job reached "complete" and a failure
+    // otherwise, so the two buckets always add up to the total.
+    const AGG = `count(*)::text AS count,
+                 count(*) FILTER (WHERE status = 'complete')::text AS success,
+                 count(*) FILTER (WHERE status <> 'complete')::text AS failed,
+                 COALESCE(sum(credits_consumed),0)::text AS credits`;
+
+    interface AggRow { count: string; success: string; failed: string; credits: string }
+    const shape = (r: AggRow) => ({
+      count: Number(r.count),
+      success: Number(r.success),
+      failed: Number(r.failed),
+      credits: Number(r.credits),
+      revenue: Number(r.credits) / creditsPerUsd,
+    });
+
+    const totals = await queryOne<AggRow>(
+      `SELECT ${AGG} FROM usage_logs WHERE created_at > now() - interval '${days} days'`,
+    );
+    const byEndpoint = await query<AggRow & { endpoint: string }>(
+      `SELECT COALESCE(endpoint, '(none)') AS endpoint, ${AGG} FROM usage_logs
+       WHERE created_at > now() - interval '${days} days'
+       GROUP BY endpoint ORDER BY sum(credits_consumed) DESC NULLS LAST, count(*) DESC`,
+    );
+    const byModel = await query<AggRow & { model: string }>(
+      `SELECT COALESCE(model, '(unset)') AS model, ${AGG} FROM usage_logs
+       WHERE created_at > now() - interval '${days} days'
+       GROUP BY model ORDER BY sum(credits_consumed) DESC NULLS LAST, count(*) DESC`,
+    );
+    const byUser = await query<AggRow & { user_id: string; email: string }>(
+      `SELECT l.user_id, u.email, count(*)::text AS count,
+              count(*) FILTER (WHERE l.status = 'complete')::text AS success,
+              count(*) FILTER (WHERE l.status <> 'complete')::text AS failed,
+              COALESCE(sum(l.credits_consumed),0)::text AS credits
+       FROM usage_logs l JOIN users u ON u.id = l.user_id
+       WHERE l.created_at > now() - interval '${days} days'
+       GROUP BY l.user_id, u.email ORDER BY count(*) DESC LIMIT 50`,
+    );
+    const series = await query<AggRow & { day: string }>(
+      `SELECT to_char(created_at, 'YYYY-MM-DD') AS day, ${AGG} FROM usage_logs
+       WHERE created_at > now() - interval '${days} days'
+       GROUP BY day ORDER BY day`,
+    );
+
+    return {
+      range: { days },
+      credits_per_usd: creditsPerUsd,
+      totals: totals ? shape(totals) : { count: 0, success: 0, failed: 0, credits: 0, revenue: 0 },
+      by_endpoint: byEndpoint.map((r) => ({ endpoint: r.endpoint, ...shape(r) })),
+      by_model: byModel.map((r) => ({ model: r.model, ...shape(r) })),
+      by_user: byUser.map((r) => ({ user_id: r.user_id, email: r.email, ...shape(r) })),
+      series: series.map((r) => ({ day: r.day, ...shape(r) })),
+    };
+  });
+
   app.get("/admin/users", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     return query<Record<string, unknown>>(
