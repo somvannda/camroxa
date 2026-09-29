@@ -36,7 +36,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 1.5 | Callback URL allowlist (block SSRF/private ranges) | `fix/musicapi-callback-ssrf` | loopback/private/metadata rejected ✅; optional `CALLBACK_ALLOWED_HOSTS` | `[x]` |
 | 1.6 | Encrypt Suno `client_cookie` at rest | `feat/musicapi-cookie-encryption` | DB ciphertext; pool works ✅ `enc:v1:` | `[x]` |
 | 1.7 | OAuth per-request client, signed `state`, verified email | `fix/musicapi-oauth-hardening` | CSRF blocked; flow works ✅ signed `state` + `email_verified` | `[x]` |
-| 1.8 | Rotate leaked secrets; scrub `.env`/`accounts.json` | ops (user-led) | old creds invalid | `[ ]` |
+| 1.8 | Rotate leaked secrets; scrub `.env`/`accounts.json` | ops (user-led) | old creds invalid | `[~]` audit + runbook done; provider rotation pending |
 
 **Gate:** no free-credit or forgeable-token path; secrets safe.
 > Note: 1.1–1.2 landed as commits on `feat/musicapi-baseline` (Phase 0's branch) instead of their own branches. **1.3:** replaced the non-atomic `pickUserKey()` + ignored `charge()` pattern on every `/me/*` route with a single-statement atomic `chargeUserKey()` that both selects and deducts, and 402s when it fails. **1.4:** `/payments/khqr/status/:id` and `/payments/khqr/confirm-mock/:id` claim the transaction with `UPDATE payment_transactions … WHERE status = 'pending' RETURNING id` and apply the credits inside one `withTransaction` (new helper in `db.ts`), so concurrent polls credit exactly once and any failure rolls back instead of half-crediting; `/admin/users/:id/credits` is now a single-statement `GREATEST(0, credits + $1)` adjust. **1.5:** user-supplied webhook `callback_url`s are now validated by `src/callbackUrl.ts` (`assertCallbackUrlAllowed`), which rejects non-http(s) schemes, embedded credentials, `localhost`/`.local`/`.internal` names, and any target that is *or resolves to* a loopback/private/link-local/CGNAT/cloud-metadata address (IPv4 + IPv6, incl. `::ffff:` mapped). It runs in a `preHandler` hook, so a bad URL is rejected with 400 **before** the handler's `charge()` — and again in `notify()` immediately before the fetch, which now uses `redirect: "manual"` so a 3xx can't bounce the request to an internal address. `CALLBACK_ALLOWED_HOSTS` (comma-separated, optional) additionally pins callbacks to an allowlist (exact host or subdomain); empty means any public host. Verified with a temp harness: 26 checks all pass — private/metadata/loopback/malformed rejected, public IP allowed, `localtest.me` and `127.0.0.1.nip.io` rejected via DNS, allowlist honored both ways, and real routes return 400 on a bad callback while `401` still comes from auth for good/absent ones. 1.8 remains pending (ops, user-led).
@@ -54,6 +54,53 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > rotating it makes stored cookies unreadable.
 
 > **Note (1.7):** already-per-request `OAuth2Client` retained; added signed `state` (`signOAuthState`/`verifyOAuthState` in `src/appAuth.ts`, 10-min JWT via `JWT_SECRET` with a random nonce) that **binds the allowlisted `redirect_uri`**. `GET /auth/google/url` now returns `{ url, state }` and passes `state` to Google; `POST /auth/google/callback` takes `{ code, state }`, rejects missing/tampered/forged/expired state (CSRF), and derives the redirect URI from the verified state instead of trusting the client — the body `redirect_uri` is no longer accepted. The `id_token`'s `email_verified` must be `true` before the email is used to link/create a user. `web-user` (`google-signin-button.tsx`, `app/auth/callback/page.tsx`) round-trips the state from the callback URL. Verified via `npm run typecheck` (clean) and a 23-check harness: state round-trip/tamper/forge/expiry/nonce-uniqueness, allowlisted vs. non-allowlisted redirect binding, callback rejects missing code/state, and stubbed Google exchange (unverified + missing `email_verified` → 403 with no user row; verified → 200 with valid session token).
+
+> **Note (1.8 — secret audit + rotation runbook, ops/user-led):** audited the repo for the
+> credentials the original `musicapi` import exposed. **Result: nothing secret is tracked or in
+> git history** — `git ls-files musicapi` returns only `*.example` templates,
+> `git log --all --diff-filter=A` added only `.example`/`.env.example` files, and `git grep -I`
+> on HEAD for a sample of each live value comes back clean. Every real secret file is gitignored
+> (`musicapi/.gitignore` → `.env`, `accounts.json`, `api-keys.json`; root `.gitignore` → `.env`,
+> `.env.*`, `.deploy/secrets*`), so the exposure is limited to **on-disk copies** — the same
+> `musicapi/.env`, `musicapi/accounts.json` and `.deploy/secrets.sandbox.env` are duplicated
+> across ~14 `MusicGenerator-musicapi-*` worktrees. The scrub half (ignore + history) is complete;
+> the "old creds invalid" half is the user-led provider rotation below.
+>
+> **Provider rotation — only the account owner can invalidate these:**
+> - Suno account cookie (`SUNO_CLIENT_COOKIE`, duplicated as `accounts.json` → `clientCookie`)
+>   and its `SUNO_DEVICE_ID` — re-issue a fresh `__client` cookie from suno.com, then re-import
+>   the account (the DB row is AES-encrypted per 1.6).
+> - Google OAuth `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — reset the client secret in
+>   Google Cloud Console → APIs & Services → Credentials.
+> - 2Captcha `TWOCAPTCHA_KEY` — regenerate in the 2Captcha dashboard.
+> - Telegram bot `TELEGRAM_BOT_TOKEN` (+ `PLATFORM_TELEGRAM_*`) — `/revoke` via @BotFather,
+>   then update the chat id if it changes.
+> - Cloudflare Turnstile `CLOUDFLARE_TURNSTILE_SECRET_KEY` — rotate in the Turnstile dashboard.
+> - Backblaze B2 `PLATFORM_STREAMING_B2_KEY_ID` / `_APPLICATION_KEY` — delete and create a new
+>   application key.
+> - Resend SMTP `PLATFORM_SMTP_PASSWORD` — rotate the API key.
+> - Cutluy `PLATFORM_CUTLUY_SECRET_KEY` + `PLATFORM_CUTLUY_WEBHOOK_SECRET` — rotate in the
+>   Cutluy dashboard (re-point the webhook endpoint afterwards).
+> - Sandbox VPS root login (`VPS_PASSWORD` for `46.250.235.83`) — `passwd` on the host, then
+>   update `.deploy/secrets.sandbox.env`.
+>
+> **App-controlled secrets — regenerate here, then update every copy plus the remote
+> `/opt/camxora/repo/musicapi/.env` and restart the service:**
+> - `JWT_SECRET` — new 48-byte hex
+>   (`node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"`); only
+>   invalidates existing sessions.
+> - `DATABASE_URL` / `DB_PASSWORD` — change the Postgres role password and update the URL
+>   (sandbox + prod).
+> - `COOKIE_ENCRYPTION_KEY` — **do not rotate casually**: it decrypts
+>   `suno_accounts.client_cookie`, so a new key makes every stored cookie unreadable until each
+>   row is re-entered and re-encrypted (`scripts/migrate-cookie-encryption.ts`). Rotate it
+>   together with the Suno cookie above.
+> - `PLATFORM_JWT_SECRET` / `PLATFORM_ENCRYPTION_MASTER_KEY` /
+>   `PLATFORM_SUNO_CALLBACK_HMAC_SECRET` — platform app (outside musicapi scope; the master key
+>   also needs a re-encrypt pass).
+>
+> Local dev `.env`/`accounts.json` are gitignored and may stay for development, but must be
+> refreshed with the new values after rotation.
 
 ---
 
