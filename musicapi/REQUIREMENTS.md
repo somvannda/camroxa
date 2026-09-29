@@ -63,10 +63,10 @@ Left sidebar navigation + bottom section.
 ### 3.5 API Updates `[DONE]`
 - Blog posts / changelog (managed in admin).
 
-### 3.6 Logs `[PARTIAL]`
+### 3.6 Logs `[DONE]`
 - `[DONE]` Table: time, type/endpoint, model, prompt, status, credits, task id.
-- `[PENDING]` Tabs by type (audio, recovery, lyrics, subtitle, wav, vocal-removal, video, voice).
-- `[PENDING]` Result on hover (cover image, lyrics, download button).
+- `[DONE]` Tabs by type (audio, recovery, lyrics, subtitle, wav, vocal-removal, video, voice) — `/dashboard/logs` filters rows client-side per type; live in-flight jobs from `GET /me/jobs/running` are merged with `GET /me/logs` history.
+- `[DONE]` Result on hover (cover image, lyrics, download button) — hovering a row's Result cell reveals a preview card with the clip cover art, lyrics, and a Download MP3 button; clicking opens a playback modal.
 
 ### 3.7 Billing `[PARTIAL]`
 - `[DONE]` Balance remaining, credit packs, API endpoint costs list (view docs).
