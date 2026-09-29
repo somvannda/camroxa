@@ -419,6 +419,28 @@ class LicenseRepository:
             return None
         return _row_to_license(row)
 
+    async def get_latest_license_for_user(self, user_id: UUID) -> License | None:
+        """Return the user's most recent non-revoked license (active or expired).
+
+        Unlike ``get_active_for_user`` this also matches a license whose
+        ``expires_at`` has already passed, so a lapsed paid plan can still be
+        renewed for the next period.
+        """
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT {_LICENSE_SELECT}
+            FROM licenses
+            WHERE user_id = $1
+              AND status IN ('active', 'expired')
+            ORDER BY activated_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
     async def has_active_license(self, user_id: str) -> bool:
         """Check if a user has an active non-expired license.
 

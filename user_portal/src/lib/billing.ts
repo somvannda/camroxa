@@ -188,6 +188,33 @@ export async function createCreditPackPayment(packId: string): Promise<BillingPa
   });
 }
 
+export type QuotaRenewal = {
+  eligible: boolean;
+  plan_id: string | null;
+  plan_name: string | null;
+  price_cents: number | null;
+  billing_cycle_days: number | null;
+  expires_at: string | null;
+  days_left: number | null;
+  expired: boolean;
+};
+
+/** The signed-in user's own plan (hidden legacy plans included) for the renew flow. */
+export async function getQuotaRenewal(): Promise<QuotaRenewal> {
+  return platformJson<QuotaRenewal>({
+    path: "/billing/renewals/quota",
+    method: "GET",
+  });
+}
+
+/** Start a one-cycle renewal checkout for the user's own plan. */
+export async function createQuotaRenewal(): Promise<BillingPayment> {
+  return platformJson<BillingPayment>({
+    path: "/billing/renewals/quota",
+    method: "POST",
+  });
+}
+
 export async function schedulePlanDowngrade(planId: string): Promise<{
   status: string;
   effective_at: string;
