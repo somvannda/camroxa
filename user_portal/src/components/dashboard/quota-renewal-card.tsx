@@ -79,6 +79,7 @@ export function QuotaRenewalCard() {
     return null;
   }
 
+  const canRenew = renewal.renewable !== false;
   const expiryLabel = formatExpiry(renewal.expires_at);
   const priceLabel = formatCurrency(renewal.price_cents ?? 0);
   const statusText = renewal.expired
@@ -127,18 +128,29 @@ export function QuotaRenewalCard() {
       </CardHeader>
       <CardContent className="grid gap-4">
         <p className="text-sm text-slate-300/80">
-          Auto-renew an extra {renewal.billing_cycle_days ?? 30} days — added on top of your current
-          expiry, so you never lose remaining days. Video export and merge stay free.
+          {canRenew ? (
+            <>
+              Auto-renew an extra {renewal.billing_cycle_days ?? 30} days — added on top of your
+              current expiry, so you never lose remaining days. Video export and merge stay free.
+            </>
+          ) : (
+            <>
+              Renewal opens {renewal.renewal_window_days ?? 7} days before your plan ends —{" "}
+              {renewal.renewal_opens_in_days ?? 0} day
+              {(renewal.renewal_opens_in_days ?? 0) === 1 ? "" : "s"} to go. Video export and merge
+              stay free.
+            </>
+          )}
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <Button
             type="button"
-            disabled={purchasing}
+            disabled={purchasing || !canRenew}
             onClick={() => void onRenew()}
             className="h-11 bg-gradient-to-r from-[#7466F1] to-[#A259FF] text-white hover:from-[#6558e6] hover:to-[#9147ef]"
           >
             {purchasing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-            Auto-renew for {priceLabel}
+            {canRenew ? `Auto-renew for ${priceLabel}` : `Renewal opens in ${renewal.renewal_opens_in_days ?? 0}d`}
           </Button>
           <span className="text-xs text-slate-400">
             {renewal.expired

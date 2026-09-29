@@ -165,7 +165,7 @@ def test_renewal_window_boundaries() -> None:
 
 
 @pytest.mark.asyncio
-async def test_get_quota_renewal_not_eligible_outside_window() -> None:
+async def test_get_quota_renewal_visible_but_not_renewable_outside_window() -> None:
     plan = _paid_plan()
     active = _license(plan.id, expires_in_days=20)
     ctx = MagicMock()
@@ -173,7 +173,9 @@ async def test_get_quota_renewal_not_eligible_outside_window() -> None:
     p1, p2, _ = _patch_repos(active=active, latest=None, plan=plan)
     with p1, p2:
         result = await billing.get_quota_renewal(ctx=ctx, pool=object())
-    assert result.eligible is False
+    # The card is visible (eligible) so it can show a countdown, but not renewable yet.
+    assert result.eligible is True
+    assert result.renewable is False
     assert result.plan_name == "Monthly · 2-channel"
     assert result.renewal_opens_in_days is not None
 
