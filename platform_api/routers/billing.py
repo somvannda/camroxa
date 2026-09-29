@@ -110,10 +110,18 @@ class AddonRenewalResponse(BaseModel):
     blocks: int | None = None
     credits: int | None = None
     price_cents: int | None = None
+    credits_per_block: int | None = None
+    price_per_block_cents: int | None = None
     expires_at: datetime | None = None
     renewable: bool = False
     renewal_opens_in_days: int | None = None
     renewal_window_days: int = 7
+
+
+class AddonRenewalRequest(BaseModel):
+    """How many 2-channel blocks of add-on channels to renew."""
+
+    blocks: int | None = Field(default=None, ge=1, description="Number of 2-channel blocks to renew")
 
 
 class CompleteMockPaymentRequest(BaseModel):
@@ -1435,16 +1443,9 @@ def _renewal_window(
     return renewable, days_left, expired, opens_in_days
 
 
-async def _resolve_addon_renewal(pool: Any, user_id: UUID) -> tuple[Any, Any, int, int, int, int] | None:
-    """Return (license, plan, addon_channels, blocks, credits, price_cents) for add-on renewal.
-
-    Credits granted per renewed 2-channel block match the plan's monthly allowance, so a
-    user can renew their extra channels at the plan rate instead of buying packs.
-    """
-    from platform_api.services.plan_tier_pricing_service import (
-        PROFILE_ADDON_STEP,
-        find_profile_addon_plan,
-    )
+async def _resolve_addon_channels(pool: Any, user_id: UUID) -> tuple[Any, Any, int] | None:
+    """Return (license, plan, addon_channels) for the user's renewable add-on channels."""
+    from platform_api.services.plan_tier_pricing_service import PROFILE_ADDON_STEP
 
     repo = LicenseRepository(pool=pool)
     license_obj = await repo.get_active_for_user(user_id)
@@ -1455,23 +1456,10 @@ async def _resolve_addon_renewal(pool: Any, user_id: UUID) -> tuple[Any, Any, in
     addon_channels = int(getattr(license_obj, "profile_addon_slots", 0) or 0)
     if addon_channels < PROFILE_ADDON_STEP:
         return None
-
-    plan_repo = PlanRepository(pool=pool)
-    plan = await plan_repo.get_by_id(license_obj.plan_id)
-    if plan is None:
+    plan = await PlanRepository(pool=pool).get_by_id(license_obj.plan_id)
+    if plan is None or int(plan.monthly_credits or 0) <= 0 or int(plan.price_cents or 0) <= 0:
         return None
-    addon_plan = find_profile_addon_plan(
-        await plan_repo.get_all(),
-        addon_channels,
-        billing_cycle_days=int(plan.billing_cycle_days or 30),
-    )
-    if addon_plan is None:
-        return None
-    blocks = addon_channels // PROFILE_ADDON_STEP
-    credits = blocks * int(plan.monthly_credits or 0)
-    if credits <= 0:
-        return None
-    return license_obj, plan, addon_channels, blocks, credits, int(addon_plan.price_cents or 0)
+    return license_obj, plan, addon_channels
 
 
 @router.get(
@@ -1575,25 +1563,29 @@ async def get_addon_renewal(
 ) -> AddonRenewalResponse:
     """Return the user's add-on channel blocks and what renewing them grants.
 
-    Channels are permanent; renewing add-ons grants credits at the plan rate so the
-    user can keep running those channels without buying more-expensive packs.
+    Channels are permanent and add-on renewal is open at any time; each renewed
+    2-channel block grants credits at the plan rate so the user can keep running
+    those channels without buying more-expensive packs.
     """
-    resolved = await _resolve_addon_renewal(pool, UUID(ctx.user_id))
+    from platform_api.services.plan_tier_pricing_service import PROFILE_ADDON_STEP
+
+    resolved = await _resolve_addon_channels(pool, UUID(ctx.user_id))
     if resolved is None:
         return AddonRenewalResponse(eligible=False)
-    license_obj, _plan, addon_channels, blocks, credits, price_cents = resolved
-    renewable, _days_left, _expired, opens_in_days = _renewal_window(
-        license_obj.expires_at, datetime.now(timezone.utc)
-    )
+    _license_obj, plan, addon_channels = resolved
+    blocks = addon_channels // PROFILE_ADDON_STEP
+    credits_per_block = int(plan.monthly_credits or 0)
+    price_per_block = int(plan.price_cents or 0)
     return AddonRenewalResponse(
         eligible=True,
         addon_channels=addon_channels,
         blocks=blocks,
-        credits=credits,
-        price_cents=price_cents,
-        expires_at=license_obj.expires_at,
-        renewable=renewable,
-        renewal_opens_in_days=opens_in_days,
+        credits=blocks * credits_per_block,
+        price_cents=blocks * price_per_block,
+        credits_per_block=credits_per_block,
+        price_per_block_cents=price_per_block,
+        expires_at=_license_obj.expires_at,
+        renewable=True,
         renewal_window_days=RENEWAL_WINDOW_DAYS,
     )
 
@@ -1605,36 +1597,32 @@ async def get_addon_renewal(
     summary="Create a checkout to renew the signed-in user's add-on channels",
 )
 async def create_addon_renewal(
+    request: AddonRenewalRequest,
     ctx: CurrentUserDep,
     pool: Any = Depends(get_db_pool),
 ) -> BillingPaymentResponse:
-    """Start a one-cycle renewal checkout for the user's add-on channel blocks."""
-    resolved = await _resolve_addon_renewal(pool, UUID(ctx.user_id))
+    """Start a renewal checkout for a chosen number of 2-channel add-on blocks."""
+    from platform_api.services.plan_tier_pricing_service import PROFILE_ADDON_STEP
+
+    resolved = await _resolve_addon_channels(pool, UUID(ctx.user_id))
     if resolved is None:
         raise NotFoundError(
             "No add-on channels were found to renew for this account.",
             details={"error_code": "NO_ADDON_CHANNELS"},
         )
-    license_obj, plan, addon_channels, _blocks, credits, price_cents = resolved
-    renewable, days_left, _expired, opens_in_days = _renewal_window(
-        license_obj.expires_at, datetime.now(timezone.utc)
-    )
-    if not renewable:
-        raise ValidationError(
-            f"Renewal opens {RENEWAL_WINDOW_DAYS} days before your plan ends.",
-            details={
-                "error_code": "RENEWAL_NOT_YET_OPEN",
-                "days_left": days_left,
-                "renewal_opens_in_days": opens_in_days,
-                "renewal_window_days": RENEWAL_WINDOW_DAYS,
-            },
-        )
+    license_obj, plan, addon_channels = resolved
+    blocks_total = addon_channels // PROFILE_ADDON_STEP
+    blocks = int(request.blocks or blocks_total)
+    blocks = max(1, min(blocks, blocks_total))
+    price_cents = blocks * int(plan.price_cents or 0)
+    credits = blocks * int(plan.monthly_credits or 0)
     provider = await _get_active_provider(pool)
     portal_base_url = await _get_portal_base_url(pool)
-    plan_name = f"{plan.name} · renew {addon_channels} add-on channels"
+    plan_name = f"{plan.name} · renew {blocks * PROFILE_ADDON_STEP} add-on channels"
     extra_metadata: dict[str, Any] = {
         "product_type": "addon_renewal",
-        "addon_channels": addon_channels,
+        "addon_channels": blocks * PROFILE_ADDON_STEP,
+        "blocks": blocks,
         "credits": credits,
         "license_id": str(license_obj.id),
         "return_path": f"{portal_base_url}/dashboard/billing",
