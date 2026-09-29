@@ -87,6 +87,7 @@ export default function QuotaRenewalCard() {
 
   if (loading || !renewal?.eligible) return null;
 
+  const canRenew = renewal.renewable !== false;
   const expiryLabel = formatExpiry(renewal.expires_at);
   const priceLabel = formatMoney(renewal.price_cents ?? 0);
   const expiryDate = renewal.expires_at ? new Date(renewal.expires_at) : null;
@@ -150,18 +151,29 @@ export default function QuotaRenewalCard() {
         </div>
 
         <p className="mb-5 text-sm text-slate-300/72">
-          Auto-renew an extra {renewal.billing_cycle_days ?? 30} days — added on top of your current
-          expiry, so you never lose remaining days. Video export and merge stay free.
+          {canRenew ? (
+            <>
+              Auto-renew an extra {renewal.billing_cycle_days ?? 30} days — added on top of your
+              current expiry, so you never lose remaining days. Video export and merge stay free.
+            </>
+          ) : (
+            <>
+              Renewal opens {renewal.renewal_window_days ?? 7} days before your plan ends —{" "}
+              {renewal.renewal_opens_in_days ?? 0} day
+              {(renewal.renewal_opens_in_days ?? 0) === 1 ? "" : "s"} to go. Video export and merge
+              stay free.
+            </>
+          )}
         </p>
 
         <button
           type="button"
-          disabled={starting}
+          disabled={starting || !canRenew}
           onClick={() => void onRenew()}
           className="inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 to-fuchsia-500 px-6 text-sm font-medium text-white transition hover:from-violet-600 hover:to-fuchsia-600 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {starting ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
-          Auto-renew for {priceLabel}
+          {canRenew ? `Auto-renew for ${priceLabel}` : `Renewal opens in ${renewal.renewal_opens_in_days ?? 0}d`}
         </button>
 
         {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}

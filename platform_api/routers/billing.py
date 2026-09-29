@@ -1327,8 +1327,8 @@ async def get_quota_renewal(
     The plan is intentionally resolved from the user's own license, never from the
     public catalog, so a hidden legacy plan like the $79 desktop plan stays invisible
     to everyone else while its owner can still pay for the next period. ``eligible``
-    is true only inside the renewal window (``RENEWAL_WINDOW_DAYS`` before expiry, or
-    once expired).
+    is true whenever the user has a renewable paid plan; ``renewable`` is true only
+    inside the renewal window (``RENEWAL_WINDOW_DAYS`` before expiry, or once expired).
     """
     resolved = await _resolve_renewable_license(pool, UUID(ctx.user_id))
     if resolved is None:
@@ -1339,7 +1339,7 @@ async def get_quota_renewal(
     now = datetime.now(timezone.utc)
     renewable, days_left, expired, opens_in_days = _renewal_window(expires_at, now)
     return QuotaRenewalResponse(
-        eligible=renewable,
+        eligible=True,
         plan_id=str(plan.id),
         plan_name=str(plan.name),
         price_cents=int(plan.price_cents or 0),
