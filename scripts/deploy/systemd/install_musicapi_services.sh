@@ -21,7 +21,15 @@ UNITS=(
   camxora-musicapi.service
   camxora-musicapi-web-user.service
   camxora-musicapi-web-admin.service
+  camxora-musicapi-backup.service
+  camxora-musicapi-backup.timer
+  camxora-musicapi-healthcheck.service
+  camxora-musicapi-healthcheck.timer
 )
+
+# Long-running services vs. scheduled timers need different enable targets.
+SERVICES=(camxora-musicapi camxora-musicapi-web-user camxora-musicapi-web-admin)
+TIMERS=(camxora-musicapi-backup.timer camxora-musicapi-healthcheck.timer)
 
 log "Installing unit files into ${UNIT_DST}..."
 for unit in "${UNITS[@]}"; do
@@ -33,11 +41,14 @@ if [[ ! -f "${REPO_DIR}/musicapi/dist/serve.js" ]]; then
 fi
 
 systemctl daemon-reload
-log "Enabling units (start on boot + start now)..."
-systemctl enable --now camxora-musicapi camxora-musicapi-web-user camxora-musicapi-web-admin
+log "Enabling services (start on boot + start now)..."
+systemctl enable --now "${SERVICES[@]}"
+
+log "Enabling timers (backup nightly, health probe every 5 min)..."
+systemctl enable --now "${TIMERS[@]}"
 
 log "Status:"
-systemctl --no-pager --full status \
-  camxora-musicapi camxora-musicapi-web-user camxora-musicapi-web-admin || true
+systemctl --no-pager --full status "${SERVICES[@]}" || true
+systemctl --no-pager --full list-timers "${TIMERS[@]}" || true
 
-log "Done. Verify after a reboot with: systemctl is-enabled camxora-musicapi camxora-musicapi-web-user camxora-musicapi-web-admin"
+log "Done. Verify after a reboot with: systemctl is-enabled ${SERVICES[*]} ${TIMERS[*]}"

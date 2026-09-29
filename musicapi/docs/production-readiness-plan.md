@@ -285,7 +285,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 4.3 | CORS/helmet + rate limiting + structured logging + `/metrics` | `feat/musicapi-edge-hardening` | public `/v1` safe | `[x]` edge hardening ✅ |
 | 4.4 | Deploy scripts: `sync_musicapi_sandbox.py`, `deploy_musicapi_production.py` | `ops/musicapi-deploy-scripts` | sandbox deploy works | `[x]` sandbox deploy + smoke ✅ |
 | 4.5 | CI: typecheck + build + smoke gate | `ops/musicapi-ci` | PR blocked on failure | `[x]` two path-gated jobs ✅ |
-| 4.6 | DB backups + monitoring/alerts | `ops/musicapi-observability` | restore drill; alerts fire | `[ ]` |
+| 4.6 | DB backups + monitoring/alerts | `ops/musicapi-observability` | restore drill; alerts fire | `[x]` nightly pg_dump + 5-min health probe ✅ |
 
 **Gate:** deployed + smoked on **sandbox**; production only on explicit ask.
 
@@ -415,6 +415,36 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > pins via node 20) rather than the local npm 11, then verified `npx npm@10 ci` is clean for
 > all three packages and `typecheck` + `build` pass for all three. No push — the workflow
 > only takes effect on PRs into `main`/`master`.
+
+> **Note (4.6):** added backups + monitoring without inventing a new alert channel.
+> `scripts/deploy/musicapi-backup.sh` does a nightly `pg_dump --format=custom --compress=6
+> --no-owner --no-privileges` into `/opt/camxora/backups/musicapi/` (overridable via
+> `MUSICAPI_BACKUP_DIR`), verifies the archive with `pg_restore --list`, and prunes
+> snapshots older than `MUSICAPI_BACKUP_RETENTION_DAYS` (default **14**). It resolves
+> `DATABASE_URL` from `musicapi/.env` when not exported. Driven by
+> `camxora-musicapi-backup.{service,timer}` (`OnCalendar=*-*-* 03:30:00`, `Persistent=true`,
+> `RandomizedDelaySec=300`).
+> `scripts/deploy/musicapi-healthcheck.sh` probes `http://127.0.0.1:${PORT:-4003}/health`
+> and `systemctl is-active` for the three services, then **alerts only on state change**
+> (healthy→down and the recovery) using `/opt/camxora/.musicapi-health.state` so a long
+> outage pages once. `camxora-musicapi-healthcheck.{service,timer}` run it every 5 min
+> (`OnCalendar=*:0/5`).
+> The Telegram channel is **reused from the platform ops bot** rather than a new one:
+> dedicated `MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN`/`_CHAT_ID` win if set, otherwise
+> `sync_musicapi_sandbox.py` forwards the existing `TELEGRAM_*`/`PLATFORM_TELEGRAM_*`;
+> the remote installer writes `ALERT_TELEGRAM_*` into `musicapi/.env` and the probe also
+> falls back to `platform_api/.env`. `install_musicapi_services.sh` gained the four units
+> (services `enable --now`, timers `enable --now`); the remote installer creates the backup
+> dir, runs one backup + one probe immediately, and lists timers/snapshots in its health tail.
+> **Verified on the sandbox** via `sync_musicapi_sandbox.py` (`MUSICAPI_SANDBOX_DEPLOYED`):
+> both timers listed, first snapshot `sunoapi-20260929T063322Z.dump` (26K, `camxora:camxora`),
+> `/health` → `{"ok":true,...}`. **Restore drill** — `pg_restore --exit-on-error` of the latest
+> snapshot into a scratch `sunoapi_restore_check` DB exited `0` with **13** app tables
+> (users, jobs, api_keys, suno_accounts, credit_packs, credit_transactions, payment_transactions,
+> pricing, rate_limits, routing_rules, usage_logs, blog_posts, schema_migrations), then the
+> scratch DB was dropped. **Alert drill** — `PORT=1` forced `down` (Telegram "UNHEALTHY"
+> delivered) and the next real probe reported `ok` ("RECOVERED" delivered). Production was
+> **not** touched.
 
 ---
 

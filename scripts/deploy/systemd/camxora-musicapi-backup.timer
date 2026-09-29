@@ -1,0 +1,11 @@
+[Unit]
+Description=Nightly CamXora Music API database backup
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=camxora-musicapi-backup.service
+
+[Install]
+WantedBy=timers.target

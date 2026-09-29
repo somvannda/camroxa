@@ -16,7 +16,11 @@ Optional MUSICAPI_* keys:
     MUSICAPI_SUNO_DEVICE_ID, MUSICAPI_SUNO_CAPTCHA_TOKEN, MUSICAPI_TWOCAPTCHA_KEY,
     MUSICAPI_GOOGLE_CLIENT_ID, MUSICAPI_GOOGLE_CLIENT_SECRET,
     MUSICAPI_BAKONG_API_TOKEN, MUSICAPI_BAKONG_ACCOUNT_ID,
-    MUSICAPI_FRONTEND_ORIGINS, MUSICAPI_LOG_LEVEL
+    MUSICAPI_FRONTEND_ORIGINS, MUSICAPI_LOG_LEVEL,
+    MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN, MUSICAPI_ALERT_TELEGRAM_CHAT_ID
+      (health-alert bot; the platform's TELEGRAM_BOT_TOKEN / PLATFORM_TELEGRAM_*
+       are reused when these are unset), MUSICAPI_BACKUP_DIR,
+    MUSICAPI_BACKUP_RETENTION_DAYS
 Anything omitted is generated on the server on first deploy and persisted to
 /opt/camxora/.deploy-secrets, so redeploys keep sessions/cookies valid.
 
@@ -112,6 +116,23 @@ def upload_and_run(client, env: DeployEnv, secrets: dict[str, str], issue_cert: 
     for key, val in secrets.items():
         if key.startswith("MUSICAPI_") and val:
             export_env.setdefault(key, val)
+
+    # Reuse the platform's ops Telegram channel for musicapi health alerts
+    # (task 4.6) unless dedicated MUSICAPI_ALERT_* creds were supplied above.
+    alert_token = (
+        secrets.get("MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN")
+        or secrets.get("TELEGRAM_BOT_TOKEN")
+        or secrets.get("PLATFORM_TELEGRAM_BOT_TOKEN")
+    )
+    alert_chat = (
+        secrets.get("MUSICAPI_ALERT_TELEGRAM_CHAT_ID")
+        or secrets.get("TELEGRAM_CHAT_ID")
+        or secrets.get("PLATFORM_TELEGRAM_CHAT_ID")
+    )
+    if alert_token:
+        export_env.setdefault("MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN", alert_token)
+    if alert_chat:
+        export_env.setdefault("MUSICAPI_ALERT_TELEGRAM_CHAT_ID", alert_chat)
 
     cmd = f"{_shell_exports(export_env)} && bash {REMOTE_PATH}"
     print(f"Running remote install for '{env}' (this can take several minutes)...")

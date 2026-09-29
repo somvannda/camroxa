@@ -16,7 +16,11 @@
 #   MUSICAPI_SUNO_DEVICE_ID, MUSICAPI_SUNO_CAPTCHA_TOKEN, MUSICAPI_TWOCAPTCHA_KEY,
 #   MUSICAPI_GOOGLE_CLIENT_ID, MUSICAPI_GOOGLE_CLIENT_SECRET,
 #   MUSICAPI_BAKONG_API_TOKEN, MUSICAPI_BAKONG_ACCOUNT_ID,
-#   MUSICAPI_FRONTEND_ORIGINS, MUSICAPI_LOG_LEVEL
+#   MUSICAPI_FRONTEND_ORIGINS, MUSICAPI_LOG_LEVEL,
+#   MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN, MUSICAPI_ALERT_TELEGRAM_CHAT_ID
+#     (health-alert bot; falls back to the platform's PLATFORM_TELEGRAM_* in
+#      platform_api/.env when unset), MUSICAPI_BACKUP_DIR,
+#   MUSICAPI_BACKUP_RETENTION_DAYS
 #   ISSUE_CERT=1                      bootstrap Let's Encrypt on first deploy
 set -euo pipefail
 
@@ -133,6 +137,10 @@ chown -R camxora:camxora "${REPO_DIR}"
 DATABASE_URL="postgres://${DB_USER}:${MUSICAPI_DB_PASSWORD}@127.0.0.1:5432/${DB_NAME}"
 MUSICAPI_FRONTEND_ORIGINS="${MUSICAPI_FRONTEND_ORIGINS:-https://${APP_HOST},https://${ADMIN_HOST}}"
 MUSICAPI_LOG_LEVEL="${MUSICAPI_LOG_LEVEL:-info}"
+MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN="${MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN:-}"
+MUSICAPI_ALERT_TELEGRAM_CHAT_ID="${MUSICAPI_ALERT_TELEGRAM_CHAT_ID:-}"
+BACKUP_DIR="${MUSICAPI_BACKUP_DIR:-/opt/camxora/backups/musicapi}"
+BACKUP_RETENTION_DAYS="${MUSICAPI_BACKUP_RETENTION_DAYS:-14}"
 
 log "Writing ${MUSICAPI_DIR}/.env..."
 sudo -u camxora tee "${MUSICAPI_DIR}/.env" >/dev/null <<EOF
@@ -160,6 +168,12 @@ BAKONG_ACCOUNT_ID=${MUSICAPI_BAKONG_ACCOUNT_ID:-}
 BAKONG_MERCHANT_NAME=${MUSICAPI_BAKONG_MERCHANT_NAME:-Camxora Music API}
 BAKONG_MERCHANT_CITY=${MUSICAPI_BAKONG_MERCHANT_CITY:-Phnom Penh}
 BAKONG_USE_SIT=${MUSICAPI_BAKONG_USE_SIT:-false}
+# Ops observability (task 4.6): health-alert bot + backup retention. The backup
+# and healthcheck systemd units read these from this EnvironmentFile.
+ALERT_TELEGRAM_BOT_TOKEN=${MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN}
+ALERT_TELEGRAM_CHAT_ID=${MUSICAPI_ALERT_TELEGRAM_CHAT_ID}
+BACKUP_DIR=${BACKUP_DIR}
+BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS}
 EOF
 chmod 600 "${MUSICAPI_DIR}/.env"
 chown camxora:camxora "${MUSICAPI_DIR}/.env"
@@ -190,8 +204,16 @@ for app in web-user web-admin; do
   "
 done
 
+log "Preparing backup directory..."
+mkdir -p "${BACKUP_DIR}"
+chown camxora:camxora "${BACKUP_DIR}"
+
 log "Installing systemd units..."
 REPO_DIR="${REPO_DIR}" bash "${REPO_DIR}/scripts/deploy/systemd/install_musicapi_services.sh"
+
+log "Running first DB backup + health probe (timers take over from here)..."
+systemctl start camxora-musicapi-backup.service || log "WARN: initial backup failed"
+systemctl start camxora-musicapi-healthcheck.service || log "WARN: health probe reported unhealthy"
 
 log "Configuring nginx (${MUSICAPI_ENV})..."
 NGINX_SRC="${REPO_DIR}/scripts/deploy/nginx-musicapi-${MUSICAPI_ENV}.conf"
@@ -240,6 +262,8 @@ curl -sf "http://127.0.0.1:${MUSICAPI_PORT}/health" | head -c 200 || log "WARN: 
 curl -sf -o /dev/null "http://127.0.0.1:${WEB_USER_PORT}/" || log "WARN: web-user did not answer"
 curl -sf -o /dev/null "http://127.0.0.1:${WEB_ADMIN_PORT}/" || log "WARN: web-admin did not answer"
 systemctl is-active camxora-musicapi camxora-musicapi-web-user camxora-musicapi-web-admin nginx postgresql || true
+systemctl list-timers camxora-musicapi-backup.timer camxora-musicapi-healthcheck.timer --no-pager || true
+ls -lh "${BACKUP_DIR}" || true
 
 log "Done."
 log "Secrets saved: ${SECRETS_FILE}"
