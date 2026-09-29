@@ -21,6 +21,7 @@ interface Stats {
   credits_per_usd: number;
   accounts: number;
   account_health: AccountHealth;
+  suno_credits: { total: number; active: number };
   series: { day: string; count: number }[];
 }
 
@@ -42,6 +43,7 @@ export default function AdminDashboard() {
     { label: "Users", value: String(stats.users) },
     { label: "API Keys", value: String(stats.keys) },
     { label: "Suno Accounts", value: String(stats.accounts) },
+    { label: "Suno Credits", value: String(stats.suno_credits.active) },
     { label: "Total Requests", value: String(stats.requests) },
     { label: "Credits Held", value: String(stats.credits) },
     { label: "Credits Spent", value: String(stats.spent) },
@@ -73,9 +75,12 @@ export default function AdminDashboard() {
       </div>
 
       <div className="glass rounded-xl p-5">
-        <h2 className="mb-4 text-sm font-semibold text-[var(--muted)]">
+        <h2 className="text-sm font-semibold text-[var(--muted)]">
           Suno accounts health — {h.total} total
         </h2>
+        <p className="mb-4 mt-1 text-xs text-[var(--muted)]">
+          Live credit pool: {stats.suno_credits.active} available of {stats.suno_credits.total} total
+        </p>
         {h.total === 0 ? (
           <p className="text-sm text-[var(--muted)]">No Suno accounts configured.</p>
         ) : (

@@ -2931,12 +2931,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     ]);
     const liveByLabel = new Map(live.map((l) => [l.id, l]));
     const accountHealth = { total: accountRows.length, healthy: 0, disabled: 0, low_credits: 0, captcha_required: 0 };
+    // Aggregate Suno credit monitor (REQUIREMENTS §4.6): the size of the live
+    // credit pool across the configured accounts. `active` sums only enabled
+    // accounts — the credits actually available to serve requests right now —
+    // while `total` includes disabled accounts for reference.
+    const sunoCredits = { total: 0, active: 0 };
     for (const row of accountRows) {
       const l = liveByLabel.get(row.label);
       const liveCredits = l?.credits ?? row.credits_left ?? 0;
       const disabled = !row.is_active;
       const lowCredits = liveCredits <= thresholds.low_credits_threshold;
       const captcha = l?.captchaRequired ?? false;
+      sunoCredits.total += liveCredits;
+      if (!disabled) sunoCredits.active += liveCredits;
       if (disabled) accountHealth.disabled += 1;
       if (lowCredits) accountHealth.low_credits += 1;
       if (captcha) accountHealth.captcha_required += 1;
@@ -2953,6 +2960,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       credits_per_usd: creditsPerUsd,
       accounts: pool.size,
       account_health: accountHealth,
+      suno_credits: sunoCredits,
       series: series.map((s) => ({ day: s.day, count: Number(s.count) })),
     };
   });

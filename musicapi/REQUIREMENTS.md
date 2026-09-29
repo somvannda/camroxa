@@ -104,10 +104,10 @@ Left sidebar navigation + bottom section.
 - Cost per endpoint (and per model — schema supports it; charging uses endpoint-level).
 - Credit packs (amount → price). Admin can set/edit/delete.
 
-### 4.6 Billing / Suno credit monitor `[PARTIAL]`
+### 4.6 Billing / Suno credit monitor `[DONE]`
 - `[DONE]` Per-account live credits shown in Suno Accounts.
 - `[DONE]` Top-up alerts (Suno accounts at/below the configured low-credits threshold surface in the admin panel and push to the ops Telegram channel).
-- `[PENDING]` Aggregate summary.
+- `[DONE]` Aggregate summary — `GET /admin/stats` returns `suno_credits` (`active` = live credits on enabled accounts, `total` = including disabled); the dashboard shows a "Suno Credits" card plus the pool breakdown in the accounts-health panel.
 
 ### 4.7 Usage analytics `[PENDING]`
 - Per-endpoint, per-model, per-user; success/fail; revenue trends.
