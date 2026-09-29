@@ -358,7 +358,14 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 >
 > **Note (4.4):** sandbox-first deploy chain, mirroring the platform's `deploy.py`
 > conventions (env-split secrets, ed25519 key bootstrap, SFTP upload + sentinel
-> verify). `scripts/deploy/sync_musicapi_sandbox.py` tars `musicapi/` + `scripts/deploy/`,
+> verify). Root cause of the CRLF failure below was repo hygiene, not the units:
+> `core.autocrlf=true` with **no** `.gitattributes` meant the committed blobs were
+> already LF (`git ls-files --eol` → `i/lf`) but every Windows **checkout** rewrote
+> them to CRLF, and the deploy tars the *working tree* — so the damage came back on
+> each checkout. A root `.gitattributes` now pins `*.sh`/`*.service`/`*.conf`/`*.timer`
+> plus `scripts/deploy/**` and `musicapi/scripts/**` to `eol=lf` (Windows-only
+> `*.bat`/`*.cmd`/`*.ps1` stay CRLF), so the checkout is LF regardless of `autocrlf`.
+> `scripts/deploy/sync_musicapi_sandbox.py` tars `musicapi/` + `scripts/deploy/`,
 > uploads it and runs `scripts/deploy/camxora-musicapi-remote.sh` over SSH;
 > `scripts/deploy/deploy_musicapi_production.py` is the same driver guarded by a
 > mandatory `--yes`. The remote installer is env-driven (`MUSICAPI_ENV`,
