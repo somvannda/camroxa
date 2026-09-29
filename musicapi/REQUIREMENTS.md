@@ -56,9 +56,9 @@ Left sidebar navigation + bottom section.
 - **IP whitelist** (per key) — enforced.
 - Note: the raw key is shown only once at creation (only the prefix is stored/retrievable).
 
-### 3.4 API Usages `[PARTIAL]`
+### 3.4 API Usages `[DONE]`
 - `[DONE]` 24h counts, 30-day series, endpoint breakdown.
-- `[PENDING]` Total spend in currency ($).
+- `[DONE]` Total spend in currency ($) — `GET /me/usage` returns all-time `total_credits`/`total_spend` (USD, via the cheapest-active-pack rate); the API Usages page shows a "Total spend" card.
 
 ### 3.5 API Updates `[DONE]`
 - Blog posts / changelog (managed in admin).

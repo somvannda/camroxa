@@ -1826,16 +1826,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       `SELECT to_char(created_at, 'YYYY-MM-DD') AS day, count(*)::text AS count, COALESCE(sum(credits_consumed),0)::text AS credits FROM usage_logs WHERE user_id = $1 AND created_at > now() - interval '${days} days' GROUP BY day ORDER BY day`,
       [u.id],
     );
+    // All-time totals (REQUIREMENTS §3.4): the user's lifetime spend in credits
+    // and USD, so the figure is a true "total" rather than the reporting window.
     const totalCreditsRow = await queryOne<{ sum: string }>(
-      `SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE user_id = $1 AND created_at > now() - interval '${days} days'`,
+      "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE user_id = $1",
       [u.id],
     );
-    const pack = await queryOne<{ amount: string; price: string }>(
-      "SELECT amount::text, price::text FROM credit_packs WHERE is_active = true ORDER BY amount LIMIT 1",
-    );
-    const creditsPerUsd = pack && Number(pack.amount) > 0 && Number(pack.price) > 0
-      ? Number(pack.amount) / Number(pack.price)
-      : 200;
+    const creditsPerUsd = await creditsPerUsdRate();
     const totalCredits = Number(totalCreditsRow?.sum ?? 0);
     const totalSpend = totalCredits / creditsPerUsd;
     return {

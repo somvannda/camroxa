@@ -7,6 +7,7 @@ interface Usage {
   total_24h: number;
   success_24h: number;
   failed_24h: number;
+  total_spend: number;
   series: { day: string; count: number }[];
 }
 
@@ -38,6 +39,7 @@ export default function UsagePage() {
     { label: "Success (24h)", value: usage?.success_24h ?? 0 },
     { label: "Failed (24h)", value: usage?.failed_24h ?? 0 },
     { label: "Success rate", value: `${successRate}%` },
+    { label: "Total spend", value: `$${(usage?.total_spend ?? 0).toFixed(2)}` },
   ];
 
   return (
@@ -47,7 +49,7 @@ export default function UsagePage() {
 
       {error && <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
 
-      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mt-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         {stats.map((s) => (
           <div key={s.label} className="glass rounded-2xl p-5">
             <div className="text-sm text-white/50">{s.label}</div>
