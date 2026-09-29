@@ -125,7 +125,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.2 | Real session (httpOnly cookie or documented token + 401 logout) | `feat/musicapi-session` | expired → `/login` ✅ `sunosession` httpOnly cookie + CSRF | `[x]` |
 | 3.3 | web-admin server-side guard (`proxy.ts` + role check) | `feat/musicapi-admin-guard` | non-admin blocked ✅ cookie → `/auth/me` → `/login` | `[x]` |
 | 3.4 | web-user authenticated downloads (blob) | `fix/musicapi-fe-downloads` | downloads 200 ✅ authenticated blob (401 → `/login`) | `[x]` |
-| 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | chart matches API | `[ ]` |
+| 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | no fake data ✅ fabricated `Math.random()` chart removed | `[x]` |
 | 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work | `[ ]` |
 | 3.7 | Fix admin pricing edit (track `editingId`, PUT) | `fix/musicapi-admin-pricing-edit` | update, no duplicate | `[ ]` |
 | 3.8 | Admin `/auth/callback`; align redirect URIs | `feat/musicapi-admin-oauth` | Google admin login | `[ ]` |
@@ -195,6 +195,20 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > (26/26 static pages, `/dashboard/playground` present); the underlying
 > `GET /me/download` (MP3/WAV → HTTP 200 real audio bytes) is already verified in
 > `ENDPOINT_STATUS.md` rows 1.15–1.16.
+>
+> **Note (3.5):** the dashboard's "Real-time Success Rate" line chart was **entirely
+> fabricated** — every one of its 14 points came from `Math.random()` (`85 + rand*15`),
+> with an invented per-minute X axis, so it showed a fake 85–100% success rate regardless
+> of reality. The real `GET /me/usage` returns only `total_24h`/`success_24h`/`failed_24h`
+> plus a **daily** `series` of `{ day, count, credits, spend }` — there is no per-minute (or
+> per-day success/failed) time series to back it, so no honest version of that chart is
+> possible from the API today. The chart and its supporting code (`successRateSeries`,
+> `maxMin`, `timeStr`, the `new Date()` clock, and the now-unused optional
+> `success`/`failed` fields on the `series` interface) were removed, leaving the dashboard
+> with only API-backed visuals: the real 24h success/failure/other card and the real daily
+> usage bar chart (both driven by `/me/usage`). Verified: no `Math.random()` remains in
+> `web-user`; `npm run typecheck` clean and `npm run build` succeeds (26/26 static pages,
+> `/dashboard` present).
 >
 > **Verification:** `npm run typecheck` clean in `musicapi`, `web-user`, and `web-admin`.
 > Product decisions baked in (cookie name `sunosession`, `SameSite=Lax`, `Secure` in

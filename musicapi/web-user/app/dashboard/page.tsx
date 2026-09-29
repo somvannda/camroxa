@@ -8,7 +8,7 @@ interface Usage {
   total_24h: number;
   success_24h: number;
   failed_24h: number;
-  series: { day: string; count: number; success?: number; failed?: number }[];
+  series: { day: string; count: number }[];
 }
 
 interface KeyRow {
@@ -51,18 +51,6 @@ export default function DashboardPage() {
   const series = (usage?.series ?? []).slice(-range);
   const maxCount = Math.max(1, ...series.map((s) => s.count));
   const totalRange = series.reduce((s, r) => s + r.count, 0);
-
-  const now = new Date();
-  const timeStr = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}:${String(now.getSeconds()).padStart(2, "0")}`;
-
-  const successRateSeries = Array.from({ length: 14 }, (_, i) => {
-    const rand = 85 + Math.random() * 15;
-    return {
-      min: i,
-      rate: Math.round((usage?.success_24h ?? 95) / 100 * 100) / 100 >= 1 ? 100 : Math.min(100, Math.round(rand)),
-    };
-  });
-  const maxMin = successRateSeries.length - 1;
 
   return (
     <div>
@@ -290,100 +278,6 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Real-time success rate line chart (pure SVG) */}
-      <div className="mt-6 rounded-xl border border-white/5 bg-[#161618] p-5">
-        <h2 className="text-center text-lg font-bold text-white">
-          Real-time Success Rate <span className="text-xs font-normal text-white/40">( {timeStr} )</span>
-        </h2>
-
-        <div className="mt-6 relative h-64">
-          {/* Y axis labels */}
-          <div className="absolute inset-y-0 left-0 flex w-10 flex-col justify-between py-2 text-[10px] text-white/30">
-            <span>100</span>
-            <span>75</span>
-            <span>50</span>
-            <span>25</span>
-          </div>
-
-          <div className="ml-12 h-full border-l border-b border-white/5">
-            <svg className="h-full w-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-              <defs>
-                <linearGradient id="rateGrad" x1="0" x2="1" y1="0" y2="0">
-                  <stop offset="0%" stopColor="#8b5cf6" />
-                  <stop offset="100%" stopColor="#d946ef" />
-                </linearGradient>
-              </defs>
-
-              {/* Dashed grid lines */}
-              {[0, 0.25, 0.5, 0.75, 1].map((t) => (
-                <line
-                  key={t}
-                  x1="0"
-                  x2="100"
-                  y1={100 - t * 100}
-                  y2={100 - t * 100}
-                  stroke="rgba(255,255,255,0.04)"
-                  strokeDasharray="1 2"
-                />
-              ))}
-
-              {/* Success rate polyline */}
-              <polyline
-                fill="none"
-                stroke="url(#rateGrad)"
-                strokeWidth="0.5"
-                vectorEffect="non-scaling-stroke"
-                points={successRateSeries
-                  .map((p, i) => {
-                    const x = maxMin === 0 ? 0 : (i / maxMin) * 100;
-                    const y = 100 - (p.rate / 100) * 100;
-                    return `${x},${y}`;
-                  })
-                  .join(" ")}
-              />
-
-              {/* Data points */}
-              {successRateSeries.map((p, i) => {
-                const x = maxMin === 0 ? 0 : (i / maxMin) * 100;
-                const y = 100 - (p.rate / 100) * 100;
-                return (
-                  <circle
-                    key={i}
-                    cx={x}
-                    cy={y}
-                    r="1"
-                    fill="#a855f7"
-                    stroke="#161618"
-                    strokeWidth="0.35"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                );
-              })}
-            </svg>
-
-            {/* Y axis label */}
-            <div className="absolute -left-10 top-1/2 -translate-y-1/2 -rotate-90 transform whitespace-nowrap text-[10px] text-white/40">
-              Success Rate (%)
-            </div>
-          </div>
-        </div>
-
-        {/* X axis time labels */}
-        <div className="mt-1 ml-12 flex justify-between text-[10px] text-white/30">
-          {successRateSeries.map((_, i) => {
-            const baseMin = now.getMinutes() - (successRateSeries.length - 1 - i);
-            const h = now.getHours() + Math.floor(baseMin / 60);
-            const m = ((baseMin % 60) + 60) % 60;
-            return (
-              <span key={i}>
-                {String(h).padStart(2, "0")}:{String(m).padStart(2, "0")}
-              </span>
-            );
-          })}
-        </div>
-        <div className="mt-1 text-center text-[10px] text-white/30">Time ( min )</div>
       </div>
     </div>
   );
