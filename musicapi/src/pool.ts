@@ -11,9 +11,18 @@ export interface AccountHealth {
   plan: string;
 }
 
+export interface AccountStatus {
+  id: string;
+  plan: string;
+  credits: number;
+  models: string[];
+  captchaRequired: boolean;
+}
+
 export class AccountPool {
   private clients: SunoClient[] = [];
   private health: Map<string, { info: AccountHealth; updatedAt: number }> = new Map();
+  private captcha: Map<string, { required: boolean; updatedAt: number }> = new Map();
 
   constructor(accounts: AccountCreds[] = []) {
     this.clients = accounts.map((a) => new SunoClient(a));
@@ -28,14 +37,15 @@ export class AccountPool {
   }
 
   /** Best-effort live health for every account (cached per account). */
-  async listHealth(): Promise<Array<{ id: string; plan: string; credits: number; models: string[] }>> {
+  async listHealth(): Promise<AccountStatus[]> {
     return Promise.all(
       this.clients.map(async (c) => {
         try {
           const h = await this.healthFor(c);
-          return { id: c.account.id, plan: h.plan, credits: h.credits, models: h.models };
+          const captchaRequired = await this.captchaFor(c);
+          return { id: c.account.id, plan: h.plan, credits: h.credits, models: h.models, captchaRequired };
         } catch {
-          return { id: c.account.id, plan: "unknown", credits: 0, models: [] };
+          return { id: c.account.id, plan: "unknown", credits: 0, models: [], captchaRequired: false };
         }
       }),
     );
@@ -48,8 +58,8 @@ export class AccountPool {
     return new AccountPool(accounts);
   }
 
-  /** Load accounts from the `suno_accounts` table (single source of truth). */
-  static async fromDb(): Promise<AccountPool> {
+  /** Read the active account credentials from the `suno_accounts` table. */
+  private static async loadCreds(): Promise<AccountCreds[]> {
     const rows = await query<{
       label: string;
       type: string;
@@ -58,13 +68,29 @@ export class AccountPool {
     }>(
       "SELECT label, type, client_cookie, device_id FROM suno_accounts WHERE is_active = true ORDER BY created_at",
     );
-    const accounts: AccountCreds[] = rows.map((r) => ({
+    return rows.map((r) => ({
       id: r.label,
       clientCookie: decryptCookie(r.client_cookie),
       deviceId: r.device_id,
       type: r.type === "paid" ? "paid" : "free",
     }));
-    return new AccountPool(accounts);
+  }
+
+  /**
+   * Re-read the active accounts from the DB into this instance. Called after an
+   * admin edits/adds/removes an account so routing picks up the change without a
+   * process restart. In-flight jobs keep their already-acquired client.
+   */
+  async reload(): Promise<void> {
+    const accounts = await AccountPool.loadCreds();
+    this.clients = accounts.map((a) => new SunoClient(a));
+    this.health.clear();
+    this.captcha.clear();
+  }
+
+  /** Load accounts from the `suno_accounts` table (single source of truth). */
+  static async fromDb(): Promise<AccountPool> {
+    return new AccountPool(await AccountPool.loadCreds());
   }
 
   private async healthFor(client: SunoClient, ttlMs = 30_000): Promise<AccountHealth> {
@@ -79,6 +105,22 @@ export class AccountPool {
     };
     this.health.set(client.account.id, { info: health, updatedAt: Date.now() });
     return health;
+  }
+
+  /**
+   * Best-effort per-account captcha status, cached for a minute. Never throws:
+   * a probe failure falls back to the last known value (or `false`).
+   */
+  private async captchaFor(client: SunoClient, ttlMs = 60_000): Promise<boolean> {
+    const cached = this.captcha.get(client.account.id);
+    if (cached && Date.now() - cached.updatedAt < ttlMs) return cached.required;
+    try {
+      const required = await client.captchaRequired();
+      this.captcha.set(client.account.id, { required, updatedAt: Date.now() });
+      return required;
+    } catch {
+      return cached?.required ?? false;
+    }
   }
 
   /**

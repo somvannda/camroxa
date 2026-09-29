@@ -87,10 +87,10 @@ Left sidebar navigation + bottom section.
 - `[DONE]` Total users, requests, success rate, credits consumed.
 - `[PENDING]` Revenue ($), Suno accounts health summary.
 
-### 4.2 Suno Accounts (worker pool) — core `[PARTIAL]`
+### 4.2 Suno Accounts (worker pool) — core `[DONE]`
 - `[DONE]` Add accounts; tag free/paid; load from DB; auto-pull plan/credits/models (live `billing/info`).
 - `[DONE]` Routing rules (model → policy).
-- `[PENDING]` Edit/remove accounts; health status (low-credits / captcha-required / disabled).
+- `[DONE]` Edit/remove accounts; health status (low-credits / captcha-required / disabled).
 
 ### 4.3 Users `[DONE]`
 - List / search, credits balance, status (active/suspended).

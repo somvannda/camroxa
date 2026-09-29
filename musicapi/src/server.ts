@@ -2736,10 +2736,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       is_active: boolean;
       created_at: string;
     }>("SELECT id, label, type, plan, credits_left, is_active, created_at FROM suno_accounts ORDER BY created_at");
-    const live = await pool.listHealth().catch(() => [] as Awaited<ReturnType<AccountPool["listHealth"]>>);
+    const [live, thresholds] = await Promise.all([
+      pool.listHealth().catch(() => [] as Awaited<ReturnType<AccountPool["listHealth"]>>),
+      loadAlertSettings(),
+    ]);
     const liveById = new Map(live.map((l) => [l.id, l]));
     const accounts = dbRows.map((row) => {
       const l = liveById.get(row.label);
+      const liveCredits = l?.credits ?? row.credits_left ?? 0;
       return {
         id: row.id,
         label: row.label,
@@ -2747,8 +2751,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         is_active: row.is_active,
         created_at: row.created_at,
         live_plan: l?.plan ?? row.plan ?? "unknown",
-        live_credits: l?.credits ?? row.credits_left ?? 0,
+        live_credits: liveCredits,
         live_models: l?.models ?? [],
+        // Operator-facing health flags (REQUIREMENTS §4.2). `low_credits` uses the
+        // same threshold as the §4.10 alert so the badge and the alert never disagree.
+        health: {
+          disabled: !row.is_active,
+          low_credits: liveCredits <= thresholds.low_credits_threshold,
+          captcha_required: l?.captchaRequired ?? false,
+        },
       };
     });
     return { accounts };
@@ -2771,6 +2782,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       "INSERT INTO suno_accounts (label, type, client_cookie, device_id) VALUES ($1, $2, $3, $4) RETURNING id",
       [label, t, encryptCookie(client_cookie), device_id],
     );
+    // Make the new account routable immediately (the pool is built once at boot).
+    await pool.reload().catch((err) => app.log.warn({ err }, "account pool reload failed"));
     await recordAudit({
       actor: admin,
       action: "account.create",
@@ -2780,6 +2793,105 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       req,
     });
     return reply.code(201).send({ id: rows[0].id });
+  });
+
+  app.patch("/admin/accounts/:id", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as {
+      label?: unknown;
+      type?: unknown;
+      client_cookie?: unknown;
+      device_id?: unknown;
+      is_active?: unknown;
+    };
+
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    const details: Record<string, unknown> = {};
+
+    if (body.label !== undefined) {
+      if (typeof body.label !== "string" || !body.label.trim()) {
+        return reply.code(400).send({ error: "label must be a non-empty string." });
+      }
+      params.push(body.label.trim());
+      sets.push(`label = $${params.length}`);
+      details.label = body.label.trim();
+    }
+    if (body.type !== undefined) {
+      if (body.type !== "free" && body.type !== "paid") {
+        return reply.code(400).send({ error: "type must be free or paid." });
+      }
+      params.push(body.type);
+      sets.push(`type = $${params.length}`);
+      details.type = body.type;
+    }
+    if (body.client_cookie !== undefined) {
+      if (typeof body.client_cookie !== "string" || !body.client_cookie.trim()) {
+        return reply.code(400).send({ error: "client_cookie must be a non-empty string." });
+      }
+      params.push(encryptCookie(body.client_cookie));
+      sets.push(`client_cookie = $${params.length}`);
+      details.client_cookie = "(updated)";
+    }
+    if (body.device_id !== undefined) {
+      if (typeof body.device_id !== "string" || !body.device_id.trim()) {
+        return reply.code(400).send({ error: "device_id must be a non-empty string." });
+      }
+      params.push(body.device_id.trim());
+      sets.push(`device_id = $${params.length}`);
+      details.device_id = body.device_id.trim();
+    }
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== "boolean") {
+        return reply.code(400).send({ error: "is_active must be a boolean." });
+      }
+      params.push(body.is_active);
+      sets.push(`is_active = $${params.length}`);
+      details.is_active = body.is_active;
+    }
+    if (sets.length === 0) {
+      return reply.code(400).send({ error: "No editable fields supplied." });
+    }
+
+    params.push(id);
+    const rows = await query<{ id: string }>(
+      `UPDATE suno_accounts SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING id`,
+      params,
+    );
+    if (rows.length === 0) return reply.code(404).send({ error: "Account not found." });
+    await pool.reload().catch((err) => app.log.warn({ err }, "account pool reload failed"));
+    await recordAudit({
+      actor: admin,
+      action: "account.update",
+      targetType: "suno_account",
+      targetId: id,
+      details,
+      req,
+    });
+    return { ok: true, id };
+  });
+
+  app.delete("/admin/accounts/:id", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const rows = await query<{ id: string; label: string }>(
+      "DELETE FROM suno_accounts WHERE id = $1 RETURNING id, label",
+      [id],
+    );
+    if (rows.length === 0) return reply.code(404).send({ error: "Account not found." });
+    await pool.reload().catch((err) => app.log.warn({ err }, "account pool reload failed"));
+    await recordAudit({
+      actor: admin,
+      action: "account.delete",
+      targetType: "suno_account",
+      targetId: id,
+      details: { label: rows[0].label },
+      req,
+    });
+    return { ok: true, id };
   });
 
   app.get("/admin/stats", async (req, reply) => {

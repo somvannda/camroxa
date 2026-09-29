@@ -455,7 +455,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 - [x] Credit-pack admin CRUD (§4.5) — `feat/musicapi-credit-packs`
 - [x] Real usage analytics (§4.7) — `feat/musicapi-usage-analytics`
 - [x] Admin settings + alert config (§4.10) — `feat/musicapi-admin-settings`
-- [ ] Suno account edit/remove + health badges (§4.2)
+- [x] Suno account edit/remove + health badges (§4.2) — `feat/musicapi-account-health`
 
 > **Note (5.1):** wired the previously-unused `rate_limits` table
 > (`user_id`, `requests_per_minute`, `requests_per_day`) into `requireKey`
@@ -602,6 +602,40 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > service, so a manual `systemctl restart camxora-musicapi` was required for the new
 > code to take effect (`SERVICE_BEFORE=active` / `SERVICE_AFTER=active`). Production
 > was **not** touched.
+
+> **Note (5.6):** closed out §4.2's "edit/remove accounts + health status".
+> `AccountPool` (`src/pool.ts`) gained a per-account `captchaRequired` cache
+> (`captchaFor()`, 60 s TTL, never throws — a probe failure keeps the last known
+> value), a widened `listHealth()` returning `AccountStatus[]` (now
+> `{id,plan,credits,models,captchaRequired}`), and `reload()` which re-reads the
+> active creds and swaps `clients` in place so admin edits take effect **without a
+> process restart** (`fromDb()` now shares the same `loadCreds()`).
+> `GET /admin/accounts` merges DB rows with live health and adds a
+> `health` object per account — `disabled` (`!is_active`), `low_credits`
+> (`live_credits <= low_credits_threshold`, the **same** threshold the §4.10 alert
+> uses so badge and alert never disagree) and `captcha_required`. New
+> `PATCH /admin/accounts/:id` (partial update of `label`/`type`/`client_cookie`
+> (re-encrypted)/`device_id`/`is_active`; 400 on invalid or empty body, 404
+> unknown) and `DELETE /admin/accounts/:id` (404 unknown) both call `pool.reload()`
+> and write `account.update` / `account.delete` audit rows;
+> `POST /admin/accounts` also reloads + audits (`account.create`). The admin
+> Accounts page renders per-row health badges (Disabled / Captcha required /
+> Low credits / Healthy), an inline **Edit** form (cookie/device left blank to
+> keep current) and a confirm-guarded **Remove** button.
+> Both `musicapi` and `web-admin` typecheck clean.
+> **Verified on the sandbox** (`sync_musicapi_sandbox.py` →
+> `MUSICAPI_SANDBOX_DEPLOYED`): a throwaway Node+pg harness ran **35/35** checks —
+> anon 401 / non-admin 403 on GET+POST+PATCH+DELETE, create 201 + missing-field
+> 400, `health` object shape (`disabled:false` while active, boolean
+> `low_credits`/`captcha_required`), cookie stored **encrypted** (not plaintext),
+> four PATCH validation 400s + unknown-id 404, valid PATCH persisting
+> label/type/is_active and flipping `health.disabled` to `true`, DELETE unknown
+> 404 + success removing the row, and `audit_logs` carrying
+> `account.create`/`account.update`/`account.delete`. Fixtures cleaned up
+> (leftover accounts/audit rows/admin user deleted). **Same caveat as 5.1–5.5:**
+> the deploy chain only `enable --now`s the service, so a manual
+> `systemctl restart camxora-musicapi` was required for the new code to take effect
+> (`SERVICE_BEFORE=active` / `SERVICE_AFTER=active`). Production was **not** touched.
 
 ---
 
