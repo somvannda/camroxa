@@ -2678,6 +2678,95 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { ok: true };
   });
 
+  // Credit packs (task 5.3, REQUIREMENTS §4.5): the admin sets the packs users
+  // can buy. Unlike the public reads, the admin list includes inactive packs so
+  // they can be edited/reactivated.
+  app.get("/admin/credit-packs", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return query<Record<string, unknown>>(
+      "SELECT id, amount, price, currency, is_active FROM credit_packs ORDER BY amount",
+    );
+  });
+
+  app.post("/admin/credit-packs", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { amount, price, currency, is_active } = (req.body ?? {}) as {
+      amount?: number;
+      price?: number;
+      currency?: string;
+      is_active?: boolean;
+    };
+    if (!Number.isInteger(amount) || (amount as number) <= 0 || typeof price !== "number" || price < 0) {
+      return reply
+        .code(400)
+        .send({ error: "amount (positive integer) and price (non-negative number) are required." });
+    }
+    const cur = (currency ?? "USD").toUpperCase();
+    const active = is_active ?? true;
+    const rows = await query<{ id: string }>(
+      "INSERT INTO credit_packs (amount, price, currency, is_active) VALUES ($1, $2, $3, $4) RETURNING id",
+      [amount, price, cur, active],
+    );
+    await recordAudit({
+      actor: admin,
+      action: "credit_pack.create",
+      targetType: "credit_pack",
+      targetId: rows[0].id,
+      details: { amount, price, currency: cur, is_active: active },
+      req,
+    });
+    return reply.code(201).send({ id: rows[0].id });
+  });
+
+  app.put("/admin/credit-packs/:id", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const { amount, price, currency, is_active } = (req.body ?? {}) as {
+      amount?: number;
+      price?: number;
+      currency?: string;
+      is_active?: boolean;
+    };
+    if (!Number.isInteger(amount) || (amount as number) <= 0 || typeof price !== "number" || price < 0) {
+      return reply
+        .code(400)
+        .send({ error: "amount (positive integer) and price (non-negative number) are required." });
+    }
+    const cur = (currency ?? "USD").toUpperCase();
+    const active = is_active ?? true;
+    const updated = await query<{ id: string }>(
+      "UPDATE credit_packs SET amount = $1, price = $2, currency = $3, is_active = $4 WHERE id = $5 RETURNING id",
+      [amount, price, cur, active, id],
+    );
+    if (!updated.length) return reply.code(404).send({ error: "Credit pack not found." });
+    await recordAudit({
+      actor: admin,
+      action: "credit_pack.update",
+      targetType: "credit_pack",
+      targetId: id,
+      details: { amount, price, currency: cur, is_active: active },
+      req,
+    });
+    return { ok: true };
+  });
+
+  app.delete("/admin/credit-packs/:id", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    await query("DELETE FROM credit_packs WHERE id = $1", [id]);
+    await recordAudit({
+      actor: admin,
+      action: "credit_pack.delete",
+      targetType: "credit_pack",
+      targetId: id,
+      req,
+    });
+    return { ok: true };
+  });
+
   app.get("/admin/routing", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     return query<Record<string, unknown>>(

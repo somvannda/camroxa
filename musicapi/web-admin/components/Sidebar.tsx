@@ -10,6 +10,7 @@ const NAV = [
   { href: "/admin/accounts", label: "Suno Accounts" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/pricing", label: "Pricing" },
+  { href: "/admin/credit-packs", label: "Credit Packs" },
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/content", label: "API Updates" },
   { href: "/admin/settings", label: "Settings" },

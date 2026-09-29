@@ -452,7 +452,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 - [x] Per-user/per-key rate limits (REQUIREMENTS §4.4) — `feat/musicapi-rate-limits`
 - [x] Audit log for admin actions (§4.11) — `feat/musicapi-audit-log`
-- [ ] Credit-pack admin CRUD (§4.5)
+- [x] Credit-pack admin CRUD (§4.5) — `feat/musicapi-credit-packs`
 - [ ] Real usage analytics (§4.7)
 - [ ] Admin settings + alert config (§4.10)
 - [ ] Suno account edit/remove + health badges (§4.2)
@@ -509,6 +509,31 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > `systemctl restart camxora-musicapi` was required for the new code to take
 > effect (the service needs ~4-8 s after restart to bind port 4003). Production
 > was **not** touched.
+
+> **Note (5.3):** added admin CRUD for `credit_packs` (REQUIREMENTS §4.5) —
+> `GET`/`POST`/`PUT`/`DELETE /admin/credit-packs` in `src/server.ts`. The admin
+> list returns **all** packs (including inactive) with `id, amount, price,
+> currency, is_active`; the public `/pricing` and `/me/billing` reads still return
+> only active packs, so toggling `is_active` hides a pack from buyers without
+> deleting it. `amount` must be a positive integer and `price` a non-negative
+> number (else **400**); `currency` is upper-cased (default `USD`); a `PUT` to an
+> unknown id is **404**. Each mutation writes an audit entry (`credit_pack.create`
+> / `credit_pack.update` / `credit_pack.delete`) via the 5.2 `recordAudit` helper.
+> A matching **web-admin page** (`web-admin/app/admin/credit-packs/page.tsx`, nav
+> entry "Credit Packs") gives operators add/edit/delete/active-toggle. Both
+> `musicapi` and `web-admin` typecheck clean. **Verified on the sandbox**
+> (`sync_musicapi_sandbox.py` → `MUSICAPI_SANDBOX_DEPLOYED`; the admin build now
+> emits the `/admin/credit-packs` route): a throwaway Node+pg harness ran **25/25**
+> checks — anon → 401, non-admin → 403, create → 201 with upper-cased currency and
+> `is_active` default true, four validation rejections (0 / non-integer / missing
+> price / negative price) → 400, update persisted, unknown-id update → 404,
+> inactive pack present in the admin list but **absent** from public `/pricing`,
+> delete removes from the list, and audit rows for create (×2) / update / delete
+> (×2) with the right target and `details` JSONB. Fixtures cleaned up (0 leftover
+> packs/users/audit rows; 5 pre-existing seeded packs untouched). **Same caveat as
+> 5.1/5.2:** the deploy chain only `enable --now`s the service, so a manual
+> `systemctl restart camxora-musicapi` was required for the new code to take
+> effect. Production was **not** touched.
 
 ---
 
