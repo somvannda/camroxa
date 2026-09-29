@@ -24,6 +24,7 @@ FILES = [
     "user_portal/src/lib/credits.ts",
     "user_portal/src/app/dashboard/billing/page.tsx",
     "user_portal/src/components/dashboard/quota-renewal-card.tsx",
+    "user_portal/src/components/dashboard/addon-renewal-card.tsx",
     "user_portal/src/components/dashboard/profile-addon-panel.tsx",
     "user_portal/src/components/quota-renewal-card.tsx",
 ]

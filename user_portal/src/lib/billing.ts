@@ -219,6 +219,34 @@ export async function createQuotaRenewal(): Promise<BillingPayment> {
   });
 }
 
+export type AddonRenewal = {
+  eligible: boolean;
+  addon_channels: number | null;
+  blocks: number | null;
+  credits: number | null;
+  price_cents: number | null;
+  expires_at: string | null;
+  renewable: boolean;
+  renewal_opens_in_days: number | null;
+  renewal_window_days: number;
+};
+
+/** The signed-in user's add-on channel blocks available to renew. */
+export async function getAddonRenewal(): Promise<AddonRenewal> {
+  return platformJson<AddonRenewal>({
+    path: "/billing/renewals/addons",
+    method: "GET",
+  });
+}
+
+/** Start a one-cycle renewal checkout for the user's add-on channels. */
+export async function createAddonRenewal(): Promise<BillingPayment> {
+  return platformJson<BillingPayment>({
+    path: "/billing/renewals/addons",
+    method: "POST",
+  });
+}
+
 export async function schedulePlanDowngrade(planId: string): Promise<{
   status: string;
   effective_at: string;

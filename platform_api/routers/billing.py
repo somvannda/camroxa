@@ -102,6 +102,20 @@ class QuotaRenewalResponse(BaseModel):
     renewal_window_days: int = 7
 
 
+class AddonRenewalResponse(BaseModel):
+    """Renewable add-on channel blocks for the signed-in user."""
+
+    eligible: bool
+    addon_channels: int | None = None
+    blocks: int | None = None
+    credits: int | None = None
+    price_cents: int | None = None
+    expires_at: datetime | None = None
+    renewable: bool = False
+    renewal_opens_in_days: int | None = None
+    renewal_window_days: int = 7
+
+
 class CompleteMockPaymentRequest(BaseModel):
     """Transition a mock payment into a terminal test state."""
 
@@ -677,6 +691,78 @@ async def _resolve_billing_anchor_plan_id(pool: Any, user_id: UUID) -> UUID:
     )
 
 
+async def _fulfill_addon_renewal_payment(
+    pool: Any,
+    row: Any,
+    metadata: dict[str, Any],
+    *,
+    conn: Any | None = None,
+) -> Any:
+    """Grant plan-rate credits for renewed add-on channel blocks (slots unchanged)."""
+    from platform_api.repositories.credit_repo import CreditRepository
+    from platform_api.services.credit_units import credits_to_units
+    from platform_api.services.v3.store import V3BillingStore
+
+    credits = int(metadata.get("credits") or 0)
+
+    async def _run(connection: Any) -> Any:
+        locked = await connection.fetchrow(
+            """
+            SELECT bp.*
+            FROM billing_payments bp
+            WHERE bp.id = $1
+              AND bp.user_id = $2
+            FOR UPDATE
+            """,
+            row["id"],
+            row["user_id"],
+        )
+        if locked is None:
+            raise NotFoundError("Payment record not found.")
+        if locked["fulfilled_at"] is not None or str(locked["status"]) != "paid":
+            return locked
+
+        owner = UUID(str(locked["user_id"]))
+        if credits > 0:
+            units = credits_to_units(credits)
+            # Non-expiring: add-on channels are permanent, so their credits persist too.
+            await V3BillingStore(pool=connection).insert_lot(
+                user_id=owner,
+                tag="pack",
+                amount_units=units,
+                expires_at=None,
+                period_start=None,
+            )
+            await CreditRepository(pool=connection).add_credits(
+                owner,
+                units,
+                reason="v3_addon_renewal",
+                ref_id=f"addon_renewal:{locked['id']}",
+            )
+
+        fulfilled = await connection.fetchrow(
+            """
+            UPDATE billing_payments
+            SET fulfilled_at = NOW(),
+                updated_at = NOW()
+            WHERE id = $1
+              AND fulfilled_at IS NULL
+            RETURNING *
+            """,
+            locked["id"],
+        )
+        if fulfilled is None:
+            raise NotFoundError("Payment record not found.")
+        return fulfilled
+
+    if conn is not None:
+        return await _run(conn)
+
+    async with pool.acquire() as acquired:
+        async with acquired.transaction():
+            return await _run(acquired)
+
+
 async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
     """Assign the purchased plan and mark the local payment as fulfilled once."""
     if row["fulfilled_at"] is not None or str(row["status"]) != "paid":
@@ -744,6 +830,9 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
 
             if str(metadata.get("product_type") or "plan") == "credit_pack":
                 return await _fulfill_credit_pack_payment(pool, locked, metadata, conn=conn)
+
+            if str(metadata.get("product_type") or "plan") == "addon_renewal":
+                return await _fulfill_addon_renewal_payment(pool, locked, metadata, conn=conn)
 
             plan_repo = PlanRepository(pool=conn)
             license_repo = LicenseRepository(pool=conn)
@@ -1346,6 +1435,45 @@ def _renewal_window(
     return renewable, days_left, expired, opens_in_days
 
 
+async def _resolve_addon_renewal(pool: Any, user_id: UUID) -> tuple[Any, Any, int, int, int, int] | None:
+    """Return (license, plan, addon_channels, blocks, credits, price_cents) for add-on renewal.
+
+    Credits granted per renewed 2-channel block match the plan's monthly allowance, so a
+    user can renew their extra channels at the plan rate instead of buying packs.
+    """
+    from platform_api.services.plan_tier_pricing_service import (
+        PROFILE_ADDON_STEP,
+        find_profile_addon_plan,
+    )
+
+    repo = LicenseRepository(pool=pool)
+    license_obj = await repo.get_active_for_user(user_id)
+    if license_obj is None:
+        license_obj = await repo.get_latest_license_for_user(user_id)
+    if license_obj is None:
+        return None
+    addon_channels = int(getattr(license_obj, "profile_addon_slots", 0) or 0)
+    if addon_channels < PROFILE_ADDON_STEP:
+        return None
+
+    plan_repo = PlanRepository(pool=pool)
+    plan = await plan_repo.get_by_id(license_obj.plan_id)
+    if plan is None:
+        return None
+    addon_plan = find_profile_addon_plan(
+        await plan_repo.get_all(),
+        addon_channels,
+        billing_cycle_days=int(plan.billing_cycle_days or 30),
+    )
+    if addon_plan is None:
+        return None
+    blocks = addon_channels // PROFILE_ADDON_STEP
+    credits = blocks * int(plan.monthly_credits or 0)
+    if credits <= 0:
+        return None
+    return license_obj, plan, addon_channels, blocks, credits, int(addon_plan.price_cents or 0)
+
+
 @router.get(
     "/renewals/quota",
     response_model=QuotaRenewalResponse,
@@ -1432,6 +1560,106 @@ async def create_quota_renewal(
         ctx=ctx,
         pool=pool,
         return_path=f"{portal_base_url}/dashboard/billing",
+    )
+
+
+@router.get(
+    "/renewals/addons",
+    response_model=AddonRenewalResponse,
+    status_code=200,
+    summary="Get the signed-in user's renewable add-on channels",
+)
+async def get_addon_renewal(
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> AddonRenewalResponse:
+    """Return the user's add-on channel blocks and what renewing them grants.
+
+    Channels are permanent; renewing add-ons grants credits at the plan rate so the
+    user can keep running those channels without buying more-expensive packs.
+    """
+    resolved = await _resolve_addon_renewal(pool, UUID(ctx.user_id))
+    if resolved is None:
+        return AddonRenewalResponse(eligible=False)
+    license_obj, _plan, addon_channels, blocks, credits, price_cents = resolved
+    renewable, _days_left, _expired, opens_in_days = _renewal_window(
+        license_obj.expires_at, datetime.now(timezone.utc)
+    )
+    return AddonRenewalResponse(
+        eligible=True,
+        addon_channels=addon_channels,
+        blocks=blocks,
+        credits=credits,
+        price_cents=price_cents,
+        expires_at=license_obj.expires_at,
+        renewable=renewable,
+        renewal_opens_in_days=opens_in_days,
+        renewal_window_days=RENEWAL_WINDOW_DAYS,
+    )
+
+
+@router.post(
+    "/renewals/addons",
+    response_model=BillingPaymentResponse,
+    status_code=201,
+    summary="Create a checkout to renew the signed-in user's add-on channels",
+)
+async def create_addon_renewal(
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> BillingPaymentResponse:
+    """Start a one-cycle renewal checkout for the user's add-on channel blocks."""
+    resolved = await _resolve_addon_renewal(pool, UUID(ctx.user_id))
+    if resolved is None:
+        raise NotFoundError(
+            "No add-on channels were found to renew for this account.",
+            details={"error_code": "NO_ADDON_CHANNELS"},
+        )
+    license_obj, plan, addon_channels, _blocks, credits, price_cents = resolved
+    renewable, days_left, _expired, opens_in_days = _renewal_window(
+        license_obj.expires_at, datetime.now(timezone.utc)
+    )
+    if not renewable:
+        raise ValidationError(
+            f"Renewal opens {RENEWAL_WINDOW_DAYS} days before your plan ends.",
+            details={
+                "error_code": "RENEWAL_NOT_YET_OPEN",
+                "days_left": days_left,
+                "renewal_opens_in_days": opens_in_days,
+                "renewal_window_days": RENEWAL_WINDOW_DAYS,
+            },
+        )
+    provider = await _get_active_provider(pool)
+    portal_base_url = await _get_portal_base_url(pool)
+    plan_name = f"{plan.name} · renew {addon_channels} add-on channels"
+    extra_metadata: dict[str, Any] = {
+        "product_type": "addon_renewal",
+        "addon_channels": addon_channels,
+        "credits": credits,
+        "license_id": str(license_obj.id),
+        "return_path": f"{portal_base_url}/dashboard/billing",
+    }
+    if provider == "mock":
+        _ensure_mock_checkout_allowed()
+        return await _create_mock_payment(
+            pool,
+            ctx=ctx,
+            plan_id=plan.id,
+            plan_name=plan_name,
+            amount_cents=price_cents,
+            offer_id=None,
+            extra_metadata=extra_metadata,
+        )
+    if provider != "cutluy":
+        raise ValidationError("No active billing provider is configured.")
+    return await _create_cutluy_payment(
+        pool,
+        ctx=ctx,
+        plan_id=plan.id,
+        plan_name=plan_name,
+        amount_cents=price_cents,
+        offer_id=None,
+        extra_metadata=extra_metadata,
     )
 
 
