@@ -121,8 +121,8 @@ Left sidebar navigation + bottom section.
 - Brand name, docs URL, Telegram support link, languages.
 - Alerts: low credits, captcha-locked, failure-rate spike.
 
-### 4.11 Audit log `[PENDING]`
-- Record admin actions (top-up credits, ban user, change pricing).
+### 4.11 Audit log `[DONE]`
+- Record admin actions (top-up credits, ban user, change pricing) — append-only `audit_logs` table; all admin mutations write an entry (actor id+email, action, target, details JSONB, IP); readable at `GET /admin/audit`.
 
 ---
 

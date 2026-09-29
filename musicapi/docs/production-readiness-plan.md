@@ -451,7 +451,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 ## Phase 5 — Feature completion (may follow launch)
 
 - [x] Per-user/per-key rate limits (REQUIREMENTS §4.4) — `feat/musicapi-rate-limits`
-- [ ] Audit log for admin actions (§4.11)
+- [x] Audit log for admin actions (§4.11) — `feat/musicapi-audit-log`
 - [ ] Credit-pack admin CRUD (§4.5)
 - [ ] Real usage analytics (§4.7)
 - [ ] Admin settings + alert config (§4.10)
@@ -483,6 +483,32 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > which is a no-op for an already-running service — a core redeploy silently keeps
 > the old `dist/server.js` until `systemctl restart camxora-musicapi` is run (done
 > manually here; worth fixing in the deploy chain). Production was **not** touched.
+
+> **Note (5.2):** added an append-only `audit_logs` table
+> (`0009_audit_logs.sql`: `actor_id` `ON DELETE SET NULL`, `actor_email` snapshot,
+> `action`, `target_type`, `target_id`, `details JSONB`, `ip`, `created_at`, with
+> indexes on `created_at DESC` / `actor_id` / `action`) and a best-effort
+> `recordAudit()` helper in `src/server.ts` (a failed audit write is logged and
+> swallowed so it can never break or roll back the action it records). Every admin
+> mutation now writes an entry: `account.create`, `user.status`, `user.credits`,
+> `user.rate_limits`, `pricing.upsert`/`pricing.update`/`pricing.delete`,
+> `routing.upsert`/`routing.delete`, and
+> `content.create`/`content.update`/`content.delete` (actor id + email, target,
+> `details JSONB`, IP). Read side: `GET /admin/audit` (admin-only) returns newest
+> first with optional `action` / `actor_id` filters and a bounded `limit`
+> (default 200, capped 500). **Verified on the sandbox**
+> (`sync_musicapi_sandbox.py` → `MUSICAPI_SANDBOX_DEPLOYED`, migration `0009`
+> applied): a throwaway Node+pg harness minting admin/non-admin JWTs ran **28/28**
+> checks — anon `GET /admin/audit` → 401, non-admin → 403, fresh admin baseline
+> `[]`, all 11 mutations recorded (a 404-mutation was correctly **not** recorded),
+> newest-first ordering, actor id + email snapshot, `details JSONB` round-trip,
+> `ip` captured, `action` filter → 1 row, `limit=3` → 3 rows, `limit=9999` capped
+> without error. Fixtures cleaned up (0 leftover users/audit rows/pricing/routing/
+> posts; `audit_logs_total=0` for the fixtures). **Same caveat as 5.1:** the
+> deploy chain only `enable --now`s the service, so a manual
+> `systemctl restart camxora-musicapi` was required for the new code to take
+> effect (the service needs ~4-8 s after restart to bind port 4003). Production
+> was **not** touched.
 
 ---
 

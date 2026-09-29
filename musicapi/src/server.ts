@@ -577,6 +577,37 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return user;
   }
 
+  // Append-only trail of privileged actions. Best-effort: an audit write must
+  // never break (or roll back) the action it records, so failures are logged and
+  // swallowed. `actor_email` is a snapshot so the entry survives a user rename;
+  // `actor_id` is ON DELETE SET NULL so it also survives a user deletion.
+  async function recordAudit(args: {
+    actor: UserPayload;
+    action: string;
+    targetType?: string;
+    targetId?: string | null;
+    details?: Record<string, unknown> | null;
+    req: FastifyRequest;
+  }): Promise<void> {
+    try {
+      await query(
+        `INSERT INTO audit_logs (actor_id, actor_email, action, target_type, target_id, details, ip)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          args.actor.id,
+          args.actor.email,
+          args.action,
+          args.targetType ?? null,
+          args.targetId ?? null,
+          args.details ? JSON.stringify(args.details) : null,
+          args.req.ip ?? null,
+        ],
+      );
+    } catch (err) {
+      app.log.warn({ err, action: args.action }, "failed to record audit log");
+    }
+  }
+
   async function recordUsage(args: {
     userId: string;
     apiKeyId: string;
@@ -2363,7 +2394,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   app.post("/admin/accounts", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { label, type, client_cookie, device_id } = (req.body ?? {}) as {
       label?: string;
       type?: string;
@@ -2378,6 +2410,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       "INSERT INTO suno_accounts (label, type, client_cookie, device_id) VALUES ($1, $2, $3, $4) RETURNING id",
       [label, t, encryptCookie(client_cookie), device_id],
     );
+    await recordAudit({
+      actor: admin,
+      action: "account.create",
+      targetType: "suno_account",
+      targetId: rows[0].id,
+      details: { label, type: t },
+      req,
+    });
     return reply.code(201).send({ id: rows[0].id });
   });
 
@@ -2416,18 +2456,28 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   app.patch("/admin/users/:id", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { id } = req.params as { id: string };
     const { status } = (req.body ?? {}) as { status?: string };
     if (status !== "active" && status !== "suspended") {
       return reply.code(400).send({ error: "status must be active or suspended." });
     }
     await query("UPDATE users SET status = $1 WHERE id = $2", [status, id]);
+    await recordAudit({
+      actor: admin,
+      action: "user.status",
+      targetType: "user",
+      targetId: id,
+      details: { status },
+      req,
+    });
     return { ok: true };
   });
 
   app.post("/admin/users/:id/credits", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { id } = req.params as { id: string };
     const { amount } = (req.body ?? {}) as { amount?: number };
     if (typeof amount !== "number" || amount === 0) {
@@ -2458,6 +2508,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       "INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, 'adjust', $3)",
       [id, amount, "Admin credit adjustment"],
     );
+    await recordAudit({
+      actor: admin,
+      action: "user.credits",
+      targetType: "user",
+      targetId: id,
+      details: { amount, resulting_credits: updated?.credits ?? key!.credits },
+      req,
+    });
     return { ok: true, credits: updated?.credits ?? key!.credits };
   });
 
@@ -2476,7 +2534,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   app.put("/admin/users/:id/rate-limits", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as {
       requests_per_minute?: number | null;
@@ -2511,6 +2570,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     // Drop the cached row so the new limits apply on the next request.
     rateLimitCache.delete(id);
+    await recordAudit({
+      actor: admin,
+      action: "user.rate_limits",
+      targetType: "user",
+      targetId: id,
+      details: { requests_per_minute: perMinute.value, requests_per_day: perDay.value },
+      req,
+    });
     return {
       ok: true,
       user_id: id,
@@ -2527,7 +2594,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   app.post("/admin/pricing", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { endpoint, model, credit_cost } = (req.body ?? {}) as {
       endpoint?: string;
       model?: string | null;
@@ -2542,17 +2610,34 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     );
     if (existing) {
       await query("UPDATE pricing SET credit_cost = $1 WHERE id = $2", [credit_cost, existing.id]);
+      await recordAudit({
+        actor: admin,
+        action: "pricing.upsert",
+        targetType: "pricing",
+        targetId: existing.id,
+        details: { endpoint, model: model ?? null, credit_cost, updated: true },
+        req,
+      });
       return { id: existing.id, updated: true };
     }
     const rows = await query<{ id: string }>(
       "INSERT INTO pricing (endpoint, model, credit_cost) VALUES ($1, $2, $3) RETURNING id",
       [endpoint, model ?? null, credit_cost],
     );
+    await recordAudit({
+      actor: admin,
+      action: "pricing.upsert",
+      targetType: "pricing",
+      targetId: rows[0].id,
+      details: { endpoint, model: model ?? null, credit_cost, updated: false },
+      req,
+    });
     return reply.code(201).send({ id: rows[0].id, updated: false });
   });
 
   app.put("/admin/pricing/:id", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { id } = req.params as { id: string };
     const { endpoint, model, credit_cost } = (req.body ?? {}) as {
       endpoint?: string;
@@ -2567,13 +2652,29 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       [endpoint, model ?? null, credit_cost, id],
     );
     if (!updated.length) return reply.code(404).send({ error: "Pricing row not found." });
+    await recordAudit({
+      actor: admin,
+      action: "pricing.update",
+      targetType: "pricing",
+      targetId: id,
+      details: { endpoint, model: model ?? null, credit_cost },
+      req,
+    });
     return { ok: true };
   });
 
   app.delete("/admin/pricing/:id", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { id } = req.params as { id: string };
     await query("DELETE FROM pricing WHERE id = $1", [id]);
+    await recordAudit({
+      actor: admin,
+      action: "pricing.delete",
+      targetType: "pricing",
+      targetId: id,
+      req,
+    });
     return { ok: true };
   });
 
@@ -2585,7 +2686,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   app.post("/admin/routing", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { model, policy } = (req.body ?? {}) as { model?: string; policy?: string };
     if (!model || !policy) return reply.code(400).send({ error: "model and policy are required." });
     if (policy !== "prefer_free" && policy !== "paid_only" && policy !== "any") {
@@ -2594,19 +2696,43 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const existing = await queryOne<{ id: string }>("SELECT id FROM routing_rules WHERE model = $1 LIMIT 1", [model]);
     if (existing) {
       await query("UPDATE routing_rules SET policy = $1 WHERE id = $2", [policy, existing.id]);
+      await recordAudit({
+        actor: admin,
+        action: "routing.upsert",
+        targetType: "routing_rule",
+        targetId: existing.id,
+        details: { model, policy, updated: true },
+        req,
+      });
       return { id: existing.id, updated: true };
     }
     const rows = await query<{ id: string }>(
       "INSERT INTO routing_rules (model, policy) VALUES ($1, $2) RETURNING id",
       [model, policy],
     );
+    await recordAudit({
+      actor: admin,
+      action: "routing.upsert",
+      targetType: "routing_rule",
+      targetId: rows[0].id,
+      details: { model, policy, updated: false },
+      req,
+    });
     return reply.code(201).send({ id: rows[0].id, updated: false });
   });
 
   app.delete("/admin/routing/:id", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { id } = req.params as { id: string };
     await query("DELETE FROM routing_rules WHERE id = $1", [id]);
+    await recordAudit({
+      actor: admin,
+      action: "routing.delete",
+      targetType: "routing_rule",
+      targetId: id,
+      req,
+    });
     return { ok: true };
   });
 
@@ -2627,7 +2753,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   app.post("/admin/content", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { title, slug, content, published } = (req.body ?? {}) as {
       title?: string;
       slug?: string;
@@ -2640,11 +2767,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       "INSERT INTO blog_posts (title, slug, content, published) VALUES ($1, $2, $3, $4) RETURNING id",
       [title, s, content, Boolean(published)],
     );
+    await recordAudit({
+      actor: admin,
+      action: "content.create",
+      targetType: "blog_post",
+      targetId: rows[0].id,
+      details: { title, slug: s, published: Boolean(published) },
+      req,
+    });
     return reply.code(201).send({ id: rows[0].id });
   });
 
   app.put("/admin/content/:id", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { id } = req.params as { id: string };
     const { title, slug, content, published } = (req.body ?? {}) as {
       title?: string;
@@ -2658,14 +2794,58 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       "UPDATE blog_posts SET title = $1, slug = $2, content = $3, published = $4 WHERE id = $5",
       [title, s, content, Boolean(published), id],
     );
+    await recordAudit({
+      actor: admin,
+      action: "content.update",
+      targetType: "blog_post",
+      targetId: id,
+      details: { title, slug: s, published: Boolean(published) },
+      req,
+    });
     return { ok: true };
   });
 
   app.delete("/admin/content/:id", async (req, reply) => {
-    if (!(await requireAdmin(req, reply))) return;
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
     const { id } = req.params as { id: string };
     await query("DELETE FROM blog_posts WHERE id = $1", [id]);
+    await recordAudit({
+      actor: admin,
+      action: "content.delete",
+      targetType: "blog_post",
+      targetId: id,
+      req,
+    });
     return { ok: true };
+  });
+
+  // Read side of the audit trail (task 5.2, REQUIREMENTS §4.11). Newest first,
+  // with optional `action` / `actor_id` filters and a bounded page size.
+  app.get("/admin/audit", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const q = (req.query ?? {}) as { limit?: string; action?: string; actor_id?: string };
+    const parsed = Number(q.limit ?? 200);
+    const limit = Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 500) : 200;
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.action) {
+      params.push(q.action);
+      filters.push(`action = $${params.length}`);
+    }
+    if (q.actor_id) {
+      params.push(q.actor_id);
+      filters.push(`actor_id = $${params.length}`);
+    }
+    params.push(limit);
+    return query<Record<string, unknown>>(
+      `SELECT id, actor_id, actor_email, action, target_type, target_id, details, ip, created_at
+       FROM audit_logs
+       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
+       ORDER BY created_at DESC
+       LIMIT $${params.length}`,
+      params,
+    );
   });
 
   // --- v1 API (DB-backed keys) --------------------------------------------
