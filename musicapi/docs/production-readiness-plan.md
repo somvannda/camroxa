@@ -128,7 +128,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | no fake data ✅ fabricated `Math.random()` chart removed | `[x]` |
 | 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work ✅ `/app/*` removed, `/dashboard/*` served | `[x]` |
 | 3.7 | Fix admin pricing edit (track `editingId`, PUT) | `fix/musicapi-admin-pricing-edit` | update, no duplicate ✅ PUT `/admin/pricing/:id` | `[x]` |
-| 3.8 | Admin `/auth/callback`; align redirect URIs | `feat/musicapi-admin-oauth` | Google admin login | `[ ]` |
+| 3.8 | Admin `/auth/callback`; align redirect URIs | `feat/musicapi-admin-oauth` | Google admin login ✅ `/auth/callback` + admin role gate | `[x]` |
 | 3.9 | Wire/hide placeholders; mark stubs "coming soon" | `chore/musicapi-fe-placeholders` | no dead UI | `[ ]` |
 
 **Gate:** both apps build against prod env; no spoofable auth; no fake data.
@@ -234,6 +234,21 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > endpoint (`src/server.ts`) that updates `endpoint`, `model`, and `credit_cost` by id
 > (404 when missing). New prices still use `POST`. Verified: `tsc --noEmit` clean for core +
 > `web-admin`; `next build` succeeds (12/12 static pages, `/admin/pricing` present).
+>
+> **Note (3.8):** the core API already allowlisted **both** Google redirect URIs
+> (`GOOGLE_REDIRECT_URI_USER` → `…:4001/auth/callback`, `GOOGLE_REDIRECT_URI_ADMIN` →
+> `…:4002/auth/callback`, see `src/server.ts` + `.env.example`), but `web-admin` had no
+> client for it: no `/auth/callback` route, no Google button — admin sign-in was
+> email/password only, so the admin redirect URI was dead. Added
+> `web-admin/components/google-signin-button.tsx` (4002 fallback, `/admin` default) and
+> `web-admin/app/auth/callback/page.tsx`, and wired the button into the admin login page
+> behind an "or" divider. The callback **re-checks `role === "admin"`** before redirecting
+> (mirrors the login page's gate) rather than relying on `proxy.ts` to bounce a non-admin.
+> `/auth/callback` sits outside the proxy matcher (`["/", "/admin/:path*"]`), so it is
+> reachable while signed out. Verified: `tsc --noEmit` clean; `next build` succeeds
+> (13/13 static pages, `/auth/callback` + `/admin` present). Prod action: register the real
+> `https://admin.yourdomain.com/auth/callback` in Google Cloud Console and set
+> `GOOGLE_REDIRECT_URI_ADMIN` to match.
 >
 > **Verification:** `npm run typecheck` clean in `musicapi`, `web-user`, and `web-admin`.
 > Product decisions baked in (cookie name `sunosession`, `SameSite=Lax`, `Secure` in
