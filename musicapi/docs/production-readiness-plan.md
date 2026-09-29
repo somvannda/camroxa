@@ -129,7 +129,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work ✅ `/app/*` removed, `/dashboard/*` served | `[x]` |
 | 3.7 | Fix admin pricing edit (track `editingId`, PUT) | `fix/musicapi-admin-pricing-edit` | update, no duplicate ✅ PUT `/admin/pricing/:id` | `[x]` |
 | 3.8 | Admin `/auth/callback`; align redirect URIs | `feat/musicapi-admin-oauth` | Google admin login ✅ `/auth/callback` + admin role gate | `[x]` |
-| 3.9 | Wire/hide placeholders; mark stubs "coming soon" | `chore/musicapi-fe-placeholders` | no dead UI | `[ ]` |
+| 3.9 | Wire/hide placeholders; mark stubs "coming soon" | `chore/musicapi-fe-placeholders` | no dead UI ✅ 404 links + inert controls removed | `[x]` |
 
 **Gate:** both apps build against prod env; no spoofable auth; no fake data.
 
@@ -249,6 +249,25 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > (13/13 static pages, `/auth/callback` + `/admin` present). Prod action: register the real
 > `https://admin.yourdomain.com/auth/callback` in Google Cloud Console and set
 > `GOOGLE_REDIRECT_URI_ADMIN` to match.
+>
+> **Note (3.9):** audited both apps for dead/inert UI. **404 links removed:** the dashboard
+> sidebar's `Logs` item (`/dashboard/logs`) and the admin sidebar's `Logs` item
+> (`/admin/logs`) both pointed at routes that don't exist (confirmed absent from `next
+> build`'s route list) — deleted from `web-user/app/dashboard/layout.tsx` and
+> `web-admin/components/Sidebar.tsx`. **Inert controls removed** from the dashboard shell:
+> the non-wired `…` "more" button in the sidebar header, the do-nothing `English` language
+> row (only one language today), and the two placeholder support links
+> (`https://discord.gg/yourinvite`, `https://t.me/yourchannel`) — no real invite exists yet,
+> so they're hidden rather than shipping a fake URL. The admin Sidebar's bottom `Settings`
+> **button** (a duplicate of the real `/admin/settings` NAV link that did nothing) was also
+> removed. **Placeholder email wired:** the landing page's `mailto:support@yourdomain.com`
+> (×2) now points at `support@camxora.com` (the brand domain already used throughout
+> `docs/`). **Stubs marked:** `web-admin/app/admin/{analytics,settings}` still render the
+> shared `ComingSoon` component; its copy now reads "This section is coming soon." (matching
+> the plan's wording). The Billing page's Buy buttons stay intentionally disabled behind a
+> visible "Payment processing is not yet connected" note (payments are a later phase).
+> Verified: `npm run typecheck` clean in `musicapi`; `npm run build` clean in both apps
+> (web-user 20/20, web-admin 13/13 static pages) with no `*logs` route in either.
 >
 > **Verification:** `npm run typecheck` clean in `musicapi`, `web-user`, and `web-admin`.
 > Product decisions baked in (cookie name `sunosession`, `SameSite=Lax`, `Secure` in

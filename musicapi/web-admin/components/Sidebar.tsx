@@ -12,7 +12,6 @@ const NAV = [
   { href: "/admin/pricing", label: "Pricing" },
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/content", label: "API Updates" },
-  { href: "/admin/logs", label: "Logs" },
   { href: "/admin/settings", label: "Settings" },
 ];
 
@@ -54,7 +53,6 @@ export default function Sidebar() {
       </nav>
 
       <div className="space-y-1 border-t border-[var(--border)] pt-4 text-sm text-[var(--muted)]">
-        <button className="block w-full rounded-lg px-3 py-2 text-left hover:bg-white/5 hover:text-white">Settings</button>
         <button onClick={logout} className="block w-full rounded-lg px-3 py-2 text-left text-red-300 hover:bg-white/5">
           Logout
         </button>

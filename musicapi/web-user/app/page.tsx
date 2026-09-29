@@ -224,7 +224,7 @@ export default function LandingPage() {
               ))}
             </div>
             <p className="mt-6 text-center text-sm text-[var(--muted)]">
-              Need help choosing? <a href="mailto:support@yourdomain.com" className="grad-text font-medium">Contact us</a>
+              Need help choosing? <a href="mailto:support@camxora.com" className="grad-text font-medium">Contact us</a>
             </p>
           </div>
         </section>
@@ -272,7 +272,7 @@ export default function LandingPage() {
             <a href="#features" className="hover:text-white">Features</a>
             <a href="#pricing" className="hover:text-white">Pricing</a>
             <a href="/docs" className="hover:text-white">Docs</a>
-            <a href="mailto:support@yourdomain.com" className="hover:text-white">Support</a>
+            <a href="mailto:support@camxora.com" className="hover:text-white">Support</a>
           </div>
           <div>© {new Date().getFullYear()} Camxora Music API. All rights reserved.</div>
         </div>
