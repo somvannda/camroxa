@@ -96,3 +96,149 @@ jobs:
         run: |
           npm ci
           CI=1 npm run build
+
+  musicapi-checks:
+    name: MusicAPI typecheck + build (if changed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect musicapi changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- musicapi/ | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            musicapi/package-lock.json
+            musicapi/web-user/package-lock.json
+            musicapi/web-admin/package-lock.json
+
+      - name: Core — npm ci, typecheck, build
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          npm run build
+
+      - name: web-user — npm ci, typecheck, build
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi/web-user
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          CI=1 npm run build
+
+      - name: web-admin — npm ci, typecheck, build
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi/web-admin
+        run: |
+          npm ci --no-audit --no-fund
+          npm run typecheck
+          CI=1 npm run build
+
+  musicapi-smoke:
+    name: MusicAPI smoke gate (if changed)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sunoapi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/sunoapi
+      # config.ts refuses to start without a strong JWT_SECRET and a 64-hex
+      # COOKIE_ENCRYPTION_KEY, so the smoke boot needs throwaway values.
+      JWT_SECRET: ci-smoke-jwt-secret-0123456789abcdef0123456789abcdef
+      COOKIE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      PORT: "4003"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect musicapi changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- musicapi/ | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: musicapi/package-lock.json
+
+      - name: Install core deps
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi
+        run: npm ci --no-audit --no-fund
+
+      - name: Apply migrations
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi
+        run: ./node_modules/.bin/tsx scripts/migrate.ts
+
+      - name: Boot server and probe routes
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi
+        shell: bash
+        run: |
+          set -euo pipefail
+          BASE="http://127.0.0.1:4003"
+          npm run serve > /tmp/musicapi.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill "$SERVER_PID" 2>/dev/null || true' EXIT
+
+          for _ in $(seq 1 30); do
+            if curl -fsS "$BASE/health" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          if ! curl -fsS "$BASE/health" >/dev/null 2>&1; then
+            echo "server did not become healthy in 30s"
+            tail -n 50 /tmp/musicapi.log
+            exit 1
+          fi
+
+          echo "--- /health"
+          HEALTH="$(curl -fsS "$BASE/health")"
+          echo "$HEALTH"
+          echo "$HEALTH" | grep -q '"ok":true' || { echo "health body missing ok:true"; exit 1; }
+
+          echo "--- /metrics expects 401 (admin-only)"
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' "$BASE/metrics")"
+          test "$CODE" = "401" || { echo "expected 401, got $CODE"; tail -n 50 /tmp/musicapi.log; exit 1; }
+
+          echo "--- /auth/register expects 405 (self-registration disabled)"
+          CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST -H 'content-type: application/json' -d '{}' "$BASE/auth/register")"
+          test "$CODE" = "405" || { echo "expected 405, got $CODE"; tail -n 50 /tmp/musicapi.log; exit 1; }
+
+          echo "Smoke OK"

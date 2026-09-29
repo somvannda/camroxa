@@ -284,7 +284,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 4.2 | nginx vhosts + TLS + `/backend` proxy; align `trustProxy` | `ops/musicapi-nginx` | HTTPS, real IPs | `[x]` nginx vhosts + `TRUST_PROXY` ✅ |
 | 4.3 | CORS/helmet + rate limiting + structured logging + `/metrics` | `feat/musicapi-edge-hardening` | public `/v1` safe | `[x]` edge hardening ✅ |
 | 4.4 | Deploy scripts: `sync_musicapi_sandbox.py`, `deploy_musicapi_production.py` | `ops/musicapi-deploy-scripts` | sandbox deploy works | `[x]` sandbox deploy + smoke ✅ |
-| 4.5 | CI: typecheck + build + smoke gate | `ops/musicapi-ci` | PR blocked on failure | `[ ]` |
+| 4.5 | CI: typecheck + build + smoke gate | `ops/musicapi-ci` | PR blocked on failure | `[x]` two path-gated jobs ✅ |
 | 4.6 | DB backups + monitoring/alerts | `ops/musicapi-observability` | restore drill; alerts fire | `[ ]` |
 
 **Gate:** deployed + smoked on **sandbox**; production only on explicit ask.
@@ -394,6 +394,27 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > vhost is skipped until `A` records for `musicapi|app.musicapi|admin.musicapi.sandbox.camxora.com`
 > exist (still `NXDOMAIN`); re-run with `--issue-cert` to bootstrap Let's Encrypt.
 > Production was **not** touched.
+
+> **Note (4.5):** extended the repo's single workflow (`.github/workflows/pr-checks.yml`,
+> `on: pull_request` → `main`/`master`) with **two path-gated jobs** that only run when
+> `musicapi/` changed (`git diff --name-only "$BASE"...HEAD -- musicapi/`, same convention
+> as the existing `admin-portal-build` job). `musicapi-checks` does `npm ci` + `npm run
+> typecheck` + `npm run build` for `musicapi`, `web-user` and `web-admin` (node 20, `cache:
+> npm`, three lockfiles in `cache-dependency-path`); `musicapi-smoke` boots the API against
+> a throwaway `postgres:16` service container, applies `scripts/migrate.ts`, then asserts
+> `/health` → `{"ok":true,...}`, `/metrics` → **401** (admin-only) and `POST /auth/register`
+> → **405** (self-registration disabled), tearing the server down via a trap.
+> `src/config.ts` throws at import unless `JWT_SECRET` (≥32 chars) and
+> `COOKIE_ENCRYPTION_KEY` (64 hex) are set — and `scripts/migrate.ts` imports it too — so
+> both are provided as job-level env (throwaway CI values).
+> Two frontend lockfiles had to be regenerated to make `npm ci` usable as the gate: both
+> `web-user` and `web-admin` `package-lock.json` were internally inconsistent (npm
+> reported `Invalid: lock file's @emnapi/wasi-threads@1.2.1 does not satisfy …` / `Missing:
+> @emnapi/core…`) — a known npm optional-dependency lockfile bug, previously masked because
+> the remote deploy uses `npm ci || npm install`. Regenerated with **npm 10** (the version CI
+> pins via node 20) rather than the local npm 11, then verified `npx npm@10 ci` is clean for
+> all three packages and `typecheck` + `build` pass for all three. No push — the workflow
+> only takes effect on PRs into `main`/`master`.
 
 ---
 
