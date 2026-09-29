@@ -39,6 +39,8 @@ CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 BILLING_ACTIVE_PROVIDER_SETTING_KEY = "billing.active_provider"
 BILLING_PORTAL_BASE_URL_SETTING_KEY = "billing.portal_base_url"
 MOCK_TERMINAL_STATUSES = {"paid", "failed", "expired"}
+# Self-serve renewal opens this many days before the license expiry (or whenever expired).
+RENEWAL_WINDOW_DAYS = 7
 
 PROVIDER_REGISTRY: dict[str, dict[str, str]] = {
     "mock": {
@@ -95,6 +97,9 @@ class QuotaRenewalResponse(BaseModel):
     expires_at: datetime | None = None
     days_left: int | None = None
     expired: bool = False
+    renewable: bool = False
+    renewal_opens_in_days: int | None = None
+    renewal_window_days: int = 7
 
 
 class CompleteMockPaymentRequest(BaseModel):
@@ -1290,6 +1295,23 @@ async def _resolve_renewable_license(pool: Any, user_id: UUID) -> tuple[Any, Any
     return license_obj, plan
 
 
+def _renewal_window(
+    expires_at: datetime | None, now: datetime
+) -> tuple[bool, int | None, bool, int | None]:
+    """Return ``(renewable, days_left, expired, opens_in_days)``.
+
+    Renewal opens ``RENEWAL_WINDOW_DAYS`` before expiry and stays open once
+    expired. An open-ended license (no expiry) is always renewable.
+    """
+    if expires_at is None:
+        return True, None, False, None
+    expired = expires_at <= now
+    days_left = (expires_at - now).days
+    renewable = expired or days_left <= RENEWAL_WINDOW_DAYS
+    opens_in_days = None if renewable else days_left - RENEWAL_WINDOW_DAYS
+    return renewable, days_left, expired, opens_in_days
+
+
 @router.get(
     "/renewals/quota",
     response_model=QuotaRenewalResponse,
@@ -1304,7 +1326,9 @@ async def get_quota_renewal(
 
     The plan is intentionally resolved from the user's own license, never from the
     public catalog, so a hidden legacy plan like the $79 desktop plan stays invisible
-    to everyone else while its owner can still pay for the next period.
+    to everyone else while its owner can still pay for the next period. ``eligible``
+    is true only inside the renewal window (``RENEWAL_WINDOW_DAYS`` before expiry, or
+    once expired).
     """
     resolved = await _resolve_renewable_license(pool, UUID(ctx.user_id))
     if resolved is None:
@@ -1313,12 +1337,9 @@ async def get_quota_renewal(
     license_obj, plan = resolved
     expires_at = license_obj.expires_at
     now = datetime.now(timezone.utc)
-    expired = bool(expires_at is not None and expires_at <= now)
-    days_left: int | None = None
-    if expires_at is not None:
-        days_left = (expires_at - now).days
+    renewable, days_left, expired, opens_in_days = _renewal_window(expires_at, now)
     return QuotaRenewalResponse(
-        eligible=True,
+        eligible=renewable,
         plan_id=str(plan.id),
         plan_name=str(plan.name),
         price_cents=int(plan.price_cents or 0),
@@ -1326,6 +1347,9 @@ async def get_quota_renewal(
         expires_at=expires_at,
         days_left=days_left,
         expired=expired,
+        renewable=renewable,
+        renewal_opens_in_days=opens_in_days,
+        renewal_window_days=RENEWAL_WINDOW_DAYS,
     )
 
 
@@ -1351,7 +1375,20 @@ async def create_quota_renewal(
             "No renewable paid plan was found for this account.",
             details={"error_code": "NO_RENEWABLE_PLAN"},
         )
-    _license_obj, plan = resolved
+    license_obj, plan = resolved
+    renewable, days_left, expired, opens_in_days = _renewal_window(
+        license_obj.expires_at, datetime.now(timezone.utc)
+    )
+    if not renewable:
+        raise ValidationError(
+            f"Renewal opens {RENEWAL_WINDOW_DAYS} days before your plan ends.",
+            details={
+                "error_code": "RENEWAL_NOT_YET_OPEN",
+                "days_left": days_left,
+                "renewal_opens_in_days": opens_in_days,
+                "renewal_window_days": RENEWAL_WINDOW_DAYS,
+            },
+        )
     provider = await _get_active_provider(pool)
     portal_base_url = await _get_portal_base_url(pool)
     request = CreatePaymentRequest(plan_id=str(plan.id))

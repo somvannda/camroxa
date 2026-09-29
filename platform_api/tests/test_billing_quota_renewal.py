@@ -147,3 +147,46 @@ async def test_extend_license_stacks_from_expiry_and_keeps_activated_at() -> Non
     # activated_at must not be reset, so the monthly grant rolls at the period boundary.
     assert "activated_at =" not in pool.query
     assert pool.args[-1] == 30
+
+
+def test_renewal_window_boundaries() -> None:
+    now = datetime.now(timezone.utc)
+    assert billing._renewal_window(None, now)[0] is True
+    assert billing._renewal_window(now - timedelta(days=1), now)[0] is True
+    assert billing._renewal_window(now + timedelta(days=6), now)[0] is True
+    assert billing._renewal_window(now + timedelta(days=20), now)[0] is False
+
+    renewable, days_left, expired, opens_in = billing._renewal_window(
+        now + timedelta(days=20), now
+    )
+    assert renewable is False
+    assert expired is False
+    assert opens_in == 20 - billing.RENEWAL_WINDOW_DAYS
+
+
+@pytest.mark.asyncio
+async def test_get_quota_renewal_not_eligible_outside_window() -> None:
+    plan = _paid_plan()
+    active = _license(plan.id, expires_in_days=20)
+    ctx = MagicMock()
+    ctx.user_id = str(uuid4())
+    p1, p2, _ = _patch_repos(active=active, latest=None, plan=plan)
+    with p1, p2:
+        result = await billing.get_quota_renewal(ctx=ctx, pool=object())
+    assert result.eligible is False
+    assert result.plan_name == "Monthly · 2-channel"
+    assert result.renewal_opens_in_days is not None
+
+
+@pytest.mark.asyncio
+async def test_create_quota_renewal_rejects_before_window() -> None:
+    plan = _paid_plan()
+    active = _license(plan.id, expires_in_days=20)
+    ctx = MagicMock()
+    ctx.user_id = str(uuid4())
+    with patch.object(
+        billing, "_resolve_renewable_license", AsyncMock(return_value=(active, plan))
+    ):
+        with pytest.raises(billing.ValidationError) as excinfo:
+            await billing.create_quota_renewal(ctx=ctx, pool=object())
+    assert excinfo.value.details.get("error_code") == "RENEWAL_NOT_YET_OPEN"
