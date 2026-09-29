@@ -15,6 +15,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Users** has search (email / display name / ID) and filters for role, email verified, plan (or Free), status, and registration date range. Also fixes the registration-date filter, which sent `from_date` / `to_date` while the API expects `date_from` / `date_to` and was silently ignored. See `docs/changelog/2026-09-29-admin-users-search-filters.md`.
 - Credits-only plan editor has **Pricing page features** and **Pricing credit captions** textareas (one line per bullet / caption). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 
 ### Changed
