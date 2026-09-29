@@ -21,6 +21,7 @@ import { ChannelDailyQuotaTable, PipelineOrderHint } from "@/components/dashboar
 import { Button } from "@/components/ui/button";
 import { packagesToTracks } from "@/lib/quota";
 import QuotaRenewalCard from "@/components/quota-renewal-card";
+import { RenewalReminderBanner } from "@/components/dashboard/renewal-reminder-banner";
 
 function usedFrom(
   used: number | null | undefined,
@@ -70,6 +71,8 @@ export default function DashboardOverviewPage() {
         title="Overview"
         description="Big number = how many you have left. Below it: used and your limit."
       />
+
+      <RenewalReminderBanner />
 
       <QuotaRenewalCard />
 

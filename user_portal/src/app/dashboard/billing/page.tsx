@@ -29,6 +29,7 @@ import { listBillingProviders, type BillingProviderConfig } from "@/lib/billing"
 import { ProfileAddonPanel } from "@/components/dashboard/profile-addon-panel";
 import { QuotaRenewalCard } from "@/components/dashboard/quota-renewal-card";
 import { AddonRenewalCard } from "@/components/dashboard/addon-renewal-card";
+import { RenewalReminderBanner } from "@/components/dashboard/renewal-reminder-banner";
 
 export default function DashboardBillingPage() {
   const router = useRouter();
@@ -125,6 +126,8 @@ export default function DashboardBillingPage() {
       </div>
 
       <ProfileAddonPanel user={state.user} profileCount={state.profiles.length} />
+
+      <RenewalReminderBanner />
 
       <QuotaRenewalCard />
 
