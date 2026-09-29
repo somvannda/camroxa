@@ -75,9 +75,11 @@ Left sidebar navigation + bottom section.
 ### 3.8 Document `[DONE]`
 - Public API documentation at `/docs` (no auth required).
 
-### 3.9 Bottom sidebar `[PARTIAL]`
+### 3.9 Bottom sidebar `[DONE]`
 - `[DONE]` Logout.
-- `[PENDING]` Get support (Telegram link), Settings, Language.
+- `[DONE]` Get support — the sidebar shows a "Get Support" link opening the operator-configured Telegram URL (`brand.support_telegram_url`), rendered only when set. The user panel reads branding from the public `GET /settings`.
+- `[DONE]` Settings — `/dashboard/settings` edits the display name via `GET`/`PUT /me/profile` (the endpoint the page already expected but which was missing; now backfilled).
+- `[DONE]` Language — the sidebar language selector offers the operator-enabled `brand.languages` and persists the choice to `users.language` via `PUT /me/profile`, which rejects any code the operator has not enabled.
 
 ---
 

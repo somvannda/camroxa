@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { getUser } from "@/lib/auth";
-import { logout as endSession } from "@/lib/api";
+import { apiFetch, logout as endSession } from "@/lib/api";
 
 type NavItem = {
   href: string;
@@ -76,6 +76,29 @@ const NAV: NavItem[] = [
   },
 ];
 
+/** Operator-managed branding the panel reads from the public `GET /settings`. */
+interface Brand {
+  name: string;
+  docs_url: string;
+  support_telegram_url: string;
+  languages: string[];
+}
+
+// Human-readable names for the operator-configured language codes. Unknown codes
+// fall back to their uppercase form rather than hiding the option.
+const LANGUAGE_LABELS: Record<string, string> = {
+  en: "English",
+  km: "ភាសាខ្មែរ",
+  zh: "中文",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  ja: "日本語",
+  ko: "한국어",
+  vi: "Tiếng Việt",
+  th: "ไทย",
+};
+
 function CollapsibleIcon({ open }: { open: boolean }) {
   return (
     <svg
@@ -98,6 +121,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [authed, setAuthed] = useState(false);
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({ Playground: true });
   const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [brand, setBrand] = useState<Brand | null>(null);
+  const [language, setLanguage] = useState("");
 
   const user = getUser();
 
@@ -108,6 +133,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       setAuthed(true);
     }
   }, [router]);
+
+  // Panel branding (support link + languages) and the user's saved language.
+  useEffect(() => {
+    if (!authed) return;
+    apiFetch<{ brand: Brand }>("/settings")
+      .then((r) => setBrand(r.brand))
+      .catch(() => {});
+    apiFetch<{ language?: string }>("/me/profile")
+      .then((p) => setLanguage(p.language ?? ""))
+      .catch(() => {});
+  }, [authed]);
 
   if (!authed) return null;
 
@@ -123,6 +159,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   function logout() {
     void endSession().finally(() => router.replace("/login"));
+  }
+
+  // Persist the language choice; revert the selector if the save fails.
+  async function changeLanguage(next: string) {
+    const previous = language;
+    setLanguage(next);
+    try {
+      await apiFetch("/me/profile", { method: "PUT", body: JSON.stringify({ language: next }) });
+    } catch {
+      setLanguage(previous);
+    }
   }
 
   return (
@@ -238,6 +285,34 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             Settings
           </Link>
+          {brand?.support_telegram_url && (
+            <a
+              href={brand.support_telegram_url}
+              target="_blank"
+              rel="noreferrer"
+              className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-white/60 hover:bg-white/5 hover:text-white"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+              Get Support
+            </a>
+          )}
+          {brand && brand.languages.length > 0 && (
+            <div className="flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-white/60">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+              <select
+                aria-label="Language"
+                value={language}
+                onChange={(e) => void changeLanguage(e.target.value)}
+                className="w-full flex-1 cursor-pointer rounded-md border border-white/10 bg-white/[0.03] px-2 py-1 text-xs text-white/80 outline-none hover:bg-white/5 focus:border-white/20"
+              >
+                {brand.languages.map((code) => (
+                  <option key={code} value={code} className="bg-[#141416] text-white">
+                    {LANGUAGE_LABELS[code] ?? code.toUpperCase()}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
           <button onClick={logout} className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-red-400 hover:bg-red-500/5 hover:text-red-300">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
             Log Out

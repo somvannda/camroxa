@@ -1805,6 +1805,59 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   });
 
+  // --- user profile + public branding (REQUIREMENTS §3.9) ------------------
+  // The user panel's Settings page edits the display name and preferred
+  // language; the bottom sidebar needs the operator-managed support link and
+  // the list of languages. `/settings` is public — it is non-sensitive branding
+  // (also useful to signed-out pages) and mirrors the `brand` group of
+  // `/admin/settings`, so the panel and the admin stay in sync.
+  const PROFILE_COLUMNS = "id, email, name, language, role, status, created_at";
+
+  app.get("/settings", async () => ({ brand: await loadBrandSettings() }));
+
+  app.get("/me/profile", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    return queryOne(
+      `SELECT ${PROFILE_COLUMNS} FROM users WHERE id = $1`,
+      [u.id],
+    );
+  });
+
+  app.put("/me/profile", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const body = (req.body ?? {}) as { name?: unknown; language?: unknown };
+    if (body.name === undefined && body.language === undefined) {
+      return reply.code(400).send({ error: "Provide a name and/or language." });
+    }
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (body.name !== undefined) {
+      if (body.name !== null && typeof body.name !== "string") {
+        return reply.code(400).send({ error: "name must be a string or null." });
+      }
+      params.push(typeof body.name === "string" ? body.name.trim() || null : null);
+      sets.push(`name = $${params.length}`);
+    }
+    if (body.language !== undefined) {
+      // Only languages the operator enabled are accepted, so the selector can
+      // never persist a value the panel cannot render.
+      const { languages } = await loadBrandSettings();
+      if (typeof body.language !== "string" || !languages.includes(body.language)) {
+        return reply.code(400).send({ error: `language must be one of: ${languages.join(", ")}.` });
+      }
+      params.push(body.language);
+      sets.push(`language = $${params.length}`);
+    }
+    params.push(u.id);
+    await query(`UPDATE users SET ${sets.join(", ")} WHERE id = $${params.length}`, params);
+    return queryOne(
+      `SELECT ${PROFILE_COLUMNS} FROM users WHERE id = $1`,
+      [u.id],
+    );
+  });
+
   app.get("/me/usage", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
