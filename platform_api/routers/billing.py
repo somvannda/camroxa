@@ -747,7 +747,19 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                 raise NotFoundError("Purchased plan not found.", details={"plan_id": str(plan_id)})
 
             active_license = await license_repo.get_active_for_user(user_id)
-            if active_license is not None:
+            if active_license is not None and UUID(str(active_license.plan_id)) == plan_id:
+                # Same-plan renewal: stack the new period on the current expiry so
+                # renewing early never drops remaining days.
+                cycle_days = int(plan.billing_cycle_days or 30)
+                assigned_license = await license_repo.extend_license(
+                    active_license.id, cycle_days
+                )
+                if assigned_license is None:
+                    raise NotFoundError(
+                        "Active license not found during renewal.",
+                        details={"license_id": str(active_license.id)},
+                    )
+            elif active_license is not None:
                 assigned_license = await license_repo.change_plan(
                     active_license.id, plan_id, plan
                 )

@@ -109,3 +109,41 @@ async def test_get_quota_renewal_ineligible_without_license() -> None:
         result = await billing.get_quota_renewal(ctx=ctx, pool=object())
     assert result.eligible is False
     assert result.plan_id is None
+
+
+class _CapturingPool:
+    def __init__(self) -> None:
+        self.query = ""
+        self.args = ()
+
+    async def fetchrow(self, query, *args):
+        self.query = " ".join(query.split())
+        self.args = args
+        return {
+            "id": uuid4(),
+            "license_key": "k",
+            "plan_id": uuid4(),
+            "user_id": uuid4(),
+            "status": "active",
+            "activated_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc) + timedelta(days=30),
+            "revoked_at": None,
+            "profile_addon_slots": 0,
+            "profile_addon_pending": 0,
+            "created_at": datetime.now(timezone.utc),
+        }
+
+
+@pytest.mark.asyncio
+async def test_extend_license_stacks_from_expiry_and_keeps_activated_at() -> None:
+    from platform_api.repositories.license_repo import LicenseRepository
+
+    pool = _CapturingPool()
+    repo = LicenseRepository(pool=pool)
+    await repo.extend_license(uuid4(), 30)
+
+    # New period is added on top of the current expiry (never drops remaining days).
+    assert "GREATEST(COALESCE(expires_at, NOW()), NOW())" in pool.query
+    # activated_at must not be reset, so the monthly grant rolls at the period boundary.
+    assert "activated_at =" not in pool.query
+    assert pool.args[-1] == 30

@@ -127,8 +127,8 @@ export function QuotaRenewalCard() {
       </CardHeader>
       <CardContent className="grid gap-4">
         <p className="text-sm text-slate-300/80">
-          Auto-renew this plan for one more month ({renewal.billing_cycle_days ?? 30} days) to keep
-          your credits and desktop studio access active. Video export and merge are always free.
+          Auto-renew an extra {renewal.billing_cycle_days ?? 30} days — added on top of your current
+          expiry, so you never lose remaining days. Video export and merge stay free.
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <Button

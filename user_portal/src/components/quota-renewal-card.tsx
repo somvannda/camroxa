@@ -150,8 +150,8 @@ export default function QuotaRenewalCard() {
         </div>
 
         <p className="mb-5 text-sm text-slate-300/72">
-          Auto-renew this plan for one more month to keep your credits and desktop studio access
-          active. Video export and merge are always free.
+          Auto-renew an extra {renewal.billing_cycle_days ?? 30} days — added on top of your current
+          expiry, so you never lose remaining days. Video export and merge stay free.
         </p>
 
         <button
