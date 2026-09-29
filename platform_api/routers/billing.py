@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal, ROUND_HALF_UP
 from typing import Annotated, Any
 from uuid import UUID, uuid4
@@ -84,6 +84,19 @@ class ScheduleDowngradeRequest(BaseModel):
     plan_id: str = Field(..., description="UUID of the target plan at renewal")
 
 
+class QuotaRenewalResponse(BaseModel):
+    """The signed-in user's own plan, exposed for the renew flow (hidden plans allowed)."""
+
+    eligible: bool
+    plan_id: str | None = None
+    plan_name: str | None = None
+    price_cents: int | None = None
+    billing_cycle_days: int | None = None
+    expires_at: datetime | None = None
+    days_left: int | None = None
+    expired: bool = False
+
+
 class CompleteMockPaymentRequest(BaseModel):
     """Transition a mock payment into a terminal test state."""
 
@@ -108,6 +121,7 @@ class BillingPaymentResponse(BaseModel):
     redeem_code: str | None = None
     product_type: str = "plan"
     addon_channels: int | None = None
+    qr_string: str | None = None
     created_at: datetime
     updated_at: datetime
 
@@ -335,6 +349,7 @@ def _payment_response_from_row(row: Any) -> BillingPaymentResponse:
         redeem_code=metadata.get("redeem_code"),
         product_type=str(metadata.get("product_type") or "plan"),
         addon_channels=int(metadata["addon_channels"]) if metadata.get("addon_channels") is not None else None,
+        qr_string=metadata.get("qr_string"),
         created_at=row["created_at"],
         updated_at=row["updated_at"],
     )
@@ -732,7 +747,19 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                 raise NotFoundError("Purchased plan not found.", details={"plan_id": str(plan_id)})
 
             active_license = await license_repo.get_active_for_user(user_id)
-            if active_license is not None:
+            if active_license is not None and UUID(str(active_license.plan_id)) == plan_id:
+                # Same-plan renewal: stack the new period on the current expiry so
+                # renewing early never drops remaining days.
+                cycle_days = int(plan.billing_cycle_days or 30)
+                assigned_license = await license_repo.extend_license(
+                    active_license.id, cycle_days
+                )
+                if assigned_license is None:
+                    raise NotFoundError(
+                        "Active license not found during renewal.",
+                        details={"license_id": str(active_license.id)},
+                    )
+            elif active_license is not None:
                 assigned_license = await license_repo.change_plan(
                     active_license.id, plan_id, plan
                 )
@@ -952,6 +979,10 @@ async def _create_cutluy_payment(
             details={"provider": "cutluy", "reason": type(exc).__name__},
         ) from exc
 
+    from platform_api.services.shared.cutluy_service import extract_cutluy_qr_string
+
+    metadata["qr_string"] = extract_cutluy_qr_string(payment) or ""
+
     created = await pool.fetchrow(
         """
         INSERT INTO billing_payments (
@@ -1018,6 +1049,7 @@ async def _create_payment_response(
     provider: str,
     ctx: AuthContext,
     pool: Any,
+    return_path: str | None = None,
 ) -> BillingPaymentResponse:
     """Create a payment through the resolved active provider."""
     user_id = UUID(ctx.user_id)
@@ -1036,6 +1068,8 @@ async def _create_payment_response(
     license_repo = LicenseRepository(pool=pool)
     active_license = await license_repo.get_active_for_user(user_id)
     extra_metadata: dict[str, Any] = {"original_amount_cents": int(plan.price_cents), "product_type": "plan"}
+    if return_path:
+        extra_metadata["return_path"] = return_path
     amount_cents = int(plan.price_cents)
     offer_id: UUID | None = None
     use_public_offer = True
@@ -1231,6 +1265,103 @@ async def create_payment(
     """Create a payment using the active enabled provider configured in admin settings."""
     provider = await _get_active_provider(pool)
     return await _create_payment_response(request, provider=provider or "", ctx=ctx, pool=pool)
+
+
+async def _resolve_renewable_license(pool: Any, user_id: UUID) -> tuple[Any, Any] | None:
+    """Return (license, plan) for the user's renewable paid plan, hidden plans included.
+
+    Prefers the active license; falls back to the most recent non-revoked license so a
+    lapsed desktop plan can still be renewed. Returns None when there is nothing payable.
+    """
+    repo = LicenseRepository(pool=pool)
+    license_obj = await repo.get_active_for_user(user_id)
+    if license_obj is None:
+        license_obj = await repo.get_latest_license_for_user(user_id)
+    if license_obj is None:
+        return None
+
+    plan = await PlanRepository(pool=pool).get_by_id(license_obj.plan_id)
+    if plan is None:
+        return None
+    if int(plan.price_cents or 0) <= 0:
+        return None
+    if plan.billing_cycle_days is None or int(plan.billing_cycle_days) <= 0:
+        return None
+    return license_obj, plan
+
+
+@router.get(
+    "/renewals/quota",
+    response_model=QuotaRenewalResponse,
+    status_code=200,
+    summary="Get the signed-in user's renewable plan details",
+)
+async def get_quota_renewal(
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> QuotaRenewalResponse:
+    """Return the user's own plan (hidden plans included) so they can renew it.
+
+    The plan is intentionally resolved from the user's own license, never from the
+    public catalog, so a hidden legacy plan like the $79 desktop plan stays invisible
+    to everyone else while its owner can still pay for the next period.
+    """
+    resolved = await _resolve_renewable_license(pool, UUID(ctx.user_id))
+    if resolved is None:
+        return QuotaRenewalResponse(eligible=False)
+
+    license_obj, plan = resolved
+    expires_at = license_obj.expires_at
+    now = datetime.now(timezone.utc)
+    expired = bool(expires_at is not None and expires_at <= now)
+    days_left: int | None = None
+    if expires_at is not None:
+        days_left = (expires_at - now).days
+    return QuotaRenewalResponse(
+        eligible=True,
+        plan_id=str(plan.id),
+        plan_name=str(plan.name),
+        price_cents=int(plan.price_cents or 0),
+        billing_cycle_days=int(plan.billing_cycle_days or 0),
+        expires_at=expires_at,
+        days_left=days_left,
+        expired=expired,
+    )
+
+
+@router.post(
+    "/renewals/quota",
+    response_model=BillingPaymentResponse,
+    status_code=201,
+    summary="Create a checkout to renew the signed-in user's plan",
+)
+async def create_quota_renewal(
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> BillingPaymentResponse:
+    """Start a one-cycle renewal checkout for the user's own plan.
+
+    Fulfillment reuses the standard plan-payment path: the same plan id resets the
+    license period through ``change_plan`` (or assigns a fresh license when the old
+    one lapsed), and the next ``/api/v3/me/credits`` read mints the new period grant.
+    """
+    resolved = await _resolve_renewable_license(pool, UUID(ctx.user_id))
+    if resolved is None:
+        raise NotFoundError(
+            "No renewable paid plan was found for this account.",
+            details={"error_code": "NO_RENEWABLE_PLAN"},
+        )
+    _license_obj, plan = resolved
+    provider = await _get_active_provider(pool)
+    portal_base_url = await _get_portal_base_url(pool)
+    request = CreatePaymentRequest(plan_id=str(plan.id))
+    return await _create_payment_response(
+        request,
+        provider=provider or "",
+        ctx=ctx,
+        pool=pool,
+        return_path=f"{portal_base_url}/dashboard/billing",
+    )
 
 
 async def _create_profile_addon_payment_response(

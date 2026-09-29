@@ -480,15 +480,17 @@ def _pricing_units_from_request(
     pricing_credits: float,
     cost_credits: float | None,
 ) -> tuple[int, int | None]:
+    zero_cost = cost_credits is not None and float(cost_credits) == 0.0
+    # Local platform ops (video export / merge) have COGS $0 and may be sold free.
+    if zero_cost and float(pricing_credits) == 0.0:
+        return 0, 0
     pricing_units = validate_display_credits(
         pricing_credits,
         field="credits_per_operation",
     )
-    # Local platform ops (video / video_manual / video_merge) have COGS $0.
-    # Allow exact 0 cost credits; sell price still uses the normal minimum.
     if cost_credits is None:
         cost_units = None
-    elif float(cost_credits) == 0.0:
+    elif zero_cost:
         cost_units = 0
     else:
         cost_units = validate_display_credits(

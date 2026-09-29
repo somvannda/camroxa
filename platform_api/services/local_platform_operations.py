@@ -17,23 +17,23 @@ LOCAL_PLATFORM_OPERATIONS: dict[str, dict[str, Any]] = {
     "video": {
         "label": "Studio export (per track)",
         "cost_usd": 0.0,
-        "list_credits_display": 3.0,
+        "list_credits_display": 0.0,
         "cost_credits_display": 0.0,
-        "notes": "Pipeline/auto local FFmpeg export — COGS $0; default list 3 credits",
+        "notes": "Pipeline/auto local FFmpeg export — COGS $0; free (0 credits)",
     },
     "video_manual": {
         "label": "Manual export (per track)",
         "cost_usd": 0.0,
-        "list_credits_display": 3.0,
+        "list_credits_display": 0.0,
         "cost_credits_display": 0.0,
-        "notes": "Manual Video-page export — same list price as studio; COGS $0",
+        "notes": "Manual Video-page export — COGS $0; free (0 credits)",
     },
     "video_merge": {
         "label": "Auto merge video",
         "cost_usd": 0.0,
-        "list_credits_display": 10.0,
+        "list_credits_display": 0.0,
         "cost_credits_display": 0.0,
-        "notes": "Local FFmpeg concat — COGS $0; default list 10 credits",
+        "notes": "Local FFmpeg concat — COGS $0; free (0 credits)",
     },
 }
 

@@ -11,6 +11,12 @@ def test_pricing_units_allow_zero_provider_cost() -> None:
     assert cost_units == 0
 
 
+def test_pricing_units_allow_free_zero_cost_local_op() -> None:
+    pricing_units, cost_units = _pricing_units_from_request(0.0, 0.0)
+    assert pricing_units == 0
+    assert cost_units == 0
+
+
 def test_pricing_units_still_require_positive_sell_price() -> None:
     pricing_units, cost_units = _pricing_units_from_request(0.0001, None)
     assert pricing_units == 1

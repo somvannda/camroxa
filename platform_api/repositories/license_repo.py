@@ -298,6 +298,35 @@ class LicenseRepository:
             return None
         return _row_to_license(row)
 
+    async def extend_license(self, license_id: UUID, days: int) -> License | None:
+        """Add ``days`` to an active license, counting from its current expiry.
+
+        Used for same-plan renewals: renewing early must not drop the remaining
+        days. ``GREATEST(expires_at, NOW())`` means an already-lapsed license
+        restarts from now, while an active one stacks the new period on top of
+        the existing expiry. ``activated_at`` is left untouched so the monthly
+        credit grant still rolls at the natural period boundary.
+        """
+        extension_days = max(1, int(days or 30))
+        row = await self._pool.fetchrow(
+            """
+            UPDATE licenses
+            SET expires_at = GREATEST(COALESCE(expires_at, NOW()), NOW())
+                              + ($2 * INTERVAL '1 day'),
+                revoked_at = NULL,
+                status = 'active'
+            WHERE id = $1
+            RETURNING id, license_key, plan_id, user_id, status,
+                      activated_at, expires_at, revoked_at,
+                      profile_addon_slots, profile_addon_pending, created_at
+            """,
+            license_id,
+            extension_days,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
     async def schedule_pending_plan(
         self,
         license_id: UUID,
@@ -411,6 +440,28 @@ class LicenseRepository:
               AND status = 'active'
               AND (expires_at IS NULL OR expires_at > NOW())
             ORDER BY activated_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if row is None:
+            return None
+        return _row_to_license(row)
+
+    async def get_latest_license_for_user(self, user_id: UUID) -> License | None:
+        """Return the user's most recent non-revoked license (active or expired).
+
+        Unlike ``get_active_for_user`` this also matches a license whose
+        ``expires_at`` has already passed, so a lapsed paid plan can still be
+        renewed for the next period.
+        """
+        row = await self._pool.fetchrow(
+            f"""
+            SELECT {_LICENSE_SELECT}
+            FROM licenses
+            WHERE user_id = $1
+              AND status IN ('active', 'expired')
+            ORDER BY activated_at DESC NULLS LAST, created_at DESC
             LIMIT 1
             """,
             user_id,

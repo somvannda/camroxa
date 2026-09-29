@@ -55,6 +55,7 @@ export type BillingPayment = {
   redeem_code?: string | null;
   product_type?: string;
   addon_channels?: number | null;
+  qr_string?: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -185,6 +186,33 @@ export async function createCreditPackPayment(packId: string): Promise<BillingPa
     path: "/billing/credit-pack/payments",
     method: "POST",
     body: { pack_id: packId },
+  });
+}
+
+export type QuotaRenewal = {
+  eligible: boolean;
+  plan_id: string | null;
+  plan_name: string | null;
+  price_cents: number | null;
+  billing_cycle_days: number | null;
+  expires_at: string | null;
+  days_left: number | null;
+  expired: boolean;
+};
+
+/** The signed-in user's own plan (hidden legacy plans included) for the renew flow. */
+export async function getQuotaRenewal(): Promise<QuotaRenewal> {
+  return platformJson<QuotaRenewal>({
+    path: "/billing/renewals/quota",
+    method: "GET",
+  });
+}
+
+/** Start a one-cycle renewal checkout for the user's own plan. */
+export async function createQuotaRenewal(): Promise<BillingPayment> {
+  return platformJson<BillingPayment>({
+    path: "/billing/renewals/quota",
+    method: "POST",
   });
 }
 
