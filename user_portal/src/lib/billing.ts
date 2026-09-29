@@ -198,6 +198,9 @@ export type QuotaRenewal = {
   expires_at: string | null;
   days_left: number | null;
   expired: boolean;
+  renewable?: boolean;
+  renewal_opens_in_days?: number | null;
+  renewal_window_days?: number;
 };
 
 /** The signed-in user's own plan (hidden legacy plans included) for the renew flow. */
