@@ -28,6 +28,7 @@ import {
 import { listBillingProviders, type BillingProviderConfig } from "@/lib/billing";
 import { ProfileAddonPanel } from "@/components/dashboard/profile-addon-panel";
 import { QuotaRenewalCard } from "@/components/dashboard/quota-renewal-card";
+import { AddonRenewalCard } from "@/components/dashboard/addon-renewal-card";
 
 export default function DashboardBillingPage() {
   const router = useRouter();
@@ -126,6 +127,8 @@ export default function DashboardBillingPage() {
       <ProfileAddonPanel user={state.user} profileCount={state.profiles.length} />
 
       <QuotaRenewalCard />
+
+      <AddonRenewalCard />
 
       <div className="grid gap-3 md:grid-cols-3">
         <StatTile label="Paid checkouts" value={String(paidPayments.length)} hint="Successful payments on this account." />
