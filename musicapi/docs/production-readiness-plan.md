@@ -126,7 +126,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.3 | web-admin server-side guard (`proxy.ts` + role check) | `feat/musicapi-admin-guard` | non-admin blocked ✅ cookie → `/auth/me` → `/login` | `[x]` |
 | 3.4 | web-user authenticated downloads (blob) | `fix/musicapi-fe-downloads` | downloads 200 ✅ authenticated blob (401 → `/login`) | `[x]` |
 | 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | no fake data ✅ fabricated `Math.random()` chart removed | `[x]` |
-| 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work | `[ ]` |
+| 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work ✅ `/app/*` removed, `/dashboard/*` served | `[x]` |
 | 3.7 | Fix admin pricing edit (track `editingId`, PUT) | `fix/musicapi-admin-pricing-edit` | update, no duplicate | `[ ]` |
 | 3.8 | Admin `/auth/callback`; align redirect URIs | `feat/musicapi-admin-oauth` | Google admin login | `[ ]` |
 | 3.9 | Wire/hide placeholders; mark stubs "coming soon" | `chore/musicapi-fe-placeholders` | no dead UI | `[ ]` |
@@ -209,6 +209,20 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > usage bar chart (both driven by `/me/usage`). Verified: no `Math.random()` remains in
 > `web-user`; `npm run typecheck` clean and `npm run build` succeeds (26/26 static pages,
 > `/dashboard` present).
+>
+> **Note (3.6):** `web-user` carried a **dead legacy route tree** at `app/app/*`
+> (`api-keys`, `billing`, `playground`, `updates`, `usage`, `layout.tsx`, `page.tsx`) — a
+> duplicate of the real `app/dashboard/*` app. Its `layout.tsx` was only a client redirect
+> stub (`/app/* → /dashboard/*`), so the tree was pure dead weight served at duplicate
+> URLs. Also removed: `components/Sidebar.tsx` (a stale duplicate of the dashboard's inline
+> sidebar, imported nowhere) and `components/ComingSoon.tsx` (no usages). Deleted the
+> unused `qrcode.react` dependency (never imported in any `.ts`/`.tsx`; removed from
+> `package.json` and lockfile). Repointed the remaining live redirect targets from `/app`
+> to `/dashboard`: `components/auth-modal.tsx` (`redirectTo` + `onSuccess`),
+> `components/google-signin-button.tsx` (`redirectTo` default), and
+> `app/auth/callback/page.tsx` (post-OAuth fallback). Verified: `npm run typecheck` clean
+> and `npm run build` succeeds — 20/20 static pages, all `/dashboard/*` routes present and
+> no `/app/*` route remains.
 >
 > **Verification:** `npm run typecheck` clean in `musicapi`, `web-user`, and `web-admin`.
 > Product decisions baked in (cookie name `sunosession`, `SameSite=Lax`, `Secure` in

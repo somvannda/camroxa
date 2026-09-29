@@ -36,8 +36,8 @@ function GoogleCallbackInner() {
         if (cancelled) return;
         const redirectTo =
           (typeof window !== "undefined" &&
-            (localStorage.getItem("google_auth_redirect") || "/app")) ||
-          "/app";
+            (localStorage.getItem("google_auth_redirect") || "/dashboard")) ||
+          "/dashboard";
         router.replace(redirectTo);
       } catch (e) {
         if (cancelled) return;

@@ -19,7 +19,7 @@ const REDIRECT_URI =
 
 export default function GoogleSignInButton({
   label = "Continue with Google",
-  redirectTo = "/app",
+  redirectTo = "/dashboard",
   onSuccess,
 }: Props) {
   const router = useRouter();

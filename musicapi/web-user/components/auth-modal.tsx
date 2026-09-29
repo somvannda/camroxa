@@ -70,10 +70,10 @@ export default function AuthModal({ open, onClose }: Props) {
 
           <GoogleSignInButton
             label="Continue with Google"
-            redirectTo="/app"
+            redirectTo="/dashboard"
             onSuccess={() => {
               onClose();
-              router.replace("/app");
+              router.replace("/dashboard");
             }}
           />
 
