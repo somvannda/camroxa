@@ -752,8 +752,19 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                 raise NotFoundError("Purchased plan not found.", details={"plan_id": str(plan_id)})
 
             active_license = await license_repo.get_active_for_user(user_id)
-            if active_license is not None and UUID(str(active_license.plan_id)) == plan_id:
-                # Same-plan renewal: stack the new period on the current expiry so
+            # Renewals must reuse the existing license (even when lapsed) so add-on
+            # slots and the plan association are preserved instead of creating a
+            # duplicate license.
+            target_license = active_license
+            if target_license is None:
+                target_license = await license_repo.get_latest_license_for_user(user_id)
+            same_plan = (
+                target_license is not None
+                and UUID(str(target_license.plan_id)) == plan_id
+            )
+
+            if same_plan and active_license is not None:
+                # Active same-plan renewal: stack the new period on the current expiry so
                 # renewing early never drops remaining days.
                 cycle_days = int(plan.billing_cycle_days or 30)
                 assigned_license = await license_repo.extend_license(
@@ -785,14 +796,16 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                     billing_cycle_days=cycle_days,
                     new_expires_at=assigned_license.expires_at or datetime.now(timezone.utc),
                 )
-            elif active_license is not None:
+            elif target_license is not None:
+                # Lapsed same-plan renewal or plan change: reactivate the existing
+                # license in place (keeps add-on slots; resets the period).
                 assigned_license = await license_repo.change_plan(
-                    active_license.id, plan_id, plan
+                    target_license.id, plan_id, plan
                 )
                 if assigned_license is None:
                     raise NotFoundError(
-                        "Active license not found during plan change.",
-                        details={"license_id": str(active_license.id)},
+                        "License not found during plan change.",
+                        details={"license_id": str(target_license.id)},
                     )
             else:
                 created_license = await license_repo.create(plan_id)
