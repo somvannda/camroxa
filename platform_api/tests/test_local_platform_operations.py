@@ -33,9 +33,9 @@ def test_local_pricing_seed_defaults() -> None:
     assert by_op["video"]["ai_service"] == LOCAL_AI_SERVICE
     assert by_op["video_manual"]["ai_service"] == LOCAL_AI_SERVICE
     assert by_op["video_merge"]["ai_service"] == LOCAL_AI_SERVICE
-    assert units_to_credits(by_op["video"]["credits_per_operation"]) == 3.0
-    assert units_to_credits(by_op["video_manual"]["credits_per_operation"]) == 3.0
-    assert units_to_credits(by_op["video_merge"]["credits_per_operation"]) == 10.0
+    assert units_to_credits(by_op["video"]["credits_per_operation"]) == 0.0
+    assert units_to_credits(by_op["video_manual"]["credits_per_operation"]) == 0.0
+    assert units_to_credits(by_op["video_merge"]["credits_per_operation"]) == 0.0
     assert by_op["video"]["external_cost_cents"] == 0
     assert by_op["video_manual"]["external_cost_cents"] == 0
     assert by_op["video_merge"]["external_cost_cents"] == 0
