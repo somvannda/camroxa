@@ -779,12 +779,12 @@ async def list_packs(
     ctx: UserDep,
     pack_repo: PackRepoDep,
 ) -> list[CreditPackResponse]:
-    """Return all active (available) credit packs for purchase.
+    """Return the desktop credit packs available to this account.
 
-    Requirement 6.1: Credit packs are Admin-configurable and listed
-    for users to browse and purchase.
+    The account portal serves desktop users, so it lists ``pack_type='desktop'``
+    packs only — web-music top-up packs live in the music web app.
     """
-    rows = await pack_repo.get_active_packs()
+    rows = await pack_repo.get_packs_by_type("desktop", include_inactive=False)
     return [_pack_to_response(row) for row in rows]
 
 

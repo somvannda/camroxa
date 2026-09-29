@@ -860,6 +860,18 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                 and UUID(str(target_license.plan_id)) == plan_id
             )
 
+            from platform_api.repositories.credit_repo import (
+                CreditRepository as _CreditRepository,
+            )
+            from platform_api.services.v3.period_grant_service import PeriodGrantService
+            from platform_api.services.v3.store import V3BillingStore
+
+            grant_service = PeriodGrantService(
+                store=V3BillingStore(pool=conn),
+                credit_repo=_CreditRepository(pool=conn),
+                plan_repo=PlanRepository(pool=conn),
+            )
+
             if same_plan and active_license is not None:
                 # Active same-plan renewal: stack the new period on the current expiry so
                 # renewing early never drops remaining days.
@@ -874,19 +886,6 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                     )
                 # Carry unused grant credits into the new period: leftover + allowance,
                 # expiring with the new period (no loss at renewal, still expires).
-                from platform_api.repositories.credit_repo import (
-                    CreditRepository as _CreditRepository,
-                )
-                from platform_api.services.v3.period_grant_service import (
-                    PeriodGrantService,
-                )
-                from platform_api.services.v3.store import V3BillingStore
-
-                grant_service = PeriodGrantService(
-                    store=V3BillingStore(pool=conn),
-                    credit_repo=_CreditRepository(pool=conn),
-                    plan_repo=PlanRepository(pool=conn),
-                )
                 await grant_service.carryover_period_grant(
                     user_id=user_id,
                     monthly_credits=int(plan.monthly_credits or 0),
@@ -909,6 +908,10 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                 assigned_license = await license_repo.assign_to_user(
                     created_license.id, user_id, plan
                 )
+
+            # Mint this period's grant immediately on payment so users do not have to
+            # open the portal to receive their credits. Idempotent per period.
+            await grant_service.ensure_period_grant(user_id)
 
             from platform_api.repositories.credit_repo import CreditRepository
             from platform_api.services.billing_mode_service import grant_included_wallet_credits
