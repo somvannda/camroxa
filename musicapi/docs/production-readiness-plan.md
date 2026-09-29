@@ -280,7 +280,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 | # | Task | Branch | Verification | Status |
 |---|---|---|---|---|
-| 4.1 | Process management (PM2/systemd/Docker) | `ops/musicapi-process` | survives reboot | `[ ]` |
+| 4.1 | Process management (PM2/systemd/Docker) | `ops/musicapi-process` | survives reboot | `[x]` systemd units + boot enable ✅ |
 | 4.2 | nginx vhosts + TLS + `/backend` proxy; align `trustProxy` | `ops/musicapi-nginx` | HTTPS, real IPs | `[ ]` |
 | 4.3 | CORS/helmet + rate limiting + structured logging + `/metrics` | `feat/musicapi-edge-hardening` | public `/v1` safe | `[ ]` |
 | 4.4 | Deploy scripts: `sync_musicapi_sandbox.py`, `deploy_musicapi_production.py` | `ops/musicapi-deploy-scripts` | sandbox deploy works | `[ ]` |
@@ -288,6 +288,21 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 4.6 | DB backups + monitoring/alerts | `ops/musicapi-observability` | restore drill; alerts fire | `[ ]` |
 
 **Gate:** deployed + smoked on **sandbox**; production only on explicit ask.
+
+> **Note (4.1):** chose **systemd** (matches the platform's existing `camxora-api`,
+> `camxora-worker-*`, `camxora-website/portal/music` units rather than introducing PM2/Docker).
+> Three versioned units under `scripts/deploy/systemd/`: `camxora-musicapi.service` (core,
+> `npm run start` → `node dist/serve.js`, `PORT=4003`), `camxora-musicapi-web-user.service`
+> (`next start -p 4001`) and `camxora-musicapi-web-admin.service` (`next start -p 4002`). All
+> run as `camxora` from `/opt/camxora/repo`, `Restart=always` + `RestartSec=5` (crash
+> recovery) and `WantedBy=multi-user.target` (boot autostart). The core unit sets
+> `TimeoutStopSec=45` so systemd's `SIGTERM` lets `src/serve.ts` drain in-flight job workers
+> (its own 35 s forced-exit guard) before `SIGKILL`; frontends bind `127.0.0.1` only (nginx
+> fronts them — task 4.2). Idempotent installer
+> `scripts/deploy/systemd/install_musicapi_services.sh` copies the units into
+> `/etc/systemd/system` and runs `systemctl enable --now` (build/deploy of the tree is task
+> 4.4). Verified locally: `npm run build` in `musicapi` emits `dist/serve.js` (the core
+> `ExecStart` target). Reboot drill lands with the sandbox deploy (Phase-4 gate).
 
 ---
 

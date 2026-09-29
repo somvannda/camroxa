@@ -1,0 +1,24 @@
+[Unit]
+Description=CamXora Music API (Suno core)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User=camxora
+Group=camxora
+WorkingDirectory=/opt/camxora/repo/musicapi
+Environment=NODE_ENV=production
+Environment=PORT=4003
+Environment=TZ=Asia/Phnom_Penh
+EnvironmentFile=/opt/camxora/repo/musicapi/.env
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+# serve.ts drains in-flight job workers on SIGTERM (35s forced-exit guard),
+# so allow a little longer than that before systemd sends SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=45
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
