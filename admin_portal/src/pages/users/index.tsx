@@ -1,13 +1,13 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Loader2, KeyRound, Trash2 } from 'lucide-react';
+import { Loader2, KeyRound, Search, Trash2 } from 'lucide-react';
 import { AxiosError } from 'axios';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 
 import { DataTable, type ColumnDef } from '@/components/data-table/data-table';
-import { FilterBar } from '@/components/data-table/filter-bar';
+import { DateRangePicker, type DateRangeValue } from '@/components/shared/date-range-picker';
 import { ErrorState } from '@/components/shared/error-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -35,6 +35,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { usePlans } from '@/hooks/use-plans';
 import { useSetUserPassword, useUsers } from '@/hooks/use-users';
 import { toast } from '@/hooks/use-toast';
 import { formatVerificationDurationShort } from '@/lib/format-datetime';
@@ -43,6 +44,41 @@ import type { User } from '@/types/models';
 import type { UserListParams } from '@/types/api';
 
 const PAGE_SIZE = 25;
+
+interface FiltersState {
+  search: string;
+  status: string;
+  role: string;
+  emailConfirmed: string;
+  plan: string;
+  dateRange: DateRangeValue;
+}
+
+const EMPTY_FILTERS: FiltersState = {
+  search: '',
+  status: 'all',
+  role: 'all',
+  emailConfirmed: 'all',
+  plan: 'all',
+  dateRange: {},
+};
+
+function filtersToParams(filters: FiltersState, page: number): UserListParams {
+  return {
+    page,
+    page_size: PAGE_SIZE,
+    ...(filters.status !== 'all' && { status: filters.status as UserListParams['status'] }),
+    ...(filters.role !== 'all' && { role: filters.role as UserListParams['role'] }),
+    ...(filters.emailConfirmed !== 'all' && {
+      email_confirmed: filters.emailConfirmed === 'verified',
+    }),
+    ...(filters.search.trim() && { search: filters.search.trim() }),
+    ...(filters.plan === 'free' && { is_free: true }),
+    ...(filters.plan !== 'all' && filters.plan !== 'free' && { plan_name: filters.plan }),
+    ...(filters.dateRange.from && { date_from: filters.dateRange.from }),
+    ...(filters.dateRange.to && { date_to: `${filters.dateRange.to}T23:59:59` }),
+  };
+}
 
 const STATUS_BADGE_CLASSES: Record<User['status'], string> = {
   active: 'border-green-500/30 bg-green-500/10 text-green-400',
@@ -86,18 +122,15 @@ export default function UsersPage() {
   const [userForPassword, setUserForPassword] = useState<User | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+  const [draftFilters, setDraftFilters] = useState<FiltersState>(EMPTY_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState<FiltersState>(EMPTY_FILTERS);
   const setUserPassword = useSetUserPassword();
+  const plansQuery = usePlans();
 
-  const params: UserListParams = {
-    page,
-    page_size: PAGE_SIZE,
-    ...(statusFilter !== 'all' && { status: statusFilter as UserListParams['status'] }),
-    ...(fromDate && { from_date: fromDate }),
-    ...(toDate && { to_date: toDate }),
-  };
+  const params = useMemo(
+    () => filtersToParams(appliedFilters, page),
+    [appliedFilters, page],
+  );
 
   const { data, isLoading, isError, error, refetch } = useUsers(params);
 
@@ -375,18 +408,14 @@ export default function UsersPage() {
     }
   };
 
-  const handleStatusChange = (value: string) => {
-    setStatusFilter(value);
+  const applyFilters = () => {
     setPage(1);
+    setAppliedFilters(draftFilters);
   };
 
-  const handleFromDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setFromDate(e.target.value);
-    setPage(1);
-  };
-
-  const handleToDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setToDate(e.target.value);
+  const clearFilters = () => {
+    setDraftFilters(EMPTY_FILTERS);
+    setAppliedFilters(EMPTY_FILTERS);
     setPage(1);
   };
 
@@ -422,35 +451,115 @@ export default function UsersPage() {
         onRowClick={handleRowClick}
         emptyMessage="No users found."
         filterBar={
-          <FilterBar>
-            <Select value={statusFilter} onValueChange={handleStatusChange}>
-              <SelectTrigger className="w-[160px]">
-                <SelectValue placeholder="All statuses" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
-                <SelectItem value="suspended">Suspended</SelectItem>
-                <SelectItem value="deleted">Deleted</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="min-w-[220px] flex-1 space-y-1">
+              <label className="text-xs text-slate-500">Search</label>
+              <div className="relative">
+                <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-slate-500" />
+                <Input
+                  value={draftFilters.search}
+                  onChange={(e) =>
+                    setDraftFilters((f) => ({ ...f, search: e.target.value }))
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') applyFilters();
+                  }}
+                  placeholder="Email, name, or user ID"
+                  className="pl-9"
+                />
+              </div>
+            </div>
 
-            <Input
-              type="date"
-              value={fromDate}
-              onChange={handleFromDateChange}
-              placeholder="From date"
-              className="w-[160px]"
-            />
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500">Status</label>
+              <Select
+                value={draftFilters.status}
+                onValueChange={(status) => setDraftFilters((f) => ({ ...f, status }))}
+              >
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="All statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All statuses</SelectItem>
+                  <SelectItem value="active">Active</SelectItem>
+                  <SelectItem value="suspended">Suspended</SelectItem>
+                  <SelectItem value="deleted">Deleted</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
 
-            <Input
-              type="date"
-              value={toDate}
-              onChange={handleToDateChange}
-              placeholder="To date"
-              className="w-[160px]"
-            />
-          </FilterBar>
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500">Role</label>
+              <Select
+                value={draftFilters.role}
+                onValueChange={(role) => setDraftFilters((f) => ({ ...f, role }))}
+              >
+                <SelectTrigger className="w-[130px]">
+                  <SelectValue placeholder="All roles" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All roles</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="admin">Admin</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500">Email verified</label>
+              <Select
+                value={draftFilters.emailConfirmed}
+                onValueChange={(emailConfirmed) =>
+                  setDraftFilters((f) => ({ ...f, emailConfirmed }))
+                }
+              >
+                <SelectTrigger className="w-[150px]">
+                  <SelectValue placeholder="Email status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="verified">Verified</SelectItem>
+                  <SelectItem value="pending">Pending</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500">Plan</label>
+              <Select
+                value={draftFilters.plan}
+                onValueChange={(plan) => setDraftFilters((f) => ({ ...f, plan }))}
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="All plans" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All plans</SelectItem>
+                  <SelectItem value="free">Free (no plan)</SelectItem>
+                  {(plansQuery.data ?? []).map((plan) => (
+                    <SelectItem key={plan.id} value={plan.name}>
+                      {plan.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1">
+              <label className="text-xs text-slate-500">Registered</label>
+              <DateRangePicker
+                value={draftFilters.dateRange}
+                onChange={(dateRange) =>
+                  setDraftFilters((f) => ({ ...f, dateRange }))
+                }
+              />
+            </div>
+
+            <Button onClick={applyFilters}>Apply</Button>
+            <Button variant="outline" onClick={clearFilters}>
+              Clear
+            </Button>
+          </div>
         }
       />
 

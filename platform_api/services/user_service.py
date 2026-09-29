@@ -49,7 +49,11 @@ class UserRepositoryPort(Protocol):
         page: int,
         page_size: int,
         status: str | None = None,
-        plan_type: str | None = None,
+        role: str | None = None,
+        email_confirmed: bool | None = None,
+        search: str | None = None,
+        plan_name: str | None = None,
+        is_free: bool | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
     ) -> tuple[list[User], int]: ...
@@ -93,7 +97,11 @@ class UserService:
         page: int = 1,
         page_size: int = DEFAULT_PAGE_SIZE,
         status: str | None = None,
-        plan_type: str | None = None,
+        role: str | None = None,
+        email_confirmed: bool | None = None,
+        search: str | None = None,
+        plan_name: str | None = None,
+        is_free: bool | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
     ) -> tuple[list[User], int]:
@@ -105,7 +113,11 @@ class UserService:
             page: 1-based page number.
             page_size: Number of users per page (max 100, default 25).
             status: Filter by user status (active/suspended/deleted).
-            plan_type: Filter by associated plan type name.
+            role: Filter by user role (user/admin).
+            email_confirmed: Filter by email confirmation state.
+            search: Search email, display name, or user id.
+            plan_name: Filter by active plan name.
+            is_free: When True, only users without an active plan.
             date_from: Filter by registration date (on or after).
             date_to: Filter by registration date (on or before).
 
@@ -135,7 +147,11 @@ class UserService:
             page=page,
             page_size=page_size,
             status=status,
-            plan_type=plan_type,
+            role=role,
+            email_confirmed=email_confirmed,
+            search=search,
+            plan_name=plan_name,
+            is_free=is_free,
             date_from=date_from,
             date_to=date_to,
         )

@@ -640,20 +640,37 @@ async def list_users(
     page: int = Query(default=1, ge=1, description="Page number (1-based)"),
     page_size: int = Query(default=25, ge=1, le=100, description="Users per page"),
     status: str | None = Query(default=None, description="Filter by status"),
-    plan_type: str | None = Query(default=None, description="Filter by plan type"),
+    role: str | None = Query(default=None, description="Filter by role (user/admin)"),
+    email_confirmed: bool | None = Query(
+        default=None, description="Filter by email confirmation state"
+    ),
+    search: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=200,
+        description="Search by email, display name, or user id",
+    ),
+    plan_name: str | None = Query(default=None, description="Filter by active plan name"),
+    is_free: bool | None = Query(
+        default=None, description="Only users without an active plan"
+    ),
     date_from: datetime | None = Query(default=None, description="Registration date from"),
     date_to: datetime | None = Query(default=None, description="Registration date to"),
 ) -> PaginatedUsersResponse:
     """Return a paginated list of users with optional filters.
 
     Requirement 3.1: Paginated user list (default 25, max 100) with filtering
-    by status, plan type, and registration date range.
+    by status, role, email confirmation, plan, search, and registration date.
     """
     users, total = await user_service.get_users(
         page=page,
         page_size=page_size,
         status=status,
-        plan_type=plan_type,
+        role=role,
+        email_confirmed=email_confirmed,
+        search=search,
+        plan_name=plan_name,
+        is_free=is_free,
         date_from=date_from,
         date_to=date_to,
     )

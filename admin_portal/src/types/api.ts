@@ -10,8 +10,13 @@ export interface UserListParams {
   page?: number;
   page_size?: number;
   status?: 'active' | 'suspended' | 'deleted';
-  from_date?: string;
-  to_date?: string;
+  role?: 'user' | 'admin';
+  email_confirmed?: boolean;
+  search?: string;
+  plan_name?: string;
+  is_free?: boolean;
+  date_from?: string;
+  date_to?: string;
 }
 
 export interface AuditLogParams {

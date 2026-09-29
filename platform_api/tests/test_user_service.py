@@ -53,13 +53,28 @@ class FakeUserRepository:
         page: int,
         page_size: int,
         status: str | None = None,
-        plan_type: str | None = None,
+        role: str | None = None,
+        email_confirmed: bool | None = None,
+        search: str | None = None,
+        plan_name: str | None = None,
+        is_free: bool | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
     ) -> tuple[list[User], int]:
         users = list(self._users.values())
         if status is not None:
             users = [u for u in users if u.status.value == status]
+        if role is not None:
+            users = [u for u in users if u.role.value == role]
+        if search is not None:
+            needle = search.lower()
+            users = [
+                u
+                for u in users
+                if needle in u.email.lower()
+                or needle in u.display_name.lower()
+                or needle in str(u.id).lower()
+            ]
         if date_from is not None:
             users = [u for u in users if u.created_at >= date_from]
         if date_to is not None:

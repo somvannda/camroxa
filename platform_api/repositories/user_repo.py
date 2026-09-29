@@ -312,7 +312,11 @@ class UserRepository:
         page: int,
         page_size: int,
         status: str | None = None,
-        plan_type: str | None = None,
+        role: str | None = None,
+        email_confirmed: bool | None = None,
+        search: str | None = None,
+        plan_name: str | None = None,
+        is_free: bool | None = None,
         date_from: datetime | None = None,
         date_to: datetime | None = None,
     ) -> tuple[list[User], int]:
@@ -322,7 +326,11 @@ class UserRepository:
             page: The 1-based page number.
             page_size: Number of records per page.
             status: Filter by user status ('active', 'suspended', 'deleted').
-            plan_type: Filter by plan type (joins through licenses → plans).
+            role: Filter by user role ('user', 'admin').
+            email_confirmed: Filter by email confirmation state.
+            search: Case-insensitive match against email, display name, or user id.
+            plan_name: Filter by active plan name (license or web subscription).
+            is_free: When True, only users without any active plan.
             date_from: Filter users registered on or after this datetime.
             date_to: Filter users registered on or before this datetime.
 
@@ -338,6 +346,62 @@ class UserRepository:
             params.append(status)
             param_idx += 1
 
+        if role is not None:
+            where_clauses.append(f"u.role = ${param_idx}")
+            params.append(role)
+            param_idx += 1
+
+        if email_confirmed is not None:
+            where_clauses.append(f"u.email_confirmed = ${param_idx}")
+            params.append(email_confirmed)
+            param_idx += 1
+
+        if search is not None:
+            pattern = f"%{search}%"
+            where_clauses.append(
+                f"(u.email ILIKE ${param_idx} OR u.display_name ILIKE ${param_idx} "
+                f"OR u.id::text ILIKE ${param_idx})"
+            )
+            params.append(pattern)
+            param_idx += 1
+
+        # A plan can be attached either as a license or an active web subscription.
+        if plan_name is not None:
+            where_clauses.append(
+                f"""(
+                EXISTS (
+                    SELECT 1 FROM licenses l JOIN plans p ON p.id = l.plan_id
+                    WHERE l.user_id = u.id AND l.status = 'active'
+                      AND (l.expires_at IS NULL OR l.expires_at > NOW())
+                      AND p.name = ${param_idx}
+                )
+                OR EXISTS (
+                    SELECT 1 FROM web_subscriptions ws JOIN plans p ON p.id = ws.plan_id
+                    WHERE ws.user_id = u.id AND ws.status = 'active'
+                      AND ws.current_period_end > NOW()
+                      AND p.name = ${param_idx}
+                )
+            )"""
+            )
+            params.append(plan_name)
+            param_idx += 1
+
+        if is_free:
+            where_clauses.append(
+                """(
+                NOT EXISTS (
+                    SELECT 1 FROM licenses l
+                    WHERE l.user_id = u.id AND l.status = 'active'
+                      AND (l.expires_at IS NULL OR l.expires_at > NOW())
+                )
+                AND NOT EXISTS (
+                    SELECT 1 FROM web_subscriptions ws
+                    WHERE ws.user_id = u.id AND ws.status = 'active'
+                      AND ws.current_period_end > NOW()
+                )
+            )"""
+            )
+
         if date_from is not None:
             where_clauses.append(f"u.created_at >= ${param_idx}")
             params.append(date_from)
@@ -348,26 +412,14 @@ class UserRepository:
             params.append(date_to)
             param_idx += 1
 
-        # Plan type requires a join through licenses → plans
-        join_clause = ""
-        if plan_type is not None:
-            join_clause = """
-                INNER JOIN licenses l ON l.user_id = u.id AND l.status = 'active'
-                INNER JOIN plans p ON p.id = l.plan_id
-            """
-            where_clauses.append(f"p.name = ${param_idx}")
-            params.append(plan_type)
-            param_idx += 1
-
         where_sql = ""
         if where_clauses:
             where_sql = "WHERE " + " AND ".join(where_clauses)
 
         # Count query
         count_query = f"""
-            SELECT COUNT(DISTINCT u.id)
+            SELECT COUNT(*)
             FROM users u
-            {join_clause}
             {where_sql}
         """
         total = await self._pool.fetchval(count_query, *params)
@@ -381,11 +433,10 @@ class UserRepository:
         offset_param = param_idx
 
         data_query = f"""
-            SELECT DISTINCT u.id, u.email, u.password_hash, u.display_name,
+            SELECT u.id, u.email, u.password_hash, u.display_name,
                    u.role, u.status, u.email_confirmed, u.suspension_reason, u.deleted_at,
                    u.token_version, u.products, u.created_at, u.updated_at
             FROM users u
-            {join_clause}
             {where_sql}
             ORDER BY u.created_at DESC
             LIMIT ${limit_param} OFFSET ${offset_param}
