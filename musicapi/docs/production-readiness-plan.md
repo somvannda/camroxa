@@ -124,7 +124,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.1 | Env-driven backend URL (both apps) | `fix/musicapi-fe-backend-url` | prod host via env ✅ `BACKEND_URL` baked into both rewrites | `[x]` |
 | 3.2 | Real session (httpOnly cookie or documented token + 401 logout) | `feat/musicapi-session` | expired → `/login` ✅ `sunosession` httpOnly cookie + CSRF | `[x]` |
 | 3.3 | web-admin server-side guard (`proxy.ts` + role check) | `feat/musicapi-admin-guard` | non-admin blocked ✅ cookie → `/auth/me` → `/login` | `[x]` |
-| 3.4 | web-user authenticated downloads (blob) | `fix/musicapi-fe-downloads` | downloads 200 | `[ ]` |
+| 3.4 | web-user authenticated downloads (blob) | `fix/musicapi-fe-downloads` | downloads 200 ✅ authenticated blob (401 → `/login`) | `[x]` |
 | 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | chart matches API | `[ ]` |
 | 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work | `[ ]` |
 | 3.7 | Fix admin pricing edit (track `editingId`, PUT) | `fix/musicapi-admin-pricing-edit` | update, no duplicate | `[ ]` |
@@ -179,6 +179,22 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > cleared; `role=admin, status=suspended` → `/login` + cookie cleared; `role=admin,
 > status=active` → `200` on `/admin` and `/admin/users`; stub stopped → `/login`
 > (fail-closed). `npm run typecheck` + `npm run build` pass (`ƒ Proxy (Middleware)`).
+>
+> **Note (3.4):** `app/dashboard/playground/page.tsx` was the last place downloading clips
+> with a raw `<a href="/backend/me/download?..."> target="_blank"` — a plain navigation that
+> the browser issues **without** the session (it was 401 → a JSON error page in a new tab
+> before 3.2, and still bypassed the `401 → /login` handling and popup-blocked in some
+> browsers). It now renders a `ClipDownloadButtons` client component that calls the shared
+> `downloadClip()` helper (`components/playground.tsx`), exactly like the `ClipCard` used
+> by every other dashboard page: `authorizedFetch` sends `credentials: "same-origin"` so
+> the httpOnly `sunosession` cookie authenticates the request, the response body becomes a
+> `Blob` → object URL → synthetic `<a download>`, the server-provided filename is honored,
+> a non-OK status surfaces its `{ error }` inline, and a `401` triggers `redirectToLogin()`.
+> The now-unused `clipDownloadUrl()` export was deleted so the unauthenticated pattern
+> can't creep back. Verified: `npm run typecheck` clean and `npm run build` succeeds
+> (26/26 static pages, `/dashboard/playground` present); the underlying
+> `GET /me/download` (MP3/WAV → HTTP 200 real audio bytes) is already verified in
+> `ENDPOINT_STATUS.md` rows 1.15–1.16.
 >
 > **Verification:** `npm run typecheck` clean in `musicapi`, `web-user`, and `web-admin`.
 > Product decisions baked in (cookie name `sunosession`, `SameSite=Lax`, `Secure` in

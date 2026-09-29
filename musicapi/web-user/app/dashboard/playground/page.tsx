@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { clipDownloadUrl } from "@/components/playground";
+import { downloadClip } from "@/components/playground";
 
 const MUSIC_VERSIONS = [
   { label: "V4", key: "chirp-v4" },
@@ -67,6 +67,39 @@ function clipAudio(clip: any): string | null {
   const media = clip?.media_urls?.[0]?.url;
   if (media) return media;
   return clip?.audio_url ?? clip?.video_url ?? null;
+}
+
+// Downloads go through the shared authenticated blob helper (httpOnly session
+// cookie + 401 -> /login), never a raw <a href> that the browser fetches without
+// the session and renders as a JSON error page in a new tab.
+function ClipDownloadButtons({ clipId }: { clipId: string }) {
+  const [busy, setBusy] = useState<"mp3" | "wav" | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const run = async (format: "mp3" | "wav") => {
+    try {
+      setErr(null);
+      setBusy(format);
+      await downloadClip(clipId, format);
+    } catch (e) {
+      if (e instanceof DOMException && e.name === "AbortError") return;
+      setErr(e instanceof Error ? e.message : `${format.toUpperCase()} download failed`);
+    } finally {
+      setBusy(null);
+    }
+  };
+  const btn =
+    "inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 transition disabled:cursor-not-allowed disabled:opacity-50";
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" disabled={busy !== null} onClick={() => { void run("mp3"); }} className={btn}>
+        {busy === "mp3" ? "Downloading…" : "⬇ Download MP3"}
+      </button>
+      <button type="button" disabled={busy !== null} onClick={() => { void run("wav"); }} className={btn}>
+        {busy === "wav" ? "Downloading…" : "⬇ Download WAV"}
+      </button>
+      {err && <span className="text-xs text-red-300">{err}</span>}
+    </div>
+  );
 }
 
 function Switch({
@@ -638,26 +671,7 @@ export default function PlaygroundPage() {
                     ) : (
                       <div className="text-sm text-white/50">Audio URL not available yet.</div>
                     )}
-                    {id && (
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <a
-                          href={clipDownloadUrl(id, "mp3")}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 transition"
-                        >
-                          ⬇ Download MP3
-                        </a>
-                        <a
-                          href={clipDownloadUrl(id, "wav")}
-                          target="_blank"
-                          rel="noreferrer noopener"
-                          className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium text-white/80 hover:bg-white/10 transition"
-                        >
-                          ⬇ Download WAV
-                        </a>
-                      </div>
-                    )}
+                    {id && <ClipDownloadButtons clipId={String(id)} />}
                   </div>
                 );
               })}

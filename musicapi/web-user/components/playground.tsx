@@ -31,10 +31,6 @@ export function clipAudio(clip: unknown): string | null {
   return c.audio_url || null;
 }
 
-export function clipDownloadUrl(clipId: string | number | undefined | null, format: "mp3" | "wav"): string {
-  return `/backend/me/download?clip_id=${encodeURIComponent(String(clipId))}&format=${format}&force_download=1`;
-}
-
 export async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const headers: Record<string, string> = {
     ...(init.headers as Record<string, string> | undefined),
