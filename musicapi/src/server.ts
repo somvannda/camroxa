@@ -2276,6 +2276,25 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     return reply.code(201).send({ id: rows[0].id, updated: false });
   });
 
+  app.put("/admin/pricing/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const { id } = req.params as { id: string };
+    const { endpoint, model, credit_cost } = (req.body ?? {}) as {
+      endpoint?: string;
+      model?: string | null;
+      credit_cost?: number;
+    };
+    if (!endpoint || typeof credit_cost !== "number") {
+      return reply.code(400).send({ error: "endpoint and credit_cost are required." });
+    }
+    const updated = await query<{ id: string }>(
+      "UPDATE pricing SET endpoint = $1, model = $2, credit_cost = $3 WHERE id = $4 RETURNING id",
+      [endpoint, model ?? null, credit_cost, id],
+    );
+    if (!updated.length) return reply.code(404).send({ error: "Pricing row not found." });
+    return { ok: true };
+  });
+
   app.delete("/admin/pricing/:id", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const { id } = req.params as { id: string };

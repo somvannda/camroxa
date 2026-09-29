@@ -127,7 +127,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.4 | web-user authenticated downloads (blob) | `fix/musicapi-fe-downloads` | downloads 200 ✅ authenticated blob (401 → `/login`) | `[x]` |
 | 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | no fake data ✅ fabricated `Math.random()` chart removed | `[x]` |
 | 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work ✅ `/app/*` removed, `/dashboard/*` served | `[x]` |
-| 3.7 | Fix admin pricing edit (track `editingId`, PUT) | `fix/musicapi-admin-pricing-edit` | update, no duplicate | `[ ]` |
+| 3.7 | Fix admin pricing edit (track `editingId`, PUT) | `fix/musicapi-admin-pricing-edit` | update, no duplicate ✅ PUT `/admin/pricing/:id` | `[x]` |
 | 3.8 | Admin `/auth/callback`; align redirect URIs | `feat/musicapi-admin-oauth` | Google admin login | `[ ]` |
 | 3.9 | Wire/hide placeholders; mark stubs "coming soon" | `chore/musicapi-fe-placeholders` | no dead UI | `[ ]` |
 
@@ -223,6 +223,17 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > `app/auth/callback/page.tsx` (post-OAuth fallback). Verified: `npm run typecheck` clean
 > and `npm run build` succeeds — 20/20 static pages, all `/dashboard/*` routes present and
 > no `/app/*` route remains.
+>
+> **Note (3.7):** the admin pricing page's **Edit** button only pre-filled the form — it
+> never remembered *which* row was being edited. On save the page always `POST`ed to
+> `/admin/pricing`, whose upsert matched on `(endpoint, model)`. Editing a row's
+> `endpoint`/`model` therefore inserted a **new** row and left the old one behind (a
+> duplicate); the `pricing` table has no DB-level uniqueness to catch it. Fixed by tracking
+> `editingId` in the form state (`web-admin/app/admin/pricing/page.tsx`), wiring
+> Edit/Cancel/toggle to set/clear it, and routing updates to a new `PUT /admin/pricing/:id`
+> endpoint (`src/server.ts`) that updates `endpoint`, `model`, and `credit_cost` by id
+> (404 when missing). New prices still use `POST`. Verified: `tsc --noEmit` clean for core +
+> `web-admin`; `next build` succeeds (12/12 static pages, `/admin/pricing` present).
 >
 > **Verification:** `npm run typecheck` clean in `musicapi`, `web-user`, and `web-admin`.
 > Product decisions baked in (cookie name `sunosession`, `SameSite=Lax`, `Secure` in

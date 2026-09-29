@@ -15,8 +15,15 @@ export default function PricingPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState({ endpoint: "", model: "", credit_cost: "" });
   const [saving, setSaving] = useState(false);
+
+  function resetForm() {
+    setShowForm(false);
+    setEditingId(null);
+    setForm({ endpoint: "", model: "", credit_cost: "" });
+  }
 
   function load() {
     setLoading(true);
@@ -33,16 +40,17 @@ export default function PricingPage() {
     setSaving(true);
     setError("");
     try {
-      await apiFetch("/admin/pricing", {
-        method: "POST",
-        body: JSON.stringify({
-          endpoint: form.endpoint,
-          model: form.model || null,
-          credit_cost: Number(form.credit_cost),
-        }),
+      const body = JSON.stringify({
+        endpoint: form.endpoint,
+        model: form.model || null,
+        credit_cost: Number(form.credit_cost),
       });
-      setShowForm(false);
-      setForm({ endpoint: "", model: "", credit_cost: "" });
+      if (editingId) {
+        await apiFetch(`/admin/pricing/${editingId}`, { method: "PUT", body });
+      } else {
+        await apiFetch("/admin/pricing", { method: "POST", body });
+      }
+      resetForm();
       load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save");
@@ -52,6 +60,7 @@ export default function PricingPage() {
   }
 
   function edit(r: PricingRow) {
+    setEditingId(r.id);
     setForm({ endpoint: r.endpoint, model: r.model ?? "", credit_cost: String(r.credit_cost) });
     setShowForm(true);
   }
@@ -73,7 +82,7 @@ export default function PricingPage() {
           <h1 className="text-2xl font-bold">Pricing</h1>
           <p className="text-sm text-[var(--muted)]">Credit cost per endpoint — used to charge each generation</p>
         </div>
-        <button onClick={() => { setShowForm((v) => !v); if (showForm) setForm({ endpoint: "", model: "", credit_cost: "" }); }} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white">
+        <button onClick={() => (showForm ? resetForm() : setShowForm(true))} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white">
           {showForm ? "Cancel" : "Set / add price"}
         </button>
       </div>
@@ -110,7 +119,7 @@ export default function PricingPage() {
             />
           </div>
           <button disabled={saving} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {saving ? "Saving…" : "Save"}
+            {saving ? "Saving…" : editingId ? "Update" : "Save"}
           </button>
         </form>
       )}
