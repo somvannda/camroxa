@@ -157,7 +157,14 @@ class PeriodGrantService:
             }
 
         for lot in await self._store.list_lots(user_id):
-            if str(lot["tag"]) in ("grant", "daily_grant") and int(lot["remaining_units"]) > 0:
+            if str(lot["tag"]) not in ("grant", "daily_grant"):
+                continue
+            if int(lot["remaining_units"]) <= 0:
+                continue
+            expires_at = lot.get("expires_at")
+            # Only carry lots that are still live; expired lots are clawed back by
+            # expire_unused_grants (zeroing them here without a deduction would leak).
+            if expires_at is None or expires_at > datetime.now(timezone.utc):
                 await self._store.zero_lot_remaining(lot["id"])
 
         amount_units = carried + allowance_units
