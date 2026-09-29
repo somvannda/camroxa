@@ -46,9 +46,9 @@ Left sidebar navigation + bottom section.
 - **Usage graph** by date for the last 30 days.
 - **Real-time success rate**.
 
-### 3.2 Playground `[PARTIAL]`
+### 3.2 Playground `[DONE]`
 - `[DONE]` Music generation + Sounds generation (Simple/Custom mode + version selector v4.5-all → v5.5, Loop/BPM/Key for sounds).
-- `[PENDING]` Separate sidebar items: Recovery audio, Separate vocals, Generate voice, Check voice, Replace section.
+- `[DONE]` Separate sidebar items: Recovery audio, Separate vocals, Generate voice, Check voice, Replace section. Each has a sidebar nav entry (`layout.tsx`), a dedicated page with a real generation form, and a live backend route (`/me/recovery`, `/me/stems`, `/me/voice-generate`, `/me/voice-validate`, `/me/replace-section`; plus `/me/voice-phrase` and `/me/voice-record` for voice capture). Verified end-to-end on sandbox: every route returns 401 unauthenticated, 400 on missing input, and 402 with no API-key credits (auth + validation + charge gate all wired).
 
 ### 3.3 API Key `[DONE]`
 - View / generate keys.
