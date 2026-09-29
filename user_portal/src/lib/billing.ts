@@ -225,6 +225,8 @@ export type AddonRenewal = {
   blocks: number | null;
   credits: number | null;
   price_cents: number | null;
+  credits_per_block: number | null;
+  price_per_block_cents: number | null;
   expires_at: string | null;
   renewable: boolean;
   renewal_opens_in_days: number | null;
@@ -239,11 +241,12 @@ export async function getAddonRenewal(): Promise<AddonRenewal> {
   });
 }
 
-/** Start a one-cycle renewal checkout for the user's add-on channels. */
-export async function createAddonRenewal(): Promise<BillingPayment> {
+/** Start a renewal checkout for a number of add-on channel blocks. */
+export async function createAddonRenewal(blocks?: number): Promise<BillingPayment> {
   return platformJson<BillingPayment>({
     path: "/billing/renewals/addons",
     method: "POST",
+    body: blocks != null ? { blocks } : {},
   });
 }
 
