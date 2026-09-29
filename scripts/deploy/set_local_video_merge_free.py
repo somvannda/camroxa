@@ -77,9 +77,19 @@ async def main():
         print("DRY_RUN_OK")
         return
 
+    await pool.execute(
+        "ALTER TABLE credit_pricing "
+        "DROP CONSTRAINT IF EXISTS credit_pricing_credits_per_operation_check"
+    )
+    await pool.execute(
+        "ALTER TABLE credit_pricing "
+        "ADD CONSTRAINT credit_pricing_credits_per_operation_check "
+        "CHECK (credits_per_operation >= 0 AND credits_per_operation <= 100000000000)"
+    )
+    op_list = ", ".join("'" + o + "'" for o in LOCAL_OPS)
     priced = await pool.execute(
         "UPDATE credit_pricing SET credits_per_operation = 0, external_cost_cents = 0 "
-        "WHERE ai_service = 'local' AND operation_type = ANY($1::text[])", list(LOCAL_OPS))
+        "WHERE ai_service = 'local' AND operation_type IN (" + op_list + ")")
     planres = await pool.execute(
         "UPDATE plans SET video_credits = 0, merge_credits = 0, updated_at = NOW() "
         "WHERE COALESCE(video_credits, 0) <> 0 OR COALESCE(merge_credits, 0) <> 0")
