@@ -36,7 +36,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 1.5 | Callback URL allowlist (block SSRF/private ranges) | `fix/musicapi-callback-ssrf` | loopback/private/metadata rejected ✅; optional `CALLBACK_ALLOWED_HOSTS` | `[x]` |
 | 1.6 | Encrypt Suno `client_cookie` at rest | `feat/musicapi-cookie-encryption` | DB ciphertext; pool works ✅ `enc:v1:` | `[x]` |
 | 1.7 | OAuth per-request client, signed `state`, verified email | `fix/musicapi-oauth-hardening` | CSRF blocked; flow works ✅ signed `state` + `email_verified` | `[x]` |
-| 1.8 | Rotate leaked secrets; scrub `.env`/`accounts.json` | ops (user-led) | old creds invalid | `[~]` audit + runbook done; provider rotation pending |
+| 1.8 | Rotate leaked secrets; scrub `.env`/`accounts.json` | ops (user-led) | old creds invalid | `[~]` audit + runbook done; sandbox `JWT_SECRET` rotated; provider rotation pending |
 
 **Gate:** no free-credit or forgeable-token path; secrets safe.
 > Note: 1.1–1.2 landed as commits on `feat/musicapi-baseline` (Phase 0's branch) instead of their own branches. **1.3:** replaced the non-atomic `pickUserKey()` + ignored `charge()` pattern on every `/me/*` route with a single-statement atomic `chargeUserKey()` that both selects and deducts, and 402s when it fails. **1.4:** `/payments/khqr/status/:id` and `/payments/khqr/confirm-mock/:id` claim the transaction with `UPDATE payment_transactions … WHERE status = 'pending' RETURNING id` and apply the credits inside one `withTransaction` (new helper in `db.ts`), so concurrent polls credit exactly once and any failure rolls back instead of half-crediting; `/admin/users/:id/credits` is now a single-statement `GREATEST(0, credits + $1)` adjust. **1.5:** user-supplied webhook `callback_url`s are now validated by `src/callbackUrl.ts` (`assertCallbackUrlAllowed`), which rejects non-http(s) schemes, embedded credentials, `localhost`/`.local`/`.internal` names, and any target that is *or resolves to* a loopback/private/link-local/CGNAT/cloud-metadata address (IPv4 + IPv6, incl. `::ffff:` mapped). It runs in a `preHandler` hook, so a bad URL is rejected with 400 **before** the handler's `charge()` — and again in `notify()` immediately before the fetch, which now uses `redirect: "manual"` so a 3xx can't bounce the request to an internal address. `CALLBACK_ALLOWED_HOSTS` (comma-separated, optional) additionally pins callbacks to an allowlist (exact host or subdomain); empty means any public host. Verified with a temp harness: 26 checks all pass — private/metadata/loopback/malformed rejected, public IP allowed, `localtest.me` and `127.0.0.1.nip.io` rejected via DNS, allowlist honored both ways, and real routes return 400 on a bad callback while `401` still comes from auth for good/absent ones. 1.8 remains pending (ops, user-led).
@@ -98,6 +98,13 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > - `PLATFORM_JWT_SECRET` / `PLATFORM_ENCRYPTION_MASTER_KEY` /
 >   `PLATFORM_SUNO_CALLBACK_HMAC_SECRET` — platform app (outside musicapi scope; the master key
 >   also needs a re-encrypt pass).
+>
+> **Done (2026-09-29):** sandbox musicapi `JWT_SECRET` rotated via
+> `scripts/deploy/rotate_musicapi_jwt_sandbox.py` — the script generates the new 48-byte secret
+> on the host (never printed locally), rewrites `/opt/camxora/.deploy-secrets` +
+> `/opt/camxora/repo/musicapi/.env` (keeping `*.bak.<utc>` copies), re-sources the secrets file
+> to prove it still parses, and restarts `camxora-musicapi`. Sandbox sessions were invalidated;
+> production untouched and provider-side rotation still pending.
 >
 > Local dev `.env`/`accounts.json` are gitignored and may stay for development, but must be
 > refreshed with the new values after rotation.
