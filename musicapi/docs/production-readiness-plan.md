@@ -281,7 +281,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | # | Task | Branch | Verification | Status |
 |---|---|---|---|---|
 | 4.1 | Process management (PM2/systemd/Docker) | `ops/musicapi-process` | survives reboot | `[x]` systemd units + boot enable ✅ |
-| 4.2 | nginx vhosts + TLS + `/backend` proxy; align `trustProxy` | `ops/musicapi-nginx` | HTTPS, real IPs | `[ ]` |
+| 4.2 | nginx vhosts + TLS + `/backend` proxy; align `trustProxy` | `ops/musicapi-nginx` | HTTPS, real IPs | `[x]` nginx vhosts + `TRUST_PROXY` ✅ |
 | 4.3 | CORS/helmet + rate limiting + structured logging + `/metrics` | `feat/musicapi-edge-hardening` | public `/v1` safe | `[ ]` |
 | 4.4 | Deploy scripts: `sync_musicapi_sandbox.py`, `deploy_musicapi_production.py` | `ops/musicapi-deploy-scripts` | sandbox deploy works | `[ ]` |
 | 4.5 | CI: typecheck + build + smoke gate | `ops/musicapi-ci` | PR blocked on failure | `[ ]` |
@@ -303,6 +303,30 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > `/etc/systemd/system` and runs `systemctl enable --now` (build/deploy of the tree is task
 > 4.4). Verified locally: `npm run build` in `musicapi` emits `dist/serve.js` (the core
 > `ExecStart` target). Reboot drill lands with the sandbox deploy (Phase-4 gate).
+>
+> **Note (4.2):** nginx terminates TLS for **three musicapi vhosts** (chose our own
+> subdomains rather than reusing the platform's `app`/`admin`, since the core's own docs
+> already advertise `https://musicapi.camxora.com`):
+> `musicapi.<env>` → core API `127.0.0.1:4003`, `app.musicapi.<env>` → web-user `:4001`,
+> `admin.musicapi.<env>` → web-admin `:4002` (sandbox `*.sandbox.camxora.com`, production
+> bare). Versioned pair `scripts/deploy/nginx-musicapi-{sandbox,production}.conf` with one
+> shared Let's Encrypt cert per env (`/etc/letsencrypt/live/musicapi.<env>/`) and a port-80
+> → 443 redirect. Key decisions: (a) `proxy_read_timeout/proxy_send_timeout 600s` on every
+> core-API location, because the core's Fastify `requestTimeout` is 600 s — copying the
+> platform's 300 s would 504 the browser while the upstream still succeeded (the incident
+> class in `DEPLOYMENT_OPERATIONS.md` §5); (b) a same-origin `/backend/` location on the two
+> frontend vhosts (`proxy_pass http://127.0.0.1:4003/`, trailing slash strips the prefix) so
+> the browser's relative `/backend/*` calls keep the `sunosession` cookie first-party; (c) a
+> dedicated `location /me/download` forwarding `Range` + `proxy_buffering off` for large
+> MP3/WAV streams; (d) no Cloudflare headers — nginx is the only edge. `trustProxy` aligned
+> by documenting `TRUST_PROXY=127.0.0.1` in `musicapi/.env.example` (`trustProxyOption()` in
+> `src/server.ts` reads it; it feeds `requireKey`'s `ip_whitelist.includes(req.ip)`, and
+> defaults off so a directly reachable server can't be spoofed). Applier
+> `scripts/deploy/apply_musicapi_nginx.py --env <sandbox|production>` mirrors `apply_nginx.py`
+> (upload → `ln -sf` → `nginx -t` → `systemctl reload nginx` → `NGINX_APPLIED_<ENV>`), with an
+> optional `--issue-cert` that stands up a temporary :80 block, runs the three-name
+> `certbot --nginx … --expand --non-interactive --redirect`, then applies. Sandbox apply +
+> smoke ride with the Phase-4 gate / task 4.4 deploy scripts.
 
 ---
 
