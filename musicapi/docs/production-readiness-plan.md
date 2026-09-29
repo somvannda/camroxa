@@ -283,7 +283,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 4.1 | Process management (PM2/systemd/Docker) | `ops/musicapi-process` | survives reboot | `[x]` systemd units + boot enable ✅ |
 | 4.2 | nginx vhosts + TLS + `/backend` proxy; align `trustProxy` | `ops/musicapi-nginx` | HTTPS, real IPs | `[x]` nginx vhosts + `TRUST_PROXY` ✅ |
 | 4.3 | CORS/helmet + rate limiting + structured logging + `/metrics` | `feat/musicapi-edge-hardening` | public `/v1` safe | `[x]` edge hardening ✅ |
-| 4.4 | Deploy scripts: `sync_musicapi_sandbox.py`, `deploy_musicapi_production.py` | `ops/musicapi-deploy-scripts` | sandbox deploy works | `[ ]` |
+| 4.4 | Deploy scripts: `sync_musicapi_sandbox.py`, `deploy_musicapi_production.py` | `ops/musicapi-deploy-scripts` | sandbox deploy works | `[x]` sandbox deploy + smoke ✅ |
 | 4.5 | CI: typecheck + build + smoke gate | `ops/musicapi-ci` | PR blocked on failure | `[ ]` |
 | 4.6 | DB backups + monitoring/alerts | `ops/musicapi-observability` | restore drill; alerts fire | `[ ]` |
 
@@ -355,6 +355,36 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > 11th `/auth/login` → `429` with `Retry-After: 60`; `/metrics` → `401` anon,
 > `403` non-admin, `200` JSON for admin; plus `npm run typecheck` + `npm run build`
 > clean.
+>
+> **Note (4.4):** sandbox-first deploy chain, mirroring the platform's `deploy.py`
+> conventions (env-split secrets, ed25519 key bootstrap, SFTP upload + sentinel
+> verify). `scripts/deploy/sync_musicapi_sandbox.py` tars `musicapi/` + `scripts/deploy/`,
+> uploads it and runs `scripts/deploy/camxora-musicapi-remote.sh` over SSH;
+> `scripts/deploy/deploy_musicapi_production.py` is the same driver guarded by a
+> mandatory `--yes`. The remote installer is env-driven (`MUSICAPI_ENV`,
+> `MUSICAPI_DOMAIN` = `sandbox.camxora.com` / `camxora.com`) so sandbox and production
+> share one script: apt/Node 20, `camxora` user, Postgres role `musicapi` + DB
+> `sunoapi`, then extract, `.env` (mode 600), core `npm ci || npm install` + `tsc`
+> build, migrations, both Next builds, `install_musicapi_services.sh`, nginx, health
+> checks. Generated `MUSICAPI_DB_PASSWORD` / `JWT_SECRET` /
+> `COOKIE_ENCRYPTION_KEY` are persisted to `/opt/camxora/.deploy-secrets` (merging,
+> not clobbering, the platform's keys) so JWT sessions and encrypted Suno cookies
+> survive redeploys. Two fixes were required to make the first deploy actually boot:
+> (a) the 4.1 systemd units + installer shipped with **CRLF** line endings, which
+> Linux `bash` rejects (`set: pipefail: invalid option name`) — normalised to LF,
+> matching the repo's LF remote scripts (`camxora-sandbox-remote.sh`); (b)
+> `src/serve.ts` crashed on boot (`ENOENT: accounts.json`) on a fresh DB with no
+> `suno_accounts` rows, so the JSON fallback is now guarded by `existsSync` and the
+> server starts with an empty pool (generation returns "No Suno accounts configured."
+> until an account is seeded). Verified on the sandbox: `MUSICAPI_SANDBOX_DEPLOYED`,
+> `npm run build` + `scripts/migrate.ts` clean, `/health` → `{"ok":true,"accounts":0,"jobs":0}`,
+> web-user `200` / web-admin `307`, all three units `enabled` (reboot-safe),
+> `/metrics` → `401` anon, helmet headers present, `x-ratelimit-limit: 300` global /
+> `10` on `/auth/login`, `/v1/*` preflight → `204` + `ACAO: *` while `/auth/*`
+> reflects only the allowlisted origin with `Allow-Credentials: true`. The HTTPS
+> vhost is skipped until `A` records for `musicapi|app.musicapi|admin.musicapi.sandbox.camxora.com`
+> exist (still `NXDOMAIN`); re-run with `--issue-cert` to bootstrap Let's Encrypt.
+> Production was **not** touched.
 
 ---
 

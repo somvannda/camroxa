@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { existsSync } from "node:fs";
 import { AccountPool } from "./pool.js";
 import { buildServer } from "./server.js";
 import { pool as dbPool } from "./db.js";
@@ -7,8 +8,16 @@ const port = Number(process.env.PORT ?? 4003);
 
 let pool = await AccountPool.fromDb();
 if (pool.size === 0) {
-  console.warn("No active Suno accounts in the database; falling back to accounts.json");
-  pool = AccountPool.fromJsonFile(process.env.ACCOUNTS_FILE ?? "accounts.json");
+  const accountsFile = process.env.ACCOUNTS_FILE ?? "accounts.json";
+  if (existsSync(accountsFile)) {
+    console.warn("No active Suno accounts in the database; falling back to accounts.json");
+    pool = AccountPool.fromJsonFile(accountsFile);
+  } else {
+    console.warn(
+      `No active Suno accounts in the database and no ${accountsFile}; starting with an empty pool. ` +
+        "Generation requests will fail until a Suno account is added.",
+    );
+  }
 }
 
 const app = await buildServer({ pool });

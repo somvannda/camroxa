@@ -1,0 +1,190 @@
+#!/usr/bin/env python3
+"""Deploy the musicapi stack (core API + web-user + web-admin) to the sandbox VPS.
+
+Mirrors scripts/deploy/deploy.py (same secrets, same SSH key + bootstrap) but only
+ships the `musicapi/` tree plus `scripts/deploy/` (systemd units, nginx confs). The
+remote side is scripts/deploy/camxora-musicapi-remote.sh.
+
+Usage:
+    python scripts/deploy/sync_musicapi_sandbox.py
+    python scripts/deploy/sync_musicapi_sandbox.py --issue-cert   # first deploy, DNS ready
+
+Secrets come from .deploy/secrets.sandbox.env (see .deploy/secrets.env.example).
+Optional MUSICAPI_* keys:
+    MUSICAPI_DB_PASSWORD, MUSICAPI_JWT_SECRET, MUSICAPI_COOKIE_ENCRYPTION_KEY,
+    MUSICAPI_SUNO_CLIENT_COOKIE, MUSICAPI_SUNO_COOKIE, MUSICAPI_SUNO_JWT,
+    MUSICAPI_SUNO_DEVICE_ID, MUSICAPI_SUNO_CAPTCHA_TOKEN, MUSICAPI_TWOCAPTCHA_KEY,
+    MUSICAPI_GOOGLE_CLIENT_ID, MUSICAPI_GOOGLE_CLIENT_SECRET,
+    MUSICAPI_BAKONG_API_TOKEN, MUSICAPI_BAKONG_ACCOUNT_ID,
+    MUSICAPI_FRONTEND_ORIGINS, MUSICAPI_LOG_LEVEL
+Anything omitted is generated on the server on first deploy and persisted to
+/opt/camxora/.deploy-secrets, so redeploys keep sessions/cookies valid.
+
+Production twin: scripts/deploy/deploy_musicapi_production.py
+"""
+
+from __future__ import annotations
+
+import argparse
+import stat
+import sys
+import tarfile
+import tempfile
+from pathlib import Path
+from typing import Literal
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from deploy import (  # noqa: E402
+    REPO_ROOT,
+    ensure_deploy_key,
+    ensure_paramiko,
+    load_production_secrets,
+    load_sandbox_secrets,
+    resolve_production_ssh,
+    resolve_sandbox_ssh,
+    ssh_connect,
+    tar_filter,
+)
+
+REMOTE_SCRIPT = Path(__file__).resolve().parent / "camxora-musicapi-remote.sh"
+REMOTE_TARBALL = "/tmp/musicapi-src.tar.gz"
+REMOTE_PATH = "/tmp/camxora-musicapi-remote.sh"
+PACKAGE_DIRS = ("musicapi", "scripts/deploy")
+
+DeployEnv = Literal["sandbox", "production"]
+
+
+def build_musicapi_tarball() -> Path:
+    """Package musicapi/ + scripts/deploy/ (arcnames preserved) for upload."""
+    tmp = Path(tempfile.mkdtemp(prefix="musicapi-deploy-"))
+    archive = tmp / "musicapi-src.tar.gz"
+    print("Packaging musicapi source for upload...")
+    with tarfile.open(archive, "w:gz") as tar:
+        for name in PACKAGE_DIRS:
+            src = REPO_ROOT / name
+            if not src.is_dir():
+                raise FileNotFoundError(f"Missing deploy directory: {src}")
+            tar.add(src, arcname=name, filter=tar_filter, recursive=True)
+    print(f"Source archive ready ({archive.stat().st_size / (1024 * 1024):.1f} MB)")
+    return archive
+
+
+def _shell_exports(env: dict[str, str]) -> str:
+    """Render `export K='v'` pairs, single-quote-escaping each value."""
+    parts = []
+    for key, val in env.items():
+        safe = val.replace("'", "'\\''")
+        parts.append(f"export {key}='{safe}'")
+    return " && ".join(parts)
+
+
+def upload_and_run(client, env: DeployEnv, secrets: dict[str, str], issue_cert: bool) -> tuple[int, str]:
+    archive = build_musicapi_tarball()
+    if not REMOTE_SCRIPT.is_file():
+        raise FileNotFoundError(f"Missing {REMOTE_SCRIPT}")
+
+    sftp = client.open_sftp()
+    total = archive.stat().st_size
+    print(f"Uploading source to {REMOTE_TARBALL}...")
+
+    def progress(sent: int, _total: int) -> None:
+        if total:
+            print(f"\rUploading source... {min(100, int(sent * 100 / total))}%", end="", flush=True)
+
+    sftp.put(str(archive), REMOTE_TARBALL, callback=progress)
+    print()
+
+    script_bytes = REMOTE_SCRIPT.read_bytes().replace(b"\r\n", b"\n")
+    with sftp.file(REMOTE_PATH, "wb") as remote_file:
+        remote_file.write(script_bytes)
+    sftp.chmod(REMOTE_PATH, stat.S_IRWXU | stat.S_IRGRP | stat.S_IROTH)
+    sftp.close()
+
+    export_env = {
+        "MUSICAPI_ENV": env,
+        "SYNC_FROM_LOCAL": "1",
+        "ISSUE_CERT": "1" if issue_cert else "0",
+    }
+    if secrets.get("CERTBOT_EMAIL"):
+        export_env["CERTBOT_EMAIL"] = secrets["CERTBOT_EMAIL"]
+    # Forward every MUSICAPI_* deploy secret to the remote installer.
+    for key, val in secrets.items():
+        if key.startswith("MUSICAPI_") and val:
+            export_env.setdefault(key, val)
+
+    cmd = f"{_shell_exports(export_env)} && bash {REMOTE_PATH}"
+    print(f"Running remote install for '{env}' (this can take several minutes)...")
+    transport = client.get_transport()
+    if transport is None:
+        raise RuntimeError("SSH transport unavailable")
+    channel = transport.open_session()
+    channel.get_pty()
+    channel.exec_command(cmd)
+
+    captured: list[str] = []
+    while True:
+        if channel.recv_ready():
+            chunk = channel.recv(4096).decode(errors="replace")
+            captured.append(chunk)
+            sys.stdout.write(chunk)
+            sys.stdout.flush()
+        if channel.recv_stderr_ready():
+            sys.stderr.write(channel.recv_stderr(4096).decode(errors="replace"))
+            sys.stderr.flush()
+        if channel.exit_status_ready():
+            while channel.recv_ready():
+                captured.append(channel.recv(4096).decode(errors="replace"))
+            return channel.recv_exit_status(), "".join(captured)
+        import time
+
+        time.sleep(0.2)
+
+
+def deploy(env: DeployEnv, issue_cert: bool = False) -> int:
+    ensure_paramiko()
+    if not REMOTE_SCRIPT.is_file():
+        print(f"Missing {REMOTE_SCRIPT}")
+        return 1
+
+    if env == "sandbox":
+        secrets = load_sandbox_secrets()
+        host, user, password = resolve_sandbox_ssh(secrets)
+    else:
+        secrets = load_production_secrets()
+        host, user, password = resolve_production_ssh(secrets)
+
+    custom_key = secrets.get("VPS_SSH_KEY") or None
+    key_path = Path(custom_key) if custom_key else ensure_deploy_key()
+    if not key_path.is_file():
+        print(f"Missing deploy key: {key_path}")
+        return 1
+
+    print(f"Connecting to {user}@{host}...")
+    client = ssh_connect(host, user, key_path, password)
+    try:
+        code, output = upload_and_run(client, env, secrets, issue_cert)
+    finally:
+        client.close()
+
+    sentinel = f"MUSICAPI_{env.upper()}_DEPLOYED"
+    if code == 0 and sentinel in output:
+        print(f"\nMusic API {env} deploy finished successfully.")
+        return 0
+    print(f"\nMusic API {env} deploy FAILED (exit {code}).")
+    return code or 1
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Deploy the musicapi stack to the sandbox VPS")
+    parser.add_argument(
+        "--issue-cert",
+        action="store_true",
+        help="Bootstrap the Let's Encrypt cert on first deploy (DNS must resolve)",
+    )
+    args = parser.parse_args()
+    return deploy("sandbox", issue_cert=args.issue_cert)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
