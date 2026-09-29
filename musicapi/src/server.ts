@@ -1,4 +1,7 @@
 import Fastify, { FastifyInstance, FastifyRequest, FastifyReply, FastifyServerOptions } from "fastify";
+import cors from "@fastify/cors";
+import helmet from "@fastify/helmet";
+import rateLimit from "@fastify/rate-limit";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
@@ -129,15 +132,69 @@ function trustProxyOption(): FastifyServerOptions["trustProxy"] {
   return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
-export function buildServer({ pool }: ServerDeps): FastifyInstance {
+export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance> {
   const app = Fastify({
-    logger: false,
+    // JSON logs with request ids. Header redaction is defense-in-depth: Fastify's
+    // default serializers omit headers, but anything that logs a raw request
+    // (our own `app.log` calls included) must not leak credentials.
+    logger: {
+      level: config.logLevel,
+      redact: {
+        paths: ["req.headers.authorization", "req.headers.cookie", "res.headers.set-cookie"],
+        censor: "[redacted]",
+      },
+    },
     trustProxy: trustProxyOption(),
     requestTimeout: 600_000,
     connectionTimeout: 600_000,
     keepAliveTimeout: 600_000,
   });
+
+  // These must be registered before any route is declared: @fastify/rate-limit
+  // and @fastify/cors attach per-route hooks at registration time, so routes
+  // added earlier would silently miss them. That is why buildServer is async.
+  // Security headers. This is a JSON API (no HTML documents are served), so CSP
+  // has nothing to protect; public `/v1` responses are meant to be read from any
+  // origin (see CORS below), which `cross-origin` lets browsers do.
+  await app.register(helmet, {
+    contentSecurityPolicy: false,
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  });
+
+  // CORS has two audiences:
+  //   * Public API (`/v1/*`, `/api/v1/*`) — authenticated with a Bearer API key
+  //     and never with cookies, so any origin may call it.
+  //   * Cookie routes (`sunosession` session) — only the configured frontends may
+  //     call them with credentials, so a hostile page can't ride a user's session.
+  //     The panels reach these same-origin through the nginx `/backend` proxy, so
+  //     the list is defense-in-depth rather than a functional requirement.
+  const credentialOrigins = [...config.frontendOrigins, ...config.apiCorsOrigins];
+  await app.register(cors, {
+    delegator: (req, cb) => {
+      const isPublicApi = req.url.startsWith("/v1/") || req.url.startsWith("/api/v1/");
+      cb(null, isPublicApi ? { origin: "*" } : { origin: credentialOrigins, credentials: true });
+    },
+  });
+
+  // Per-client-IP rate limiting (in-memory; no per-request DB writes). The key is
+  // `req.ip`, which is only the real client address when TRUST_PROXY trusts the
+  // nginx hop — otherwise every proxied caller shares the proxy's address.
+  await app.register(rateLimit, {
+    global: true,
+    max: config.rateLimit.max,
+    timeWindow: config.rateLimit.windowMs,
+  });
+
   const jobs = new Map<string, Job>();
+
+  // Edge request counters for the admin `/metrics` snapshot. In-memory and reset
+  // on restart, which is all a single-process deployment needs.
+  const requestCounters = { total: 0, clientErrors: 0, serverErrors: 0 };
+  app.addHook("onResponse", async (_req, reply) => {
+    requestCounters.total += 1;
+    if (reply.statusCode >= 500) requestCounters.serverErrors += 1;
+    else if (reply.statusCode >= 400) requestCounters.clientErrors += 1;
+  });
 
   // Terminal jobs only need to survive long enough for the client to poll their
   // result, so the in-memory map is kept bounded: finished jobs older than the
@@ -881,17 +938,42 @@ export function buildServer({ pool }: ServerDeps): FastifyInstance {
     jobs: jobs.size,
   }));
 
+  /**
+   * Admin-only JSON snapshot for ops. This deployment has no Prometheus/scrape
+   * stack, so counters are served as JSON behind the admin session rather than
+   * exposing an unauthenticated metrics surface.
+   */
+  app.get("/metrics", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const byStatus: Record<string, number> = {};
+    for (const job of jobs.values()) {
+      byStatus[job.status] = (byStatus[job.status] ?? 0) + 1;
+    }
+    return {
+      uptimeSeconds: Math.round(process.uptime()),
+      requests: { ...requestCounters },
+      jobs: { total: jobs.size, byStatus },
+      accounts: pool.size,
+    };
+  });
+
   // --- auth routes ---------------------------------------------------------
   // Self-service registration disabled — Google sign-in is the only user onboarding path.
   // Admins are seeded directly into the `users` table via scripts/seed.ts or SQL.
-  app.post("/auth/register", async (_req, reply) => {
+  // Both credential endpoints get a tighter budget than the global limit to blunt
+  // password/credential stuffing.
+  const authRateLimit = {
+    rateLimit: { max: config.rateLimit.authMax, timeWindow: config.rateLimit.windowMs },
+  };
+  app.post("/auth/register", { config: authRateLimit }, async (_req, reply) => {
     return reply.code(405).send({ error: "Self-registration is disabled. Please sign in with Google." });
   });
 
   // Email/password login is ADMIN-ONLY.
   // Non-admin users (created via Google sign-in) have password_hash=NULL and cannot use this route.
   // Defense-in-depth: even if a non-admin somehow had a password set, they are explicitly denied here.
-  app.post("/auth/login", async (req, reply) => {
+  app.post("/auth/login", { config: authRateLimit }, async (req, reply) => {
     const { email, password } = (req.body ?? {}) as { email?: string; password?: string };
     if (!email || !password) return reply.code(400).send({ error: "email and password are required." });
     const user = await queryOne<DbUser>("SELECT * FROM users WHERE email = $1", [email.toLowerCase()]);

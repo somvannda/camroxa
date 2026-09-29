@@ -11,7 +11,7 @@ if (pool.size === 0) {
   pool = AccountPool.fromJsonFile(process.env.ACCOUNTS_FILE ?? "accounts.json");
 }
 
-const app = buildServer({ pool });
+const app = await buildServer({ pool });
 
 let shuttingDown = false;
 async function shutdown(signal: string, exitCode = 0): Promise<void> {

@@ -80,6 +80,30 @@ export const config = {
    */
   sessionCookieSecure:
     (process.env.SESSION_COOKIE_SECURE ?? String(process.env.NODE_ENV === "production")) === "true",
+  /** Pino level for the Fastify logger (trace|debug|info|warn|error|fatal|silent). */
+  logLevel: process.env.LOG_LEVEL ?? "info",
+  /**
+   * Extra browser origins allowed to send credentialed (cookie) requests, on
+   * top of `frontendOrigins`. Comma-separated, empty by default: the panels
+   * reach the API same-origin through the nginx `/backend` proxy, so nothing
+   * needs to be listed unless a client calls the API cross-origin directly.
+   */
+  apiCorsOrigins: (process.env.API_CORS_ORIGINS ?? "")
+    .split(",")
+    .map((o) => o.trim().replace(/\/$/, ""))
+    .filter(Boolean),
+  /**
+   * Edge rate limiting, keyed on `req.ip` per time window. `req.ip` is only the
+   * real client address when `TRUST_PROXY` trusts the nginx hop, otherwise every
+   * proxied caller shares the proxy's address.
+   */
+  rateLimit: {
+    /** Requests per client per window across the whole API. */
+    max: Number(process.env.RATE_LIMIT_MAX ?? 300),
+    windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS ?? 60_000),
+    /** Stricter budget for credential endpoints (`/auth/login`, `/auth/register`). */
+    authMax: Number(process.env.RATE_LIMIT_AUTH_MAX ?? 10),
+  },
   bakong: {
     apiToken: process.env.BAKONG_API_TOKEN ?? "",
     accountId: process.env.BAKONG_ACCOUNT_ID ?? "",

@@ -282,7 +282,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 |---|---|---|---|---|
 | 4.1 | Process management (PM2/systemd/Docker) | `ops/musicapi-process` | survives reboot | `[x]` systemd units + boot enable ✅ |
 | 4.2 | nginx vhosts + TLS + `/backend` proxy; align `trustProxy` | `ops/musicapi-nginx` | HTTPS, real IPs | `[x]` nginx vhosts + `TRUST_PROXY` ✅ |
-| 4.3 | CORS/helmet + rate limiting + structured logging + `/metrics` | `feat/musicapi-edge-hardening` | public `/v1` safe | `[ ]` |
+| 4.3 | CORS/helmet + rate limiting + structured logging + `/metrics` | `feat/musicapi-edge-hardening` | public `/v1` safe | `[x]` edge hardening ✅ |
 | 4.4 | Deploy scripts: `sync_musicapi_sandbox.py`, `deploy_musicapi_production.py` | `ops/musicapi-deploy-scripts` | sandbox deploy works | `[ ]` |
 | 4.5 | CI: typecheck + build + smoke gate | `ops/musicapi-ci` | PR blocked on failure | `[ ]` |
 | 4.6 | DB backups + monitoring/alerts | `ops/musicapi-observability` | restore drill; alerts fire | `[ ]` |
@@ -327,6 +327,34 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > optional `--issue-cert` that stands up a temporary :80 block, runs the three-name
 > `certbot --nginx … --expand --non-interactive --redirect`, then applies. Sandbox apply +
 > smoke ride with the Phase-4 gate / task 4.4 deploy scripts.
+>
+> **Note (4.3):** edge hardening in `src/server.ts`, all three plugins registered in
+> `buildServer()` **before any route** (`@fastify/cors`/`@fastify/rate-limit` attach
+> per-route hooks at registration time, so routes declared earlier would silently miss
+> them — that is why `buildServer` is now `async` and `src/serve.ts` awaits it).
+> (a) **CORS** uses a `delegator(req, cb)`: public `/v1/*` and `/api/v1/*` get
+> `origin: '*'` with **no** credentials (Bearer-key auth, never cookies), while the
+> cookie-session routes reflect only `FRONTEND_ORIGINS` + the new `API_CORS_ORIGINS`
+> with `credentials: true` — a hostile page can't ride a `sunosession`. The panels
+> actually reach the API same-origin via the nginx `/backend` proxy, so the allowlist
+> is defense-in-depth. (b) **helmet** with `contentSecurityPolicy: false` (JSON API,
+> no HTML documents to protect) and `crossOriginResourcePolicy: cross-origin` so the
+> public API stays readable from any origin. (c) **rate limiting** in-memory, keyed on
+> `req.ip` (real client IP only when `TRUST_PROXY` trusts nginx — task 4.2), global
+> `RATE_LIMIT_MAX`/`RATE_LIMIT_WINDOW_MS` (default 300/min) plus a stricter
+> `RATE_LIMIT_AUTH_MAX` (default 10) on `/auth/login` + `/auth/register`; no DB writes
+> per request (per-user credits/quotas stay Phase 5). (d) **structured logging**: the
+> pino logger that was `logger: false` is now enabled (`LOG_LEVEL`, JSON, request ids,
+> redacting `authorization`/`cookie`/`set-cookie`); boot/shutdown `console.*` lines are
+> unchanged. (e) **`GET /metrics`** returns an admin-guarded JSON snapshot — uptime,
+> request/error counters (in-memory, from an `onResponse` hook), jobs by status,
+> account-pool size — since this deployment has no Prometheus/scrape stack. Verified at
+> runtime against the local Postgres via `app.inject()`: `/v1` → `ACAO: *`;
+> disallowed origin → no `ACAO`; `http://localhost:4001` → reflected origin +
+> `Allow-Credentials: true`; helmet headers present with no CSP / no `X-Powered-By`;
+> 11th `/auth/login` → `429` with `Retry-After: 60`; `/metrics` → `401` anon,
+> `403` non-admin, `200` JSON for admin; plus `npm run typecheck` + `npm run build`
+> clean.
 
 ---
 
