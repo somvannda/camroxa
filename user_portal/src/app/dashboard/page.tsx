@@ -16,6 +16,7 @@ import {
   formatNumber,
 } from "@/components/dashboard/control-panel-ui";
 import { UsageCurveChart } from "@/components/dashboard/usage-curve-chart";
+import { QuotaRenewalCard } from "@/components/dashboard/quota-renewal-card";
 import { Button } from "@/components/ui/button";
 
 export default function DashboardOverviewPage() {
@@ -44,6 +45,8 @@ export default function DashboardOverviewPage() {
         description="One credit wallet plus 7-day production and recent studio activity."
       />
 
+      <QuotaRenewalCard />
+
       <PanelSection
         title="Credits"
         description="Generate spends the wallet. Song / draft / image meters are not the balance."
@@ -58,9 +61,9 @@ export default function DashboardOverviewPage() {
       >
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           <StatTile
-            label="Wallet credits"
+            label="Total credits"
             value={formatCreditValue(walletBalance)}
-            hint={`${planLabel} · ${state.profiles.length} channel(s)`}
+            hint={`Plan grant + packs · ${planLabel}`}
           />
           <StatTile
             label="Credits spent"
