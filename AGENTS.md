@@ -20,12 +20,31 @@
 
 ## App Identity
 - App name: **CAMXORA** (never "AI", "NEXORA AI", or other names)
-- Desktop music/video studio app with PyQt6 native widget UI
-- Backend: FastAPI at `localhost:8000`, PostgreSQL `platform_db`, Redis
-- Admin portal: React + TypeScript + Vite + Tailwind + shadcn/ui at `localhost:5173`
-- Email: MailHog (`localhost:1025` SMTP / `localhost:8025` web UI)
+- Active product: **`musicapi/`** — white-label AI music generation, credit-billed over a
+  pool of Suno accounts
+  - Core API: **Fastify 5 + TypeScript** (`src/`, ESM via `tsx`) at `localhost:4003`
+  - User workspace: **Next.js 16** (`web-user/`) at `localhost:4001`
+  - Admin console: **Next.js 16** (`web-admin/`) at `localhost:4002`
+  - Database: PostgreSQL, local DB `sunoapi`; migrations `migrations/*.sql` via `scripts/migrate.ts`
+  - Optional Redis job queue (`QUEUE_DRIVER=redis`)
+- Legacy trees (reference only, **not** the active product): `platform_api/` (FastAPI),
+  `python_app/` + `camxora_python/` (PyQt6 desktop), `admin_portal/` (React + Vite),
+  `music_web/` (Next.js), `camxora/` + `archive/electron-app/` (Electron)
+- See [README.md](README.md) and [musicapi/README.md](musicapi/README.md) for the runbook.
 
-## Design System Rules (MANDATORY for all UI)
+## Conventions for the active product
+- Core API routes live in `musicapi/src/server.ts`; shared infra in `musicapi/src/`
+  (`config.ts`, `db.ts`, `pool.ts`, `jobQueue.ts`) — do not add a second route module.
+- Frontend API calls go through `apiFetch()` in `web-user/lib/api.ts` / `web-admin/lib/api.ts`
+  and the relative `/backend/*` rewrite; never hardcode the backend origin.
+- Credit **costs belong to the `pricing` table**, edited via the admin console
+  (`/admin/pricing`) — never hardcode a price in a route.
+- New schema changes ship as a new ordered `migrations/NNNN_*.sql` file; never edit an
+  applied migration.
+
+## Legacy design system (Python/Electron only — NOT the active product)
+
+The rules below apply only to the legacy PyQt6 desktop app. Do not apply them to `musicapi/`.
 
 ### Must use master template for ALL controls
 Every new UI element MUST use the master template factory methods from `python_app/design_system/layouts/master_template.py`. Never create raw `QLabel`, `QPushButton`, `QLineEdit` with inline styles.
@@ -88,14 +107,14 @@ Every new UI element MUST use the master template factory methods from `python_a
 - [ ] Card backgrounds are `#081028` or `#0c1230`
 - [ ] Button heights match standard (48/44/36px)
 
-## Desktop App Conventions
+### Legacy desktop app conventions
 - Views go in `python_app/views/`
 - Services go in `python_app/services/`
 - UI updates must use `_ui_invoke()` for thread safety
 - Network calls run on daemon threads, never on main thread
 - Login/register flow: signals → controller → worker thread → UI invoke
 
-## Backend Conventions
+### Legacy backend conventions
 - Routers go in `platform_api/routers/`
 - Services go in `platform_api/services/`
 - Repos go in `platform_api/repositories/`
@@ -103,7 +122,7 @@ Every new UI element MUST use the master template factory methods from `python_a
 - All endpoints use proper dependency injection via `wire_dependencies.py`
 - Error responses use `PlatformAPIError` subclasses with standard JSON envelope
 
-## Admin Portal Conventions
+### Legacy admin portal conventions
 - Pages go in `admin_portal/src/pages/`
 - Hooks go in `admin_portal/src/hooks/`
 - Types in `admin_portal/src/types/`

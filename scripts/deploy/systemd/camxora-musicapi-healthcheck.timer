@@ -1,0 +1,10 @@
+[Unit]
+Description=CamXora Music API health probe (every 5 min)
+
+[Timer]
+OnCalendar=*:0/5
+Persistent=true
+Unit=camxora-musicapi-healthcheck.service
+
+[Install]
+WantedBy=timers.target

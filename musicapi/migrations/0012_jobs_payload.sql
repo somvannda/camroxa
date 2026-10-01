@@ -1,0 +1,13 @@
+-- 0012_jobs_payload — serializable job descriptors (roadmap R4.1).
+--
+-- A job submitted over HTTP is defined by a closure over a live `SunoClient`,
+-- which cannot be serialized into a queue. `payload` holds the serializable
+-- form of that submission instead:
+--
+--   { "op": "wav_detail", "mode": "result", "args": { "id": "…" } }
+--
+-- A consumer resolves `op` against the in-process job-op registry to rebuild the
+-- submission. Rows with a NULL payload (composite submissions that have not been
+-- converted yet) keep the pre-R4 behaviour: they run in-process and are failed
+-- out by `recoverJobs()` if the process dies mid-flight.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS payload JSONB;
