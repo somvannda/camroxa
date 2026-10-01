@@ -533,10 +533,12 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > user with `null/1` → 2nd call 429 `Daily request limit exceeded (1/day).`;
 > invalid `-3` → 400, unknown user → 404; clearing limits deletes the row and stops
 > enforcement. Fixtures cleaned up (0 leftover users/keys, 0 `rate_limits` rows).
-> **Caveat:** `camxora-musicapi-remote.sh` only `systemctl enable --now`s the units,
-> which is a no-op for an already-running service — a core redeploy silently keeps
-> the old `dist/server.js` until `systemctl restart camxora-musicapi` is run (done
-> manually here; worth fixing in the deploy chain). Production was **not** touched.
+> **Caveat (fixed 2026-09-30):** `install_musicapi_services.sh` (worktree root) previously only
+> `systemctl enable --now`d the units, which is a no-op for an already-running service — a core
+> redeploy silently kept the old `dist/serve.js` until `systemctl restart camxora-musicapi` was run
+> manually. It now runs `enable` + an **unconditional `restart`** and asserts both `is-active` and
+> that `ActiveEnterTimestamp` is newer than `dist/serve.js` (see roadmap R8). Production was **not**
+> touched.
 
 > **Note (5.2):** added an append-only `audit_logs` table
 > (`0009_audit_logs.sql`: `actor_id` `ON DELETE SET NULL`, `actor_email` snapshot,
@@ -695,10 +697,32 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 
 ## Definition of "ready to go live"
 
-- [ ] Core + both apps build & typecheck clean, committed from `main`
-- [ ] No free-credit or forgeable-token path
-- [ ] Secrets rotated; cookies encrypted at rest
-- [ ] Jobs survive restart; workers/refunds safe
-- [ ] Both apps point at prod backend via env; admin auth server-enforced
-- [ ] nginx + TLS + process manager + backups + monitoring in place
-- [ ] Deployed and smoked on sandbox first
+Reviewed 2026-09-30 (see `docs/state-of-the-art-and-roadmap.md` R5.1). Each line is now split into
+what is provably done vs. the exact remaining owner.
+
+- [x] **Build & typecheck clean** — core `npm run typecheck` / `npm run build`, both apps build; CI
+      (`musicapi-checks`, `musicapi-smoke`) gates PRs. ✅
+- [ ] **Committed from `main`** — **owner: R2 (GATED).** The whole subtree still lives only on
+      local `integration/musicapi-phase2`, 67 commits diverged from `origin/main`; `main` cannot be
+      built from yet. Do not start without explicit approval.
+- [x] **No free-credit or forgeable-token path** — Phase 1 gate met: `POST /auth/register` → 405,
+      the sole credit-mint mock is `NODE_ENV=development`-gated (404 in prod), API keys are
+      sha256-hashed, KHQR confirm is atomic (`withTransaction` + guarded claim). ✅
+- [~] **Secrets rotated; cookies encrypted at rest** — cookies ✅ (AES-256-GCM, `enc:v1:`). Secret
+      *audit + scrub* ✅ (§1.8: nothing secret is tracked or in history). Remaining: **provider-side
+      rotation — owner: user/ops** (Suno cookie, Google secret, 2Captcha, Telegram, Turnstile, B2,
+      SMTP, Cutluy, VPS password). Sandbox `JWT_SECRET` already rotated 2026-09-29.
+- [x] **Jobs survive restart; workers/refunds safe** — Phase 2 gate met: `jobs` table +
+      `recoverJobs()` on boot, `trackJob()`/`drainJobs()` graceful SIGTERM drain, `settleCredits()`
+      refund + ledger, TTL/LRU eviction, migration runner with advisory lock. ✅ *(Single-process
+      only — multi-node needs R4/Redis.)*
+- [x] **Both apps point at prod backend via env; admin auth server-enforced** — Phase 3 gate met:
+      `BACKEND_URL` baked into both `next.config.ts` rewrites; `web-admin/proxy.ts` blocks
+      non-admin sessions server-side; httpOnly `sunosession` + CSRF; no fabricated dashboard data. ✅
+- [x] **nginx + TLS + process manager + backups + monitoring in place** — Phase 4 gate met: systemd
+      units (enabled on boot), nginx vhosts + TLS + `/backend` proxy, nightly `pg_dump`, 5-min health
+      probe. ✅
+- [~] **Deployed and smoked on sandbox first** — sandbox deploy + boot smoke ✅ (Phase 4 gate;
+      `/health`, `/metrics` → 401, `POST /auth/register` → 405 asserted). Remaining: **live-Suno
+      success path — owner: R1.2**, blocked on a decision to spend real quota/credits. Reachability
+      (205 routes) is now proven (R1.1/R1.3); correctness against the live Suno API is not.

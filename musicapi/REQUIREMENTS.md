@@ -25,12 +25,12 @@ Build a commercial API that sits on top of multiple Suno accounts and exposes a 
 
 | Layer | Technology |
 |---|---|
-| Frontend (user + admin) | Next.js (React) — two separate apps: `web-user` (port 3001) and `web-admin` (port 3002) |
-| Backend API | Fastify (Node.js / TypeScript) |
+| Frontend (user + admin) | Next.js (React) — two separate apps: `web-user` (port 4001) and `web-admin` (port 4002) |
+| Backend API | Fastify (Node.js / TypeScript), port 4003 |
 | Suno engine | Existing reverse-engineered client (`src/client.ts`) |
 | Database | PostgreSQL (local, database `sunoapi`) |
-| Queue / async jobs | Redis (BullMQ) — `[PENDING]` (currently in-memory) |
-| Auth | Email/password (bcrypt) + JWT, role-based |
+| Queue / async jobs | `[DONE]` Redis (BullMQ) behind `QUEUE_DRIVER` — default `memory` keeps the in-memory LRU/TTL map mirrored to the Postgres `jobs` table; `redis` moves execution onto BullMQ workers while the `jobs` table stays the system of record. Descriptor-backed jobs (the `payload` column, resolved by `src/jobOps.ts`) survive a crashed process — `recoverJobs()` re-queues them and another consumer adopts them. Composite submissions keep the in-process path. Graceful `trackJob()`/`drainJobs()` on shutdown in both modes. |
+| Auth | Google OAuth (signup + login) with httpOnly `sunosession` cookie + CSRF Origin check; email/password (bcrypt) + JWT remains for **admin** login only — `POST /auth/register` is intentionally disabled (`405`) |
 
 The Suno engine is already **proven working** for: auth, billing, lyrics, music generation, sounds, extend, cover, and multi-account sessions. The product layer (users, keys, credits, logs, panels) is built on top of it.
 
@@ -280,18 +280,18 @@ Credit packs: `$5 / 1,000` · `$25 / 5,000` · `$100 / 20,000` (flat $0.005/cred
 ## 9. Non-functional requirements
 
 - **Captcha** `[DONE]`: per-account browser-based 2Captcha integration — `solveCaptchaForAccount(account)` in `src/captcha.ts`; pay-per-solve **only** when `/api/c/check` returns `required=true`. Central entry point `ensureCaptchaToken()` wired into `submitClips()` (covers ALL v2-web/upsample clip ops: generate, sounds, extend, cover, stems, remaster, mashup, addVocals, addInstrumental, replaceSection, uploadExtend, uploadCover) + separately into `createPersona`, `generateCoverImage`, `downloadUrl` (the 3 non-clip ops). Token auto-attached to payload.
-- **Durability** `[PENDING]`: jobs/keys/credits must survive restarts → DB + Redis queue (currently in-memory).
-- **Security** `[PARTIAL]`: passwords hashed (bcrypt) `[DONE]`, API keys hashed `[DONE]`, Suno cookies encrypted at rest `[PENDING]`.
-- **Rate limiting** `[PARTIAL]`: per-key safe-spend + IP whitelist `[DONE]`, per-user rate limit `[PENDING]`.
+- **Durability** `[DONE]`: jobs / keys / credits **survive restarts** — jobs are persisted to the Postgres `jobs` table and recovered on boot (`recoverJobs()`), keys and credits are DB-native. With `QUEUE_DRIVER=redis`, job execution also **survives a process crash**: descriptor-backed jobs (`payload`, `src/jobOps.ts`) are re-queued on boot and adopted by another consumer. Composite submissions remain in-process/single-node until converted (see roadmap R4).
+- **Security** `[DONE]`: passwords hashed (bcrypt) `[DONE]`, API keys hashed (sha256) `[DONE]`, Suno cookies encrypted at rest with AES-256-GCM `[DONE]` (`src/cookieCrypto.ts`, `enc:v1:<iv|tag|ciphertext>`, used by `server.ts` and `pool.ts`).
+- **Rate limiting** `[DONE]`: per-key safe-spend + IP whitelist `[DONE]`, per-user rate limit `[DONE]` (`enforceUserRateLimit()` in `src/server.ts`, backed by the `rate_limits` table + `rateLimitCache`).
 
 ---
 
 ## 10. Phasing
 
 1. **Foundation** — DB schema + user/admin auth + roles. `[DONE]`
-2. **User panel** — Dashboard → Playground → API Key → Usage → Logs → Billing → Docs. `[PARTIAL]`
-3. **Admin panel** — Suno account pool + routing → users → pricing → analytics → content → settings. `[PARTIAL]`
-4. **Hardening** — captcha (2Captcha per-account) `[DONE]`, Redis queue `[PENDING]`.
+2. **User panel** — Dashboard → Playground → API Key → Usage → Logs → Billing → Docs. `[DONE]`
+3. **Admin panel** — Suno account pool + routing → users → pricing → analytics → content → settings. `[DONE]`
+4. **Hardening** — captcha (2Captcha per-account) `[DONE]`, cookie encryption at rest `[DONE]`, per-user rate limits `[DONE]`, Redis queue `[DONE]`.
 5. **Full sunoapi.org parity** — all endpoints: upload 3-step, mp4 video, voice ops, MIDI, detail endpoints, captcha-wired everywhere `[DONE]`.
 
 ---

@@ -1,6 +1,42 @@
-# Endpoint Status Matrix — SunoAPI Middleman Wrapper
+# Endpoint Status Matrix — musicapi
 
-> Report date: **2026-09-09** · Ground-truth: live browser E2E (viewId `92d5fefd-89ec-4130-80a0-06a77bad173e`) + 100-entry rolling network buffer + `probe_e2e.ts` exit 0 + Fastify route inventory [server.ts](file:///e:/Development/SunoAPI/src/server.ts) (100 registered routes) + Next.js pages inventory (25 page routes).
+> **Report date: 2026-09-30** · **Tree:** `g:\Developments\Projects\Camxora\MusicGenerator-musicapi-integration\musicapi`
+> **Branch:** `integration/musicapi-phase2` · **DB:** PostgreSQL `sunoapi` (migrations `0001`–`0019`)
+>
+> **Ground truth this revision:** Fastify's own route inventory (`app.printRoutes()`) + an automated
+> reachability/auth/validation sweep over **every** registered route against the locally running
+> Core API on port **4003**.
+>
+> Reproduce with: `npm run serve` (one terminal) then
+> `npx tsx scripts/smoke-test-reachability.ts` — see
+> [smoke-test-reachability.ts](file:///g:/Developments/Projects/Camxora/MusicGenerator-musicapi-integration/musicapi/scripts/smoke-test-reachability.ts).
+>
+> Supersedes the 2026-09-09 report, which was written against a different tree
+> (`e:/Development/SunoAPI`) and undercounted the surface as "100 registered routes".
+
+---
+
+## What was actually measured
+
+Two axes matter, and **they are not the same thing**. The 2026-09-09 report only measured axis B.
+
+| Axis | Question | How it was measured on 2026-09-30 |
+|---|---|---|
+| **A — Reachability** | Is the route registered, does it enforce auth, and does it validate input? | Sweep hit all 205 routes with **no credentials** (T1) and, for every `POST` on the public surfaces, **again with a valid API key + empty body** (T2). |
+| **B — Live Suno correctness** | Does a real job actually generate → poll → download from live Suno? | **NOT re-measured this revision.** Requires spending real Suno quota/credits. Historical 2026-09-09 evidence is retained below and marked as such. |
+
+**T1 / T2 results (2026-09-30):**
+
+```
+ROUTES=205
+T1 status histogram: {"200":6,"400":2,"401":194,"404":1,"405":1,"503":1}
+T2 (valid key + {} on POST /v1/* and /api/v1/*): 62 checks, all 400 — 0 mismatches
+NOT-ROUTED (T1 404): 1  →  POST /payments/khqr/confirm-mock/:id
+```
+
+Interpretation: **194 of 205 routes are auth-gated** and answer `401` without credentials. Every
+one of the **62 public-API `POST` routes** returns a clean `400` on an empty body with a valid key —
+no `500`s, no route shadowing, no unauthenticated fall-through on the revenue surface.
 
 ---
 
@@ -8,144 +44,218 @@
 
 | Status | Meaning |
 |--------|---------|
-| ✅ **VERIFIED** | Live traffic evidence this session — network dump + real clicks + byte-verified output. |
-| 🟡 **PROBABLY WORKS** | Route handler exists, page renders, light 200 in network, but **no deep POST E2E** was executed this cycle. |
-| ⚠️ **NOT VERIFIED / NEEDS E2E TESTING** | Handler/page is registered or present but **zero live traffic evidence** or 100% FAILED log rows observed. Assumed non-working until proven. |
+| ✅ **VERIFIED** | Live evidence this cross-check: registered, correctly gated, correct status on the probe. |
+| 🟡 **ROUTED (shallow)** | Reachable and gated, but only a `401`/`400` was observed — no deep success path exercised. |
+| ⚠️ **UNPROVEN (axis B)** | Axis A passes, but no live-Suno success path has been re-run on this tree. Assumed working until proven. |
+| 🔒 **INTENTIONAL** | Non-`200` is deliberate; documented in source. |
+| ⛔ **NOT-ROUTED** | Appears in the route table but a live request does not reach a handler. |
 
 ---
 
-## 1. Core Auth + Self-Service Dashboard Endpoints (18 routes)
+## 1. Ops / Health (2 routes)
 
-| # | Endpoint | Method | Handler | Status | Evidence |
-|---|----------|--------|---------|--------|----------|
-| 1.1 | `/health` | GET | [server.ts L538](file:///e:/Development/SunoAPI/src/server.ts#L538) | ✅ VERIFIED | Frontend proxy bootstrap returns `{ok:true}`. |
-| 1.2 | `/auth/register` | POST | [server.ts L545](file:///e:/Development/SunoAPI/src/server.ts#L545) | 🟡 PROBABLY WORKS | Register page renders; auth pipeline is identical to working `/auth/login`. |
-| 1.3 | `/auth/login` | POST | [server.ts L561](file:///e:/Development/SunoAPI/src/server.ts#L561) | ✅ VERIFIED | Logged in `user@example.com` → JWT set; `/auth/me` confirms session. |
-| 1.4 | `/auth/me` | GET | [server.ts L575](file:///e:/Development/SunoAPI/src/server.ts#L575) | ✅ VERIFIED | Header renders `U Test User user@example.com` (snapshot ref `e696`). |
-| 1.5 | `/auth/google/url` · `/auth/google/callback` | GET / POST | [server.ts L583-L599](file:///e:/Development/SunoAPI/src/server.ts#L583-L599) | ⚠️ NOT VERIFIED | Google button renders in login modal but **OAuth flow never completed** this cycle. Needs valid Google credentials + real consent-screen round-trip E2E. |
-| 1.6 | `/me/keys` (list) | GET | [server.ts L652](file:///e:/Development/SunoAPI/src/server.ts#L652) | ✅ VERIFIED | Network entries #1/#3/#28/#29 → 200. API Keys page renders in 3 browser tabs. |
-| 1.7 | `/me/keys` (create) | POST | [server.ts L661](file:///e:/Development/SunoAPI/src/server.ts#L661) | 🟡 PROBABLY WORKS | UI renders; one-time emerald success-banner code path not hit this session. |
-| 1.8 | `/me/keys/:id` (edit / IP whitelist) | PUT | [server.ts L673](file:///e:/Development/SunoAPI/src/server.ts#L673) | 🟡 PROBABLY WORKS | Whitelist editor renders; no live edit performed this cycle. |
-| 1.9 | `/me/usage` | GET | [server.ts L1024](file:///e:/Development/SunoAPI/src/server.ts#L1024) | ✅ VERIFIED | Network #0/#2/#33/#35 → 200. Usage page content loads. |
-| 1.10 | `/me/usage/by-endpoint` | GET | [server.ts L1120](file:///e:/Development/SunoAPI/src/server.ts#L1120) | ✅ VERIFIED | Network #34/#36 → 200. |
-| 1.11 | `/me/logs` | GET | [server.ts L1073](file:///e:/Development/SunoAPI/src/server.ts#L1073) | ✅ VERIFIED | Network #21/#23/#27/#29/#43/#45 → 200; table populates 24 rows correctly. |
-| 1.12 | `/me/jobs/running` | GET | [server.ts L1281](file:///e:/Development/SunoAPI/src/server.ts#L1281) | ✅ VERIFIED | Network #22/#24/#44/#46 → 200; auto-poll behavior confirmed. |
-| 1.13 | `/me/task/:id` | GET | [server.ts L971](file:///e:/Development/SunoAPI/src/server.ts#L971) | ✅ VERIFIED | Called implicitly by client poller; `probe_e2e.ts` exit 0 exercised 3-step download poll including task data. |
-| 1.14 | `/me/billing` | GET | [server.ts L1162](file:///e:/Development/SunoAPI/src/server.ts#L1162) | 🟡 PROBABLY WORKS | Billing page loads (tab #5 active); no deep Stripe / top-up POST executed. |
-| 1.15 | `/me/download` (real clips, MP3) | GET | [server.ts L1179-L1278](file:///e:/Development/SunoAPI/src/server.ts#L1179-L1278) | ✅ **DEEPLY VERIFIED** | `probe_e2e.ts` exit 0: 5,054,339 bytes, ID3 bytes `494433`, HTTP 200 `audio/mpeg` in 5.1s. Browser network entries (row + intra-modal + dedup test all 200, zero fail markers for real `0ceba9e7`/`1a58eb4d`/`77fba4e6`/`589fcb86` clip ids. |
-| 1.16 | `/me/download` (real clips, WAV) | GET | [server.ts L1179-L1278](file:///e:/Development/SunoAPI/src/server.ts#L1179-L1278) | ✅ **DEEPLY VERIFIED** | `probe_e2e.ts` exit 0: 43,060,250 bytes, RIFF/WAVE/fmt byte-fingerprint match, HTTP 200 `audio/wav` in 6.3s. Browser network intra-modal clip2 WAV [entry 93], row WAV all 200. |
-| 1.17 | `/me/download` (expired/dead clips, graceful fail) | GET | [server.ts L1274-L1275](file:///e:/Development/SunoAPI/src/server.ts#L1274-L1275) | ✅ **DEEPLY VERIFIED** (3-path browser test) | Silent Horizons row MP3, row WAV, Result modal both clips → all 3 surfaces return HTTP 502 JSON `{error: "Audio not available. The clip may have expired or the media server is unreachable."}`; error string renders verbatim in `AuthorizedAudio` error div at [playground.tsx L119](file:///e:/Development/SunoAPI/web-user/components/playground.tsx#L119); **zero new `cdn1.suno.ai` URLs** in post-fix 100-entry rolling network buffer (only stale pre-fix entry remains as evidence). |
-| 1.18 | `/me/lyrics/:id` | GET | [server.ts L1650](file:///e:/Development/SunoAPI/src/server.ts#L1650) | ⚠️ NOT VERIFIED | Lyrics toolbar button present, never clicked. |
+| # | Endpoint | Method | Status | Evidence |
+|---|----------|--------|--------|----------|
+| 1.1 | `/health` | GET | ✅ VERIFIED | `200` unauthenticated. Reports account-pool healthy count (`accounts=2`). |
+| 1.2 | `/metrics` | GET | 🟡 ROUTED (shallow) | **`401` — auth-gated.** If an external scraper (Prometheus) is intended to read this, it needs a token or a loopback exemption. Confirm intent. |
 
 ---
 
-## 2. Generation / Media Endpoints — `/me/*` jobs (12 routes)
+## 2. User Dashboard `/me/*` (54 routes)
 
-> **NOTE:** Log table this session shows 21 FAILED rows and 3 SUCCESS rows for `music`, `recovery_audio`, `mp4_generate`, `midi_generate`, `voice_generate`. The 3 SUCCESS rows (Neon/Soft/Silent) were generated in a **previous session on 2026-09-08 22:32 → 19:09** — none of the job-**submission** POSTs below were executed this verification cycle.
+`401` without a session cookie/JWT for all 54. This is the surface the `web-user` app drives.
 
-| # | Endpoint | Method | Handler | Status | Evidence |
-|---|----------|--------|---------|--------|----------|
-| 2.1 | `/me/generate` (chirp-v4 music) | POST | [server.ts L702](file:///e:/Development/SunoAPI/src/server.ts#L702) | 🟡 PROBABLY WORKS (historic pass, **needs live E2E**) | Shared `useJob()` hook at [playground.tsx](file:///e:/Development/SunoAPI/web-user/components/playground.tsx) is wired and the task poll+download pipeline (#1.13–#1.16) works end-to-end; BUT no live `POST /me/generate` → SUCCESS was hit this session. **Is next missing piece if the goal is ship.** |
-| 2.2 | `/me/music` (alias) | POST | [server.ts L1300](file:///e:/Development/SunoAPI/src/server.ts#L1300) | 🟡 PROBABLY WORKS | Alias for 2.1. |
-| 2.3 | `/me/sounds` | POST | [server.ts L1314](file:///e:/Development/SunoAPI/src/server.ts#L1314) | 🟡 PROBABLY WORKS | |
-| 2.4 | `/me/recovery` (audio recovery) | POST | [server.ts L768](file:///e:/Development/SunoAPI/src/server.ts#L768) | ⚠️ NOT VERIFIED | **9/9 FAILED rows** `recovery_audio` type in logs. Recovery page loads; no live E2E. Likely prompt issue OR real handler bug. Investigate separately. |
-| 2.5 | `/me/stems` (vocal removal / separate) | POST | [server.ts L790](file:///e:/Development/SunoAPI/src/server.ts#L790) | ⚠️ NOT VERIFIED | Separate Vocals page loads. 1 FAILED `vocal-removal` row. |
-| 2.6 | `/me/replace-section` | POST | [server.ts L813](file:///e:/Development/SunoAPI/src/server.ts#L813) | ⚠️ NOT VERIFIED | Page loads, never hit. |
-| 2.7 | `/me/persona-create` | POST | [server.ts L843](file:///e:/Development/SunoAPI/src/server.ts#L843) | ⚠️ NOT VERIFIED | |
-| 2.8 | `/me/voice-generate` | POST | [server.ts L869](file:///e:/Development/SunoAPI/src/server.ts#L869) | ⚠️ NOT VERIFIED | Generate Voice page loads. 1 FAILED `voice_generate` row. |
-| 2.9 | `/me/voice-validate` | POST | [server.ts L895](file:///e:/Development/SunoAPI/src/server.ts#L895) | ⚠️ NOT VERIFIED | Check Voice page loads. |
-| 2.10 | `/me/voice-phrase` | POST | [server.ts L917](file:///e:/Development/SunoAPI/src/server.ts#L917) | ⚠️ NOT VERIFIED | |
-| 2.11 | `/me/voice-record` | POST | [server.ts L936](file:///e:/Development/SunoAPI/src/server.ts#L936) | ⚠️ NOT VERIFIED | |
-| 2.12 | `/me/music/replace-section` · `/me/music/recovery` · `/me/upload/status/:id` | POST/GET | [server.ts L1587-L1629](file:///e:/Development/SunoAPI/src/server.ts#L1587-L1629) | ⚠️ NOT VERIFIED | Aliases + upload status. Uploaded-file flows completely untested. |
+### 2.1 Account & API keys (3)
 
----
+| # | Endpoint | Method | Status |
+|---|----------|--------|--------|
+| 2.1.1 | `/me/keys` | GET, POST | 🟡 ROUTED (shallow) |
+| 2.1.2 | `/me/keys/:id` | PUT | 🟡 ROUTED (shallow) |
+| 2.1.3 | `/me/profile` | GET, PUT | 🟡 ROUTED (shallow) |
 
-## 3. Public Static & Marketing Endpoints (3 routes)
+### 2.2 Generation (music) (14)
 
-| # | Endpoint | Method | Handler | Status | Evidence |
-|---|----------|--------|---------|--------|----------|
-| 3.1 | `/updates` | GET | [server.ts L1734](file:///e:/Development/SunoAPI/src/server.ts#L1734) | ✅ VERIFIED | Network #40/#41 → 200. Updates page loads content. |
-| 3.2 | `/pricing` | GET | [server.ts L1740](file:///e:/Development/SunoAPI/src/server.ts#L1740) | 🟡 PROBABLY WORKS | Static JSON; renders on billing page top-up tiles. |
-| 3.3 | Docs page `/docs` | GET | [web-user/app/docs/page.tsx](file:///e:/Development/SunoAPI/web-user/app/docs/page.tsx) | 🟡 PROBABLY WORKS | Page route registered; not navigated to this cycle. |
+| # | Endpoint | Method | Status |
+|---|----------|--------|--------|
+| 2.2.1 | `/me/generate` | POST | ⚠️ UNPROVEN — **the P0 revenue path** |
+| 2.2.2 | `/me/generate/upload-extend` | POST | ⚠️ UNPROVEN |
+| 2.2.3 | `/me/generate/upload-cover` | POST | ⚠️ UNPROVEN |
+| 2.2.4 | `/me/generate/boost` | POST | ⚠️ UNPROVEN |
+| 2.2.5 | `/me/music` | POST | ⚠️ UNPROVEN |
+| 2.2.6 | `/me/music/extend` | POST | ⚠️ UNPROVEN |
+| 2.2.7 | `/me/music/cover` + `/me/music/cover-image` + `GET /me/music/cover/:id` | POST, POST, GET | ⚠️ UNPROVEN |
+| 2.2.8 | `/me/music/remaster` | POST | ⚠️ UNPROVEN |
+| 2.2.9 | `/me/music/replace-section` · `/me/replace-section` | POST | ⚠️ UNPROVEN |
+| 2.2.10 | `/me/music/recovery` · `/me/recovery` + `GET /me/music/recovery/:id` | POST, POST, GET | ⚠️ UNPROVEN — 9/9 FAILED rows on 2026-09-09 (P1 audit, never closed) |
+| 2.2.11 | `/me/music/add-vocals` · `/me/music/add-instrumental` | POST | ⚠️ UNPROVEN |
+| 2.2.12 | `/me/music/mashup` | POST | ⚠️ UNPROVEN |
+| 2.2.13 | `/me/music/midi` + `GET /me/music/midi/:id` | POST, GET | ⚠️ UNPROVEN |
+| 2.2.14 | `/me/music/wav` + `GET /me/music/wav/:id` | POST, GET | ⚠️ UNPROVEN |
 
----
+### 2.3 Generation (other media) (7)
 
-## 4. Admin Panel (`/admin/*`) — 18 routes
+| # | Endpoint | Method | Status |
+|---|----------|--------|--------|
+| 2.3.1 | `/me/mp4/generate` + `GET /me/mp4/:id` | POST, GET | ⚠️ UNPROVEN — FAILED rows on 2026-09-09 |
+| 2.3.2 | `/me/sounds` | POST | ⚠️ UNPROVEN |
+| 2.3.3 | `/me/persona-create` | POST | ⚠️ UNPROVEN |
+| 2.3.4 | `/me/stems` + `GET /me/music/stems/:id` | POST, GET | ⚠️ UNPROVEN — FAILED `vocal-removal` row on 2026-09-09 |
+| 2.3.5 | `/me/voice-generate` | POST | ⚠️ UNPROVEN — FAILED `voice_generate` row on 2026-09-09 |
+| 2.3.6 | `/me/voice-validate` · `/me/voice-phrase` · `/me/voice-record` | POST | ⚠️ UNPROVEN |
+| 2.3.7 | `/me/voice/apply` · `/me/voice/extend` | POST | ⚠️ UNPROVEN — **not present in the 2026-09-09 report at all** |
 
-> **NOT ONE was hit this cycle. Admin UI may or may not work. Assumed ⚠️ across the board.**
+### 2.4 Read-side: task, clip, downloads (10)
 
-| # | Endpoint family | Handler block | Status |
-|---|-----------------|---------------|--------|
-| 4.1 | `/admin/keys` · `/admin/accounts` (list, create) | [server.ts L1754-L1791](file:///e:/Development/SunoAPI/src/server.ts#L1754-L1791) | ⚠️ NOT VERIFIED |
-| 4.2 | `/admin/stats` · `/admin/users` · `/admin/users/:id` (patch, top-up credits) | [server.ts L1810-L1855](file:///e:/Development/SunoAPI/src/server.ts#L1810-L1855) | ⚠️ NOT VERIFIED |
-| 4.3 | `/admin/pricing` (list, create, delete) | [server.ts L1886-L1918](file:///e:/Development/SunoAPI/src/server.ts#L1886-L1918) | ⚠️ NOT VERIFIED |
-| 4.4 | `/admin/routing` (list, create, delete) | [server.ts L1925-L1951](file:///e:/Development/SunoAPI/src/server.ts#L1925-L1951) | ⚠️ NOT VERIFIED |
-| 4.5 | `/admin/logs` · `/admin/content` (list, create, update, delete) | [server.ts L1958-L2009](file:///e:/Development/SunoAPI/src/server.ts#L1958-L2009) | ⚠️ NOT VERIFIED |
+| # | Endpoint | Method | Status | Evidence |
+|---|----------|--------|--------|----------|
+| 2.4.1 | `/me/task/:id` | GET | ✅ VERIFIED (2026-09-09) | Client poller path; `probe_e2e.ts` exit 0 exercised the 3-step download poll. Axis A re-confirmed `401`. |
+| 2.4.2 | `/me/clip/:id` | GET | 🟡 ROUTED (shallow) | |
+| 2.4.3 | `/me/download` (MP3) | GET | ✅ **DEEPLY VERIFIED** (2026-09-09) | `probe_e2e.ts` exit 0: 5,054,339 bytes, ID3 `494433`, `200 audio/mpeg` in 5.1s. |
+| 2.4.4 | `/me/download` (WAV) | GET | ✅ **DEEPLY VERIFIED** (2026-09-09) | `probe_e2e.ts` exit 0: 43,060,250 bytes, RIFF/WAVE/fmt fingerprint, `200 audio/wav` in 6.3s. |
+| 2.4.5 | `/me/download` (expired clip) | GET | ✅ **DEEPLY VERIFIED** (2026-09-09) | Graceful `502` JSON on all 3 UI surfaces; zero CDN leakage. |
+| 2.4.6 | `/me/music/subtitle/:id` | GET | 🟡 ROUTED (shallow) | |
+| 2.4.7 | `/me/music/video/:id` | GET | 🟡 ROUTED (shallow) | |
+| 2.4.8 | `/me/lyrics/:id` | GET | 🟡 ROUTED (shallow) | |
+| 2.4.9 | `/me/jobs/running` | GET | ✅ VERIFIED (2026-09-09) | Auto-poll behavior confirmed. |
+| 2.4.10 | `/me/upload/status/:id` | GET | 🟡 ROUTED (shallow) | |
 
----
+### 2.5 Billing, usage, logs (7)
 
-## 5. Public API `/v1/*` — 30 routes + Legacy wrapper `/api/v1/*` — 26 routes
-
-> These are your **customer-facing public API wrappers**. 56 routes total. **Zero traffic evidence this cycle.** All are ⚠️ until you run real key-authenticated E2E against them.
-
-### 5.1 `/v1/*` (30) — block [server.ts L2017-L2640](file:///e:/Development/SunoAPI/src/server.ts#L2017-L2640)
-
-| Family | Example endpoints | Status |
-|--------|-------------------|--------|
-| Music | `/v1/music`, `/v1/sounds`, `/v1/music/mashup`, `/v1/music/wav`, `/v1/music/midi`, `/v1/music/recovery`, `/v1/music/replace-section`, `/v1/music/cover-image`, `/v1/mp4/generate`, `/v1/music/mashup`, `/v1/generate/boost`, `/v1/generate/upload-extend`, `/v1/generate/upload-cover` | ⚠️ NOT VERIFIED |
-| Voice (6) | `/v1/voice/phrase`, `/v1/voice/validate`, `/v1/voice/record`, `/v1/voice/generate`, `/v1/voice/apply`, `/v1/voice/extend` | ⚠️ NOT VERIFIED |
-| Credits / Lyrics / Task | `/v1/credits`, `/v1/lyrics`, `/v1/lyrics/:id`, `/v1/task/:id` | ⚠️ NOT VERIFIED |
-| Upload (3) | `/v1/upload/init`, `/v1/upload/register`, `/v1/upload/status/:id` | ⚠️ NOT VERIFIED |
-| Persona | `/v1/persona/create` | ⚠️ NOT VERIFIED |
-
-### 5.2 `/api/v1/*` legacy wrapper (PREFIX=`/api/v1`) — block [server.ts L2676-L3213](file:///e:/Development/SunoAPI/src/server.ts#L2676-L3213)
-
-| Family | Example endpoints | Status |
-|--------|-------------------|--------|
-| Core | `/api/v1/get-credits`, `/api/v1/generate`, `/api/v1/lyrics` | ⚠️ NOT VERIFIED |
-| Generate suite (12) | `generate/extend`, `/generate/upload-extend`, `/generate/upload-cover`, `/generate/add-vocals`, `/generate/add-instrumental`, `/generate/generate-persona`, `/generate/cover`, `/generate/cover-image`, `/generate/convert-wav`, `/generate/boost`, `/generate/music-video`, `/generate/mashup`, `/generate/midi`, `/generate/recovery` | ⚠️ NOT VERIFIED |
-| Cover suite (2) | `/cover-suno/generate`, `/cover/generate` | ⚠️ NOT VERIFIED |
-| Vocal removal | `/vocal-removal/generate` | ⚠️ NOT VERIFIED |
-| Upload alias | `/extend-upload`, plus Suno passthrough proxy `GET /api/v1${sunoPath}` at L2841 | ⚠️ NOT VERIFIED |
-
----
-
-## 6. Frontend Pages Inventory (25 routes)
-
-Grouped by active test evidence this cycle:
-
-| Page route | File | Status |
-|------------|------|--------|
-| **✅ Loaded in active live tab this cycle** (DOM confirmed) | | |
-| Logs (`/dashboard/logs`) | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/logs/page.tsx) | ✅ PRIMARY WORKSPACE |
-| API Keys (`/dashboard/api-keys`, 3 tabs) | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/api-keys/page.tsx) | ✅ ACTIVE TABS (3) |
-| Usage (`/dashboard/usage`) | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/usage/page.tsx) | ✅ DATA LOADED |
-| Updates (`/dashboard/updates`) | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/updates/page.tsx) | ✅ DATA LOADED |
-| Billing (`/dashboard/billing`) | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/billing/page.tsx) | ✅ ACTIVE TAB |
-| Landing (`/`) | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/page.tsx) | ✅ DOCUMENT RENDERED |
-| Dashboard home (`/dashboard`) | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/page.tsx) | 🟡 RENDERS |
-| Login (`/login`) + Signup (`/signup`) + Google callback (`/auth/callback`) | [login](file:///e:/Development/SunoAPI/web-user/app/login/page.tsx), [signup](file:///e:/Development/SunoAPI/web-user/app/signup/page.tsx), [callback](file:///e:/Development/SunoAPI/web-user/app/auth/callback/page.tsx) | 🟡 RENDER |
-| **🟡 Route exists, page loads in SSR (toolbars show links), never navigated to explicitly this session** | | |
-| Playground `/dashboard/playground` | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/playground/page.tsx) | 🟡 PROBABLY WORKS |
-| Recovery Audio `/dashboard/recovery-audio` | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/recovery-audio/page.tsx) | 🟡 PROBABLY WORKS |
-| Separate Vocals `/dashboard/separate-vocals` | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/separate-vocals/page.tsx) | 🟡 PROBABLY WORKS |
-| Replace Section `/dashboard/replace-section` | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/replace-section/page.tsx) | 🟡 PROBABLY WORKS |
-| Generate Voice `/dashboard/generate-voice` | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/generate-voice/page.tsx) | 🟡 PROBABLY WORKS |
-| Check Voice `/dashboard/check-voice` | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/check-voice/page.tsx) | 🟡 PROBABLY WORKS |
-| Settings `/dashboard/settings` | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/settings/page.tsx) | 🟡 PROBABLY WORKS |
-| Docs `/docs` | [page.tsx](file:///e:/Development/SunoAPI/web-user/app/docs/page.tsx) | 🟡 PROBABLY WORKS |
-| **⚠️ Mirror app shell `/app/*` duplicate tree (6 pages) — zero navigation evidence** | | |
-| `/app`, `/app/api-keys`, `/app/billing`, `/app/playground`, `/app/usage`, `/app/logs`, `/app/updates` | `web-user/app/app/**` 7 files | ⚠️ NOT VERIFIED |
+| # | Endpoint | Method | Status |
+|---|----------|--------|--------|
+| 2.5.1 | `/me/usage` | GET | ✅ VERIFIED (2026-09-09) |
+| 2.5.2 | `/me/usage/by-endpoint` | GET | ✅ VERIFIED (2026-09-09) |
+| 2.5.3 | `/me/logs` | GET | ✅ VERIFIED (2026-09-09) |
+| 2.5.4 | `/me/billing` | GET | 🟡 ROUTED (shallow) |
+| 2.5.5 | `/me/transactions` | GET | 🟡 ROUTED (shallow) — **new since 2026-09-09** |
+| 2.5.6 | `/me/upload/init` · `/me/upload/register` | POST | 🟡 ROUTED (shallow) |
 
 ---
 
-## Summary by Count
+## 3. Auth `/auth/*` (6 routes)
 
-| Status | Count | Share |
-|--------|-------|-------|
-| ✅ VERIFIED (live E2E evidence this session) | **16** | ~16% |
-| 🟡 PROBABLY WORKS (route/page present, shallow evidence only) | **8** | ~8% |
-| ⚠️ NOT VERIFIED / NEEDS E2E (admin + public API + generation jobs + mirror app shell + FAILED rows) | **76** | ~76% |
+| # | Endpoint | Method | Status | Evidence |
+|---|----------|--------|--------|----------|
+| 3.1 | `/auth/register` | POST | 🔒 **INTENTIONAL 405** | `{ error: "Self-registration is disabled. Please sign in with Google." }` — Google-only signup by design. |
+| 3.2 | `/auth/login` | POST | 🟡 ROUTED (shallow) | `400` on empty body. **Admin-only** — returns `403` for non-admin users. |
+| 3.3 | `/auth/logout` | POST | ✅ VERIFIED | `200` without auth (idempotent by design). |
+| 3.4 | `/auth/me` | GET | ✅ VERIFIED (2026-09-09) | Session confirmed via cookie. Axis A re-confirmed `401`. |
+| 3.5 | `/auth/google/url` | GET | ✅ VERIFIED | `200`; returns signed `state` + consent URL. |
+| 3.6 | `/auth/google/callback` | POST | 🟡 ROUTED (shallow) | `400` on empty body. Full OAuth round-trip still needs real consent-screen E2E. |
+
+---
+
+## 4. Admin `/admin/*` (32 routes)
+
+All `401` unauthenticated. **No admin route has ever been hit with a real admin session** — this is
+the largest untouched block. Note the surface grew from the 18 routes reported on 2026-09-09.
+
+| # | Family | Routes | Status |
+|---|--------|--------|--------|
+| 4.1 | `/admin/keys` | 1 | ⚠️ UNPROVEN |
+| 4.2 | `/admin/accounts` (+ `/:id` PATCH/DELETE) | 4 | ⚠️ UNPROVEN |
+| 4.3 | `/admin/analytics`, `/admin/audit`, `/admin/alerts`, `/admin/logs` | 4 | ⚠️ UNPROVEN — **new since 2026-09-09 (Phase 5)** |
+| 4.4 | `/admin/stats` | 1 | ⚠️ UNPROVEN |
+| 4.5 | `/admin/settings` (GET, PUT) | 2 | ⚠️ UNPROVEN — **new** |
+| 4.6 | `/admin/users` (+ `/:id` PATCH, `/:id/credits`, `/:id/rate-limits` GET/PUT) | 5 | ⚠️ UNPROVEN — rate-limits **new** |
+| 4.7 | `/admin/pricing` (+ `/:id` PUT/DELETE) | 4 | ⚠️ UNPROVEN |
+| 4.8 | `/admin/credit-packs` (+ `/:id` PUT/DELETE) | 4 | ⚠️ UNPROVEN — **new (Phase 5)** |
+| 4.9 | `/admin/content` (+ `/:id` PUT/DELETE) | 4 | ⚠️ UNPROVEN |
+| 4.10 | `/admin/routing` (+ `/:id` DELETE) | 3 | ⚠️ UNPROVEN |
+
+---
+
+## 5. Public API — the revenue surface
+
+### 5.1 `/v1/*` (42 routes) — the documented, sellable API
+
+All `401` unauthenticated. **All 28 `POST` routes return `400` on `{}` with a valid key** — input
+validation is intact across the whole surface.
+
+| Family | Count | Status |
+|--------|-------|--------|
+| Music (`/v1/music`, `/extend`, `/cover`, `/cover-image`, `/stems`, `/remaster`, `/replace-section`, `/recovery`, `/add-vocals`, `/add-instrumental`, `/mashup`, `/midi`, `/wav`, `/sounds`) | 24 | ⚠️ UNPROVEN (axis B) |
+| Media (`/v1/mp4/generate`, `/v1/mp4/:id`, `/v1/clip/:id`, `/v1/music/video/:id`, `/v1/music/subtitle/:id`) | 5 | ⚠️ UNPROVEN |
+| Voice (6) | 6 | ⚠️ UNPROVEN |
+| Lyrics / credits / task (`/v1/lyrics`, `/v1/lyrics/:id`, `/v1/credits`, `/v1/get-credits`, `/v1/task/:id`) | 5 | ⚠️ UNPROVEN |
+| Upload (3) | 3 | ⚠️ UNPROVEN |
+| Persona (`/v1/persona/create`, `/v1/generate/boost`, `/v1/generate/upload-extend`, `/v1/generate/upload-cover`) | 4 | ⚠️ UNPROVEN |
+
+### 5.2 `/api/v1/*` (60 routes) — sunoapi.org-compatible wrapper
+
+All `401` unauthenticated. **All 34 `POST` routes return `400` on `{}` with a valid key.**
+
+| Family | Count | Status |
+|--------|-------|--------|
+| `/api/v1/generate/*` suite (`extend`, `recovery`, `upload-cover`, `upload-extend`, `add-vocals`, `add-instrumental`, `boost`, `mashup`, `midi`, `cover`, `cover-image`, `convert-wav`, `generate-persona`, `music-video`) + paired `record-info` GETs | 30 | ⚠️ UNPROVEN |
+| `/api/v1/lyrics` (+ `/record-info`, `/generate`, `/:id`) | 4 | ⚠️ UNPROVEN |
+| `/api/v1/voice/*` (`record`, `phrase`, `validate`, `generate`, `apply`, `extend`) + `record-info` | 7 | ⚠️ UNPROVEN |
+| `/api/v1/cover-suno/*`, `/api/v1/cover/*` | 4 | ⚠️ UNPROVEN |
+| `/api/v1/convert-to-wav/*`, `/api/v1/create-music-video/*` | 4 | ⚠️ UNPROVEN |
+| `/api/v1/vocal-removal/*`, `/api/v1/music-remaster/*` | 4 | ⚠️ UNPROVEN |
+| `/api/v1/add-vocals/*`, `/api/v1/add-instrumental/*` | 4 | ⚠️ UNPROVEN |
+| `/api/v1/extend-upload` (+ `record-info`) | 2 | ⚠️ UNPROVEN |
+| `/api/v1/upload/*` (`init`, `register`, `status/:id`) | 3 | ⚠️ UNPROVEN |
+| `/api/v1/get-credits` | 1 | ⚠️ UNPROVEN |
+
+---
+
+## 6. Payments `/payments/*` (6 routes)
+
+| # | Endpoint | Method | Status | Evidence |
+|---|----------|--------|--------|----------|
+| 6.1 | `/payments/khqr/create` | POST | 🟡 ROUTED (shallow) | `401` unauthenticated. |
+| 6.2 | `/payments/khqr/status/:id` | GET | 🟡 ROUTED (shallow) | `401` unauthenticated. |
+| 6.3 | `/payments/khqr/confirm-mock/:id` | POST | 🔒 **INTENTIONAL 404** | Dev-only guard: returns `404` when `NODE_ENV !== "development"` so it can never mint free credits in production. **Not a bug** — see [server.ts L5483-L5486](file:///g:/Developments/Projects/Camxora/MusicGenerator-musicapi-integration/musicapi/src/server.ts#L5483-L5486). |
+| 6.4 | `/payments/chmaba/create` | POST | 🟡 ROUTED (shallow) | `401` unauthenticated. |
+| 6.5 | `/payments/chmaba/status/:id` | GET | 🟡 ROUTED (shallow) | `401` unauthenticated. |
+| 6.6 | `/payments/chmaba/webhook` | POST | 🔒 **INTENTIONAL 503** | "Not configured" when ChmabaPay keys are absent — fails loudly rather than silently dropping a payment. |
+
+---
+
+## 7. Public static (3 routes)
+
+| # | Endpoint | Method | Status | Evidence |
+|---|----------|--------|--------|----------|
+| 7.1 | `/settings` | GET | ✅ VERIFIED | `200` unauthenticated. |
+| 7.2 | `/updates` | GET | ✅ VERIFIED | `200` unauthenticated. |
+| 7.3 | `/pricing` | GET | ✅ VERIFIED | `200` unauthenticated. |
+
+---
+
+## 8. Frontend page inventory
+
+`web-user` — **18 pages**: `/`, `/login`, `/signup`, `/docs`, `/auth/callback`, `/dashboard`,
+`/dashboard/{api-keys,billing,check-voice,generate-voice,logs,playground,recovery-audio,replace-section,separate-vocals,settings,updates,usage}`.
+
+`web-admin` — **11 pages**: `/`, `/login`, `/auth/callback`, `/admin`,
+`/admin/{accounts,analytics,content,credit-packs,pricing,settings,users}`.
+
+No page-level E2E was re-run this revision. The `/app/*` mirror tree reported on 2026-09-09 **no
+longer exists** in this worktree — that dead-code risk is resolved.
+
+---
+
+## Summary by count
+
+**Axis A — exact T1 probe results (all 205 routes):**
+
+| T1 result | Count | Interpretation |
+|---|---|---|
+| `200` | 6 | Public / idempotent by design (`/health`, `/settings`, `/updates`, `/pricing`, `/auth/logout`, `/auth/google/url`) |
+| `401` | 194 | Correctly auth-gated |
+| `400` | 2 | Public routes validating a missing credential (`/auth/login`, `/auth/google/callback`) |
+| `405` | 1 | 🔒 `/auth/register` — Google-only signup |
+| `404` | 1 | 🔒 `/payments/khqr/confirm-mock/:id` — dev-only guard |
+| `503` | 1 | 🔒 `/payments/chmaba/webhook` — unconfigured provider |
+| **Total** | **205** | **Zero genuine NOT-ROUTED routes** |
+
+**Axis A — public-API input validation:** 62 `POST` checks (`/v1/*` + `/api/v1/*`, valid key, empty
+body) → **62 × `400`, 0 mismatches**. No `500`s, no shadowing, no unauthenticated fall-through.
+
+**Axis B — live Suno success:** still **unproven for every job-submission route on this tree**. The
+only deeply-verified success paths (`/me/download` MP3+WAV, `/me/task/:id` poll) date from
+**2026-09-09** on a different tree. Closing this is P0/P3 below.
 
 ---
 
@@ -153,19 +263,20 @@ Grouped by active test evidence this cycle:
 
 | Priority | Item | Why |
 |----------|------|-----|
-| **P0** | **Live E2E `POST /me/generate` → SUCCESS → download** | The 3 SUCCESS log rows are stale (Sep 8 previous session). You need to prove `POST → task pending → poll → SUCCESS → clip download` works for a brand-new job this session. Uses the same shared `useJob()` + `downloadBuffer` stack that's already been fixed for the timeout/dedup/CDN-leak trio, but the job SUBMIT half has not been exercised at all this cycle. |
-| **P1** | **Audit 9 FAILED `recovery_audio` rows** (endpoints `/me/recovery`, `/me/music/recovery`) | 100% of attempts failed. Is it prompt quality, a missing arg, or a handler bug? Users will hit this. |
-| **P2** | **Audit FAILED rows for `midi_generate`, `mp4_generate`, `voice_generate`, `vocal-removal`** | Pattern suggests entire media jobs outside plain `music chirp-v4` are broken. |
-| **P3** | `/v1/*` + `/api/v1/*` public API smoke test with real API key JWT (not cookie) | 56 customer endpoints are the revenue surface; 0 tested. Even a `curl`-scripted smoke pass would move them from ⚠️. |
-| **P4** | Admin panel `/admin/*` smoke login + list views + one mutation each | 18 admin routes = all ⚠️. |
-| **P5** | `/app/*` mirror shell: confirm routes resolve, or delete duplication if unused | 7 page routes are a dead-code risk. |
+| **P0** | **Live E2E `POST /me/generate` → poll `/me/task/:id` → `GET /me/download`** | The revenue path. Axis A is proven; axis B has never been run on this tree. **Consumes real Suno quota + credits.** |
+| **P1** | Re-audit FAILED `recovery_audio` jobs (`/me/recovery`, `/me/music/recovery`) | 9/9 failed on 2026-09-09 and the audit was never closed. Prompt quality vs. handler bug — still unknown. |
+| **P2** | Re-audit `midi_generate`, `mp4_generate`, `voice_generate`, `vocal-removal` | Pattern suggests everything outside plain `music chirp-v4` may be broken. |
+| **P3** | `/v1/*` + `/api/v1/*` smoke with a **real API key** (not a cookie) | 102 customer-facing routes = the sellable surface. Axis A is green; axis B is untouched. |
+| **P4** | Admin panel `/admin/*`: log in, load each list, perform one mutation | 32 routes, zero real-session evidence, and the surface grew in Phase 5. |
+| **P5** | Admin **rate-limits** + **credit-packs** + **settings** verification | Newest Phase 5 features; only `401` observed. |
 
 ---
 
-### Files referenced
-- Route inventory (100 registered Fastify routes): [server.ts](file:///e:/Development/SunoAPI/src/server.ts)
-- UI download & player logic (Map-lock dedup, authorizedFetch, AuthorizedAudio): [playground.tsx](file:///e:/Development/SunoAPI/web-user/components/playground.tsx#L39-L142)
-- Logs page (rows + Result modal wiring): [logs/page.tsx](file:///e:/Development/SunoAPI/web-user/app/dashboard/logs/page.tsx)
-- Backend long timeout (`requestTimeout: 600_000`): [serve.ts](file:///e:/Development/SunoAPI/src/serve.ts)
-- Proxy long timeout (`experimental.proxyTimeout: 600_000`): [next.config.ts](file:///e:/Development/SunoAPI/web-user/next.config.ts#L3-L14)
-- 3-step download poll (`maxPolls: 600`): [client.ts](file:///e:/Development/SunoAPI/src/client.ts#L512-L575)
+## Files referenced
+
+- Route surface (205 registered Fastify routes): [server.ts](file:///g:/Developments/Projects/Camxora/MusicGenerator-musicapi-integration/musicapi/src/server.ts)
+- Boot / shutdown / drain: [serve.ts](file:///g:/Developments/Projects/Camxora/MusicGenerator-musicapi-integration/musicapi/src/serve.ts)
+- Account pool + cookie decryption: [pool.ts](file:///g:/Developments/Projects/Camxora/MusicGenerator-musicapi-integration/musicapi/src/pool.ts)
+- Env contract (fail-fast): [config.ts](file:///g:/Developments/Projects/Camxora/MusicGenerator-musicapi-integration/musicapi/src/config.ts)
+- Migrations `0001`–`0019`: [migrations/](file:///g:/Developments/Projects/Camxora/MusicGenerator-musicapi-integration/musicapi/migrations)
+- Roadmap this report feeds into: [docs/state-of-the-art-and-roadmap.md](file:///g:/Developments/Projects/Camxora/MusicGenerator-musicapi-integration/musicapi/docs/state-of-the-art-and-roadmap.md)
