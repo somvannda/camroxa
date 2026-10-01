@@ -702,9 +702,9 @@ what is provably done vs. the exact remaining owner.
 
 - [x] **Build & typecheck clean** — core `npm run typecheck` / `npm run build`, both apps build; CI
       (`musicapi-checks`, `musicapi-smoke`) gates PRs. ✅
-- [ ] **Committed from `main`** — **owner: R2 (GATED).** The whole subtree still lives only on
-      local `integration/musicapi-phase2`, 67 commits diverged from `origin/main`; `main` cannot be
-      built from yet. Do not start without explicit approval.
+- [x] **Committed from `main`** — Phase 2 work landed via **PR #185** (merge commit `5d9cdf58`,
+      2026-10-01). `origin/main` now contains the full `musicapi/` subtree; `git merge-base
+      --is-ancestor 5d7611ab origin/main` returns true. ✅ *(was R2/G2.)*
 - [x] **No free-credit or forgeable-token path** — Phase 1 gate met: `POST /auth/register` → 405,
       the sole credit-mint mock is `NODE_ENV=development`-gated (404 in prod), API keys are
       sha256-hashed, KHQR confirm is atomic (`withTransaction` + guarded claim). ✅

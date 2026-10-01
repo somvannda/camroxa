@@ -46,7 +46,7 @@ Suno account → Suno web API driven (auth/generate/poll/captcha) → credits ch
 | Phases 0–4 of the go-live plan complete | [production-readiness-plan.md](./production-readiness-plan.md) — all `[x]`, sandbox-verified |
 | Phase 5 feature completion | All six items `[x]` (rate limits, audit log, credit packs, analytics, settings/alerts, account health) |
 | Only open plan item | `1.8` provider rotation — `[~]` (audit + runbook done; provider-side rotation user-led) |
-| **Branch not on origin** | `integration/musicapi-phase2` has **no upstream**; **162 ahead / 67 behind** `origin/main` (`github.com/somvannda/camroxa.git`) |
+| ~~Branch not on origin~~ **resolved 2026-10-01** | `integration/musicapi-phase2` landed on `origin/main` via **PR #185** (merge commit `5d9cdf58`); `git merge-base --is-ancestor 5d7611ab origin/main` → true |
 | Worktree sprawl | **56 worktrees total, 43** of them `MusicGenerator-musicapi*` |
 | Doc drift | `ENDPOINT_STATUS.md` dated **2026-09-09** and pointing at a stale `e:/Development/SunoAPI` path |
 | **Route surface re-verified** | **205** registered routes (not 100). Full-tree sweep: `{"200":6,"400":2,"401":194,"404":1,"405":1,"503":1}` — the single `404` and the `405`/`503` are all intentional (see [ENDPOINT_STATUS.md](../ENDPOINT_STATUS.md)) |
@@ -67,9 +67,10 @@ input, zero genuine not-routed routes.
 this commit — the entire revenue surface (`/v1/*` + `/api/v1/*`, 102 routes) and all 32 admin routes
 have still never handled a real success request. Closing this needs R1.2, which spends real quota.
 
-### G2 — No integration branch
-The whole platform exists only on a local feature branch with no upstream. There is no shared source
-of truth; the branch has drifted 162 ahead / 67 behind `main`.
+### G2 — No integration branch  *(resolved 2026-10-01 — see R2)*
+The whole platform existed only on a local feature branch with no upstream; the branch had drifted
+162 ahead / 67 behind `main`. Landed on `origin/main` via PR #185 (merge commit `5d9cdf58`), so
+`main` is now the shared source of truth.
 
 ### G3 — Divergent local config across worktrees
 43 musicapi worktrees carry **at least three different `COOKIE_ENCRYPTION_KEY` values**. The
@@ -134,13 +135,22 @@ approval before proceeding.
 **Done when:** every route family has a status backed by evidence gathered on this commit, and both
 docs carry a verification date.
 
-### R2 — Land musicapi on a shared branch  **[GATE]**
-**Addresses G2.** Do not start without explicit approval — this touches shared history.
-- [ ] R2.1 Confirm target (merge into `main` vs. a long-lived `musicapi` branch on `origin`).
-- [ ] R2.2 Reconcile the 67 commits of divergence from `origin/main`; resolve conflicts.
-- [ ] R2.3 Push the branch and open a PR so the CI gate (`musicapi-checks`, `musicapi-smoke`)
+### R2 — Land musicapi on a shared branch  *(done 2026-10-01)*
+**Addresses G2.**
+- [x] R2.1 Confirm target (merge into `main` vs. a long-lived `musicapi` branch on `origin`).
+      *(chosen 2026-10-01 — **merge into `main`**.)*
+- [x] R2.2 Reconcile the 67 commits of divergence from `origin/main`; resolve conflicts.
+      *(done 2026-10-01 — `git merge-tree --write-tree origin/main integration/musicapi-phase2`
+      produced a clean tree: **no conflicts**. The two trees never touched the same files.)*
+- [x] R2.3 Push the branch and open a PR so the CI gate (`musicapi-checks`, `musicapi-smoke`)
       runs for the first time on this work.
-- [ ] R2.4 Verify `main`'s go-live checklist line "committed from `main`" can be ticked.
+      *(done 2026-10-01 — branch pushed, **PR #185** opened; all 5 checks green. One CI-only
+      regression — a Windows `npm install` had pruned the Linux-only `@emnapi` WASI shims from both
+      frontend lockfiles, breaking `npm ci` — fixed in `5d7611ab`. Merged with a merge commit as
+      `5d9cdf58`.)*
+- [x] R2.4 Verify `main`'s go-live checklist line "committed from `main`" can be ticked.
+      *(done 2026-10-01 — ticked in `production-readiness-plan.md`; `origin/main` now contains the
+      full `musicapi/` subtree.)*
 
 ### R3 — Standardize local configuration
 **Addresses G3.**
@@ -240,7 +250,7 @@ docs carry a verification date.
 R3.1 (done)  →  R1 (verify + reconcile)  →  R6 (README)
              →  R8 (deploy fix)  →  R3.2–R3.4 (config hygiene)
              →  R5.1 (checklist)  →  R4 (Redis queue)
-             →  [GATE] R2 (merge)  →  [GATE] R7 (prune worktrees)
+             →  R2 (merge, done 2026-10-01)  →  [GATE] R7 (prune worktrees)
 ```
 
 Rationale: verification (R1) is cheap, unblocks trust in every other claim, and needs nothing from
@@ -260,4 +270,6 @@ the user. The two **[GATE]** items are last because they touch shared history an
 | 2026-09-30 | R3.2–R3.4 | `.env.example` gains a canonical-dev header + a "reuse the shared `COOKIE_ENCRYPTION_KEY`" warning; `decryptCookie()` and `serve.ts` now fail with an actionable key-mismatch hint; rotation story decided (freeze in dev, rotate with the Suno cookie in prod; the script is a backfill, not a re-key tool) |
 | 2026-09-30 | R5.1 | *"Definition of ready to go live"* reviewed: 5 ✅, 2 `[~]` owner-tagged (R2 / user-ops / R1.2); stale R8 caveat in the Phase 5.1 note corrected |
 | 2026-09-30 | R6.1 | `README.md` added: 3-process local boot recipe + env contract + troubleshooting |
+| 2026-10-01 | R2.1–R2.3 | **Landed on `main`.** 7 path-scoped commits pushed to `origin/integration/musicapi-phase2`; **PR #185** opened (#168–#170 precedent). `merge-tree` against `origin/main` was clean. One CI-only failure (`npm ci` — Windows `npm install` had pruned the Linux-only `@emnapi` shims from both frontend lockfiles) fixed in `5d7611ab`; 5/5 checks green. Merged with a **merge commit** → `5d9cdf58` |
+| 2026-10-01 | R2.4 | Go-live line "committed from `main`" ticked in `production-readiness-plan.md`; G2 marked resolved |
 | — | R1.2 | **Blocked:** needs a decision to spend real Suno quota/credits (P0/P3) |
