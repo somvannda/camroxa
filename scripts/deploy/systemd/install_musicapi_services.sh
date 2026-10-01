@@ -41,11 +41,38 @@ if [[ ! -f "${REPO_DIR}/musicapi/dist/serve.js" ]]; then
 fi
 
 systemctl daemon-reload
-log "Enabling services (start on boot + start now)..."
-systemctl enable --now "${SERVICES[@]}"
+# `enable --now` is a no-op on an already-running unit, so a redeploy would
+# silently keep serving the previous dist/serve.js. Enable for boot, then
+# restart unconditionally so the new build is always the one running.
+log "Enabling services (start on boot)..."
+systemctl enable "${SERVICES[@]}"
+
+log "Restarting services so the freshly built tree is what actually runs..."
+systemctl restart "${SERVICES[@]}"
 
 log "Enabling timers (backup nightly, health probe every 5 min)..."
 systemctl enable --now "${TIMERS[@]}"
+
+log "Verifying the restart picked up the current build..."
+for svc in "${SERVICES[@]}"; do
+  state="$(systemctl is-active "${svc}" || true)"
+  if [[ "${state}" != "active" ]]; then
+    log "FAIL: ${svc} is '${state}' after restart"
+    exit 1
+  fi
+done
+
+# Catches the exact footgun above: a process that started *before* the build
+# means the deployed code is stale even though the unit reports "active".
+if [[ -f "${REPO_DIR}/musicapi/dist/serve.js" ]]; then
+  build_epoch="$(stat -c %Y "${REPO_DIR}/musicapi/dist/serve.js")"
+  started_raw="$(systemctl show -p ActiveEnterTimestamp --value camxora-musicapi)"
+  started_epoch="$(date -d "${started_raw}" +%s 2>/dev/null || echo 0)"
+  if [[ "${started_epoch}" -gt 0 && "${started_epoch}" -lt "${build_epoch}" ]]; then
+    log "FAIL: camxora-musicapi started at ${started_raw}, which precedes dist/serve.js (built $(date -d "@${build_epoch}" -u +%Y-%m-%dT%H:%M:%SZ)) - it is running stale code"
+    exit 1
+  fi
+fi
 
 log "Status:"
 systemctl --no-pager --full status "${SERVICES[@]}" || true
