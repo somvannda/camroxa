@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { apiHeaders, baseHeaders, makeBrowserTokenHeader } from "./auth.js";
 import { solveCaptchaForAccount } from "./captcha.js";
+import { normalizeModel } from "./models.js";
 import { randomUUID } from "node:crypto";
 
 const CLERK_VERSION = "5.117.0";
@@ -61,6 +62,8 @@ export interface BillingInfo {
     can_use?: boolean;
     is_default_free_model?: boolean;
     is_default_model?: boolean;
+    major_version?: number;
+    description?: string;
   }>;
   [key: string]: unknown;
 }
@@ -85,7 +88,7 @@ export class SunoClient {
 
   private async getSessionId(): Promise<string> {
     const url = `${config.clerkUrl}/v1/client?__clerk_api_version=${CLERK_API_VERSION}&_clerk_js_version=${CLERK_VERSION}`;
-    const res = await fetch(url, { headers: this.clerkHeaders() });
+    const res = await fetch(url, { headers: this.clerkHeaders(), signal: AbortSignal.timeout(15_000) });
     if (!res.ok) throw new Error(`Clerk /client failed (${res.status}): ${await res.text()}`);
     const data = (await res.json()) as { response?: { last_active_session_id?: string } };
     const sid = data.response?.last_active_session_id;
@@ -98,6 +101,7 @@ export class SunoClient {
     const res = await fetch(url, {
       method: "POST",
       headers: this.clerkHeaders({ "content-type": "application/x-www-form-urlencoded" }),
+      signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`Clerk token mint failed (${res.status}): ${await res.text()}`);
     const data = (await res.json()) as { jwt?: string };
@@ -122,6 +126,7 @@ export class SunoClient {
     const res = await fetch(`${config.apiUrl}${path}`, {
       ...init,
       headers: apiHeaders(jwt, this.account.deviceId, (init.headers as Record<string, string>) ?? {}),
+      signal: AbortSignal.timeout(30_000),
     });
     if (retryAuth && (res.status === 401 || res.status === 403)) {
       await this.refreshJwt();
@@ -170,14 +175,9 @@ export class SunoClient {
     return (await res.json()) as Record<string, unknown>;
   }
 
-  /** Solve a captcha for this account via 2Captcha (browser automation). */
+  /** Solve the generation gate's Turnstile for this account via 2Captcha. */
   private async solveCaptcha(): Promise<string> {
-    return solveCaptchaForAccount({
-      jwt: await this.resolveJwt(),
-      deviceId: this.account.deviceId,
-      clientCookie: this.account.clientCookie,
-      twoCaptchaKey: config.twoCaptchaKey,
-    });
+    return solveCaptchaForAccount({ twoCaptchaKey: config.twoCaptchaKey });
   }
 
   /** Resolve an hCaptcha token on demand, paying 2Captcha only when required. */
@@ -202,7 +202,7 @@ export class SunoClient {
 
     const payload: Record<string, unknown> = {
       make_instrumental: params.instrumental ?? false,
-      mv: params.model ?? config.model,
+      mv: normalizeModel(params.model) ?? config.model,
       prompt: params.prompt ?? "",
       generation_type: "TEXT",
       continue_at: null,
@@ -333,7 +333,7 @@ export class SunoClient {
     const token = await this.ensureCaptchaToken();
     const payload: Record<string, unknown> = {
       clip_id: clipId,
-      model_name: model ?? "chirp-flounder",
+      model_name: normalizeModel(model) ?? "chirp-flounder",
       variation_category: "normal",
     };
     if (token) payload.token = token;
@@ -571,6 +571,8 @@ export class SunoClient {
         accept: format === "wav" ? "audio/wav,audio/*,*/*;q=0.8" : "audio/mpeg,audio/mp3,audio/*,*/*;q=0.8",
         "accept-language": "en-US,en;q=0.9",
       },
+      // Generous cap: buffers a whole audio file, so allow a slow transfer.
+      signal: AbortSignal.timeout(120_000),
     });
     if (!resp.ok) throw new Error(`downloadBuffer upstream ${resp.status}: ${await resp.text()}`);
     const ct = resp.headers.get("content-type") || (format === "wav" ? "audio/wav" : "audio/mpeg");
@@ -582,7 +584,7 @@ export class SunoClient {
   async generateSounds(params: SoundsParams): Promise<Clip[]> {
     const token = await this.ensureCaptchaToken();
     const payload: Record<string, unknown> = {
-      mv: params.model ?? config.model,
+      mv: normalizeModel(params.model) ?? config.model,
       prompt: "",
       title: titleCase(params.prompt),
       tags: params.prompt,
@@ -985,7 +987,7 @@ export class SunoClient {
     if (!persona) throw new Error("personaId or clipId required for voiceApply.");
     return this.submitClips("/api/generate/v2-web/", {
       task: "artist_vox",
-      mv: params.model ?? config.model,
+      mv: normalizeModel(params.model) ?? config.model,
       generation_type: "TEXT",
       params: {
         prompt: params.prompt ?? "",

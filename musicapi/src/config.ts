@@ -44,9 +44,14 @@ export const config = {
   jwt: process.env.SUNO_JWT ?? "",
   clerkUrl: process.env.SUNO_CLERK_URL ?? "https://auth.suno.com",
   apiUrl: process.env.SUNO_API_URL ?? "https://studio-api-prod.suno.com",
-  model: process.env.SUNO_MODEL ?? "chirp-auk-turbo",
+  /** Default model when a request omits one — the live Suno default (v6). */
+  model: process.env.SUNO_MODEL ?? "chirp-hawk",
   captchaToken: process.env.SUNO_CAPTCHA_TOKEN ?? "",
   twoCaptchaKey: process.env.TWOCAPTCHA_KEY ?? "",
+  /** Cloudflare Turnstile sitekey Suno mounts on its generation gate. */
+  turnstileSitekey: process.env.SUNO_TURNSTILE_SITEKEY ?? "0x4AAAAAADI7xDNyj-3LcIbi",
+  /** Page URL the Turnstile widget is served on (sent to 2Captcha). */
+  turnstilePageUrl: process.env.SUNO_TURNSTILE_PAGEURL ?? "https://suno.com/create",
   // device-id is the browser's ajs_anonymous_id / suno_device_id value.
   deviceId: process.env.SUNO_DEVICE_ID ?? randomUUID(),
   databaseUrl:
@@ -123,6 +128,21 @@ export const config = {
     telegramBotToken: process.env.ALERT_TELEGRAM_BOT_TOKEN ?? "",
     telegramChatId: process.env.ALERT_TELEGRAM_CHAT_ID ?? "",
     checkIntervalMs: Number(process.env.ALERT_CHECK_INTERVAL_MS ?? 300_000),
+  },
+  /**
+   * Background job queue (roadmap R4). `driver: "memory"` is the default and
+   * keeps the original behaviour: a job runs inline in the process that accepted
+   * the request, and a restart fails out whatever was in flight. Setting
+   * `QUEUE_DRIVER=redis` moves descriptor-backed jobs onto a Redis (BullMQ) work
+   * list consumed by this process, so a job left behind by a crash is picked up
+   * and re-run instead of being discarded — and a second node could consume the
+   * same list. The Postgres `jobs` table stays the system of record either way.
+   */
+  queue: {
+    driver: (process.env.QUEUE_DRIVER ?? "memory").trim().toLowerCase() === "redis" ? "redis" : "memory",
+    redisUrl: process.env.REDIS_URL ?? "redis://127.0.0.1:6379",
+    /** How many jobs one consumer may run at once. */
+    concurrency: Math.max(1, Number(process.env.QUEUE_CONCURRENCY ?? 4)),
   },
   bakong: {
     apiToken: process.env.BAKONG_API_TOKEN ?? "",

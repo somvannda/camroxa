@@ -20,12 +20,13 @@
     "@fastify/rate-limit": "^11.2.0",
     "bakong-khqr-npm": "^1.0.0",
     "bcryptjs": "^3.0.3",
+    "bullmq": "^6.3.10",
     "dotenv": "^16.4.5",
     "fastify": "^5.12.3",
     "google-auth-library": "^11.0.2",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.0",
-    "playwright-core": "^1.63.0"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",

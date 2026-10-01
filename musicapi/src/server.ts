@@ -13,15 +13,15 @@ import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
 import { captchaRequired } from "./captcha.js";
 import { assertCallbackUrlAllowed, CallbackUrlError } from "./callbackUrl.js";
-
-// Methods that can mutate state; used for the cookie-session CSRF origin check.
-const UNSAFE_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+import { createJobQueue } from "./jobQueue.js";
+import { normalizeModel } from "./models.js";
+import { JOB_OPS, isRunnableDescriptor, type JobDescriptor } from "./jobOps.js";
 
 // Fallback credit costs when the `pricing` table has no row for an endpoint.
 // Real costs are read from the DB and configurable in the admin panel.
 const DEFAULT_COSTS: Record<string, number> = {
   lyrics: 2,
-  music: 9,
+  music: 15,
   extend: 9,
   cover: 9,
   stems: 9,
@@ -33,7 +33,12 @@ const DEFAULT_COSTS: Record<string, number> = {
   replace_section: 9,
   cover_image: 5,
   persona: 9,
-  wav: 1,
+  // WAV is download-only: the conversion routes only resolve a signed URL, and
+  // the bytes are paid for by `wav_download` on GET /me/download.
+  wav: 0,
+  // Audio delivery via GET /me/download, priced per format at /admin/pricing.
+  mp3_download: 0,
+  wav_download: 3,
   upload_extend: 9,
   upload_cover: 9,
   upload_init: 1,
@@ -49,7 +54,7 @@ const DEFAULT_COSTS: Record<string, number> = {
   voice_apply: 9,
   voice_extend: 9,
   lyrics_detail: 1,
-  wav_detail: 1,
+  wav_detail: 0,
   stems_detail: 1,
   video_detail: 1,
   cover_detail: 1,
@@ -255,6 +260,13 @@ interface Job {
   prompt?: string;
   credits?: number;
   createdAt: number;
+  /**
+   * Serializable form of the submission (roadmap R4). Present only for jobs
+   * whose op is in the registry, so a consumer — this process after a restart,
+   * or another node — can rebuild and re-run them. Absent for the composite
+   * music/sounds/lyrics builders, which keep the pre-R4 in-process behaviour.
+   */
+  payload?: JobDescriptor;
 }
 
 export interface ServerDeps {
@@ -368,6 +380,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   const jobs = new Map<string, Job>();
 
+  // Job transport (roadmap R4). The default driver is a no-op: `queue.async` is
+  // false, so `submitDescribedJob()` runs the work inline exactly as before.
+  // `QUEUE_DRIVER=redis` hands descriptor-backed jobs to a BullMQ work list.
+  const queue = await createJobQueue();
+
   // Edge request counters for the admin `/metrics` snapshot. In-memory and reset
   // on restart, which is all a single-process deployment needs.
   const requestCounters = { total: 0, clientErrors: 0, serverErrors: 0 };
@@ -429,6 +446,29 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         });
         return;
       }
+    }
+  });
+
+  // Session freshness: a session JWT is valid for 7 days, but the account it
+  // represents can be suspended or deleted at any moment. Re-read the user on
+  // every request that carries a session token so revocation takes effect on
+  // the next call instead of lingering until the token expires. Requests with
+  // no verifiable session token fall through to the route's own `requireAuth`;
+  // API-key requests carry a non-JWT bearer that never verifies here.
+  app.addHook("preHandler", async (req, reply) => {
+    const cookieToken = readCookie(req.headers.cookie, SESSION_COOKIE);
+    const auth = req.headers.authorization ?? "";
+    const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    const token = cookieToken ?? bearerToken;
+    if (!token) return;
+    const payload = verifyToken(token);
+    if (!payload) return;
+    const row = await queryOne<{ status: string }>(
+      "SELECT status FROM users WHERE id = $1",
+      [payload.id],
+    );
+    if (!row || row.status !== "active") {
+      reply.code(401).send({ error: "Session is no longer valid." });
     }
   });
 
@@ -669,7 +709,23 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       "UPDATE api_keys SET credits = credits - $1, last_used_at = now() WHERE id = $2 AND credits >= $1 RETURNING credits",
       [amount, key.id],
     );
-    if (rows.length === 0) return false;
+    if (rows.length === 0) {
+      // The authenticating key can't cover the charge. Credits are an
+      // account-level balance — the session UI and /me/billing already treat
+      // them that way (they spend from any funded key and report the sum) — but
+      // an API key starts at 0, and a top-up made before a key existed parks
+      // the credits on a hidden auto-created wallet key. Fall back to the
+      // user's other funded keys so an API key draws on the same pooled
+      // balance. `chargeUserKey` honours the paying key's own spend limits, and
+      // the paying key replaces `key` so usage is attributed to — and refunds
+      // are credited to — the key that actually paid. Only the balance check
+      // falls through here; a spend-limit rejection above still returns false,
+      // so a key's limit is never bypassed by spending from another key.
+      const payer = await chargeUserKey(key.user_id, amount);
+      if (!payer) return false;
+      Object.assign(key, payer);
+      return true;
+    }
     key.credits = rows[0].credits;
     return true;
   }
@@ -708,11 +764,22 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return rows[0] ?? null;
   }
 
-  /** Credit cost for an endpoint, read from the `pricing` table (admin-configurable). */
-  async function costFor(endpoint: string): Promise<number> {
+  /**
+   * Credit cost for an endpoint, read from the `pricing` table
+   * (admin-configurable).
+   *
+   * A row scoped to the requested model wins over the endpoint-wide one, so an
+   * admin can price one model differently (e.g. the cheaper mini model) without
+   * touching the rest. With no model row (or no model asked for) the
+   * endpoint-wide row applies.
+   */
+  async function costFor(endpoint: string, model?: string): Promise<number> {
     const row = await queryOne<{ credit_cost: number }>(
-      "SELECT credit_cost FROM pricing WHERE endpoint = $1 AND model IS NULL LIMIT 1",
-      [endpoint],
+      `SELECT credit_cost FROM pricing
+       WHERE endpoint = $1 AND (model IS NOT DISTINCT FROM $2 OR model IS NULL)
+       ORDER BY model NULLS LAST
+       LIMIT 1`,
+      [endpoint, normalizeModel(model) ?? null],
     );
     return row?.credit_cost ?? DEFAULT_COSTS[endpoint] ?? 9;
   }
@@ -743,10 +810,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       reply.code(401).send({ error: "Unauthorized." });
       return null;
     }
-    // Cookie-authenticated state-changing requests get an extra cross-origin
-    // check on top of the cookie's SameSite=Lax. Browsers always send Origin on
-    // such requests, so a mismatch means another site drove the call.
-    if (cookieToken && !bearerToken && UNSAFE_METHODS.has(req.method)) {
+    // Cookie-authenticated requests get an extra cross-origin check on top of
+    // the cookie's SameSite=Lax. A browser only attaches `Origin` to a
+    // same-origin request when the method is unsafe (POST/PUT/PATCH/DELETE) or
+    // when the request is cross-origin, so a present-but-mismatched Origin
+    // always means another site drove the call. Checking regardless of method
+    // also protects state-changing work reachable over GET — e.g. the
+    // credit-spending /me/download and /me/* detail routes — which a
+    // method-only check would let through.
+    if (cookieToken && !bearerToken) {
       const origin = req.headers.origin;
       if (origin && !config.frontendOrigins.includes(origin.replace(/\/$/, ""))) {
         reply.code(403).send({ error: "Cross-origin request blocked." });
@@ -759,11 +831,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<UserPayload | null> {
     const user = requireAuth(req, reply);
     if (!user) return null;
-    if (user.role !== "admin") {
+    // Role is read from the DB, not the token: an account demoted from admin
+    // must lose admin access on its next request, not when its JWT expires.
+    const row = await queryOne<{ role: "user" | "admin" }>(
+      "SELECT role FROM users WHERE id = $1",
+      [user.id],
+    );
+    if (!row || row.role !== "admin") {
       reply.code(403).send({ error: "Admin only." });
       return null;
     }
-    return user;
+    return { id: user.id, email: user.email, role: "admin" };
   }
 
   // Append-only trail of privileged actions. Best-effort: an audit write must
@@ -799,7 +877,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   async function recordUsage(args: {
     userId: string;
-    apiKeyId: string;
+    apiKeyId: string | null;
     endpoint: string;
     model?: string;
     prompt?: string;
@@ -833,13 +911,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     await query(
       `INSERT INTO jobs
          (id, type, status, account_id, result_json, error, callback_url,
-          user_id, api_key_id, endpoint, model, prompt, credits, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, to_timestamp($14 / 1000.0), now())
+          user_id, api_key_id, endpoint, model, prompt, credits, payload, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, to_timestamp($15 / 1000.0), now())
        ON CONFLICT (id) DO UPDATE SET
          status = EXCLUDED.status,
          account_id = EXCLUDED.account_id,
          result_json = EXCLUDED.result_json,
          error = EXCLUDED.error,
+         payload = EXCLUDED.payload,
          updated_at = now()`,
       [
         job.id,
@@ -855,6 +934,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         job.model ?? null,
         job.prompt ?? null,
         job.credits ?? null,
+        job.payload === undefined ? null : JSON.stringify(job.payload),
         job.createdAt,
       ],
     );
@@ -874,11 +954,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     model: string | null;
     prompt: string | null;
     credits: number | null;
+    payload: unknown;
     created_at: Date;
   }
 
   const JOB_COLUMNS =
-    "id, type, status, account_id, result_json, error, callback_url, user_id, api_key_id, endpoint, model, prompt, credits, created_at";
+    "id, type, status, account_id, result_json, error, callback_url, user_id, api_key_id, endpoint, model, prompt, credits, payload, created_at";
 
   function rowToJob(row: JobRow): Job {
     return {
@@ -895,6 +976,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       model: row.model ?? undefined,
       prompt: row.prompt ?? undefined,
       credits: row.credits ?? undefined,
+      payload:
+        row.payload && typeof row.payload === "object" ? (row.payload as JobDescriptor) : undefined,
       createdAt: new Date(row.created_at).getTime(),
     };
   }
@@ -911,30 +994,57 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
-   * Fail out jobs that were still pending/running when the process stopped: the
-   * in-memory worker that would have finished them is gone, so mark them errored
-   * and finalize (usage log + callback) instead of leaving clients polling a job
-   * the server no longer knows about.
+   * Settle jobs that were still pending/running when this process stopped.
+   *
+   * A descriptor-backed job is simply re-queued: its `payload` says exactly what
+   * to run, so a consumer — this process on the next tick, or another node —
+   * picks it up and runs it to completion. Nothing is settled at recovery time.
+   * Anything else has no serializable submission, so the worker that would have
+   * finished it is gone for good: mark it errored and finalize (usage log +
+   * refund + callback) rather than leave clients polling a job the server no
+   * longer knows about.
    */
   async function recoverJobs(): Promise<void> {
     const rows = await query<JobRow>(
       `SELECT ${JOB_COLUMNS} FROM jobs WHERE status IN ('pending','running','streaming')`,
     );
     if (rows.length === 0) return;
+    let requeued = 0;
+    let interrupted = 0;
     for (const row of rows) {
       const job = rowToJob(row);
+      jobs.set(job.id, job);
+      if (queue.async && isRunnableDescriptor(job.payload)) {
+        job.status = "pending";
+        job.error = undefined;
+        await saveJob(job);
+        try {
+          await queue.enqueue(job.id);
+          requeued++;
+          continue;
+        } catch (e) {
+          // Queue unavailable: fall through and fail the job out instead of
+          // blocking startup on a backend that is already misbehaving.
+          console.error(`[jobs] could not re-queue ${job.id}:`, e instanceof Error ? e.message : e);
+        }
+      }
       job.status = "error";
       job.error = "Interrupted by server restart.";
-      jobs.set(job.id, job);
       await saveJob(job);
       await finalizeJob(job);
+      interrupted++;
     }
-    console.warn(`[jobs] recovered ${rows.length} interrupted job(s) as errors.`);
+    console.warn(
+      `[jobs] recovered ${rows.length} interrupted job(s): ${requeued} re-queued, ${interrupted} failed out.`,
+    );
   }
 
-  // Fail out interrupted jobs once the server is ready (after the DB is
-  // reachable), before we start accepting requests.
+  // Bring the queue up once the server is ready (after the DB is reachable) and
+  // before we start accepting requests, so a stranded job is re-queued straight
+  // into a live consumer.
   app.addHook("onReady", async () => {
+    await queue.ping();
+    queue.start(consumeQueuedJob);
     await recoverJobs();
     startAlertLoop();
   });
@@ -961,11 +1071,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       .slice(0, 60) || "clip";
   }
 
-  function meDetailRoute(
-    path: string,
-    type: Job["type"],
-    getter: (c: SunoClient, id: string) => Promise<unknown>,
-  ) {
+  function meDetailRoute(path: string, type: Job["type"]) {
     app.get(path, async (req, reply) => {
       const u = requireAuth(req, reply);
       if (!u) return;
@@ -986,7 +1092,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (key) job.apiKeyId = key.id;
       job.endpoint = type;
       job.credits = cost;
-      void runResultJobWithRetry(job, (client) => getter(client, id));
+      void submitDescribedJob(job, { op: type, args: { id } });
       return reply.code(202).send({ job_id: job.id, status: job.status });
     });
   }
@@ -1003,6 +1109,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         // Do not follow redirects — a 3xx to an internal address would otherwise
         // bypass the check above.
         redirect: "manual",
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({
           job_id: job.id,
           type: job.type,
@@ -1032,34 +1139,43 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const amount = job.credits ?? 0;
     if (amount <= 0) return;
 
-    await query(
-      `INSERT INTO credit_transactions (user_id, amount, type, description, job_id)
-       VALUES ($1, $2, 'spend', $3, $4)
-       ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING`,
-      [job.userId, -amount, `${job.type} job (${job.status})`, job.id],
-    );
+    // The spend row, the refund row and the credit restore must commit together:
+    // otherwise a crash between the refund insert and the balance update would
+    // lose the credits forever (the idempotency guard would skip the retry).
+    await withTransaction(async (tx) => {
+      await tx(
+        `INSERT INTO credit_transactions (user_id, amount, type, description, job_id)
+         VALUES ($1, $2, 'spend', $3, $4)
+         ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING`,
+        [job.userId, -amount, `${job.type} job (${job.status})`, job.id],
+      );
 
-    if (job.status !== "error") return;
+      if (job.status !== "error") return;
 
-    const refunded = await query<{ id: string }>(
-      `INSERT INTO credit_transactions (user_id, amount, type, description, job_id)
-       VALUES ($1, $2, 'refund', $3, $4)
-       ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING
-       RETURNING id`,
-      [job.userId, amount, `refund for failed ${job.type} job`, job.id],
-    );
-    if (refunded.length === 0) return; // already refunded
-    await query("UPDATE api_keys SET credits = credits + $1 WHERE id = $2", [amount, job.apiKeyId]);
+      const refunded = await tx<{ id: string }>(
+        `INSERT INTO credit_transactions (user_id, amount, type, description, job_id)
+         VALUES ($1, $2, 'refund', $3, $4)
+         ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING
+         RETURNING id`,
+        [job.userId, amount, `refund for failed ${job.type} job`, job.id],
+      );
+      if (refunded.length === 0) return; // already refunded
+      await tx("UPDATE api_keys SET credits = credits + $1 WHERE id = $2", [amount, job.apiKeyId]);
+    });
   }
 
   // --- background workers --------------------------------------------------
   async function finalizeJob(job: Job): Promise<void> {
     await saveJob(job);
-    if (job.userId && job.apiKeyId) {
+    // Log every user-attributed job, not only key-charged ones: free endpoints
+    // reached from the session UI (and any priced-at-0 row) carry a userId but
+    // no apiKeyId, and would otherwise leave no usage trail. `settleCredits`
+    // no-ops when there is nothing to charge or refund.
+    if (job.userId) {
       await settleCredits(job);
       await recordUsage({
         userId: job.userId,
-        apiKeyId: job.apiKeyId,
+        apiKeyId: job.apiKeyId ?? null,
         endpoint: job.endpoint ?? job.type,
         model: job.model,
         prompt: job.prompt,
@@ -1107,6 +1223,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.addHook("onClose", async () => {
     stopAlertLoop();
     await drainJobs();
+    // Queued jobs have their own drain: `worker.close()` resolves once the job
+    // currently being consumed finishes, bounded so a stuck job cannot hang the
+    // shutdown indefinitely.
+    await queue.drain();
+    await queue.close();
   });
 
   function runClipJobWithRetry(
@@ -1218,6 +1339,93 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
     await finalizeJob(job);
+  }
+
+  /**
+   * Run a submission from its descriptor, in this process.
+   *
+   * This is the single execution path for descriptor-backed jobs:
+   * `submitDescribedJob` uses it inline, and `consumeQueuedJob` uses it for
+   * anything that arrives over the queue — so a job behaves the same whether it
+   * ran here or on another node.
+   */
+  async function runDescribedJob(job: Job, descriptor: JobDescriptor): Promise<void> {
+    const op = JOB_OPS[descriptor.op];
+    if (!op) {
+      job.status = "error";
+      job.error = `Unknown job operation: ${descriptor.op}`;
+      await finalizeJob(job);
+      return;
+    }
+    const args = descriptor.args ?? {};
+    const options: RetryOptions = {
+      model: descriptor.options?.model,
+      policy: descriptor.options?.policy as RoutingPolicy | undefined,
+    };
+    if (op.mode === "clip") {
+      await runClipJobWithRetry(
+        job,
+        (client) => op.run(client, args) as Promise<import("./client.js").Clip[]>,
+        options,
+      );
+      return;
+    }
+    await runResultJobWithRetry(job, (client) => op.run(client, args), options);
+  }
+
+  /**
+   * Submit a job whose work is fully described by a serializable descriptor.
+   *
+   * With the default in-memory driver this resolves the descriptor and runs it
+   * inline, exactly like the closure it replaces. With `QUEUE_DRIVER=redis` the
+   * descriptor is persisted to `jobs.payload` and the job id is queued, so a
+   * consumer runs it and a crash mid-flight no longer loses the work.
+   *
+   * Never rejects: callers `void` it, and every failure path settles the job
+   * (refund + callback) instead of escaping as an unhandled rejection.
+   */
+  async function submitDescribedJob(job: Job, descriptor: JobDescriptor): Promise<void> {
+    job.payload = descriptor;
+    if (!queue.async) {
+      await runDescribedJob(job, descriptor);
+      return;
+    }
+    try {
+      // Persist before enqueuing: the consumer rebuilds the submission from this
+      // row, so the descriptor must be visible before the id reaches Redis.
+      await saveJob(job);
+      await queue.enqueue(job.id);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error(`[jobs] could not queue ${job.id}: ${msg}`);
+      job.status = "error";
+      job.error = `Could not queue job: ${msg}`;
+      try {
+        await finalizeJob(job);
+      } catch (err) {
+        console.error("[jobs] failed to settle unqueued job:", err instanceof Error ? err.message : err);
+      }
+    }
+  }
+
+  /**
+   * Run one queued job, identified by its `jobs` row id. The row is the source
+   * of truth: an id whose row is already terminal (another node finished it) is
+   * a no-op, and a row with no runnable descriptor is failed out because the
+   * process that could have run it no longer exists.
+   */
+  async function consumeQueuedJob(jobId: string): Promise<void> {
+    if (!jobId) return;
+    const job = await getJob(jobId);
+    if (!job) return;
+    if (job.status === "complete" || job.status === "error") return;
+    if (!isRunnableDescriptor(job.payload)) {
+      job.status = "error";
+      job.error = "Interrupted before completion and has no resumable descriptor.";
+      await finalizeJob(job);
+      return;
+    }
+    await runDescribedJob(job, job.payload);
   }
 
   function processMusicSubmit(params: Record<string, unknown>) {
@@ -1507,6 +1715,43 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { ok: true };
   });
 
+  app.delete("/me/keys/:id", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const { id } = req.params as { id: string };
+    const key = await queryOne<{ id: string; credits: number }>(
+      "SELECT id, credits FROM api_keys WHERE id = $1 AND user_id = $2",
+      [id, u.id],
+    );
+    if (!key) return reply.code(404).send({ error: "Key not found." });
+
+    // Credits are stored on keys but behave as an account-level balance (see the
+    // pooled-spend fallback in `charge`). A revoked key must therefore not take
+    // its balance with it: move it onto the user's oldest remaining key first.
+    // With no other key left there is nowhere to move it, so refuse and tell the
+    // caller to create a replacement — revocation stays possible and a balance
+    // is never silently destroyed. `jobs`, `usage_logs` and `credit_transactions`
+    // all reference the key `ON DELETE SET NULL`, so deleting keeps that history.
+    if (key.credits > 0) {
+      const next = await queryOne<{ id: string }>(
+        "SELECT id FROM api_keys WHERE user_id = $1 AND id <> $2 AND is_active = true ORDER BY created_at ASC LIMIT 1",
+        [u.id, id],
+      );
+      if (!next) {
+        return reply.code(409).send({
+          error: `This key holds ${key.credits} credits. Create another key first — the balance moves to it — then delete this one.`,
+        });
+      }
+      await withTransaction(async (tx) => {
+        await tx("UPDATE api_keys SET credits = credits + $1 WHERE id = $2", [key.credits, next.id]);
+        await tx("DELETE FROM api_keys WHERE id = $1", [id]);
+      });
+    } else {
+      await query("DELETE FROM api_keys WHERE id = $1", [id]);
+    }
+    return { ok: true };
+  });
+
   app.post("/me/generate", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
@@ -1523,15 +1768,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return reply.code(400).send({ error: "prompt is required." });
     }
 
-    const cost = await costFor(type);
+    const cost = await costFor(type, (body.model as string) || undefined);
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
 
     if (type === "lyrics") {
       const prompt = body.prompt as string;
       const job = newJob("lyrics");
       job.userId = u.id;
-      job.apiKeyId = key.id;
+      job.apiKeyId = key?.id;
       job.endpoint = "lyrics";
       job.prompt = prompt;
       job.credits = cost;
@@ -1542,7 +1789,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (type === "sounds") {
       const job = newJob("sounds");
       job.userId = u.id;
-      job.apiKeyId = key.id;
+      job.apiKeyId = key?.id;
       job.endpoint = "sounds";
       job.model = (body.model as string) || undefined;
       job.prompt = body.prompt as string;
@@ -1557,7 +1804,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     const job = newJob("music");
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "music";
     job.model = (body.model as string) || undefined;
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
@@ -1582,10 +1829,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cost = await costFor("recovery_audio");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("recovery_audio", (body.callBackUrl || body.callback_url) as string | undefined);
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
     const prompt = (body.prompt as string) || "";
@@ -1601,17 +1850,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipId) return reply.code(400).send({ error: "taskId is required." });
     const cost = await costFor("stems");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const separationType = (body.separationType || "vocal") as "vocal" | "stems" | "advanced" | string;
     const jobType: Job["type"] =
       separationType === "stems" || separationType === "advanced" ? "stems" : "stems";
     const job = newJob(jobType);
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "stems";
     job.credits = cost;
     job.prompt = separationType === "advanced" ? (body.trackName as string) || "stem" : undefined;
-    void runClipJobWithRetry(job, (client) => client.stems(clipId));
+    void submitDescribedJob(job, { op: "stems", args: { id: clipId } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -1631,10 +1882,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cost = await costFor("replace_section");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("replace_section");
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "replace_section";
     job.credits = cost;
     job.prompt = lyrics;
@@ -1654,10 +1907,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const styles = ((body.style as string) || undefined);
     const cost = await costFor("persona");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("persona");
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "persona";
     job.credits = cost;
     job.prompt = name;
@@ -1679,10 +1934,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const styles = (body.style as string) || undefined;
     const cost = await costFor("voice_generate");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("voice_generate");
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "voice_generate";
     job.credits = cost;
     job.prompt = name;
@@ -1698,17 +1955,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const uploadId = (body.upload_id || body.uploadId) as string | undefined;
+    const uploadId = (body.upload_id || body.uploadId || body.taskId) as string | undefined;
     const audioUrl = (body.audio_url || body.audioUrl || body.validationAudioUrl) as string | undefined;
     if (!uploadId && !audioUrl) {
       return reply.code(400).send({ error: "upload_id or audio_url is required." });
     }
     const cost = await costFor("voice_validate");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("voice_validate");
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "voice_validate";
     job.credits = cost;
     void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl }));
@@ -1722,10 +1981,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const prompt = (body.prompt as string) || "";
     const cost = await costFor("voice_phrase");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("voice_phrase");
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "voice_phrase";
     job.credits = cost;
     job.prompt = prompt;
@@ -1740,10 +2001,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const extension = (body.extension as string) || "wav";
     const cost = await costFor("voice_record");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("voice_record");
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "voice_record";
     job.credits = cost;
     void runResultJobWithRetry(job, (client) => client.voiceRecord(extension));
@@ -2033,11 +2296,41 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
     const formatRaw = (q.format as string) || "mp3";
     const format = formatRaw === "wav" ? "wav" : "mp3";
+
+    // A clip is bought once per format: the first download charges the pricing
+    // row, later downloads of the same clip are free. The claim is written
+    // before the charge so two concurrent first-downloads cannot both pay.
+    // `refund` is declared out here so every failure path below can release the
+    // claim and hand the credits back.
+    let cost = 0;
+    let purchaseId: string | null = null;
+    let chargedKey: DbApiKey | null = null;
+    const refund = async (): Promise<void> => {
+      if (!purchaseId || !chargedKey) return;
+      await query("DELETE FROM download_purchases WHERE id = $1", [purchaseId]).catch(() => {});
+      await query("UPDATE api_keys SET credits = credits + $1 WHERE id = $2", [cost, chargedKey.id]).catch(() => {});
+    };
     try {
-      const cost = await costFor("download").catch(() => 0);
-      const key = await chargeUserKey(u.id, cost);
-      if (cost > 0 && !key) {
-        return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+      // Audio delivery is priced per format from the `pricing` table, like every
+      // other endpoint, so both rows are editable at /admin/pricing.
+      cost = await costFor(format === "wav" ? "wav_download" : "mp3_download").catch(() => 0);
+      if (cost > 0) {
+        const claim = await query<{ id: string }>(
+          `INSERT INTO download_purchases (user_id, clip_id, format, credits)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (user_id, clip_id, format) DO NOTHING
+           RETURNING id`,
+          [u.id, clipId, format, cost],
+        );
+        if (claim.length > 0) {
+          purchaseId = claim[0].id;
+          chargedKey = await chargeUserKey(u.id, cost);
+          if (!chargedKey) {
+            await query("DELETE FROM download_purchases WHERE id = $1", [purchaseId]);
+            purchaseId = null;
+            return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+          }
+        }
       }
       const client = await pool.pick();
       const ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36";
@@ -2088,7 +2381,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       let lastResp: Response | null = null;
       for (const cand of fallbackCandidates) {
         try {
-          const resp = await fetch(cand, fetchOpts);
+          const resp = await fetch(cand, { ...fetchOpts, signal: AbortSignal.timeout(120_000) });
           if (resp.ok && resp.body) {
             lastResp = resp;
             let contentType = resp.headers.get("content-type") || "";
@@ -2116,8 +2409,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           continue;
         }
       }
+      await refund();
       return reply.code(502).send({ error: "Audio not available. The clip may have expired or the media server is unreachable." });
     } catch (e: any) {
+      await refund();
       return reply.code(500).send({ error: e?.message ?? "Download failed" });
     }
   });
@@ -2194,18 +2489,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         const err = validate(body);
         if (err) return reply.code(400).send({ error: err });
       }
-      const cost = await costFor(type);
+      const model = modelField ? (body[modelField] as string) || undefined : undefined;
+      const cost = await costFor(type, model);
+      // `chargeUserKey` returns null for a 0-credit request, so a free endpoint
+      // must not be rejected just because no key could be charged.
       const key = await chargeUserKey(u.id, cost);
-      if (!key) {
+      if (cost > 0 && !key) {
         return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
       }
       const job = newJob(type, (body.callback_url as string) || undefined);
       job.userId = u.id;
-      job.apiKeyId = key.id;
+      job.apiKeyId = key?.id;
       job.endpoint = type;
       job.credits = cost;
       if (body.prompt) job.prompt = body.prompt as string;
-      const model = modelField ? (body[modelField] as string) || undefined : undefined;
       if (model) job.model = model;
       const policy = model ? await routingPolicy(model) : "any";
       void runClipJobWithRetry(job, makeSubmit(body), { model, policy });
@@ -2228,13 +2525,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         if (err) return reply.code(400).send({ error: err });
       }
       const cost = await costFor(type);
+      // See meClipRoute: a 0-credit request legitimately has no charged key.
       const key = await chargeUserKey(u.id, cost);
-      if (!key) {
+      if (cost > 0 && !key) {
         return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
       }
       const job = newJob(type, (body.callback_url as string) || undefined);
       job.userId = u.id;
-      job.apiKeyId = key.id;
+      job.apiKeyId = key?.id;
       job.endpoint = type;
       job.credits = cost;
       if (body.prompt) job.prompt = body.prompt as string;
@@ -2462,10 +2760,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cost = await costFor("replace_section");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("replace_section", (body.callback_url as string) || undefined);
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "replace_section";
     job.credits = cost;
     job.prompt = lyrics;
@@ -2482,10 +2782,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
     const cost = await costFor("recovery_audio");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
     const job = newJob("recovery_audio", (body.callback_url as string) || undefined);
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
     const prompt = (body.prompt as string) || undefined;
@@ -2500,28 +2802,28 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     const cost = await costFor("timestamped_lyrics_detail");
     const key = await chargeUserKey(u.id, cost);
-    if (!key) {
+    if (cost > 0 && !key) {
       return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
     }
     const job = newJob("timestamped_lyrics_detail");
     job.userId = u.id;
-    job.apiKeyId = key.id;
+    job.apiKeyId = key?.id;
     job.endpoint = "timestamped_lyrics_detail";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.lyricsDetail(id));
+    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
   // Detail GET routes (T3 - meDetailRoute)
-  meDetailRoute("/me/music/wav/:id", "wav_detail", (c, id) => c.wavDetail(id, "wav"));
-  meDetailRoute("/me/music/stems/:id", "stems_detail", (c, id) => c.stemsDetail(id));
-  meDetailRoute("/me/music/video/:id", "video_detail", (c, id) => c.videoDetail(id));
-  meDetailRoute("/me/music/cover/:id", "cover_detail", (c, id) => c.coverDetail(id));
-  meDetailRoute("/me/music/subtitle/:id", "subtitle_detail", (c, id) => c.subtitleDetail(id));
-  meDetailRoute("/me/music/recovery/:id", "recovery_detail", (c, id) => c.recoveryDetail(id));
-  meDetailRoute("/me/mp4/:id", "mp4_detail", (c, id) => c.mp4Detail(id));
-  meDetailRoute("/me/music/midi/:id", "midi_detail", (c, id) => c.midiDetail(id));
-  meDetailRoute("/me/clip/:id", "lyrics_detail", (c, id) => c.getClipDetail(id));
+  meDetailRoute("/me/music/wav/:id", "wav_detail");
+  meDetailRoute("/me/music/stems/:id", "stems_detail");
+  meDetailRoute("/me/music/video/:id", "video_detail");
+  meDetailRoute("/me/music/cover/:id", "cover_detail");
+  meDetailRoute("/me/music/subtitle/:id", "subtitle_detail");
+  meDetailRoute("/me/music/recovery/:id", "recovery_detail");
+  meDetailRoute("/me/mp4/:id", "mp4_detail");
+  meDetailRoute("/me/music/midi/:id", "midi_detail");
+  meDetailRoute("/me/clip/:id", "lyrics_detail");
 
   // POST /me/mp4/generate (result job)
   meResultRoute(
@@ -2595,6 +2897,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       packs: packs.map((p) => ({ id: p.id, amount: p.amount, price: Number(p.price), currency: p.currency })),
     };
   });
+
+  /**
+   * The model versions this deployment can actually generate with. Read from
+   * the live Suno catalog of every funded account, so a Suno-side model rollout
+   * (or retirement) reaches the clients without a code change.
+   */
+  app.get("/models", async () => ({ models: await pool.listModels().catch(() => []) }));
 
   // --- settings + alerts (task 5.5, REQUIREMENTS §4.10) --------------------
   // Operator-managed settings live in `app_settings` as one JSONB document per
@@ -2738,6 +3047,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const res = await fetch(`https://api.telegram.org/bot${telegramBotToken}/sendMessage`, {
         method: "POST",
         headers: { "content-type": "application/json" },
+        signal: AbortSignal.timeout(10_000),
         body: JSON.stringify({ chat_id: telegramChatId, text, disable_web_page_preview: true }),
       });
       if (!res.ok) {
@@ -2857,6 +3167,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!label || !client_cookie || !device_id) {
       return reply.code(400).send({ error: "label, client_cookie and device_id are required." });
     }
+    // The label is the pool's account identity (src/pool.ts keys clients by it),
+    // so a duplicate silently merges two accounts in routing and health views.
+    const clash = await queryOne<{ id: string }>("SELECT id FROM suno_accounts WHERE label = $1", [label]);
+    if (clash) return reply.code(409).send({ error: "An account with that label already exists." });
     const t = type === "paid" ? "paid" : "free";
     const rows = await query<{ id: string }>(
       "INSERT INTO suno_accounts (label, type, client_cookie, device_id) VALUES ($1, $2, $3, $4) RETURNING id",
@@ -2895,9 +3209,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (typeof body.label !== "string" || !body.label.trim()) {
         return reply.code(400).send({ error: "label must be a non-empty string." });
       }
-      params.push(body.label.trim());
+      const nextLabel = body.label.trim();
+      const clash = await queryOne<{ id: string }>(
+        "SELECT id FROM suno_accounts WHERE label = $1 AND id <> $2",
+        [nextLabel, id],
+      );
+      if (clash) return reply.code(409).send({ error: "An account with that label already exists." });
+      params.push(nextLabel);
       sets.push(`label = $${params.length}`);
-      details.label = body.label.trim();
+      details.label = nextLabel;
     }
     if (body.type !== undefined) {
       if (body.type !== "free" && body.type !== "paid") {
@@ -2935,6 +3255,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return reply.code(400).send({ error: "No editable fields supplied." });
     }
 
+    // The pool only loads active accounts, so deactivating the last one would
+    // leave every generation request with no Suno client to route to.
+    if (body.is_active === false) {
+      const current = await queryOne<{ is_active: boolean }>("SELECT is_active FROM suno_accounts WHERE id = $1", [id]);
+      if (!current) return reply.code(404).send({ error: "Account not found." });
+      if (current.is_active) {
+        const remaining = await queryOne<{ n: string }>(
+          "SELECT count(*)::text AS n FROM suno_accounts WHERE is_active = true AND id <> $1",
+          [id],
+        );
+        if (remaining?.n === "0") {
+          return reply
+            .code(409)
+            .send({ error: "This is the last active Suno account. Add another account before deactivating it." });
+        }
+      }
+    }
+
     params.push(id);
     const rows = await query<{ id: string }>(
       `UPDATE suno_accounts SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING id`,
@@ -2957,6 +3295,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const admin = await requireAdmin(req, reply);
     if (!admin) return;
     const { id } = req.params as { id: string };
+    // The pool only loads active accounts, so deleting the last active one would
+    // leave every generation request with no Suno client to route to.
+    const current = await queryOne<{ is_active: boolean }>("SELECT is_active FROM suno_accounts WHERE id = $1", [id]);
+    if (!current) return reply.code(404).send({ error: "Account not found." });
+    if (current.is_active) {
+      const remaining = await queryOne<{ n: string }>(
+        "SELECT count(*)::text AS n FROM suno_accounts WHERE is_active = true AND id <> $1",
+        [id],
+      );
+      if (remaining?.n === "0") {
+        return reply
+          .code(409)
+          .send({ error: "This is the last active Suno account. Add another account before deleting it." });
+      }
+    }
     const rows = await query<{ id: string; label: string }>(
       "DELETE FROM suno_accounts WHERE id = $1 RETURNING id, label",
       [id],
@@ -3155,24 +3508,36 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       );
     }
     // Single-statement, atomic adjust so concurrent charges/adjustments can't
-    // lose an update (the previous read-modify-write did).
-    const updated = await queryOne<{ credits: number }>(
-      "UPDATE api_keys SET credits = GREATEST(0, credits + $1) WHERE id = $2 RETURNING credits",
+    // lose an update (the previous read-modify-write did). The CTE also returns
+    // the pre-update balance so the ledger records the delta actually applied:
+    // GREATEST(0, …) clamps the balance, so a debit larger than the balance is
+    // only applied in part and the ledger must not overstate it.
+    const updated = await queryOne<{ credits: number; prev_credits: number }>(
+      `WITH target AS (
+         SELECT id, credits FROM api_keys WHERE id = $2 FOR UPDATE
+       ), applied AS (
+         UPDATE api_keys SET credits = GREATEST(0, target.credits + $1)
+         FROM target WHERE api_keys.id = target.id
+         RETURNING api_keys.credits AS credits, target.credits AS prev_credits
+       )
+       SELECT credits, prev_credits FROM applied`,
       [amount, key!.id],
     );
+    const resulting = updated?.credits ?? key!.credits;
+    const appliedAmount = updated ? updated.credits - updated.prev_credits : amount;
     await query(
       "INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, 'adjust', $3)",
-      [id, amount, "Admin credit adjustment"],
+      [id, appliedAmount, "Admin credit adjustment"],
     );
     await recordAudit({
       actor: admin,
       action: "user.credits",
       targetType: "user",
       targetId: id,
-      details: { amount, resulting_credits: updated?.credits ?? key!.credits },
+      details: { amount, applied: appliedAmount, resulting_credits: resulting },
       req,
     });
-    return { ok: true, credits: updated?.credits ?? key!.credits };
+    return { ok: true, credits: resulting };
   });
 
   app.get("/admin/users/:id/rate-limits", async (req, reply) => {
@@ -3257,8 +3622,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       model?: string | null;
       credit_cost?: number;
     };
-    if (!endpoint || typeof credit_cost !== "number") {
-      return reply.code(400).send({ error: "endpoint and credit_cost are required." });
+    if (
+      !endpoint ||
+      typeof credit_cost !== "number" ||
+      !Number.isInteger(credit_cost) ||
+      credit_cost < 0
+    ) {
+      return reply
+        .code(400)
+        .send({ error: "endpoint is required and credit_cost must be a non-negative integer." });
     }
     const existing = await queryOne<{ id: string }>(
       "SELECT id FROM pricing WHERE endpoint = $1 AND model IS NOT DISTINCT FROM $2 LIMIT 1",
@@ -3300,20 +3672,39 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       model?: string | null;
       credit_cost?: number;
     };
-    if (!endpoint || typeof credit_cost !== "number") {
-      return reply.code(400).send({ error: "endpoint and credit_cost are required." });
+    if (
+      !endpoint ||
+      typeof credit_cost !== "number" ||
+      !Number.isInteger(credit_cost) ||
+      credit_cost < 0
+    ) {
+      return reply
+        .code(400)
+        .send({ error: "endpoint is required and credit_cost must be a non-negative integer." });
     }
     const updated = await query<{ id: string }>(
       "UPDATE pricing SET endpoint = $1, model = $2, credit_cost = $3 WHERE id = $4 RETURNING id",
       [endpoint, model ?? null, credit_cost, id],
     );
     if (!updated.length) return reply.code(404).send({ error: "Pricing row not found." });
+    // Two rows with the same (endpoint, model) make `costFor` pick an arbitrary or
+    // stale one; after this update, drop any other row that now collides so this
+    // row is the single source of truth.
+    const removed = await query<{ id: string }>(
+      "DELETE FROM pricing WHERE endpoint = $1 AND model IS NOT DISTINCT FROM $2 AND id <> $3 RETURNING id",
+      [endpoint, model ?? null, id],
+    );
     await recordAudit({
       actor: admin,
       action: "pricing.update",
       targetType: "pricing",
       targetId: id,
-      details: { endpoint, model: model ?? null, credit_cost },
+      details: {
+        endpoint,
+        model: model ?? null,
+        credit_cost,
+        removed_duplicates: removed.map((r) => r.id),
+      },
       req,
     });
     return { ok: true };
@@ -3360,6 +3751,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cur = (currency ?? "USD").toUpperCase();
     const active = is_active ?? true;
+    // Two active packs of the same size make the "cheapest active pack" rate
+    // helper pick arbitrarily, so refuse the duplicate instead of storing it.
+    if (active) {
+      const clash = await queryOne<{ id: string }>(
+        "SELECT id FROM credit_packs WHERE amount = $1 AND currency = $2 AND is_active = true",
+        [amount, cur],
+      );
+      if (clash) {
+        return reply.code(409).send({ error: `An active ${cur} pack of ${amount} credits already exists.` });
+      }
+    }
     const rows = await query<{ id: string }>(
       "INSERT INTO credit_packs (amount, price, currency, is_active) VALUES ($1, $2, $3, $4) RETURNING id",
       [amount, price, cur, active],
@@ -3392,6 +3794,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cur = (currency ?? "USD").toUpperCase();
     const active = is_active ?? true;
+    // Same rule as create: an edit must not land on a size another active pack owns.
+    if (active) {
+      const clash = await queryOne<{ id: string }>(
+        "SELECT id FROM credit_packs WHERE amount = $1 AND currency = $2 AND is_active = true AND id <> $3",
+        [amount, cur, id],
+      );
+      if (clash) {
+        return reply.code(409).send({ error: `An active ${cur} pack of ${amount} credits already exists.` });
+      }
+    }
     const updated = await query<{ id: string }>(
       "UPDATE credit_packs SET amount = $1, price = $2, currency = $3, is_active = $4 WHERE id = $5 RETURNING id",
       [amount, price, cur, active, id],
@@ -3683,7 +4095,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!body.gpt_description_prompt && !body.prompt) {
       return reply.code(400).send({ error: "gpt_description_prompt or prompt is required." });
     }
-    const cost = await costFor("music");
+    const model = (body.model as string) || undefined;
+    const cost = await costFor("music", model);
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
     const callbackUrl = (body.callback_url as string) || undefined;
@@ -3691,10 +4104,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.userId = key.user_id;
     job.apiKeyId = key.id;
     job.endpoint = "music";
-    job.model = (body.model as string) || undefined;
+    job.model = model;
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
     job.credits = cost;
-    const model = (body.model as string) || undefined;
     const policy = await routingPolicy(model);
     void runClipJobWithRetry(job, processMusicSubmit(body), { model, policy });
     return reply.code(202).send({ job_id: job.id, status: job.status });
@@ -3706,21 +4118,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const prompt = body.prompt as string;
     if (!prompt) return reply.code(400).send({ error: "prompt is required." });
-    const cost = await costFor("sounds");
+    const model = (body.model as string) || undefined;
+    const cost = await costFor("sounds", model);
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
     const job = newJob("sounds", body.callback_url as string | undefined);
     job.userId = key.user_id;
     job.apiKeyId = key.id;
     job.endpoint = "sounds";
-    job.model = (body.model as string) || undefined;
+    job.model = model;
     job.prompt = prompt;
     job.credits = cost;
-    const spolicy = await routingPolicy((body.model as string) || undefined);
-    void runClipJobWithRetry(job, processSoundsSubmit(body), {
-      model: (body.model as string) || undefined,
-      policy: spolicy,
-    });
+    const spolicy = await routingPolicy(model);
+    void runClipJobWithRetry(job, processSoundsSubmit(body), { model, policy: spolicy });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -3731,7 +4141,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const body = (req.body ?? {}) as Record<string, unknown>;
       const clipId = body.clip_id as string;
       if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
-      const cost = await costFor(type);
+      // Only remaster takes a model; the other clip operations use the
+      // account's default, so they stay on the endpoint-wide price.
+      const model = type === "remaster" ? (body.model as string) || undefined : undefined;
+      const cost = await costFor(type, model);
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
       const job = newJob(type, body.callback_url as string | undefined);
@@ -3874,7 +4287,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "wav";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.downloadUrl(clipId, format));
+    void submitDescribedJob(job, { op: "wav", args: { id: clipId, format } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -3949,6 +4362,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     const job = await getJob(id);
     if (!job) return reply.code(404).send({ error: "Task not found." });
+    // A job created through a user session/API key belongs to that user; other
+    // keys (including other tenants) must not be able to read its result.
+    if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
     return {
       job_id: job.id,
       type: job.type,
@@ -4053,12 +4469,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "timestamped_lyrics_detail";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.lyricsDetail(id));
+    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
   // -------- Detail GET routes for clip assets (all 1-credit details) --------
-  function detailRoute(path: string, type: Job["type"], getter: (c: SunoClient, id: string) => Promise<unknown>) {
+  function detailRoute(path: string, type: Job["type"]) {
     app.get(path, async (req, reply) => {
       const key = await requireKey(req, reply);
       if (!key) return;
@@ -4072,20 +4488,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.apiKeyId = key.id;
       job.endpoint = type;
       job.credits = cost;
-      void runResultJobWithRetry(job, (client) => getter(client, id));
+      void submitDescribedJob(job, { op: type, args: { id } });
       return reply.code(202).send({ job_id: job.id, status: job.status });
     });
   }
 
-  detailRoute("/v1/music/wav/:id", "wav_detail", (c, id) => c.wavDetail(id, "wav"));
-  detailRoute("/v1/music/stems/:id", "stems_detail", (c, id) => c.stemsDetail(id));
-  detailRoute("/v1/music/video/:id", "video_detail", (c, id) => c.videoDetail(id));
-  detailRoute("/v1/music/cover/:id", "cover_detail", (c, id) => c.coverDetail(id));
-  detailRoute("/v1/music/subtitle/:id", "subtitle_detail", (c, id) => c.subtitleDetail(id));
-  detailRoute("/v1/music/recovery/:id", "recovery_detail", (c, id) => c.recoveryDetail(id));
-  detailRoute("/v1/mp4/:id", "mp4_detail", (c, id) => c.mp4Detail(id));
-  detailRoute("/v1/music/midi/:id", "midi_detail", (c, id) => c.midiDetail(id));
-  detailRoute("/v1/clip/:id", "lyrics_detail", (c, id) => c.getClipDetail(id));
+  detailRoute("/v1/music/wav/:id", "wav_detail");
+  detailRoute("/v1/music/stems/:id", "stems_detail");
+  detailRoute("/v1/music/video/:id", "video_detail");
+  detailRoute("/v1/music/cover/:id", "cover_detail");
+  detailRoute("/v1/music/subtitle/:id", "subtitle_detail");
+  detailRoute("/v1/music/recovery/:id", "recovery_detail");
+  detailRoute("/v1/mp4/:id", "mp4_detail");
+  detailRoute("/v1/music/midi/:id", "midi_detail");
+  detailRoute("/v1/clip/:id", "lyrics_detail");
 
   // -------- MP4 generate POST + detail --------
   app.post("/v1/mp4/generate", async (req, reply) => {
@@ -4248,7 +4664,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!personaId && !clipId) {
       return reply.code(400).send({ error: "persona_id or clip_id is required." });
     }
-    const cost = await costFor("voice_apply");
+    const model = body.model as string | undefined;
+    const cost = await costFor("voice_apply", model);
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
     const job = newJob("voice_apply", body.callback_url as string | undefined);
@@ -4257,7 +4674,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.endpoint = "voice_apply";
     job.credits = cost;
     job.prompt = (body.prompt as string) || undefined;
-    const model = body.model as string | undefined;
     const vpolicy = model ? await routingPolicy(model) : "any";
     void runClipJobWithRetry(
       job,
@@ -4389,7 +4805,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!body.gpt_description_prompt && !body.prompt) {
       return reply.code(400).send({ error: "prompt is required." });
     }
-    const cost = await costFor("music");
+    const model = (body.model as string) || undefined;
+    const cost = await costFor("music", model);
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
     const callbackUrl = body.callback_url as string | undefined;
@@ -4397,10 +4814,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.userId = key.user_id;
     job.apiKeyId = key.id;
     job.endpoint = "music";
-    job.model = (body.model as string) || undefined;
+    job.model = model;
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
     job.credits = cost;
-    const model = (body.model as string) || undefined;
     const policy = await routingPolicy(model);
     void runClipJobWithRetry(job, processMusicSubmit(body), { model, policy });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
@@ -4452,7 +4868,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("stems", (in_.callBackUrl as string) || (in_.callback_url as string) || undefined);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "stems"; job.credits = cost;
-    void runClipJobWithRetry(job, (client) => client.stems(clip_id));
+    void submitDescribedJob(job, { op: "stems", args: { id: clip_id } });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
@@ -4697,7 +5113,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("wav", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "wav"; job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.downloadUrl(clip_id, (in_.format as string) || "wav"));
+    void submitDescribedJob(job, {
+      op: "wav",
+      args: { id: clip_id, format: (in_.format as string) || "wav" },
+    });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
@@ -5049,7 +5468,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("timestamped_lyrics_detail");
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "timestamped_lyrics_detail"; job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.lyricsDetail(id));
+    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
@@ -5152,13 +5571,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const personaId = (in_.persona_id as string) || (in_.personaId as string) || undefined;
     const clipId = (in_.clip_id as string) || (in_.clipId as string) || undefined;
     if (!personaId && !clipId) return reply.code(400).send({ error: "persona_id or clip_id is required." });
-    const cost = await costFor("voice_apply");
+    const model = (in_.model as string) || undefined;
+    const cost = await costFor("voice_apply", model);
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
     const job = newJob("voice_apply", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "voice_apply"; job.credits = cost;
     job.prompt = (in_.prompt as string) || undefined;
-    const model = (in_.model as string) || undefined;
     const policy = model ? await routingPolicy(model) : "any";
     void runClipJobWithRetry(job, (client) =>
       client.voiceApply({
@@ -5547,6 +5966,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         ...(init?.body ? { "Content-Type": "application/json" } : {}),
       },
       body: init?.body ? JSON.stringify(init.body) : undefined,
+      signal: AbortSignal.timeout(30_000),
     });
     const text = await res.text();
     let parsed: unknown = null;

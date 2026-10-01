@@ -6,7 +6,19 @@ import { pool as dbPool } from "./db.js";
 
 const port = Number(process.env.PORT ?? 4003);
 
-let pool = await AccountPool.fromDb();
+let pool: AccountPool;
+try {
+  pool = await AccountPool.fromDb();
+} catch (e) {
+  // Most commonly a COOKIE_ENCRYPTION_KEY that doesn't match the stored rows;
+  // decryptCookie() says so. Surface it as a clear boot failure, not a raw
+  // top-level-await rejection.
+  console.error(`Failed to load Suno accounts from the database: ${e instanceof Error ? e.message : e}`);
+  console.error(
+    "Check COOKIE_ENCRYPTION_KEY (must match the key the rows were encrypted with) and DATABASE_URL.",
+  );
+  process.exit(1);
+}
 if (pool.size === 0) {
   const accountsFile = process.env.ACCOUNTS_FILE ?? "accounts.json";
   if (existsSync(accountsFile)) {

@@ -56,7 +56,7 @@ function clerkHeaders(extra: Record<string, string> = {}): Record<string, string
 
 async function getActiveSessionId(): Promise<string> {
   const url = `${config.clerkUrl}/v1/client?__clerk_api_version=${CLERK_API_VERSION}&_clerk_js_version=${CLERK_VERSION}`;
-  const res = await fetch(url, { headers: clerkHeaders() });
+  const res = await fetch(url, { headers: clerkHeaders(), signal: AbortSignal.timeout(15_000) });
   if (!res.ok) {
     throw new Error(`Clerk /client failed (${res.status}): ${await res.text()}`);
   }
@@ -77,6 +77,7 @@ async function mintJwt(sessionId: string): Promise<string> {
   const res = await fetch(url, {
     method: "POST",
     headers: clerkHeaders({ "content-type": "application/x-www-form-urlencoded" }),
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) {
     throw new Error(`Clerk token mint failed (${res.status}): ${await res.text()}`);

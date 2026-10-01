@@ -25,21 +25,11 @@ CREATE TABLE IF NOT EXISTS payment_transactions (
 CREATE INDEX IF NOT EXISTS idx_payment_tx_user ON payment_transactions(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_payment_tx_md5 ON payment_transactions(md5_hash);
 CREATE INDEX IF NOT EXISTS idx_payment_tx_status ON payment_transactions(status);
-
--- Also upsert KHR packs if missing
-INSERT INTO credit_packs (amount, price, currency, is_active)
-VALUES
-  (1000, 20500, 'KHR', true),
-  (5000, 102500, 'KHR', true),
-  (20000, 410000, 'KHR', true),
-  (100000, 2000000, 'KHR', true),
-  (500000, 9500000, 'KHR', true)
-ON CONFLICT DO NOTHING;
 `;
 
 async function main() {
   await pool.query(SCHEMA_SQL);
-  console.log("[migrate] payment_transactions table + KHR packs ensured.");
+  console.log("[migrate] payment_transactions table ensured.");
   await pool.end();
 }
 

@@ -48,6 +48,7 @@ async function sunoRequest(
   const res = await fetch(`${config.apiUrl}${path}`, {
     ...init,
     headers: apiHeaders(jwt, config.deviceId, (init.headers as Record<string, string>) ?? {}),
+    signal: AbortSignal.timeout(30_000),
   });
 
   // A single retry on auth failure, forcing a fresh JWT.

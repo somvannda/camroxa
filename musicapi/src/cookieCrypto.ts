@@ -39,5 +39,16 @@ export function decryptCookie(stored: string): string {
   const ciphertext = payload.subarray(IV_BYTES + TAG_BYTES);
   const decipher = createDecipheriv(ALGORITHM, config.cookieEncryptionKey, iv);
   decipher.setAuthTag(tag);
-  return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+  try {
+    return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString("utf8");
+  } catch {
+    // GCM auth failure almost always means COOKIE_ENCRYPTION_KEY no longer
+    // matches the key the row was written with (e.g. a new worktree generated
+    // its own key, or a rotation happened without re-encrypting).
+    throw new Error(
+      "Failed to decrypt a stored Suno client_cookie: COOKIE_ENCRYPTION_KEY does not match the key " +
+        "these rows were encrypted with. Use the same key as the database that holds them, or " +
+        "rotate per docs/production-readiness-plan.md §1.8.",
+    );
+  }
 }

@@ -57,7 +57,7 @@ async function main() {
 
   // Seed pricing
   const pricing: Array<[string, string | null, number]> = [
-    ["music", null, 9],
+    ["music", null, 15],
     ["lyrics", null, 2],
     ["extend", null, 9],
     ["cover", null, 9],
@@ -70,7 +70,9 @@ async function main() {
     ["replace_section", null, 9],
     ["cover_image", null, 5],
     ["persona", null, 9],
-    ["wav", null, 1],
+    ["wav", null, 0],
+    ["mp3_download", null, 0],
+    ["wav_download", null, 3],
     ["upload_extend", null, 9],
     ["upload_cover", null, 9],
     ["upload_init", null, 1],
@@ -86,7 +88,7 @@ async function main() {
     ["voice_apply", null, 9],
     ["voice_extend", null, 9],
     ["lyrics_detail", null, 1],
-    ["wav_detail", null, 1],
+    ["wav_detail", null, 0],
     ["stems_detail", null, 1],
     ["video_detail", null, 1],
     ["cover_detail", null, 1],
@@ -107,16 +109,10 @@ async function main() {
   if (!packs.rows.length) {
     await pool.query(
       `INSERT INTO credit_packs (amount, price, currency) VALUES
-         (1000, 20500, 'KHR'),
-         (5000, 102500, 'KHR'),
-         (20000, 410000, 'KHR'),
-         (100000, 2000000, 'KHR'),
-         (500000, 9500000, 'KHR'),
-         (1000, 5, 'USD'),
-         (5000, 25, 'USD'),
-         (20000, 100, 'USD'),
-         (100000, 488, 'USD'),
-         (500000, 2317, 'USD')`,
+         (3500, 10, 'USD'),
+         (11000, 30, 'USD'),
+         (23000, 60, 'USD'),
+         (40000, 100, 'USD')`,
     );
   }
 
