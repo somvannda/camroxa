@@ -314,13 +314,13 @@ export default function AccountsPage() {
 
       <div className="glass rounded-xl p-5">
         <h2 className="text-sm font-semibold">Routing rules</h2>
-        <p className="mt-1 text-xs text-[var(--muted)]">Map a model key (e.g. chirp-crow) to an account policy.</p>
+        <p className="mt-1 text-xs text-[var(--muted)]">Map a model key (e.g. chirp-hawk) to an account policy.</p>
 
         <form onSubmit={saveRule} className="mt-3 flex flex-wrap gap-2">
           <input
             value={ruleForm.model}
             onChange={(e) => setRuleForm({ ...ruleForm, model: e.target.value })}
-            placeholder="Model key (e.g. chirp-crow)"
+            placeholder="Model key (e.g. chirp-hawk)"
             className="rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
           />
           <select

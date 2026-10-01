@@ -80,7 +80,7 @@ export default function PricingPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Pricing</h1>
-          <p className="text-sm text-[var(--muted)]">Credit cost per endpoint — used to charge each generation</p>
+          <p className="text-sm text-[var(--muted)]">Credit cost per endpoint — used to charge each generation and download</p>
         </div>
         <button onClick={() => (showForm ? resetForm() : setShowForm(true))} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white">
           {showForm ? "Cancel" : "Set / add price"}
@@ -97,7 +97,7 @@ export default function PricingPage() {
               value={form.endpoint}
               onChange={(e) => setForm({ ...form, endpoint: e.target.value })}
               className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-              placeholder="music / lyrics / extend / cover / stems"
+              placeholder="music / lyrics / extend / mp3_download / wav_download"
             />
           </div>
           <div className="space-y-1">
@@ -106,7 +106,7 @@ export default function PricingPage() {
               value={form.model}
               onChange={(e) => setForm({ ...form, model: e.target.value })}
               className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-              placeholder="chirp-v5"
+              placeholder="chirp-hawk"
             />
           </div>
           <div className="space-y-1">

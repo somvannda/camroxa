@@ -1,14 +1,18 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getUser } from "@/lib/auth";
+import { getUser, type AuthUser } from "@/lib/auth";
 import { logout as endSession } from "@/lib/api";
 
 const NAV = [
   { href: "/admin", label: "Dashboard" },
   { href: "/admin/accounts", label: "Suno Accounts" },
   { href: "/admin/users", label: "Users" },
+  { href: "/admin/keys", label: "API Keys" },
+  { href: "/admin/logs", label: "Usage Logs" },
+  { href: "/admin/audit", label: "Audit Trail" },
   { href: "/admin/pricing", label: "Pricing" },
   { href: "/admin/credit-packs", label: "Credit Packs" },
   { href: "/admin/analytics", label: "Analytics" },
@@ -19,7 +23,13 @@ const NAV = [
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
-  const user = getUser();
+  // Read the cached profile after mount only: getUser() reads localStorage,
+  // which is unavailable during SSR, so calling it in render caused a
+  // hydration mismatch (server rendered null, client rendered the email).
+  const [user, setUser] = useState<AuthUser | null>(null);
+  useEffect(() => {
+    setUser(getUser());
+  }, []);
 
   function isActive(href: string): boolean {
     if (href === "/admin") return pathname === "/admin";

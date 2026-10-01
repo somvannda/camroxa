@@ -20,6 +20,10 @@ export default function UsersPage() {
   const [q, setQ] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [limitsFor, setLimitsFor] = useState<User | null>(null);
+  const [rpm, setRpm] = useState("");
+  const [rpd, setRpd] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
     setLoading(true);
@@ -53,6 +57,51 @@ export default function UsersPage() {
       load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to update status");
+    }
+  }
+
+  async function openLimits(u: User) {
+    setError("");
+    setLimitsFor(u);
+    setRpm("");
+    setRpd("");
+    try {
+      const data = await apiFetch<{ requests_per_minute: number | null; requests_per_day: number | null }>(
+        `/admin/users/${u.id}/rate-limits`,
+      );
+      setRpm(data.requests_per_minute?.toString() ?? "");
+      setRpd(data.requests_per_day?.toString() ?? "");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load rate limits");
+    }
+  }
+
+  async function saveLimits() {
+    if (!limitsFor) return;
+    const parse = (v: string): number | null | undefined => {
+      if (v.trim() === "") return null;
+      const n = Number(v);
+      if (!Number.isInteger(n) || n <= 0) return undefined;
+      return n;
+    };
+    const perMinute = parse(rpm);
+    const perDay = parse(rpd);
+    if (perMinute === undefined || perDay === undefined) {
+      setError("Limits must be positive whole numbers, or left empty to clear.");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await apiFetch(`/admin/users/${limitsFor.id}/rate-limits`, {
+        method: "PUT",
+        body: JSON.stringify({ requests_per_minute: perMinute, requests_per_day: perDay }),
+      });
+      setLimitsFor(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save rate limits");
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -107,6 +156,7 @@ export default function UsersPage() {
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button onClick={() => adjustCredits(u)} className="mr-2 rounded px-2 py-1 text-xs text-[var(--violet)] hover:bg-white/5">Credits</button>
+                    <button onClick={() => openLimits(u)} className="mr-2 rounded px-2 py-1 text-xs text-[var(--violet)] hover:bg-white/5">Limits</button>
                     <button onClick={() => toggleStatus(u)} className="rounded px-2 py-1 text-xs text-red-300 hover:bg-white/5">
                       {u.status === "active" ? "Ban" : "Unban"}
                     </button>
@@ -120,6 +170,51 @@ export default function UsersPage() {
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {limitsFor && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="glass w-full max-w-sm rounded-xl p-5">
+            <h2 className="text-lg font-semibold">Rate limits</h2>
+            <p className="mb-4 text-sm text-[var(--muted)]">{limitsFor.email}</p>
+            <label className="mb-3 block text-sm">
+              <span className="mb-1 block text-[var(--muted)]">Requests per minute</span>
+              <input
+                value={rpm}
+                onChange={(e) => setRpm(e.target.value)}
+                inputMode="numeric"
+                placeholder="Unlimited"
+                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
+              />
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-[var(--muted)]">Requests per day</span>
+              <input
+                value={rpd}
+                onChange={(e) => setRpd(e.target.value)}
+                inputMode="numeric"
+                placeholder="Unlimited"
+                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
+              />
+            </label>
+            <p className="mt-3 text-xs text-[var(--muted)]">Leave a field empty for no limit.</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setLimitsFor(null)}
+                className="rounded-lg px-3 py-2 text-sm text-[var(--muted)] hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveLimits}
+                disabled={saving}
+                className="rounded-lg bg-[var(--violet)] px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
+              >
+                {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
