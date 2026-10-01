@@ -284,6 +284,33 @@ async def _fetch_avatar_url(pool, user_id: UUID) -> str | None:
     return canonical_api_path(f"media/users/{user_id}/avatar")
 
 
+async def _fetch_active_web_plan(pool, user_id: UUID) -> tuple[str | None, bool]:
+    """Return the active web subscription's plan name and whether it is paid."""
+    row = await _fetch_optional_row(
+        pool,
+        """
+        SELECT p.name AS plan_name,
+               COALESCE(p.price_cents, 0) AS price_cents
+        FROM web_subscriptions ws
+        JOIN plans p ON p.id = ws.plan_id
+        WHERE ws.user_id = $1
+          AND ws.status = 'active'
+          AND ws.current_period_end > NOW()
+        ORDER BY ws.current_period_end DESC
+        LIMIT 1
+        """,
+        user_id,
+    )
+    if not row:
+        return None, False
+    plan_name = str(row["plan_name"]) if row.get("plan_name") is not None else None
+    try:
+        is_paid = int(row.get("price_cents") or 0) > 0
+    except (TypeError, ValueError):
+        is_paid = False
+    return plan_name, is_paid
+
+
 def _save_user_avatar(*, user_id: UUID, data: bytes, content_type: str) -> str:
     ext = ".jpg"
     lowered = str(content_type or "").lower()
@@ -478,6 +505,10 @@ async def get_me(
         else None
     )
 
+    web_plan_name, web_plan_paid = await _fetch_active_web_plan(pool, user_id)
+    if plan_name is None:
+        plan_name = web_plan_name
+
     profile_row = await pool.fetchrow(
         "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
         user_id,
@@ -486,7 +517,7 @@ async def get_me(
 
     from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
 
-    onboarding_paid = await user_has_paid_for_onboarding(pool, user_id)
+    onboarding_paid = await user_has_paid_for_onboarding(pool, user_id) or web_plan_paid
     avatar_url = await _fetch_avatar_url(pool, user_id)
 
     return _user_to_response(
@@ -586,6 +617,10 @@ async def update_me(
         else None
     )
 
+    web_plan_name, web_plan_paid = await _fetch_active_web_plan(pool, user_id)
+    if plan_name is None:
+        plan_name = web_plan_name
+
     profile_row = await pool.fetchrow(
         "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
         user_id,
@@ -594,7 +629,7 @@ async def update_me(
 
     from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
 
-    onboarding_paid = await user_has_paid_for_onboarding(pool, user_id)
+    onboarding_paid = await user_has_paid_for_onboarding(pool, user_id) or web_plan_paid
     avatar_url = await _fetch_avatar_url(pool, user_id)
     return _user_to_response(
         user,

@@ -25,10 +25,11 @@ ADMIN_CONTEXT = AuthContext(user_id=str(uuid4()), email="admin@example.com", rol
 class FakeDbPool:
     """Small fake asyncpg pool for `/users/me` enrichment tests."""
 
-    def __init__(self, *, balance=None, license_row=None, profile_row=None) -> None:
+    def __init__(self, *, balance=None, license_row=None, profile_row=None, web_plan_row=None) -> None:
         self._balance = balance
         self._license_row = license_row
         self._profile_row = profile_row
+        self._web_plan_row = web_plan_row
 
     async def fetchrow(self, query: str, *args):
         sql = " ".join(str(query).split()).lower()
@@ -38,6 +39,8 @@ class FakeDbPool:
             return self._license_row
         if "from channel_profiles" in sql:
             return self._profile_row
+        if "from web_subscriptions" in sql:
+            return self._web_plan_row
         if "from billing_payments" in sql:
             return None
         if "select avatar_url from users" in sql:
@@ -229,6 +232,29 @@ class TestGetMe:
         assert data["profile_allowance"] is None
         assert data["credit_balance"] == 0
         assert data["channel_profile_count"] == 0
+
+    async def test_recognizes_paid_web_subscription(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            users_router,
+            "get_db_pool",
+            lambda: FakeDbPool(
+                balance={"balance": 0},
+                license_row=None,
+                profile_row=None,
+                web_plan_row={"plan_name": "Monthly \u00b7 2-channel", "price_cents": 7900},
+            ),
+        )
+
+        response = await client.get("/api/v1/users/me")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["plan_name"] == "Monthly \u00b7 2-channel"
+        assert data["onboarding_paid"] is True
 
 
 class TestGetUserFullDetails:

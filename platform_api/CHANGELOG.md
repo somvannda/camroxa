@@ -48,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- `GET`/`PATCH /users/me` now resolve `plan_name` and `onboarding_paid` from an active paid `web_subscriptions` row when there is no license, so paid web subscribers no longer see the desktop **Choose Your Plan** popup after login. See `docs/changelog/2026-10-01-desktop-entitlement-web-subscription.md`.
 - `/me/credits` now returns the resolved Free/paid plan and `reset_label` (daily vs monthly). Monthly Free plans are granted on that poll. See `docs/changelog/2026-08-28-credit-reset-label-period.md`.
 - Free daily mint no longer stacks 50 credits on every `/me/credits` poll. Lot insert happens first; sandbox `duke@test.com` 4,150 was 83 stacked daily grants. Cutover now snapshots every wallet before/after leftover apply. See `docs/changelog/2026-08-25-daily-grant-idempotent-and-cutover-snapshot.md`.
 - `POST /generation/draft` no longer 500s: the router-local `DraftGenerationRequest` was missing `mood_id`/`structure_mode`. See `docs/changelog/2026-09-22-api-v3-rc-test-reconciliation.md`.
