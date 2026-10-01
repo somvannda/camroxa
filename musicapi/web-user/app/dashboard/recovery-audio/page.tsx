@@ -13,7 +13,7 @@ import { useState } from "react";
 export default function RecoveryAudioPage() {
   const [sunoTaskId, setSunoTaskId] = useState("");
   const [callBackUrl, setCallBackUrl] = useState("");
-  const { busy, task, error, submit, reset, retry, canRetry } = useJob();
+  const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "recovery_audio" });
 
   return (
     <PageShell
@@ -31,6 +31,7 @@ export default function RecoveryAudioPage() {
           kind="clips"
           retry={retry}
           canRetry={canRetry}
+          retryCost={retryCost}
           onReset={reset}
         />
       }

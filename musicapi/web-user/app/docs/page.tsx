@@ -12,12 +12,9 @@ interface Endpoint {
 }
 
 const MODELS: Array<{ label: string; key: string; tagline: string }> = [
-  { label: "V4", key: "chirp-v4", tagline: "Improved Vocals — Best audio quality with refined song structure, up to 4 minutes" },
-  { label: "V4_5", key: "chirp-auk", tagline: "Smart Prompts — Superior genre blending with smarter prompts, up to 8 minutes" },
-  { label: "V4_5PLUS", key: "chirp-bluejay", tagline: "Richer Tones — Enhanced musicality with new creative approaches, up to 8 minutes" },
-  { label: "V4_5ALL", key: "chirp-auk-turbo", tagline: "Better Song Structure — V4.5-all is better song structure, max 8 min" },
-  { label: "V5", key: "chirp-crow", tagline: "Latest Model — Cutting-edge model with enhanced quality and capabilities" },
-  { label: "V5_5", key: "chirp-fenix", tagline: "Voice-Customized Model — Unleash Your Voice: Custom Models Tailored to Your Unique Taste" },
+  { label: "V6", key: "chirp-hawk", tagline: "Powerful. Versatile. Refined. Our best model yet — the default for every generation." },
+  { label: "V6-Mini", key: "chirp-goose", tagline: "A free, more efficient version of the premium v6 models." },
+  { label: "V6-Wild", key: "chirp-hawk-wild", tagline: "Best for experimental ideas." },
 ];
 
 type GroupKey = "music" | "lyrics" | "audio" | "video" | "upload" | "voice" | "detail" | "utility";
@@ -99,10 +96,10 @@ const ENDPOINTS: Endpoint[] = [
       { name: "style", required: false, desc: "Music style / genre (required in custom mode)" },
       { name: "title", required: false, desc: "Song title (required in custom mode)" },
       { name: "instrumental", required: false, desc: "Generate instrumental only (true/false)" },
-      { name: "model", required: false, desc: "Model key: V4 / V4_5 / V4_5PLUS / V4_5ALL / V5 / V5_5 or chirp-*" },
+      { name: "model", required: false, desc: "Model key: chirp-hawk (V6) / chirp-goose (V6-Mini) / chirp-hawk-wild (V6-Wild)" },
       { name: "callBackUrl", required: false, desc: "Webhook URL for completion" },
     ],
-    example: "curl -X POST \"https://musicapi.camxora.com/api/v1/generate\" \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{ \"prompt\": \"Folk song about the sea\", \"customMode\": false, \"model\": \"V4_5ALL\" }'\n// => { \"code\": 200, \"msg\": \"success\", \"data\": { \"taskId\": \"suno_task_...\" } }",
+    example: "curl -X POST \"https://musicapi.camxora.com/api/v1/generate\" \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{ \"prompt\": \"Folk song about the sea\", \"customMode\": false, \"model\": \"chirp-hawk\" }'\n// => { \"code\": 200, \"msg\": \"success\", \"data\": { \"taskId\": \"suno_task_...\" } }",
   },
   {
     method: "POST",
@@ -154,7 +151,7 @@ const ENDPOINTS: Endpoint[] = [
       { name: "model", required: false, desc: "Model version key" },
       { name: "callback_url", required: false, desc: "Webhook URL for completion" },
     ],
-    example: "curl -X POST https://musicapi.camxora.com/v1/music \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"gpt_description_prompt\":\"Upbeat synthwave\",\"model\":\"chirp-crow\"}'\n// => { \"job_id\": \"...\", \"status\": \"pending\" }",
+    example: "curl -X POST https://musicapi.camxora.com/v1/music \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"gpt_description_prompt\":\"Upbeat synthwave\",\"model\":\"chirp-hawk\"}'\n// => { \"job_id\": \"...\", \"status\": \"pending\" }",
   },
   {
     method: "POST",
@@ -631,7 +628,7 @@ export default function PublicDocsPage() {
             <h2 id="key-features" data-toc="Key Features" className="scroll-mt-24 mb-4 text-2xl font-bold">Key Features</h2>
             <div className="space-y-4">
               {[
-                ["🚀", "Latest AI Music Models", "Suno V5_5, V5, V4.5 Plus, V4.5 All, V4.5, V4. Supports creation of both vocal and instrumental tracks, music extension, and multi-format downloads."],
+                ["🚀", "Latest AI Music Models", "Suno V6, V6-Mini, and V6-Wild. Supports creation of both vocal and instrumental tracks, music extension, and multi-format downloads."],
                 ["💎", "Watermark-Free Commercial Use", "All music generated through our API is watermark-free, immediately suitable for commercial projects."],
                 ["⚡", "20-Second Streaming Output", "Rapid delivery with streaming output enables real-time applications and live content creation."],
                 ["🏗️", "High-Concurrency Architecture", "Built to handle multiple simultaneous requests with reliable performance under heavy traffic."],
@@ -667,7 +664,7 @@ export default function PublicDocsPage() {
             <p className="mb-3 text-sm text-[var(--muted)]">All API requests should be sent to:</p>
             <pre className="overflow-x-auto rounded-xl bg-black/40 p-4 font-mono text-sm">
 {applyOrigin(`https://musicapi.camxora.com`, baseOrigin)}
-              <span className="block text-[var(--muted)]"># or http://localhost:3000 during local dev (API backend)</span>
+              <span className="block text-[var(--muted)]"># or http://localhost:4003 during local dev (API backend)</span>
             </pre>
             <p className="mt-2 text-xs text-[var(--muted)]">
               <span className="text-violet-300">✓</span> In production deployments this value is automatically derived from the host you are visiting — no manual update required when you deploy to <code className="rounded bg-white/10 px-1.5 py-0.5">musicapi.camxora.com</code> or any other custom domain.
@@ -738,7 +735,7 @@ curl -X POST "https://musicapi.camxora.com/v1/music" \\
   -H "Content-Type: application/json" \\
   -d '{
     "gpt_description_prompt": "Upbeat synthwave road trip theme",
-    "model": "chirp-crow"
+    "model": "chirp-hawk"
   }'
 
 # Or use the docs.sunoapi.org-compatible alias
@@ -748,7 +745,7 @@ curl -X POST "https://musicapi.camxora.com/api/v1/generate" \\
   -d '{
     "prompt": "Upbeat synthwave road trip theme",
     "customMode": false,
-    "model": "V5",
+    "model": "chirp-hawk",
     "callBackUrl": "https://your-webhook.example.com/done"
   }'`, baseOrigin)}
                 </pre>

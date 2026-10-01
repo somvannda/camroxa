@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { completeGoogleCallback } from "@/components/google-signin-button";
 
@@ -17,8 +17,15 @@ function GoogleCallbackInner() {
   const [msg, setMsg] = useState<string>(code ? "Completing Google sign-in…" : "Preparing…");
   const [err, setErr] = useState<string>("");
 
+  // React StrictMode mounts effects twice in development. The authorization
+  // code is single-use, so a second exchange fails with invalid_grant and
+  // replaces the success path with an error. Guard on a ref (not the effect's
+  // cleanup) so exactly one exchange happens and its redirect still lands.
+  const started = useRef(false);
+
   useEffect(() => {
-    let cancelled = false;
+    if (started.current) return;
+    started.current = true;
 
     (async () => {
       if (error) {
@@ -33,22 +40,16 @@ function GoogleCallbackInner() {
       }
       try {
         await completeGoogleCallback(state, code);
-        if (cancelled) return;
         const redirectTo =
           (typeof window !== "undefined" &&
             (localStorage.getItem("google_auth_redirect") || "/dashboard")) ||
           "/dashboard";
         router.replace(redirectTo);
       } catch (e) {
-        if (cancelled) return;
         setBusy(false);
         setErr(e instanceof Error ? e.message : "Google sign-in failed.");
       }
     })();
-
-    return () => {
-      cancelled = true;
-    };
   }, [code, state, error, router]);
 
   return (

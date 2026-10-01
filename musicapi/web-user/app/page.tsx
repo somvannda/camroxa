@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { apiFetch } from "@/lib/api";
 
 const FEATURES = [
   {
@@ -48,16 +50,26 @@ const USE_CASES = [
   { title: "Startups", desc: "Ship an MVP with music generation without backend heavy-lifting." },
 ];
 
-const PLANS = [
-  { name: "Basic", amount: "1,000", price: "$5", bonus: "" },
-  { name: "Standard", amount: "5,000", price: "$25", bonus: "" },
-  { name: "Premium", amount: "20,000", price: "$100", bonus: "Best value" },
-  { name: "Enterprise", amount: "Custom", price: "Contact us", bonus: "" },
+// Shown only until the live packs load (or if the API is unreachable) so the
+// section never renders empty. The real prices come from the `credit_packs`
+// table via GET /pricing, so this list can't drift from what billing charges.
+const FALLBACK_PLANS = [
+  { name: "Credit pack", amount: "1,000", price: "USD 10", bonus: "" },
+  { name: "Credit pack", amount: "5,000", price: "USD 30", bonus: "" },
+  { name: "Credit pack", amount: "20,000", price: "USD 60", bonus: "" },
+  { name: "Credit pack", amount: "50,000", price: "USD 100", bonus: "Best value" },
 ];
+
+interface Plan {
+  name: string;
+  amount: string;
+  price: string;
+  bonus: string;
+}
 
 const FAQS = [
   { q: "What is Camxora Music API?", a: "A REST API that generates watermark-free AI music on top of the latest models — vocals, instrumentals, extensions and covers." },
-  { q: "How do credits work?", a: "Each request consumes credits (e.g. 1 credit for lyrics, 5 for a song). You buy credit packages and top up anytime from your dashboard." },
+  { q: "How do credits work?", a: "Every request consumes credits at the rates published on your billing page. Buy a credit package and top up anytime from your dashboard." },
   { q: "Is the music safe for commercial use?", a: "Yes. Generated tracks are watermark-free and ready for commercial projects with no additional fees." },
   { q: "How fast are results?", a: "Streaming output typically delivers in around 20 seconds, with real-time task status polling." },
   { q: "How do I get started?", a: "Create an account, generate an API key, add credits, then call the REST endpoints with your bearer token." },
@@ -65,6 +77,25 @@ const FAQS = [
 ];
 
 export default function LandingPage() {
+  const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS);
+
+  useEffect(() => {
+    apiFetch<{ packs: Array<{ id: string; amount: number; price: number; currency: string }> }>("/pricing")
+      .then((data) => {
+        if (!data.packs?.length) return;
+        const top = Math.max(...data.packs.map((p) => p.amount));
+        setPlans(
+          data.packs.map((p) => ({
+            name: "Credit pack",
+            amount: p.amount.toLocaleString(),
+            price: `${p.currency} ${p.price.toLocaleString()}`,
+            bonus: data.packs.length > 1 && p.amount === top ? "Best value" : "",
+          })),
+        );
+      })
+      .catch(() => { /* keep the fallback list */ });
+  }, []);
+
   return (
     <div className="flex min-h-screen flex-col">
       {/* Header */}
@@ -207,8 +238,8 @@ export default function LandingPage() {
               <p className="mt-3 text-[var(--muted)]">Buy credits before you integrate. Top up anytime from your billing dashboard.</p>
             </div>
             <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {PLANS.map((p) => (
-                <div key={p.name} className={`glass relative rounded-2xl p-6 ${p.bonus ? "border-[var(--violet)]/50" : ""}`}>
+              {plans.map((p, i) => (
+                <div key={i} className={`glass relative rounded-2xl p-6 ${p.bonus ? "border-[var(--violet)]/50" : ""}`}>
                   {p.bonus && (
                     <span className="grad-bg absolute -top-3 left-4 rounded-full px-3 py-0.5 text-xs font-semibold text-white">
                       {p.bonus}

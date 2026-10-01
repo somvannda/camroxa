@@ -172,18 +172,32 @@ function safeParseResult(r: unknown): unknown {
   return r;
 }
 
-function extractClipIds(result: unknown): string[] {
-  if (!result) return [];
+/** A result clip plus its best inline CDN URL, for direct streaming playback. */
+interface LogClip {
+  id: string;
+  audioUrl: string | null;
+}
+
+function extractClipList(result: unknown): LogClip[] {
+  let list: unknown[] = [];
   if (Array.isArray(result)) {
-    return result.map((c) => (c as Record<string, unknown>)?.id as string).filter(Boolean);
+    list = result;
+  } else if (result && typeof result === "object") {
+    const rec = result as Record<string, unknown>;
+    if (Array.isArray(rec.clips)) list.push(...rec.clips);
+    if (Array.isArray(rec.items)) list.push(...rec.items);
+    if (Array.isArray(rec.data)) list.push(...rec.data);
   }
-  if (typeof result !== "object") return [];
-  const rec = result as Record<string, unknown>;
-  const candidates: unknown[] = [];
-  if (Array.isArray(rec.clips)) candidates.push(...rec.clips);
-  if (Array.isArray(rec.items)) candidates.push(...rec.items);
-  if (Array.isArray(rec.data)) candidates.push(...rec.data);
-  return candidates.map((c) => (c as Record<string, unknown>)?.id as string).filter(Boolean);
+  const out: LogClip[] = [];
+  for (const c of list) {
+    if (!c || typeof c !== "object") continue;
+    const rec = c as { id?: unknown; audio_url?: unknown; media_urls?: Array<{ url?: unknown }> };
+    if (typeof rec.id !== "string" || !rec.id) continue;
+    const media = Array.isArray(rec.media_urls) ? rec.media_urls[0]?.url : null;
+    const audioUrl = typeof media === "string" ? media : typeof rec.audio_url === "string" ? rec.audio_url : null;
+    out.push({ id: rec.id, audioUrl });
+  }
+  return out;
 }
 
 function firstClip(result: unknown): Record<string, unknown> | null {
@@ -270,7 +284,7 @@ export default function LogsPage() {
   const [loading, setLoading] = useState(true);
   const [taskIdSearch, setTaskIdSearch] = useState("");
   const [activeTab, setActiveTab] = useState("audio");
-  const [resultModal, setResultModal] = useState<{ row: LogRow; clipIds: string[] } | null>(null);
+  const [resultModal, setResultModal] = useState<{ row: LogRow; clips: LogClip[] } | null>(null);
 
   const loadLive = useCallback(async () => {
     try {
@@ -443,7 +457,8 @@ export default function LogsPage() {
             </thead>
             <tbody>
               {filtered.map((r) => {
-                const clipIds = extractClipIds(r.result_json);
+                const clips = extractClipList(r.result_json);
+                const clipIds = clips.map((c) => c.id);
                 const st = (r.status || "").toLowerCase();
                 const isComplete = st === "complete" || st === "success";
                 const canDownload = clipIds.length > 0 && isComplete;
@@ -475,7 +490,7 @@ export default function LogsPage() {
                     </td>
                     <td className="px-4 py-3.5 align-top">
                       <div className="flex justify-end">
-                        <ResultCell row={r} clipIds={clipIds} canOpen={canDownload} onOpen={() => setResultModal({ row: r, clipIds })} />
+                        <ResultCell row={r} clipIds={clipIds} canOpen={canDownload} onOpen={() => setResultModal({ row: r, clips })} />
                       </div>
                     </td>
                   </tr>
@@ -494,7 +509,7 @@ export default function LogsPage() {
 
       {resultModal && (
         <ResultModal
-          clipIds={resultModal.clipIds}
+          clips={resultModal.clips}
           row={resultModal.row}
           onClose={() => setResultModal(null)}
           onError={showError}
@@ -620,7 +635,7 @@ function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: s
   );
 }
 
-function ResultModal({ clipIds, row, onClose, onError }: { clipIds: string[]; row: LogRow; onClose: () => void; onError?: (msg: string) => void }) {
+function ResultModal({ clips, row, onClose, onError }: { clips: LogClip[]; row: LogRow; onClose: () => void; onError?: (msg: string) => void }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -652,12 +667,12 @@ function ResultModal({ clipIds, row, onClose, onError }: { clipIds: string[]; ro
         </div>
 
         <div className="space-y-3">
-          {clipIds.length === 0 && (
+          {clips.length === 0 && (
             <div className="rounded-lg border border-white/5 bg-black/30 p-4 text-xs text-white/50">
               No downloadable audio clips found for this request.
             </div>
           )}
-          {clipIds.map((id) => (
+          {clips.map(({ id, audioUrl }) => (
             <div key={id} className="rounded-lg border border-white/5 bg-black/30 p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="font-mono text-[11px] text-white/55">{id}</span>
@@ -666,7 +681,7 @@ function ResultModal({ clipIds, row, onClose, onError }: { clipIds: string[]; ro
                   <DownloadButton format="wav" clipId={id} enabled onError={(m) => onError?.(m)} />
                 </div>
               </div>
-              <AuthorizedAudio clipId={id} />
+              <AuthorizedAudio clipId={id} src={audioUrl} />
             </div>
           ))}
         </div>

@@ -14,7 +14,7 @@ export default function CheckVoicePage() {
   const [taskId, setTaskId] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [mode, setMode] = useState<"task" | "audio">("task");
-  const { busy, task, error, submit, reset, retry, canRetry } = useJob();
+  const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "voice_validate" });
 
   const canRun = !busy && (mode === "task" ? taskId.trim() : audioUrl.trim());
 
@@ -34,6 +34,7 @@ export default function CheckVoicePage() {
           kind="result"
           retry={retry}
           canRetry={canRetry}
+          retryCost={retryCost}
           onReset={reset}
         />
       }

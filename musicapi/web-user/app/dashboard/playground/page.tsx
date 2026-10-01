@@ -1,22 +1,39 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { downloadClip } from "@/components/playground";
 
-const MUSIC_VERSIONS = [
-  { label: "V4", key: "chirp-v4" },
-  { label: "V4.5", key: "chirp-auk" },
-  { label: "V4.5+", key: "chirp-bluejay" },
-  { label: "V4.5-All", key: "chirp-auk-turbo" },
-  { label: "V5", key: "chirp-crow" },
-  { label: "V5.5", key: "chirp-fenix" },
+type ModelOption = { label: string; key: string };
+
+/**
+ * Shown only while `GET /models` is unreachable, and identical to the current
+ * live catalog — the v6 family. Suno has retired the older keys (V4 / V4.5 /
+ * V4.5+ / V4.5-All / V5 / V5.5) and now silently remaps them to the current
+ * default, so we no longer offer them in the UI.
+ */
+const FALLBACK_VERSIONS: ModelOption[] = [
+  { label: "V6", key: "chirp-hawk" },
+  { label: "V6-MINI", key: "chirp-goose" },
+  { label: "V6-WILD", key: "chirp-hawk-wild" },
 ];
 
-const SOUND_VERSIONS = [
-  { label: "V5", key: "chirp-crow" },
-  { label: "V5.5", key: "chirp-fenix" },
-];
+/**
+ * Live Suno models first — the endpoint sorts the account default to the head,
+ * so the default stays default — then the static fallback for any key the live
+ * catalog did not report. A key present in both keeps the live entry.
+ */
+function mergeVersions(live: ModelOption[], fallback: ModelOption[]): ModelOption[] {
+  const seen = new Set(live.map((m) => m.key));
+  return [...live, ...fallback.filter((l) => !seen.has(l.key))];
+}
+
+/** Shape of `GET /models` — the live Suno catalog across the account pool. */
+interface LiveModel {
+  key: string;
+  name: string;
+  is_default: boolean;
+}
 
 const SOUND_KEYS = [
   "Any",
@@ -37,7 +54,7 @@ interface Persisted {
 
 function loadPersisted(): Persisted {
   if (typeof window === "undefined")
-    return { type: "music", mode: "simple", musicVersion: MUSIC_VERSIONS[0].key, soundVersion: SOUND_VERSIONS[0].key };
+    return { type: "music", mode: "simple", musicVersion: FALLBACK_VERSIONS[0].key, soundVersion: FALLBACK_VERSIONS[0].key };
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
@@ -45,14 +62,14 @@ function loadPersisted(): Persisted {
       return {
         type: p.type === "sounds" ? "sounds" : "music",
         mode: p.mode === "custom" ? "custom" : "simple",
-        musicVersion: MUSIC_VERSIONS.some((v) => v.key === p.musicVersion) ? p.musicVersion! : MUSIC_VERSIONS[0].key,
-        soundVersion: SOUND_VERSIONS.some((v) => v.key === p.soundVersion) ? p.soundVersion! : SOUND_VERSIONS[0].key,
+        musicVersion: typeof p.musicVersion === "string" ? p.musicVersion : FALLBACK_VERSIONS[0].key,
+        soundVersion: typeof p.soundVersion === "string" ? p.soundVersion : FALLBACK_VERSIONS[0].key,
       };
     }
   } catch {
     // ignore
   }
-  return { type: "music", mode: "simple", musicVersion: MUSIC_VERSIONS[0].key, soundVersion: SOUND_VERSIONS[0].key };
+  return { type: "music", mode: "simple", musicVersion: FALLBACK_VERSIONS[0].key, soundVersion: FALLBACK_VERSIONS[0].key };
 }
 
 interface TaskResult {
@@ -147,7 +164,7 @@ function ModelDropdown({
 }: {
   value: string;
   onChange: (v: string) => void;
-  options: { label: string; key: string }[];
+  options: ModelOption[];
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -158,7 +175,7 @@ function ModelDropdown({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
-  const cur = options.find((o) => o.key === value)?.label ?? options[0].label;
+  const cur = options.find((o) => o.key === value)?.label ?? options[0]?.label ?? "—";
   return (
     <div ref={ref} className="relative inline-block">
       <button
@@ -242,6 +259,12 @@ export default function PlaygroundPage() {
   const [mode, setMode] = useState<"simple" | "custom">(initial.mode);
   const [musicVersion, setMusicVersion] = useState(initial.musicVersion);
   const [soundVersion, setSoundVersion] = useState(initial.soundVersion);
+  // Live Suno catalog, empty until /models answers. The dropdowns merge it with
+  // the static v6 fallback, so the control renders immediately and degrades to
+  // the current models if /models fails.
+  const [liveModels, setLiveModels] = useState<ModelOption[]>([]);
+  const versions = useMemo(() => mergeVersions(liveModels, FALLBACK_VERSIONS), [liveModels]);
+  const soundVersions = useMemo(() => mergeVersions(liveModels, FALLBACK_VERSIONS), [liveModels]);
   const version = genType === "music" ? musicVersion : soundVersion;
 
   const [prompt, setPrompt] = useState("");
@@ -271,6 +294,37 @@ export default function PlaygroundPage() {
       // ignore
     }
   }, [genType, mode, musicVersion, soundVersion]);
+
+  // Pull the versions Suno actually offers our accounts. The endpoint already
+  // sorts the account default first, so the head of the list is the default.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<{ models: LiveModel[] }>("/models")
+      .then(({ models }) => {
+        if (cancelled || !models?.length) return;
+        setLiveModels(models.map((m) => ({ label: m.name.toUpperCase(), key: m.key })));
+      })
+      .catch(() => {
+        // Keep the static fallback; a real generation problem surfaces on submit.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // A version persisted from a previous session may no longer be offered; move
+  // it to the current default rather than submitting a model we cannot route.
+  useEffect(() => {
+    if (!versions.length) return;
+    const keys = new Set(versions.map((v) => v.key));
+    setMusicVersion((v) => (keys.has(v) ? v : versions[0].key));
+  }, [versions]);
+
+  useEffect(() => {
+    if (!soundVersions.length) return;
+    const keys = new Set(soundVersions.map((v) => v.key));
+    setSoundVersion((v) => (keys.has(v) ? v : soundVersions[0].key));
+  }, [soundVersions]);
 
   useEffect(() => {
     return () => {
@@ -408,7 +462,7 @@ export default function PlaygroundPage() {
                 <ModelDropdown
                   value={musicVersion}
                   onChange={setMusicVersion}
-                  options={MUSIC_VERSIONS}
+                  options={versions}
                 />
               </div>
 
@@ -471,7 +525,7 @@ export default function PlaygroundPage() {
             <>
               {/* Sounds: just model on pill row */}
               <div className="flex items-center justify-end rounded-xl bg-white/[0.03] px-3 py-2">
-                <ModelDropdown value={soundVersion} onChange={setSoundVersion} options={SOUND_VERSIONS} />
+                <ModelDropdown value={soundVersion} onChange={setSoundVersion} options={soundVersions} />
               </div>
 
               {/* Prompt */}

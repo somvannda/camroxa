@@ -90,11 +90,34 @@ export async function downloadClip(clipId: string | number | undefined | null, f
   }
 }
 
-export function AuthorizedAudio({ clipId, className }: { clipId: string; className?: string }) {
-  const [src, setSrc] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
+export function AuthorizedAudio({
+  clipId,
+  src,
+  className,
+}: {
+  clipId: string;
+  /**
+   * Direct provider/CDN URL. When present the browser streams it straight into
+   * `<audio>` (instant start, Range seeks, HTTP caching) instead of proxying the
+   * whole file through our backend. `/me/download` remains the fallback.
+   */
+  src?: string | null;
+  className?: string;
+}) {
+  const [blobSrc, setBlobSrc] = useState<string | null>(null);
+  const [cdnFailed, setCdnFailed] = useState(false);
+  const [loading, setLoading] = useState(!src);
   const [err, setErr] = useState<string | null>(null);
+
+  const streamUrl = src && !cdnFailed ? src : null;
+
   useEffect(() => {
+    // A direct CDN URL streams immediately — no proxy download, no blob copy.
+    if (streamUrl) {
+      setLoading(false);
+      setErr(null);
+      return;
+    }
     let alive = true;
     let createdBlob: string | null = null;
     const ac = new AbortController();
@@ -108,7 +131,7 @@ export function AuthorizedAudio({ clipId, className }: { clipId: string; classNa
         );
         const blob = await res.blob();
         createdBlob = URL.createObjectURL(blob);
-        if (alive) setSrc(createdBlob);
+        if (alive) setBlobSrc(createdBlob);
       } catch (e) {
         if (!alive) return;
         if (e instanceof DOMException && e.name === "AbortError") return;
@@ -128,7 +151,8 @@ export function AuthorizedAudio({ clipId, className }: { clipId: string; classNa
       ac.abort();
       if (createdBlob) URL.revokeObjectURL(createdBlob);
     };
-  }, [clipId]);
+  }, [clipId, streamUrl]);
+
   if (err) return <div className={`text-[11px] text-red-300 ${className ?? ""}`}>{err}</div>;
   if (loading) {
     return (
@@ -141,13 +165,18 @@ export function AuthorizedAudio({ clipId, className }: { clipId: string; classNa
       </div>
     );
   }
-  if (!src) return null;
+  const audioSrc = streamUrl ?? blobSrc;
+  if (!audioSrc) return null;
   return (
     <audio
       controls
       preload="metadata"
       className={`w-full h-8 [&::-webkit-media-controls-panel]:bg-black/60 ${className ?? ""}`}
-      src={src}
+      src={audioSrc}
+      onError={() => {
+        // Expired/blocked CDN link → retry once through the backend proxy.
+        if (streamUrl) setCdnFailed(true);
+      }}
     >
       Your browser does not support the audio element.
     </audio>
@@ -158,6 +187,11 @@ export interface UseJobOptions {
   onComplete?: (data: TaskResult) => void;
   intervalMs?: number;
   initialDelayMs?: number;
+  /** Give up polling after this long so a stuck job can't spin forever. */
+  timeoutMs?: number;
+  /** Pricing slug for the endpoint this hook submits, e.g. "voice_validate". When
+   *  set, a retry that would spend credits asks for confirmation first. */
+  endpoint?: string;
 }
 
 export interface UseJobState {
@@ -168,15 +202,51 @@ export interface UseJobState {
   reset: () => void;
   retry: () => void;
   canRetry: boolean;
+  /** Credits a retry would spend again (0 for free endpoints, unknown endpoints, or
+   *  while pricing is still loading). */
+  retryCost: number;
+}
+
+// Prices live in the DB and are read from GET /pricing. Cache the promise so every
+// hook instance shares one request rather than re-fetching per page.
+let costsPromise: Promise<Record<string, number>> | null = null;
+function loadCosts(): Promise<Record<string, number>> {
+  if (!costsPromise) {
+    costsPromise = apiFetch<{ pricing: Array<{ endpoint: string; model: string | null; credit_cost: number }> }>(
+      "/pricing",
+    )
+      .then((data) => {
+        const map: Record<string, number> = {};
+        for (const row of data.pricing ?? []) {
+          // Model-specific rows win server-side; the endpoint-wide row is what a retry costs.
+          if (!row.model) map[row.endpoint] = row.credit_cost;
+        }
+        return map;
+      })
+      .catch(() => ({}) as Record<string, number>);
+  }
+  return costsPromise;
 }
 
 export function useJob(options: UseJobOptions = {}): UseJobState {
-  const { onComplete, intervalMs = 3000, initialDelayMs = 1500 } = options;
+  const { onComplete, intervalMs = 3000, initialDelayMs = 1500, timeoutMs = 10 * 60 * 1000, endpoint } = options;
   const [busy, setBusy] = useState(false);
   const [task, setTask] = useState<TaskResult | null>(null);
   const [error, setError] = useState("");
   const [lastSubmit, setLastSubmit] = useState<{ path: string; body: Record<string, unknown> } | null>(null);
+  const [retryCost, setRetryCost] = useState(0);
   const pollRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!endpoint) return;
+    let alive = true;
+    loadCosts().then((costs) => {
+      if (alive) setRetryCost(costs[endpoint] ?? 0);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [endpoint]);
 
   useEffect(() => {
     return () => {
@@ -185,7 +255,16 @@ export function useJob(options: UseJobOptions = {}): UseJobState {
   }, []);
 
   function poll(jobId: string) {
+    const startedAt = Date.now();
     const tick = async () => {
+      // Stop rather than poll forever: a job that never reaches a terminal
+      // state (upstream stuck, worker lost) would otherwise leave the UI busy
+      // indefinitely with no way out.
+      if (Date.now() - startedAt > timeoutMs) {
+        setError("Timed out waiting for the task to finish. Check the usage logs for its final status.");
+        setBusy(false);
+        return;
+      }
       try {
         const data = await apiFetch<TaskResult>(`/me/task/${jobId}`);
         setTask(data);
@@ -227,6 +306,14 @@ export function useJob(options: UseJobOptions = {}): UseJobState {
 
   async function retry() {
     if (!lastSubmit) return;
+    // Retrying re-submits the request, which charges again. Never spend the user's
+    // credits on a repeat run without saying so first.
+    if (retryCost > 0) {
+      const ok = window.confirm(
+        `Retry this task? It will spend ${retryCost} credit${retryCost === 1 ? "" : "s"} again.`,
+      );
+      if (!ok) return;
+    }
     await submit(lastSubmit.path, lastSubmit.body);
   }
 
@@ -236,7 +323,7 @@ export function useJob(options: UseJobOptions = {}): UseJobState {
     setBusy(false);
   }
 
-  return { busy, task, error, submit, reset, retry, canRetry: lastSubmit != null };
+  return { busy, task, error, submit, reset, retry, canRetry: lastSubmit != null, retryCost };
 }
 
 export function PageShell(props: {
@@ -358,10 +445,12 @@ export function OutputTabs(props: {
   kind?: "clips" | "result";
   retry?: () => void;
   canRetry?: boolean;
+  /** Cost a retry would spend again, shown on the button so it is never a surprise. */
+  retryCost?: number;
   onReset?: () => void;
 }) {
   const [tab, setTab] = useState<"overview" | "json">("overview");
-  const { task, busy, readyTitle, readyBody, kind = "clips", retry, canRetry, onReset } = props;
+  const { task, busy, readyTitle, readyBody, kind = "clips", retry, canRetry, retryCost, onReset } = props;
   const terminal = task && (task.status === "complete" || task.status === "error");
 
   return (
@@ -406,7 +495,9 @@ export function OutputTabs(props: {
                     disabled={!canRetry || busy}
                     onClick={retry}
                   >
-                    ↻ Retry
+                    {retryCost && retryCost > 0
+                      ? `↻ Retry · ${retryCost} credit${retryCost === 1 ? "" : "s"}`
+                      : "↻ Retry"}
                   </button>
                 )}
                 {onReset !== undefined && (
@@ -466,7 +557,7 @@ function ClipCard({ clip, index }: { clip: unknown; index: number }) {
       )}
       {id && !id.startsWith("#") && (
         <div className="mt-4">
-          <AuthorizedAudio clipId={id} />
+          <AuthorizedAudio clipId={id} src={clipAudio(obj)} />
         </div>
       )}
       {id && !id.startsWith("#") && (

@@ -21,7 +21,7 @@ export default function SeparateVocalsPage() {
   const [separationType, setSeparationType] = useState<SeparationType>("vocal");
   const [trackName, setTrackName] = useState("");
 
-  const { busy, task, error, submit, reset, retry, canRetry } = useJob();
+  const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "stems" });
 
   const canRun = !busy && (useCustomAudio ? audioId : taskId || audioId);
 
@@ -41,6 +41,7 @@ export default function SeparateVocalsPage() {
           kind="clips"
           retry={retry}
           canRetry={canRetry}
+          retryCost={retryCost}
           onReset={reset}
         />
       }

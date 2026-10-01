@@ -9,7 +9,7 @@ import {
   useJob,
 } from "@/components/playground";
 import { apiFetch } from "@/lib/api";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced", "Professional"] as const;
 
@@ -19,6 +19,12 @@ type TaskBundle = {
 };
 
 const emptyBundle = (): TaskBundle => ({});
+
+const ENDPOINTS = {
+  phrase: "voice_phrase",
+  record: "voice_record",
+  generate: "voice_generate",
+} as const;
 
 export default function GenerateVoicePage() {
   const [taskId, setTaskId] = useState("");
@@ -32,11 +38,31 @@ export default function GenerateVoicePage() {
   const [validationPhrase, setValidationPhrase] = useState<TaskBundle & { phrase?: string }>({});
   const [validationAudio, setValidationAudio] = useState<TaskBundle>(emptyBundle());
   const [selectBusy, setSelectBusy] = useState(false);
+  const [selectError, setSelectError] = useState("");
+
+  // Real per-endpoint costs, read from the live pricing table so the buttons can
+  // show what they will spend before the user clicks them.
+  const [costs, setCosts] = useState<Record<string, number>>({});
+  useEffect(() => {
+    apiFetch<{ pricing: Array<{ endpoint: string; model: string | null; credit_cost: number }> }>("/pricing")
+      .then((p) => {
+        const map: Record<string, number> = {};
+        for (const row of p.pricing) {
+          if (row.model === null && row.endpoint in ENDPOINTS) map[row.endpoint] = row.credit_cost;
+        }
+        setCosts(map);
+      })
+      .catch(() => { /* costs are advisory; leave them unshown if unavailable */ });
+  }, []);
+
+  const selectCost = (costs[ENDPOINTS.phrase] ?? 0) + (costs[ENDPOINTS.record] ?? 0);
+  const generateCost = costs[ENDPOINTS.generate] ?? 0;
 
   const main = useJob();
 
   const openSelect = useCallback(async () => {
     setSelectBusy(true);
+    setSelectError("");
     try {
       const phr0 = await apiFetch<{ job_id: string }>("/me/voice-phrase", {
         method: "POST",
@@ -53,7 +79,9 @@ export default function GenerateVoicePage() {
         setValidationAudio({ taskId: rec.job_id });
       }
     } catch (e) {
-      // ignore
+      // Surface the failure instead of swallowing it: the phrase/record calls
+      // charge credits, so a silent error would leave the user paid but stuck.
+      setSelectError(e instanceof Error ? e.message : "Failed to start the source tasks.");
     } finally {
       setSelectBusy(false);
     }
@@ -70,7 +98,7 @@ export default function GenerateVoicePage() {
       subtitle="Create a custom voice from a source audio sample."
       cardTitle="Generate Voice"
       cardSubtitle="Prepare the source and validation audio in the popup, then finish the self-built voice generation here."
-      error={main.error}
+      error={selectError || main.error}
       output={
         <VoiceOverview
           main={main}
@@ -103,10 +131,11 @@ export default function GenerateVoicePage() {
             disabled={selectBusy}
             className="rounded-md border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white transition hover:bg-white/10 disabled:opacity-60"
           >
-            {selectBusy ? "Initializing…" : "Select Audio"}
+            {selectBusy ? "Initializing…" : selectCost > 0 ? `Select Audio (${selectCost} credits)` : "Select Audio"}
           </button>
           <p className="mt-1.5 text-xs text-white/40">
             Start phrase + recording tasks via popup (initializes source + validation placeholders).
+            {selectCost > 0 && ` This spends ${selectCost} credits.`}
           </p>
         </div>
 
@@ -183,7 +212,7 @@ export default function GenerateVoicePage() {
         </Field>
 
         <PrimaryButton type="submit" busy={main.busy} disabled={!canRun}>
-          Generate Voice
+          {generateCost > 0 ? `Generate Voice (${generateCost} credits)` : "Generate Voice"}
         </PrimaryButton>
       </form>
     </PageShell>

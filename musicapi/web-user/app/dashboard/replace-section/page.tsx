@@ -24,7 +24,7 @@ export default function ReplaceSectionPage() {
   const [negativeTags, setNegativeTags] = useState("");
   const [fullLyrics, setFullLyrics] = useState("");
 
-  const { busy, task, error, submit, reset, retry, canRetry } = useJob();
+  const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "replace_section" });
 
   const start = Number(infillStartS);
   const end = Number(infillEndS);
@@ -54,6 +54,7 @@ export default function ReplaceSectionPage() {
           kind="clips"
           retry={retry}
           canRetry={canRetry}
+          retryCost={retryCost}
           onReset={reset}
         />
       }

@@ -23,7 +23,8 @@ type ModalState =
   | { kind: "create" }
   | { kind: "edit"; key: KeyRow }
   | { kind: "ip"; key: KeyRow }
-  | { kind: "safe"; key: KeyRow };
+  | { kind: "safe"; key: KeyRow }
+  | { kind: "delete"; key: KeyRow };
 
 function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
   return (
@@ -295,6 +296,23 @@ export default function ApiKeysPage() {
     }
   }
 
+  // delete (revoke)
+  const [deleting, setDeleting] = useState(false);
+  const openDelete = (k: KeyRow) => { setError(""); setModal({ kind: "delete", key: k }); };
+  async function doDelete(k: KeyRow) {
+    setDeleting(true);
+    setError("");
+    try {
+      await apiFetch(`/me/keys/${k.id}`, { method: "DELETE" });
+      setModal({ kind: "none" });
+      load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete key");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <div>
       <h1 className="text-3xl font-bold text-white">API Key</h1>
@@ -425,14 +443,24 @@ export default function ApiKeysPage() {
                       )}
                     </td>
                     <td className="py-3 text-right">
-                      <button
-                        onClick={() => openEdit(k)}
-                        aria-label="Edit key"
-                        title="Edit key"
-                        className="rounded-md p-2 text-white/50 hover:text-white hover:bg-white/5"
-                      >
-                        <PencilIcon />
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => openEdit(k)}
+                          aria-label="Edit key"
+                          title="Edit key"
+                          className="rounded-md p-2 text-white/50 hover:text-white hover:bg-white/5"
+                        >
+                          <PencilIcon />
+                        </button>
+                        <button
+                          onClick={() => openDelete(k)}
+                          aria-label="Delete key"
+                          title="Delete key"
+                          className="rounded-md p-2 text-white/50 hover:text-red-300 hover:bg-red-500/10"
+                        >
+                          <TrashIcon />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -683,6 +711,54 @@ export default function ApiKeysPage() {
           </div>
         </Modal>
       )}
+
+      {/* Delete */}
+      {modal.kind === "delete" && (() => {
+        const k = modal.key;
+        const hasOther = keys.some((x) => x.id !== k.id);
+        const blocked = k.credits > 0 && !hasOther;
+        return (
+          <Modal
+            open
+            onClose={() => setModal({ kind: "none" })}
+            title="Delete API key"
+            iconBeforeTitle={<TrashIcon className="w-4 h-4 text-red-300" />}
+          >
+            <div className="space-y-4">
+              <p className="text-sm text-white/70">
+                Are you sure you want to delete <span className="font-semibold text-white">{k.name}</span>? This
+                permanently revokes the key &mdash; any app using it stops working immediately.
+              </p>
+              {k.credits > 0 && (
+                <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
+                  {hasOther
+                    ? `This key holds ${k.credits} credits. They will be moved to another of your keys.`
+                    : `This key holds ${k.credits} credits and is your only key. Create another key first \u2014 the balance moves to it \u2014 then delete this one.`}
+                </p>
+              )}
+              {error && (
+                <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>
+              )}
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  onClick={() => setModal({ kind: "none" })}
+                  disabled={deleting}
+                  className="rounded-lg border border-white/10 px-4 py-2 text-sm text-white/70 hover:text-white hover:bg-white/5 disabled:opacity-60"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => doDelete(k)}
+                  disabled={deleting || blocked}
+                  className="rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-400 disabled:opacity-50 min-w-[96px]"
+                >
+                  {deleting ? "Deleting&hellip;" : "Delete"}
+                </button>
+              </div>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
