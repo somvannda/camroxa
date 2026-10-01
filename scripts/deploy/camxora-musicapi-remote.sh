@@ -168,6 +168,12 @@ BAKONG_ACCOUNT_ID=${MUSICAPI_BAKONG_ACCOUNT_ID:-}
 BAKONG_MERCHANT_NAME=${MUSICAPI_BAKONG_MERCHANT_NAME:-Camxora Music API}
 BAKONG_MERCHANT_CITY=${MUSICAPI_BAKONG_MERCHANT_CITY:-Phnom Penh}
 BAKONG_USE_SIT=${MUSICAPI_BAKONG_USE_SIT:-false}
+# ChmabaPay (task 3.7) hosted checkout. Emitted from the deploy secrets on every
+# run because this file rewrites .env wholesale: without these lines a redeploy
+# blanked the keys and checkout returned 503 until they were re-added by hand.
+CHMABA_API_KEY=${MUSICAPI_CHMABA_API_KEY:-}
+CHMABA_STORE_ID=${MUSICAPI_CHMABA_STORE_ID:-}
+CHMABA_WEBHOOK_SECRET=${MUSICAPI_CHMABA_WEBHOOK_SECRET:-}
 # Ops observability (task 4.6): health-alert bot + backup retention. The backup
 # and healthcheck systemd units read these from this EnvironmentFile.
 ALERT_TELEGRAM_BOT_TOKEN=${MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN}
