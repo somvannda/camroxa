@@ -67,14 +67,28 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > the "old creds invalid" half is the user-led provider rotation below.
 >
 > **Provider rotation — only the account owner can invalidate these:**
+> - **ChmabaPay live-money credentials first** (highest blast radius — these settle real funds and
+>   were missing from this list until it was reconciled against `src/config.ts`):
+>   `CHMABA_API_KEY` (`ck_live_…`) and `CHMABA_WEBHOOK_SECRET` (`whsec_…`) — there is **no
+>   sandbox**, so create the replacement key in the ChmabaPay dashboard, mint a fresh webhook
+>   secret, and re-point the endpoint at `https://musicapi.camxora.com/payments/chmaba/webhook`,
+>   then revoke the old key. `CHMABA_STORE_ID` (`st_…`) is a store pointer, not a secret — do not
+>   rotate it. Both failures are safe and visible: checkout returns `503 Payments are not
+>   configured yet` until `apiKey` + `storeId` are both set, and an unverifiable webhook is
+>   rejected — a missed delivery is recovered by the `/payments/chmaba/status/:id` poll.
+>   **Deploy:** `CHMABA_*` reach `musicapi/.env` via `camxora-musicapi-remote.sh`, which emits them
+>   from `MUSICAPI_CHMABA_*` in the deploy secrets — so a rotation is a secrets-file edit plus a
+>   redeploy. Editing `.env` on the host by hand does not survive the next deploy, because the
+>   script rewrites that file wholesale.
 > - Suno account cookie (`SUNO_CLIENT_COOKIE`, duplicated as `accounts.json` → `clientCookie`)
 >   and its `SUNO_DEVICE_ID` — re-issue a fresh `__client` cookie from suno.com, then re-import
 >   the account (the DB row is AES-encrypted per 1.6).
 > - Google OAuth `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` — reset the client secret in
 >   Google Cloud Console → APIs & Services → Credentials.
 > - 2Captcha `TWOCAPTCHA_KEY` — regenerate in the 2Captcha dashboard.
-> - Telegram bot `TELEGRAM_BOT_TOKEN` (+ `PLATFORM_TELEGRAM_*`) — `/revoke` via @BotFather,
->   then update the chat id if it changes.
+> - Telegram bot `TELEGRAM_BOT_TOKEN` (+ `PLATFORM_TELEGRAM_*`; musicapi's alert delivery reads
+>   the same bot as `ALERT_TELEGRAM_BOT_TOKEN` / `ALERT_TELEGRAM_CHAT_ID`, §4.10) — `/revoke` via
+>   @BotFather, then update the chat id if it changes.
 > - Cloudflare Turnstile `CLOUDFLARE_TURNSTILE_SECRET_KEY` — rotate in the Turnstile dashboard.
 > - Backblaze B2 `PLATFORM_STREAMING_B2_KEY_ID` / `_APPLICATION_KEY` — delete and create a new
 >   application key.
@@ -91,6 +105,9 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 >   invalidates existing sessions.
 > - `DATABASE_URL` / `DB_PASSWORD` — change the Postgres role password and update the URL
 >   (sandbox + prod).
+> - `REDIS_URL` — only relevant once `QUEUE_DRIVER=redis` (R4, not yet enabled). If the URL
+>   carries a Redis password, rotate it on the instance and update the URL; `memory` (the
+>   default) holds no credential.
 > - `COOKIE_ENCRYPTION_KEY` — **do not rotate casually**: it decrypts
 >   `suno_accounts.client_cookie`, so a new key makes every stored cookie unreadable until each
 >   row is re-entered and re-encrypted (`scripts/migrate-cookie-encryption.ts`). Rotate it
