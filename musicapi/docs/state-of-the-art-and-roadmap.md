@@ -47,7 +47,7 @@ Suno account → Suno web API driven (auth/generate/poll/captcha) → credits ch
 | Phase 5 feature completion | All six items `[x]` (rate limits, audit log, credit packs, analytics, settings/alerts, account health) |
 | Only open plan item | `1.8` provider rotation — `[~]` (audit + runbook done; provider-side rotation user-led) |
 | ~~Branch not on origin~~ **resolved 2026-10-01** | `integration/musicapi-phase2` landed on `origin/main` via **PR #185** (merge commit `5d9cdf58`); `git merge-base --is-ancestor 5d7611ab origin/main` → true |
-| Worktree sprawl | **56 worktrees total, 43** of them `MusicGenerator-musicapi*` |
+| ~~Worktree sprawl~~ **resolved 2026-10-01** | Was **56 worktrees total, 43** of them `MusicGenerator-musicapi*`; pruned to **14 total, 1** musicapi (`-integration`) — see R7 |
 | Doc drift | `ENDPOINT_STATUS.md` dated **2026-09-09** and pointing at a stale `e:/Development/SunoAPI` path |
 | **Route surface re-verified** | **205** registered routes (not 100). Full-tree sweep: `{"200":6,"400":2,"401":194,"404":1,"405":1,"503":1}` — the single `404` and the `405`/`503` are all intentional (see [ENDPOINT_STATUS.md](../ENDPOINT_STATUS.md)) |
 | **Public-API validation intact** | 62 `POST` probes on `/v1/*` + `/api/v1/*` with a valid key + empty body → **62 × `400`**, zero `500`s |
@@ -72,11 +72,12 @@ The whole platform existed only on a local feature branch with no upstream; the 
 162 ahead / 67 behind `main`. Landed on `origin/main` via PR #185 (merge commit `5d9cdf58`), so
 `main` is now the shared source of truth.
 
-### G3 — Divergent local config across worktrees
-43 musicapi worktrees carry **at least three different `COOKIE_ENCRYPTION_KEY` values**. The
+### G3 — Divergent local config across worktrees  *(resolved 2026-10-01 — see R7)*
+The 43 musicapi worktrees carried **at least three different `COOKIE_ENCRYPTION_KEY` values**. The
 `suno_accounts` rows are encrypted with `d53e92c7…`; using any other key makes the server fail to
-boot (`Unsupported state or unable to authenticate data`). This is a live footgun — it already cost
-a boot failure on 2026-09-30.
+boot (`Unsupported state or unable to authenticate data`). This was a live footgun — it already cost
+a boot failure on 2026-09-30. R7 removed the 42 merged worktrees (their 12 non-canonical `.env`
+files were archived first), leaving only `-integration`, which already holds the canonical key.
 
 ### G4 — In-memory job queue  *(resolved 2026-09-30 — see R4)*
 [REQUIREMENTS.md](../REQUIREMENTS.md) §Queue: Redis/BullMQ was `[PENDING]`; jobs ran on an in-memory
@@ -221,12 +222,24 @@ docs carry a verification date.
 - [x] R6.1 Document the 3-process local recipe (ports, required env, migrate, start order, health
       checks) — see [`README.md`](../README.md). *(done 2026-09-30)*
 
-### R7 — Prune the worktree sprawl  **[GATE]**
+### R7 — Prune the worktree sprawl  *(done 2026-10-01)*
 **Addresses G3's root cause.** Destructive to local state — never run without explicit approval.
-- [ ] R7.1 Inventory the 43 `MusicGenerator-musicapi*` worktrees; map each to a branch and whether
+- [x] R7.1 Inventory the 43 `MusicGenerator-musicapi*` worktrees; map each to a branch and whether
       its work is already in `integration/musicapi-phase2`.
-- [ ] R7.2 Report the archive/delete candidates and their commit status **before** removing anything.
-- [ ] R7.3 After approval, remove merged/abandoned worktrees and delete the matching local branches.
+      *(done 2026-10-01 — 42 of the 43 are fully merged into `origin/main` with **zero** uncommitted
+      changes and nothing `prunable`; only `-integration` itself is the live tree.)*
+- [x] R7.2 Report the archive/delete candidates and their commit status **before** removing anything.
+      *(done 2026-10-01 — every candidate appears in `git branch --merged origin/main`; total
+      reclaim measured at **13.3 GB**; flagged that 12 worktrees held a non-canonical `musicapi/.env`
+      (`COOKIE_ENCRYPTION_KEY`, G3) and that `-billing` sat at the baseline `3117ea6b`.)*
+- [x] R7.3 After approval, remove merged/abandoned worktrees and delete the matching local branches.
+      *(done 2026-10-01, on the user's explicit "Archive .env, then remove all 42" — 12 `.env` files
+      archived to `_musicapi-env-backup-2026-10-01/` outside any repo; **42 worktrees removed** and
+      **42 local branches deleted**. Two removals exited `255` on a Windows file lock after git had
+      already dropped the registration and branch; the orphaned directories were deleted manually.
+      Result: **56 → 14** worktrees (musicapi **43 → 1**), local branches **97 → 55**, **13.3 GB**
+      reclaimed, `git worktree prune -n -v` empty. The 13 non-musicapi worktrees were left
+      untouched.)*
 
 ### R8 — Fix the deploy restart footgun
 **Addresses G7.**
@@ -250,11 +263,13 @@ docs carry a verification date.
 R3.1 (done)  →  R1 (verify + reconcile)  →  R6 (README)
              →  R8 (deploy fix)  →  R3.2–R3.4 (config hygiene)
              →  R5.1 (checklist)  →  R4 (Redis queue)
-             →  R2 (merge, done 2026-10-01)  →  [GATE] R7 (prune worktrees)
+             →  R2 (merge, done 2026-10-01)  →  R7 (prune worktrees, done 2026-10-01)
 ```
 
 Rationale: verification (R1) is cheap, unblocks trust in every other claim, and needs nothing from
-the user. The two **[GATE]** items are last because they touch shared history and local state.
+the user. The two **[GATE]** items (R2, R7) were last because they touch shared history and local
+state; both are now done. What remains open is only the user-led **R5.2** (provider secret rotation)
+and the quota-blocked **R1.2** (live-Suno success path).
 
 ---
 
@@ -272,4 +287,6 @@ the user. The two **[GATE]** items are last because they touch shared history an
 | 2026-09-30 | R6.1 | `README.md` added: 3-process local boot recipe + env contract + troubleshooting |
 | 2026-10-01 | R2.1–R2.3 | **Landed on `main`.** 7 path-scoped commits pushed to `origin/integration/musicapi-phase2`; **PR #185** opened (#168–#170 precedent). `merge-tree` against `origin/main` was clean. One CI-only failure (`npm ci` — Windows `npm install` had pruned the Linux-only `@emnapi` shims from both frontend lockfiles) fixed in `5d7611ab`; 5/5 checks green. Merged with a **merge commit** → `5d9cdf58` |
 | 2026-10-01 | R2.4 | Go-live line "committed from `main`" ticked in `production-readiness-plan.md`; G2 marked resolved |
+| 2026-10-01 | R7.1–R7.2 | Reconnaissance over the 43 `MusicGenerator-musicapi*` worktrees: 42 fully merged into `origin/main`, all clean, none `prunable`; **13.3 GB** reclaimable; 12 carry a non-canonical `musicapi/.env` (G3). Reported before removing anything |
+| 2026-10-01 | R7.3 | On explicit approval: 12 `.env` archived to `_musicapi-env-backup-2026-10-01/`; **42 worktrees removed**, **42 merged branches deleted**, 2 Windows-locked orphan dirs cleaned by hand. **56 → 14** worktrees (musicapi **43 → 1**), branches **97 → 55**, **13.3 GB** reclaimed. Non-musicapi worktrees untouched. G3 resolved |
 | — | R1.2 | **Blocked:** needs a decision to spend real Suno quota/credits (P0/P3) |
