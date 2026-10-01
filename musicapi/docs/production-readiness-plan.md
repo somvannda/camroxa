@@ -693,6 +693,25 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > `systemctl restart camxora-musicapi` was required for the new code to take effect
 > (`SERVICE_BEFORE=active` / `SERVICE_AFTER=active`). Production was **not** touched.
 
+> **Note (5.7):** added the two migrations that closed the fresh-vs-live schema drift.
+> `0020_champapay_gateway.sql` restores the ChmabaPay reconciliation columns
+> (`payment_transactions.gateway_payment_id`, `webhook_event_id`, index
+> `idx_payment_tx_gateway`) that previously existed **only** in the live DB via the
+> ad-hoc `scripts/migrate-champapay.ts`; `src/server.ts` fulfills via
+> `WHERE gateway_payment_id = $1` and records `webhook_event_id`, so a database built
+> from `0001`–`0019` alone broke the ChmabaPay checkout/webhook flow.
+> `0021_app_settings_reconcile.sql` reconciles a **legacy** key/value `app_settings`
+> table (inherited from the archived python/electron app, where `value` is `text`) to
+> the `0010` shape the §4.10 settings code requires: it adds the missing `updated_by`
+> column, coerces a `text` `value` to `jsonb` (legacy plain-string rows such as
+> `chmaba_webhook_secret` become JSON strings), and enforces `value NOT NULL` +
+> `updated_at DEFAULT now()`. `0010`'s `CREATE TABLE IF NOT EXISTS` is a silent no-op
+> when that legacy table already exists, so without `0021` the operator-settings panel
+> would fail against the production database. Both files are fully guarded
+> (`ADD COLUMN IF NOT EXISTS`, an `information_schema` type check, `CREATE INDEX IF
+> NOT EXISTS`) and are no-ops on a DB already in the target shape; `0021` was applied
+> to the local `sunoapi` DB and the pre-existing legacy row was preserved.
+
 ---
 
 ## Definition of "ready to go live"
