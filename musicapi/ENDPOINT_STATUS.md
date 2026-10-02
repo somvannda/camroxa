@@ -119,7 +119,7 @@ no `500`s, no route shadowing, no unauthenticated fall-through on the revenue su
 | 2.4.9 | `/me/jobs/running` | GET | ✅ VERIFIED (2026-09-09) | Auto-poll behavior confirmed. |
 | 2.4.10 | `/me/upload/status/:id` | GET | 🟡 ROUTED (shallow) | |
 
-### 2.5 Billing, usage, logs (8)
+### 2.5 Billing, usage, logs (12)
 
 | # | Endpoint | Method | Status |
 |---|----------|--------|--------|
@@ -130,6 +130,10 @@ no `500`s, no route shadowing, no unauthenticated fall-through on the revenue su
 | 2.5.5 | `/me/transactions` | GET | 🟡 ROUTED (shallow) — **new since 2026-09-09** |
 | 2.5.6 | `/me/upload/init` · `/me/upload/register` | POST | 🟡 ROUTED (shallow) |
 | 2.5.7 | `/me/usage/page` | GET | ✅ VERIFIED (2026-10-02) — sunoapi.org-shaped overview + per-model report for `/dashboard/usage` |
+| 2.5.8 | `/me/dashboard/timeline` | GET | ✅ VERIFIED (2026-10-02) — per-day success/failure/other for the dashboard chart |
+| 2.5.9 | `/me/dashboard/success-rate` | GET | ✅ VERIFIED (2026-10-02) — per-minute success rate, last 15 minutes |
+| 2.5.10 | `/me/logs/page` | GET | ✅ VERIFIED (2026-10-02) — paginated logs (page/page_size, start/end, endpoint) |
+| 2.5.11 | `/me/account` | DELETE | ✅ VERIFIED (2026-10-02) — delete account (cascades + clears session) |
 
 ---
 
