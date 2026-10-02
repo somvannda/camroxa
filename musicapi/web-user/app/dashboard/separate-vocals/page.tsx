@@ -14,16 +14,29 @@ import { useState } from "react";
 
 type SeparationType = "vocal" | "stems" | "advanced";
 
+// Common stem names offered by sunoapi.org's Advanced Split.
+const STEM_NAMES = [
+  "Vocals", "Instrumental", "Backing Vocals", "Lead Vocal", "Drums", "Bass", "Guitar",
+  "Acoustic Guitar", "Electric Guitar", "Piano", "Keyboard", "Percussion", "Strings",
+  "Synthesizer", "Effects", "Brass", "Woodwinds", "Cello", "Violin", "Saxophone",
+  "Trumpet", "Flute", "Organ", "Banjo", "Ukulele", "Harp", "Choir", "Kick", "Snare",
+  "Hi-Hat", "Cymbals", "Toms", "Claps", "Riser", "Foley", "Ambience", "Sub Bass",
+  "Synth Bass", "Arpeggio", "Pads", "Plucks", "Bell", "Marimba", "Xylophone",
+];
+
 export default function SeparateVocalsPage() {
   const [useCustomAudio, setUseCustomAudio] = useState(false);
   const [taskId, setTaskId] = useState("");
   const [audioId, setAudioId] = useState("");
   const [separationType, setSeparationType] = useState<SeparationType>("vocal");
-  const [trackName, setTrackName] = useState("");
+  const [stemName, setStemName] = useState("");
 
   const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "stems" });
 
-  const canRun = !busy && (useCustomAudio ? audioId : taskId || audioId);
+  const canRun =
+    !busy &&
+    (useCustomAudio ? !!audioId.trim() : !!taskId.trim() && !!audioId.trim()) &&
+    (separationType !== "advanced" || !!stemName.trim());
 
   return (
     <PageShell
@@ -56,7 +69,8 @@ export default function SeparateVocalsPage() {
             taskId,
             audioId,
             separationType,
-            trackName,
+            stemName: separationType === "advanced" ? stemName : undefined,
+            trackName: separationType === "advanced" ? stemName : undefined,
           });
         }}
         className="space-y-5"
@@ -116,13 +130,19 @@ export default function SeparateVocalsPage() {
         </Field>
 
         {separationType === "advanced" && (
-          <Field label="trackName" required>
+          <Field label="Stem Name" required help="Select the stem to extract">
             <input
               className={inputCls}
-              placeholder="Custom track name, e.g. drums"
-              value={trackName}
-              onChange={(e) => setTrackName(e.target.value)}
+              list="stem-name-options"
+              placeholder="Select stem name"
+              value={stemName}
+              onChange={(e) => setStemName(e.target.value)}
             />
+            <datalist id="stem-name-options">
+              {STEM_NAMES.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </Field>
         )}
 
