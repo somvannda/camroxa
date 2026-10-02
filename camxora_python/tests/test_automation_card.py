@@ -44,11 +44,16 @@ def test_plan_summary_under_generate(qapp: QApplication) -> None:
         suno_credits=90,
         image_credits=4,
         total_credits=99.40090000000001,
-        video_later=True,
+        video_enabled=True,
+        video_ops=18,
+        merge_ops=2,
+        video_credits=74,
     )
     assert not card._plan_box.isHidden()
     assert card._batch_value.text() == "1 batch"
     assert card._song_value.text() == "9 songs"
+    assert card._video_value.text() == "18 export · 2 merge"
+    assert card._video_credits.text() == "74"
     assert card._total_credits.text() == "99.4"
     rules = [
         frame

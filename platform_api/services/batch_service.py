@@ -319,10 +319,20 @@ class BatchService:
         song_count: int,
         auto_gen_image: bool,
         auto_gsuno: bool,
+        auto_video_after_suno: bool = False,
+        auto_merge_after_video: bool = False,
+        auto_reel_after_video: bool = False,
     ) -> dict[str, Any]:
-        """Validate whether an entire automation plan can run before creating batches."""
+        """Validate whether an entire automation plan can run before creating batches.
+
+        The estimate covers the full pipeline: drafts + Suno + images **and**
+        the local video-export + merge operations that run after them. Video and
+        merge are otherwise charged per stage at export time, which let plans
+        start and then stall at export when the wallet ran dry.
+        """
         from collections import defaultdict
 
+        from platform_api.services.billing_mode_service import TRACKS_PER_SONG_PACKAGE
         from platform_api.services.credit_units import units_to_credits
         from platform_api.services.quota_display_service import get_monthly_quota_status
 
@@ -409,6 +419,37 @@ class BatchService:
                         + await self._estimate_profile_image_job_count(alt_profile_id)
                     )
 
+        # Local video export + merge run after music/images. Each song package
+        # yields one track per channel (Primary + Secondary), and each album is
+        # merged once per channel. Auto-Reel adds a second export+merge branch.
+        auto_video = bool(auto_video_after_suno) and auto_gsuno
+        auto_merge = auto_video and bool(auto_merge_after_video)
+        branch_multiplier = 2 if auto_reel_after_video else 1
+        video_ops = total_songs * TRACKS_PER_SONG_PACKAGE * branch_multiplier if auto_video else 0
+        merge_ops = batch_count * TRACKS_PER_SONG_PACKAGE * branch_multiplier if auto_merge else 0
+        video_wallet_cost = 0
+        merge_wallet_cost = 0
+        if video_ops > 0:
+            video_wallet_cost = (await self._local_operation_price("video")) * video_ops
+        if merge_ops > 0:
+            merge_wallet_cost = (await self._local_operation_price("video_merge")) * merge_ops
+        total_wallet_cost += video_wallet_cost + merge_wallet_cost
+
+        video_merge_note = ""
+        if video_ops > 0 or merge_ops > 0:
+            note_parts: list[str] = []
+            if video_ops > 0:
+                note_parts.append(
+                    f"video export {units_to_credits(video_wallet_cost)} "
+                    f"({video_ops} export{'s' if video_ops != 1 else ''})"
+                )
+            if merge_ops > 0:
+                note_parts.append(
+                    f"merge {units_to_credits(merge_wallet_cost)} "
+                    f"({merge_ops} merge{'s' if merge_ops != 1 else ''})"
+                )
+            video_merge_note = " Includes " + " and ".join(note_parts) + "."
+
         wallet_balance = await self._credit_service.get_balance(user_id)
         songs_remaining: int | None = None
         images_remaining: int | None = None
@@ -419,6 +460,9 @@ class BatchService:
             daily_songs: dict[tuple[UUID, date], int] = defaultdict(int)
             daily_images: dict[tuple[UUID, date], int] = defaultdict(int)
             daily_drafts: dict[tuple[UUID, date], int] = defaultdict(int)
+            # Video/merge daily caps are account-wide, so a single scalar is enough.
+            daily_video_ops = 0
+            daily_merge_ops = 0
             today = billing_today()
             for run_date in run_dates:
                 for ok_profile_id, alt_profile_id in profile_pairs:
@@ -430,6 +474,12 @@ class BatchService:
                         if auto_gsuno:
                             daily_songs[(ok_profile_id, run_date)] += song_count
                             daily_songs[(alt_profile_id, run_date)] += song_count
+                        if auto_video:
+                            daily_video_ops += (
+                                song_count * TRACKS_PER_SONG_PACKAGE * branch_multiplier
+                            )
+                        if auto_merge:
+                            daily_merge_ops += TRACKS_PER_SONG_PACKAGE * branch_multiplier
                     if billable_auto_gen_image and run_date == today:
                         ok_jobs = await self._estimate_profile_image_job_count(ok_profile_id)
                         alt_jobs = await self._estimate_profile_image_job_count(alt_profile_id)
@@ -469,6 +519,22 @@ class BatchService:
                         subscription_context=ctx,
                         additional_count=count,
                     )
+                if daily_video_ops > 0:
+                    await self._enforcement_service._enforce_plan_quotas(
+                        user_id=user_uuid,
+                        channel_profile_id=None,
+                        operation_type="video",
+                        subscription_context=ctx,
+                        additional_count=daily_video_ops,
+                    )
+                if daily_merge_ops > 0:
+                    await self._enforcement_service._enforce_plan_quotas(
+                        user_id=user_uuid,
+                        channel_profile_id=None,
+                        operation_type="video_merge",
+                        subscription_context=ctx,
+                        additional_count=daily_merge_ops,
+                    )
 
                 from platform_api.services.billing_mode_service import subscription_covers_batch
 
@@ -485,6 +551,8 @@ class BatchService:
                         period_start=period_start,
                         image_jobs=total_image_jobs,
                         draft_ops=total_draft_ops,
+                        video_ops=video_ops,
+                        merge_ops=merge_ops,
                         addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0),
                         topup_extras=extras,
                     )
@@ -496,6 +564,7 @@ class BatchService:
                         "reason": (
                             f"Insufficient credits for this plan. "
                             f"Required {required_credits}, available {available_credits}."
+                            f"{video_merge_note}"
                         ),
                         "batch_count": batch_count,
                         "total_songs": total_songs,
@@ -503,15 +572,35 @@ class BatchService:
                         "wallet_balance": available_credits,
                         "covered_by_subscription": False,
                         "credit_shortfall": total_wallet_cost - wallet_balance,
+                        "video_ops": video_ops,
+                        "merge_ops": merge_ops,
+                        "video_wallet_cost": video_wallet_cost,
+                        "merge_wallet_cost": merge_wallet_cost,
                     }
             except QuotaExceededError as exc:
+                quota_reason = exc.message
+                quota_op = str((exc.details or {}).get("operation_type") or "").strip().lower()
+                if quota_op in ("video", "video_export", "video_generation", "video_manual"):
+                    quota_reason = (
+                        f"{quota_reason} Today's plan needs {daily_video_ops} "
+                        f"video export{'s' if daily_video_ops != 1 else ''}."
+                    )
+                elif quota_op in ("video_merge", "merge", "auto_merge"):
+                    quota_reason = (
+                        f"{quota_reason} Today's plan needs {daily_merge_ops} "
+                        f"merge{'s' if daily_merge_ops != 1 else ''}."
+                    )
                 return {
                     "can_generate": False,
-                    "reason": exc.message,
+                    "reason": quota_reason,
                     "batch_count": batch_count,
                     "total_songs": total_songs,
                     "total_wallet_cost": total_wallet_cost,
                     "wallet_balance": units_to_credits(wallet_balance),
+                    "video_ops": video_ops,
+                    "merge_ops": merge_ops,
+                    "video_wallet_cost": video_wallet_cost,
+                    "merge_wallet_cost": merge_wallet_cost,
                 }
             except InsufficientCreditsError as exc:
                 details = exc.details or {}
@@ -527,6 +616,10 @@ class BatchService:
                         int(details.get("required", total_wallet_cost))
                         - int(details.get("available", wallet_balance)),
                     ),
+                    "video_ops": video_ops,
+                    "merge_ops": merge_ops,
+                    "video_wallet_cost": video_wallet_cost,
+                    "merge_wallet_cost": merge_wallet_cost,
                 }
         elif wallet_balance < total_wallet_cost:
             required_credits = units_to_credits(total_wallet_cost)
@@ -536,12 +629,17 @@ class BatchService:
                 "reason": (
                     f"Insufficient credits for this plan. "
                     f"Required {required_credits}, available {available_credits}."
+                    f"{video_merge_note}"
                 ),
                 "batch_count": batch_count,
                 "total_songs": total_songs,
                 "total_wallet_cost": total_wallet_cost,
                 "wallet_balance": available_credits,
                 "credit_shortfall": total_wallet_cost - wallet_balance,
+                "video_ops": video_ops,
+                "merge_ops": merge_ops,
+                "video_wallet_cost": video_wallet_cost,
+                "merge_wallet_cost": merge_wallet_cost,
             }
 
         if self._enforcement_service is not None:
@@ -578,6 +676,10 @@ class BatchService:
             "images_remaining": images_remaining,
             "drafts_remaining": drafts_remaining,
             "credit_shortfall": None,
+            "video_ops": video_ops,
+            "merge_ops": merge_ops,
+            "video_wallet_cost": video_wallet_cost,
+            "merge_wallet_cost": merge_wallet_cost,
         }
 
     async def create_batch(
@@ -4214,6 +4316,29 @@ class BatchService:
 
         return total_cost
 
+    async def _local_operation_price(self, operation_type: str) -> int:
+        """Unit price (micro-credits) for a local desktop operation.
+
+        Video export / merge are local FFmpeg ops priced under the ``local``
+        provider. Falls back to the registry list price when the pricing row is
+        missing so preflight never hard-fails on unseeded installs.
+        """
+        from platform_api.services.credit_units import credits_to_units
+        from platform_api.services.local_platform_operations import (
+            LOCAL_PLATFORM_OPERATIONS,
+        )
+
+        try:
+            price = await self._pricing_service.get_price("local", operation_type, "")
+            if price:
+                return int(price)
+        except Exception:
+            pass
+        spec = LOCAL_PLATFORM_OPERATIONS.get(operation_type)
+        if spec is None:
+            return 0
+        return credits_to_units(float(spec["list_credits_display"]))
+
     async def _resolve_batch_languages(
         self,
         *,
@@ -4837,7 +4962,7 @@ class BatchService:
 
         Failures and permanently-lost audio are regenerable, so they return
         ``None``. Anything else means a retry (draft or suno) would create a
-        duplicate ``suno_tasks`` row for the same song ΓÇö which inflated the
+        duplicate ``suno_tasks`` row for the same song — which inflated the
         progress Music counter (e.g. 16/15) and double-billed the user.
         """
         latest = await self._batch_repo.get_latest_suno_task_for_song(song_id)

@@ -1,0 +1,7 @@
+[
+  {
+    "id": "acct-1",
+    "clientCookie": "<paste __client cookie value>",
+    "deviceId": "<paste ajs_anonymous_id / device-id>"
+  }
+]

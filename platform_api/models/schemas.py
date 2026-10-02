@@ -164,6 +164,9 @@ class MusicPlanPreflightRequest(BaseModel):
     song_count: int = Field(ge=1, le=50)
     auto_gen_image: bool = False
     auto_gsuno: bool = False
+    auto_video_after_suno: bool = False
+    auto_merge_after_video: bool = False
+    auto_reel_after_video: bool = False
 
     @field_validator("to_date")
     @classmethod
@@ -188,6 +191,10 @@ class MusicPlanPreflightResponse(BaseModel):
     images_remaining: int | None = None
     drafts_remaining: int | None = None
     credit_shortfall: int | None = None
+    video_ops: int = 0
+    merge_ops: int = 0
+    video_wallet_cost: int = 0
+    merge_wallet_cost: int = 0
 
 
 class ChannelDailyQuotaResponse(BaseModel):
