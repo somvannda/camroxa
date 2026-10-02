@@ -2700,6 +2700,71 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   });
 
+  // Per-day success/failure/other counts for the dashboard's stacked bar chart.
+  // Matches sunoapi.org: a trailing window of whole days ending yesterday.
+  app.get("/me/dashboard/timeline", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const daysParam = Number((req.query as { days?: string })?.days ?? 14);
+    const days = Math.min(30, Math.max(7, daysParam || 14));
+    const rows = await query<{ day: string; success: string; failure: string; other: string }>(
+      `SELECT to_char(created_at, 'YYYY-MM-DD') AS day,
+              count(*) FILTER (WHERE status = 'complete')::text AS success,
+              count(*) FILTER (WHERE status = 'error')::text AS failure,
+              count(*) FILTER (WHERE status NOT IN ('complete','error'))::text AS other
+       FROM usage_logs
+       WHERE user_id = $1 AND created_at >= CURRENT_DATE - ($2::int) AND created_at < CURRENT_DATE
+       GROUP BY day ORDER BY day`,
+      [u.id, days],
+    );
+    const byDay = new Map(rows.map((r) => [r.day, r]));
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const iso = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const today = new Date();
+    const start = new Date(today.getFullYear(), today.getMonth(), today.getDate() - days);
+    const end = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);
+    const daily: Array<{ date: string; success: number; failure: number; other: number }> = [];
+    for (let i = 0; i < days; i++) {
+      const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i);
+      const key = iso(d);
+      const r = byDay.get(key);
+      daily.push({
+        date: key,
+        success: Number(r?.success ?? 0),
+        failure: Number(r?.failure ?? 0),
+        other: Number(r?.other ?? 0),
+      });
+    }
+    const total = daily.reduce((s, d) => s + d.success + d.failure + d.other, 0);
+    return { start: iso(start), end: iso(end), total, daily };
+  });
+
+  // Per-minute success rate over the last 15 minutes for the dashboard's
+  // real-time line chart. Timestamps are epoch milliseconds.
+  app.get("/me/dashboard/success-rate", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const rows = await query<{ ts: string; total: string; success: string }>(
+      `SELECT (extract(epoch from date_trunc('minute', created_at)) * 1000)::bigint::text AS ts,
+              count(*)::text AS total,
+              count(*) FILTER (WHERE status = 'complete')::text AS success
+       FROM usage_logs
+       WHERE user_id = $1 AND created_at > now() - interval '15 minutes'
+       GROUP BY ts ORDER BY ts`,
+      [u.id],
+    );
+    return rows.map((r) => {
+      const total = Number(r.total);
+      const success = Number(r.success);
+      return {
+        timestamp: Number(r.ts),
+        total,
+        success,
+        success_rate: total > 0 ? Math.round((success / total) * 1000) / 10 : 100,
+      };
+    });
+  });
+
   app.get("/me/billing", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
