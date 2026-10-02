@@ -144,13 +144,14 @@ export default function UpdatesPage() {
     try {
       const params = new URLSearchParams({ page: String(page), page_size: String(PAGE_SIZE) });
       if (query.trim()) params.set("q", query.trim());
-      const res = await apiFetch<{ posts: Post[]; total: number; page: number; pages: number }>(
-        `/updates?${params.toString()}`,
-      );
-      setPosts(res.posts);
-      setTotal(res.total);
-      setPages(res.pages);
-      if (res.page !== page) setPage(res.page);
+      const res = await apiFetch<
+        { posts?: Post[]; total?: number; page?: number; pages?: number } | Post[]
+      >(`/updates?${params.toString()}`);
+      const list = Array.isArray(res) ? res : res.posts ?? [];
+      setPosts(list);
+      setTotal(Array.isArray(res) ? res.length : res.total ?? list.length);
+      setPages(Array.isArray(res) ? 1 : res.pages ?? 1);
+      if (!Array.isArray(res) && res.page && res.page !== page) setPage(res.page);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
