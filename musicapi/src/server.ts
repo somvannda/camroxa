@@ -329,6 +329,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     requestTimeout: 600_000,
     connectionTimeout: 600_000,
     keepAliveTimeout: 600_000,
+    // Reference media can arrive base64-inlined (e.g. the panel's data URLs);
+    // 25MB accommodates a 10MB image plus encoding overhead.
+    bodyLimit: Number(process.env.BODY_LIMIT_BYTES ?? 26_214_400),
   });
 
   // Keep the exact JSON bytes alongside the parsed body: ChmabaPay signs

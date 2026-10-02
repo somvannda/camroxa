@@ -357,7 +357,7 @@ export default function PlaygroundPage() {
     const remaining = Math.max(0, 5 - refImages.length);
     const files = Array.from(e.target.files ?? []).slice(0, remaining);
     e.target.value = "";
-    const read = (f: File) =>
+    const readAsDataUrl = (f: File) =>
       new Promise<string>((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => resolve(String(r.result));
@@ -365,12 +365,19 @@ export default function PlaygroundPage() {
         r.readAsDataURL(f);
       });
     try {
-      const urls = await Promise.all(
-        files.filter((f) => f.size <= 10 * 1024 * 1024).map(read),
-      );
+      const urls: string[] = [];
+      for (const f of files) {
+        if (f.size > 10 * 1024 * 1024) continue;
+        const data = await readAsDataUrl(f);
+        const res = await apiFetch<{ url: string }>("/me/upload/reference", {
+          method: "POST",
+          body: JSON.stringify({ data, kind: "image" }),
+        });
+        urls.push(res.url);
+      }
       setRefImages((a) => [...a, ...urls].slice(0, 5));
     } catch {
-      setError("Could not read the selected image.");
+      setError("Could not upload the selected image.");
     }
   }
 
@@ -453,7 +460,7 @@ export default function PlaygroundPage() {
           body.negative_tags = negativeTags || undefined;
           body.instrumental = instrumental;
         }
-        if (refImages.length) body.images = refImages;
+        if (refImages.length) body.imageUrls = refImages;
         if (audioUrl.trim()) body.audioUrls = [audioUrl.trim()];
         if (videoUrl.trim()) body.videoUrls = [videoUrl.trim()];
       }
