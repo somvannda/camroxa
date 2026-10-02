@@ -2438,7 +2438,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // the list of languages. `/settings` is public — it is non-sensitive branding
   // (also useful to signed-out pages) and mirrors the `brand` group of
   // `/admin/settings`, so the panel and the admin stay in sync.
-  const PROFILE_COLUMNS = "id, email, name, language, role, status, email_subscription, created_at";
+  const PROFILE_COLUMNS = "id, email, name, language, role, status, email_subscription, credit_alert_thresholds, created_at";
 
   app.get("/settings", async () => ({ brand: await loadBrandSettings() }));
 
@@ -2454,9 +2454,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.put("/me/profile", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
-    const body = (req.body ?? {}) as { name?: unknown; language?: unknown; email_subscription?: unknown };
-    if (body.name === undefined && body.language === undefined && body.email_subscription === undefined) {
-      return reply.code(400).send({ error: "Provide a name, language, and/or email_subscription." });
+    const body = (req.body ?? {}) as { name?: unknown; language?: unknown; email_subscription?: unknown; credit_alert_thresholds?: unknown };
+    if (body.name === undefined && body.language === undefined && body.email_subscription === undefined && body.credit_alert_thresholds === undefined) {
+      return reply.code(400).send({ error: "Provide a name, language, email_subscription, and/or credit_alert_thresholds." });
     }
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -2473,6 +2473,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
       params.push(body.email_subscription);
       sets.push(`email_subscription = $${params.length}`);
+    }
+    if (body.credit_alert_thresholds !== undefined) {
+      if (!Array.isArray(body.credit_alert_thresholds) || body.credit_alert_thresholds.length > 3) {
+        return reply.code(400).send({ error: "credit_alert_thresholds must be an array of at most 3 numbers." });
+      }
+      const nums = body.credit_alert_thresholds.map((n) => Number(n));
+      if (nums.some((n) => !Number.isFinite(n) || n <= 0)) {
+        return reply.code(400).send({ error: "Each credit alert threshold must be a positive number." });
+      }
+      params.push(nums);
+      sets.push(`credit_alert_thresholds = $${params.length}`);
     }
     if (body.language !== undefined) {
       // Only languages the operator enabled are accepted, so the selector can
