@@ -16,6 +16,13 @@ export interface OAuthStatePayload {
 
 /** Name of the browser session cookie holding the signed JWT. */
 export const SESSION_COOKIE = "sunosession";
+/**
+ * Admin console session cookie. Cookies are keyed by host (not port), so on
+ * `localhost` the user app (:4001) and admin console (:4002) would otherwise
+ * share one session and overwrite each other. In production the two live on
+ * different subdomains, but a distinct name keeps local dev sane too.
+ */
+export const SESSION_COOKIE_ADMIN = process.env.SESSION_COOKIE_ADMIN ?? "sunosession_admin";
 
 /** Session lifetime, mirrored by the JWT's `expiresIn` in `signToken`. */
 const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
@@ -25,9 +32,9 @@ const SESSION_MAX_AGE_SECONDS = 7 * 24 * 60 * 60;
  * scripts, `SameSite=Lax` blocks it from riding cross-site POSTs, and `Secure`
  * (set in production) keeps it off plaintext connections.
  */
-export function serializeSessionCookie(token: string, secure: boolean): string {
+export function serializeSessionCookie(token: string, secure: boolean, name = SESSION_COOKIE): string {
   const attrs = [
-    `${SESSION_COOKIE}=${token}`,
+    `${name}=${token}`,
     "Path=/",
     "HttpOnly",
     "SameSite=Lax",
@@ -38,8 +45,8 @@ export function serializeSessionCookie(token: string, secure: boolean): string {
 }
 
 /** Serialize a cookie that tells the browser to drop the session. */
-export function serializeClearedSessionCookie(secure: boolean): string {
-  const attrs = [`${SESSION_COOKIE}=`, "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"];
+export function serializeClearedSessionCookie(secure: boolean, name = SESSION_COOKIE): string {
+  const attrs = [`${name}=`, "Path=/", "HttpOnly", "SameSite=Lax", "Max-Age=0"];
   if (secure) attrs.push("Secure");
   return attrs.join("; ");
 }
@@ -53,6 +60,11 @@ export function readCookie(header: string | undefined, name: string): string | n
     if (part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
   }
   return null;
+}
+
+/** Read whichever session cookie is present (user app or admin console). */
+export function readSessionCookie(header: string | undefined): string | null {
+  return readCookie(header, SESSION_COOKIE) ?? readCookie(header, SESSION_COOKIE_ADMIN);
 }
 
 export async function hashPassword(password: string): Promise<string> {

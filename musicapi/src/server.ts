@@ -9,7 +9,7 @@ import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
 import { encryptCookie } from "./cookieCrypto.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
-import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE, serializeSessionCookie, serializeClearedSessionCookie, readCookie } from "./appAuth.js";
+import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE_ADMIN, serializeSessionCookie, serializeClearedSessionCookie, readSessionCookie } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
 import { captchaRequired } from "./captcha.js";
@@ -485,7 +485,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // no verifiable session token fall through to the route's own `requireAuth`;
   // API-key requests carry a non-JWT bearer that never verifies here.
   app.addHook("preHandler", async (req, reply) => {
-    const cookieToken = readCookie(req.headers.cookie, SESSION_COOKIE);
+    const cookieToken = readSessionCookie(req.headers.cookie);
     const auth = req.headers.authorization ?? "";
     const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     const token = cookieToken ?? bearerToken;
@@ -828,7 +828,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   function requireAuth(req: FastifyRequest, reply: FastifyReply): UserPayload | null {
-    const cookieToken = readCookie(req.headers.cookie, SESSION_COOKIE);
+    const cookieToken = readSessionCookie(req.headers.cookie);
     const auth = req.headers.authorization ?? "";
     const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : "";
     const token = cookieToken ?? bearerToken;
@@ -1835,8 +1835,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (user.status !== "active") return reply.code(403).send({ error: "Account suspended." });
     const token = signToken({ id: user.id, email: user.email, role: user.role });
     // Also set the httpOnly session cookie so browser clients never have to
-    // store the JWT where scripts can read it.
-    reply.header("set-cookie", serializeSessionCookie(token, config.sessionCookieSecure));
+    // store the JWT where scripts can read it. Admin uses a distinct cookie name
+    // so it never collides with the user app's session on localhost.
+    reply.header("set-cookie", serializeSessionCookie(token, config.sessionCookieSecure, SESSION_COOKIE_ADMIN));
     return {
       token,
       user: { id: user.id, email: user.email, role: user.role, name: user.name },
@@ -1845,7 +1846,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   // Clear the session cookie. Safe to call without a valid session.
   app.post("/auth/logout", async (_req, reply) => {
-    reply.header("set-cookie", serializeClearedSessionCookie(config.sessionCookieSecure));
+    // Clear both cookie names so logging out of either app clears its session.
+    reply.header("set-cookie", [
+      serializeClearedSessionCookie(config.sessionCookieSecure),
+      serializeClearedSessionCookie(config.sessionCookieSecure, SESSION_COOKIE_ADMIN),
+    ]);
     return { ok: true };
   });
 
