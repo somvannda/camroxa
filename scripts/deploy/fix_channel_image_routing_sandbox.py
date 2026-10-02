@@ -14,7 +14,7 @@ from deploy import ensure_deploy_key, load_secrets, ssh_connect  # noqa: E402
 CHANNEL_IMAGE_OPS = ("channel_logo", "channel_cover")
 SLAI_IMAGE_ASSIGNMENT = {
     "provider": "slai",
-    "sub_model": "slai/gpt-image-2",
+    "sub_model": "cx/gpt-image-2.5",
     "is_active": True,
 }
 
@@ -29,7 +29,7 @@ import asyncio, asyncpg, json, os
 CHANNEL_IMAGE_OPS = ("channel_logo", "channel_cover")
 SLAI_IMAGE_ASSIGNMENT = {
     "provider": "slai",
-    "sub_model": "slai/gpt-image-2",
+    "sub_model": "cx/gpt-image-2.5",
     "is_active": True,
 }
 
@@ -44,7 +44,7 @@ async def main():
     assignments = json.loads(row["value"])
     for op in CHANNEL_IMAGE_OPS:
         assignments[op] = dict(SLAI_IMAGE_ASSIGNMENT)
-        print(f"patched {op} -> slai/slai/gpt-image-2")
+        print(f"patched {op} -> cx/gpt-image-2.5")
     await conn.execute(
         "UPDATE system_settings SET value = $1, updated_at = NOW() WHERE key = 'ai_routing_assignments'",
         json.dumps(assignments, separators=(",", ":")),

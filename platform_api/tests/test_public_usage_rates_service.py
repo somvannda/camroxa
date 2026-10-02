@@ -20,7 +20,7 @@ class _FakeRouting:
 class _FakeRoutingService:
     async def resolve(self, operation_type: str) -> _FakeRouting:
         if operation_type in ("background_image", "thumbnail_image"):
-            return _FakeRouting(provider="slai", sub_model="slai/gpt-image-2")
+            return _FakeRouting(provider="slai", sub_model="cx/gpt-image-2.5")
         if operation_type == "music":
             return _FakeRouting(provider="suno", sub_model="V5")
         return _FakeRouting(provider="slai", sub_model="xiaomi/mimo-v2.5-pro")

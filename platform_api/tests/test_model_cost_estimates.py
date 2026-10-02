@@ -18,7 +18,7 @@ def test_slai_mimo_is_text_only() -> None:
 
 
 def test_slai_gpt_image_is_image_only() -> None:
-    ops = operation_types_for_model("slai", "slai/gpt-image-2")
+    ops = operation_types_for_model("slai", "cx/gpt-image-2.5")
     assert "channel_logo" in ops
     assert "music" not in ops
     assert "lyric" not in ops
@@ -67,7 +67,7 @@ def test_slai_models_seed_with_usd_estimates() -> None:
     rows = build_seed_cost_rows()
     mimo = [r for r in rows if r["sub_model"] == "xiaomi/mimo-v2.5-pro"]
     gpt56 = [r for r in rows if r["sub_model"] in {"gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"}]
-    image = [r for r in rows if r["sub_model"] == "slai/gpt-image-2"]
+    image = [r for r in rows if r["sub_model"] == "cx/gpt-image-2.5"]
     assert len(mimo) == len(TEXT_OPERATIONS)
     assert len(gpt56) == 3 * len(TEXT_OPERATIONS)
     assert len(image) == len(IMAGE_OPERATIONS)

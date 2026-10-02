@@ -128,7 +128,7 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
   ],
   slai: [
     { value: 'xiaomi/mimo-v2.5-pro', label: 'xiaomi/mimo-v2.5-pro (SLAI MiMo text)' },
-    { value: 'slai/gpt-image-2', label: 'slai/gpt-image-2 (SLAI images)' },
+    { value: 'cx/gpt-image-2.5', label: 'cx/gpt-image-2.5 (SLAI images)' },
   ],
   local: [],
   cala: [],

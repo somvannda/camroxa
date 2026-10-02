@@ -52,10 +52,10 @@ async def test_submit_image_outcome_retries_slai_before_fallback() -> None:
             ImageRequest(
                 prompt="test prompt",
                 provider="slai",
-                model_id="slai/gpt-image-2",
+                model_id="cx/gpt-image-2.5",
                 resolution="1920x1080",
             ),
-            provider_chain=[("slai", "slai/gpt-image-2"), ("fal", "flux-pro")],
+            provider_chain=[("slai", "cx/gpt-image-2.5"), ("fal", "flux-pro")],
             skip_pricing=True,
         )
 

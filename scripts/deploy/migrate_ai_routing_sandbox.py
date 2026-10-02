@@ -58,7 +58,7 @@ def patch_assignments_for_sandbox(raw_value: str) -> str:
         if op in assignments:
             assignments[op] = {
                 "provider": "slai",
-                "sub_model": "slai/gpt-image-2",
+                "sub_model": "cx/gpt-image-2.5",
                 "is_active": True,
             }
     return json.dumps(assignments, separators=(",", ":"))
@@ -78,7 +78,7 @@ def main() -> int:
         )
         print(
             "Patched channel text ops to deepseek/deepseek-chat and "
-            "channel_logo/cover to slai/slai/gpt-image-2 for sandbox."
+            "channel_logo/cover to cx/gpt-image-2.5 for sandbox."
         )
 
     payload = json.dumps(
