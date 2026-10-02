@@ -11,7 +11,12 @@ import {
 import { apiFetch } from "@/lib/api";
 import { useCallback, useEffect, useState } from "react";
 
-const SKILL_LEVELS = ["Beginner", "Intermediate", "Advanced", "Professional"] as const;
+const SKILL_LEVELS = [
+  { value: "beginner", label: "Beginner" },
+  { value: "intermediate", label: "Intermediate" },
+  { value: "advanced", label: "Advanced" },
+  { value: "professional", label: "Professional" },
+] as const;
 
 type TaskBundle = {
   taskId?: string;
@@ -30,8 +35,7 @@ export default function GenerateVoicePage() {
   const [taskId, setTaskId] = useState("");
   const [voiceName, setVoiceName] = useState("My Voice");
   const [style, setStyle] = useState("Pop, Female Vocal");
-  const [singerSkillLevel, setSingerSkillLevel] =
-    useState<(typeof SKILL_LEVELS)[number]>("Beginner");
+  const [singerSkillLevel, setSingerSkillLevel] = useState("beginner");
   const [description, setDescription] = useState("created from uploaded voice");
 
   const [source, setSource] = useState<TaskBundle>(emptyBundle());
@@ -141,12 +145,27 @@ export default function GenerateVoicePage() {
 
         <Field label="taskId">
           <div>
-            <input
-              className={inputCls}
-              placeholder="Not created yet"
-              value={taskId}
-              onChange={(e) => setTaskId(e.target.value)}
-            />
+            <div className="relative">
+              <input
+                className={`${inputCls} pr-10`}
+                placeholder="Not created yet"
+                value={taskId}
+                onChange={(e) => setTaskId(e.target.value)}
+              />
+              <button
+                type="button"
+                onClick={() => { void navigator.clipboard.writeText(taskId).catch(() => {}); }}
+                disabled={!taskId}
+                aria-label="Copy taskId"
+                title="Copy taskId"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-white/40 transition hover:bg-white/5 hover:text-white disabled:opacity-30"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+                  <rect x="9" y="9" width="13" height="13" rx="2" />
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+                </svg>
+              </button>
+            </div>
             {!taskId && (
               <div className="mt-2 rounded-md border border-white/5 bg-black/20 px-3 py-2 text-xs text-white/55 font-mono break-all">
                 {source.taskId || "Not created yet"}
@@ -179,11 +198,11 @@ export default function GenerateVoicePage() {
             <select
               className={`${inputCls} appearance-none pr-9`}
               value={singerSkillLevel}
-              onChange={(e) => setSingerSkillLevel(e.target.value as (typeof SKILL_LEVELS)[number])}
+              onChange={(e) => setSingerSkillLevel(e.target.value)}
             >
               {SKILL_LEVELS.map((s) => (
-                <option key={s} value={s} className="bg-[#0e0e10] text-white">
-                  {s}
+                <option key={s.value} value={s.value} className="bg-[#0e0e10] text-white">
+                  {s.label}
                 </option>
               ))}
             </select>

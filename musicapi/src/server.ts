@@ -2278,6 +2278,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const name = (body.voiceName || body.name) as string | undefined;
     if (!clipId || !name) return reply.code(400).send({ error: "taskId and voiceName are required." });
     const styles = (body.style as string) || undefined;
+    const description = (body.description as string) || undefined;
+    const vocalStartS = body.vocalStartS != null ? Number(body.vocalStartS) : undefined;
+    const vocalEndS = body.vocalEndS != null ? Number(body.vocalEndS) : undefined;
     const cost = await costFor("voice_generate");
     const key = await chargeUserKey(u.id, cost);
     if (cost > 0 && !key) {
@@ -2291,7 +2294,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.prompt = name;
     void runResultJobWithRetry(
       job,
-      (client) => client.voiceGenerate({ clipId, name, styles }),
+      (client) => client.voiceGenerate({ clipId, name, styles, description, vocalStartS, vocalEndS }),
       { policy: "paid_only" },
     );
     return reply.code(202).send({ job_id: job.id, status: job.status });
