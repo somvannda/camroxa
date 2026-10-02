@@ -11,8 +11,9 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime
-from typing import Any, Protocol
+from typing import Any, AsyncIterator, Protocol
 from uuid import UUID, uuid4
 
 import asyncpg
@@ -109,6 +110,22 @@ class CreditRepository:
     def __init__(self, pool: AsyncPGPool) -> None:
         self._pool = pool
 
+    @asynccontextmanager
+    async def _connection(self) -> AsyncIterator[Any]:
+        """Yield a connection, borrowing from a pool or reusing an injected one.
+
+        Callers normally pass an ``asyncpg`` pool. Billing fulfillment acquires a
+        connection up front and passes that ``Connection`` so wallet writes join
+        its transaction; a connection has no ``acquire()`` (and is already inside
+        a transaction), so reuse it as-is instead of opening another one.
+        """
+        acquire = getattr(self._pool, "acquire", None)
+        if not callable(acquire):
+            yield self._pool
+            return
+        async with acquire() as conn:
+            yield conn
+
     async def atomic_deduct(
         self,
         user_id: UUID,
@@ -142,7 +159,7 @@ class CreditRepository:
                 details={"amount": amount},
             )
 
-        async with self._pool.acquire() as conn:
+        async with self._connection() as conn:
             async with conn.transaction():
                 row = await conn.fetchrow(
                     """
@@ -221,7 +238,7 @@ class CreditRepository:
                 details={"amount": amount},
             )
 
-        async with self._pool.acquire() as conn:
+        async with self._connection() as conn:
             async with conn.transaction():
                 # Check current balance first
                 current_balance = await conn.fetchval(
@@ -327,7 +344,7 @@ class CreditRepository:
                 details={"amount": amount},
             )
 
-        async with self._pool.acquire() as conn:
+        async with self._connection() as conn:
             async with conn.transaction():
                 current_balance = await conn.fetchval(
                     "SELECT balance FROM credit_wallets WHERE user_id = $1 FOR UPDATE",
