@@ -50,26 +50,35 @@ DevTools → Application → Cookies → `https://suno.com` → `__client`.
 > If the row currently holds a bare JWT (from the earlier reseed), replace it with
 > the `__client` cookie — otherwise auto-refresh has nothing to refresh.
 
-## One-time sign-in (captures the cookie for you)
+## One-time capture (no manual cookie copying)
 
-If the account uses **Google sign-in**, you don't need to copy cookies by hand:
+### Mode 1 — reuse your existing Chrome profile (works with Google sign-in)
+
+If `suno.com` is already signed in in your Chrome, this reads `__client` straight
+from the profile — no login, no Google automation:
 
 ```bash
+# fully quit Chrome first (the profile is locked while it runs)
 npm run suno:login
-# or: ACCOUNT_LABEL=you@gmail.com npx tsx scripts/suno-login.ts
+
+# non-default profile / path:
+SUNO_CHROME_PROFILE="C:\Users\me\AppData\Local\Google\Chrome\User Data" \
+SUNO_CHROME_PROFILE_DIR="Profile 1" npm run suno:login
 ```
 
-It opens your installed Chrome, you sign in with Google normally, and the script
-captures the Clerk `__client` cookie, encrypts it, and stores it on the
-`suno_accounts` row (`type='paid'`). Google's password is typed into Google's own
-page — the script never sees it. After this, auto-refresh keeps the session alive
-indefinitely.
+It stores the captured `__client` (encrypted, `type='paid'`) and exits.
 
-- Requires Google Chrome installed (uses `playwright-core` with `channel: "chrome"`;
-  no browser download).
-- `LOGIN_TIMEOUT_MS` (default 10 min) bounds the wait.
-- This is a **one-time** step; do not script the Google login itself (Google blocks
-  automation and it risks the account).
+### Mode 2 — fresh interactive sign-in (email/password accounts)
+
+```bash
+SUNO_LOGIN_FRESH=1 npm run suno:login
+```
+
+Opens a fresh Chrome and waits for you to sign in. **Google sign-in does not work
+here** — Google blocks automated browsers — so Google accounts must use Mode 1.
+
+After either mode, auto-refresh mints JWTs from `__client` indefinitely; this is a
+one-time step. `LOGIN_TIMEOUT_MS` (default 5 min) bounds the wait.
 
 ## Config
 
