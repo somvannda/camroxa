@@ -1543,8 +1543,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     await runDescribedJob(job, job.payload);
   }
 
-  function processMusicSubmit(params: Record<string, unknown>) {
-    const gen = {
+  function buildMusicGen(params: Record<string, unknown>) {
+    return {
       gptDescriptionPrompt: (params.gpt_description_prompt ?? params.prompt) as string | undefined,
       prompt: params.prompt as string | undefined,
       tags: params.tags as string | undefined,
@@ -1579,7 +1579,69 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
             ? Number(params.audioWeight)
             : undefined,
     };
+  }
+
+  function processMusicSubmit(params: Record<string, unknown>) {
+    const gen = buildMusicGen(params);
     return (client: SunoClient) => client.generateMusic(gen);
+  }
+
+  /** Reference image URLs from a request body (camelCase or snake_case). */
+  function referenceImageUrls(params: Record<string, unknown>): string[] {
+    const raw = params.imageUrls ?? params.image_urls;
+    return Array.isArray(raw)
+      ? raw.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u))
+      : [];
+  }
+
+  /** Fetch a reference image URL and upload it to Suno for the given account.
+   *  Image ids are account-scoped, so this runs with the same client that will
+   *  generate. */
+  async function uploadReferenceImage(client: SunoClient, url: string): Promise<string> {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(30_000), redirect: "follow" });
+    if (!resp.ok) throw new Error(`reference image fetch failed (${resp.status})`);
+    const ct = (resp.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!ct.startsWith("image/")) throw new Error(`reference URL is not an image (${ct || "unknown"})`);
+    const ext = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+    const bytes = Buffer.from(await resp.arrayBuffer());
+    if (bytes.length > 10 * 1024 * 1024) throw new Error("reference image exceeds 10MB");
+    return client.uploadImage(bytes, ext);
+  }
+
+  /**
+   * Music submit that first uploads reference images to the generation account
+   * (Suno's `uploadImage` 3-step) and passes `user_uploaded_image_ids` with the
+   * `agentic_thinking` task — the flow suno.com's create form uses.
+   */
+  function processMusicSubmitWithImages(params: Record<string, unknown>, imageUrls: string[]) {
+    const gen = buildMusicGen(params);
+    return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
+      const imageIds = await Promise.all(imageUrls.map((u) => uploadReferenceImage(client, u)));
+      return client.generateMusic({ ...gen, imageIds, task: "agentic_thinking" });
+    };
+  }
+
+  /** Decode a `data:image/...;base64,...` URL (or raw base64) to bytes + ext. */
+  function decodeImageData(dataUrl: string): { bytes: Buffer; ext: string } {
+    const m = dataUrl.match(/^data:image\/([a-z0-9.+-]+);base64,(.*)$/is);
+    const mime = (m?.[1] ?? "").toLowerCase();
+    const b64 = m?.[2] ?? dataUrl;
+    const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+    return { bytes: Buffer.from(b64, "base64"), ext };
+  }
+
+  /** Reference images supplied inline (panel upload) as data URLs. */
+  function processMusicSubmitWithImageData(params: Record<string, unknown>, dataUrls: string[]) {
+    const gen = buildMusicGen(params);
+    return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
+      const imageIds = await Promise.all(
+        dataUrls.map((d) => {
+          const { bytes, ext } = decodeImageData(d);
+          return client.uploadImage(bytes, ext);
+        }),
+      );
+      return client.generateMusic({ ...gen, imageIds, task: "agentic_thinking" });
+    };
   }
 
   function processSoundsSubmit(params: Record<string, unknown>) {
@@ -1936,7 +1998,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
     job.credits = cost;
     const mpolicy = await routingPolicy((body.model as string) || undefined);
-    void runClipJobWithRetry(job, processMusicSubmit(body), {
+    const imageData = Array.isArray(body.images)
+      ? (body.images as unknown[]).filter((d): d is string => typeof d === "string" && d.startsWith("data:image/"))
+      : [];
+    const imgUrls = referenceImageUrls(body);
+    const submit = imageData.length
+      ? processMusicSubmitWithImageData(body, imageData)
+      : imgUrls.length
+        ? processMusicSubmitWithImages(body, imgUrls)
+        : processMusicSubmit(body);
+    void runClipJobWithRetry(job, submit, {
       model: (body.model as string) || undefined,
       policy: mpolicy,
     });
@@ -4279,7 +4350,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
     job.credits = cost;
     const policy = await routingPolicy(model);
-    void runClipJobWithRetry(job, processMusicSubmit(body), { model, policy });
+    const imgUrls = referenceImageUrls(body);
+    const submit = imgUrls.length ? processMusicSubmitWithImages(body, imgUrls) : processMusicSubmit(body);
+    void runClipJobWithRetry(job, submit, { model, policy });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -4939,6 +5012,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           : in_.audio_weight != null
             ? Number(in_.audio_weight)
             : undefined,
+      image_urls: Array.isArray(in_.imageUrls)
+        ? in_.imageUrls
+        : Array.isArray(in_.image_urls)
+          ? in_.image_urls
+          : undefined,
     };
     if (customMode) {
       out.prompt = prompt;
@@ -4989,7 +5067,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
     job.credits = cost;
     const policy = await routingPolicy(model);
-    void runClipJobWithRetry(job, processMusicSubmit(body), { model, policy });
+    const imgUrls = referenceImageUrls(body);
+    const submit = imgUrls.length ? processMusicSubmitWithImages(body, imgUrls) : processMusicSubmit(body);
+    void runClipJobWithRetry(job, submit, { model, policy });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 

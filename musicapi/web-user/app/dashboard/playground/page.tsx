@@ -272,6 +272,7 @@ export default function PlaygroundPage() {
   const [tags, setTags] = useState("");
   const [negativeTags, setNegativeTags] = useState("");
   const [instrumental, setInstrumental] = useState(false);
+  const [refImages, setRefImages] = useState<string[]>([]);
 
   const [grabLyrics, setGrabLyrics] = useState(false);
   const [soundLoop, setSoundLoop] = useState(false);
@@ -350,6 +351,27 @@ export default function PlaygroundPage() {
     pollRef.current = setTimeout(tick, 1500);
   }
 
+  async function addRefImages(e: React.ChangeEvent<HTMLInputElement>) {
+    const remaining = Math.max(0, 5 - refImages.length);
+    const files = Array.from(e.target.files ?? []).slice(0, remaining);
+    e.target.value = "";
+    const read = (f: File) =>
+      new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(f);
+      });
+    try {
+      const urls = await Promise.all(
+        files.filter((f) => f.size <= 10 * 1024 * 1024).map(read),
+      );
+      setRefImages((a) => [...a, ...urls].slice(0, 5));
+    } catch {
+      setError("Could not read the selected image.");
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -379,6 +401,7 @@ export default function PlaygroundPage() {
           body.negative_tags = negativeTags || undefined;
           body.instrumental = instrumental;
         }
+        if (refImages.length) body.images = refImages;
       }
       setLastBody(body);
       const created = await apiFetch<{ job_id: string }>("/me/generate", {
@@ -481,6 +504,42 @@ export default function PlaygroundPage() {
                     {prompt.length} / {promptLimit}
                   </div>
                 </div>
+              </div>
+
+              {/* Reference images — Suno's image upload (agentic_thinking) */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <div className="text-xs font-medium text-white/50">Reference Images (Optional)</div>
+                  <div className="text-[11px] text-white/30">{refImages.length}/5</div>
+                </div>
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-xs text-white/50 transition-colors hover:bg-white/[0.06]">
+                  <span className="text-base leading-none">+</span> Add image
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    multiple
+                    className="hidden"
+                    onChange={(e) => void addRefImages(e)}
+                  />
+                </label>
+                {refImages.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {refImages.map((src, i) => (
+                      <div key={i} className="relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt="reference" className="h-full w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setRefImages((a) => a.filter((_, j) => j !== i))}
+                          className="absolute right-0 top-0 rounded-bl bg-black/70 px-1 text-[10px] text-white"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-1 text-[11px] text-white/30">JPEG / JPG / PNG / WEBP · Max 10MB</div>
               </div>
 
               {/* Custom mode fields */}
