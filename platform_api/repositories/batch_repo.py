@@ -2034,6 +2034,43 @@ class BatchRepository:
         )
         return int(str(result).split()[-1]) if result else 0
 
+    async def requeue_stale_running_jobs(
+        self,
+        *,
+        older_than_seconds: int = 7 * 24 * 3600,
+        limit: int = 500,
+    ) -> int:
+        """Recover image jobs stuck in ``running`` after a worker crash.
+
+        A killed worker never persists a terminal status, so its claimed rows
+        would sit ``running`` forever: ``run_pending_jobs`` only claims PENDING
+        and ``requeue_auto_retry_failed_jobs`` only touches ``failed``. Resetting
+        them to ``pending`` lets the next drain pick them up again.
+        """
+        older_than_seconds = max(60, int(older_than_seconds))
+        limit = max(1, min(2000, int(limit)))
+        result = await self._pool.execute(
+            """
+            UPDATE image_jobs
+            SET status = $3,
+                error = NULL,
+                updated_at = NOW()
+            WHERE id IN (
+                SELECT id
+                FROM image_jobs
+                WHERE status = $4
+                  AND updated_at < NOW() - ($1 * INTERVAL '1 second')
+                ORDER BY updated_at ASC
+                LIMIT $2
+            )
+            """,
+            older_than_seconds,
+            limit,
+            TaskStatus.PENDING.value,
+            TaskStatus.RUNNING.value,
+        )
+        return int(str(result).split()[-1]) if result else 0
+
     async def reset_image_jobs(
         self,
         user_id: UUID,

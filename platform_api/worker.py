@@ -79,6 +79,28 @@ def _stale_sweep_interval_seconds() -> int:
         return _DEFAULT_STALE_SWEEP_INTERVAL_SECONDS
 
 
+# Image-job recovery is far more conservative than the job_queue sweep: a claim
+# round can pull up to 50 rows with <=8 workers, so one batch may legitimately
+# sit `running` for a long while. Only rows orphaned for a week are reset, which
+# no live run can reach. (Users can still recover sooner via Retry.)
+_DEFAULT_IMAGE_STALE_RUNNING_SECONDS = 7 * 24 * 3600
+
+
+def _image_stale_running_seconds() -> int:
+    try:
+        return max(
+            60,
+            int(
+                os.environ.get(
+                    "CAMXORA_WORKER_IMAGE_STALE_RUNNING_SECONDS",
+                    _DEFAULT_IMAGE_STALE_RUNNING_SECONDS,
+                )
+            ),
+        )
+    except (TypeError, ValueError):
+        return _DEFAULT_IMAGE_STALE_RUNNING_SECONDS
+
+
 def _job_timeout_seconds() -> float:
     """Optional hard timeout per job. 0 (default) disables it."""
     try:
@@ -86,6 +108,14 @@ def _job_timeout_seconds() -> float:
     except (TypeError, ValueError):
         return 0.0
     return float(value) if value > 0 else 0.0
+
+
+async def _sweep_stale_image_jobs(*, older_than_seconds: int) -> int:
+    from platform_api.dependencies import get_batch_repo
+
+    return await get_batch_repo().requeue_stale_running_jobs(
+        older_than_seconds=older_than_seconds
+    )
 
 
 async def _bootstrap_connections() -> None:
@@ -342,16 +372,30 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
     claim_types = sorted(allowed_types)
     queue = get_job_queue_repo()
     stale_seconds = _stale_running_seconds()
+    image_stale_seconds = _image_stale_running_seconds()
     sweep_interval = _stale_sweep_interval_seconds()
     job_timeout = _job_timeout_seconds()
+    # Only the images shard (or `all`) drains run_image_jobs, so only it should
+    # reap orphaned image_jobs rows — a worker that never touches them would
+    # otherwise fight the live one.
+    handles_image_jobs = JOB_RUN_IMAGE_JOBS in allowed_types
     recovered = await queue.requeue_stale_running(older_than_seconds=stale_seconds)
     if recovered:
         logger.warning("Requeued %s stale running job(s).", recovered)
+    if handles_image_jobs:
+        requeued_images = await _sweep_stale_image_jobs(
+            older_than_seconds=image_stale_seconds
+        )
+        if requeued_images:
+            logger.warning(
+                "Requeued %s stale running image job(s).", requeued_images
+            )
     logger.info(
-        "Worker %s draining job_queue (types=%s, stale=%ss, sweep=%ss, job_timeout=%ss).",
+        "Worker %s draining job_queue (types=%s, stale=%ss, image_stale=%ss, sweep=%ss, job_timeout=%ss).",
         worker_id,
         claim_types,
         stale_seconds,
+        image_stale_seconds,
         sweep_interval,
         job_timeout,
     )
@@ -380,6 +424,15 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
                 swept = await queue.requeue_stale_running(older_than_seconds=stale_seconds)
                 if swept:
                     logger.warning("Periodic sweep requeued %s stale running job(s).", swept)
+                if handles_image_jobs:
+                    swept_images = await _sweep_stale_image_jobs(
+                        older_than_seconds=image_stale_seconds
+                    )
+                    if swept_images:
+                        logger.warning(
+                            "Periodic sweep requeued %s stale running image job(s).",
+                            swept_images,
+                        )
             except Exception:
                 logger.exception("Periodic stale-job sweep failed; continuing.")
 
