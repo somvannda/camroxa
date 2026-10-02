@@ -164,4 +164,39 @@ export const config = {
     storeId: process.env.CHMABA_STORE_ID ?? "",
     apiBaseUrl: process.env.CHMABA_API_BASE_URL ?? "https://pay.chmaba.com",
   },
+  /**
+   * Durable object storage for generated media (Backblaze B2 via its S3 API).
+   * Reuses the platform's `PLATFORM_STREAMING_B2_*` deploy secrets by default;
+   * `MUSICAPI_B2_*` wins when set, so musicapi can be pointed at its own bucket
+   * or key without touching the platform. Storage stays disabled (live streaming
+   * from Suno) until key id + application key + bucket are all present.
+   */
+  storage: {
+    endpoint:
+      process.env.MUSICAPI_B2_ENDPOINT ??
+      process.env.PLATFORM_STREAMING_B2_ENDPOINT ??
+      "https://s3.us-east-005.backblazeb2.com",
+    region:
+      process.env.MUSICAPI_B2_REGION ??
+      process.env.PLATFORM_STREAMING_B2_REGION ??
+      "us-east-005",
+    bucket: process.env.MUSICAPI_B2_BUCKET ?? process.env.PLATFORM_STREAMING_B2_BUCKET ?? "",
+    keyId: process.env.MUSICAPI_B2_KEY_ID ?? process.env.PLATFORM_STREAMING_B2_KEY_ID ?? "",
+    applicationKey:
+      process.env.MUSICAPI_B2_APPLICATION_KEY ??
+      process.env.PLATFORM_STREAMING_B2_APPLICATION_KEY ??
+      "",
+    /** Key prefix so musicapi objects never collide with platform ones. */
+    prefix: (process.env.MUSICAPI_B2_PREFIX ?? "musicapi").replace(/^\/+|\/+$/g, ""),
+    /** Optional CDN base (e.g. Cloudflare) served instead of presigned URLs. */
+    publicBaseUrl: (process.env.MUSICAPI_B2_PUBLIC_BASE_URL ?? "").replace(/\/+$/, ""),
+    /** Signed GET URL lifetime for direct B2 reads. */
+    urlTtlSeconds: Number(process.env.MUSICAPI_B2_URL_TTL_SECONDS ?? 7 * 24 * 3600),
+  },
 };
+
+/** True when object storage is fully configured (key, secret and bucket set). */
+export function storageConfigured(): boolean {
+  const s = config.storage;
+  return Boolean(s.endpoint && s.bucket && s.keyId && s.applicationKey);
+}
