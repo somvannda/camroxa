@@ -2814,6 +2814,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
       const correctCt = format === "wav" ? "audio/wav" : "audio/mpeg";
       if (primaryBuffer) {
+        // Cache the freshly-fetched bytes so the next play is instant (B2 redirect).
+        if (storageConfigured() && q.force_download !== "1") {
+          try {
+            const key = objectKey(format === "wav" ? "wav" : "clips", `${clipId}.${format}`);
+            await putObject(key, primaryBuffer, format === "wav" ? "audio/wav" : "audio/mpeg");
+            const url = await getReadUrl(key);
+            if (url) return reply.redirect(url, 302);
+          } catch {
+            /* fall through to sending the buffer */
+          }
+        }
         let finalCt = primaryCt;
         if (!finalCt || /text|html|json|xml|plain/.test(finalCt)) finalCt = correctCt;
         reply.header("Content-Type", finalCt);
