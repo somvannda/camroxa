@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import GoogleSignInButton from "@/components/google-signin-button";
 
@@ -84,7 +85,15 @@ export default function AuthModal({ open, onClose }: Props) {
           )}
 
           <p className="text-center text-xs text-[var(--muted)]">
-            By continuing, you agree to our Terms and acknowledge our Privacy Policy.
+            By continuing, you agree to our{" "}
+            <Link href="/terms" className="underline hover:text-white">
+              Terms
+            </Link>{" "}
+            and acknowledge our{" "}
+            <Link href="/privacy" className="underline hover:text-white">
+              Privacy Policy
+            </Link>
+            .
           </p>
         </div>
       </div>

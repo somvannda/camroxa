@@ -4,7 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { setSession } from "@/lib/auth";
-import GoogleSignInButton from "@/components/google-signin-button";
 
 interface LoginResponse {
   user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
@@ -84,14 +83,6 @@ export default function LoginPage() {
         >
           {loading ? "Signing in…" : "Sign in"}
         </button>
-
-        <div className="flex items-center gap-3 text-xs text-[var(--muted)]">
-          <span className="h-px flex-1 bg-[var(--border)]" />
-          or
-          <span className="h-px flex-1 bg-[var(--border)]" />
-        </div>
-
-        <GoogleSignInButton label="Continue with Google" redirectTo="/admin" />
 
         <p className="text-center text-xs text-[var(--muted)]">
           Administrators only. Contact an operator for credentials.

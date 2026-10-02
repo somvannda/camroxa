@@ -47,12 +47,22 @@ TARBALL="/tmp/musicapi-src.tar.gz"
 
 if [[ "${MUSICAPI_ENV}" == "production" ]]; then
   MUSICAPI_DOMAIN="camxora.com"
+  # Production has no app.* host: the apex IS the user app portal + landing page,
+  # and the core API is mounted by path (/backend, /v1, /api/v1, /payments).
+  APP_HOST_PREFIX=""
 else
   MUSICAPI_DOMAIN="sandbox.camxora.com"
+  APP_HOST_PREFIX="app."
 fi
 API_HOST="musicapi.${MUSICAPI_DOMAIN}"
-APP_HOST="app.musicapi.${MUSICAPI_DOMAIN}"
+APP_HOST="${APP_HOST_PREFIX}musicapi.${MUSICAPI_DOMAIN}"
 ADMIN_HOST="admin.musicapi.${MUSICAPI_DOMAIN}"
+
+# TLS/nginx host list, deduped (in production APP_HOST == API_HOST).
+TLS_HOSTS=()
+for _host in "${API_HOST}" "${APP_HOST}" "${ADMIN_HOST}"; do
+  [[ " ${TLS_HOSTS[*]} " == *" ${_host} "* ]] || TLS_HOSTS+=("${_host}")
+done
 
 gen_hex() { openssl rand -hex "$1"; }
 
@@ -162,7 +172,6 @@ TWOCAPTCHA_KEY=${MUSICAPI_TWOCAPTCHA_KEY:-}
 GOOGLE_CLIENT_ID=${MUSICAPI_GOOGLE_CLIENT_ID:-}
 GOOGLE_CLIENT_SECRET=${MUSICAPI_GOOGLE_CLIENT_SECRET:-}
 GOOGLE_REDIRECT_URI_USER=https://${APP_HOST}/auth/callback
-GOOGLE_REDIRECT_URI_ADMIN=https://${ADMIN_HOST}/auth/callback
 BAKONG_API_TOKEN=${MUSICAPI_BAKONG_API_TOKEN:-}
 BAKONG_ACCOUNT_ID=${MUSICAPI_BAKONG_ACCOUNT_ID:-}
 BAKONG_MERCHANT_NAME=${MUSICAPI_BAKONG_MERCHANT_NAME:-Camxora Music API}
@@ -229,13 +238,13 @@ CERT="/etc/letsencrypt/live/musicapi.${MUSICAPI_DOMAIN}/fullchain.pem"
 [[ -f "${NGINX_SRC}" ]] || { log "Missing ${NGINX_SRC}"; exit 1; }
 
 if [[ ! -f "${CERT}" && "${ISSUE_CERT:-0}" == "1" ]]; then
-  log "Bootstrapping TLS for ${API_HOST} ${APP_HOST} ${ADMIN_HOST}..."
+  log "Bootstrapping TLS for ${TLS_HOSTS[*]}..."
   BOOT_SITE="/etc/nginx/sites-available/musicapi-${MUSICAPI_ENV}-bootstrap"
   BOOT_LINK="/etc/nginx/sites-enabled/musicapi-${MUSICAPI_ENV}-bootstrap"
   cat >"${BOOT_SITE}" <<BOOT
 server {
     listen 80;
-    server_name ${API_HOST} ${APP_HOST} ${ADMIN_HOST};
+    server_name ${TLS_HOSTS[*]};
     location / { return 404; }
 }
 BOOT
@@ -246,9 +255,11 @@ BOOT
   else
     CERTBOT_ARGS=(--register-unsafely-without-email)
   fi
-  certbot --nginx -d "${API_HOST}" -d "${APP_HOST}" -d "${ADMIN_HOST}" \
+  CERTBOT_HOSTS=()
+  for _host in "${TLS_HOSTS[@]}"; do CERTBOT_HOSTS+=(-d "${_host}"); done
+  certbot --nginx "${CERTBOT_HOSTS[@]}" \
     --expand --non-interactive --agree-tos --redirect "${CERTBOT_ARGS[@]}" || {
-      log "WARN: certbot failed — check that A records for ${API_HOST}, ${APP_HOST}, ${ADMIN_HOST} point here."
+      log "WARN: certbot failed — check that A records for ${TLS_HOSTS[*]} point here."
     }
   rm -f "${BOOT_LINK}" "${BOOT_SITE}"
 fi

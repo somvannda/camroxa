@@ -475,15 +475,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // --- Google OAuth ---------------------------------------------------------
   const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
   const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
-  // Register BOTH of these in the Google Cloud Console under "Authorized redirect URIs":
-  //   http://localhost:4001/auth/callback  (user-facing workspace)
-  //   http://localhost:4002/auth/callback  (admin console)
-  // For production, replace with your real domains, e.g.:
-  //   https://app.yourdomain.com/auth/callback
-  //   https://admin.yourdomain.com/auth/callback
+  // Google sign-in is enabled for the user-facing app ONLY. The admin console
+  // authenticates with email/password exclusively, so its callback is
+  // deliberately NOT allowlisted and any Google flow requesting it is rejected.
+  // Register only this redirect URI in the Google Cloud Console:
+  //   http://localhost:4001/auth/callback  (dev)  →  https://<user-host>/auth/callback (prod)
   const GOOGLE_REDIRECT_ALLOWLIST: string[] = [
     process.env.GOOGLE_REDIRECT_URI_USER ?? "http://localhost:4001/auth/callback",
-    process.env.GOOGLE_REDIRECT_URI_ADMIN ?? "http://localhost:4002/auth/callback",
   ];
   const googleConfigured = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
 
@@ -1571,12 +1569,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return queryOne<DbUser>("SELECT id, email, role, name, status FROM users WHERE id = $1", [u.id]);
   });
 
-  // --- Google OAuth (for frontend) -----------------------------------------
-  // Step 1: Fetch the URL to redirect user to for Google sign-in consent
-  //         Pass ?redirect_uri=http://localhost:4002/auth/callback for admin,
-  //         or omit for user-facing default (4001).
+  // --- Google OAuth (user app only) ----------------------------------------
+  // Step 1: Fetch the URL to redirect user to for Google sign-in consent.
+  //         Admin must NOT use Google sign-in, so a non-allowlisted
+  //         redirect_uri (e.g. the admin console's) is rejected outright
+  //         instead of silently falling back.
   app.get("/auth/google/url", (req, reply) => {
     const { redirect_uri } = (req.query ?? {}) as { redirect_uri?: string };
+    if (redirect_uri && !GOOGLE_REDIRECT_ALLOWLIST.includes(redirect_uri)) {
+      return reply.code(400).send({
+        error: "Google sign-in is not enabled for this application.",
+      });
+    }
     const { client, redirectUri } = resolveGoogleClient(redirect_uri);
     if (!client) {
       return reply.code(503).send({
@@ -1605,6 +1609,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const verifiedState = verifyOAuthState(state);
     if (!verifiedState) {
       return reply.code(400).send({ error: "Invalid or expired OAuth state." });
+    }
+    if (!GOOGLE_REDIRECT_ALLOWLIST.includes(verifiedState.redirectUri)) {
+      return reply
+        .code(400)
+        .send({ error: "Google sign-in is not enabled for this application." });
     }
     const { client } = resolveGoogleClient(verifiedState.redirectUri);
     if (!client) {

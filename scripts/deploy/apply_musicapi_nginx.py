@@ -1,10 +1,15 @@
 #!/usr/bin/env python3
 """Apply the musicapi nginx config from repo to VPS (sandbox or production).
 
-Three vhosts per environment:
-    musicapi.<env-suffix>        -> core API      127.0.0.1:4003
-    app.musicapi.<env-suffix>    -> web-user      127.0.0.1:4001
-    admin.musicapi.<env-suffix>  -> web-admin     127.0.0.1:4002
+Production has two vhosts:
+    musicapi.camxora.com        -> user portal + landing page 127.0.0.1:4001
+                                   (API mounted by path -> 4003)
+    admin.musicapi.camxora.com  -> web-admin                  127.0.0.1:4002
+
+Sandbox has three vhosts (it keeps the legacy split):
+    musicapi.sandbox.camxora.com        -> core API   127.0.0.1:4003
+    app.musicapi.sandbox.camxora.com    -> web-user   127.0.0.1:4001
+    admin.musicapi.sandbox.camxora.com  -> web-admin  127.0.0.1:4002
 
 Usage:
     python scripts/deploy/apply_musicapi_nginx.py --env sandbox
@@ -12,8 +17,8 @@ Usage:
 
 First-time bootstrap (certs do not exist yet, so the ssl vhosts cannot load):
     python scripts/deploy/apply_musicapi_nginx.py --env sandbox --issue-cert
-`--issue-cert` stands up a temporary port-80 server block for the three names,
-runs certbot to obtain the shared Let's Encrypt cert, then the config is applied.
+`--issue-cert` stands up a temporary port-80 server block for the environment's
+names, runs certbot to obtain the shared Let's Encrypt cert, then applies the config.
 """
 
 from __future__ import annotations
@@ -48,7 +53,6 @@ ENV_CONFIG = {
         "site_link": "/etc/nginx/sites-enabled/musicapi-production",
         "names": [
             "musicapi.camxora.com",
-            "app.musicapi.camxora.com",
             "admin.musicapi.camxora.com",
         ],
     },

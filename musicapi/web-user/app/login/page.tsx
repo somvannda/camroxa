@@ -28,7 +28,15 @@ export default function LoginPage() {
         )}
 
         <p className="text-center text-xs text-[var(--muted)]">
-          By continuing, you agree to our Terms and acknowledge our Privacy Policy.
+          By continuing, you agree to our{" "}
+          <Link href="/terms" className="underline hover:text-white">
+            Terms
+          </Link>{" "}
+          and acknowledge our{" "}
+          <Link href="/privacy" className="underline hover:text-white">
+            Privacy Policy
+          </Link>
+          .
         </p>
 
         <div className="flex justify-center">

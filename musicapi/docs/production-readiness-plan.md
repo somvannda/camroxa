@@ -199,7 +199,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 | 3.5 | Remove fake dashboard chart → real usage data | `fix/musicapi-fe-dashboard` | no fake data ✅ fabricated `Math.random()` chart removed | `[x]` |
 | 3.6 | Delete dead `/app/*` tree + unused components/deps | `chore/musicapi-fe-cleanup` | routes still work ✅ `/app/*` removed, `/dashboard/*` served | `[x]` |
 | 3.7 | Fix admin pricing edit (track `editingId`, PUT) | `fix/musicapi-admin-pricing-edit` | update, no duplicate ✅ PUT `/admin/pricing/:id` | `[x]` |
-| 3.8 | Admin `/auth/callback`; align redirect URIs | `feat/musicapi-admin-oauth` | Google admin login ✅ `/auth/callback` + admin role gate | `[x]` |
+| 3.8 | Admin `/auth/callback`; align redirect URIs | `feat/musicapi-admin-oauth` | Google admin login ✅ `/auth/callback` + admin role gate — **reverted 2026-10-02: admin Google sign-in disabled (email/password only)** | `[x]` |
 | 3.9 | Wire/hide placeholders; mark stubs "coming soon" | `chore/musicapi-fe-placeholders` | no dead UI ✅ 404 links + inert controls removed | `[x]` |
 
 **Gate:** both apps build against prod env; no spoofable auth; no fake data.
@@ -320,6 +320,13 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > (13/13 static pages, `/auth/callback` + `/admin` present). Prod action: register the real
 > `https://admin.yourdomain.com/auth/callback` in Google Cloud Console and set
 > `GOOGLE_REDIRECT_URI_ADMIN` to match.
+>
+> **Revision (3.8, 2026-10-02):** admin Google sign-in was **removed by design** — Google
+> auth is user-app only. `GOOGLE_REDIRECT_URI_ADMIN` was dropped from the allowlist
+> (`src/server.ts` now rejects any non-allowlisted `redirect_uri` on both
+> `/auth/google/url` and `/auth/google/callback`), the admin login button / `/auth/callback`
+> route / `google-signin-button.tsx` were deleted, and the deploy env + `.env.example` no
+> longer set the admin redirect URI. Admin authenticates with email/password exclusively.
 >
 > **Note (3.9):** audited both apps for dead/inert UI. **404 links removed:** the dashboard
 > sidebar's `Logs` item (`/dashboard/logs`) and the admin sidebar's `Logs` item

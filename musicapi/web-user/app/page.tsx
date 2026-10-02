@@ -106,6 +106,7 @@ export default function LandingPage() {
             <span className="text-lg font-bold">Camxora Music API</span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-[var(--muted)] md:flex">
+            <a href="#about" className="hover:text-white">About</a>
             <a href="#features" className="hover:text-white">Features</a>
             <a href="#how" className="hover:text-white">How it works</a>
             <a href="#pricing" className="hover:text-white">Pricing</a>
@@ -175,6 +176,39 @@ export default function LandingPage() {
                   style={{ height: `${(20 + Math.abs(Math.sin(i * 0.6)) * 80).toFixed(2)}%` }}
                 />
               ))}
+            </div>
+          </div>
+        </section>
+
+        {/* About / purpose */}
+        <section id="about" className="border-y border-[var(--border)] bg-black/20">
+          <div className="mx-auto max-w-6xl px-6 py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <h2 className="text-3xl font-bold">What is Camxora Music API?</h2>
+              <p className="mt-4 text-[var(--muted)]">
+                Camxora Music API is a developer platform for AI music generation. Our purpose is to let developers and
+                businesses add studio-quality, watermark-free music — vocals, instrumentals, extensions and covers — to
+                their own products and workflows through a simple, reliable REST API. You create an account, generate
+                an API key, and call our endpoints to generate audio, monitor usage, and manage credits.
+              </p>
+              <p className="mt-4 text-[var(--muted)]">
+                The Service is operated by Camxora and is intended for lawful, authorized use only. It is not intended
+                for creating deceptive, harmful, or non-consensual content.
+              </p>
+            </div>
+            <div className="mx-auto mt-12 grid max-w-4xl gap-5 sm:grid-cols-3">
+              <div className="glass rounded-2xl p-6 text-center">
+                <div className="grad-text text-xl font-bold">REST API</div>
+                <p className="mt-2 text-sm text-[var(--muted)]">A documented JSON API for music generation.</p>
+              </div>
+              <div className="glass rounded-2xl p-6 text-center">
+                <div className="grad-text text-xl font-bold">Workspace</div>
+                <p className="mt-2 text-sm text-[var(--muted)]">A web dashboard for API keys, usage and billing.</p>
+              </div>
+              <div className="glass rounded-2xl p-6 text-center">
+                <div className="grad-text text-xl font-bold">Sign in with Google</div>
+                <p className="mt-2 text-sm text-[var(--muted)]">We use only basic sign-in, so you can access the workspace securely.</p>
+              </div>
             </div>
           </div>
         </section>
@@ -260,6 +294,29 @@ export default function LandingPage() {
           </div>
         </section>
 
+        {/* Responsible use */}
+        <section id="responsible-use" className="mx-auto max-w-4xl px-6 py-20">
+          <div className="glass rounded-3xl p-8 sm:p-10">
+            <h2 className="text-2xl font-bold">Responsible use and prohibited content</h2>
+            <p className="mt-4 text-sm text-[var(--muted)]">
+              Camxora Music API is built for lawful, creative, and authorized use. We do not permit the Service to be
+              used to create or distribute unlawful content. In particular, we prohibit the generation or distribution
+              of <strong className="text-white">AI-generated non-consensual intimate imagery (AI NCII)</strong> — that
+              is, realistic sexual or intimate depictions of a real, identifiable person created or shared without that
+              person&rsquo;s consent. We do not use Google APIs for AI NCII.
+            </p>
+            <p className="mt-4 text-sm text-[var(--muted)]">
+              We also prohibit child sexual abuse material and any sexual content involving minors, deepfakes used to
+              harass, sexualize, defame, or impersonate a real person, and content that infringes the intellectual
+              property, voice, likeness, or privacy rights of others. You must have all necessary rights and consents
+              before using someone else&rsquo;s voice, likeness, or material. Violations may result in content removal
+              and account suspension or termination. See our{" "}
+              <Link href="/terms" className="grad-text font-medium">Terms of Service</Link> and{" "}
+              <Link href="/privacy" className="grad-text font-medium">Privacy Policy</Link>.
+            </p>
+          </div>
+        </section>
+
         {/* FAQ */}
         <section id="faq" className="mx-auto max-w-3xl px-6 py-20">
           <div className="mx-auto max-w-2xl text-center">
@@ -299,10 +356,13 @@ export default function LandingPage() {
             <div className="grad-bg h-6 w-6 rounded-md" />
             <span className="font-semibold text-white">Camxora Music API</span>
           </div>
-          <div className="flex gap-6">
+          <div className="flex flex-wrap justify-center gap-6">
+            <a href="#about" className="hover:text-white">About</a>
             <a href="#features" className="hover:text-white">Features</a>
             <a href="#pricing" className="hover:text-white">Pricing</a>
             <a href="/docs" className="hover:text-white">Docs</a>
+            <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
+            <Link href="/terms" className="hover:text-white">Terms of Service</Link>
             <a href="mailto:support@camxora.com" className="hover:text-white">Support</a>
           </div>
           <div>© {new Date().getFullYear()} Camxora Music API. All rights reserved.</div>
