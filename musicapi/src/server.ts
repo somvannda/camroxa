@@ -425,6 +425,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // file, held in memory here because this process owns the alert lifecycle.
   const alertState = new Map<string, string>();
   let alertTimer: ReturnType<typeof setInterval> | null = null;
+  let sessionTimer: ReturnType<typeof setInterval> | null = null;
 
   // Terminal jobs only need to survive long enough for the client to poll their
   // result, so the in-memory map is kept bounded: finished jobs older than the
@@ -1069,6 +1070,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     queue.start(consumeQueuedJob);
     await recoverJobs();
     startAlertLoop();
+    startSessionKeepAlive();
   });
 
   function newJob(type: Job["type"], callbackUrl?: string): Job {
@@ -1334,6 +1336,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   app.addHook("onClose", async () => {
     stopAlertLoop();
+    stopSessionKeepAlive();
     await drainJobs();
     // Queued jobs have their own drain: `worker.close()` resolves once the job
     // currently being consumed finishes, bounded so a stuck job cannot hang the
@@ -3251,6 +3254,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!alertTimer) return;
     clearInterval(alertTimer);
     alertTimer = null;
+  }
+
+  // Suno session keep-alive: proactively refresh each account's JWT (and persist
+  // any rotated `__client` cookie) so idle periods never lapse the session.
+  // Set SUNO_KEEPALIVE_MS=0 to disable.
+  function startSessionKeepAlive(): void {
+    const intervalMs = Number(process.env.SUNO_KEEPALIVE_MS ?? 30 * 60_000);
+    if (!(intervalMs > 0) || sessionTimer) return;
+    sessionTimer = setInterval(() => {
+      void pool
+        .refreshSessions()
+        .catch((err) => app.log.warn({ err }, "suno session keep-alive failed"));
+    }, intervalMs);
+    sessionTimer.unref?.();
+    app.log.info({ intervalMs }, "suno session keep-alive started");
+  }
+
+  function stopSessionKeepAlive(): void {
+    if (!sessionTimer) return;
+    clearInterval(sessionTimer);
+    sessionTimer = null;
   }
 
   // --- admin routes --------------------------------------------------------

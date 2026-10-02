@@ -16,6 +16,8 @@ export interface AccountCreds {
   clientCookie: string;
   deviceId: string;
   type?: "free" | "paid";
+  /** Called when Clerk rotates the `__client` cookie so it can be persisted. */
+  persistCookie?: (cookie: string) => void;
 }
 
 export interface GenerateParams {
@@ -83,8 +85,46 @@ export interface BillingInfo {
  */
 export class SunoClient {
   private cachedJwt?: string;
+  private jwtExpiresAt = 0;
 
   constructor(public readonly account: AccountCreds) {}
+
+  /**
+   * Capture a rotated `__client` cookie from a Clerk response and persist it,
+   * so the account stays authenticated without re-entering the cookie. Clerk
+   * rotates this cookie opportunistically; missing the rotation eventually
+   * invalidates the session.
+   */
+  private captureSetCookie(res: Response): void {
+    const anyHeaders = res.headers as unknown as { getSetCookie?: () => string[] };
+    const raw = typeof anyHeaders.getSetCookie === "function" ? anyHeaders.getSetCookie() : [];
+    const cookies: string[] = Array.isArray(raw) && raw.length
+      ? raw
+      : (() => { const single = res.headers.get("set-cookie"); return single ? [single] : []; })();
+    for (const sc of cookies) {
+      const m = sc.match(/__client=([^;]+)/);
+      const next = m?.[1];
+      if (next && next !== this.account.clientCookie) {
+        this.account.clientCookie = next;
+        try {
+          this.account.persistCookie?.(next);
+        } catch {
+          /* persistence is best-effort */
+        }
+      }
+    }
+  }
+
+  /** Read a JWT's `exp` claim (ms), or 0 when unparseable. */
+  private decodeExpiry(jwt: string): number {
+    try {
+      const payload = jwt.split(".")[1];
+      const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: number };
+      return json.exp ? json.exp * 1000 : 0;
+    } catch {
+      return 0;
+    }
+  }
 
   private clerkHeaders(extra: Record<string, string> = {}): Record<string, string> {
     return {
@@ -98,6 +138,7 @@ export class SunoClient {
   private async getSessionId(): Promise<string> {
     const url = `${config.clerkUrl}/v1/client?__clerk_api_version=${CLERK_API_VERSION}&_clerk_js_version=${CLERK_VERSION}`;
     const res = await fetch(url, { headers: this.clerkHeaders(), signal: AbortSignal.timeout(15_000) });
+    this.captureSetCookie(res);
     if (!res.ok) throw new Error(`Clerk /client failed (${res.status}): ${await res.text()}`);
     const data = (await res.json()) as { response?: { last_active_session_id?: string } };
     const sid = data.response?.last_active_session_id;
@@ -112,30 +153,30 @@ export class SunoClient {
       headers: this.clerkHeaders({ "content-type": "application/x-www-form-urlencoded" }),
       signal: AbortSignal.timeout(15_000),
     });
+    this.captureSetCookie(res);
     if (!res.ok) throw new Error(`Clerk token mint failed (${res.status}): ${await res.text()}`);
     const data = (await res.json()) as { jwt?: string };
     if (!data.jwt) throw new Error("Clerk returned no jwt.");
+    this.jwtExpiresAt = this.decodeExpiry(data.jwt);
     return data.jwt;
   }
 
   async resolveJwt(): Promise<string> {
-    if (!this.cachedJwt) {
-      // A `__client` refresh cookie is the durable path (minted via Clerk). If
-      // the stored value is instead a one-off access JWT (see
-      // scripts/add-paid-account.ts), use it directly — it cannot be refreshed,
-      // but it makes JWT-seeded accounts work until it expires.
-      const stored = this.account.clientCookie?.trim() ?? "";
-      if (/^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(stored)) {
-        this.cachedJwt = stored;
-      } else {
-        this.cachedJwt = await this.mintJwt(await this.getSessionId());
-      }
+    const stored = this.account.clientCookie?.trim() ?? "";
+    // A one-off access JWT cannot be refreshed — use it as-is until it expires.
+    if (/^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(stored)) return stored;
+    // Durable `__client` cookie → mint a JWT from Clerk, renewing proactively
+    // ~5 minutes before expiry so in-flight jobs never hit a 401.
+    const expiring = this.jwtExpiresAt > 0 && Date.now() > this.jwtExpiresAt - 5 * 60_000;
+    if (!this.cachedJwt || expiring) {
+      this.cachedJwt = await this.mintJwt(await this.getSessionId());
     }
     return this.cachedJwt;
   }
 
   async refreshJwt(): Promise<string> {
     this.cachedJwt = undefined;
+    this.jwtExpiresAt = 0;
     return this.resolveJwt();
   }
 
