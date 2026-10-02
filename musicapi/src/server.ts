@@ -2419,7 +2419,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // the list of languages. `/settings` is public — it is non-sensitive branding
   // (also useful to signed-out pages) and mirrors the `brand` group of
   // `/admin/settings`, so the panel and the admin stay in sync.
-  const PROFILE_COLUMNS = "id, email, name, language, role, status, created_at";
+  const PROFILE_COLUMNS = "id, email, name, language, role, status, email_subscription, created_at";
 
   app.get("/settings", async () => ({ brand: await loadBrandSettings() }));
 
@@ -2435,9 +2435,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.put("/me/profile", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
-    const body = (req.body ?? {}) as { name?: unknown; language?: unknown };
-    if (body.name === undefined && body.language === undefined) {
-      return reply.code(400).send({ error: "Provide a name and/or language." });
+    const body = (req.body ?? {}) as { name?: unknown; language?: unknown; email_subscription?: unknown };
+    if (body.name === undefined && body.language === undefined && body.email_subscription === undefined) {
+      return reply.code(400).send({ error: "Provide a name, language, and/or email_subscription." });
     }
     const sets: string[] = [];
     const params: unknown[] = [];
@@ -2447,6 +2447,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
       params.push(typeof body.name === "string" ? body.name.trim() || null : null);
       sets.push(`name = $${params.length}`);
+    }
+    if (body.email_subscription !== undefined) {
+      if (typeof body.email_subscription !== "boolean") {
+        return reply.code(400).send({ error: "email_subscription must be a boolean." });
+      }
+      params.push(body.email_subscription);
+      sets.push(`email_subscription = $${params.length}`);
     }
     if (body.language !== undefined) {
       // Only languages the operator enabled are accepted, so the selector can
@@ -2464,6 +2471,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       `SELECT ${PROFILE_COLUMNS} FROM users WHERE id = $1`,
       [u.id],
     );
+  });
+
+  // Settings Danger Zone: permanently delete the account. Every dependent row
+  // (keys, logs, transactions, jobs) cascades, and the session cookie is cleared.
+  app.delete("/me/account", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    await query("DELETE FROM users WHERE id = $1", [u.id]);
+    reply.header("set-cookie", [
+      serializeClearedSessionCookie(config.sessionCookieSecure),
+      serializeClearedSessionCookie(config.sessionCookieSecure, SESSION_COOKIE_ADMIN),
+    ]);
+    return { ok: true };
   });
 
   app.get("/me/usage", async (req, reply) => {
