@@ -1555,6 +1555,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     await runDescribedJob(job, job.payload);
   }
 
+  /** Whether a request carries any reference media (image/audio/video). */
+  function hasReferenceMedia(params: Record<string, unknown>): boolean {
+    const arrays = [
+      params.imageUrls,
+      params.image_urls,
+      params.audioUrls,
+      params.audio_urls,
+      params.videoUrls,
+      params.video_urls,
+      params.images,
+    ];
+    return arrays.some((a) => Array.isArray(a) && a.length > 0);
+  }
+
   function buildMusicGen(params: Record<string, unknown>) {
     return {
       gptDescriptionPrompt: (params.gpt_description_prompt ?? params.prompt) as string | undefined,
@@ -2042,7 +2056,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (type === "lyrics" && !body.prompt) {
       return reply.code(400).send({ error: "prompt is required." });
     }
-    if (type === "music" && !body.gpt_description_prompt && !body.prompt) {
+    if (type === "music" && !body.gpt_description_prompt && !body.prompt && !hasReferenceMedia(body)) {
       return reply.code(400).send({ error: "gpt_description_prompt or prompt is required." });
     }
     if (type === "sounds" && !body.prompt) {
@@ -4448,7 +4462,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    if (!body.gpt_description_prompt && !body.prompt) {
+    if (!body.gpt_description_prompt && !body.prompt && !hasReferenceMedia(body)) {
       return reply.code(400).send({ error: "gpt_description_prompt or prompt is required." });
     }
     const model = (body.model as string) || undefined;
@@ -5173,7 +5187,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const inBody = (req.body ?? {}) as Record<string, unknown>;
     const body = translateBodyToMusic(inBody);
-    if (!body.gpt_description_prompt && !body.prompt) {
+    if (!body.gpt_description_prompt && !body.prompt && !hasReferenceMedia(body)) {
       return reply.code(400).send({ error: "prompt is required." });
     }
     const model = (body.model as string) || undefined;
