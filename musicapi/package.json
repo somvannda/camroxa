@@ -31,10 +31,10 @@
     "google-auth-library": "^11.0.2",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.0",
-    "playwright-core": "^1.63.0"
+    "pg": "^8.23.0"
   },
   "devDependencies": {
+    "playwright-core": "^1.63.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^20.14.10",

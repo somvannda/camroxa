@@ -80,6 +80,30 @@ here** — Google blocks automated browsers — so Google accounts must use Mode
 After either mode, auto-refresh mints JWTs from `__client` indefinitely; this is a
 one-time step. `LOGIN_TIMEOUT_MS` (default 5 min) bounds the wait.
 
+## Production (headless Ubuntu server)
+
+**The server never needs a browser.** Capturing `__client` is a one-time step done
+on any machine with a browser; after that, refresh is plain HTTPS (Clerk), so it
+works headless. Seed production one of two ways:
+
+1. **Deploy secret (fully automated).** Put the captured cookie in the deploy
+   secrets as `MUSICAPI_SUNO_CLIENT_COOKIE` (the remote installer writes it to
+   `SUNO_CLIENT_COOKIE`). On a host with **no active accounts**, the server seeds
+   one at boot:
+   - `SUNO_ACCOUNT_LABEL` (default `env-seed`)
+   - `SUNO_DEVICE_ID` (optional)
+   Then `AccountPool.fromDb()` reloads and auto-refresh takes over.
+
+2. **Admin console (manual, one-time).** Add or edit the Suno account and paste the
+   `__client` cookie into the `client_cookie` field (`POST/PATCH /admin/accounts`).
+   It is encrypted at rest; the pool reloads without a restart.
+
+Either way the server persists Clerk's rotated `__client` back to
+`suno_accounts`, so it stays valid for months without further intervention.
+
+> `playwright-core` (used only by the local capture script) is a **devDependency**;
+> production does not install or need it.
+
 ## Config
 
 | Env | Default | Meaning |
