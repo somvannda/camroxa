@@ -2591,6 +2591,53 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
   });
 
+  // Paginated logs for the Logs page: date window + optional endpoint-type
+  // filter, newest first. Mirrors sunoapi.org's server-side pagination.
+  app.get("/me/logs/page", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const q = req.query as { task_id?: string; endpoint?: string; start?: string; end?: string; page?: string; page_size?: string };
+    const clauses: string[] = ["user_id = $1"];
+    const params: unknown[] = [u.id];
+    if (q.task_id && typeof q.task_id === "string" && q.task_id.trim()) {
+      params.push(`%${q.task_id.trim()}%`);
+      clauses.push(`(CAST(task_id AS text) ILIKE $${params.length} OR CAST(id AS text) ILIKE $${params.length})`);
+    }
+    if (q.endpoint && typeof q.endpoint === "string" && q.endpoint.trim()) {
+      const patterns = q.endpoint.split(",").map((p) => p.trim()).filter(Boolean);
+      if (patterns.length > 0) {
+        const orGroup: string[] = [];
+        for (const p of patterns) {
+          params.push(`%${p}%`);
+          orGroup.push(`endpoint ILIKE $${params.length}`);
+        }
+        clauses.push(`(${orGroup.join(" OR ")})`);
+      }
+    }
+    if (typeof q.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(q.start)) {
+      params.push(q.start);
+      clauses.push(`created_at >= $${params.length}::date`);
+    }
+    if (typeof q.end === "string" && /^\d{4}-\d{2}-\d{2}$/.test(q.end)) {
+      params.push(q.end);
+      clauses.push(`created_at < ($${params.length}::date + interval '1 day')`);
+    }
+    const pageSize = Math.min(100, Math.max(1, Number(q.page_size ?? 20) || 20));
+    const requestedPage = Math.max(1, Number(q.page ?? 1) || 1);
+    const where = `WHERE ${clauses.join(" AND ")}`;
+    const totalRow = await queryOne<{ count: string }>(`SELECT count(*)::text AS count FROM usage_logs ${where}`, params);
+    const total = Number(totalRow?.count ?? 0);
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pages);
+    const offset = (page - 1) * pageSize;
+    const rows = await query<Record<string, unknown>>(
+      `SELECT id, endpoint, model, prompt, status, credits_consumed, task_id, result_json, created_at FROM usage_logs ${where} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`,
+      params,
+    );
+    const hydrate = (rs: Record<string, unknown>[]) => rs.map((r) => ({ ...r, clips: normalizeClips(r.result_json) }));
+    return { rows: hydrate(rows), total, page, page_size: pageSize, pages };
+  });
+
   app.get("/me/usage/by-endpoint", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
