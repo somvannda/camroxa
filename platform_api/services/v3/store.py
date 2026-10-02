@@ -6,6 +6,8 @@ from datetime import date, datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
+from platform_api.services.billing_calendar import billing_usage_date
+
 V3_PLAN_SELECT = """
     id, name, price_cents, billing_cycle_days, profile_allowance,
     monthly_song_limit, monthly_credits, daily_credits, is_public, is_active,
@@ -301,6 +303,60 @@ class V3BillingStore:
             period_start,
         )
         return dict(row) if row is not None else None
+
+    async def top_up_period_grant(
+        self,
+        lot_id: UUID,
+        *,
+        target_units: int,
+        expires_at: datetime,
+    ) -> int:
+        """Raise a period-grant lot to ``target_units``; return the units added.
+
+        Used when a user's plan changes mid-period (e.g. Free -> paid on the same
+        day) so the already-minted smaller lot grows to the new plan's grant
+        instead of being skipped. Row-locked, so concurrent callers cannot
+        double-credit: the loser sees ``amount_units >= target_units`` and gets 0.
+        """
+        row = await self._pool.fetchrow(
+            """
+            WITH current AS (
+                SELECT id, amount_units
+                FROM credit_wallet_lots
+                WHERE id = $1
+                FOR UPDATE
+            )
+            UPDATE credit_wallet_lots l
+            SET amount_units = $2,
+                remaining_units = l.remaining_units + ($2 - current.amount_units),
+                expires_at = $3
+            FROM current
+            WHERE l.id = current.id AND current.amount_units < $2
+            RETURNING ($2 - current.amount_units) AS delta_units
+            """,
+            lot_id,
+            target_units,
+            expires_at,
+        )
+        return int(row["delta_units"]) if row is not None else 0
+
+    async def get_web_subscription_period_start(self, user_id: UUID) -> date | None:
+        """Billing-period start of the user's active web (CutLuy) subscription."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT current_period_start
+            FROM web_subscriptions
+            WHERE user_id = $1
+              AND status = 'active'
+              AND current_period_end > NOW()
+            ORDER BY current_period_end DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if row is None or row["current_period_start"] is None:
+            return None
+        return billing_usage_date(row["current_period_start"])
 
     async def find_daily_grant(self, user_id: UUID, period_start: date) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(

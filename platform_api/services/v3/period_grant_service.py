@@ -54,30 +54,70 @@ class PeriodGrantService:
                 "plan_id": plan["id"],
             }
 
-        period_start = billing_today()
-        if self._plan_repo is not None:
-            ctx = await self._plan_repo.get_user_active_subscription_context(user_id)
-            if ctx is not None:
-                from platform_api.services.billing_period_service import period_start_for_subscription
-
-                period_start = period_start_for_subscription(
-                    plan=ctx.plan,
-                    activated_at=ctx.activated_at,
-                )
-
-        existing = await self._store.find_period_grant(user_id, period_start)
-        if existing is not None:
-            return {
-                "granted": False,
-                "reason": "already_granted",
-                "user_id": str(user_id),
-                "plan_id": plan["id"],
-                "period_start": period_start.isoformat(),
-            }
-
         units = credits_to_units(monthly)
         cycle_days = int(plan.get("billing_cycle_days") or 30)
         expires_at = datetime.now(timezone.utc) + timedelta(days=max(1, cycle_days))
+
+        # Anchor the period to the real subscription when we can. CutLuy web
+        # subscribers have no license row, so fall back to their web_subscriptions
+        # period; otherwise a same-day plan change collapses onto the calendar date.
+        period_start = billing_today()
+        ctx = None
+        if self._plan_repo is not None:
+            ctx = await self._plan_repo.get_user_active_subscription_context(user_id)
+        if ctx is not None:
+            from platform_api.services.billing_period_service import period_start_for_subscription
+
+            period_start = period_start_for_subscription(
+                plan=ctx.plan,
+                activated_at=ctx.activated_at,
+            )
+        else:
+            web_period_start = await self._store.get_web_subscription_period_start(user_id)
+            if web_period_start is not None:
+                period_start = web_period_start
+
+        existing = await self._store.find_period_grant(user_id, period_start)
+        if existing is not None:
+            # A smaller lot for this period means the user changed plan mid-period
+            # (e.g. Free -> paid on the same day). Grow it to the new plan's grant
+            # instead of silently skipping the upgrade.
+            delta_units = 0
+            if int(existing.get("amount_units") or 0) < units:
+                delta_units = await self._store.top_up_period_grant(
+                    existing["id"],
+                    target_units=units,
+                    expires_at=expires_at,
+                )
+            if delta_units <= 0:
+                return {
+                    "granted": False,
+                    "reason": "already_granted",
+                    "user_id": str(user_id),
+                    "plan_id": plan["id"],
+                    "period_start": period_start.isoformat(),
+                }
+            await self._credit_repo.add_credits(
+                user_id,
+                delta_units,
+                reason="v3_period_grant",
+                ref_id=f"grant:{user_id}:{period_start.isoformat()}",
+            )
+            return {
+                "granted": True,
+                "reason": "grant_upgraded",
+                "user_id": str(user_id),
+                "plan_id": plan["id"],
+                "credits": units_to_credits(delta_units),
+                "amount_units": delta_units,
+                "period_start": period_start.isoformat(),
+                "expires_at": expires_at.isoformat(),
+                "lot_id": str(existing["id"]),
+                "balance_credits": units_to_credits(
+                    int(await self._credit_repo.get_balance(user_id))
+                ),
+            }
+
         lot = await self._store.insert_lot_if_absent(
             user_id=user_id,
             tag="grant",

@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from platform_api.services.billing_calendar import billing_today
 from platform_api.services.credit_units import credits_to_units
 from platform_api.services.v3.period_grant_service import PeriodGrantService
 
@@ -61,6 +62,8 @@ class FakeStore:
         return None
 
     async def insert_lot(self, **kwargs) -> dict:
+        if "remaining_units" not in kwargs:
+            kwargs["remaining_units"] = kwargs["amount_units"]
         lot = {"id": uuid4(), **kwargs}
         self.lots.append(lot)
         return lot
@@ -74,6 +77,22 @@ class FakeStore:
         if tag == "grant" and await self.find_period_grant(user_id, period_start):
             return None
         return await self.insert_lot(**kwargs)
+
+    async def top_up_period_grant(self, lot_id, *, target_units: int, expires_at) -> int:
+        for lot in self.lots:
+            if lot["id"] != lot_id:
+                continue
+            delta = target_units - int(lot["amount_units"])
+            if delta <= 0:
+                return 0
+            lot["amount_units"] = target_units
+            lot["remaining_units"] = int(lot["remaining_units"]) + delta
+            lot["expires_at"] = expires_at
+            return delta
+        return 0
+
+    async def get_web_subscription_period_start(self, user_id: UUID) -> date | None:
+        return None
 
     async def expired_grant_lots(self, user_id: UUID | None = None) -> list[dict]:
         return []
@@ -209,3 +228,56 @@ async def test_period_grant_does_not_credit_when_lot_insert_fails() -> None:
         await service.ensure_period_grant(USER_ID)
     assert wallet.balance == 0
     assert wallet.txs == []
+
+
+@pytest.mark.asyncio
+async def test_period_grant_anchors_to_web_subscription_period() -> None:
+    """CutLuy web subscribers have no license; anchor the period to their subscription."""
+    wallet = FakeWallet()
+    store = FakeStore(_paid_plan())
+    store.license_plan = None
+    anchor = date(2026, 9, 1)
+
+    async def web_period(user_id: UUID) -> date:
+        return anchor
+
+    store.get_web_subscription_period_start = web_period  # type: ignore[method-assign]
+    service = PeriodGrantService(store=store, credit_repo=wallet)
+
+    result = await service.ensure_period_grant(USER_ID)
+    assert result["granted"] is True
+    assert result["period_start"] == anchor.isoformat()
+    assert store.lots[0]["period_start"] == anchor
+
+
+@pytest.mark.asyncio
+async def test_period_grant_tops_up_smaller_same_period_lot() -> None:
+    """Free -> paid on the same day grows the existing grant instead of skipping it."""
+    wallet = FakeWallet(balance=credits_to_units(50))
+    store = FakeStore(_paid_plan())
+    store.license_plan = None
+    period_start = billing_today()
+    store.lots.append(
+        {
+            "id": uuid4(),
+            "user_id": USER_ID,
+            "tag": "grant",
+            "amount_units": credits_to_units(50),
+            "remaining_units": credits_to_units(50),
+            "expires_at": None,
+            "period_start": period_start,
+        }
+    )
+    service = PeriodGrantService(store=store, credit_repo=wallet)
+
+    result = await service.ensure_period_grant(USER_ID)
+    assert result["granted"] is True
+    assert result["reason"] == "grant_upgraded"
+    assert result["credits"] == 950
+    assert wallet.balance == credits_to_units(1000)
+    assert store.lots[0]["amount_units"] == credits_to_units(1000)
+
+    again = await service.ensure_period_grant(USER_ID)
+    assert again["granted"] is False
+    assert again["reason"] == "already_granted"
+    assert wallet.balance == credits_to_units(1000)
