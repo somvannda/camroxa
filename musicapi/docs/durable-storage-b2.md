@@ -41,8 +41,10 @@ and `MUSICAPI_B2_*` wins when set (so it can point at its own bucket/key later).
 `storageConfigured()` is true only when endpoint + bucket + key id + secret are all
 present. Unconfigured ⇒ everything degrades to today's live-Suno behaviour.
 
-Deploy plumbing: emit these from `camxora-musicapi-remote.sh` into `musicapi/.env`
-(same pattern as `CHMABA_*`). Per project rules, edit the secrets file, not the host.
+Deploy plumbing (**done**): `scripts/deploy/camxora-musicapi-remote.sh` now emits
+`MUSICAPI_B2_*` into `musicapi/.env`, falling back to the `PLATFORM_STREAMING_B2_*`
+values already sourced from the host secrets file — so storage activates on deploy
+without a manual `.env` edit. Per project rules, edit the secrets file, not the host.
 
 ## Key layout
 
@@ -81,4 +83,7 @@ musicapi/images/<clipId>.<ext>  # cover art (jpg/png/webp)
 - [ ] Point `MUSICAPI_B2_PUBLIC_BASE_URL` at Cloudflare in front of B2 for free
       egress + public CDN URLs (currently presigned B2 URLs).
 - [ ] Optional: mirror WAV (only MP3 is ingested today) and separated stem outputs.
-- [ ] Finish the 3 `/api/file-*-upload` convenience endpoints on top of this layer.
+- [x] `/api/file-base64-upload`, `/api/file-url-upload`, `/api/file-stream-upload` —
+      free, authenticated file uploads stored under `musicapi/uploads/<uploadPath>/`,
+      100MB cap, `{success,code,msg,data:{fileName,filePath,downloadUrl,fileSize,mimeType,uploadedAt}}`
+      response matching sunoapi.org's File Upload API.

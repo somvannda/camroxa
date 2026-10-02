@@ -19,6 +19,7 @@
     "@aws-sdk/s3-request-presigner": "^3.1145.0",
     "@fastify/cors": "^11.3.0",
     "@fastify/helmet": "^13.1.1",
+    "@fastify/multipart": "^10.1.2",
     "@fastify/rate-limit": "^11.2.0",
     "bakong-khqr-npm": "^1.0.0",
     "bcryptjs": "^3.0.3",

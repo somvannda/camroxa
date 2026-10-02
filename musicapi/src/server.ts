@@ -2,6 +2,7 @@ import Fastify, { FastifyInstance, FastifyRequest, FastifyReply, FastifyServerOp
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import multipart from "@fastify/multipart";
 import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
@@ -365,7 +366,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   const credentialOrigins = [...config.frontendOrigins, ...config.apiCorsOrigins];
   await app.register(cors, {
     delegator: (req, cb) => {
-      const isPublicApi = req.url.startsWith("/v1/") || req.url.startsWith("/api/v1/");
+      const isPublicApi =
+        req.url.startsWith("/v1/") ||
+        req.url.startsWith("/api/v1/") ||
+        req.url.startsWith("/api/file-");
       cb(null, isPublicApi ? { origin: "*" } : { origin: credentialOrigins, credentials: true });
     },
   });
@@ -377,6 +381,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     global: true,
     max: config.rateLimit.max,
     timeWindow: config.rateLimit.windowMs,
+  });
+
+  // sunoapi.org File Upload API is multipart/form-data (`/api/file-stream-upload`).
+  // 100MB cap to match the documented limit; only one file per request.
+  await app.register(multipart, {
+    limits: { fileSize: 100 * 1024 * 1024, files: 1 },
   });
 
   const jobs = new Map<string, Job>();
@@ -5991,6 +6001,163 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const blob = JSON.stringify(job.result ?? {});
     const available = job.status === "complete" && /voice[_-]?id|persona[_-]?id/i.test(blob);
     return { code: 200, msg: "success", data: { taskId: id, available } };
+  });
+
+  // ============================================================
+  // File Upload API (sunoapi.org /api/file-*) — free, temporary media
+  // ============================================================
+  const MIME_EXT: Record<string, string> = {
+    "image/png": "png",
+    "image/jpeg": "jpg",
+    "image/jpg": "jpg",
+    "image/webp": "webp",
+    "image/gif": "gif",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "video/mp4": "mp4",
+    "application/pdf": "pdf",
+    "text/plain": "txt",
+  };
+
+  function extensionFor(mimeType: string, fileName?: string): string {
+    if (fileName && /\.[a-z0-9]{1,5}$/i.test(fileName)) {
+      return fileName.split(".").pop()!.toLowerCase();
+    }
+    return MIME_EXT[mimeType] ?? "bin";
+  }
+
+  async function storeUploadedFile(
+    buffer: Buffer,
+    opts: { uploadPath: string; fileName?: string; mimeType: string },
+  ) {
+    const segments = opts.uploadPath
+      .split("/")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const safeName =
+      opts.fileName && opts.fileName.trim()
+        ? opts.fileName.trim().replace(/[^a-zA-Z0-9._-]+/g, "_")
+        : `upload-${randomUUID()}.${extensionFor(opts.mimeType)}`;
+    const key = objectKey("uploads", ...segments, safeName);
+    await putObject(key, buffer, opts.mimeType);
+    return {
+      fileName: safeName,
+      filePath: [...segments, safeName].join("/"),
+      downloadUrl: await getReadUrl(key),
+      fileSize: buffer.length,
+      mimeType: opts.mimeType,
+      uploadedAt: new Date().toISOString(),
+    };
+  }
+
+  function uploadOk(reply: FastifyReply, data: unknown) {
+    return reply.code(200).send({ success: true, code: 200, msg: "File uploaded successfully", data });
+  }
+  function uploadErr(reply: FastifyReply, code: number, msg: string) {
+    return reply.code(code).send({ success: false, code, msg });
+  }
+  function storageUnavailable(reply: FastifyReply) {
+    return uploadErr(reply, 503, "File storage is not configured.");
+  }
+
+  // POST /api/file-base64-upload { base64Data, uploadPath, fileName? }
+  app.post("/api/file-base64-upload", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    if (!storageConfigured()) return storageUnavailable(reply);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const raw = typeof body.base64Data === "string" ? body.base64Data : "";
+    const uploadPath = typeof body.uploadPath === "string" ? body.uploadPath.trim() : "";
+    const fileName = typeof body.fileName === "string" ? body.fileName : undefined;
+    if (!raw) return uploadErr(reply, 400, "base64Data is required.");
+    if (!uploadPath) return uploadErr(reply, 400, "uploadPath is required.");
+    let mimeType = "application/octet-stream";
+    let encoded = raw;
+    const dataUrl = raw.match(/^data:([^;]+);base64,(.*)$/s);
+    if (dataUrl) {
+      mimeType = dataUrl[1];
+      encoded = dataUrl[2];
+    }
+    let buffer: Buffer;
+    try {
+      buffer = Buffer.from(encoded, "base64");
+    } catch {
+      return uploadErr(reply, 400, "Invalid base64 data.");
+    }
+    if (buffer.length === 0) return uploadErr(reply, 400, "Decoded file is empty.");
+    if (buffer.length > 100 * 1024 * 1024) return uploadErr(reply, 400, "File exceeds the 100MB limit.");
+    try {
+      return uploadOk(reply, await storeUploadedFile(buffer, { uploadPath, fileName, mimeType }));
+    } catch (e) {
+      return uploadErr(reply, 500, e instanceof Error ? e.message : "Upload failed.");
+    }
+  });
+
+  // POST /api/file-url-upload { fileUrl, uploadPath, fileName? }
+  app.post("/api/file-url-upload", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    if (!storageConfigured()) return storageUnavailable(reply);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const fileUrl = typeof body.fileUrl === "string" ? body.fileUrl : "";
+    const uploadPath = typeof body.uploadPath === "string" ? body.uploadPath.trim() : "";
+    let fileName = typeof body.fileName === "string" ? body.fileName : undefined;
+    if (!/^https?:\/\//i.test(fileUrl)) return uploadErr(reply, 400, "fileUrl must be an http(s) URL.");
+    if (!uploadPath) return uploadErr(reply, 400, "uploadPath is required.");
+    let resp: Response;
+    try {
+      resp = await fetch(fileUrl, { signal: AbortSignal.timeout(30_000), redirect: "follow" });
+    } catch {
+      return uploadErr(reply, 400, "Failed to download fileUrl.");
+    }
+    if (!resp.ok) return uploadErr(reply, 400, `Failed to download fileUrl (${resp.status}).`);
+    const bytes = Buffer.from(await resp.arrayBuffer());
+    if (bytes.length > 100 * 1024 * 1024) return uploadErr(reply, 400, "File exceeds the 100MB limit.");
+    const mimeType = (resp.headers.get("content-type") || "application/octet-stream").split(";")[0].trim();
+    if (!fileName) fileName = decodeURIComponent(fileUrl.split("/").pop() || "") || undefined;
+    try {
+      return uploadOk(reply, await storeUploadedFile(bytes, { uploadPath, fileName, mimeType }));
+    } catch (e) {
+      return uploadErr(reply, 500, e instanceof Error ? e.message : "Upload failed.");
+    }
+  });
+
+  // POST /api/file-stream-upload (multipart/form-data: file, uploadPath, fileName?)
+  app.post("/api/file-stream-upload", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    if (!storageConfigured()) return storageUnavailable(reply);
+    if (!req.isMultipart || !req.isMultipart()) {
+      return uploadErr(reply, 400, "multipart/form-data is required.");
+    }
+    let fileBuffer: Buffer | null = null;
+    let mimeType = "application/octet-stream";
+    let originalName: string | undefined;
+    let uploadPath = "";
+    let fileName: string | undefined;
+    for await (const part of req.parts()) {
+      if (part.type === "file") {
+        mimeType = part.mimetype || mimeType;
+        originalName = part.filename;
+        fileBuffer = await part.toBuffer();
+      } else if (part.fieldname === "uploadPath") {
+        uploadPath = String(part.value ?? "").trim();
+      } else if (part.fieldname === "fileName") {
+        fileName = String(part.value ?? "").trim() || undefined;
+      }
+    }
+    if (!fileBuffer || fileBuffer.length === 0) return uploadErr(reply, 400, "file is required.");
+    if (!uploadPath) return uploadErr(reply, 400, "uploadPath is required.");
+    try {
+      return uploadOk(
+        reply,
+        await storeUploadedFile(fileBuffer, { uploadPath, fileName: fileName || originalName, mimeType }),
+      );
+    } catch (e) {
+      return uploadErr(reply, 500, e instanceof Error ? e.message : "Upload failed.");
+    }
   });
 
   // ============================================================

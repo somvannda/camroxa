@@ -145,10 +145,14 @@ Shipped in `src/server.ts` + `src/models.ts`:
 
 Still open:
 
-- [ ] **§C file upload API** — `/api/file-base64-upload`, `/api/file-stream-upload`,
-      `/api/file-url-upload` (deferred to the storage/B2 step, which gives us somewhere to put bytes).
 - [ ] **§D callbacks** — confirm/align the `text`/`first`/`complete` callback payload fields.
 - [ ] **§E models** — confirm `V6_MINI`/`V6_WILD` Suno keys.
 - [ ] **§G contract test** — add the new paths to `scripts/smoke-test-reachability.ts` and/or a
       generated OpenAPI diff test.
+
+Done since §I was first written:
+
+- [x] **§C file upload API** — `/api/file-base64-upload`, `/api/file-url-upload`,
+      `/api/file-stream-upload` via `@fastify/multipart`, stored on B2 under `musicapi/uploads/`
+      (sunoapi.org's `{success,code,msg,data}` envelope; CORS treats `/api/file-*` as public).
 - [ ] Commit (not yet — awaiting explicit go-ahead per project ship gates).
