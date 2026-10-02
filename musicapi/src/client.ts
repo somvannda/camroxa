@@ -445,16 +445,34 @@ export class SunoClient {
   }
 
   /** Replace a time section of a clip. */
-  async replaceSection(clipId: string, params: { startS: number; endS: number; lyrics: string }): Promise<Clip[]> {
-    return this.submitClips("/api/generate/v2-web/", {
+  async replaceSection(
+    clipId: string,
+    params: {
+      startS: number;
+      endS: number;
+      lyrics: string;
+      model?: string;
+      prompt?: string;
+      tags?: string;
+      title?: string;
+      negativeTags?: string;
+      vocalGender?: string;
+      styleWeight?: number;
+      weirdnessConstraint?: number;
+      audioWeight?: number;
+      personaId?: string;
+      personaModel?: string;
+    },
+  ): Promise<Clip[]> {
+    const payload: Record<string, unknown> = {
       task: "infill",
       generation_type: "TEXT",
-      mv: config.model,
+      mv: params.model ?? config.model,
       prompt: params.lyrics,
-      gpt_description_prompt: params.lyrics,
-      tags: "",
-      title: "",
-      negative_tags: "",
+      gpt_description_prompt: params.prompt ?? params.lyrics,
+      tags: params.tags ?? "",
+      title: params.title ?? "",
+      negative_tags: params.negativeTags ?? "",
       continue_clip_id: clipId,
       infill_context_start_s: params.startS,
       infill_context_end_s: params.endS,
@@ -463,7 +481,17 @@ export class SunoClient {
       infill_dur_s: params.endS - params.startS,
       infill_lyrics: params.lyrics,
       continued_aligned_prompt: params.lyrics,
-    });
+    };
+    if (params.vocalGender) payload.vocal_gender = params.vocalGender;
+    if (params.styleWeight != null) payload.style_weight = params.styleWeight;
+    if (params.weirdnessConstraint != null) payload.weirdness_constraint = params.weirdnessConstraint;
+    if (params.audioWeight != null) payload.audio_weight = params.audioWeight;
+    if (params.personaId) {
+      payload.persona_id = params.personaId;
+      payload.artist_clip_id = params.personaId;
+      payload.persona_model = params.personaModel ?? "style_persona";
+    }
+    return this.submitClips("/api/generate/v2-web/", payload);
   }
 
   /**

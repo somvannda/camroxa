@@ -2221,8 +2221,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.endpoint = "replace_section";
     job.credits = cost;
     job.prompt = lyrics;
+    const num = (v: unknown): number | undefined => (v != null && v !== "" ? Number(v) : undefined);
     void runClipJobWithRetry(job, (client) =>
-      client.replaceSection(clipId, { startS, endS, lyrics }),
+      client.replaceSection(clipId, {
+        startS,
+        endS,
+        lyrics,
+        model: body.model as string | undefined,
+        prompt: body.prompt as string | undefined,
+        tags: body.tags as string | undefined,
+        title: body.title as string | undefined,
+        negativeTags: (body.negativeTags ?? body.negative_tags) as string | undefined,
+        vocalGender: (body.vocalGender ?? body.vocal_gender) as string | undefined,
+        styleWeight: num(body.styleWeight ?? body.style_weight),
+        weirdnessConstraint: num(body.weirdnessConstraint ?? body.weirdness_constraint),
+        audioWeight: num(body.audioWeight ?? body.audio_weight),
+        personaId: (body.personaId ?? body.persona_id) as string | undefined,
+        personaModel: (body.personaModel ?? body.persona_model) as string | undefined,
+      }),
     );
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
