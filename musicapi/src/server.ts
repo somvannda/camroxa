@@ -1128,6 +1128,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // Re-check at the sink as well: a public hostname accepted earlier can be
       // re-pointed at an internal address before the job finishes (DNS rebinding).
       await assertCallbackUrlAllowed(job.callbackUrl);
+      // sunoapi.org's callback envelope: {code,msg,data:{callbackType,task_id,data[]}}.
+      // Our jobs finalize atomically, so we emit one terminal callback ("complete"
+      // or "error") rather than their intermediate text/first stages.
+      const tracks: Array<Record<string, unknown>> = [];
+      collectClipObjects(job.result, tracks);
+      const ok = job.status === "complete";
+      const payload = {
+        code: ok ? 200 : 400,
+        msg: ok ? "All generated successfully." : (job.error || "Music generation failed"),
+        data: {
+          callbackType: ok ? "complete" : "error",
+          task_id: job.id,
+          data: ok ? tracks.map(sunoTrack) : null,
+        },
+      };
       await fetch(job.callbackUrl, {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -1135,14 +1150,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         // bypass the check above.
         redirect: "manual",
         signal: AbortSignal.timeout(10_000),
-        body: JSON.stringify({
-          job_id: job.id,
-          type: job.type,
-          status: job.status,
-          account_id: job.accountId,
-          result: job.result,
-          error: job.error,
-        }),
+        body: JSON.stringify(payload),
       });
     } catch {
       // callback failures are non-fatal
