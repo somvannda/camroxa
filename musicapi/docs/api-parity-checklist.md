@@ -143,16 +143,21 @@ Shipped in `src/server.ts` + `src/models.ts`:
 - [x] Verified: `npm run typecheck` clean; all 18 new routes present via `app.hasRoute`, no
       duplicate-route conflicts at `ready()`.
 
-Still open:
-
-- [ ] **§D callbacks** — confirm/align the `text`/`first`/`complete` callback payload fields.
-- [ ] **§E models** — confirm `V6_MINI`/`V6_WILD` Suno keys.
-- [ ] **§G contract test** — add the new paths to `scripts/smoke-test-reachability.ts` and/or a
-      generated OpenAPI diff test.
-
 Done since §I was first written:
 
 - [x] **§C file upload API** — `/api/file-base64-upload`, `/api/file-url-upload`,
-      `/api/file-stream-upload` via `@fastify/multipart`, stored on B2 under `musicapi/uploads/`
-      (sunoapi.org's `{success,code,msg,data}` envelope; CORS treats `/api/file-*` as public).
+      `/api/file-stream-upload` via `@fastify/multipart`, stored on B2 under `musicapi/uploads/`.
+- [x] **§D callbacks** — `notify()` now emits `{code,msg,data:{callbackType,task_id,data[]}}`.
+- [x] **§E models** — live-verified: V6=`chirp-hawk`, V6-WILD=`chirp-hawk-wild`,
+      V6-MINI=`chirp-goose`; `normalizeModel` maps them.
+- [x] **§G contract test** — `npm run test:contract` asserts all 37 sunoapi.org paths (37/37).
+- [x] **Reference media** — image/audio/video wired into the API + playground and
+      **live-verified** (image & audio use `user_uploaded_*_ids` + `task:"agentic_thinking"`;
+      video extracts a frame via `ffmpeg-static`).
+
+Still open:
+
+- [ ] Live success path through the public `/api/v1/generate` (imageUrls/audioUrls) once the
+      durable `__client` cookie is seeded.
+- [ ] Production secret seeding (`MUSICAPI_SUNO_CLIENT_COOKIE`).
 - [ ] Commit (not yet — awaiting explicit go-ahead per project ship gates).
