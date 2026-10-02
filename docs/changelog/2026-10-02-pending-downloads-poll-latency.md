@@ -52,6 +52,31 @@ Item 2 reintroduced the exact anti-pattern the 2026-08-02 capacity fix removed f
 Debounced/inflight guards prevent frequent desktop polls from stampeding Suno or the
 DB, and per-process state mirrors the existing dead-download-probe pattern.
 
+## Second blocker — dead `audiostream.api.box` stream host
+
+Once polls were answered again, the client started downloading — but a subset of
+tracks resolved to `https://audiostream.api.box/stream/<id>.mp3`, which now
+answers `200 audio/mpeg` with a **0-byte body**, so those never completed.
+
+A previous production hotfix (`apply_suno_stream_host_and_recover_production.py`)
+had deliberately preferred that host over `tempfile.aiquickdraw.com`. That is no
+longer true. The same clip id serves a healthy MP3 from the tempfile sibling
+(verified 3.6–5.6 MB for the failing ids).
+
+Fix:
+
+- `platform_api/clients/suno_client.py` — `prefer_suno_mpeg_cdn_url` rewrites any
+  `audiostream.api.box` URL to `https://tempfile.aiquickdraw.com/r/<id>.mp3`
+  (clip id parsed from the path or taken from `audio_id`). This is the shared
+  normalizer used by the pending list, the redownload plan, and server-side B2
+  archiving, so existing rows are fixed without a data migration and new
+  callbacks stop storing the dead host.
+- `platform_api/services/suno_audio_resolver.py` — `audiostream.api.box` added to
+  `_DISALLOWED_URL_MARKERS` (same precedent as `musicfile.removeai.ai`, which also
+  returns `200 audio/mp3` with 0 bytes).
+
+No desktop rebuild is required — the client just receives working URLs.
+
 ## Tests
 
 `platform_api/tests/test_pending_downloads_latency.py`:
@@ -62,11 +87,15 @@ DB, and per-process state mirrors the existing dead-download-probe pattern.
   inside the budget with an empty/partial map.
 - `test_pending_b2_resolution_returns_urls` — asserts the concurrent happy path.
 
+Stream-host rewrite:
+
+- `test_suno_clip_download_url.py::test_prefers_real_mp3_over_dead_stream_host`
+- `test_suno_clip_download_url.py::test_stream_host_only_synthesizes_tempfile`
+- `test_suno_audio_resolver.py::test_prefer_suno_mpeg_cdn_url_rewrites_dead_stream_host`
+
 ```
-python -m pytest tests/test_pending_downloads_latency.py -q
-# 3 passed
+python -m pytest tests/test_pending_downloads_latency.py tests/test_suno_clip_download_url.py tests/test_suno_audio_resolver.py -q
 python -m pytest tests -q -k "batch or download or progress or reconcile or suno or image_job or history"
-# 451 passed
 ```
 
 ## Deploy

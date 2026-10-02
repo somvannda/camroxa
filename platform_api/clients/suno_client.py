@@ -279,6 +279,19 @@ _SUNO_CDN_HOST_MARKERS = ("cdn1.suno.ai", "cdn2.suno.ai", "cdn.suno.ai")
 _SIGNED_CDN_QUERY_MARKERS = ("key-pair-id=", "signature=", "policy=")
 _TEMPFILE_AUDIO_PREFIX = "https://tempfile.aiquickdraw.com/r/"
 _NON_MPEG_CDN_SUFFIXES = (".m4a", ".mp4", ".webm", ".opus", ".aac")
+# Reseller "durable" stream host. It now answers 200 audio/mpeg with a 0-byte
+# body, so it must be rewritten to the working ``tempfile`` sibling (same clip id).
+_STREAM_HOST_MARKER = "audiostream.api.box"
+
+
+def _stream_host_clip_id(url: str) -> str:
+    """Clip id from ``audiostream.api.box/stream/<id>.mp3`` ('' when absent)."""
+    from urllib.parse import urlsplit
+
+    name = (urlsplit(str(url or "")).path or "").rstrip("/").rsplit("/", 1)[-1]
+    if "." in name:
+        name = name.rsplit(".", 1)[0]
+    return name.strip()
 
 
 def _suno_cdn_clip_id(url: str) -> str:
@@ -336,6 +349,14 @@ def prefer_suno_mpeg_cdn_url(url: str, audio_id: str | None = None) -> str:
     text = str(url or "").strip()
     if not text.startswith(("http://", "https://")):
         return tempfile_url_for_suno_audio_id(audio_id)
+    if _STREAM_HOST_MARKER in (urlsplit(text).netloc or "").lower():
+        # The stream host is dead (empty 200s). Use the real-MP3 sibling keyed by
+        # the same clip id so existing rows and fresh callbacks stay downloadable.
+        clip = str(audio_id or "").strip()
+        if not clip or clip.startswith(("http://", "https://")):
+            clip = _stream_host_clip_id(text)
+        sibling = tempfile_url_for_suno_audio_id(clip)
+        return sibling or text
     if is_unsigned_suno_cdn_url(text):
         clip = str(audio_id or "").strip()
         if not clip or clip.startswith(("http://", "https://")):
