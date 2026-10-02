@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-02] — Paid plan fulfillment connection fix
+
+### Fixed
+
+- Paid plan checkouts were marked `paid` but never fulfilled: `_fulfill_paid_payment()` passed an acquired `asyncpg.Connection` to `CreditRepository`, whose `add_credits`/`atomic_deduct`/`refund` called `pool.acquire()`. The new `ensure_period_grant()` step raised `AttributeError` → billing webhook 500 → license never activated → desktop "Upgrade required". `CreditRepository` now reuses an injected connection. See `docs/changelog/2026-10-02-billing-fulfillment-connection-period-grant.md`.
+
 ## [2026-09-22] — API v3 production cutover (executed)
 
 ### Changed

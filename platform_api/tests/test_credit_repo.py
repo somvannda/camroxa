@@ -454,6 +454,52 @@ class TestRefund:
 
 
 # ---------------------------------------------------------------------------
+# Tests: connection-injected repository (billing fulfillment path)
+# ---------------------------------------------------------------------------
+
+
+class TestInjectedConnection:
+    """Repos built on an acquired connection must not require ``pool.acquire``.
+
+    Billing fulfillment passes its transaction connection to ``CreditRepository``
+    (see ``_fulfill_paid_payment``); a connection exposes no ``acquire()``.
+    """
+
+    async def test_add_credits_accepts_connection_without_acquire(
+        self, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 100)
+        conn = FakeConnection(pool)
+        assert not hasattr(conn, "acquire")
+
+        repo = CreditRepository(conn)  # type: ignore[arg-type]
+        new_balance = await repo.add_credits(user_id, 50, "v3_period_grant")
+
+        assert new_balance == 150
+        assert pool._wallets[user_id] == 150
+
+    async def test_atomic_deduct_accepts_connection_without_acquire(
+        self, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 100)
+        repo = CreditRepository(FakeConnection(pool))  # type: ignore[arg-type]
+
+        assert await repo.atomic_deduct(user_id, 40, "generation") is True
+        assert pool._wallets[user_id] == 60
+
+    async def test_refund_accepts_connection_without_acquire(
+        self, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 100)
+        repo = CreditRepository(FakeConnection(pool))  # type: ignore[arg-type]
+
+        new_balance = await repo.refund(user_id, 25, "failed_task")
+
+        assert new_balance == 125
+        assert pool._wallets[user_id] == 125
+
+
+# ---------------------------------------------------------------------------
 # Tests: get_transactions
 # ---------------------------------------------------------------------------
 
