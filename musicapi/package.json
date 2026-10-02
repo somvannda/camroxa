@@ -10,6 +10,7 @@
     "generate": "tsx src/index.ts generate",
     "serve": "tsx src/serve.ts",
     "suno:login": "tsx scripts/suno-login.ts",
+    "test:contract": "tsx scripts/smoke-test-sunoapi-contract.ts",
     "build": "tsc",
     "start": "node dist/serve.js",
     "typecheck": "tsc --noEmit"
