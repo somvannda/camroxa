@@ -273,6 +273,7 @@ export default function PlaygroundPage() {
   const [negativeTags, setNegativeTags] = useState("");
   const [instrumental, setInstrumental] = useState(false);
   const [refImages, setRefImages] = useState<string[]>([]);
+  const [audioUrl, setAudioUrl] = useState("");
 
   const [grabLyrics, setGrabLyrics] = useState(false);
   const [soundLoop, setSoundLoop] = useState(false);
@@ -402,6 +403,7 @@ export default function PlaygroundPage() {
           body.instrumental = instrumental;
         }
         if (refImages.length) body.images = refImages;
+        if (audioUrl.trim()) body.audioUrls = [audioUrl.trim()];
       }
       setLastBody(body);
       const created = await apiFetch<{ job_id: string }>("/me/generate", {
@@ -540,6 +542,20 @@ export default function PlaygroundPage() {
                   </div>
                 )}
                 <div className="mt-1 text-[11px] text-white/30">JPEG / JPG / PNG / WEBP · Max 10MB</div>
+              </div>
+
+              {/* Reference audio — Suno upload → cover (melody retained) */}
+              <div>
+                <div className="mb-1.5 text-xs font-medium text-white/50">Reference Audio URL (Optional)</div>
+                <input
+                  value={audioUrl}
+                  onChange={(e) => setAudioUrl(e.target.value)}
+                  placeholder="https://…/song.mp3"
+                  className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
+                />
+                <div className="mt-1 text-[11px] text-white/30">
+                  Suno re-arranges the track in your style, keeping its melody.
+                </div>
               </div>
 
               {/* Custom mode fields */}

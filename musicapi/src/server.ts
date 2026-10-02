@@ -1644,6 +1644,62 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /** Reference audio URLs from a request body (camelCase or snake_case). */
+  function referenceAudioUrls(params: Record<string, unknown>): string[] {
+    const raw = params.audioUrls ?? params.audio_urls;
+    return Array.isArray(raw)
+      ? raw.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u))
+      : [];
+  }
+
+  /** Fetch a reference audio URL and upload it to Suno, returning the resulting
+   *  upload clip id (used as a cover source — Suno retains the melody). */
+  async function uploadReferenceAudio(client: SunoClient, url: string): Promise<string> {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: "follow" });
+    if (!resp.ok) throw new Error(`reference audio fetch failed (${resp.status})`);
+    const ct = (resp.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    if (!ct.startsWith("audio/") && !ct.includes("octet-stream")) {
+      throw new Error(`reference URL is not audio (${ct || "unknown"})`);
+    }
+    const ext = ct.includes("wav") ? "wav" : ct.includes("ogg") ? "ogg" : ct.includes("flac") ? "flac" : ct.includes("mp4") ? "m4a" : "mp3";
+    const bytes = Buffer.from(await resp.arrayBuffer());
+    if (bytes.length > 50 * 1024 * 1024) throw new Error("reference audio exceeds 50MB");
+    const session = await client.createAudioUpload({ extension: ext, uploadType: "file_upload" });
+    const form = new FormData();
+    for (const [k, v] of Object.entries(session.fields)) form.append(k, v);
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: session.fields["Content-Type"] || ct }), `${session.id}.${ext}`);
+    const up = await fetch(session.url, { method: "POST", body: form });
+    if (!up.ok && up.status !== 204) throw new Error(`audio S3 upload failed (${up.status})`);
+    await client.registerAudioUpload(session.id, { uploadType: "file_upload", uploadFilename: `upload.${ext}` });
+    const status = await client.getAudioUploadStatus(session.id, 90_000);
+    if (!status.clip_id) throw new Error(`audio upload produced no clip (status=${status.status})`);
+    return status.clip_id;
+  }
+
+  /** Music submit from a reference audio (upload → cover, melody retained). */
+  function processMusicSubmitWithAudio(params: Record<string, unknown>, audioUrls: string[]) {
+    const gen = buildMusicGen(params);
+    return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
+      const uploadedClipId = await uploadReferenceAudio(client, audioUrls[0]);
+      return client.uploadCoverMusic({
+        uploadedClipId,
+        prompt: (gen.prompt ?? gen.gptDescriptionPrompt ?? "") as string,
+        title: gen.title as string | undefined,
+        tags: gen.tags as string | undefined,
+      });
+    };
+  }
+
+  /** Choose the music submit strategy from the request's reference inputs. */
+  function musicSubmitFactory(params: Record<string, unknown>, inlineImages?: string[]) {
+    if (inlineImages && inlineImages.length) return processMusicSubmitWithImageData(params, inlineImages);
+    const imgs = referenceImageUrls(params);
+    if (imgs.length) return processMusicSubmitWithImages(params, imgs);
+    const auds = referenceAudioUrls(params);
+    if (auds.length) return processMusicSubmitWithAudio(params, auds);
+    return processMusicSubmit(params);
+  }
+
   function processSoundsSubmit(params: Record<string, unknown>) {
     const p = {
       prompt: (params.prompt as string) ?? "",
@@ -2001,13 +2057,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const imageData = Array.isArray(body.images)
       ? (body.images as unknown[]).filter((d): d is string => typeof d === "string" && d.startsWith("data:image/"))
       : [];
-    const imgUrls = referenceImageUrls(body);
-    const submit = imageData.length
-      ? processMusicSubmitWithImageData(body, imageData)
-      : imgUrls.length
-        ? processMusicSubmitWithImages(body, imgUrls)
-        : processMusicSubmit(body);
-    void runClipJobWithRetry(job, submit, {
+    void runClipJobWithRetry(job, musicSubmitFactory(body, imageData), {
       model: (body.model as string) || undefined,
       policy: mpolicy,
     });
@@ -4350,9 +4400,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
     job.credits = cost;
     const policy = await routingPolicy(model);
-    const imgUrls = referenceImageUrls(body);
-    const submit = imgUrls.length ? processMusicSubmitWithImages(body, imgUrls) : processMusicSubmit(body);
-    void runClipJobWithRetry(job, submit, { model, policy });
+    void runClipJobWithRetry(job, musicSubmitFactory(body), { model, policy });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -5017,6 +5065,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         : Array.isArray(in_.image_urls)
           ? in_.image_urls
           : undefined,
+      audio_urls: Array.isArray(in_.audioUrls)
+        ? in_.audioUrls
+        : Array.isArray(in_.audio_urls)
+          ? in_.audio_urls
+          : undefined,
+      video_urls: Array.isArray(in_.videoUrls)
+        ? in_.videoUrls
+        : Array.isArray(in_.video_urls)
+          ? in_.video_urls
+          : undefined,
     };
     if (customMode) {
       out.prompt = prompt;
@@ -5067,9 +5125,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
     job.credits = cost;
     const policy = await routingPolicy(model);
-    const imgUrls = referenceImageUrls(body);
-    const submit = imgUrls.length ? processMusicSubmitWithImages(body, imgUrls) : processMusicSubmit(body);
-    void runClipJobWithRetry(job, submit, { model, policy });
+    void runClipJobWithRetry(job, musicSubmitFactory(body), { model, policy });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
