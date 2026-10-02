@@ -3481,10 +3481,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     },
   );
 
-  app.get("/updates", async () => {
-    return query<{ id: string; title: string; slug: string; content: string; created_at: string }>(
-      "SELECT id, title, slug, content, created_at FROM blog_posts WHERE published = true ORDER BY created_at DESC",
+  app.get("/updates", async (req) => {
+    const q = (req.query ?? {}) as { q?: string; page?: string; page_size?: string };
+    const pageSize = Math.min(50, Math.max(1, Number(q.page_size ?? 20) || 20));
+    const requestedPage = Math.max(1, Number(q.page ?? 1) || 1);
+    const clauses = ["published = true"];
+    const params: unknown[] = [];
+    if (q.q && typeof q.q === "string" && q.q.trim()) {
+      params.push(`%${q.q.trim()}%`);
+      clauses.push(`(title ILIKE $${params.length} OR content ILIKE $${params.length})`);
+    }
+    const where = `WHERE ${clauses.join(" AND ")}`;
+    const totalRow = await queryOne<{ count: string }>(`SELECT count(*)::text AS count FROM blog_posts ${where}`, params);
+    const total = Number(totalRow?.count ?? 0);
+    const pages = Math.max(1, Math.ceil(total / pageSize));
+    const page = Math.min(requestedPage, pages);
+    const offset = (page - 1) * pageSize;
+    const posts = await query<{ id: string; title: string; slug: string; content: string; created_at: string }>(
+      `SELECT id, title, slug, content, created_at FROM blog_posts ${where} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`,
+      params,
     );
+    return { posts, total, page, pages, page_size: pageSize };
   });
 
   app.get("/pricing", async () => {
