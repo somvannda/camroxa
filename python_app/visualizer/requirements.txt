@@ -1,7 +1,0 @@
-pygame
-librosa
-numpy
-pillow
-opencv-python
-moderngl
-glfw
