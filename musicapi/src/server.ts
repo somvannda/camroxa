@@ -16,7 +16,7 @@ import { captchaRequired } from "./captcha.js";
 import { assertCallbackUrlAllowed, CallbackUrlError } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
 import { normalizeModel } from "./models.js";
-import { getObjectBytes, getReadUrl, objectKey, putObject, storageConfigured } from "./storage.js";
+import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
 import { JOB_OPS, isRunnableDescriptor, type JobDescriptor } from "./jobOps.js";
 
@@ -2515,7 +2515,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get("/me/logs", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
-    const q = req.query as { task_id?: string; endpoint?: string; limit?: string };
+    const q = req.query as { task_id?: string; endpoint?: string; limit?: string; start?: string; end?: string };
     const clauses: string[] = ["user_id = $1"];
     const params: unknown[] = [u.id];
     if (q.task_id && typeof q.task_id === "string" && q.task_id.trim()) {
@@ -2533,8 +2533,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         clauses.push(`(${orGroup.join(" OR ")})`);
       }
     }
+    // Inclusive date window used by the usage export (YYYY-MM-DD).
+    if (typeof q.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(q.start)) {
+      params.push(q.start);
+      clauses.push(`created_at >= $${params.length}::date`);
+    }
+    if (typeof q.end === "string" && /^\d{4}-\d{2}-\d{2}$/.test(q.end)) {
+      params.push(q.end);
+      clauses.push(`created_at < ($${params.length}::date + interval '1 day')`);
+    }
     const limitRaw = Number(q.limit ?? 0) || 0;
-    const limit = limitRaw > 0 ? Math.min(limitRaw, 500) : 100;
+    // A date-filtered query is the usage export, which must return the whole
+    // window rather than the logs page's 500-row cap.
+    const cap = q.start && q.end ? 5000 : 500;
+    const limit = limitRaw > 0 ? Math.min(limitRaw, cap) : 100;
     const where = clauses.length > 0 ? `WHERE ${clauses.join(" AND ")}` : "";
     const hydrate = (rows: Record<string, unknown>[]) => rows.map((r) => {
       const clips = normalizeClips(r.result_json);
@@ -2601,6 +2613,93 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }));
   });
 
+  // Sunoapi.org-shaped usage report for /dashboard/usage: one call returns the
+  // overview daily series plus a per-model breakdown for a bounded date window.
+  // Ranges are inclusive and capped at 31 days to match the panel's picker.
+  app.get("/me/usage/page", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const q = req.query as { start?: string; end?: string };
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    let end = typeof q.end === "string" && iso.test(q.end)
+      ? q.end
+      : new Date().toISOString().slice(0, 10);
+    let start: string;
+    if (typeof q.start === "string" && iso.test(q.start)) {
+      start = q.start;
+    } else {
+      const d = new Date(`${end}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - 13);
+      start = d.toISOString().slice(0, 10);
+    }
+    if (start > end) [start, end] = [end, start];
+    // Clamp to the 31-day maximum the UI enforces, anchoring on the end date.
+    const span = Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) + 1;
+    if (!Number.isFinite(span) || span < 1) {
+      return reply.code(400).send({ error: "Invalid date range." });
+    }
+    if (span > 31) {
+      const d = new Date(`${end}T00:00:00Z`);
+      d.setUTCDate(d.getUTCDate() - 30);
+      start = d.toISOString().slice(0, 10);
+    }
+    const creditsPerUsd = await creditsPerUsdRate();
+    const args = [u.id, start, end];
+    const window = "created_at >= $2::date AND created_at < ($3::date + interval '1 day')";
+    const nameExpr = "COALESCE(NULLIF(model, ''), endpoint)";
+
+    const dayRows = await query<{ day: string; count: string; credits: string }>(
+      `SELECT to_char(created_at, 'YYYY-MM-DD') AS day, count(*)::text AS count, COALESCE(sum(credits_consumed),0)::text AS credits
+       FROM usage_logs WHERE user_id = $1 AND ${window} GROUP BY day ORDER BY day`,
+      args,
+    );
+    const daily = (rows: Array<{ day: string; count: string; credits: string }>) =>
+      rows.map((r) => ({
+        day: r.day,
+        count: Number(r.count),
+        credits: Number(r.credits),
+        spend: Number(r.credits) / creditsPerUsd,
+      }));
+    const overviewDaily = daily(dayRows);
+
+    const modelRows = await query<{ name: string; count: string; credits: string }>(
+      `SELECT ${nameExpr} AS name, count(*)::text AS count, COALESCE(sum(credits_consumed),0)::text AS credits
+       FROM usage_logs WHERE user_id = $1 AND ${window} GROUP BY name ORDER BY sum(credits_consumed) DESC NULLS LAST, count(*) DESC`,
+      args,
+    );
+    const names = modelRows.map((r) => r.name);
+    const seriesRows = names.length
+      ? await query<{ name: string; day: string; count: string; credits: string }>(
+          `SELECT ${nameExpr} AS name, to_char(created_at, 'YYYY-MM-DD') AS day, count(*)::text AS count, COALESCE(sum(credits_consumed),0)::text AS credits
+           FROM usage_logs WHERE user_id = $1 AND ${window} AND ${nameExpr} = ANY($4::text[]) GROUP BY name, day ORDER BY day`,
+          [...args, names],
+        )
+      : [];
+    const seriesByName = new Map<string, ReturnType<typeof daily>>();
+    for (const r of seriesRows) {
+      const bucket = seriesByName.get(r.name) ?? [];
+      bucket.push({ day: r.day, count: Number(r.count), credits: Number(r.credits), spend: Number(r.credits) / creditsPerUsd });
+      seriesByName.set(r.name, bucket);
+    }
+    return {
+      start,
+      end,
+      credits_per_usd: creditsPerUsd,
+      overview: {
+        total_credits: overviewDaily.reduce((s, d) => s + d.credits, 0),
+        total_spend: overviewDaily.reduce((s, d) => s + d.spend, 0),
+        daily: overviewDaily,
+      },
+      models: modelRows.map((r) => ({
+        name: r.name,
+        count: Number(r.count),
+        credits: Number(r.credits),
+        spend: Number(r.credits) / creditsPerUsd,
+        daily: seriesByName.get(r.name) ?? [],
+      })),
+    };
+  });
+
   app.get("/me/billing", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
@@ -2662,25 +2761,31 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           }
         }
       }
-      // Prefer our durable B2 copy when one exists: unlike Suno's signed links it
-      // never expires. Falls through to the live Suno download on any miss.
+      // Prefer our durable B2 copy when one exists. For inline playback we 302 to
+      // the presigned object so the browser streams it directly (Range seeks)
+      // instead of buffering the whole file through this process.
       if (storageConfigured()) {
         try {
           const key = objectKey(format === "wav" ? "wav" : "clips", `${clipId}.${format}`);
-          const stored = await getObjectBytes(key);
-          if (stored && stored.length > 400) {
-            reply.header("Content-Type", format === "wav" ? "audio/wav" : "audio/mpeg");
-            reply.header("Content-Length", String(stored.length));
-            reply.header("Accept-Ranges", "bytes");
+          if (await objectExists(key)) {
             if (q.force_download === "1") {
-              const filename = `${slug(clipId).replace(/^-+|-+$/g, "") || "download"}.${format}`;
-              const encoded = encodeURIComponent(filename);
-              reply.header(
-                "Content-Disposition",
-                `attachment; filename="${filename}"; filename*=UTF-8''${encoded}`,
-              );
+              const stored = await getObjectBytes(key);
+              if (stored && stored.length > 400) {
+                reply.header("Content-Type", format === "wav" ? "audio/wav" : "audio/mpeg");
+                reply.header("Content-Length", String(stored.length));
+                reply.header("Accept-Ranges", "bytes");
+                const filename = `${slug(clipId).replace(/^-+|-+$/g, "") || "download"}.${format}`;
+                const encoded = encodeURIComponent(filename);
+                reply.header(
+                  "Content-Disposition",
+                  `attachment; filename="${filename}"; filename*=UTF-8''${encoded}`,
+                );
+                return reply.send(stored);
+              }
+            } else {
+              const url = await getReadUrl(key);
+              if (url) return reply.redirect(url, 302);
             }
-            return reply.send(stored);
           }
         } catch {
           /* miss — fall through to the live Suno download */
