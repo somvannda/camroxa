@@ -34,6 +34,15 @@ export interface GenerateParams {
   styleWeight?: number;
   weirdnessConstraint?: number;
   audioWeight?: number;
+  /** Base64-encoded images sent as `user_uploaded_images_b64` (legacy/ignored). */
+  imagesB64?: string[];
+  /** Image upload ids (from `uploadImage`) sent as `user_uploaded_image_ids`. */
+  imageIds?: string[];
+  /** Suno internal task (e.g. "agentic_thinking") and create metadata. */
+  task?: string;
+  metadata?: Record<string, unknown>;
+  /** Suno clip id used as an artist/style reference. */
+  artistClipId?: string;
 }
 
 export interface SoundsParams {
@@ -216,13 +225,14 @@ export class SunoClient {
       generation_type: "TEXT",
       continue_at: null,
       continue_clip_id: null,
-      task: null,
+      task: params.task ?? null,
       token,
       gpt_description_prompt: params.gptDescriptionPrompt ?? "",
       tags: params.tags ?? "",
       title: params.title ?? "",
       negative_tags: params.negativeTags ?? "",
     };
+    if (params.metadata) payload.metadata = params.metadata;
     if (params.personaId) {
       payload.persona_id = params.personaId;
       payload.artist_clip_id = params.personaId;
@@ -233,6 +243,13 @@ export class SunoClient {
     if (params.styleWeight != null) payload.style_weight = params.styleWeight;
     if (params.weirdnessConstraint != null) payload.weirdness_constraint = params.weirdnessConstraint;
     if (params.audioWeight != null) payload.audio_weight = params.audioWeight;
+    if (params.imagesB64 && params.imagesB64.length) {
+      payload.user_uploaded_images_b64 = params.imagesB64;
+    }
+    if (params.imageIds && params.imageIds.length) {
+      payload.user_uploaded_image_ids = params.imageIds;
+    }
+    if (params.artistClipId) payload.artist_clip_id = params.artistClipId;
 
     const res = await this.request("/api/generate/v2/", {
       method: "POST",
@@ -722,6 +739,50 @@ export class SunoClient {
     }
     if (last) return last;
     throw new Error(`Timed out waiting for upload ${uploadId} to process.`);
+  }
+
+  // =========================================
+  // Image upload (cover art / reference)
+  // =========================================
+
+  /** Step 1: create an image upload session → { id, url, fields }.
+   *  Confirmed live: POST /api/uploads/image/ with { extension } (e.g. "jpg"). */
+  async createImageUpload(
+    extension: string,
+  ): Promise<{ id: string; url: string; fields: Record<string, string> }> {
+    const res = await this.request("/api/uploads/image/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ extension: extension.replace(/^\./, "") }),
+    });
+    if (!res.ok) throw new Error(`createImageUpload failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as { id: string; url: string; fields: Record<string, string> };
+  }
+
+  /** Full 2-step image upload: POST the bytes against Suno's S3 policy and return
+   *  the image id that goes in `user_uploaded_image_ids`. */
+  async uploadImage(bytes: Buffer, extension = "jpg"): Promise<string> {
+    const ext = extension.replace(/^\./, "").toLowerCase();
+    const { id, url, fields } = await this.createImageUpload(ext);
+    const contentType = fields["Content-Type"] || `image/${ext}`;
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), `image.${ext}`);
+    const up = await fetch(url, { method: "POST", body: form });
+    if (!up.ok && up.status !== 204) {
+      throw new Error(`image S3 upload failed (${up.status}): ${await up.text()}`);
+    }
+    // Confirm the upload with Suno (required — without this the generate call
+    // rejects the image as "not uploaded successfully").
+    const finish = await this.request(`/api/uploads/image/${id}/upload-finish/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!finish.ok) {
+      throw new Error(`image upload-finish failed (${finish.status}): ${await finish.text()}`);
+    }
+    return id;
   }
 
   // =========================================
