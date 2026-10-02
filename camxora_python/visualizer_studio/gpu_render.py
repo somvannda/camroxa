@@ -1213,7 +1213,7 @@ def _as_rgb(v: any) -> tuple[int, int, int]:
 
 def _resolve_export_spectrum_style(style_preset: str, layer: dict | None = None) -> str:
     """Resolve template/pack style ids to Camxora-native renderer keys."""
-    from features.video.lib.composition_spectrum_shapes import legacy_style_alias_for_shape
+    from visualizer_studio.presets.shapes import legacy_style_alias_for_shape
     from features.video.lib.spectrum_style_registry import normalize_spectrum_preset_key_for_apply
     from features.video.lib.video_template_draft import normalize_spectrum_preset_key
 

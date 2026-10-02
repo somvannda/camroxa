@@ -33,8 +33,8 @@ def normalize_visualizer_job_argv(argv: list[str]) -> list[str]:
     parts = [str(part) for part in argv if part is not None]
     if len(parts) > 1 and parts[1] == "--visualizer":
         return [parts[0], *parts[2:]]
-    if len(parts) > 2 and parts[1] == "-m" and parts[2] == "visualizer_video.main":
-        return ["visualizer_video.main", *parts[3:]]
+    if len(parts) > 2 and parts[1] == "-m" and parts[2] == "visualizer.main":
+        return ["visualizer.main", *parts[3:]]
     return parts
 
 
@@ -59,9 +59,15 @@ def _main_impl() -> int:
     parser.add_argument("--background", dest="background_path", default="")
     parser.add_argument("--logo", dest="logo_path", default="")
     parser.add_argument("--outputDir", dest="output_dir", default="")
+    parser.add_argument("--output", dest="output_path", default="")
     parser.add_argument("--ffmpeg", dest="ffmpeg_path", default="ffmpeg")
     parser.add_argument("--renderer", dest="renderer", choices=["gpu", "cpu"], default="gpu")
-    parser.add_argument("--speedMode", dest="speed_mode", choices=["balanced", "fast", "very_fast"], default="balanced")
+    parser.add_argument(
+        "--speedMode",
+        dest="speed_mode",
+        choices=["balanced", "fast", "very_fast", "quality", "best_quality", "master", "best"],
+        default="balanced",
+    )
     parser.add_argument("--fps", dest="fps", type=int, default=60)
     parser.add_argument("--width", dest="width", type=int, default=1920)
     parser.add_argument("--height", dest="height", type=int, default=1080)
@@ -91,19 +97,33 @@ def _main_impl() -> int:
     out_base = Path(output_dir)
     out_base.mkdir(parents=True, exist_ok=True)
 
-    out_path = out_base / f"{_stem(mp3_path)}.mp4"
+    explicit_out = str(getattr(args, "output_path", "") or "").strip()
+    if explicit_out:
+        out_path = Path(explicit_out)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+    else:
+        out_path = out_base / f"{_stem(mp3_path)}.mp4"
 
     fps = int(args.fps)
     size = RenderSize(width=int(args.width), height=int(args.height))
     speed_mode = str(args.speed_mode or "balanced").strip().lower() or "balanced"
+    if speed_mode in {"master", "best"}:
+        speed_mode = "best_quality"
 
     def speed_params(mode: str) -> dict[str, str]:
         m = str(mode or "").strip().lower()
+        if m in {"best", "master"}:
+            m = "best_quality"
         if m == "very_fast":
-            return {"nvenc_preset": "p1", "nvenc_cq": "27", "x264_preset": "ultrafast", "x264_crf": "26"}
+            return {"nvenc_preset": "p1", "x264_preset": "ultrafast"}
         if m == "fast":
-            return {"nvenc_preset": "p3", "nvenc_cq": "23", "x264_preset": "superfast", "x264_crf": "23"}
-        return {"nvenc_preset": "p5", "nvenc_cq": "19", "x264_preset": "veryfast", "x264_crf": "20"}
+            return {"nvenc_preset": "p3", "x264_preset": "superfast"}
+        if m == "best_quality":
+            return {"nvenc_preset": "p7", "x264_preset": "medium"}
+        if m == "quality":
+            return {"nvenc_preset": "p5", "x264_preset": "veryfast"}
+        # balanced
+        return {"nvenc_preset": "p3", "x264_preset": "veryfast"}
 
     sp = speed_params(speed_mode)
 
@@ -122,6 +142,7 @@ def _main_impl() -> int:
             width=size.width,
             height=size.height,
             speed_mode=speed_mode,
+            output_path=explicit_out,
         )
         if args.live_preview:
             return run_live_preview(gopts)
@@ -261,9 +282,29 @@ def _main_impl() -> int:
             codec,
         ]
         if codec == "h264_nvenc":
-            cmd += ["-preset", sp["nvenc_preset"], "-cq", sp["nvenc_cq"]]
+            from shared.lib.export_bitrate import ffmpeg_vbr_bitrate_args, recommended_vbr_ladder_kbps
+
+            t_kbps, m_kbps, b_kbps = recommended_vbr_ladder_kbps(
+                size.width, size.height, fps, speed_mode
+            )
+            cmd += [
+                "-preset",
+                sp["nvenc_preset"],
+                "-rc",
+                "vbr",
+                *ffmpeg_vbr_bitrate_args(t_kbps, m_kbps, b_kbps),
+            ]
         elif codec == "libx264":
-            cmd += ["-preset", sp["x264_preset"], "-crf", sp["x264_crf"]]
+            from shared.lib.export_bitrate import ffmpeg_vbr_bitrate_args, recommended_vbr_ladder_kbps
+
+            t_kbps, m_kbps, b_kbps = recommended_vbr_ladder_kbps(
+                size.width, size.height, fps, speed_mode
+            )
+            cmd += [
+                "-preset",
+                sp["x264_preset"],
+                *ffmpeg_vbr_bitrate_args(t_kbps, m_kbps, b_kbps),
+            ]
         cmd += [
             "-pix_fmt",
             "yuv420p",
@@ -271,6 +312,10 @@ def _main_impl() -> int:
             "aac",
             "-b:a",
             "192k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
             "-shortest",
             str(out_path),
         ]

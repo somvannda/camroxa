@@ -364,7 +364,9 @@ class SpectrumLayerEditor(InspectorSection):
         gradient_layout.addWidget(self._gradient_direction_combo)
 
         self._gradient_preset_combo = QComboBox()
-        self._gradient_preset_combo.setToolTip("Gradient Preset")
+        self._gradient_preset_combo.setToolTip(
+            "Gradient palette (Studio + Video presets). Use Add Color to customize stops."
+        )
         for value, label in SPECTRUM_GRADIENT_PRESET_OPTIONS:
             self._gradient_preset_combo.addItem(label, value)
         self._gradient_preset_combo.currentIndexChanged.connect(self._on_gradient_preset_changed)

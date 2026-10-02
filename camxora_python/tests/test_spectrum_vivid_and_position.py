@@ -96,10 +96,17 @@ def test_build_orbit_spikes_applies_vivid_recipe() -> None:
 
 
 def test_gradient_dropdown_palettes_are_bright() -> None:
-    from features.video.lib.spectrum_color_engine import SPECTRUM_GRADIENT_PRESET_OPTIONS
+    from features.video.lib.spectrum_color_engine import (
+        SPECTRUM_GRADIENT_PRESET_OPTIONS,
+        _VIDEO_SPECTRUM_PALETTE_PRESETS,
+    )
 
-    assert len(SPECTRUM_GRADIENT_PRESET_OPTIONS) >= 11
-    for value, label in SPECTRUM_GRADIENT_PRESET_OPTIONS:
+    assert len(SPECTRUM_GRADIENT_PRESET_OPTIONS) >= 30
+    labels = {label for _value, label in SPECTRUM_GRADIENT_PRESET_OPTIONS}
+    assert "Cyberpunk" in labels
+    assert "Neon Candy" in labels
+    # Video bright presets stay vivid for stage readability.
+    for value, label in _VIDEO_SPECTRUM_PALETTE_PRESETS:
         assert "Night" not in label and "Dark" not in label and "Abyss" not in label
         for hex_color in value.split(","):
             raw = hex_color.strip().lstrip("#")

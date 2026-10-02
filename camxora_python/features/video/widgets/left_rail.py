@@ -1,4 +1,4 @@
-"""Video workspace left rail — template controls + Composition Studio shell."""
+"""Video workspace left rail — template controls and domain tabs."""
 
 from __future__ import annotations
 
@@ -9,12 +9,13 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QTabWidget,
+    QVBoxLayout,
     QWidget,
 )
 
-from features.video.widgets.studio_shell import VideoStudioShell
 from shared.themes.deep_blue import SETTINGS_SECONDARY_BUTTON_ID, SUBTITLE_LABEL_ID
-from shared.widgets.settings_ui import SettingsPanel
+from shared.widgets.settings_ui import SettingsPanel, make_scrollable_tab_page
 
 
 class VideoLeftRail(SettingsPanel):
@@ -25,7 +26,15 @@ class VideoLeftRail(SettingsPanel):
     delete_requested = Signal()
     export_requested = Signal()
     restore_original_requested = Signal()
-    domain_tab_changed = Signal(str)  # scene node key (compat name)
+    domain_tab_changed = Signal(str)
+
+    _DOMAIN_TABS = (
+        ("spectrum", "Spectrum"),
+        ("background", "Background"),
+        ("logo", "Logo"),
+        ("particles", "Particles"),
+        ("lightning", "Lightning"),
+    )
 
     def __init__(
         self,
@@ -35,8 +44,8 @@ class VideoLeftRail(SettingsPanel):
         diagnostics_panel: QWidget | None = None,
     ) -> None:
         super().__init__(
-            "Composition Studio",
-            subtitle="Scene tree · composition axes · save",
+            "Video Controls",
+            subtitle="Template and domain inspectors",
             fill_available_height=True,
             parent=parent,
         )
@@ -45,7 +54,7 @@ class VideoLeftRail(SettingsPanel):
         self.add_action(self._dirty_badge)
 
         self._name_input = QLineEdit()
-        self._name_input.setPlaceholderText("Composition name")
+        self._name_input.setPlaceholderText("Template name")
         self._name_input.textChanged.connect(self.template_name_changed.emit)
         self.add_widget(self._name_input)
 
@@ -54,15 +63,15 @@ class VideoLeftRail(SettingsPanel):
         actions.setSpacing(8)
         self._new_btn = QPushButton("New")
         self._new_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        self._new_btn.setToolTip("Create a blank composition from scratch")
+        self._new_btn.setToolTip("Create a blank video template from scratch")
         self._new_btn.clicked.connect(self.new_requested.emit)
         self._save_btn = QPushButton("Save")
-        self._save_btn.setToolTip("Save the current composition.")
+        self._save_btn.setToolTip("Save the current look into this video template.")
         self._save_btn.clicked.connect(self.save_requested.emit)
         self._restore_original_btn = QPushButton("Restore original")
         self._restore_original_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._restore_original_btn.setToolTip(
-            "Restore this composition to the snapshot saved when it was first created "
+            "Restore this video template to the snapshot saved when it was first created "
             "(or first saved after upgrade). Unsaved session edits are discarded."
         )
         self._restore_original_btn.clicked.connect(self.restore_original_requested.emit)
@@ -73,7 +82,7 @@ class VideoLeftRail(SettingsPanel):
         self._export_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._export_btn.setToolTip("Export template as marketplace zip bundle")
         self._export_btn.clicked.connect(self.export_requested.emit)
-        self._export_btn.setVisible(False)
+        self._export_btn.setVisible(False)  # Hidden by default, shown only for admin
         actions.addWidget(self._new_btn)
         actions.addWidget(self._save_btn)
         actions.addWidget(self._restore_original_btn)
@@ -87,10 +96,24 @@ class VideoLeftRail(SettingsPanel):
         self._template_select.currentIndexChanged.connect(self._emit_template_selection)
         self.add_widget(self._template_select)
 
-        self._studio = VideoStudioShell(inspectors=domain_pages or {})
-        self._studio.node_changed.connect(self.domain_tab_changed.emit)
-        self.add_widget(self._studio, stretch=1)
-
+        self._domain_tabs = QTabWidget()
+        self._domain_tabs.currentChanged.connect(self._emit_domain_tab)
+        domain_pages = domain_pages or {}
+        for key, label in self._DOMAIN_TABS:
+            custom_page = domain_pages.get(key)
+            if custom_page is not None:
+                page = make_scrollable_tab_page(custom_page)
+            else:
+                page = QWidget()
+                layout = QVBoxLayout(page)
+                layout.setContentsMargins(8, 8, 8, 8)
+                placeholder = QLabel(f"{label} inspector — Phase 9b")
+                placeholder.setObjectName(SUBTITLE_LABEL_ID)
+                placeholder.setWordWrap(True)
+                layout.addWidget(placeholder)
+                layout.addStretch()
+            self._domain_tabs.addTab(page, label)
+        self.add_widget(self._domain_tabs, stretch=1)
         if diagnostics_panel is not None:
             self.add_widget(diagnostics_panel)
 
@@ -102,6 +125,10 @@ class VideoLeftRail(SettingsPanel):
         template_id = self._template_select.currentData()
         if isinstance(template_id, str) and template_id:
             self.template_selected.emit(template_id)
+
+    def _emit_domain_tab(self, index: int) -> None:
+        if 0 <= index < len(self._DOMAIN_TABS):
+            self.domain_tab_changed.emit(self._DOMAIN_TABS[index][0])
 
     def set_dirty_state(self, *, workspace_dirty: bool, active_tab: str, tab_dirty: bool) -> None:
         tone = "Unsaved" if workspace_dirty else "Saved"
@@ -125,9 +152,10 @@ class VideoLeftRail(SettingsPanel):
         self._name_input.blockSignals(blocked)
 
     def select_domain_tab(self, tab_key: str) -> None:
-        # Compat: "lightning" → "lighting"
-        key = "lighting" if tab_key == "lightning" else tab_key
-        self._studio.select_node(key)
+        for index, (key, _label) in enumerate(self._DOMAIN_TABS):
+            if key == tab_key:
+                self._domain_tabs.setCurrentIndex(index)
+                return
 
     def set_busy(self, *, saving: bool, deleting: bool) -> None:
         self._new_btn.setEnabled(not saving and not deleting)
@@ -142,4 +170,5 @@ class VideoLeftRail(SettingsPanel):
         self._save_btn.setEnabled(enabled)
 
     def set_export_visible(self, visible: bool) -> None:
+        """Show the Export button only for authorized admin users."""
         self._export_btn.setVisible(visible)

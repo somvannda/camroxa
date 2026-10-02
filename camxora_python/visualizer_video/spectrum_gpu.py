@@ -214,6 +214,7 @@ class SpectrumGpuRenderer:
         uniform vec2 bar_center_px;
         uniform vec2 out_size_px;
         uniform float bar_half_width;
+        uniform float layout_scale;
         uniform int style_mode;   // 0 default, 1 mirror, 2 drift
         uniform float style_sf;
 
@@ -265,13 +266,15 @@ class SpectrumGpuRenderer:
             float half = bar_half_width;
             float wxv = -in_bar.w * half;
             float wyv = in_bar.z * half;
+            float scale = max(layout_scale, 0.001);
+            vec2 px_py = in_bar.xy * scale;
             vec2 local;
             if (style_mode == 1) {
-                local = corner_mirror(in_bar.xy, in_bar.zw, h_val, wxv, wyv, corner);
+                local = corner_mirror(px_py, in_bar.zw, h_val, wxv, wyv, corner);
             } else if (style_mode == 2) {
-                local = corner_drift(in_bar.xy, in_bar.zw, h_val, wxv, wyv, corner);
+                local = corner_drift(px_py, in_bar.zw, h_val, wxv, wyv, corner);
             } else {
-                local = corner_default(in_bar.xy, in_bar.zw, h_val, wxv, wyv, corner);
+                local = corner_default(px_py, in_bar.zw, h_val, wxv, wyv, corner);
             }
             vec2 px = bar_center_px + local;
             vec2 ndc = px / out_size_px * 2.0 - 1.0;
@@ -360,6 +363,7 @@ class SpectrumGpuRenderer:
         bar_half_width: float | None = None,
         style_mode: int = 0,
         style_sf: float = 1.0,
+        layout_scale: float = 1.0,
     ) -> None:
         layer = self._layers.get(layer_key)
         vao = self._layer_vaos.get(layer_key)
@@ -381,6 +385,7 @@ class SpectrumGpuRenderer:
         self._prog["bar_center_px"].value = (float(cx), float(cy))
         self._prog["out_size_px"].value = (float(max(1, w)), float(max(1, h)))
         self._prog["bar_half_width"].value = float(half_w)
+        self._prog["layout_scale"].value = float(max(0.001, layout_scale))
         self._prog["style_mode"].value = int(style_mode)
         self._prog["style_sf"].value = float(max(0.001, style_sf))
         self._prog["clip_enabled"].value = 0

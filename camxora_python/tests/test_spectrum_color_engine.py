@@ -31,12 +31,18 @@ def test_vivid_palette_catalog_has_multi_stop_presets() -> None:
         spectrum_gradient_preset_colors,
     )
 
-    assert len(SPECTRUM_GRADIENT_PRESET_OPTIONS) >= 20
-    labels = {label for _value, label in SPECTRUM_GRADIENT_PRESET_OPTIONS}
-    assert "Rainbow Rush" in labels
-    assert "Carnival Riot" in labels
-    rainbow = next(v for v, label in SPECTRUM_GRADIENT_PRESET_OPTIONS if label == "Rainbow Rush")
+    assert len(SPECTRUM_GRADIENT_PRESET_OPTIONS) >= 30
+    labels = [label for _value, label in SPECTRUM_GRADIENT_PRESET_OPTIONS]
+    # Studio palettes are listed first, then Video bright presets.
+    assert labels[0] == "Cyberpunk"
+    assert "Rainbow" in labels
+    assert "Neon Candy" in labels
+    rainbow = next(v for v, label in SPECTRUM_GRADIENT_PRESET_OPTIONS if label == "Rainbow")
     assert len(spectrum_gradient_preset_colors(rainbow)) >= 6
+    # Custom stop editing still allows up to the engine max.
+    from features.video.lib.spectrum_color_engine import MAX_GRADIENT_COLOR_STOPS
+
+    assert MAX_GRADIENT_COLOR_STOPS >= 8
 
 
 def test_extract_spectrum_layer_color_model_reads_nested_color() -> None:

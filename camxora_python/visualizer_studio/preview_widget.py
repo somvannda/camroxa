@@ -93,6 +93,7 @@ from visualizer_studio._spectrum_fast import (
     smooth_fft_envelope,
 )
 from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
+from features.video.lib.particle_settings import resolve_particle_motion_speed
 from features.video.lib.particle_color_engine import (
     build_particle_rgba_rows,
     extract_particle_color_model,
@@ -642,8 +643,12 @@ class VideoSpectrumPreview(QOpenGLWidget):
             spawn_radius = float(max(0.0, logo_visual_radius + max(2.0 * sf, ps_size * sf)))
         else:
             spawn_radius = float(max(min(w, h) * 0.22, ps_size * sf * 6.0))
-        speed_boost = float(18.0 + self.particle_audio_env * (50.0 + prb * 130.0))
-        speed2 = float(max(0.0, min(2500.0, ps_speed * speed_boost * sf)))
+        speed2 = resolve_particle_motion_speed(
+            speed=ps_speed,
+            reactivity=prb,
+            audio_env=float(self.particle_audio_env),
+            scale_factor=sf,
+        )
         trail_enabled, trail_length, trail_fade, trail_width = _particle_trail_cfg_from_settings(ps)
         self.particles.update_cfg(
             ParticleConfig(

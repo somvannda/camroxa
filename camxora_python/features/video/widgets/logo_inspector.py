@@ -17,13 +17,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from features.video.lib.composition_draft import composition_axis_options
 from features.video.lib.logo_settings import (
     LOGO_MOTION_OPTIONS,
     LOGO_SHAPE_OPTIONS,
     LOGO_SPIN_DIRECTION_OPTIONS,
 )
-from features.video.widgets.composition_axis_combo import populate_axis_combo, set_combo_data
+from features.video.lib.logo_style_registry import LOGO_STYLE_PRESETS
 from features.video.widgets.inspector_fields import (
     InspectorSection,
     build_float_slider,
@@ -53,7 +52,6 @@ class LogoInspector(QWidget):
         self._shape_combo: QComboBox | None = None
         self._spin_direction_combo: QComboBox | None = None
         self._motion_combo: QComboBox | None = None
-        self._animation_combo: QComboBox | None = None
         self._spin_speed_slider: QSlider | None = None
         self._spin_speed_label: QLabel | None = None
         self._float_setters: dict[str, Callable[[float], None]] = {}
@@ -64,7 +62,7 @@ class LogoInspector(QWidget):
 
         section = InspectorSection(
             "Logo",
-            subtitle="Asset + composition animation (engine v1). Legacy style packs are not authority.",
+            subtitle="Shape, scale, opacity, and logo-specific audio motion from the Python video settings route.",
         )
         toggles = QHBoxLayout()
         toggles.setContentsMargins(0, 0, 0, 0)
@@ -79,23 +77,36 @@ class LogoInspector(QWidget):
         toggles.addStretch()
         section.add_widget(toggle_host)
 
-        self._animation_combo = QComboBox()
-        populate_axis_combo(self._animation_combo, composition_axis_options()["animations"])
-        self._animation_combo.currentIndexChanged.connect(self._on_animation_changed)
-        section.add_widget(form_row("Animation", self._animation_combo))
-        section.add_widget(
-            note_box(
-                "Animation is a shared composition behavior (same catalog as Spectrum). "
-                "Audio Mapping can also pulse the logo from a bus."
-            )
-        )
-
         self._spin_direction_combo = QComboBox()
         for value, label in LOGO_SPIN_DIRECTION_OPTIONS:
             self._spin_direction_combo.addItem(label, value)
         self._spin_direction_combo.currentIndexChanged.connect(self._on_spin_direction_changed)
         section.add_widget(form_row("Direction", self._spin_direction_combo))
         section.add_widget(self._build_spin_speed_row())
+
+        self._preset_combo = QComboBox()
+        self._preset_combo.setToolTip("Preset look")
+        for value, label in LOGO_STYLE_PRESETS:
+            self._preset_combo.addItem(label, value)
+        self._preset_combo.currentIndexChanged.connect(self._on_preset_index_changed)
+        section.add_widget(form_row("Preset Look", self._preset_combo))
+
+        preset_restore_row = QHBoxLayout()
+        preset_restore_row.addStretch()
+        logo_restore_btn = QPushButton("Restore original")
+        logo_restore_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        logo_restore_btn.setToolTip("Reset this preset look to factory defaults (keeps your video template Save separate).")
+        logo_restore_btn.clicked.connect(self.preset_restore_requested.emit)
+        preset_restore_row.addWidget(logo_restore_btn)
+        logo_restore_host = QWidget()
+        logo_restore_host.setLayout(preset_restore_row)
+        section.add_widget(logo_restore_host)
+        section.add_widget(
+            note_box(
+                "Preset tweaks stay for this session only and reset when the app closes. "
+                "Restore original clears only this preset look. Save still writes the current look to the video template."
+            )
+        )
 
         file_row = QHBoxLayout()
         file_row.setContentsMargins(0, 0, 0, 0)
@@ -236,23 +247,39 @@ class LogoInspector(QWidget):
         return host
 
     def _on_preset_index_changed(self, _index: int) -> None:
-        return
+        if self._binding or self._preset_combo is None:
+            return
+        preset = self._preset_combo.currentData()
+        if isinstance(preset, str) and preset:
+            self._previous_preset_key = self._selected_preset_key
+            self._selected_preset_key = preset
+            self.preset_apply_requested.emit(preset)
 
     def selected_preset_key(self) -> str | None:
+        if self._preset_combo is not None:
+            current = self._preset_combo.currentData()
+            if isinstance(current, str) and current:
+                return current
         return self._selected_preset_key
 
     def previous_preset_key(self) -> str | None:
         return self._previous_preset_key
 
     def set_preset_options(self, options: tuple[tuple[str, str], ...]) -> None:
-        _ = options
-
-    def _on_animation_changed(self, _index: int) -> None:
-        if self._binding or self._animation_combo is None:
+        if self._preset_combo is None:
             return
-        value = self._animation_combo.currentData()
-        if isinstance(value, str):
-            self._emit_patch({"compositionLogoAnimation": value})
+        current = self._preset_combo.currentData()
+        self._binding = True
+        try:
+            self._preset_combo.clear()
+            for value, label in options:
+                self._preset_combo.addItem(label, value)
+            if isinstance(current, str):
+                index = self._preset_combo.findData(current)
+                if index >= 0:
+                    self._preset_combo.setCurrentIndex(index)
+        finally:
+            self._binding = False
 
     def _on_spin_speed_changed(self, raw: int) -> None:
         speed = raw * 10
@@ -306,11 +333,6 @@ class LogoInspector(QWidget):
                 index = self._motion_combo.findData(str(draft.get("logoMotionMode") or "none"))
                 if index >= 0:
                     self._motion_combo.setCurrentIndex(index)
-            if self._animation_combo is not None:
-                set_combo_data(
-                    self._animation_combo,
-                    str(draft.get("compositionLogoAnimation") or "none"),
-                )
 
             spin_speed = int(round(float(draft.get("logoSpinSpeed") or 0)))
             if self._spin_speed_slider is not None:
@@ -325,5 +347,7 @@ class LogoInspector(QWidget):
         finally:
             self._binding = False
 
-    def mount_effect_pack_selector(self, _selector: QWidget) -> None:
-        return
+    def mount_effect_pack_selector(self, selector: QWidget) -> None:
+        layout = self.layout()
+        if isinstance(layout, QVBoxLayout):
+            layout.insertWidget(0, selector)

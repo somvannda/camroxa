@@ -291,7 +291,7 @@ def normalize_renderer_template(input_template: Any) -> dict:
     if not isinstance(ps.get("opacity"), (int, float)) and isinstance(ps.get("alpha"), (int, float)):
         ps["opacity"] = ps.get("alpha")
 
-    ps["speed"] = float(max(0.2, min(25, float(ps.get("speed", 1)))))
+    ps["speed"] = float(max(0.0, min(25, float(ps.get("speed", 1)))))
     ps["reactivity"] = float(max(0.0, min(1.0, float(ps.get("reactivity", 0.1)))))
     ps["smoothing"] = float(max(0.0, min(0.99, float(ps.get("smoothing", 0.65)))))
     ps["opacity"] = float(max(0.0, min(1.0, float(ps.get("opacity", 0.35)))))
@@ -317,7 +317,7 @@ def normalize_renderer_template(input_template: Any) -> dict:
         ps["paletteColors"] = []
     ps["reactStrength"] = float(max(0.0, min(1.0, float(ps.get("reactStrength", 0.65) or 0.65))))
     ps["sizeJitter"] = float(max(0.0, min(1.0, float(ps.get("sizeJitter", 0.0) or 0.0))))
-    ps["drift"] = float(max(0.0, min(1.0, float(ps.get("drift", 0.0) or 0.0))))
+    ps["drift"] = float(max(0.0, min(5.0, float(ps.get("drift", 0.0) or 0.0))))
     ps["swirl"] = float(max(0.0, min(1.0, float(ps.get("swirl", 0.0) or 0.0))))
     ps["spawnArea"] = str(ps.get("spawnArea", "centerRing") or "centerRing")
     if ps["spawnArea"] not in ("centerRing", "bottom", "edges", "full", "screenCenter", "screenRandom"):

@@ -286,20 +286,4 @@ def build_video_workspace_template_save_patch(
     patch["position"] = mirror_holder.get("position", patch.get("position"))
     patch["audioSettings"] = mirror_holder.get("audioSettings", patch.get("audioSettings"))
     patch["previewBindings"] = mirror_holder.get("previewBindings", patch.get("previewBindings"))
-    # Engine v1: composition document is the save authority.
-    from features.video.lib.composition_draft import build_composition_save_document
-
-    existing_comp = template.get("composition") if isinstance(template.get("composition"), dict) else None
-    composition_doc = build_composition_save_document(
-        composition=existing_comp,
-        assets={
-            "logoPath": draft.get("logoPath") or template.get("logoPath"),
-            "previewBackground": draft.get("previewBackground") or template.get("previewBackground"),
-            "selectedMp3Path": draft.get("selectedMp3Path"),
-        },
-        draft=dict(draft) if isinstance(draft, dict) else {},
-    )
-    patch["schema"] = "camxora.composition"
-    patch["composition"] = composition_doc["composition"]
-    patch["assets"] = composition_doc["assets"]
     return patch

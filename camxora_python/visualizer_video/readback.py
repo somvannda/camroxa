@@ -20,13 +20,17 @@ def resolve_pipe_pix_fmt(speed_mode: str) -> str:
     if override in {"rgba", "nv12", "yuv420p"}:
         return override
     mode = str(speed_mode or "balanced").strip().lower()
-    # Balanced/Standard share CQ with fast; keep Master-quality (`quality`) on RGBA/pc
+    if mode in {"master", "best"}:
+        mode = "best_quality"
+    # Balanced/Standard share CQ with fast; keep Quality+ on RGBA/pc
     # so the expensive software scale stays available when explicitly requested.
     if mode in {"fast", "very_fast", "balanced", "draft"}:
         # Planar I420 matches OpenCV COLOR_*2YUV_I420 and is NVENC-native (no UV interleave).
         return "yuv420p"
-    # Low-VRAM Pascal (1050 Ti-class): prefer yuv420p even on explicit quality speed
-    # unless Master — Master stays RGBA/pc for visual parity on high-end cards.
+    # Best Quality always stays RGBA/pc (even on low-VRAM Pascal).
+    if mode == "best_quality":
+        return "rgba"
+    # Low-VRAM Pascal (1050 Ti-class): prefer yuv420p on Quality unless Best Quality.
     if mode == "quality":
         try:
             from visualizer_video.export_gpu_tier import detect_export_gpu_tier

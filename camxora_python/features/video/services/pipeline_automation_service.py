@@ -11,8 +11,11 @@ from PySide6.QtCore import QObject
 from features.video.lib.desktop_video_automation import AutoVideoCandidate
 from features.video.lib.pipeline_merge import (
     build_merged_output_path,
+    collect_verified_merge_inputs,
     is_auto_merge_enabled_for_branch,
     list_branch_export_outputs,
+    merge_encode_settings_from_context,
+    resolve_merge_encode_settings,
 )
 from features.video.lib.video_billing import consume_video_operation, refund_video_operation
 from features.video.lib.render_scene_request import (
@@ -267,6 +270,13 @@ class PipelineAutomationService(QObject):
             emit_shell_status(f"Auto-video blocked (billing): {exc}")
             return False
 
+        encode = resolve_merge_encode_settings(
+            self._settings,
+            branch=branch,
+            pipeline=True,
+            fps=tier.fps,
+            speed_mode=tier.speed_mode,
+        )
         self._merge_context = {
             "run_dir": run_dir,
             "branch": branch,
@@ -279,6 +289,11 @@ class PipelineAutomationService(QObject):
             "total": len(mp3_list),
             "profile_id": profile_id,
             "ref_base": ref_base,
+            "encode_width": int(encode.width),
+            "encode_height": int(encode.height),
+            "encode_fps": int(encode.fps),
+            "encode_speed_mode": str(encode.speed_mode),
+            "settings": dict(self._settings),
         }
 
         branch_label = "Reel" if branch == "reel" else "Long"
@@ -477,6 +492,20 @@ class PipelineAutomationService(QObject):
         if not run_dir:
             self._on_merge_failed("Auto-merge skipped: run directory is missing.")
             return
+        ffmpeg_path = str(self._settings.get("ffmpegPath") or "ffmpeg")
+        verified_paths = collect_verified_merge_inputs(
+            [str(path) for path in (context.get("mp4_paths") or []) if str(path).strip()],
+            run_dir=run_dir,
+            branch=branch,
+            ffmpeg_path=ffmpeg_path,
+        )
+        if len(verified_paths) < 2:
+            self._on_merge_failed(
+                f"Auto-merge skipped — need at least two usable MP4 files (found {len(verified_paths)})."
+            )
+            return
+        context["mp4_paths"] = verified_paths
+        self._merge_context = context
         profile_id = str(context.get("profile_id") or "").strip() or None
         ref_base = str(context.get("ref_base") or "")
         try:
@@ -538,17 +567,19 @@ class PipelineAutomationService(QObject):
                 )
             emit_shell_status(message)
             return
+        encode = merge_encode_settings_from_context(context, pipeline=True)
         worker = VideoPipelineMergeWorker(
             PipelineMergeRequest(
                 run_dir=run_dir,
                 branch=branch,
                 batch_id=str(context.get("batch_id") or ""),
                 role=str(context.get("role") or ""),
-                ffmpeg_path=str(self._settings.get("ffmpegPath") or "ffmpeg"),
+                ffmpeg_path=ffmpeg_path,
                 completed=int(context.get("completed") or 0),
                 total=int(context.get("total") or 0),
-                mp4_paths=tuple(str(path) for path in (context.get("mp4_paths") or []) if str(path).strip()),
+                mp4_paths=tuple(verified_paths),
                 shuffle=bool(context.get("shuffle", True)),
+                encode=encode,
             ),
             parent=None,
         )
@@ -634,17 +665,21 @@ class PipelineAutomationService(QObject):
         if not isinstance(payload, dict) or workspace is None:
             return
         message = str(payload.get("message") or "Merging video outputs…")
+        merge_percent = payload.get("progress")
+        try:
+            merge_progress = max(0, min(100, int(merge_percent))) if merge_percent is not None else None
+        except (TypeError, ValueError):
+            merge_progress = None
+        update: dict[str, object] = {
+            "running": True,
+            "merge_running": True,
+            "current_status": message,
+        }
+        if merge_progress is not None:
+            update["merge_progress_percent"] = merge_progress
         self._publish_workspace(
             workspace.model_copy(
-                update={
-                    "export": workspace.export.model_copy(
-                        update={
-                            "running": True,
-                            "merge_running": True,
-                            "current_status": message,
-                        }
-                    )
-                }
+                update={"export": workspace.export.model_copy(update=update)}
             )
         )
 
@@ -664,7 +699,7 @@ class PipelineAutomationService(QObject):
                         update={
                             "running": False,
                             "merge_running": False,
-                            "auto_merge": False,
+                            "merge_progress_percent": None,
                             "current_status": message,
                             "last_merged_output_path": merged_output,
                             "progress_percent": 100,
@@ -691,7 +726,7 @@ class PipelineAutomationService(QObject):
                             update={
                                 "running": False,
                                 "merge_running": False,
-                                "auto_merge": False,
+                                "merge_progress_percent": None,
                                 "current_status": message or "Auto-merge failed.",
                             }
                         )
@@ -778,6 +813,7 @@ class PipelineAutomationService(QObject):
             return False
         profile_id = str(getattr(candidate, "profile_id", None) or "").strip() or None
         ref_base = f"{candidate.batch_id}:{candidate.role}:{branch}"
+        encode = resolve_merge_encode_settings(self._settings, branch=branch, pipeline=True)
         self._merge_context = {
             "run_dir": run_dir,
             "branch": branch,
@@ -790,6 +826,11 @@ class PipelineAutomationService(QObject):
             "total": len(mp4_paths),
             "profile_id": profile_id,
             "ref_base": ref_base,
+            "encode_width": int(encode.width),
+            "encode_height": int(encode.height),
+            "encode_fps": int(encode.fps),
+            "encode_speed_mode": str(encode.speed_mode),
+            "settings": dict(self._settings),
         }
         workspace = self._store.read_workspace_state(self._settings)
         branch_label = "Reel" if branch == "reel" else "Long"

@@ -271,3 +271,27 @@ def build_particle_motion_preset_patch(preset_id: str) -> dict[str, Any]:
 def is_particle_preset_active(draft: dict[str, Any], preset_id: str) -> bool:
     patch = build_particle_motion_preset_patch(preset_id)
     return all(draft.get(key) == patch.get(key) for key in PARTICLE_MOTION_PRESET_FIELD_KEYS)
+
+
+def resolve_particle_motion_speed(
+    *,
+    speed: float,
+    reactivity: float,
+    audio_env: float,
+    scale_factor: float = 1.0,
+) -> float:
+    """Pixel speed for live particle motion (preview + export).
+
+    Move Speed 0 freezes ambient cruise. Audio Reactivity still drives drift, and
+    higher Move Speed both adds idle cruise and amplifies that reactive drift.
+    """
+    spd = float(max(0.0, min(25.0, float(speed or 0.0))))
+    prb = float(max(0.0, min(1.0, float(reactivity or 0.0))))
+    env = float(max(0.0, min(1.0, float(audio_env or 0.0))))
+    sf = float(max(0.0, float(scale_factor)))
+    # Ambient cruise — zero when Move Speed is 0.
+    idle = spd * 18.0
+    # Reactive gain: base so reactivity works at speed 0; Move Speed scales it.
+    react_gain = (90.0 * prb) + (spd * (50.0 + prb * 130.0))
+    out = (idle + env * react_gain) * sf
+    return float(max(0.0, min(2500.0, out)))

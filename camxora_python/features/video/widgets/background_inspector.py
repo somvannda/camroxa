@@ -14,9 +14,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from features.video.lib.background_settings import BACKGROUND_FIT_OPTIONS
-from features.video.lib.composition_draft import composition_axis_options
-from features.video.widgets.composition_axis_combo import populate_axis_combo, set_combo_data
+from features.video.lib.background_settings import BACKGROUND_FIT_OPTIONS, BACKGROUND_MOTION_OPTIONS
+from features.video.lib.background_style_registry import BACKGROUND_STYLE_PRESETS
 from features.video.widgets.inspector_fields import (
     InspectorSection,
     build_color_field,
@@ -43,8 +42,6 @@ class BackgroundInspector(QWidget):
         self._previous_preset_key: str | None = None
         self._fit_combo: QComboBox | None = None
         self._motion_combo: QComboBox | None = None
-        self._comp_motion_combo: QComboBox | None = None
-        self._atmosphere_combo: QComboBox | None = None
         self._float_setters: dict[str, Callable[[float], None]] = {}
         self._color_setters: dict[str, Callable[[str], None]] = {}
 
@@ -54,7 +51,7 @@ class BackgroundInspector(QWidget):
 
         background_section = InspectorSection(
             "Background",
-            subtitle="Image + Motion + Atmosphere (orthogonal composition axes).",
+            subtitle="Reactive image treatment for the current background.",
         )
         self._enabled_toggle = QCheckBox("Background Image")
         self._enabled_toggle.toggled.connect(
@@ -62,22 +59,27 @@ class BackgroundInspector(QWidget):
         )
         background_section.add_widget(self._enabled_toggle)
 
-        axes = composition_axis_options()
-        self._comp_motion_combo = QComboBox()
-        populate_axis_combo(
-            self._comp_motion_combo, axes["background_motions"], include_none=False
-        )
-        self._comp_motion_combo.currentIndexChanged.connect(self._on_comp_motion_changed)
-        background_section.add_widget(form_row("Motion", self._comp_motion_combo))
+        self._preset_combo = QComboBox()
+        self._preset_combo.setToolTip("Preset look")
+        for value, label in BACKGROUND_STYLE_PRESETS:
+            self._preset_combo.addItem(label, value)
+        self._preset_combo.currentIndexChanged.connect(self._on_preset_index_changed)
+        background_section.add_widget(form_row("Preset Look", self._preset_combo))
 
-        self._atmosphere_combo = QComboBox()
-        populate_axis_combo(self._atmosphere_combo, axes["atmosphere"])
-        self._atmosphere_combo.currentIndexChanged.connect(self._on_atmosphere_changed)
-        background_section.add_widget(form_row("Atmosphere", self._atmosphere_combo))
+        restore_row = QHBoxLayout()
+        restore_row.addStretch()
+        restore_btn = QPushButton("Restore original")
+        restore_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        restore_btn.setToolTip("Reset this preset look to factory defaults (keeps your video template Save separate).")
+        restore_btn.clicked.connect(self.preset_restore_requested.emit)
+        restore_row.addWidget(restore_btn)
+        restore_host = QWidget()
+        restore_host.setLayout(restore_row)
+        background_section.add_widget(restore_host)
         background_section.add_widget(
             note_box(
-                "Atmosphere is weather/fog/sky. Particles and Lighting are separate layers "
-                "(Session B). Legacy style packs are not scene authority."
+                "Preset tweaks stay for this session only and reset when the app closes. "
+                "Restore original clears only this preset look. Save still writes the current look to the video template."
             )
         )
 
@@ -135,6 +137,12 @@ class BackgroundInspector(QWidget):
             self._add_float("backgroundSmoothing", "Reaction Smoothness", 0, 0.99, 0.01)
         )
 
+        self._motion_combo = QComboBox()
+        for value, label in BACKGROUND_MOTION_OPTIONS:
+            self._motion_combo.addItem(label, value)
+        self._motion_combo.currentIndexChanged.connect(self._on_motion_changed)
+        details_layout.addWidget(form_row("Motion", self._motion_combo))
+
         for field, label, minimum, maximum, step in (
             ("backgroundMotionZoomStrength", "Zoom Strength", 0, 20, 0.05),
             ("backgroundMotionVibrateStrength", "Vibrate Strength", 0, 20, 0.05),
@@ -185,17 +193,39 @@ class BackgroundInspector(QWidget):
         root.addStretch()
 
     def _on_preset_index_changed(self, _index: int) -> None:
-        # Legacy preset UX quarantined — composition axes are authority.
-        return
+        if self._binding or self._preset_combo is None:
+            return
+        preset = self._preset_combo.currentData()
+        if isinstance(preset, str) and preset:
+            self._previous_preset_key = self._selected_preset_key
+            self._selected_preset_key = preset
+            self.preset_apply_requested.emit(preset)
 
     def selected_preset_key(self) -> str | None:
+        if self._preset_combo is not None:
+            current = self._preset_combo.currentData()
+            if isinstance(current, str) and current:
+                return current
         return self._selected_preset_key
 
     def previous_preset_key(self) -> str | None:
         return self._previous_preset_key
 
     def set_preset_options(self, options: tuple[tuple[str, str], ...]) -> None:
-        _ = options  # legacy packs quarantined
+        if self._preset_combo is None:
+            return
+        current = self._preset_combo.currentData()
+        self._binding = True
+        try:
+            self._preset_combo.clear()
+            for value, label in options:
+                self._preset_combo.addItem(label, value)
+            if isinstance(current, str):
+                index = self._preset_combo.findData(current)
+                if index >= 0:
+                    self._preset_combo.setCurrentIndex(index)
+        finally:
+            self._binding = False
 
     def _add_float(
         self,
@@ -242,21 +272,11 @@ class BackgroundInspector(QWidget):
             self._emit_patch({"backgroundFitMode": value})
 
     def _on_motion_changed(self, _index: int) -> None:
-        return
-
-    def _on_comp_motion_changed(self, _index: int) -> None:
-        if self._binding or self._comp_motion_combo is None:
+        if self._binding or self._motion_combo is None:
             return
-        value = self._comp_motion_combo.currentData()
+        value = self._motion_combo.currentData()
         if isinstance(value, str):
-            self._emit_patch({"compositionBackgroundMotion": value})
-
-    def _on_atmosphere_changed(self, _index: int) -> None:
-        if self._binding or self._atmosphere_combo is None:
-            return
-        value = self._atmosphere_combo.currentData()
-        if isinstance(value, str):
-            self._emit_patch({"compositionBackgroundAtmosphere": value})
+            self._emit_patch({"backgroundMotionMode": value})
 
     def _emit_patch(self, patch: dict) -> None:
         if self._binding:
@@ -276,17 +296,10 @@ class BackgroundInspector(QWidget):
                 index = self._fit_combo.findData(str(draft.get("backgroundFitMode") or "cover"))
                 if index >= 0:
                     self._fit_combo.setCurrentIndex(index)
-            if self._comp_motion_combo is not None:
-                set_combo_data(
-                    self._comp_motion_combo,
-                    str(draft.get("compositionBackgroundMotion") or "static"),
-                    fallback="static",
-                )
-            if self._atmosphere_combo is not None:
-                set_combo_data(
-                    self._atmosphere_combo,
-                    str(draft.get("compositionBackgroundAtmosphere") or "none"),
-                )
+            if self._motion_combo is not None:
+                index = self._motion_combo.findData(str(draft.get("backgroundMotionMode") or "none"))
+                if index >= 0:
+                    self._motion_combo.setCurrentIndex(index)
 
             for field, setter in self._float_setters.items():
                 setter(float(draft.get(field, 0)))
@@ -298,9 +311,17 @@ class BackgroundInspector(QWidget):
                 toggle = getattr(self, f"_{field}_toggle", None)
                 if toggle is not None:
                     toggle.setChecked(bool(draft.get(field)))
+
+            if self._preset_combo is not None:
+                current = self._preset_combo.currentData()
+                if isinstance(current, str) and current:
+                    self._selected_preset_key = current
+                    if self._previous_preset_key is None:
+                        self._previous_preset_key = current
         finally:
             self._binding = False
 
-    def mount_effect_pack_selector(self, _selector: QWidget) -> None:
-        # Effect packs are not composition scene authority.
-        return
+    def mount_effect_pack_selector(self, selector: QWidget) -> None:
+        layout = self.layout()
+        if isinstance(layout, QVBoxLayout):
+            layout.insertWidget(0, selector)

@@ -17,7 +17,36 @@ VALID_GRADIENT_DIRECTIONS = frozenset(
 
 # Bright / light spectrum gradient catalogs (UI dropdown + style recipes).
 # Avoid pure white lead stops — they wash bars to chalk on dark stage.
-SPECTRUM_GRADIENT_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
+#
+# Studio composition palettes first, then Video’s existing bright presets.
+# Users can still Add Color / Remove Last on any selection (up to MAX stops).
+_STUDIO_SPECTRUM_PALETTE_PRESETS: tuple[tuple[str, str], ...] = (
+    ("#ff00ff,#00ffff,#7c3aed,#ff2d95", "Cyberpunk"),
+    ("#ff2bd6,#ff6a3d,#6d28d9,#22d3ee", "Synthwave"),
+    ("#ffcc00,#ff2d6a,#00e5ff,#a3ff12", "Festival"),
+    ("#00e5ff,#8b5cff,#ff2d95,#00ff9a", "EDM"),
+    ("#b8ff00,#7cff00,#ff5a00,#ff1a1a", "Dubstep"),
+    ("#c44dff,#00e8ff,#ff6ec7,#6b5cff", "Future Bass"),
+    ("#ff3b6b,#ff7a18,#ffcc00,#ff4f9a", "Sunset"),
+    ("#00ff9a,#00e5ff,#5b8cff,#b44dff", "Aurora"),
+    ("#6b5cff,#c44dff,#ff2bd6,#00c8ff", "Galaxy"),
+    ("#ff1a1a,#ff5a00,#ffcc00,#ff3b6b", "Fire"),
+    ("#0090ff,#00e5ff,#00d4aa,#3db8ff", "Ocean"),
+    ("#ffffff,#d4d4d8,#a1a1aa,#71717a", "Monochrome"),
+    ("#1d4ed8,#312e81,#6366f1,#00e5ff", "Midnight"),
+    ("#ff00c8,#ff4fd8,#ff2d6a,#b44dff", "Neon Pink"),
+    ("#00d4aa,#00ff9a,#ffcc00,#ff2d6a", "Tropical"),
+    (
+        "#b000ff,#ff0080,#ff2200,#ff9900,#ffee00,#00ff66,#00c8ff,#0040ff",
+        "Rainbow",
+    ),
+    ("#ff2d6a,#ff6ec7,#7c6bff,#00e5ff", "Candy"),
+    ("#8b0000,#dc143c,#ff5a00,#ffcc00", "Blood Moon"),
+    ("#e0f7ff,#5ec8ff,#0090ff,#7c6bff", "Arctic"),
+    ("#ffcc00,#ffb000,#ffd60a,#ffe566", "Gold Rush"),
+)
+
+_VIDEO_SPECTRUM_PALETTE_PRESETS: tuple[tuple[str, str], ...] = (
     ("#ff4fd8,#22d3ee,#a78bfa,#f472b6", "Neon Candy"),
     ("#38bdf8,#22d3ee,#818cf8,#c084fc", "Electric Sky"),
     ("#fb7185,#f472b6,#e879f9,#c084fc", "Hot Magenta"),
@@ -30,6 +59,35 @@ SPECTRUM_GRADIENT_PRESET_OPTIONS: tuple[tuple[str, str], ...] = (
     ("#fda4af,#fb7185,#f0abfc,#7dd3fc", "Peach Neon"),
     ("#67e8f9,#22d3ee,#fb923c,#f472b6", "Aqua Flame"),
     ("#f472b6,#a78bfa,#38bdf8,#34d399", "Prism Bright"),
+)
+
+
+def _merge_spectrum_gradient_presets(
+    *groups: tuple[tuple[str, str], ...],
+) -> tuple[tuple[str, str], ...]:
+    """Studio first, then Video — dedupe by label (casefold) and stop signature."""
+    out: list[tuple[str, str]] = []
+    seen_labels: set[str] = set()
+    seen_values: set[str] = set()
+    for group in groups:
+        for value, label in group:
+            key_label = str(label).strip().casefold()
+            key_value = ",".join(
+                part.strip().lower() for part in str(value).split(",") if part.strip()
+            )
+            if not key_label or not key_value:
+                continue
+            if key_label in seen_labels or key_value in seen_values:
+                continue
+            seen_labels.add(key_label)
+            seen_values.add(key_value)
+            out.append((value, label))
+    return tuple(out)
+
+
+SPECTRUM_GRADIENT_PRESET_OPTIONS: tuple[tuple[str, str], ...] = _merge_spectrum_gradient_presets(
+    _STUDIO_SPECTRUM_PALETTE_PRESETS,
+    _VIDEO_SPECTRUM_PALETTE_PRESETS,
 )
 
 
@@ -172,7 +230,7 @@ def _sample_gradient_rgb(stops_lin: np.ndarray, t: np.ndarray) -> np.ndarray:
     segment_count = int(stops_lin.shape[0] - 1)
     scaled = tt * float(segment_count)
     seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
-    # Softer melt between stops — removes hard “joint” lines in fills.
+    # Softer melt between stops — removes hard joint lines in fills.
     local_t = _smoothstep01(_smoothstep01(scaled - seg_idx.astype(np.float32))).reshape((n, 1))
     c1 = stops_lin[seg_idx]
     c2 = stops_lin[np.minimum(seg_idx + 1, stops_lin.shape[0] - 1)]
@@ -202,7 +260,15 @@ def build_spectrum_vertex_rgba(
         stops_lin = _srgb_to_linear(stops)
         if stops.shape[0] >= 2:
             t = np.linspace(0.0, 1.0, n, dtype=np.float32)
-            rgb = _sample_gradient_rgb(stops_lin, t)
+            segment_count = int(stops.shape[0] - 1)
+            scaled = t * float(segment_count)
+            seg_idx = np.minimum(segment_count - 1, np.floor(scaled).astype(np.int32))
+            # Mild smoothstep only — keep stops readable (no neighbor wash).
+            local_t = _smoothstep01(scaled - seg_idx.astype(np.float32)).reshape((n, 1))
+            c1 = stops_lin[seg_idx]
+            c2 = stops_lin[np.minimum(seg_idx + 1, stops_lin.shape[0] - 1)]
+            rgb_lin = c1 * (1.0 - local_t) + c2 * local_t
+            rgb = _linear_to_srgb(rgb_lin)
             alpha_col = np.full((n, 1), a, dtype=np.float32)
             return np.concatenate([rgb.astype(np.float32), alpha_col], axis=1)
 
@@ -325,7 +391,7 @@ def build_spectrum_solid_graph_strip_rgba(
     gradient_direction: str = "left-to-right",
     close_loop: bool = False,
 ) -> np.ndarray:
-    """RGBA for a solid-graph TRIANGLE_STRIP (tip, base, tip, base, …).
+    """RGBA for a solid-graph TRIANGLE_STRIP (tip, base, tip, base, ...).
 
     Tip and base of each sample share one spatial edge color so the filled band
     melts the same way as Fill Circle instead of showing an index wrap seam.

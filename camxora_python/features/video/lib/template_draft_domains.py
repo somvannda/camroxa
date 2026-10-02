@@ -5,22 +5,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-DOMAIN_KEYS = (
-    "palette",
-    "background",
-    "spectrum",
-    "logo",
-    "text",
-    "overlay",
-    "particles",
-    "lighting",
-    "camera",
-    "post",
-    "audio_mapping",
-    "album",
-    "title",
-    "lightning",  # legacy alias
-)
+DOMAIN_KEYS = ("spectrum", "background", "logo", "particles", "lightning", "album", "title", "text")
 
 
 def _pick_spectrum_slice(draft: dict[str, Any]) -> dict[str, Any]:
@@ -265,19 +250,12 @@ def pick_particles_draft_slice(draft: dict[str, Any]) -> dict[str, Any]:
     return _pick_particles_slice(draft)
 
 
-def _pick_composition_keys(draft: dict[str, Any], keys: tuple[str, ...]) -> dict[str, Any]:
-    return {key: draft.get(key) for key in keys}
-
-
-def _pick_lighting_slice(draft: dict[str, Any]) -> dict[str, Any]:
-    return _pick_composition_keys(
-        draft,
-        ("compositionLightingEffect", "compositionLightingTrigger", "lightningEnabled"),
-    )
+def _pick_lightning_slice(draft: dict[str, Any]) -> dict[str, Any]:
+    return {"lightningEnabled": draft.get("lightningEnabled")}
 
 
 def pick_lightning_draft_slice(draft: dict[str, Any]) -> dict[str, Any]:
-    return _pick_lighting_slice(draft)
+    return _pick_lightning_slice(draft)
 
 
 def build_draft_dirty_state(
@@ -293,84 +271,13 @@ def build_draft_dirty_state(
     def changed(local_slice: dict[str, Any], persisted_slice: dict[str, Any]) -> bool:
         return json.dumps(local_slice, sort_keys=True) != json.dumps(persisted_slice, sort_keys=True)
 
-    lighting_dirty_flag = lightning_dirty or changed(
-        _pick_lighting_slice(draft), _pick_lighting_slice(persisted)
-    )
     return {
-        "palette": changed(
-            _pick_composition_keys(draft, ("compositionColorPalette",)),
-            _pick_composition_keys(persisted, ("compositionColorPalette",)),
-        ),
-        "spectrum": spectrum_dirty
-        or changed(_pick_spectrum_slice(draft), _pick_spectrum_slice(persisted))
-        or changed(
-            _pick_composition_keys(
-                draft,
-                (
-                    "compositionSpectrumShape",
-                    "compositionSpectrumMaterial",
-                    "compositionSpectrumAnimation",
-                ),
-            ),
-            _pick_composition_keys(
-                persisted,
-                (
-                    "compositionSpectrumShape",
-                    "compositionSpectrumMaterial",
-                    "compositionSpectrumAnimation",
-                ),
-            ),
-        ),
-        "background": changed(_pick_background_slice(draft), _pick_background_slice(persisted))
-        or changed(
-            _pick_composition_keys(
-                draft, ("compositionBackgroundMotion", "compositionBackgroundAtmosphere")
-            ),
-            _pick_composition_keys(
-                persisted, ("compositionBackgroundMotion", "compositionBackgroundAtmosphere")
-            ),
-        ),
-        "logo": changed(_pick_logo_slice(draft), _pick_logo_slice(persisted))
-        or changed(
-            _pick_composition_keys(draft, ("compositionLogoAnimation",)),
-            _pick_composition_keys(persisted, ("compositionLogoAnimation",)),
-        ),
-        "particles": changed(_pick_particles_slice(draft), _pick_particles_slice(persisted))
-        or changed(
-            _pick_composition_keys(
-                draft, ("compositionParticleType", "compositionParticleBehavior")
-            ),
-            _pick_composition_keys(
-                persisted, ("compositionParticleType", "compositionParticleBehavior")
-            ),
-        ),
-        "lighting": lighting_dirty_flag,
-        "lightning": lighting_dirty_flag,
-        "camera": changed(
-            _pick_composition_keys(draft, ("compositionCameraBehavior",)),
-            _pick_composition_keys(persisted, ("compositionCameraBehavior",)),
-        ),
-        "post": changed(
-            _pick_composition_keys(draft, ("compositionPostEffects",)),
-            _pick_composition_keys(persisted, ("compositionPostEffects",)),
-        ),
-        "audio_mapping": changed(
-            _pick_composition_keys(draft, ("compositionAudioMapping",)),
-            _pick_composition_keys(persisted, ("compositionAudioMapping",)),
-        ),
-        "overlay": changed(
-            _pick_composition_keys(
-                draft, ("compositionOverlayEnabled", "compositionOverlayAnimation")
-            ),
-            _pick_composition_keys(
-                persisted, ("compositionOverlayEnabled", "compositionOverlayAnimation")
-            ),
-        ),
+        "spectrum": spectrum_dirty or changed(_pick_spectrum_slice(draft), _pick_spectrum_slice(persisted)),
+        "background": changed(_pick_background_slice(draft), _pick_background_slice(persisted)),
+        "logo": changed(_pick_logo_slice(draft), _pick_logo_slice(persisted)),
+        "particles": changed(_pick_particles_slice(draft), _pick_particles_slice(persisted)),
+        "lightning": lightning_dirty or changed(_pick_lightning_slice(draft), _pick_lightning_slice(persisted)),
         "album": changed(_pick_album_slice(draft), _pick_album_slice(persisted)),
         "title": changed(_pick_title_slice(draft), _pick_title_slice(persisted)),
-        "text": changed(_pick_text_slice(draft), _pick_text_slice(persisted))
-        or changed(
-            _pick_composition_keys(draft, ("compositionTextEnabled",)),
-            _pick_composition_keys(persisted, ("compositionTextEnabled",)),
-        ),
+        "text": changed(_pick_text_slice(draft), _pick_text_slice(persisted)),
     }

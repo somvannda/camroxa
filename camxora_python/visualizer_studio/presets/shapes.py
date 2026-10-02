@@ -65,6 +65,22 @@ def normalize_spectrum_shape_id(value: Any) -> str | None:
     return None
 
 
+def legacy_style_alias_for_shape(shape_id: str) -> str:
+    """Map geometry id → a legacy ``style`` the GPU already understands for draw mode."""
+    key = normalize_spectrum_shape_id(shape_id) or "bars"
+    if key == "wave":
+        return "aurora-ribbon"
+    if key == "audio_ribbon":
+        return "soft-waveform"
+    if key in ("heart", "infinity", "spiral", "tunnel"):
+        return "soft-waveform"
+    if key == "soft_eq":
+        return "soft-eq"
+    if key in ("circle", "double_circle", "ring", "starburst", "hexagon", "diamond", "triangle"):
+        return "orbit-spikes"
+    return "orbit-spikes"
+
+
 def _base_layer() -> dict[str, Any]:
     return {
         "id": "shape-layer-1",

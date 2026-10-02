@@ -1,10 +1,9 @@
-"""Electron template -> GPU renderer dict bridge -- Phase 9d."""
+"""Electron template → GPU renderer dict bridge — Phase 9d."""
 
 from __future__ import annotations
 
 from typing import Any
 
-from features.video.lib.composition_scene_contract import strip_composition_for_renderer
 from features.video.lib.merge_records import merge_records
 from features.video.lib.text_domain_runtime import inject_text_domains_into_template
 from features.video.lib.video_template_save import build_video_workspace_template_save_patch
@@ -71,8 +70,6 @@ class TemplateNormalizer:
             or workspace.get("activeTrackPath")
             or ""
         ).strip()
-        # P0: composition is authoring-layer JSON; GPU keeps legacy fields only.
-        merged = strip_composition_for_renderer(merged)
         return inject_text_domains_into_template(
             merged,
             track_paths=paths,

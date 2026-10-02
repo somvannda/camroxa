@@ -325,9 +325,6 @@ def build_video_template_draft(
     draft.update(build_album_settings_state(template))
     draft.update(build_title_settings_state(template))
     draft["effectPacks"] = read_template_effect_pack_map(template)
-    from features.video.lib.composition_draft import draft_from_composition
-
-    draft.update(draft_from_composition(template.get("composition") if isinstance(template, dict) else None))
     return draft
 
 

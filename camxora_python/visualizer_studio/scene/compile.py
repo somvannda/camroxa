@@ -133,7 +133,7 @@ class CompiledFrame:
         }.get(particle_style, "classic")
 
         try:
-            from features.video.lib.composition_spectrum_shapes import legacy_style_alias_for_shape
+            from visualizer_studio.presets.shapes import legacy_style_alias_for_shape
 
             spectrum_style = (
                 legacy_style_alias_for_shape(self.spectrum_shape)

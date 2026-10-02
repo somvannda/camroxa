@@ -99,6 +99,10 @@ from features.video.lib.video_template_draft import (
     draft_snapshot,
 )
 from features.video.lib.video_template_save import build_video_workspace_template_save_patch
+from features.video.lib.preview_export_parity import (
+    PreviewExportParityReport,
+    diff_renderer_templates,
+)
 from features.video.lib.effect_pack_draft_state import (
     apply_particle_pack_as_preset,
     apply_spectrum_pack_as_preset,
@@ -123,7 +127,12 @@ from features.video.lib.pipeline_inputs import (
     build_video_pipeline_run_key,
     resolve_video_pipeline_inputs,
 )
-from features.video.lib.pipeline_merge import is_auto_merge_enabled_for_branch
+from features.video.lib.pipeline_merge import (
+    collect_verified_merge_inputs,
+    is_auto_merge_enabled_for_branch,
+    merge_encode_settings_from_context,
+    resolve_merge_encode_settings,
+)
 from features.video.lib.video_billing import consume_video_operation, refund_video_operation
 from features.video.lib.export_telemetry import collect_hardware_hints, report_video_telemetry_async
 from features.video.lib.render_scene_request import (
@@ -148,17 +157,10 @@ from features.video.widgets.left_rail import VideoLeftRail
 from features.video.widgets.logo_inspector import LogoInspector
 from features.video.widgets.particles_inspector import ParticlesInspector
 from features.video.widgets.spectrum_inspector import SpectrumInspector
-from features.video.widgets.lighting_inspector import LightingInspector
-from features.video.widgets.camera_inspector import CameraInspector
-from features.video.widgets.post_inspector import PostInspector
-from features.video.widgets.audio_mapping_inspector import AudioMappingInspector
-from features.video.widgets.overlay_inspector import OverlayInspector
-from features.video.widgets.palette_inspector import PaletteInspector
-from features.video.widgets.text_composition_inspector import TextCompositionInspector
+from features.video.widgets.lightning_inspector import LightningInspector
 from features.video.widgets.right_rail import VideoRightRail
 from features.video.widgets.stage_panel import VideoStagePanel
 from features.video.widgets.text_domain_inspectors import AlbumInspector, TitleInspector
-from features.video.lib.composition_draft import draft_from_composition
 from features.video.lib.text_domain_registry import (
     capture_text_domain_preset,
     draft_style_snapshot,
@@ -301,6 +303,9 @@ class VideoView(QWidget):
         self._video_billing_charge: dict[str, object] = {}
         self._merge_billing_charge: dict[str, object] = {}
         self._settings_patch_worker: PatchSettingsWorker | None = None
+        self._pending_settings_patch: dict[str, object] = {}
+        self._pending_settings_status = "Export settings updated."
+        self._pending_resolution_save = False
         self._pending_manual_billing: dict[str, object] | None = None
         self._resolution_save_pending = False
         self._export_start_pending = False
@@ -353,6 +358,12 @@ class VideoView(QWidget):
         self._draft_persist_timer.setSingleShot(True)
         self._draft_persist_timer.setInterval(200)
         self._draft_persist_timer.timeout.connect(self._persist_local_draft_snapshot)
+        # Coalesce Resolution/FPS/Speed/Workers patches — never replace a live
+        # PatchSettingsWorker (QThread: Destroyed while thread is still running).
+        self._settings_patch_timer = QTimer(self)
+        self._settings_patch_timer.setSingleShot(True)
+        self._settings_patch_timer.setInterval(250)
+        self._settings_patch_timer.timeout.connect(self._flush_pending_settings_patch)
         self._hydrated_template_id = ""
 
         root = QVBoxLayout(self)
@@ -420,42 +431,52 @@ class VideoView(QWidget):
         self._particles_inspector.preset_apply_requested.connect(self._apply_particle_preset)
         self._particles_inspector.preset_restore_requested.connect(self._restore_particle_preset)
 
-        self._lighting_inspector = LightingInspector()
-        self._lighting_inspector.draft_patch_requested.connect(self._patch_template_draft)
-
-        self._camera_inspector = CameraInspector()
-        self._camera_inspector.draft_patch_requested.connect(self._patch_template_draft)
-
-        self._post_inspector = PostInspector()
-        self._post_inspector.draft_patch_requested.connect(self._patch_template_draft)
-
-        self._audio_mapping_inspector = AudioMappingInspector()
-        self._audio_mapping_inspector.draft_patch_requested.connect(self._patch_template_draft)
-
-        self._overlay_inspector = OverlayInspector()
-        self._overlay_inspector.draft_patch_requested.connect(self._patch_template_draft)
-
-        self._palette_inspector = PaletteInspector()
-        self._palette_inspector.draft_patch_requested.connect(self._patch_template_draft)
-
-        self._text_composition_inspector = TextCompositionInspector()
-        self._text_composition_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._lightning_inspector = LightningInspector()
+        self._lightning_inspector.draft_patch_requested.connect(self._patch_template_draft)
+        self._lightning_inspector.preset_apply_requested.connect(self._apply_lightning_preset)
+        self._lightning_inspector.layer_patch_requested.connect(self._patch_selected_lightning_layer)
+        self._lightning_inspector.layer_add_requested.connect(self._add_lightning_layer)
+        self._lightning_inspector.layer_duplicate_requested.connect(self._duplicate_lightning_layer)
+        self._lightning_inspector.layer_delete_requested.connect(self._delete_lightning_layer)
+        self._lightning_inspector.layer_move_up_requested.connect(self._move_lightning_layer_up)
+        self._lightning_inspector.layer_move_down_requested.connect(self._move_lightning_layer_down)
+        self._lightning_inspector.layer_selected.connect(self._select_lightning_layer)
 
         self._domain_inspectors = {
-            "palette": self._palette_inspector,
-            "background": self._background_inspector,
             "spectrum": self._spectrum_inspector,
+            "background": self._background_inspector,
             "logo": self._logo_inspector,
-            "text": self._text_composition_inspector,
-            "overlay": self._overlay_inspector,
             "particles": self._particles_inspector,
-            "lighting": self._lighting_inspector,
-            "camera": self._camera_inspector,
-            "post": self._post_inspector,
-            "audio_mapping": self._audio_mapping_inspector,
+            "lightning": self._lightning_inspector,
         }
-        # Effect packs are marketplace later — not primary scene authority in Composition Studio.
-        self._effect_pack_selectors = {}
+        for domain, inspector in self._domain_inspectors.items():
+            if domain not in EFFECT_PACK_DOMAIN_LABELS:
+                continue
+            title, subtitle = EFFECT_PACK_DOMAIN_LABELS[domain]
+            selector = EffectPackSelector(
+                title=title,
+                subtitle=subtitle,
+                show_apply_combo=domain not in {"spectrum", "particles", "background", "logo", "lightning"},
+            )
+            selector.apply_requested.connect(
+                lambda value, pack_domain=domain: self._apply_effect_pack(pack_domain, value)
+            )
+            selector.clear_requested.connect(
+                lambda pack_domain=domain: self._clear_effect_pack(pack_domain)
+            )
+            selector.install_requested.connect(self._install_effect_pack)
+            selector.reload_requested.connect(self._reload_effect_pack_catalog)
+            selector.toggle_enabled_requested.connect(
+                lambda pack_domain=domain: self._toggle_effect_pack_enabled(pack_domain)
+            )
+            selector.activate_requested.connect(
+                lambda pack_domain=domain: self._activate_effect_pack_version(pack_domain)
+            )
+            selector.remove_requested.connect(
+                lambda pack_domain=domain: self._remove_effect_pack_version(pack_domain)
+            )
+            inspector.mount_effect_pack_selector(selector)
+            self._effect_pack_selectors[domain] = selector
 
         if SHOW_VIDEO_WORKSPACE_DIAGNOSTICS:
             panel = VideoWorkspaceDiagnosticsPanel()
@@ -545,7 +566,7 @@ class VideoView(QWidget):
         self._export_panel.auto_merge_toggled.connect(self._set_auto_merge)
         self._export_panel.shuffle_merge_toggled.connect(self._set_shuffle_merge)
         self._export_panel.speed_mode_changed.connect(self._set_export_speed_mode)
-        self._export_panel.export_tier_changed.connect(self._set_export_tier)
+        self._export_panel.export_resolution_changed.connect(self._set_export_resolution)
         self._export_panel.fps_changed.connect(self._set_export_fps)
         self._export_panel.workers_changed.connect(self._set_export_workers)
         # python_app layout: export queue console docks under the preview.
@@ -825,6 +846,9 @@ class VideoView(QWidget):
         if self._draft_persist_timer.isActive():
             self._draft_persist_timer.stop()
             self._persist_local_draft_snapshot()
+        if self._settings_patch_timer.isActive():
+            self._settings_patch_timer.stop()
+            self._flush_pending_settings_patch()
         if self._diagnostics_timer is not None:
             self._diagnostics_timer.stop()
         restore_shell_status()
@@ -1072,16 +1096,6 @@ class VideoView(QWidget):
     def _bind_inspectors(self) -> None:
         if not self._template_draft:
             return
-        # Ensure composition axis keys are present for studio inspectors.
-        comp_axes = draft_from_composition(
-            (self._workspace.template.get("composition") if self._workspace else None)
-            if self._workspace
-            else None
-        )
-        for key, value in comp_axes.items():
-            if key not in self._template_draft:
-                self._template_draft[key] = value
-
         self._spectrum_inspector.bind_draft(
             self._template_draft,
             layers=self._spectrum_layers,
@@ -1092,13 +1106,11 @@ class VideoView(QWidget):
         self._background_inspector.bind_draft(self._template_draft)
         self._logo_inspector.bind_draft(self._template_draft)
         self._particles_inspector.bind_draft(self._template_draft)
-        self._lighting_inspector.bind_draft(self._template_draft)
-        self._camera_inspector.bind_draft(self._template_draft)
-        self._post_inspector.bind_draft(self._template_draft)
-        self._audio_mapping_inspector.bind_draft(self._template_draft)
-        self._overlay_inspector.bind_draft(self._template_draft)
-        self._palette_inspector.bind_draft(self._template_draft)
-        self._text_composition_inspector.bind_draft(self._template_draft)
+        self._lightning_inspector.bind_draft(
+            self._template_draft,
+            layers=self._lightning_layers,
+            selected_layer_index=self._selected_lightning_layer_index,
+        )
 
         track_paths = self._current_track_paths()
         album_settings = album_settings_from_draft(self._template_draft)
@@ -1285,12 +1297,17 @@ class VideoView(QWidget):
                     }
                 )
                 get_video_workspace_service().set_workspace_state(self._workspace)
+        output_resolution = "1920x1080"
+        if self._workspace and str(self._workspace.output_resolution or "").strip():
+            output_resolution = str(self._workspace.output_resolution).strip()
+        elif str(self._settings.get("outputResolution") or "").strip():
+            output_resolution = str(self._settings.get("outputResolution")).strip()
         self._export_panel.bind_workspace(
             self._workspace,
             busy=export_busy,
             stop_export_pending=self._stop_export_pending,
             speed_mode=normalize_export_speed_mode(self._settings.get("videoExportSpeedMode")),
-            export_tier=normalize_export_tier(self._settings.get("videoExportTier"), default="standard"),
+            output_resolution=output_resolution,
         )
 
     def _selected_pipeline_row(self) -> ProgressRow | None:
@@ -1360,10 +1377,43 @@ class VideoView(QWidget):
             notify_action("No MP3 files were found in the selected run directory.", tone="warning")
             return
         track_paths = [item.path for item in mp3_list]
+        # Flush deferred preview edits before building pipeline export JSON.
+        if self._preview_update_timer.isActive():
+            self._preview_update_timer.stop()
+        self._flush_active_spectrum_instance_layers()
+        self._flush_preview_update()
         template = self._build_pipeline_export_template(track_paths=track_paths)
         if not template:
             notify_action("No active video template is loaded.", tone="warning")
             return
+
+        # When a warm GPU preview exists, hard-gate pipeline export the same way as manual.
+        preview = self._stage.preview_widget() if self._stage.gpu_preview_available() else None
+        if preview is not None and bool(getattr(preview, "_gl_ready", False)):
+            mismatch = diff_renderer_templates(getattr(preview, "template", None), template)
+            if not mismatch.equal:
+                try:
+                    preview.set_template(template, clear_peak_cache=False)
+                except Exception:
+                    pass
+                mismatch = diff_renderer_templates(getattr(preview, "template", None), template)
+            if not mismatch.equal:
+                report_path = self._write_parity_mismatch_report(
+                    mismatch,
+                    audio_path=mp3_list[0].path,
+                    export_template=dict(template),
+                    preview_template=getattr(preview, "template", None)
+                    if isinstance(getattr(preview, "template", None), dict)
+                    else None,
+                )
+                detail = mismatch.summary(limit=6)
+                if report_path is not None:
+                    detail = f"{detail} (report: {report_path})"
+                notify_action(
+                    f"Pipeline export blocked: preview/export JSON mismatch. {detail}",
+                    tone="error",
+                )
+                return
 
         scene = build_pipeline_render_scene_request(
             template=template,
@@ -1417,6 +1467,7 @@ class VideoView(QWidget):
         except Exception as exc:
             notify_action(f"Video export blocked (billing): {exc}", tone="warning")
             return
+        encode_fields = self._encode_fields_for_merge_context(branch, pipeline=True)
         self._pipeline_merge_context = {
             "run_dir": run_dir,
             "branch": branch,
@@ -1429,6 +1480,7 @@ class VideoView(QWidget):
             "total": len(mp3_list),
             "profile_id": profile_id,
             "ref_base": ref_base,
+            **encode_fields,
         }
         if self._workspace:
             self._publish_workspace(
@@ -1800,27 +1852,114 @@ class VideoView(QWidget):
             notify_action(f"Playing: {Path(audio_path).name}")
 
     def _reorder_tracks(self, paths: object) -> None:
-        if not isinstance(paths, list) or not paths:
+        if not isinstance(paths, list):
             return
-        self._workspace = self._store.set_mp3_order(
-            [str(path) for path in paths],
-            settings=self._settings,
-        )
+        previous = str(self._workspace.selected_mp3_path or "").strip() if self._workspace else ""
+        before_count = len(self._workspace.mp3_list) if self._workspace else 0
+        ordered = [str(path).strip() for path in paths if str(path).strip()]
+        self._workspace = self._store.set_mp3_order(ordered, settings=self._settings)
         self._publish_workspace(self._workspace)
         self._update_inspectors()
-        notify_action("Track order updated.", tone="success")
+        self._update_export_panel()
+        if previous and previous not in ordered:
+            self._flush_preview_update()
+            self._update_stage_summary()
+        if not ordered:
+            notify_action("Track list cleared.", tone="success")
+        elif len(ordered) < before_count:
+            notify_action("Removed from track list.", tone="success")
+        else:
+            notify_action("Track order updated.", tone="success")
 
     def _patch_export_setting(self, patch: dict[str, object], status: str) -> None:
-        """Persist an export option like python_app's _persist_setting_patch."""
+        """Queue an export-option PATCH; coalesce rapid Resolution/FPS/Speed/Workers edits."""
+        if not patch:
+            return
         self._settings.update(patch)
-        # parent=None so closing Video mid-save cannot destroy a live QThread.
-        worker = PatchSettingsWorker(self._api, dict(patch), parent=None)
-        worker.succeeded.connect(lambda *_: notify_action(status, tone="success"))
-        worker.failed.connect(
-            lambda message: notify_action(message or "Unable to save export settings.", tone="error")
+        self._mirror_export_settings_to_local_prefs(patch)
+        self._pending_settings_patch.update(dict(patch))
+        self._pending_settings_status = status
+        # Debounce so spinning FPS/workers/speed doesn't spawn overlapping QThreads.
+        self._settings_patch_timer.start()
+
+    def _mirror_export_settings_to_local_prefs(self, patch: dict[str, object]) -> None:
+        """Persist export options locally so a failed/interrupted API patch still reloads."""
+        prefs_keys = (
+            "outputResolution",
+            "imageResolution",
+            "videoExportFps",
+            "videoExportWorkers",
+            "videoExportSpeedMode",
+            "videoExportTier",
+            "autoMergeAfterVideo",
+            "videoShuffleMerge",
         )
-        self._settings_patch_worker = worker
-        worker.start()
+        local_patch = {key: patch[key] for key in prefs_keys if key in patch}
+        if not local_patch:
+            return
+        try:
+            prefs = self._store.read_prefs()
+            prefs.update(local_patch)
+            self._store.write_prefs(prefs)
+        except Exception:
+            pass
+        if self._cache is not None and self._workspace is not None:
+            self._cache.apply_video_workspace(self._workspace, self._settings)
+
+    def _flush_pending_settings_patch(self) -> None:
+        if not self._pending_settings_patch:
+            return
+        worker = self._settings_patch_worker
+        if worker is not None:
+            try:
+                if worker.isRunning():
+                    # Keep coalescing; retry when the in-flight worker finishes.
+                    self._settings_patch_timer.start()
+                    return
+            except RuntimeError:
+                self._settings_patch_worker = None
+
+        patch = dict(self._pending_settings_patch)
+        status = self._pending_settings_status
+        was_resolution = bool(self._pending_resolution_save)
+        self._pending_settings_patch.clear()
+        self._pending_resolution_save = False
+        # parent=None so closing Video mid-save cannot destroy a live QThread.
+        next_worker = PatchSettingsWorker(self._api, patch, parent=None)
+        next_worker.succeeded.connect(
+            lambda _payload, s=status, res=was_resolution: self._on_export_settings_saved(s, resolution=res)
+        )
+        next_worker.failed.connect(
+            lambda message, res=was_resolution: self._on_export_settings_save_failed(message, resolution=res)
+        )
+        next_worker.finished.connect(self._on_settings_patch_worker_finished)
+        self._settings_patch_worker = next_worker
+        next_worker.start()
+
+    def _on_export_settings_saved(self, status: str, *, resolution: bool = False) -> None:
+        if resolution:
+            self._resolution_save_pending = False
+            if self._workspace:
+                self._update_stage_summary()
+        notify_action(status, tone="success")
+
+    def _on_export_settings_save_failed(self, message: str, *, resolution: bool = False) -> None:
+        if resolution:
+            self._resolution_save_pending = False
+            if self._workspace:
+                self._update_stage_summary()
+        notify_action(message or "Unable to save export settings.", tone="error")
+
+    def _on_settings_patch_worker_finished(self) -> None:
+        worker = self._settings_patch_worker
+        self._settings_patch_worker = None
+        if worker is not None:
+            try:
+                worker.deleteLater()
+            except RuntimeError:
+                pass
+        if self._pending_settings_patch:
+            self._settings_patch_timer.start(0)
 
     def _set_auto_merge(self, enabled: bool) -> None:
         if not self._workspace:
@@ -1852,9 +1991,43 @@ class VideoView(QWidget):
         normalized = normalize_export_speed_mode(mode)
         self._patch_export_setting({"videoExportSpeedMode": normalized}, "Export speed updated.")
 
-    def _set_export_tier(self, tier: str) -> None:
-        normalized = normalize_export_tier(tier)
-        self._patch_export_setting({"videoExportTier": normalized}, f"Export tier set to {normalized.title()}.")
+    def _set_export_resolution(self, resolution: str) -> None:
+        """Manual export Resolution = same OUTPUT_RESOLUTION_OPTIONS list as the stage."""
+        normalized = str(resolution or "").strip()
+        if not normalized:
+            return
+        # Concrete WxH replaces Draft/Standard/Master — keep Standard so FPS/speed apply.
+        self._settings["videoExportTier"] = "standard"
+        if self._workspace and normalized == str(self._workspace.output_resolution or "").strip():
+            self._patch_export_setting(
+                {"videoExportTier": "standard"},
+                "Export resolution updated.",
+            )
+            return
+        self._save_output_resolution(normalized, force_standard_tier=True)
+
+    def _merge_encode_settings_for_branch(self, branch: str, *, pipeline: bool):
+        tier = resolve_export_tier_settings(self._settings, pipeline=pipeline)
+        fps = self._resolve_export_fps()
+        if self._workspace and int(self._workspace.export.fps or 0) > 0:
+            fps = normalize_export_fps(self._workspace.export.fps)
+        return resolve_merge_encode_settings(
+            self._settings,
+            branch=branch,
+            pipeline=pipeline,
+            fps=fps,
+            speed_mode=tier.speed_mode,
+        )
+
+    def _encode_fields_for_merge_context(self, branch: str, *, pipeline: bool) -> dict[str, object]:
+        encode = self._merge_encode_settings_for_branch(branch, pipeline=pipeline)
+        return {
+            "encode_width": int(encode.width),
+            "encode_height": int(encode.height),
+            "encode_fps": int(encode.fps),
+            "encode_speed_mode": str(encode.speed_mode),
+            "settings": dict(self._settings),
+        }
 
     def _resolve_export_fps(self) -> int:
         if self._workspace:
@@ -1939,6 +2112,90 @@ class VideoView(QWidget):
             fps=tier.fps,
         )
 
+    def _write_parity_mismatch_report(
+        self,
+        report: PreviewExportParityReport,
+        *,
+        audio_path: str,
+        export_template: dict,
+        preview_template: dict | None,
+    ) -> Path | None:
+        try:
+            from shared.lib.app_paths import get_client_logs_dir
+
+            logs_dir = Path(get_client_logs_dir()) / "video_parity"
+            logs_dir.mkdir(parents=True, exist_ok=True)
+            stamp = time.strftime("%Y%m%d-%H%M%S")
+            stem = Path(audio_path).stem or "track"
+            out_path = logs_dir / f"parity-mismatch-{stem}-{stamp}.json"
+            payload = {
+                "summary": report.summary(limit=40),
+                "report": report.to_dict(),
+                "previewTemplateFocus": preview_template,
+                "exportTemplate": export_template,
+            }
+            out_path.write_text(json.dumps(payload, indent=2, ensure_ascii=False, default=str), encoding="utf-8")
+            return out_path
+        except Exception:
+            return None
+
+    def _ensure_preview_export_parity(self, scene) -> PreviewExportParityReport | None:
+        """Hard gate: live preview JSON must match export JSON before encode.
+
+        Returns a mismatch report to block export, or ``None`` when export may proceed.
+        """
+        if scene is None:
+            return PreviewExportParityReport(
+                equal=False,
+                changed=["scene"],
+            )
+        # Flush deferred UI → preview so scrub/drag land before compare.
+        if self._preview_update_timer.isActive():
+            self._preview_update_timer.stop()
+        self._flush_active_spectrum_instance_layers()
+        self._flush_preview_update()
+
+        export_tpl = dict(scene.template) if isinstance(getattr(scene, "template", None), dict) else {}
+        preview = None
+        if self._stage.gpu_preview_available():
+            preview = self._stage.preview_widget()
+
+        if preview is None or not bool(getattr(preview, "_gl_ready", False)):
+            # Prefer one full preview rebuild when the stage exists but GL is cold.
+            try:
+                self._update_preview()
+            except Exception:
+                pass
+            preview = self._stage.preview_widget() if self._stage.gpu_preview_available() else None
+            if preview is None or not bool(getattr(preview, "_gl_ready", False)):
+                notify_action(
+                    "Preview GPU not ready — exporting from draft JSON without live compare.",
+                    tone="warning",
+                )
+                return None
+
+        preview_tpl = getattr(preview, "template", None)
+        report = diff_renderer_templates(
+            preview_tpl if isinstance(preview_tpl, dict) else {},
+            export_tpl,
+        )
+        if report.equal:
+            return None
+
+        # One automatic resync: push export dict into preview, then re-compare.
+        try:
+            preview.set_template(export_tpl, clear_peak_cache=False)
+        except Exception:
+            pass
+        preview_tpl = getattr(preview, "template", None)
+        retry = diff_renderer_templates(
+            preview_tpl if isinstance(preview_tpl, dict) else {},
+            export_tpl,
+        )
+        if retry.equal:
+            return None
+        return retry
+
     def _start_manual_export(self) -> None:
         # python_app behavior: export the whole track list as one batch.
         if self._export_worker is not None and self._export_worker.isRunning():
@@ -1946,6 +2203,13 @@ class VideoView(QWidget):
             return
         if self._pipeline_export_worker is not None and self._pipeline_export_worker.isRunning():
             notify_action("A pipeline export is already running.", tone="warning")
+            return
+        if int(export_gate.active) > 0:
+            notify_action(
+                f"Another export still holds {export_gate.active} worker slot(s). "
+                "Stop Export and wait a few seconds, then try again.",
+                tone="warning",
+            )
             return
         if not self._workspace:
             return
@@ -2119,9 +2383,33 @@ class VideoView(QWidget):
         if not self._batch_queue:
             return
         audio_path = self._batch_queue.pop(0)
+
+        # Flush deferred preview/spectrum edits, then rebuild export from view state.
+        if self._preview_update_timer.isActive():
+            self._preview_update_timer.stop()
+        self._flush_active_spectrum_instance_layers()
+        self._flush_preview_update()
+
         scene = self._build_manual_export_scene(audio_path=audio_path)
         if scene is None:
             self._on_export_failed("The live preview scene is not ready yet.")
+            self._on_export_worker_finished()
+            return
+
+        mismatch = self._ensure_preview_export_parity(scene)
+        if mismatch is not None and not mismatch.equal:
+            preview = self._stage.preview_widget() if self._stage.gpu_preview_available() else None
+            preview_tpl = getattr(preview, "template", None) if preview is not None else None
+            report_path = self._write_parity_mismatch_report(
+                mismatch,
+                audio_path=audio_path,
+                export_template=dict(scene.template) if isinstance(scene.template, dict) else {},
+                preview_template=preview_tpl if isinstance(preview_tpl, dict) else None,
+            )
+            detail = mismatch.summary(limit=6)
+            if report_path is not None:
+                detail = f"{detail} (report: {report_path})"
+            self._on_export_failed(f"Preview/export JSON mismatch — export blocked. {detail}")
             self._on_export_worker_finished()
             return
 
@@ -2338,35 +2626,51 @@ class VideoView(QWidget):
         auto_merge = bool(self._workspace.export.auto_merge)
         if not stopped and auto_merge and completed >= 2 and self._batch_output_dir:
             shuffle_merge = bool(self._workspace.export.shuffle_merge)
-            self._pipeline_merge_context = {
-                "run_dir": self._batch_output_dir,
-                "branch": "long",
-                "batch_id": f"manual-{int(time.time())}",
-                "role": "PRIMARY",
-                "auto_merge": True,
-                "completed": completed,
-                "total": total,
-                # Track-list order by default; optional shuffle matches python_app.
-                "mp4_paths": list(self._batch_outputs),
-                "shuffle": shuffle_merge,
-            }
-            self._publish_workspace(
-                self._workspace.model_copy(
-                    update={
-                        "export": self._workspace.export.model_copy(
-                            update={
-                                "running": True,
-                                "merge_running": True,
-                                "current_status": "Merging video outputs…",
-                                "progress_percent": 100,
-                                "completed_jobs": completed,
-                            }
-                        )
-                    }
-                )
+            ffmpeg_path = str(self._settings.get("ffmpegPath") or "ffmpeg")
+            verified_paths = collect_verified_merge_inputs(
+                list(self._batch_outputs),
+                run_dir=self._batch_output_dir,
+                branch="long",
+                ffmpeg_path=ffmpeg_path,
             )
-            self._start_pipeline_merge()
-            return
+            if len(verified_paths) < 2:
+                message = (
+                    f"{message} Merge skipped — need at least two usable MP4 files "
+                    f"(found {len(verified_paths)})."
+                )
+            else:
+                encode_fields = self._encode_fields_for_merge_context("long", pipeline=False)
+                self._pipeline_merge_context = {
+                    "run_dir": self._batch_output_dir,
+                    "branch": "long",
+                    "batch_id": f"manual-{int(time.time())}",
+                    "role": "PRIMARY",
+                    "auto_merge": True,
+                    "completed": completed,
+                    "total": total,
+                    # Verified on-disk outputs only (never stamped/missing paths).
+                    "mp4_paths": verified_paths,
+                    "shuffle": shuffle_merge,
+                    **encode_fields,
+                }
+                self._publish_workspace(
+                    self._workspace.model_copy(
+                        update={
+                            "export": self._workspace.export.model_copy(
+                                update={
+                                    "running": True,
+                                    "merge_running": True,
+                                    "merge_progress_percent": 0,
+                                    "current_status": "Merging video outputs…",
+                                    "progress_percent": 100,
+                                    "completed_jobs": completed,
+                                }
+                            )
+                        }
+                    )
+                )
+                self._start_pipeline_merge()
+                return
 
         self._publish_workspace(
             self._workspace.model_copy(
@@ -2383,7 +2687,10 @@ class VideoView(QWidget):
                 }
             )
         )
-        notify_action(message, tone="success")
+        notify_action(
+            message,
+            tone="warning" if (failures or stopped or "Merge skipped" in message) else "success",
+        )
 
     def _on_pipeline_export_progress(self, payload: object) -> None:
         if not isinstance(payload, dict) or not self._workspace:
@@ -2459,6 +2766,7 @@ class VideoView(QWidget):
                             update={
                                 "running": True,
                                 "merge_running": True,
+                                "merge_progress_percent": 0,
                                 "current_status": f"Merging {branch_label} video outputs…",
                                 "current_output_path": None,
                                 "last_output_path": last_output,
@@ -2512,6 +2820,21 @@ class VideoView(QWidget):
         if not run_dir:
             self._on_pipeline_merge_failed("Pipeline merge context is missing a run directory.")
             return
+        mp4_paths_raw = [str(path) for path in (context.get("mp4_paths") or []) if str(path).strip()]
+        ffmpeg_path = str(self._settings.get("ffmpegPath") or "ffmpeg")
+        verified_paths = collect_verified_merge_inputs(
+            mp4_paths_raw,
+            run_dir=run_dir,
+            branch=branch,
+            ffmpeg_path=ffmpeg_path,
+        )
+        if len(verified_paths) < 2:
+            self._on_pipeline_merge_failed(
+                f"Merge skipped — need at least two usable MP4 files (found {len(verified_paths)})."
+            )
+            return
+        context["mp4_paths"] = verified_paths
+        self._pipeline_merge_context = context
         profile_id = str(context.get("profile_id") or "").strip() or None
         ref_base = str(context.get("ref_base") or "")
         try:
@@ -2546,18 +2869,23 @@ class VideoView(QWidget):
                     )
                 )
             return
-        mp4_paths = tuple(str(path) for path in (context.get("mp4_paths") or []) if str(path).strip())
+        mp4_paths = tuple(verified_paths)
+        encode = merge_encode_settings_from_context(context, pipeline=True)
+        # Manual batches stash pipeline=False encode fields; prefer context values either way.
+        if str(context.get("batch_id") or "").startswith("manual-"):
+            encode = merge_encode_settings_from_context(context, pipeline=False)
         worker = VideoPipelineMergeWorker(
             PipelineMergeRequest(
                 run_dir=run_dir,
                 branch=branch,
                 batch_id=str(context.get("batch_id") or ""),
                 role=str(context.get("role") or ""),
-                ffmpeg_path=str(self._settings.get("ffmpegPath") or "ffmpeg"),
+                ffmpeg_path=ffmpeg_path,
                 completed=int(context.get("completed") or 0),
                 total=int(context.get("total") or 0),
                 mp4_paths=mp4_paths,
                 shuffle=bool(context.get("shuffle", True)),
+                encode=encode,
             ),
             parent=None,
         )
@@ -2574,17 +2902,21 @@ class VideoView(QWidget):
         if not isinstance(payload, dict) or not self._workspace:
             return
         message = str(payload.get("message") or "Merging video outputs…")
+        merge_percent = payload.get("progress")
+        try:
+            merge_progress = max(0, min(100, int(merge_percent))) if merge_percent is not None else None
+        except (TypeError, ValueError):
+            merge_progress = None
+        update: dict[str, object] = {
+            "running": True,
+            "merge_running": True,
+            "current_status": message,
+        }
+        if merge_progress is not None:
+            update["merge_progress_percent"] = merge_progress
         self._publish_workspace(
             self._workspace.model_copy(
-                update={
-                    "export": self._workspace.export.model_copy(
-                        update={
-                            "running": True,
-                            "merge_running": True,
-                            "current_status": message,
-                        }
-                    )
-                }
+                update={"export": self._workspace.export.model_copy(update=update)}
             )
         )
 
@@ -2604,7 +2936,7 @@ class VideoView(QWidget):
                         update={
                             "running": False,
                             "merge_running": False,
-                            "auto_merge": False,
+                            "merge_progress_percent": None,
                             "current_status": message,
                             "current_output_path": None,
                             "last_merged_output_path": merged_output,
@@ -2651,7 +2983,7 @@ class VideoView(QWidget):
                             update={
                                 "running": False,
                                 "merge_running": False,
-                                "auto_merge": False,
+                                "merge_progress_percent": None,
                                 "current_status": message or "Video merge failed.",
                             }
                         )
@@ -2952,45 +3284,30 @@ class VideoView(QWidget):
         )
         self._stage.set_current_track(track_path)
 
-    def _save_output_resolution(self, resolution: str) -> None:
+    def _save_output_resolution(self, resolution: str, *, force_standard_tier: bool = False) -> None:
         if not self._workspace:
             return
         normalized = str(resolution or "").strip()
         if not normalized or normalized == self._workspace.output_resolution:
             return
-        if self._settings_patch_worker is not None and self._settings_patch_worker.isRunning():
-            return
 
         self._resolution_save_pending = True
+        self._pending_resolution_save = True
         notify_action("Saving output resolution…", tone="neutral")
         self._workspace = self._store.set_output_resolution(normalized, settings=self._settings)
         self._settings["outputResolution"] = normalized
         self._settings["imageResolution"] = normalized
+        patch: dict[str, object] = {
+            "outputResolution": normalized,
+            "imageResolution": normalized,
+        }
+        if force_standard_tier:
+            self._settings["videoExportTier"] = "standard"
+            patch["videoExportTier"] = "standard"
         self._update_stage_summary()
-        self._update_preview()
-
-        worker = PatchSettingsWorker(
-            self._api,
-            {"outputResolution": normalized, "imageResolution": normalized},
-            parent=None,
-        )
-        worker.succeeded.connect(self._on_output_resolution_saved)
-        worker.failed.connect(self._on_output_resolution_save_failed)
-        worker.finished.connect(lambda: setattr(self, "_settings_patch_worker", None))
-        self._settings_patch_worker = worker
-        worker.start()
-
-    def _on_output_resolution_saved(self, _payload: object) -> None:
-        self._resolution_save_pending = False
-        if self._workspace:
-            self._update_stage_summary()
-        notify_action("Output resolution updated.", tone="success")
-
-    def _on_output_resolution_save_failed(self, message: str) -> None:
-        self._resolution_save_pending = False
-        if self._workspace:
-            self._update_stage_summary()
-        notify_action(message or "Unable to update output resolution right now.", tone="error")
+        self._schedule_preview_update()
+        self._update_export_panel()
+        self._patch_export_setting(patch, "Output resolution updated.")
 
     def _issue_preview_playback_command(self, command: str) -> None:
         self._stage.issue_playback_command(command)
@@ -3545,6 +3862,7 @@ class VideoView(QWidget):
         self._selected_lightning_layer_index = selected_index
         self._update_inspectors(defer_rebind=defer_rebind)
         self._schedule_dirty_state_update()
+        self._schedule_preview_update()
 
     def _select_lightning_layer(self, index: int) -> None:
         self._selected_lightning_layer_index = max(0, index)
@@ -3585,17 +3903,28 @@ class VideoView(QWidget):
         self._patch_selected_lightning_layer(dict(patch))
 
     def _add_lightning_layer(self) -> None:
-        from features.video.lib.lightning_style_registry import default_lightning_layer
+        from features.video.lib.lightning_style_registry import (
+            MAX_LIGHTNING_LAYERS,
+            default_lightning_layer,
+        )
 
         layers = clone_layer_records(self._lightning_layers)
+        if len(layers) >= MAX_LIGHTNING_LAYERS:
+            notify_action(f"Maximum of {MAX_LIGHTNING_LAYERS} lightning layers.", tone="warning")
+            return
         next_index = len(layers) + 1
         layers.append(default_lightning_layer(index=next_index))
         self._set_lightning_layers(layers, selected_index=len(layers) - 1)
 
     def _duplicate_lightning_layer(self) -> None:
+        from features.video.lib.lightning_style_registry import MAX_LIGHTNING_LAYERS
+
         layers = clone_layer_records(self._lightning_layers)
         if not layers:
             self._add_lightning_layer()
+            return
+        if len(layers) >= MAX_LIGHTNING_LAYERS:
+            notify_action(f"Maximum of {MAX_LIGHTNING_LAYERS} lightning layers.", tone="warning")
             return
         index = max(0, min(self._selected_lightning_layer_index, len(layers) - 1))
         copy = dict(layers[index])
@@ -3823,11 +4152,8 @@ class VideoView(QWidget):
         self._schedule_dirty_state_update()
         if scrub_ok:
             return
-        composition_keys = {k for k in patch.keys() if str(k).startswith("composition")}
         if {"particlesEnabled", "spectrumEnabled", "backgroundEnabled", "logoEnabled"} & set(patch.keys()):
             self._flush_preview_update()
-        elif composition_keys:
-            self._schedule_preview_update()
         elif spectrum_keys & set(patch.keys()):
             self._schedule_preview_update()
         elif particle_patch_touches_preset_fields(patch) or background_patch_touches_preset_fields(patch) or logo_patch_touches_preset_fields(patch):
@@ -4489,8 +4815,7 @@ class VideoView(QWidget):
         self._update_dirty_state()
 
     def _on_domain_tab_changed(self, tab_key: str) -> None:
-        key = "lighting" if tab_key == "lightning" else tab_key
-        self._active_domain_tab = key
+        self._active_domain_tab = tab_key
         self._preview_edit_focus = "domain"
         self._flush_preview_update()
         self._schedule_dirty_state_update()

@@ -68,6 +68,28 @@ def _export_fps_from_settings(settings: dict[str, Any]) -> int:
     return normalize_export_fps(settings.get("videoExportFps", 24))
 
 
+def _merge_export_prefs(settings: dict[str, Any], prefs: dict[str, Any]) -> dict[str, Any]:
+    """Local video prefs win for export options so rapid UI saves survive API races."""
+    merged = dict(settings or {})
+    for key in (
+        "videoExportFps",
+        "videoExportWorkers",
+        "videoExportSpeedMode",
+        "videoExportTier",
+        "autoMergeAfterVideo",
+        "videoShuffleMerge",
+    ):
+        if key not in prefs:
+            continue
+        value = prefs.get(key)
+        if value is None:
+            continue
+        if isinstance(value, str) and not value.strip():
+            continue
+        merged[key] = value
+    return merged
+
+
 def _parse_resolution(resolution: str) -> PreviewAspectRatio:
     match = re.match(r"^(\d+)\s*x\s*(\d+)$", str(resolution or "").strip(), re.IGNORECASE)
     if not match:
@@ -88,10 +110,9 @@ def _mp3_track_key(name: str) -> tuple[int, int, str] | tuple[int, str]:
 
 
 def _apply_saved_track_order(items: list[Mp3ListItem], order: list[str]) -> list[Mp3ListItem]:
-    """User drag order first; tracks not in the saved order keep default sort."""
+    """Apply saved playlist order. Paths not in ``order`` are excluded (removed from list)."""
     by_path = {item.path: item for item in items}
-    ordered = [by_path.pop(path) for path in order if path in by_path]
-    return ordered + list(by_path.values())
+    return [by_path[path] for path in order if path in by_path]
 
 
 class VideoLocalStore:
@@ -170,14 +191,15 @@ class VideoLocalStore:
         name: str = "Untitled Template",
         settings: dict[str, Any] | None = None,
     ) -> VideoWorkspaceState:
-        """Create a user composition from scratch and select it."""
+        """Create a user template from scratch and select it."""
         from uuid import uuid4
 
-        from features.video.lib.composition_draft import new_blank_composition_template
+        from features.video.lib.spectrum_style_registry import build_spectrum_preset_template
 
-        display_name = str(name or "").strip() or "New Composition"
+        display_name = str(name or "").strip() or "Untitled Template"
         uid = str(uuid4())
-        payload = new_blank_composition_template(name=display_name)
+        payload = build_spectrum_preset_template({}, "orbit-spikes")
+        payload["templateName"] = display_name
         payload["backgroundEnabled"] = True
         payload["logoEnabled"] = True
         now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
@@ -248,9 +270,9 @@ class VideoLocalStore:
         schedule_workspace_prefs_push()
 
     def read_workspace_state(self, settings: dict[str, Any] | None = None) -> VideoWorkspaceState:
-        settings = settings or {}
-        templates = self.read_templates()
         prefs = self.read_prefs()
+        settings = _merge_export_prefs(settings or {}, prefs)
+        templates = self.read_templates()
         export_registry = get_video_workspace_service().get_workspace_state()
         export_state = export_registry.export if export_registry else VideoExportState()
 
@@ -410,17 +432,25 @@ class VideoLocalStore:
         selected = str(prefs.get("selectedMp3Path") or "").strip()
         if selected not in paths:
             selected = paths[0] if paths else ""
-        if str(prefs.get("mp3Directory") or "").strip() != normalized:
-            prefs.pop("mp3Order", None)  # Custom order belongs to one folder.
+        # Always reset playlist membership so Select MP3 Folder reloads every track.
+        prefs.pop("mp3Order", None)
         prefs["mp3Directory"] = normalized
         prefs["selectedMp3Path"] = selected
         self.write_prefs(prefs)
         return self.read_workspace_state(settings)
 
     def set_mp3_order(self, paths: list[str], *, settings: dict[str, Any] | None = None) -> VideoWorkspaceState:
-        """Persist the drag-and-drop track order; export and merge follow it."""
+        """Persist track playlist order / membership; export and merge follow it.
+
+        When set, only these paths (that still exist in the folder) appear in the
+        track list. Select MP3 Folder clears this so the full folder reloads.
+        """
         prefs = self.read_prefs()
-        prefs["mp3Order"] = [str(path).strip() for path in paths if str(path).strip()]
+        ordered = [str(path).strip() for path in paths if str(path).strip()]
+        prefs["mp3Order"] = ordered
+        selected = str(prefs.get("selectedMp3Path") or "").strip()
+        if selected not in ordered:
+            prefs["selectedMp3Path"] = ordered[0] if ordered else ""
         self.write_prefs(prefs)
         return self.read_workspace_state(settings)
 

@@ -55,7 +55,7 @@ class ParticleSystem:
         self._icon = np.zeros((0,), dtype=np.float32)
         self._angle = np.zeros((0,), dtype=np.float32)
         self._trail_pos = np.zeros((0, 0, 2), dtype=np.float32)
-        self._speed_last = float(max(1e-6, float(cfg.speed)))
+        self._speed_last = float(max(0.0, float(cfg.speed)))
         self._spawn_carry = 0.0
 
     def _trail_len(self) -> int:
@@ -85,7 +85,7 @@ class ParticleSystem:
             or str(getattr(prev, "color_mode", "") or "") != str(getattr(cfg, "color_mode", "") or "")
         ):
             self._clear_particles()
-            self._speed_last = float(max(1e-6, float(cfg.speed)))
+            self._speed_last = float(max(0.0, float(cfg.speed)))
             return
         prev_len = clamp_particle_trail_length(getattr(prev, "trail_length", 8)) if bool(
             getattr(prev, "trail_enabled", False)
@@ -361,17 +361,36 @@ class ParticleSystem:
     def update(self, dt: float, audio: dict) -> None:
         if not self._cfg.enabled:
             self._clear_particles()
-            self._speed_last = float(max(1e-6, float(self._cfg.speed)))
+            self._speed_last = float(max(0.0, float(self._cfg.speed)))
             return
 
         dt = float(dt)
         lifetime = max(0.05, float(self._cfg.lifetime_sec))
 
-        speed_now = float(max(1e-6, float(self._cfg.speed)))
-        ratio = speed_now / float(max(1e-6, float(self._speed_last)))
-        ratio = float(max(0.25, min(4.0, ratio)))
-        if self._vel.shape[0]:
-            self._vel *= ratio
+        speed_now = float(max(0.0, float(self._cfg.speed)))
+        prev = float(max(0.0, float(self._speed_last)))
+        n_live = int(self._vel.shape[0])
+        if n_live:
+            if prev <= 1e-9:
+                if speed_now > 1e-9:
+                    # Wake from freeze: restore motion along current or random dirs.
+                    norms = np.linalg.norm(self._vel, axis=1, keepdims=True).astype(np.float32)
+                    norms = np.maximum(norms, 0.0)
+                    dirs = np.empty_like(self._vel)
+                    alive = norms[:, 0] > 1e-6
+                    if np.any(alive):
+                        dirs[alive] = self._vel[alive] / norms[alive]
+                    dead_n = int(np.count_nonzero(~alive))
+                    if dead_n:
+                        ang = self._rng.uniform(0.0, np.pi * 2.0, size=(dead_n,)).astype(np.float32)
+                        dirs[~alive, 0] = np.cos(ang)
+                        dirs[~alive, 1] = np.sin(ang)
+                    jitter = self._rng.uniform(0.7, 1.15, size=(n_live, 1)).astype(np.float32)
+                    self._vel = (dirs * (speed_now * jitter)).astype(np.float32)
+            else:
+                ratio = float(max(0.0, min(4.0, speed_now / prev)))
+                if abs(ratio - 1.0) > 1e-6:
+                    self._vel *= ratio
         self._speed_last = speed_now
 
         base_spawn = float(self._cfg.spawn_rate) * dt + float(self._spawn_carry)
@@ -380,7 +399,7 @@ class ParticleSystem:
         self._spawn(n, 1.0)
 
         if self._pos.shape[0]:
-            drift = float(max(0.0, min(1.0, float(getattr(self._cfg, "drift", 0.0) or 0.0))))
+            drift = float(max(0.0, min(5.0, float(getattr(self._cfg, "drift", 0.0) or 0.0))))
             swirl = float(max(0.0, min(1.0, float(getattr(self._cfg, "swirl", 0.0) or 0.0))))
             travel_mode = str(getattr(self._cfg, "travel_mode", "spawnFlow") or "spawnFlow")
             if drift > 1e-6:

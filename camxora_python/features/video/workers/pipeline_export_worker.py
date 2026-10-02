@@ -15,10 +15,10 @@ from features.video.lib.export_failure_log import (
     format_export_failure_message,
     is_export_milestone_message,
 )
+from features.video.lib.export_output_validity import export_matches_batch_specs, is_usable_export_output
 from features.video.lib.render_scene_request import (
     build_pipeline_export_output_path,
     build_pipeline_long_output_path,
-    is_valid_export_output,
 )
 from features.video.lib.text_domain_runtime import inject_text_domains_into_template
 from features.video.services.export_coordinator import (
@@ -76,11 +76,18 @@ class VideoPipelineExportWorker(QThread):
         workers_raw = request.settings.get("videoExportWorkers", request.settings.get("perfExportWorkers", 1))
         from visualizer_video.export_gpu_tier import resolve_pipeline_export_workers
 
-        worker_limit = resolve_pipeline_export_workers(workers_raw, default=1)
+        worker_limit = resolve_pipeline_export_workers(
+            workers_raw,
+            default=1,
+            speed_mode=request.speed_mode,
+            width=int(request.width),
+            height=int(request.height),
+        )
         worker_count = min(worker_limit, len(mp3_paths))
         export_gate.set_limit(worker_limit)
         # Parallel tracks cannot share the single-job warm daemon.
         allow_daemon = worker_count <= 1
+        ffmpeg_path = find_ffmpeg_from_path_hint(str(request.settings.get("ffmpegPath") or "ffmpeg"))
 
         total = len(mp3_paths)
         completed = 0
@@ -136,7 +143,16 @@ class VideoPipelineExportWorker(QThread):
                 output_dir=request.run_dir,
                 branch=request.branch,
             )
-            if is_valid_export_output(final_output_path):
+            # Skip only when existing file matches THIS batch's resolution/FPS/audio
+            # (rejects stale leftovers from Draft/other FPS/old audio layout).
+            if export_matches_batch_specs(
+                final_output_path,
+                width=int(request.width),
+                height=int(request.height),
+                fps=int(request.fps),
+                ffmpeg_path=ffmpeg_path,
+                audio_path=mp3_path,
+            ):
                 return final_output_path
 
             long_output_path = build_pipeline_long_output_path(
@@ -149,12 +165,20 @@ class VideoPipelineExportWorker(QThread):
                 Path(long_output_path).rename(backup_path)
                 backed_up_standard = True
 
-            export_gate.acquire()
+            export_gate.acquire(
+                cancel_check=lambda: self._cancel_requested,
+                timeout_sec=300.0,
+                on_wait=lambda active, limit: emit_progress(
+                    message=f"Waiting for export slot ({active}/{limit} busy)…",
+                    current_path=mp3_path,
+                    output_path=long_output_path,
+                    track_progress=0.01,
+                ),
+            )
             try:
                 if self._cancel_requested:
                     raise RuntimeError("Video export stopped.")
                 export_gate.throttle_spawn()
-                ffmpeg_path = find_ffmpeg_from_path_hint(str(request.settings.get("ffmpegPath") or "ffmpeg"))
                 # Highlight the song being rendered in the title list for this job.
                 job_template = inject_text_domains_into_template(
                     dict(request.template),
@@ -242,9 +266,14 @@ class VideoPipelineExportWorker(QThread):
                     if not Path(long_output_path).exists():
                         raise RuntimeError(f"Reel export did not produce {Path(long_output_path).name}.")
                     Path(long_output_path).rename(final_output_path)
-                if not is_valid_export_output(final_output_path):
+                if not is_usable_export_output(
+                    final_output_path,
+                    ffmpeg_path=ffmpeg_path,
+                    audio_path=mp3_path,
+                    require_media=True,
+                ):
                     raise RuntimeError(
-                        f"Video export did not produce a valid output for {Path(mp3_path).name}."
+                        f"Video export did not produce a usable output for {Path(mp3_path).name}."
                     )
                 return final_output_path
             finally:

@@ -320,6 +320,10 @@ def remux_native_h264_with_audio(
         "aac",
         "-b:a",
         "192k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
         "-shortest",
         str(out_path),
     ]

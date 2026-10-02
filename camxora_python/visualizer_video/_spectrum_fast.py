@@ -77,6 +77,63 @@ def smooth_fft_envelope(prev: np.ndarray, target: np.ndarray, smoothing: float) 
     return (prev * s + target * (1.0 - s)).astype(np.float32)
 
 
+def build_spectrum_glow_pass_specs(
+    *,
+    glow_strength: float,
+    glow_softness: float,
+    layer_opacity: float,
+    bar_width_px: float,
+    spike_height_px: float,
+    sf: float,
+    fill_circle: bool,
+    glow_pass_limit: int = 2,
+) -> list[dict]:
+    """Shared Glow Strength/Softness pass list for preview + export (WYSIWYG).
+
+    ``glow_strength`` is 0..1 (UI 0..100 / 100). ``glow_softness`` is blur 0..30.
+    Spike/bar extras scale with ``sf`` the same way on both paths.
+    """
+    strength = float(max(0.0, min(1.0, glow_strength)))
+    softness = float(max(0.0, min(30.0, glow_softness)))
+    opacity = float(max(0.0, min(1.0, layer_opacity)))
+    scale = float(sf)
+    limit = int(max(0, glow_pass_limit))
+    specs: list[dict] = []
+    if strength > 0.0 and limit >= 1:
+        specs.append(
+            {
+                "is_glow": True,
+                "alpha": opacity * (0.14 + strength * 0.22),
+                "bar_width": float(bar_width_px) + ((softness * 1.8) + (strength * 18.0)) * scale,
+                "spike_height": float(spike_height_px) + ((softness * 2.2) + (strength * 22.0)) * scale,
+                "thickness": float(spike_height_px) + ((softness * 2.2) + (strength * 22.0)) * scale,
+                "fill_circle": False,
+            }
+        )
+        if limit >= 2:
+            specs.append(
+                {
+                    "is_glow": True,
+                    "alpha": opacity * (0.08 + strength * 0.15),
+                    "bar_width": float(bar_width_px) + ((softness * 3.0) + (strength * 32.0)) * scale,
+                    "spike_height": float(spike_height_px) + ((softness * 3.4) + (strength * 34.0)) * scale,
+                    "thickness": float(spike_height_px) + ((softness * 3.4) + (strength * 34.0)) * scale,
+                    "fill_circle": False,
+                }
+            )
+    specs.append(
+        {
+            "is_glow": False,
+            "alpha": opacity,
+            "bar_width": float(bar_width_px),
+            "spike_height": float(spike_height_px),
+            "thickness": float(spike_height_px),
+            "fill_circle": bool(fill_circle),
+        }
+    )
+    return specs
+
+
 def smooth_and_mirror(fft_s: np.ndarray, mirrored: bool) -> np.ndarray:
     """Apply 5-tap smoothing and optional mirroring (vectorized).
     
@@ -284,22 +341,11 @@ def generate_points_linear(n: int, total_length: float, gravity: str) -> tuple[n
 
 
 def normalize_spectrum_path_mode(path_mode: str | None) -> str:
-    """Normalize layer ``pathMode`` to a known geometry id."""
+    """Normalize layer ``pathMode`` to ``auto`` | ``circle`` | ``rect``."""
     v = str(path_mode or "auto").lower().strip()
     if v in ("rectangle", "square"):
         return "rect"
-    if v in (
-        "auto",
-        "circle",
-        "rect",
-        "triangle",
-        "diamond",
-        "hexagon",
-        "heart",
-        "infinity",
-        "spiral",
-        "tunnel",
-    ):
+    if v in ("auto", "circle", "rect"):
         return v
     return "auto"
 
@@ -311,158 +357,16 @@ def resolve_spectrum_path_mode(
     attached_to_logo: bool,
     logo_shape: str | None,
 ) -> str:
-    """Resolve geometry path: ``linear`` | ``circle`` | ``rect`` | extended shapes."""
-    mode = normalize_spectrum_path_mode(path_mode)
-    # Explicit extended shapes always win (composition P3).
-    if mode in ("triangle", "diamond", "hexagon", "heart", "infinity", "spiral", "tunnel"):
-        return mode
+    """Resolve geometry path: ``linear`` | ``circle`` | ``rect``."""
     if not curved:
         return "linear"
+    mode = normalize_spectrum_path_mode(path_mode)
     if mode == "auto":
         shape = str(logo_shape or "circle").lower().strip()
         if attached_to_logo and shape in ("square", "rect", "rectangle"):
             return "rect"
         return "circle"
     return mode
-
-
-def _sample_closed_polyline(
-    vertices: np.ndarray,
-    n: int,
-    *,
-    outward_sign: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
-    """Sample ``n`` points along a closed 2D polyline; normals point outward-ish."""
-    nn = int(max(1, n))
-    verts = np.asarray(vertices, dtype=np.float64)
-    if verts.ndim != 2 or verts.shape[0] < 2 or verts.shape[1] != 2:
-        zeros = np.zeros(nn, dtype=np.float32)
-        return zeros, zeros, zeros, np.ones(nn, dtype=np.float32), 1.0
-    # Ensure closed
-    if float(np.linalg.norm(verts[0] - verts[-1])) > 1e-6:
-        verts = np.vstack([verts, verts[0:1]])
-    seg = verts[1:] - verts[:-1]
-    seg_len = np.sqrt(np.maximum(1e-12, np.sum(seg * seg, axis=1)))
-    peri = float(np.sum(seg_len))
-    if peri < 1e-6:
-        zeros = np.zeros(nn, dtype=np.float32)
-        return zeros, zeros, zeros, np.ones(nn, dtype=np.float32), 1.0
-    # Cumulative lengths
-    cum = np.concatenate([[0.0], np.cumsum(seg_len)])
-    targets = np.linspace(0.0, peri, nn, endpoint=False, dtype=np.float64)
-    px = np.empty(nn, dtype=np.float32)
-    py = np.empty(nn, dtype=np.float32)
-    dx = np.empty(nn, dtype=np.float32)
-    dy = np.empty(nn, dtype=np.float32)
-    sign = float(outward_sign)
-    for i, t in enumerate(targets):
-        # Find segment
-        idx = int(np.searchsorted(cum, t, side="right") - 1)
-        idx = int(max(0, min(len(seg_len) - 1, idx)))
-        local = float(t - cum[idx])
-        den = float(seg_len[idx]) if seg_len[idx] > 1e-12 else 1.0
-        u = local / den
-        p0 = verts[idx]
-        p1 = verts[idx + 1]
-        p = p0 + u * (p1 - p0)
-        px[i] = float(p[0])
-        py[i] = float(p[1])
-        sx, sy = float(seg[idx, 0]), float(seg[idx, 1])
-        # Left normal of tangent (outward for CCW polygons)
-        nx, ny = -sy, sx
-        norm = float(np.hypot(nx, ny)) or 1.0
-        dx[i] = float(sign * nx / norm)
-        dy[i] = float(sign * ny / norm)
-    return px, py, dx, dy, peri
-
-
-def generate_points_regular_polygon(
-    n: int,
-    radius: float,
-    sides: int,
-    *,
-    rotation: float = 0.0,
-    outward_sign: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
-    """Regular N-gon perimeter sampled into spectrum bases."""
-    s = int(max(3, sides))
-    r = float(max(1.0, radius))
-    angles = rotation + np.linspace(0.0, 2.0 * np.pi, s, endpoint=False, dtype=np.float64)
-    verts = np.stack([r * np.cos(angles), r * np.sin(angles)], axis=1)
-    return _sample_closed_polyline(verts, n, outward_sign=outward_sign)
-
-
-def generate_points_heart(
-    n: int,
-    radius: float,
-    *,
-    outward_sign: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
-    """Classic heart parametric curve, scaled into ``radius``."""
-    nn = int(max(16, n))
-    t = np.linspace(0.0, 2.0 * np.pi, 128, endpoint=False, dtype=np.float64)
-    x = 16.0 * np.sin(t) ** 3
-    y = 13.0 * np.cos(t) - 5.0 * np.cos(2.0 * t) - 2.0 * np.cos(3.0 * t) - np.cos(4.0 * t)
-    # Normalize to unit box then scale
-    max_abs = float(max(np.max(np.abs(x)), np.max(np.abs(y)), 1e-6))
-    scale = float(max(1.0, radius)) / max_abs
-    verts = np.stack([x * scale, y * scale], axis=1)
-    return _sample_closed_polyline(verts, nn, outward_sign=outward_sign)
-
-
-def generate_points_infinity(
-    n: int,
-    radius: float,
-    *,
-    outward_sign: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
-    """Lemniscate of Bernoulli (∞), scaled into ``radius``."""
-    nn = int(max(16, n))
-    t = np.linspace(0.0, 2.0 * np.pi, 160, endpoint=False, dtype=np.float64)
-    den = 1.0 + np.sin(t) ** 2
-    x = np.cos(t) / den
-    y = np.sin(t) * np.cos(t) / den
-    max_abs = float(max(np.max(np.abs(x)), np.max(np.abs(y)), 1e-6))
-    scale = float(max(1.0, radius)) / max_abs
-    verts = np.stack([x * scale, y * scale], axis=1)
-    return _sample_closed_polyline(verts, nn, outward_sign=outward_sign)
-
-
-def generate_points_spiral(
-    n: int,
-    radius: float,
-    *,
-    turns: float = 2.25,
-    outward_sign: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
-    """Archimedean spiral from center out to ``radius``."""
-    nn = int(max(16, n))
-    r_max = float(max(1.0, radius))
-    theta = np.linspace(0.0, float(turns) * 2.0 * np.pi, nn, dtype=np.float64)
-    rr = np.linspace(r_max * 0.08, r_max, nn, dtype=np.float64)
-    px = (rr * np.cos(theta)).astype(np.float32)
-    py = (rr * np.sin(theta)).astype(np.float32)
-    # Outward roughly along radius
-    dx = np.cos(theta).astype(np.float32) * float(outward_sign)
-    dy = np.sin(theta).astype(np.float32) * float(outward_sign)
-    # Path length approx
-    if nn > 1:
-        dpx = np.diff(px.astype(np.float64))
-        dpy = np.diff(py.astype(np.float64))
-        peri = float(np.sum(np.sqrt(dpx * dpx + dpy * dpy)))
-    else:
-        peri = float(r_max)
-    return px, py, dx, dy, max(1.0, peri)
-
-
-def generate_points_tunnel(
-    n: int,
-    radius: float,
-    *,
-    outward_sign: float = 1.0,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, float]:
-    """Dense spiral used as a tunnel / vortex path."""
-    return generate_points_spiral(n, radius, turns=3.5, outward_sign=outward_sign)
 
 
 def rect_path_length(half_w: float, half_h: float, mirrored: bool, gravity: str | None) -> float:
@@ -615,21 +519,6 @@ def generate_spectrum_layer_geometry(
         px, py, dx, dy = generate_points_rect(n, hw, hh, rect_mirrored, g)
         total = rect_path_length(hw, hh, rect_mirrored, g)
         return px, py, dx, dy, float(total)
-    sign = -1.0 if g == "inward" else 1.0
-    if path == "triangle":
-        return generate_points_regular_polygon(n, float(radius), 3, rotation=-np.pi / 2.0, outward_sign=sign)
-    if path == "diamond":
-        return generate_points_regular_polygon(n, float(radius), 4, rotation=np.pi / 4.0, outward_sign=sign)
-    if path == "hexagon":
-        return generate_points_regular_polygon(n, float(radius), 6, rotation=0.0, outward_sign=sign)
-    if path == "heart":
-        return generate_points_heart(n, float(radius), outward_sign=sign)
-    if path == "infinity":
-        return generate_points_infinity(n, float(radius), outward_sign=sign)
-    if path == "spiral":
-        return generate_points_spiral(n, float(radius), outward_sign=sign)
-    if path == "tunnel":
-        return generate_points_tunnel(n, float(radius), outward_sign=sign)
     # Circle path: radial modes look best on a full ring — keep caller's
     # mirrored flag so Circle Raise 180° still works as a semi-arc.
     start_angle, growth_dx, growth_dy = resolve_curved_spectrum_basis(g)

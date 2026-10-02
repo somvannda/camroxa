@@ -11,9 +11,9 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **Split Video vs Studio GPU engines.** Video uses `visualizer_video/` (classic
-  pre-composition engine); Studio uses `visualizer_studio/` (composition engine).
-  Shared `visualizer/` removed. See
+- **Split Video vs Studio GPU engines.** Video uses `visualizer_video/` (1.2.4
+  classic engine package); Studio uses `visualizer_studio/` (composition engine).
+  Video page code matches `origin/main` (desktop 1.2.4) aside from package renames. See
   `docs/changelog/2026-08-10-split-video-studio-engines.md`.
 - **Prism Core Glow spectrum look.** Trap Nation-style multi-layer ring in
   Composition Studio only (Video presets untouched). See

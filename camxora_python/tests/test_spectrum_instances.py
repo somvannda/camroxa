@@ -36,6 +36,48 @@ def test_legacy_sensitivity_maps_to_input_gain() -> None:
     assert abs(audio["motionSmoothing"] - 0.35) < 1e-6
 
 
+def test_spectrum_motion_fields_survive_save_mirror() -> None:
+    base = {
+        "style": "orbit-spikes",
+        "layers": [{"thickness": 30, "barWidth": 4}],
+        "audioSettings": {"inputGain": 1.0},
+    }
+    draft = build_video_template_draft(base, logo_path="", background_path="")
+    draft["spectrumMotionMode"] = "zoom"
+    draft["spectrumMotionZoomStrength"] = 8.0
+    draft["spectrumMotionSpeed"] = 6.0
+    patch = build_video_workspace_template_save_patch(
+        template=base,
+        draft=draft,
+        template_name="motion-test",
+        layers=base["layers"],
+        spectrum_instances=None,
+    )
+    audio = patch["audioSettings"]
+    assert audio["spectrumMotionMode"] == "zoom"
+    assert float(audio["spectrumMotionZoomStrength"]) == 8.0
+    assert float(audio["spectrumMotionSpeed"]) == 6.0
+    inst_audio = patch["spectrumInstances"][0]["audioSettings"]
+    assert inst_audio["spectrumMotionMode"] == "zoom"
+    assert float(inst_audio["spectrumMotionZoomStrength"]) == 8.0
+    assert float(inst_audio["spectrumMotionSpeed"]) == 6.0
+
+
+def test_apply_draft_writes_spectrum_motion_to_instance() -> None:
+    inst = apply_draft_fields_to_instance(
+        default_spectrum_instance(),
+        {
+            "spectrumMotionMode": "zoom",
+            "spectrumMotionZoomStrength": 7.5,
+            "spectrumMotionSpeed": 4.5,
+        },
+    )
+    audio = inst["audioSettings"]
+    assert audio["spectrumMotionMode"] == "zoom"
+    assert abs(float(audio["spectrumMotionZoomStrength"]) - 7.5) < 1e-6
+    assert abs(float(audio["spectrumMotionSpeed"]) - 4.5) < 1e-6
+
+
 def test_empty_instance_layers_heal_from_template() -> None:
     layers = [{"id": "ring", "thickness": 55, "barWidth": 3}]
     tpl = {

@@ -35,12 +35,17 @@ from visualizer_video.hdr_bloom import (
 from visualizer_video._spectrum_fast import (
     build_contour_wave_strips,
     build_solid_band_strip_vertices,
+    build_spectrum_glow_pass_specs,
     clamp_spectrum_bar_count,
+    fft_to_log_bins,
     generate_spectrum_layer_geometry,
     mirror_spectrum_points_vertical,
     normalize_spectrum_gravity,
+    precompute_fft_mapping,
     resample_fft_bins,
     resolve_bar_pixel_width,
+    scroll_spectrum_heights,
+    smooth_and_mirror,
     smooth_fft_envelope,
 )
 from features.video.lib.logo_spectrum_bindings import normalize_logo_shape
@@ -321,6 +326,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._audio_load_lock = threading.Lock()
         self.fft_log = np.zeros(64, dtype=np.float32)
         self.fft_smoothed = np.zeros(64, dtype=np.float32)
+        self._fft_analysis_idx = -1
+        self._fft_map_idx1 = None
+        self._fft_map_idx2 = None
+        self._fft_map_frac = None
         self._spectrum_peak_cache: dict[str, np.ndarray] = {}
         self.shake_state = CameraShakeState()
         self.bg_shake_state = BgVibrateState()
@@ -1200,6 +1209,85 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self._logo_visible_radius_key = None
         self._logo_visible_radius_ratio = 1.0
 
+    def _ensure_fft_mapping(self, point_count: int = 1024) -> None:
+        if (
+            self._fft_map_idx1 is not None
+            and self._fft_map_idx2 is not None
+            and self._fft_map_frac is not None
+        ):
+            return
+        self._fft_map_idx1, self._fft_map_idx2, self._fft_map_frac = precompute_fft_mapping(
+            int(max(1, point_count))
+        )
+
+    def _spectrum_audio_smoothing(self) -> float:
+        tpl_audio = (
+            self.template.get("audioSettings", {})
+            if isinstance(self.template.get("audioSettings"), dict)
+            else {}
+        )
+        if tpl_audio.get("motionSmoothing") is not None:
+            aud_smooth = float(tpl_audio.get("motionSmoothing", 0.8))
+        else:
+            aud_smooth = float(tpl_audio.get("smoothing", 0.8))
+        return float(max(0.0, min(0.99, aud_smooth)))
+
+    def _analysis_fps(self) -> float:
+        """Preview analysis rate — keep in lockstep with the loaded analyzer."""
+        try:
+            fps = float(getattr(self.analyzer, "fps", 60.0) or 60.0)
+        except (TypeError, ValueError):
+            fps = 60.0
+        return float(max(1.0, min(120.0, fps)))
+
+    def _resync_fft_envelope_to_time(self, time_sec: float) -> None:
+        """Rebuild FFT envelope from t=0 like export (seek/scrub parity)."""
+        self.fft_smoothed = np.zeros(64, dtype=np.float32)
+        self.fft_log = np.zeros(64, dtype=np.float32)
+        self._fft_analysis_idx = -1
+        if self.analyzer is None:
+            return
+        self._ensure_fft_mapping(int(getattr(self.analyzer, "point_count", 1024) or 1024))
+        analysis_fps = self._analysis_fps()
+        target_idx = int(max(0.0, float(time_sec)) * analysis_fps)
+        try:
+            max_idx = int(max(0, int(self.analyzer.info.frames) - 1))
+        except Exception:
+            max_idx = target_idx
+        target_idx = int(max(0, min(max_idx, target_idx)))
+        aud_smooth = self._spectrum_audio_smoothing()
+        for aidx in range(0, target_idx + 1):
+            fft = self.analyzer.fft_for_frame(aidx)
+            self.fft_log = fft_to_log_bins(
+                fft, self._fft_map_idx1, self._fft_map_idx2, self._fft_map_frac
+            )
+            self.fft_smoothed = smooth_fft_envelope(self.fft_smoothed, self.fft_log, aud_smooth)
+        self._fft_analysis_idx = target_idx
+
+    def _advance_fft_envelope(self, frame_idx: int, *, aud_smooth: float) -> None:
+        """Advance temporal FFT smooth through every skipped analysis frame."""
+        if self.analyzer is None:
+            self.fft_log = np.zeros(64, dtype=np.float32)
+            return
+        self._ensure_fft_mapping(int(getattr(self.analyzer, "point_count", 1024) or 1024))
+        try:
+            max_idx = int(max(0, int(self.analyzer.info.frames) - 1))
+        except Exception:
+            max_idx = int(max(0, frame_idx))
+        analysis_idx = int(max(0, min(max_idx, int(frame_idx))))
+        if analysis_idx == int(self._fft_analysis_idx):
+            return
+        if analysis_idx < int(self._fft_analysis_idx):
+            self._resync_fft_envelope_to_time(float(analysis_idx) / self._analysis_fps())
+            return
+        for aidx in range(int(self._fft_analysis_idx) + 1, analysis_idx + 1):
+            fft = self.analyzer.fft_for_frame(aidx)
+            self.fft_log = fft_to_log_bins(
+                fft, self._fft_map_idx1, self._fft_map_idx2, self._fft_map_frac
+            )
+            self.fft_smoothed = smooth_fft_envelope(self.fft_smoothed, self.fft_log, aud_smooth)
+        self._fft_analysis_idx = analysis_idx
+
     def _logo_visible_radius_ratio_cached(self, *, circle_mask: bool) -> float:
         """Alpha-scan once per logo / mask change — not every paint frame."""
         logo_rgba = getattr(self, "_logo_rgba_cache", None)
@@ -1449,6 +1537,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
         self.current_time = target
         self._audio_clock_base = target
         self._audio_clock_started_at = None
+        self._resync_fft_envelope_to_time(target)
         if was_playing and self.audio_ready and str(self.audio_path or "").strip():
             try:
                 pygame.mixer.music.play(start=target)
@@ -1457,6 +1546,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
             except Exception:
                 self.audio_playing = False
         self._emit_playback_state()
+        self.update()
 
     def issue_playback_command(self, command: dict) -> None:
         command_type = str((command or {}).get("type") or "").strip().lower()
@@ -1714,6 +1804,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     return
                 self.analyzer = analyzer
                 self._audio_duration_sec = float(getattr(analyzer.info, 'duration_sec', 0.0) or 0.0)
+                self._fft_map_idx1 = None
+                self._fft_map_idx2 = None
+                self._fft_map_frac = None
+                self._resync_fft_envelope_to_time(float(self.current_time))
                 if self._audio_duration_sec > 0:
                     self._audio_duration_cache[self._audio_duration_cache_key(active_path)] = self._audio_duration_sec
                 self._log(f"[{time.strftime('%H:%M:%S')}] Audio analysis ready #{load_seq}: {active_path} duration={self._audio_duration_sec:.2f}s")
@@ -2128,7 +2222,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     self._audio_clock_started_at = None
                     self._emit_playback_state()
                     self._schedule_clean_preview_snapshot()
-            frame_idx = int(self.current_time * 60)
+            frame_idx = int(float(self.current_time) * self._analysis_fps())
             if self.analyzer:
                 fft = self.analyzer.fft_for_frame(frame_idx)
                 feats = self.analyzer.features_for_frame(frame_idx)
@@ -2418,21 +2512,8 @@ class VideoSpectrumPreview(QOpenGLWidget):
                 except Exception:
                     return (255, 255, 255)
             BINS = 64
-            fft_size_half = 1024
-            n0 = int(min(1024, fft.shape[0]))
-            for b_idx in range(BINS):
-                log_freq = np.log10(20.0) + b_idx / float(BINS) * (np.log10(12000.0) - np.log10(20.0))
-                freq = 10.0 ** log_freq
-                linear_index = freq / 22050.0 * fft_size_half
-                idx1 = int(np.floor(linear_index))
-                idx2 = int(min(np.ceil(linear_index), fft_size_half - 1))
-                frac = linear_index - float(idx1)
-                val1 = float(fft[idx1]) if idx1 < n0 else 0.0
-                val2 = float(fft[idx2]) if idx2 < n0 else 0.0
-                raw_val = val1 * (1.0 - frac) + val2 * frac
-                freq_boost = 1.0 + (b_idx / float(BINS)) ** 2 * 2.0
-                self.fft_log[b_idx] = float(max(0.01, min(1.0, raw_val * freq_boost)))
-            self.fft_smoothed = smooth_fft_envelope(self.fft_smoothed, self.fft_log, aud_smooth)
+            # Same 60 Hz catch-up path as export — do not re-smooth the same frame every paint.
+            self._advance_fft_envelope(frame_idx, aud_smooth=aud_smooth)
             rg = float(max(0.1, min(8.0, aud_sens)))
             fft_s = np.clip(self.fft_smoothed * rg, 0.0, 2.5).astype(np.float32)
             spectrum_enabled = bool(self.template.get("spectrumEnabled", True))
@@ -2548,21 +2629,10 @@ class VideoSpectrumPreview(QOpenGLWidget):
                     peak_cap_thickness = float(max(1.0, min(16.0, float(sl.get("peakCapThickness", 3.0) or 1.0)))) * sf
                     peak_cap_decay = float(max(0.7, min(0.995, float(sl.get("peakCapDecay", 0.92) or 0.92))))
                     peak_cap_color = str(sl.get("peakCapColor", "#ffffff") or "#ffffff")
-                    render_fft = np.zeros(BINS, dtype=np.float32)
-                    if mirrored:
-                        half = BINS // 2
-                        for i in range(half):
-                            smoothed = fft_s[i]
-                            if 1 < i < half - 2:
-                                smoothed = fft_s[i - 2] * 0.1 + fft_s[i - 1] * 0.2 + fft_s[i] * 0.4 + fft_s[i + 1] * 0.2 + fft_s[i + 2] * 0.1
-                            render_fft[half - 1 - i] = smoothed
-                            render_fft[half + i] = smoothed
-                    else:
-                        for i in range(BINS):
-                            smoothed = fft_s[i]
-                            if 1 < i < BINS - 2:
-                                smoothed = fft_s[i - 2] * 0.1 + fft_s[i - 1] * 0.2 + fft_s[i] * 0.4 + fft_s[i + 1] * 0.2 + fft_s[i + 2] * 0.1
-                            render_fft[i] = smoothed
+                    # Match export: shared 5-tap + mirror helper (not a divergent Python loop).
+                    render_fft = smooth_and_mirror(fft_s, mirrored)
+                    # Match export: Raise Scroll + Row Width from layer JSON.
+                    render_fft = scroll_spectrum_heights(render_fft, sl.get("frequencyScroll", 0.0))
                     # Match export attach-to-logo radius (previewBindings + visible logo ratio).
                     radius = _resolve_spectrum_layer_radius(
                         attached_to_logo=attached_to_logo,
@@ -2587,6 +2657,7 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         logo_shape=logo_shape,
                         frame_w=w,
                         frame_h=h,
+                        linear_span=float(sl.get("linearSpan", 1.0) or 1.0),
                     )
                     contour_style = style_preset == 'contour-waves'
                     waveform_style = style_preset in ('aurora-ribbon', 'magma-ridge', 'plasma-bloom', 'soft-waveform', 'mountain', 'liquid', 'continuous-waveform')
@@ -2609,11 +2680,16 @@ class VideoSpectrumPreview(QOpenGLWidget):
                         r_px, r_py, r_dx, r_dy = mirror_spectrum_points_vertical(px_arr, py_arr, dx_arr, dy_arr)
                         draw_variants.append((r_px, r_py, r_dx, r_dy, reflection_opacity))
                     main_px, main_py, main_dx, main_dy = px_arr, py_arr, dx_arr, dy_arr
-                    pass_specs: list[dict] = []
-                    if glow_strength > 0.0:
-                        pass_specs.append({'is_glow': True, 'alpha': layer_op * (0.14 + glow_strength * 0.22), 'bar_width': bar_width_px + (glow_softness * 1.8 + glow_strength * 18.0) * sf, 'spike_height': spike_height_px + (glow_softness * 2.2 + glow_strength * 22.0) * sf, 'fill_circle': False})
-                        pass_specs.append({'is_glow': True, 'alpha': layer_op * (0.08 + glow_strength * 0.15), 'bar_width': bar_width_px + (glow_softness * 3.0 + glow_strength * 32.0) * sf, 'spike_height': spike_height_px + (glow_softness * 3.4 + glow_strength * 34.0) * sf, 'fill_circle': False})
-                    pass_specs.append({'is_glow': False, 'alpha': layer_op, 'bar_width': bar_width_px, 'spike_height': spike_height_px, 'fill_circle': bool(sl.get('fillCircle', False))})
+                    pass_specs = build_spectrum_glow_pass_specs(
+                        glow_strength=glow_strength,
+                        glow_softness=glow_softness,
+                        layer_opacity=layer_op,
+                        bar_width_px=bar_width_px,
+                        spike_height_px=spike_height_px,
+                        sf=sf,
+                        fill_circle=bool(sl.get("fillCircle", False)),
+                        glow_pass_limit=2,
+                    )
                     for v_px, v_py, v_dx, v_dy, v_alpha_mul in draw_variants:
                       px_arr, py_arr, dx_arr, dy_arr = v_px, v_py, v_dx, v_dy
                       for pass_cfg in pass_specs:

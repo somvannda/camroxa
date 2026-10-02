@@ -86,11 +86,19 @@ def classify_export_gpu_tier(*, name: str | None = None, memory_mib: float | Non
     return "mid"
 
 
-def resolve_pipeline_export_workers(requested: object, *, default: int = 1) -> int:
-    """Clamp Preferences workers; force 1 on low-VRAM GPUs only.
+def resolve_pipeline_export_workers(
+    requested: object,
+    *,
+    default: int = 1,
+    speed_mode: object = None,
+    width: int | None = None,
+    height: int | None = None,
+) -> int:
+    """Clamp Preferences workers for GPU safety.
 
-    Frozen installers may use Preferences multi-worker once audio decode uses
-    soundfile+soxr and analysis runs before OpenGL init.
+    - Low-VRAM GPUs: force 1
+    - Quality / Best Quality: force 1 (RGBA + glow saturates the GPU)
+    - QHD/4K with Balance+: max 2
     """
     try:
         limit = max(1, min(10, int(requested)))  # type: ignore[arg-type]
@@ -101,6 +109,21 @@ def resolve_pipeline_export_workers(requested: object, *, default: int = 1) -> i
             return 1
     except Exception:
         pass
+
+    mode = str(speed_mode or "").strip().lower()
+    if mode in {"master", "best"}:
+        mode = "best_quality"
+    if mode in {"best_quality", "quality"}:
+        return 1
+
+    pixels = 0
+    if width is not None and height is not None:
+        try:
+            pixels = max(0, int(width)) * max(0, int(height))
+        except (TypeError, ValueError):
+            pixels = 0
+    if pixels >= 2560 * 1440:
+        return min(limit, 2)
     return limit
 
 def _probe_nvidia_smi() -> tuple[str | None, float | None]:
