@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""File-scoped production hotfix: keep GET /music/downloads/pending under 30s.
+"""File-scoped production hotfix: unstick desktop Suno MP3 downloads.
 
-The desktop polls pending Suno MP3 downloads with a 30s httpx timeout. The
-handler used to poll Suno per in-flight task and re-run image-job healing per
-batch inline (plus sequential per-object B2 HEADs), which pushed the route past
-30s — so clients stopped getting the list and never retried their MP3s.
+Two related fixes:
 
-Allowlisted path only. Does not sync other dirty workspace files.
+1. ``GET /music/downloads/pending`` stayed under the desktop's 30s timeout by
+   moving Suno reconcile + image-job healing to debounced background tasks and
+   capping concurrent B2 URL resolution.
+2. The reseller's ``audiostream.api.box`` "durable" host now answers 200
+   audio/mpeg with a 0-byte body, so stored/stream URLs are rewritten to the
+   working ``tempfile.aiquickdraw.com/r/<id>.mp3`` sibling and the dead host is
+   blocklisted.
+
+Allowlisted paths only. Does not sync other dirty workspace files.
 Run only when explicitly asked for production.
 """
 from __future__ import annotations
@@ -29,6 +34,8 @@ from deploy import (  # noqa: E402
 PRODUCTION_HOST = "82.197.71.248"
 FILES = [
     "platform_api/services/batch_service.py",
+    "platform_api/clients/suno_client.py",
+    "platform_api/services/suno_audio_resolver.py",
     "docs/changelog/2026-10-02-pending-downloads-poll-latency.md",
 ]
 
@@ -60,11 +67,15 @@ set -e
 REPO=/opt/camxora/repo
 chown camxora:camxora \
   $REPO/platform_api/services/batch_service.py \
+  $REPO/platform_api/clients/suno_client.py \
+  $REPO/platform_api/services/suno_audio_resolver.py \
   $REPO/docs/changelog/2026-10-02-pending-downloads-poll-latency.md
 grep -n '_schedule_pending_reconcile\|_schedule_pending_image_jobs\|_PENDING_B2_RESOLVE_TIMEOUT_S' $REPO/platform_api/services/batch_service.py | head
 if grep -q 'await self.reconcile_pending_suno_tasks(user_id=user_id, limit=max(limit, 10))' $REPO/platform_api/services/batch_service.py; then
   echo 'UNEXPECTED inline reconcile still present' && exit 1
 fi
+grep -n '_STREAM_HOST_MARKER' $REPO/platform_api/clients/suno_client.py | head
+grep -n 'audiostream.api.box' $REPO/platform_api/services/suno_audio_resolver.py | head
 systemctl restart camxora-api
 sleep 3
 systemctl is-active camxora-api
