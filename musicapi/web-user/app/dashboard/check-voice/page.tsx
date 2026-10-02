@@ -10,13 +10,28 @@ import {
 } from "@/components/playground";
 import { useState } from "react";
 
+function CopyIcon({ className = "w-4 h-4" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <rect x="9" y="9" width="13" height="13" rx="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
 export default function CheckVoicePage() {
   const [taskId, setTaskId] = useState("");
-  const [audioUrl, setAudioUrl] = useState("");
-  const [mode, setMode] = useState<"task" | "audio">("task");
   const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "voice_validate" });
 
-  const canRun = !busy && (mode === "task" ? taskId.trim() : audioUrl.trim());
+  const canRun = !busy && !!taskId.trim();
+
+  async function copyTaskId() {
+    try {
+      await navigator.clipboard.writeText(taskId.trim());
+    } catch {
+      /* ignore */
+    }
+  }
 
   return (
     <PageShell
@@ -44,50 +59,30 @@ export default function CheckVoicePage() {
           e.preventDefault();
           if (!canRun) return;
           reset();
-          submit("/me/voice-validate", {
-            taskId: taskId.trim() || undefined,
-            audioUrl: audioUrl.trim() || undefined,
-          });
+          submit("/me/voice-validate", { taskId: taskId.trim() });
         }}
         className="space-y-5"
       >
-        <div className="flex rounded-xl bg-black/20 p-1 text-sm">
-          {([
-            { k: "task", label: "By taskId" },
-            { k: "audio", label: "By audio URL" },
-          ] as const).map((o) => (
-            <button
-              key={o.k}
-              type="button"
-              onClick={() => setMode(o.k)}
-              className={`flex-1 rounded-lg px-3 py-2 transition ${
-                mode === o.k ? "bg-white/10 text-white" : "text-white/55 hover:text-white/85"
-              }`}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-
-        {mode === "task" ? (
-          <Field label="taskId">
+        <Field label="taskId" required>
+          <div className="relative">
             <input
-              className={inputCls}
+              className={`${inputCls} pr-11`}
               placeholder="xxx_task_id_xxx"
               value={taskId}
               onChange={(e) => setTaskId(e.target.value)}
             />
-          </Field>
-        ) : (
-          <Field label="audioUrl">
-            <input
-              className={inputCls}
-              placeholder="https://example.com/validation.wav"
-              value={audioUrl}
-              onChange={(e) => setAudioUrl(e.target.value)}
-            />
-          </Field>
-        )}
+            <button
+              type="button"
+              onClick={copyTaskId}
+              disabled={!taskId.trim()}
+              aria-label="Copy taskId"
+              title="Copy taskId"
+              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1.5 text-white/40 transition hover:bg-white/5 hover:text-white disabled:opacity-30"
+            >
+              <CopyIcon className="w-4 h-4" />
+            </button>
+          </div>
+        </Field>
 
         <PrimaryButton type="submit" busy={busy} disabled={!canRun}>
           Check Availability
