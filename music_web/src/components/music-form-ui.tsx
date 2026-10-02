@@ -421,7 +421,7 @@ export function MusicFloatingActionBar({
   children: ReactNode;
 }) {
   return (
-    <div className="pointer-events-none sticky bottom-5 z-20 mt-auto shrink-0 px-3 pb-2 pt-8">
+    <div className="pointer-events-none sticky z-20 mt-auto shrink-0 px-3 pb-2 pt-8 bottom-[calc(var(--music-chrome-bottom)+0.5rem)] md:bottom-5">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 top-0 bg-gradient-to-t from-[rgba(6,8,18,0.98)] via-[rgba(6,8,18,0.88)] to-transparent" />
       <div className="relative pointer-events-auto">{children}</div>
     </div>

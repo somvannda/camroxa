@@ -28,7 +28,7 @@ export default function UserMenu() {
         <button
           type="button"
           className={cn(
-            'group inline-flex h-10 max-w-[12rem] items-center gap-2 rounded-[7px] border border-white/10 bg-white/[0.03] px-3 text-sm font-medium text-slate-100 transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/30 data-[state=open]:border-violet-400/30 data-[state=open]:bg-violet-500/[0.08]',
+            'group inline-flex h-10 max-w-[3rem] items-center gap-2 rounded-[7px] border border-white/10 bg-white/[0.03] px-2 text-sm font-medium text-slate-100 transition hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/30 data-[state=open]:border-violet-400/30 data-[state=open]:bg-violet-500/[0.08] sm:max-w-[12rem] sm:px-3',
           )}
         >
           {avatarSrc ? (
@@ -43,8 +43,8 @@ export default function UserMenu() {
               {initial}
             </span>
           )}
-          <span className="truncate">{user.display_name}</span>
-          <ChevronDown className="h-4 w-4 shrink-0 text-slate-400 transition group-data-[state=open]:rotate-180 group-data-[state=open]:text-violet-200" />
+          <span className="hidden truncate sm:inline">{user.display_name}</span>
+          <ChevronDown className="hidden h-4 w-4 shrink-0 text-slate-400 transition group-data-[state=open]:rotate-180 group-data-[state=open]:text-violet-200 sm:block" />
         </button>
       </DropdownMenuTrigger>
 

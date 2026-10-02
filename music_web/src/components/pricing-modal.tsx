@@ -131,36 +131,36 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
 
   const modal = (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center overflow-y-auto bg-black/80 p-4 backdrop-blur-sm"
+      className="fixed inset-0 z-[200] flex items-stretch justify-center overflow-hidden bg-black/80 md:items-center md:overflow-y-auto md:p-4 md:backdrop-blur-sm"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-labelledby="pricing-modal-title"
     >
       <div
-        className="relative my-8 w-full max-w-6xl rounded-3xl border border-white/10 bg-slate-900 shadow-2xl"
+        className="relative flex h-dvh w-full flex-col overflow-y-auto rounded-none border-0 bg-slate-900 pb-[env(safe-area-inset-bottom,0px)] shadow-2xl md:my-8 md:h-auto md:max-h-[90dvh] md:max-w-6xl md:rounded-3xl md:border md:border-white/10"
         onClick={(event) => event.stopPropagation()}
       >
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-4 top-4 z-10 rounded-full p-2 text-slate-400 transition-all hover:bg-white/10 hover:text-white"
+          className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top,0px))] z-10 rounded-full p-2 text-slate-400 transition-all hover:bg-white/10 hover:text-white md:right-4 md:top-4"
           aria-label="Close"
         >
           <X className="h-5 w-5" />
         </button>
 
-        <div className="border-b border-white/10 p-6 text-center sm:p-8">
+        <div className="border-b border-white/10 p-5 pt-[max(1.25rem,env(safe-area-inset-top,0px))] text-center sm:p-8">
           <h2 id="pricing-modal-title" className="text-2xl font-bold text-white sm:text-3xl">
             Choose Your Plan
           </h2>
           <p className="mt-2 text-slate-400">Start creating amazing music with AI</p>
 
-          <div className="mt-6 inline-flex items-center gap-2 rounded-full bg-white/5 p-1">
+          <div className="mx-auto mt-6 flex w-full max-w-sm flex-wrap items-center justify-center gap-1 rounded-full bg-white/5 p-1">
             <button
               type="button"
               onClick={() => setBillingCycle('monthly')}
-              className={`rounded-full px-5 py-2 text-sm font-medium transition-all sm:px-6 ${
+              className={`rounded-full px-4 py-2 text-sm font-medium transition-all sm:px-6 ${
                 billingCycle === 'monthly'
                   ? 'bg-purple-600 text-white shadow-lg'
                   : 'text-slate-400 hover:text-white'
@@ -171,14 +171,14 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
             <button
               type="button"
               onClick={() => setBillingCycle('yearly')}
-              className={`rounded-full px-5 py-2 text-sm font-medium transition-all sm:px-6 ${
+              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-medium transition-all sm:px-6 ${
                 billingCycle === 'yearly'
                   ? 'bg-purple-600 text-white shadow-lg'
                   : 'text-slate-400 hover:text-white'
               }`}
             >
               Yearly
-              <span className="ml-2 rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
+              <span className="rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400">
                 Save 15%
               </span>
             </button>

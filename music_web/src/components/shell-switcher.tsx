@@ -7,11 +7,12 @@ import { Sparkles } from 'lucide-react';
 import { useEffect, useState } from 'react';
 
 import { useAuth } from '@/components/auth-provider';
+import MobileTabBar from '@/components/mobile-tab-bar';
 import PlayerBar from '@/components/player-bar';
+import PricingModal from '@/components/pricing-modal';
 import Sidebar from '@/components/sidebar';
 import SiteFooter from '@/components/site-footer';
 import SiteHeader from '@/components/site-header';
-import PricingModal from '@/components/pricing-modal';
 
 function MarketingHeader() {
   const { user, loading } = useAuth();
@@ -49,6 +50,12 @@ function MarketingHeader() {
             </button>
           </nav>
           <div className="flex items-center gap-2">
+            <Link
+              href="/create"
+              className="inline-flex h-10 items-center rounded-xl border border-white/10 px-3 text-sm text-slate-100 md:hidden"
+            >
+              Create
+            </Link>
             {loading ? (
               <div className="h-10 w-24 animate-pulse rounded-xl bg-white/5" />
             ) : user ? (
@@ -70,7 +77,8 @@ function MarketingHeader() {
                   href="/register?next=/create"
                   className="inline-flex h-10 items-center rounded-xl bg-white px-4 text-sm font-medium text-slate-950"
                 >
-                  Join Camxora
+                  <span className="sm:hidden">Join</span>
+                  <span className="hidden sm:inline">Join Camxora</span>
                 </Link>
               </>
             )}
@@ -154,8 +162,11 @@ export default function ShellSwitcher({ children }: { children: ReactNode }) {
       <Sidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <SiteHeader />
-        <main className="music-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 pb-[calc(var(--music-player-height)+1.5rem)] md:px-6">{children}</main>
+        <main className="music-scroll min-h-0 flex-1 overflow-y-auto px-4 py-6 pb-[calc(var(--music-chrome-bottom)+1.5rem)] md:px-6">
+          {children}
+        </main>
         <PlayerBar />
+        <MobileTabBar />
       </div>
     </div>
   );

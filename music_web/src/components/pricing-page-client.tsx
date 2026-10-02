@@ -96,36 +96,37 @@ export default function PricingPageClient() {
     <>
     <div className="min-h-screen bg-gradient-to-b from-[#0a0e27] to-[#1a1f3a] text-white">
       {/* Header */}
-      <div className="container mx-auto px-4 py-16 text-center">
-        <h1 className="text-5xl font-display font-bold mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-purple-600 bg-clip-text text-transparent">
+      <div className="container mx-auto px-4 py-8 text-center md:py-16">
+        <h1 className="mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-purple-600 bg-clip-text font-display text-3xl font-bold text-transparent md:text-5xl">
           Choose Your Plan
         </h1>
-        <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+        <p className="mx-auto mb-8 max-w-2xl text-base text-gray-300 md:text-xl">
           Create unlimited AI-generated music with flexible credit-based pricing
         </p>
 
-        {/* Billing Toggle */}
-        <div className="inline-flex items-center gap-3 bg-[#0c1230] rounded-full p-1 border border-purple-500/20">
+        <div className="mx-auto inline-flex max-w-full flex-wrap items-center justify-center gap-1 rounded-full border border-purple-500/20 bg-[#0c1230] p-1">
           <button
+            type="button"
             onClick={() => setBillingCycle('monthly')}
-            className={`px-6 py-2 rounded-full transition-all ${
+            className={`rounded-full px-4 py-2 transition-all sm:px-6 ${
               billingCycle === 'monthly'
-                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium'
+                ? 'bg-gradient-to-r from-purple-500 to-pink-500 font-medium text-white'
                 : 'text-gray-400 hover:text-white'
             }`}
           >
             Monthly
           </button>
           <button
+            type="button"
             onClick={() => setBillingCycle('yearly')}
-            className={`px-6 py-2 rounded-full transition-all flex items-center gap-2 ${
+            className={`inline-flex items-center gap-2 rounded-full px-4 py-2 transition-all sm:px-6 ${
               billingCycle === 'yearly'
-                ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white font-medium'
+                ? 'bg-gradient-to-r from-purple-500 to-pink-500 font-medium text-white'
                 : 'text-gray-400 hover:text-white'
             }`}
           >
             Yearly
-            <span className="text-xs bg-green-500 text-white px-2 py-0.5 rounded-full">
+            <span className="rounded-full bg-green-500 px-2 py-0.5 text-xs text-white">
               Save {yearlyDiscount}%
             </span>
           </button>
@@ -134,7 +135,7 @@ export default function PricingPageClient() {
 
       {/* Plans */}
       <div className="container mx-auto px-4 pb-20">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-6xl mx-auto">
+        <div className="mx-auto grid max-w-6xl grid-cols-1 gap-6 md:grid-cols-3">
           {sortedPlans.map((plan, index) => {
             const songs = creditsToSongs(plan.monthly_credits);
             const pricePerMonth =
@@ -149,7 +150,7 @@ export default function PricingPageClient() {
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-2xl p-8 border-2 transition-all hover:scale-105 ${
+                className={`relative rounded-2xl border-2 p-5 transition-all md:p-8 md:hover:scale-105 ${
                   isPopular
                     ? 'border-purple-500 bg-gradient-to-b from-purple-900/30 to-[#0c1230] shadow-xl shadow-purple-500/20'
                     : 'border-purple-500/20 bg-[#0c1230] hover:border-purple-500/40'
@@ -180,7 +181,7 @@ export default function PricingPageClient() {
                 {/* Price */}
                 <div className="text-center mb-6">
                   <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-4xl font-bold">{formatPrice(Math.floor(pricePerMonth))}</span>
+                    <span className="text-3xl font-bold md:text-4xl">{formatPrice(Math.floor(pricePerMonth))}</span>
                     <span className="text-gray-400">/month</span>
                   </div>
                   {plan.billing_cycle === 'yearly' && (

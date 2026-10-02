@@ -38,8 +38,48 @@ export default function PlayerBar() {
   const canNext = queueIndex >= 0 && queueIndex < queue.length - 1;
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-white/8 bg-[rgba(5,8,18,0.94)] px-4 py-3 backdrop-blur-xl md:left-72 md:px-6">
-      <div className="mx-auto grid max-w-[1600px] grid-cols-1 items-center gap-3 md:grid-cols-[1.2fr_1.4fr_1fr] md:gap-4">
+    <div className="fixed bottom-[var(--music-tab-bar-height)] left-0 right-0 z-50 border-t border-white/8 bg-[rgba(5,8,18,0.94)] px-3 py-2 backdrop-blur-xl md:left-72 md:px-6 md:py-3">
+      <div className="mx-auto flex max-w-[1600px] items-center gap-3 md:hidden">
+        {current?.cover_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={current.cover_url} alt="" className="h-10 w-10 shrink-0 rounded-lg object-cover" />
+        ) : (
+          <div className="h-10 w-10 shrink-0 rounded-lg bg-white/[0.06]" />
+        )}
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-medium text-white">
+            {current?.title ?? 'Select a track to play'}
+          </p>
+          <p className="truncate text-xs text-slate-400">
+            {current ? (current.artist_name ?? 'Camxora Artist') : 'Pick a clip to hear it here.'}
+          </p>
+        </div>
+        {current ? <LikeButton trackId={current.id} className="shrink-0" /> : null}
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={!current}
+          className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 text-white disabled:cursor-not-allowed disabled:opacity-40"
+          aria-label={playing ? 'Pause' : 'Play'}
+        >
+          {playing ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+        </button>
+      </div>
+      <div className="mx-auto mt-1.5 flex max-w-[1600px] items-center gap-2 md:hidden">
+        <input
+          type="range"
+          min={0}
+          max={progressMax || 0}
+          step={0.1}
+          value={Math.min(currentTime, progressMax || 0)}
+          disabled={!canSeek}
+          onChange={(event) => seek(Number(event.target.value))}
+          aria-label="Seek"
+          className="h-1 w-full cursor-pointer appearance-none rounded-full bg-white/15 accent-fuchsia-400 disabled:cursor-not-allowed disabled:opacity-40"
+        />
+      </div>
+
+      <div className="mx-auto hidden max-w-[1600px] grid-cols-[1.2fr_1.4fr_1fr] items-center gap-4 md:grid">
         <div className="flex min-w-0 items-center gap-3">
           {current?.cover_url ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -114,7 +154,7 @@ export default function PlayerBar() {
           </div>
         </div>
 
-        <div className="hidden items-center justify-end gap-2 md:flex">
+        <div className="flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={toggleMute}

@@ -1,5 +1,5 @@
 import './globals.css';
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 
 // Self-hosted fonts (no external dependency)
 import '@fontsource/inter/400.css';
@@ -13,6 +13,12 @@ import { PlayerProvider } from '@/components/player-provider';
 import { AuthProvider } from '@/components/auth-provider';
 import { LikesProvider } from '@/components/likes-provider';
 import ShellSwitcher from '@/components/shell-switcher';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  viewportFit: 'cover',
+};
 
 export const metadata: Metadata = {
   title: {

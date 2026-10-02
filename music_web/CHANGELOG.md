@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Phone Create flow: bottom tabs (Create, Explore, Playlists, Profile), compact player above the tabs, and a full-height pricing sheet. See `docs/changelog/2026-08-19-music-web-mobile-create.md`.
+
+### Changed
+
+- Create defaults to Simple on screens below 768px; clip details stack under the list instead of a side column.
+- Pricing page and upgrade modal wrap the billing toggle and drop hover-scale on phones.
+
 ### Fixed
 
 - Create page lyric/style wands: stop sending over-limit lyrics, validate style input before calling the API, and show a clear message when AI assist returns 502. See `docs/changelog/2026-08-17-music-web-generate-assist.md`.

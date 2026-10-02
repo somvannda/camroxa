@@ -38,6 +38,16 @@
 
   --music-header-height: 4.25rem;
   --music-player-height: 6.75rem;
+  --music-tab-bar-height: 0px;
+  --music-chrome-bottom: var(--music-player-height);
+}
+
+@media (max-width: 767px) {
+  :root {
+    --music-player-height: 4.75rem;
+    --music-tab-bar-height: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+    --music-chrome-bottom: calc(var(--music-player-height) + var(--music-tab-bar-height));
+  }
 }
 
 @layer base {
@@ -47,6 +57,7 @@
 
   body {
     @apply bg-background text-foreground antialiased;
+    overflow-x: clip;
     font-family: 'Inter', system-ui, sans-serif;
     letter-spacing: -0.01em;
     background-image:
