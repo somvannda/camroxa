@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { AuthorizedAudio, downloadClip } from "@/components/playground";
 
@@ -588,11 +588,45 @@ function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: s
   const cover = extractCover(row.result_json);
   const lyrics = extractLyrics(row);
   const initials = (row.title || row.endpoint || "?").trim().charAt(0).toUpperCase() || "?";
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // The table lives in an overflow container, so an absolutely-positioned card
+  // gets clipped. Render the preview with fixed coordinates instead, flipped up
+  // when there isn't room below the button.
+  function show() {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const width = 288;
+    const left = Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8);
+    const below = r.bottom + 8;
+    const top = below + 280 > window.innerHeight ? Math.max(8, r.top - 288) : below;
+    setPos({ top, left });
+  }
+  function hide() {
+    setPos(null);
+  }
+  useEffect(() => {
+    if (!pos) return;
+    const onScrollResize = () => setPos(null);
+    window.addEventListener("scroll", onScrollResize, true);
+    window.addEventListener("resize", onScrollResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollResize, true);
+      window.removeEventListener("resize", onScrollResize);
+    };
+  }, [pos]);
+
   return (
-    <div className="group relative">
+    <div className="relative">
       <button
+        ref={btnRef}
         type="button"
         disabled={!canOpen}
+        onMouseEnter={() => canOpen && show()}
+        onMouseLeave={hide}
+        onFocus={() => canOpen && show()}
+        onBlur={hide}
         onClick={() => canOpen && onOpen()}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition ${
           canOpen
@@ -607,8 +641,13 @@ function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: s
         </svg>
         Result
       </button>
-      {canOpen && (
-        <div className="pointer-events-none absolute right-0 top-full z-30 mt-1 hidden w-72 rounded-xl border border-white/10 bg-[#1a1a1d] p-3 shadow-2xl group-hover:block">
+      {canOpen && pos && (
+        <div
+          onMouseEnter={show}
+          onMouseLeave={hide}
+          style={{ position: "fixed", top: pos.top, left: pos.left, width: 288 }}
+          className="z-[60] rounded-xl border border-white/10 bg-[#1a1a1d] p-3 shadow-2xl"
+        >
           {cover ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={cover} alt="" className="mb-2 h-36 w-full rounded-lg object-cover" />
@@ -625,7 +664,7 @@ function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: s
           <button
             type="button"
             onClick={() => { void downloadClip(clipIds[0], "mp3").catch(() => {}); }}
-            className="pointer-events-auto mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10"
+            className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10"
           >
             Download MP3
           </button>

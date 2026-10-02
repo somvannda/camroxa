@@ -273,6 +273,7 @@ export default function PlaygroundPage() {
   const [negativeTags, setNegativeTags] = useState("");
   const [instrumental, setInstrumental] = useState(false);
   const [refImages, setRefImages] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
 
@@ -365,6 +366,7 @@ export default function PlaygroundPage() {
         r.readAsDataURL(f);
       });
     try {
+      setUploadingImages(true);
       const urls: string[] = [];
       for (const f of files) {
         if (f.size > 10 * 1024 * 1024) continue;
@@ -378,6 +380,8 @@ export default function PlaygroundPage() {
       setRefImages((a) => [...a, ...urls].slice(0, 5));
     } catch {
       setError("Could not upload the selected image.");
+    } finally {
+      setUploadingImages(false);
     }
   }
 
@@ -573,12 +577,22 @@ export default function PlaygroundPage() {
                   <div className="text-xs font-medium text-white/50">Reference Images (Optional)</div>
                   <div className="text-[11px] text-white/30">{refImages.length}/5</div>
                 </div>
-                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-xs text-white/50 transition-colors hover:bg-white/[0.06]">
-                  <span className="text-base leading-none">+</span> Add image
+                <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-xs text-white/50 transition-colors ${uploadingImages ? "cursor-wait opacity-60" : "hover:bg-white/[0.06]"}`}>
+                  {uploadingImages ? (
+                    <>
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white/80" />
+                      Uploading…
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-base leading-none">+</span> Add image
+                    </>
+                  )}
                   <input
                     type="file"
                     accept="image/jpeg,image/jpg,image/png,image/webp"
                     multiple
+                    disabled={uploadingImages}
                     className="hidden"
                     onChange={(e) => void addRefImages(e)}
                   />
