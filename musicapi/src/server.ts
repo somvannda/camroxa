@@ -17,6 +17,7 @@ import { assertCallbackUrlAllowed, CallbackUrlError } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
 import { normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectKey, putObject, storageConfigured } from "./storage.js";
+import { extractVideoFrame } from "./video.js";
 import { JOB_OPS, isRunnableDescriptor, type JobDescriptor } from "./jobOps.js";
 
 // Fallback credit costs when the `pricing` table has no row for an endpoint.
@@ -1690,11 +1691,40 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /** Reference video URLs from a request body (camelCase or snake_case). */
+  function referenceVideoUrls(params: Record<string, unknown>): string[] {
+    const raw = params.videoUrls ?? params.video_urls;
+    return Array.isArray(raw)
+      ? raw.filter((u): u is string => typeof u === "string" && /^https?:\/\//i.test(u))
+      : [];
+  }
+
+  /** Extract a frame from a reference video and upload it to Suno as an image
+   *  (Suno has no video input, so a frame drives the image/agentic flow). */
+  async function uploadReferenceVideo(client: SunoClient, url: string): Promise<string> {
+    const resp = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: "follow" });
+    if (!resp.ok) throw new Error(`reference video fetch failed (${resp.status})`);
+    const bytes = Buffer.from(await resp.arrayBuffer());
+    if (bytes.length > 100 * 1024 * 1024) throw new Error("reference video exceeds 100MB");
+    const frame = await extractVideoFrame(bytes);
+    return client.uploadImage(frame, "jpg");
+  }
+
+  function processMusicSubmitWithVideo(params: Record<string, unknown>, videoUrls: string[]) {
+    const gen = buildMusicGen(params);
+    return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
+      const imageIds = await Promise.all(videoUrls.map((u) => uploadReferenceVideo(client, u)));
+      return client.generateMusic({ ...gen, imageIds, task: "agentic_thinking" });
+    };
+  }
+
   /** Choose the music submit strategy from the request's reference inputs. */
   function musicSubmitFactory(params: Record<string, unknown>, inlineImages?: string[]) {
     if (inlineImages && inlineImages.length) return processMusicSubmitWithImageData(params, inlineImages);
     const imgs = referenceImageUrls(params);
     if (imgs.length) return processMusicSubmitWithImages(params, imgs);
+    const vids = referenceVideoUrls(params);
+    if (vids.length) return processMusicSubmitWithVideo(params, vids);
     const auds = referenceAudioUrls(params);
     if (auds.length) return processMusicSubmitWithAudio(params, auds);
     return processMusicSubmit(params);

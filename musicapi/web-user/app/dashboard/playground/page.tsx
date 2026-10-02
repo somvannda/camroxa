@@ -274,6 +274,7 @@ export default function PlaygroundPage() {
   const [instrumental, setInstrumental] = useState(false);
   const [refImages, setRefImages] = useState<string[]>([]);
   const [audioUrl, setAudioUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
 
   const [grabLyrics, setGrabLyrics] = useState(false);
   const [soundLoop, setSoundLoop] = useState(false);
@@ -398,6 +399,31 @@ export default function PlaygroundPage() {
     }
   }
 
+  async function uploadRefVideo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 100 * 1024 * 1024) {
+      setError("Video exceeds 100MB.");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const res = await apiFetch<{ url: string }>("/me/upload/reference", {
+        method: "POST",
+        body: JSON.stringify({ data: dataUrl, kind: "video" }),
+      });
+      setVideoUrl(res.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Video upload failed");
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -429,6 +455,7 @@ export default function PlaygroundPage() {
         }
         if (refImages.length) body.images = refImages;
         if (audioUrl.trim()) body.audioUrls = [audioUrl.trim()];
+        if (videoUrl.trim()) body.videoUrls = [videoUrl.trim()];
       }
       setLastBody(body);
       const created = await apiFetch<{ job_id: string }>("/me/generate", {
@@ -585,6 +612,22 @@ export default function PlaygroundPage() {
                 <div className="mt-1 text-[11px] text-white/30">
                   Suno re-arranges the track in your style, keeping its melody.
                 </div>
+              </div>
+
+              {/* Reference video — first frame drives the image/agentic flow */}
+              <div>
+                <div className="mb-1.5 text-xs font-medium text-white/50">Reference Video (Optional)</div>
+                <input
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  placeholder="https://…/clip.mp4"
+                  className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
+                />
+                <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50 transition-colors hover:bg-white/[0.06]">
+                  ⬆ Upload video file
+                  <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => void uploadRefVideo(e)} />
+                </label>
+                <div className="mt-1 text-[11px] text-white/30">A frame is used to inspire the song. MP4 / MOV / WEBM · Max 100MB</div>
               </div>
 
               {/* Custom mode fields */}
