@@ -50,6 +50,27 @@ DevTools → Application → Cookies → `https://suno.com` → `__client`.
 > If the row currently holds a bare JWT (from the earlier reseed), replace it with
 > the `__client` cookie — otherwise auto-refresh has nothing to refresh.
 
+## One-time sign-in (captures the cookie for you)
+
+If the account uses **Google sign-in**, you don't need to copy cookies by hand:
+
+```bash
+npm run suno:login
+# or: ACCOUNT_LABEL=you@gmail.com npx tsx scripts/suno-login.ts
+```
+
+It opens your installed Chrome, you sign in with Google normally, and the script
+captures the Clerk `__client` cookie, encrypts it, and stores it on the
+`suno_accounts` row (`type='paid'`). Google's password is typed into Google's own
+page — the script never sees it. After this, auto-refresh keeps the session alive
+indefinitely.
+
+- Requires Google Chrome installed (uses `playwright-core` with `channel: "chrome"`;
+  no browser download).
+- `LOGIN_TIMEOUT_MS` (default 10 min) bounds the wait.
+- This is a **one-time** step; do not script the Google login itself (Google blocks
+  automation and it risks the account).
+
 ## Config
 
 | Env | Default | Meaning |

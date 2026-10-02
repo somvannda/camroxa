@@ -9,6 +9,7 @@
     "lyrics": "tsx src/index.ts lyrics",
     "generate": "tsx src/index.ts generate",
     "serve": "tsx src/serve.ts",
+    "suno:login": "tsx scripts/suno-login.ts",
     "build": "tsc",
     "start": "node dist/serve.js",
     "typecheck": "tsc --noEmit"
@@ -30,7 +31,8 @@
     "google-auth-library": "^11.0.2",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "playwright-core": "^1.63.0"
   },
   "devDependencies": {
     "@types/bcryptjs": "^2.4.6",
