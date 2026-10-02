@@ -1225,11 +1225,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    */
   async function ingestMedia(job: Job): Promise<void> {
     if (!storageConfigured()) return;
-    const items: Array<Record<string, unknown>> = Array.isArray(job.result)
-      ? (job.result as Array<Record<string, unknown>>)
-      : job.result && typeof job.result === "object"
-        ? [job.result as Record<string, unknown>]
-        : [];
+    const items: Array<Record<string, unknown>> = [];
+    collectClipObjects(job.result, items);
     if (items.length === 0) return;
 
     let client: SunoClient | null = null;
@@ -1240,7 +1237,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
       // Audio: use the account's download pipeline for real bytes (the raw clip
       // URL is an encrypted placeholder), then store under the job's prefix.
-      if ((item.audio_url || item.audioUrl) && !item.audio_storage_key) {
+      if ((item.audio_url || item.audioUrl || item.media_urls) && !item.audio_storage_key) {
         try {
           if (!client) client = await pool.pick();
           const { buffer, contentType } = await client.downloadBuffer(clipId, "mp3");
@@ -5027,6 +5024,26 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // `errorCode`/`errorMessage`, and a `response.sunoData[]` array whose tracks
   // carry BOTH snake_case and camelCase field names. `response.data[]` is kept
   // for back-compat with our own callers.
+  // Flatten a job result into individual clip-like objects. Our music/sounds
+  // jobs store `[{ clips: [...] }]`, stems store `{...}`, etc.; sunoapi.org's
+  // `sunoData[]` is a flat track list, so both ingest and record-info use this.
+  function collectClipObjects(value: unknown, out: Array<Record<string, unknown>>): void {
+    if (Array.isArray(value)) {
+      for (const v of value) collectClipObjects(v, out);
+      return;
+    }
+    if (!value || typeof value !== "object") return;
+    const o = value as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id : undefined;
+    const clipLike = Boolean(
+      id && (o.media_urls || o.audio_url || o.audioUrl || o.image_url || o.imageUrl || o.video_url),
+    );
+    if (clipLike) out.push(o);
+    if (Array.isArray(o.clips)) collectClipObjects(o.clips, out);
+    if (Array.isArray(o.data)) collectClipObjects(o.data, out);
+    if (Array.isArray(o.sunoData)) collectClipObjects(o.sunoData, out);
+  }
+
   async function sunoRecordInfo(job: Job) {
     let status: string;
     if (job.status === "complete") status = "SUCCESS";
@@ -5034,11 +5051,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     else if (job.status === "running" || job.status === "streaming") status = "FIRST_SUCCESS";
     else status = "PENDING";
 
-    const tracks: unknown[] = Array.isArray(job.result)
-      ? job.result
-      : job.result != null
-        ? [job.result]
-        : [];
+    const flat: Array<Record<string, unknown>> = [];
+    collectClipObjects(job.result, flat);
+    const tracks: unknown[] = flat.length > 0 ? flat : job.result != null ? [job.result] : [];
     // Re-sign storage URLs at read time so a long-lived job never hands back an
     // expired presigned link (the object key is what we persist).
     const sunoData = await Promise.all(
@@ -5427,8 +5442,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
-    const clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
-    if (!clipId) return reply.code(400).send({ error: "audioId (clip_id) is required." });
+    let clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
+    // sunoapi.org's recovery call passes `taskId`; resolve it to a clip id.
+    if (!clipId) {
+      const taskId = (in_.taskId as string) || (in_.task_id as string) || undefined;
+      if (taskId) {
+        const src = await getJob(taskId);
+        const clips: Array<Record<string, unknown>> = [];
+        if (src) collectClipObjects(src.result, clips);
+        const first = clips.find((c) => typeof c.id === "string");
+        if (first) clipId = first.id as string;
+      }
+    }
+    if (!clipId) return reply.code(400).send({ error: "audioId (clip_id) or taskId is required." });
     const cost = await costFor("recovery_audio");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);

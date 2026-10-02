@@ -111,7 +111,16 @@ export class SunoClient {
 
   async resolveJwt(): Promise<string> {
     if (!this.cachedJwt) {
-      this.cachedJwt = await this.mintJwt(await this.getSessionId());
+      // A `__client` refresh cookie is the durable path (minted via Clerk). If
+      // the stored value is instead a one-off access JWT (see
+      // scripts/add-paid-account.ts), use it directly — it cannot be refreshed,
+      // but it makes JWT-seeded accounts work until it expires.
+      const stored = this.account.clientCookie?.trim() ?? "";
+      if (/^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(stored)) {
+        this.cachedJwt = stored;
+      } else {
+        this.cachedJwt = await this.mintJwt(await this.getSessionId());
+      }
     }
     return this.cachedJwt;
   }
@@ -320,6 +329,10 @@ export class SunoClient {
       task: "gen_stem",
       generation_type: "TEXT",
       mv: "chirp-v3-5-b",
+      prompt: "",
+      tags: "",
+      title: "",
+      negative_tags: "",
       make_instrumental: true,
       continue_clip_id: clipId,
       stem_type_id: 91,
@@ -374,6 +387,11 @@ export class SunoClient {
       task: "infill",
       generation_type: "TEXT",
       mv: config.model,
+      prompt: params.lyrics,
+      gpt_description_prompt: params.lyrics,
+      tags: "",
+      title: "",
+      negative_tags: "",
       continue_clip_id: clipId,
       infill_context_start_s: params.startS,
       infill_context_end_s: params.endS,
@@ -823,12 +841,18 @@ export class SunoClient {
 
   /** Generate recovery audio for a clip (placeholder; falls back to clip detail if separate task not yet discovered). */
   async generateRecoveryAudio(clipId: string, prompt = ""): Promise<Clip[]> {
+    const text = prompt && prompt.trim() ? prompt : "recovery audio, clean vocals";
     return this.submitClips("/api/generate/v2-web/", {
       task: "fixed_infill",
       mv: config.model,
       generation_type: "TEXT",
+      prompt: text,
+      gpt_description_prompt: text,
+      tags: "",
+      title: "Recovery audio",
+      negative_tags: "",
       params: {
-        prompt: prompt ?? "recovery audio, clean vocals",
+        prompt: text,
         continue_clip_id: clipId,
         title: "Recovery audio",
       },
