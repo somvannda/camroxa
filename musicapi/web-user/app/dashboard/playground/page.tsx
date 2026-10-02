@@ -373,6 +373,31 @@ export default function PlaygroundPage() {
     }
   }
 
+  async function uploadRefAudio(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) {
+      setError("Audio exceeds 50MB.");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const res = await apiFetch<{ url: string }>("/me/upload/reference", {
+        method: "POST",
+        body: JSON.stringify({ data: dataUrl, kind: "audio" }),
+      });
+      setAudioUrl(res.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Audio upload failed");
+    }
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -553,6 +578,10 @@ export default function PlaygroundPage() {
                   placeholder="https://…/song.mp3"
                   className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
                 />
+                <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50 transition-colors hover:bg-white/[0.06]">
+                  ⬆ Upload audio file
+                  <input type="file" accept="audio/*" className="hidden" onChange={(e) => void uploadRefAudio(e)} />
+                </label>
                 <div className="mt-1 text-[11px] text-white/30">
                   Suno re-arranges the track in your style, keeping its melody.
                 </div>

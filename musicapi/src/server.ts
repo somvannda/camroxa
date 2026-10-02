@@ -2064,6 +2064,33 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  // ---------- /me/upload/reference — session-auth file upload for the panel ----------
+  app.post("/me/upload/reference", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    if (!storageConfigured()) return reply.code(503).send({ error: "File storage is not configured." });
+    const body = (req.body ?? {}) as { data?: string; kind?: string };
+    const data = typeof body.data === "string" ? body.data : "";
+    const kind = body.kind === "image" ? "image" : body.kind === "video" ? "video" : "audio";
+    const m = data.match(/^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,(.*)$/is);
+    if (!m) return reply.code(400).send({ error: "data must be a data: URL." });
+    const mime = m[1].toLowerCase();
+    const bytes = Buffer.from(m[2], "base64");
+    const limitMb = kind === "video" ? 100 : kind === "audio" ? 50 : 10;
+    if (bytes.length === 0) return reply.code(400).send({ error: "Empty file." });
+    if (bytes.length > limitMb * 1024 * 1024) {
+      return reply.code(413).send({ error: `${kind} exceeds ${limitMb}MB.` });
+    }
+    const ext = (mime.split("/")[1] || "bin").replace(/[^a-z0-9]/g, "").slice(0, 5) || "bin";
+    const key = objectKey("uploads", u.id, `${randomUUID()}.${ext}`);
+    try {
+      await putObject(key, bytes, mime);
+      return { url: await getReadUrl(key), key, bytes: bytes.length };
+    } catch (e) {
+      return reply.code(500).send({ error: e instanceof Error ? e.message : "Upload failed." });
+    }
+  });
+
   // ---------- /me/* playground routes (user auth, not API key) ----------
 
   app.post("/me/recovery", async (req, reply) => {
