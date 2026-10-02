@@ -44,7 +44,7 @@ describe('resolveCostCredits', () => {
     }),
     pricing({
       ai_service: 'slai',
-      sub_model: 'slai/gpt-image-2',
+      sub_model: 'cx/gpt-image-2.5',
       operation_type: 'channel_cover',
       external_cost_cents: 1,
     }),
@@ -56,7 +56,7 @@ describe('resolveCostCredits', () => {
   });
 
   it('resolves SLAI channel cover cost credits', () => {
-    expect(resolveCostCredits(rows, 'channel_cover', 'slai', 'slai/gpt-image-2')).toBe(1);
+    expect(resolveCostCredits(rows, 'channel_cover', 'slai', 'cx/gpt-image-2.5')).toBe(1);
   });
 });
 
@@ -76,7 +76,7 @@ describe('buildOperationFinanceRows', () => {
     }),
     pricing({
       ai_service: 'slai',
-      sub_model: 'slai/gpt-image-2',
+      sub_model: 'cx/gpt-image-2.5',
       operation_type: 'channel_cover',
       external_cost_cents: 1,
     }),
@@ -86,7 +86,7 @@ describe('buildOperationFinanceRows', () => {
     {
       operation: 'channel_cover',
       provider: 'slai',
-      model: 'slai/gpt-image-2',
+      model: 'cx/gpt-image-2.5',
       events: 6,
       wallet_charged: 0,
       plan_included_list: 0,
@@ -99,7 +99,7 @@ describe('buildOperationFinanceRows', () => {
     expect(rows[0]?.estimatedCogsUsd).toBeCloseTo(0.06, 6);
     expect(rows[0]?.coverage).toBe('pricing');
     expect(rows[0]?.provider).toBe('slai');
-    expect(rows[0]?.model).toBe('slai/gpt-image-2');
+    expect(rows[0]?.model).toBe('cx/gpt-image-2.5');
   });
 
   it('falls back to model cost USD for the same provider/model', () => {
@@ -107,7 +107,7 @@ describe('buildOperationFinanceRows', () => {
       {
         id: '1',
         ai_service: 'slai',
-        sub_model: 'slai/gpt-image-2',
+        sub_model: 'cx/gpt-image-2.5',
         operation_type: 'channel_cover',
         cost_usd: 0.01,
         notes: null,
@@ -133,7 +133,7 @@ describe('buildOperationFinanceRows', () => {
       },
     ];
     const routing = new Map([
-      ['channel_cover', { provider: 'slai', sub_model: 'slai/gpt-image-2' }],
+      ['channel_cover', { provider: 'slai', sub_model: 'cx/gpt-image-2.5' }],
     ]);
     const rows = buildOperationFinanceRows(orphan, pricingRows, [], 0.01, routing);
     expect(rows[0]?.providerSource).toBe('routing');
@@ -158,7 +158,7 @@ describe('resolveModelCostUsd', () => {
       {
         id: '2',
         ai_service: 'slai',
-        sub_model: 'slai/gpt-image-2',
+        sub_model: 'cx/gpt-image-2.5',
         operation_type: 'channel_cover',
         cost_usd: 0.01,
         notes: null,
@@ -168,7 +168,7 @@ describe('resolveModelCostUsd', () => {
       },
     ];
     expect(resolveModelCostUsd(costs, 'channel_cover', null, null)).toBeNull();
-    expect(resolveModelCostUsd(costs, 'channel_cover', 'slai', 'slai/gpt-image-2')).toBe(0.01);
+    expect(resolveModelCostUsd(costs, 'channel_cover', 'slai', 'cx/gpt-image-2.5')).toBe(0.01);
   });
 });
 

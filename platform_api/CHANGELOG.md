@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-02] — SLAI image model `cx/gpt-image-2.5`
+
+### Changed
+
+- SLAI image generation now uses the provider's renamed model id **`cx/gpt-image-2.5`** (was `slai/gpt-image-2`) in the registry, SLAI client default, and image fallback defaults. Migration `125_slai_image_model_cx_gpt_image_2_5` rewrites existing `ai_routing_assignments` / `ai_routing_image_fallback_chain` settings and renames `credit_pricing` / `ai_model_costs` rows. Cost unchanged (~$0.0067/img). See `docs/changelog/2026-10-02-slai-image-model-cx-gpt-image-2-5.md`.
+
 ## [2026-10-02] — Paid plan fulfillment connection fix
 
 ### Fixed

@@ -134,7 +134,7 @@ DEFAULT_TEXT_FALLBACK_CHAIN: tuple[dict[str, str | None | bool], ...] = (
 )
 
 DEFAULT_IMAGE_FALLBACK_CHAIN: tuple[dict[str, str | None | bool], ...] = (
-    {"provider": "slai", "sub_model": "slai/gpt-image-2", "is_active": True},
+    {"provider": "slai", "sub_model": "cx/gpt-image-2.5", "is_active": True},
     # fal is the intentional last-resort image fallback. OpenAI image keys are
     # not used in production traffic; keep them out of the default chain.
     {"provider": "fal", "sub_model": "flux-pro", "is_active": True},

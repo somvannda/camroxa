@@ -128,7 +128,7 @@ class SlaiClient:
             payload.update(extra_params)
 
         if "model" not in payload:
-            payload["model"] = "slai/gpt-image-2"
+            payload["model"] = "cx/gpt-image-2.5"
 
         url = f"{self._base_url}/v1/images/generations"
 

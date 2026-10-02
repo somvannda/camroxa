@@ -17,14 +17,14 @@ def test_slai_text_models_include_mimo() -> None:
     assert "gpt-5.6-terra" in text_models
     assert "gpt-5.6-luna" in text_models
     assert "cgpt-web/gpt-5.5-pro" not in text_models
-    assert "slai/gpt-image-2" in image_models
+    assert "cx/gpt-image-2.5" in image_models
     assert "xiaomi/mimo-v2.5-pro" not in image_models
     assert "gpt-5.6-sol" not in image_models
     assert SUB_MODEL_COST_TIERS["xiaomi/mimo-v2.5-pro"] == "~$0.0001414/1K"
     assert SUB_MODEL_COST_TIERS["gpt-5.6-luna"] == "~$0.0000307/1K"
     assert SUB_MODEL_COST_TIERS["gpt-5.6-terra"] == "~$0.0000582/1K"
     assert SUB_MODEL_COST_TIERS["gpt-5.6-sol"] == "~$0.0001033/1K"
-    assert SUB_MODEL_COST_TIERS["slai/gpt-image-2"] == "~$0.0067/img"
+    assert SUB_MODEL_COST_TIERS["cx/gpt-image-2.5"] == "~$0.0067/img"
 
 
 def test_deepseek_v4_models_registered_with_legacy_aliases() -> None:

@@ -141,7 +141,7 @@ FAL_IMAGE_MODELS: dict[str, ModelSpec] = {
 
 SLAI_IMAGE_MODELS: dict[str, ModelSpec] = {
     # Provider charge: ~150 images / $1 ⇒ ~$0.0067 per image
-    "slai/gpt-image-2": ModelSpec(api_id="slai/gpt-image-2", cost_tier="~$0.0067/img"),
+    "cx/gpt-image-2.5": ModelSpec(api_id="cx/gpt-image-2.5", cost_tier="~$0.0067/img"),
 }
 
 KIE_IMAGE_MODELS: dict[str, ModelSpec] = {
