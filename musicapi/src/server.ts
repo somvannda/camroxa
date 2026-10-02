@@ -1680,22 +1680,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const up = await fetch(session.url, { method: "POST", body: form });
     if (!up.ok && up.status !== 204) throw new Error(`audio S3 upload failed (${up.status})`);
     await client.registerAudioUpload(session.id, { uploadType: "file_upload", uploadFilename: `upload.${ext}` });
-    const status = await client.getAudioUploadStatus(session.id, 90_000);
-    if (!status.clip_id) throw new Error(`audio upload produced no clip (status=${status.status})`);
-    return status.clip_id;
+    // The upload id itself is the reference (Suno's agentic flow); there is no
+    // separate clip id to wait for.
+    return session.id;
   }
 
-  /** Music submit from a reference audio (upload → cover, melody retained). */
+  /** Music submit from reference audio (upload -> user_uploaded_audio_ids,
+   *  task agentic_thinking — the same flow as reference images). */
   function processMusicSubmitWithAudio(params: Record<string, unknown>, audioUrls: string[]) {
     const gen = buildMusicGen(params);
     return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
-      const uploadedClipId = await uploadReferenceAudio(client, audioUrls[0]);
-      return client.uploadCoverMusic({
-        uploadedClipId,
-        prompt: (gen.prompt ?? gen.gptDescriptionPrompt ?? "") as string,
-        title: gen.title as string | undefined,
-        tags: gen.tags as string | undefined,
-      });
+      const audioIds = await Promise.all(audioUrls.map((u) => uploadReferenceAudio(client, u)));
+      return client.generateMusic({ ...gen, audioIds, task: "agentic_thinking" });
     };
   }
 

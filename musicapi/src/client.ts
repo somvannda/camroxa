@@ -40,6 +40,8 @@ export interface GenerateParams {
   imagesB64?: string[];
   /** Image upload ids (from `uploadImage`) sent as `user_uploaded_image_ids`. */
   imageIds?: string[];
+  /** Audio upload ids (from `createAudioUpload`) sent as `user_uploaded_audio_ids`. */
+  audioIds?: string[];
   /** Suno internal task (e.g. "agentic_thinking") and create metadata. */
   task?: string;
   metadata?: Record<string, unknown>;
@@ -290,6 +292,9 @@ export class SunoClient {
     if (params.imageIds && params.imageIds.length) {
       payload.user_uploaded_image_ids = params.imageIds;
     }
+    if (params.audioIds && params.audioIds.length) {
+      payload.user_uploaded_audio_ids = params.audioIds;
+    }
     if (params.artistClipId) payload.artist_clip_id = params.artistClipId;
 
     const res = await this.request("/api/generate/v2/", {
@@ -515,16 +520,16 @@ export class SunoClient {
       task: "cover_infill",
       generation_type: "TEXT",
       mv: config.model,
-      params: {
-        prompt: params.prompt ?? "",
-        cover_clip_id: coverClipId,
-        cover_start_s: params.coverStartS ?? 0,
-        cover_end_s: params.coverEndS ?? 60,
-        title: params.title ?? "",
-        tags: params.tags ?? "",
-      },
-      override_fields: ["prompt"],
+      prompt: params.prompt ?? "",
       make_instrumental: false,
+      // Pydantic `loc` names the model, so these are flat top-level fields.
+      cover_clip_id: coverClipId,
+      continue_clip_id: coverClipId,
+      cover_start_s: params.coverStartS ?? null,
+      cover_end_s: params.coverEndS ?? null,
+      title: params.title ?? "",
+      tags: params.tags ?? "",
+      override_fields: ["prompt"],
       transaction_uuid: randomUUID(),
     });
   }
@@ -729,21 +734,19 @@ export class SunoClient {
   }
 
   /** Step 3: register / finish upload (after S3 multipart PUT succeeded).
-   *  Confirmed via probe: POST /api/uploads/audio/{id}/upload-finish/ requires {spec.upload_type, spec.upload_filename}
-   */
+   *  Suno's Pydantic `loc` names the model, not a nesting level, so the fields are
+   *  flat top-level: {upload_type, upload_filename, upload_title}. */
   async registerAudioUpload(
     uploadId: string,
     params: { uploadType: string; uploadFilename: string; uploadTitle?: string }
   ): Promise<unknown> {
     const token = await this.ensureCaptchaToken();
     const body: Record<string, unknown> = {
-      spec: {
-        upload_type: params.uploadType,
-        upload_filename: params.uploadFilename,
-        upload_title: params.uploadTitle ?? "",
-      },
+      upload_type: params.uploadType,
+      upload_filename: params.uploadFilename,
+      upload_title: params.uploadTitle ?? "",
     };
-    if (token) (body.spec as Record<string, unknown>).token = token;
+    if (token) body.token = token;
     const res = await this.request(`/api/uploads/audio/${uploadId}/upload-finish/`, {
       method: "POST",
       headers: { "content-type": "application/json" },

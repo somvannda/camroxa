@@ -19,13 +19,14 @@
 
 /** Retired key (lowercased, `_` folded to `-`) → the current Suno model. */
 const MODEL_ALIASES: Record<string, string> = {
-  // v6 family — current Suno default. Verified live (sunoapi.org request with
-  // `model: "V6"` came back reporting `type`/`model_name` = "chirp-hawk").
+  // v6 family — current Suno default. Verified live: V6 -> chirp-hawk,
+  // V6-WILD -> chirp-hawk-wild, V6-MINI -> chirp-goose (all usable).
   v6: "chirp-hawk",
   "chirp-v6": "chirp-hawk",
-  // V6_MINI / V6_WILD have no verified Suno key yet; they pass through untouched
-  // until confirmed, so a wrong guess can't silently change the rendered model.
-  // v5 / v5.5 — newer than v4.x, so they land on the current default (v6).
+  "v6-wild": "chirp-hawk-wild",
+  "chirp-v6-wild": "chirp-hawk-wild",
+  "v6-mini": "chirp-goose",
+  "chirp-v6-mini": "chirp-goose",
   "chirp-v5-5": "chirp-hawk",
   "v5-5": "chirp-hawk",
   "chirp-v5": "chirp-hawk",
