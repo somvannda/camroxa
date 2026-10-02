@@ -1,0 +1,24 @@
+[Unit]
+Description=CamXora Music API (Suno core)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User=camxora
+Group=camxora
+WorkingDirectory=/opt/camxora/repo/musicapi
+Environment=NODE_ENV=production
+Environment=PORT=4003
+Environment=TZ=Asia/Phnom_Penh
+EnvironmentFile=/opt/camxora/repo/musicapi/.env
+ExecStart=/usr/bin/npm run start
+Restart=always
+RestartSec=5
+# serve.ts closes the Fastify server (draining in-flight jobs) and the DB pool
+# on SIGTERM, so allow generous time before systemd escalates to SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=45
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,274 @@
+# ---------------------------------------------------------------------------
+# Signup email-domain guard (disposable blocklist + per-domain free cap)
+# Admin API: read/write blocked/trusted lists + cap, list accounts by domain,
+# and run domain actions (block / freeze / suspend / reactivate).
+# Added by the signup-domain-guard production hotfix.
+# ---------------------------------------------------------------------------
+import json
+
+_SG_SETTINGS = {
+    "blocked": "signup_blocked_email_domains",
+    "trusted": "signup_trusted_email_domains",
+}
+_SG_KEY_MAX = "signup_max_free_accounts_per_domain"
+_SG_DEFAULT_MAX = 3
+_SG_SUSPEND_REASON_DEFAULT = "Disposable email domain (admin)"
+_SG_FREEZE_DEFAULT_REASON = "Signup-farm domain freeze (admin)"
+
+
+def _sg_normalize_domain(domain: str) -> str:
+    return (domain or "").strip().lower().lstrip("@").replace("http://", "").replace("https://", "")
+
+
+def _sg_parse_list(raw) -> list[str]:
+    if not raw:
+        return []
+    if isinstance(raw, (list, tuple, set)):
+        values = list(raw)
+    else:
+        try:
+            parsed = json.loads(str(raw))
+            values = parsed if isinstance(parsed, list) else []
+        except (TypeError, ValueError):
+            values = [v.strip() for v in str(raw).split(",") if v.strip()]
+    out: list[str] = []
+    for v in values:
+        s = str(v).strip().lower().lstrip("@")
+        if s:
+            out.append(s)
+    return sorted(set(out))
+
+
+class SignupDomainGuardPayload(BaseModel):
+    blocked: list[str] | None = None
+    trusted: list[str] | None = None
+    max_free: int | None = Field(default=None, ge=1, le=100)
+
+
+class SignupDomainActionRequest(BaseModel):
+    domain: str = Field(..., min_length=1, max_length=255)
+    action: str = Field(...)  # block | unblock | freeze | unfreeze | suspend | reactivate
+    hours: int = Field(default=72, ge=1, le=72)
+    reason: str | None = Field(default=None, max_length=300)
+
+
+async def _sg_read_settings() -> dict[str, Any]:
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.signup_domain_guard import (
+        DEFAULT_BLOCKED_DOMAINS,
+        DEFAULT_MAX_FREE_ACCOUNTS_PER_DOMAIN,
+        DEFAULT_TRUSTED_DOMAINS,
+    )
+
+    pool = get_db_pool()
+    blocked_raw = await pool.fetchval(
+        "SELECT value FROM system_settings WHERE key = $1", _SG_SETTINGS["blocked"]
+    )
+    trusted_raw = await pool.fetchval(
+        "SELECT value FROM system_settings WHERE key = $1", _SG_SETTINGS["trusted"]
+    )
+    max_raw = await pool.fetchval(
+        "SELECT value FROM system_settings WHERE key = $1", _SG_KEY_MAX
+    )
+    blocked = _sg_parse_list(blocked_raw) if blocked_raw is not None else list(DEFAULT_BLOCKED_DOMAINS)
+    trusted = _sg_parse_list(trusted_raw) if trusted_raw is not None else list(DEFAULT_TRUSTED_DOMAINS)
+    if max_raw is None:
+        max_free = DEFAULT_MAX_FREE_ACCOUNTS_PER_DOMAIN
+    else:
+        try:
+            max_free = int(str(max_raw).strip())
+        except (TypeError, ValueError):
+            max_free = _SG_DEFAULT_MAX
+    if max_free < 1:
+        max_free = _SG_DEFAULT_MAX
+    return {"blocked": blocked, "trusted": trusted, "max_free": max_free}
+
+
+async def _sg_upsert(key: str, value, value_type: str) -> None:
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    stored = json.dumps(value) if isinstance(value, (list, dict)) else str(value)
+    await pool.execute(
+        "INSERT INTO system_settings (key, value, value_type, updated_at) VALUES ($1, $2, $3, NOW()) "
+        "ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, value_type = EXCLUDED.value_type, "
+        "updated_at = NOW()",
+        key,
+        stored,
+        value_type,
+    )
+
+
+async def _sg_domain_accounts(pool, domain: str) -> list[dict[str, Any]]:
+    rows = await pool.fetch(
+        """
+        SELECT id::text AS id, email, status, email_confirmed, products, created_at
+        FROM users
+        WHERE deleted_at IS NULL
+          AND lower(split_part(email, '@', 2)) = $1
+        ORDER BY created_at DESC
+        """,
+        domain,
+    )
+    out: list[dict[str, Any]] = []
+    for r in rows:
+        created = r["created_at"]
+        out.append({
+            "id": r["id"],
+            "email": r["email"],
+            "status": r["status"],
+            "email_confirmed": bool(r["email_confirmed"]),
+            "products": list(r["products"] or []),
+            "created_at": str(created)[:19] if created else None,
+        })
+    return out
+
+
+@router.get(
+    "/signup-domain-guard",
+    summary="Get signup email-domain guard config (Admin)",
+)
+async def get_signup_domain_guard_config(ctx: AdminDep) -> dict[str, Any]:
+    _ = ctx
+    return await _sg_read_settings()
+
+
+@router.put(
+    "/signup-domain-guard",
+    summary="Update signup email-domain guard config (Admin)",
+)
+async def update_signup_domain_guard_config(
+    ctx: AdminDep,
+    payload: SignupDomainGuardPayload,
+) -> dict[str, Any]:
+    _ = ctx
+    if payload.blocked is not None:
+        await _sg_upsert(
+            _SG_SETTINGS["blocked"],
+            sorted({_sg_normalize_domain(d) for d in payload.blocked if _sg_normalize_domain(d)}),
+            "json",
+        )
+    if payload.trusted is not None:
+        await _sg_upsert(
+            _SG_SETTINGS["trusted"],
+            sorted({_sg_normalize_domain(d) for d in payload.trusted if _sg_normalize_domain(d)}),
+            "json",
+        )
+    if payload.max_free is not None:
+        await _sg_upsert(_SG_KEY_MAX, payload.max_free, "int")
+    return await _sg_read_settings()
+
+
+@router.get(
+    "/signup-domain-guard/accounts",
+    summary="List accounts on an email domain (Admin)",
+)
+async def list_signup_domain_accounts(
+    ctx: AdminDep,
+    domain: str = Query(..., min_length=1, max_length=255),
+) -> dict[str, Any]:
+    _ = ctx
+    from platform_api.dependencies import get_db_pool
+    from platform_api.exceptions import ValidationError
+
+    normalized = _sg_normalize_domain(domain)
+    if not normalized or "." not in normalized:
+        raise ValidationError("domain is not a valid email domain")
+    accounts = await _sg_domain_accounts(get_db_pool(), normalized)
+    return {"domain": normalized, "accounts": accounts, "count": len(accounts)}
+
+
+@router.post(
+    "/signup-domain-guard/domain-action",
+    summary="Block / freeze / suspend accounts on an email domain (Admin)",
+)
+async def run_signup_domain_action(
+    ctx: AdminDep,
+    request: SignupDomainActionRequest,
+) -> dict[str, Any]:
+    _ = ctx
+    from platform_api.dependencies import get_db_pool
+    from platform_api.exceptions import ValidationError
+    from platform_api.services import generation_freeze
+
+    domain = _sg_normalize_domain(request.domain)
+    if not domain or "." not in domain:
+        raise ValidationError("domain is not a valid email domain")
+    action = request.action
+    if action not in {"block", "unblock", "freeze", "unfreeze", "suspend", "reactivate"}:
+        raise ValidationError(f"unknown action: {action}")
+    pool = get_db_pool()
+
+    if action in {"block", "unblock"}:
+        cfg = await _sg_read_settings()
+        blocked = set(cfg["blocked"])
+        if action == "block":
+            blocked.add(domain)
+        else:
+            blocked.discard(domain)
+        await _sg_upsert(_SG_SETTINGS["blocked"], sorted(blocked), "json")
+        return {
+            "ok": True,
+            "action": action,
+            "domain": domain,
+            "blocked_count": len(blocked),
+            "affected_accounts": 0,
+        }
+
+    accounts = await _sg_domain_accounts(pool, domain)
+    if action in {"freeze", "unfreeze"}:
+        targets = [
+            a for a in accounts
+            if a["status"] == "active" and "music_web" in a["products"]
+        ]
+        hours = request.hours if request.hours in (1, 6, 24, 72) else None
+        acted = 0
+        for acc in targets:
+            if action == "freeze":
+                await generation_freeze.freeze_generation(
+                    user_id=acc["id"],
+                    ip=None,
+                    hours=hours,
+                    reason=request.reason or _SG_FREEZE_DEFAULT_REASON,
+                )
+            else:
+                await generation_freeze.unfreeze_generation(user_id=acc["id"])
+            acted += 1
+        return {
+            "ok": True,
+            "action": action,
+            "domain": domain,
+            "affected_accounts": acted,
+            "hours": request.hours,
+        }
+
+    if action == "suspend":
+        targets = [a for a in accounts if a["status"] == "active"]
+        if targets:
+            await pool.execute(
+                "UPDATE users SET status = 'suspended', suspension_reason = $2 "
+                "WHERE id = ANY($1::uuid[]) AND status = 'active'",
+                [a["id"] for a in targets],
+                request.reason or _SG_SUSPEND_REASON_DEFAULT,
+            )
+        return {
+            "ok": True,
+            "action": action,
+            "domain": domain,
+            "affected_accounts": len(targets),
+        }
+
+    # reactivate
+    targets = [a for a in accounts if a["status"] == "suspended"]
+    if targets:
+        await pool.execute(
+            "UPDATE users SET status = 'active', suspension_reason = NULL "
+            "WHERE id = ANY($1::uuid[]) AND status = 'suspended'",
+            [a["id"] for a in targets],
+        )
+    return {
+        "ok": True,
+        "action": action,
+        "domain": domain,
+        "affected_accounts": len(targets),
+    }

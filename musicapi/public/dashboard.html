@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Music API — Dashboard</title>
+<style>
+  :root {
+    --violet: #8b5cf6;
+    --purple: #a855f7;
+    --fuchsia: #d946ef;
+    --emerald: #4ade80;
+    --bg: #0a0714;
+    --panel: rgba(255, 255, 255, 0.04);
+    --border: rgba(255, 255, 255, 0.08);
+    --text: #e6e3f0;
+    --muted: #9b96ad;
+    --grad: linear-gradient(135deg, #8b5cf6 0%, #a855f7 50%, #d946ef 100%);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  ::-webkit-scrollbar { width: 10px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: linear-gradient(var(--violet), var(--fuchsia)); border-radius: 10px; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: radial-gradient(1200px 600px at 80% -10%, rgba(168, 85, 247, 0.18), transparent 60%),
+                radial-gradient(900px 500px at 0% 10%, rgba(139, 92, 246, 0.16), transparent 55%),
+                var(--bg);
+    color: var(--text); line-height: 1.6; min-height: 100vh;
+  }
+  a { color: var(--fuchsia); text-decoration: none; }
+  header { position: sticky; top: 0; z-index: 10; backdrop-filter: blur(14px); background: rgba(10,7,20,0.7); border-bottom: 1px solid var(--border); }
+  .nav { max-width: 1100px; margin: 0 auto; padding: 14px 24px; display: flex; align-items: center; gap: 20px; }
+  .logo { font-weight: 700; display: flex; align-items: center; gap: 10px; }
+  .logo .dot { width: 26px; height: 26px; border-radius: 8px; background: var(--grad); }
+  .nav-right { margin-left: auto; display: flex; align-items: center; gap: 14px; }
+  .nav-link { color: var(--muted); font-size: 14px; }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%; background: var(--grad);
+    display: grid; place-items: center; font-weight: 700; color: #fff; font-size: 14px;
+  }
+
+  main { max-width: 1100px; margin: 0 auto; padding: 40px 24px 80px; }
+  h1 { font-size: 26px; font-weight: 700; }
+  .sub { color: var(--muted); margin: 6px 0 32px; }
+
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 36px; }
+  .stat { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 20px; backdrop-filter: blur(8px); }
+  .stat .label { color: var(--muted); font-size: 13px; }
+  .stat .value { font-size: 30px; font-weight: 800; margin-top: 4px; }
+  .stat .value.green { color: var(--emerald); }
+  .stat .value.grad { background: var(--grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 16px; padding: 22px; margin-bottom: 20px; backdrop-filter: blur(8px); }
+  h2 { font-size: 18px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .badge { padding: 3px 9px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+  .badge.ok { background: rgba(74,222,128,0.15); color: var(--emerald); }
+  code { font-family: ui-monospace, Menlo, monospace; }
+  pre { background: rgba(0,0,0,0.4); border: 1px solid var(--border); border-radius: 12px; padding: 16px; overflow-x: auto; font-size: 13px; margin-top: 12px; }
+  .hint { color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="nav">
+      <div class="logo"><span class="dot"></span>Music API</div>
+      <div class="nav-right">
+        <a class="nav-link" href="/docs">Docs</a>
+        <div class="avatar">A</div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <h1>Dashboard</h1>
+    <p class="sub">Your AI music API workspace.</p>
+
+    <div class="stats">
+      <div class="stat"><div class="label">Status</div><div class="value green" id="status">…</div></div>
+      <div class="stat"><div class="label">Suno accounts</div><div class="value grad" id="accounts">…</div></div>
+      <div class="stat"><div class="label">API keys</div><div class="value" id="keys">…</div></div>
+    </div>
+
+    <div class="card">
+      <h2>API keys</h2>
+      <table>
+        <tr><th>Name</th><th>Key</th><th>Credits</th></tr>
+        <tbody id="keyRows"><tr><td colspan="3" class="hint">Loading…</td></tr></tbody>
+      </table>
+    </div>
+
+    <div class="card">
+      <h2>Accounts</h2>
+      <p class="hint" id="accountList">Loading…</p>
+    </div>
+
+    <div class="card">
+      <h2>Quick start</h2>
+      <p class="hint">Generate a song with your API key:</p>
+      <pre><code>curl -X POST https://musicapi.camxora.com/v1/music \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"gpt_description_prompt":"a calm lo-fi beat"}'</code></pre>
+    </div>
+  </main>
+
+  <script>
+    async function load() {
+      try {
+        const h = await (await fetch('/health')).json();
+        document.getElementById('status').textContent = h.ok ? 'Operational' : 'Down';
+        document.getElementById('accounts').textContent = h.accounts;
+      } catch (e) { document.getElementById('status').textContent = 'Offline'; }
+
+      try {
+        const k = await (await fetch('/admin/keys')).json();
+        document.getElementById('keys').textContent = k.length;
+        const rows = k.map(x =>
+          `<tr><td>${x.name}</td><td class="mono">${x.key}</td><td>${x.credits}</td></tr>`
+        ).join('');
+        document.getElementById('keyRows').innerHTML = rows;
+      } catch (e) {}
+
+      try {
+        const a = await (await fetch('/admin/accounts')).json();
+        const list = (a.accounts || []).map(id => `<span class="badge ok">${id}</span>`).join(' ');
+        document.getElementById('accountList').innerHTML = list || '<span class="hint">No accounts configured.</span>';
+      } catch (e) {}
+    }
+    load();
+  </script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+accounts.json
+api-keys.json
+
+# Local probe / E2E media artifacts (large, not source)
+*.mp3
+*.wav
+
+# Schema migrations are source, not database backups. The repo root ignores
+# `*.sql` (to keep dumps out of git); re-include the migration files here.
+!migrations/*.sql

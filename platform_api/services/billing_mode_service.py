@@ -260,6 +260,8 @@ async def subscription_covers_batch(
     period_start: date,
     image_jobs: int = 0,
     draft_ops: int | None = None,
+    video_ops: int = 0,
+    merge_ops: int = 0,
     addon_slots: int = 0,
     topup_extras: Mapping[str, int] | None = None,
 ) -> bool:
@@ -268,6 +270,10 @@ async def subscription_covers_batch(
     ``draft_ops`` defaults to lyric+title per song + one album (~2N+1).
     Song meter is checked only when Auto-GSuno will burn songs; callers that
     draft-only may pass song_count=0 for the song check by using draft_ops.
+
+    ``video_ops`` / ``merge_ops`` are the planned local export/merge counts
+    (account-wide meters). When either exceeds the remaining plan allowance the
+    whole plan must fall back to wallet.
 
     Monthly limits are scaled by ``addon_slots`` (same multiplier as
     entitlement / ``_enforce_plan_quotas``). Without this, add-on accounts
@@ -324,6 +330,33 @@ async def subscription_covers_batch(
                 user_id, "thumbnail_image", period_start
             )
             if image_count + image_jobs > image_limit:
+                return False
+
+    if video_ops > 0:
+        video_limit = apply_topup_extra(
+            monthly_limit_for_operation(plan, "video", addon_slots=addon_slots),
+            _extra("video"),
+        )
+        if video_limit is not None:
+            video_count = await usage_repo.get_monthly_count(
+                user_id, "video", period_start
+            )
+            video_count += await usage_repo.get_monthly_count(
+                user_id, "video_manual", period_start
+            )
+            if video_count + video_ops > video_limit:
+                return False
+
+    if merge_ops > 0:
+        merge_limit = apply_topup_extra(
+            monthly_limit_for_operation(plan, "video_merge", addon_slots=addon_slots),
+            _extra("merge"),
+        )
+        if merge_limit is not None:
+            merge_count = await usage_repo.get_monthly_count(
+                user_id, "video_merge", period_start
+            )
+            if merge_count + merge_ops > merge_limit:
                 return False
 
     return True

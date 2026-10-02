@@ -7,6 +7,11 @@ from dataclasses import dataclass
 from shared.models.auth import ProfileResponse
 from shared.models.platform import OperationCostResponse
 
+# One Suno song package yields one track per channel (Primary + Secondary).
+TRACKS_PER_SONG_PACKAGE = 2
+# Each album/channel is merged once.
+MERGE_OPS_PER_BATCH = 2
+
 
 @dataclass(frozen=True, slots=True)
 class MusicPlanCostBreakdown:
@@ -24,12 +29,24 @@ class MusicPlanCostBreakdown:
     image_jobs_per_batch: int
     image_total_jobs: int
     image_total_cost: float | None
+    video_unit_cost: float | None
+    video_ops: int
+    video_total_cost: float | None
+    merge_unit_cost: float | None
+    merge_ops: int
+    merge_total_cost: float | None
     total_cost: float | None
 
     @property
     def image_jobs_per_song(self) -> int:
         """Backward-compatible alias — historically misnamed; means jobs per batch."""
         return self.image_jobs_per_batch
+
+    @property
+    def video_merge_total_cost(self) -> float | None:
+        if self.video_total_cost is None or self.merge_total_cost is None:
+            return None
+        return self.video_total_cost + self.merge_total_cost
 
 
 def map_operation_costs(items: list[OperationCostResponse] | None) -> dict[str, OperationCostResponse]:
@@ -114,6 +131,11 @@ def get_music_plan_cost_breakdown(
     auto_gsuno: bool,
     planned_day_count: int | None,
     image_source_mode: str,
+    video_cost: OperationCostResponse | None = None,
+    merge_cost: OperationCostResponse | None = None,
+    auto_video: bool = False,
+    auto_merge: bool = False,
+    auto_reel: bool = False,
 ) -> MusicPlanCostBreakdown | None:
     if (
         song_count <= 0
@@ -147,9 +169,42 @@ def get_music_plan_cost_breakdown(
     else:
         image_total_cost = image_unit_cost * image_total_jobs
 
+    # Local export/merge run after music + images. Only meaningful with Suno.
+    video_unit_cost = get_operation_unit_cost(video_cost)
+    merge_unit_cost = get_operation_unit_cost(merge_cost)
+    branch_multiplier = 2 if auto_reel else 1
+    billable_video = bool(auto_video and auto_gsuno)
+    billable_merge = billable_video and bool(auto_merge)
+    video_ops = planned_song_count * TRACKS_PER_SONG_PACKAGE * branch_multiplier if billable_video else 0
+    merge_ops = planned_batch_count * MERGE_OPS_PER_BATCH * branch_multiplier if billable_merge else 0
+    if not billable_video:
+        video_total_cost = 0.0
+    elif video_unit_cost is None:
+        video_total_cost = None
+    else:
+        video_total_cost = video_unit_cost * video_ops
+    if not billable_merge:
+        merge_total_cost = 0.0
+    elif merge_unit_cost is None:
+        merge_total_cost = None
+    else:
+        merge_total_cost = merge_unit_cost * merge_ops
+
     total_cost = None
-    if draft_total_cost is not None and suno_total_cost is not None and image_total_cost is not None:
-        total_cost = draft_total_cost + suno_total_cost + image_total_cost
+    if (
+        draft_total_cost is not None
+        and suno_total_cost is not None
+        and image_total_cost is not None
+        and video_total_cost is not None
+        and merge_total_cost is not None
+    ):
+        total_cost = (
+            draft_total_cost
+            + suno_total_cost
+            + image_total_cost
+            + video_total_cost
+            + merge_total_cost
+        )
 
     return MusicPlanCostBreakdown(
         planned_day_count=planned_day_count,
@@ -165,6 +220,12 @@ def get_music_plan_cost_breakdown(
         image_jobs_per_batch=image_jobs_per_batch,
         image_total_jobs=image_total_jobs,
         image_total_cost=image_total_cost,
+        video_unit_cost=video_unit_cost,
+        video_ops=video_ops,
+        video_total_cost=video_total_cost,
+        merge_unit_cost=merge_unit_cost,
+        merge_ops=merge_ops,
+        merge_total_cost=merge_total_cost,
         total_cost=total_cost,
     )
 
@@ -180,6 +241,11 @@ def get_batch_generate_total_cost(
     auto_gsuno: bool,
     planned_day_count: int | None,
     image_source_mode: str,
+    video_cost: OperationCostResponse | None = None,
+    merge_cost: OperationCostResponse | None = None,
+    auto_video: bool = False,
+    auto_merge: bool = False,
+    auto_reel: bool = False,
 ) -> float | None:
     """Batch Generate button total — mirrors getBatchGenerateTotalCost in MusicWorkspacePage.tsx."""
     breakdown = get_music_plan_cost_breakdown(
@@ -193,6 +259,11 @@ def get_batch_generate_total_cost(
         auto_gsuno,
         planned_day_count,
         image_source_mode,
+        video_cost,
+        merge_cost,
+        auto_video,
+        auto_merge,
+        auto_reel,
     )
     return get_batch_generate_total_cost_from_breakdown(breakdown)
 

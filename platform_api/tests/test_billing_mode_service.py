@@ -30,6 +30,8 @@ def _plan(
     monthly_song_limit: int | None = 300,
     monthly_image_limit: int | None = 60,
     monthly_draft_limit: int | None = 900,
+    monthly_video_limit: int | None = 300,
+    monthly_merge_limit: int | None = 30,
     price_cents: int = 7900,
     included_wallet_credits: int = 0,
 ) -> Plan:
@@ -44,6 +46,8 @@ def _plan(
         monthly_song_limit=monthly_song_limit,
         monthly_image_limit=monthly_image_limit,
         monthly_draft_limit=monthly_draft_limit,
+        monthly_video_limit=monthly_video_limit,
+        monthly_merge_limit=monthly_merge_limit,
         daily_song_limit_per_channel=100,
         daily_image_limit_per_channel=30,
         daily_draft_limit_per_channel=300,
@@ -133,6 +137,75 @@ async def test_subscription_covers_batch_within_limits() -> None:
         image_jobs=5,
     )
     assert covered is True
+
+
+@pytest.mark.asyncio
+async def test_subscription_covers_batch_counts_video_and_merge() -> None:
+    """Video export + merge meters must gate batch coverage (plan start bug)."""
+    user_id = uuid4()
+    repo = FakeUsageRepo()
+    plan = _plan(monthly_video_limit=300, monthly_merge_limit=30)
+    period = date.today().replace(day=1)
+
+    # 150 songs × 2 channels = 300 exports fits exactly.
+    assert await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=0,
+        usage_repo=repo,
+        period_start=period,
+        video_ops=300,
+        merge_ops=30,
+    )
+
+    # One more export pushes video over the monthly allowance.
+    assert not await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=0,
+        usage_repo=repo,
+        period_start=period,
+        video_ops=301,
+        merge_ops=30,
+    )
+
+    # Merge overage also blocks even when video fits.
+    assert not await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=0,
+        usage_repo=repo,
+        period_start=period,
+        video_ops=100,
+        merge_ops=31,
+    )
+
+
+@pytest.mark.asyncio
+async def test_subscription_covers_batch_video_usage_counts_manual_exports() -> None:
+    """Manual exports share the same account-wide video meter."""
+    user_id = uuid4()
+    repo = FakeUsageRepo()
+    plan = _plan(monthly_video_limit=300, monthly_merge_limit=30)
+    period = date.today().replace(day=1)
+    repo.set_monthly(user_id, "video_manual", period, 250)
+
+    assert await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=0,
+        usage_repo=repo,
+        period_start=period,
+        video_ops=50,
+    )
+    assert not await subscription_covers_batch(
+        plan=plan,
+        user_id=user_id,
+        song_count=0,
+        usage_repo=repo,
+        period_start=period,
+        video_ops=51,
+    )
 
 
 @pytest.mark.asyncio
