@@ -119,7 +119,7 @@ no `500`s, no route shadowing, no unauthenticated fall-through on the revenue su
 | 2.4.9 | `/me/jobs/running` | GET | ✅ VERIFIED (2026-09-09) | Auto-poll behavior confirmed. |
 | 2.4.10 | `/me/upload/status/:id` | GET | 🟡 ROUTED (shallow) | |
 
-### 2.5 Billing, usage, logs (7)
+### 2.5 Billing, usage, logs (8)
 
 | # | Endpoint | Method | Status |
 |---|----------|--------|--------|
@@ -129,6 +129,7 @@ no `500`s, no route shadowing, no unauthenticated fall-through on the revenue su
 | 2.5.4 | `/me/billing` | GET | 🟡 ROUTED (shallow) |
 | 2.5.5 | `/me/transactions` | GET | 🟡 ROUTED (shallow) — **new since 2026-09-09** |
 | 2.5.6 | `/me/upload/init` · `/me/upload/register` | POST | 🟡 ROUTED (shallow) |
+| 2.5.7 | `/me/usage/page` | GET | ✅ VERIFIED (2026-10-02) — sunoapi.org-shaped overview + per-model report for `/dashboard/usage` |
 
 ---
 
