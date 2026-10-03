@@ -56,6 +56,18 @@ function isHostAllowed(host: string): boolean {
 }
 
 /**
+ * Non-URL sentinels the panel sends to mean "poll this task, don't webhook me".
+ * sunoapi.org's own UI posts `callBackUrl: "playground"`; accepting these keeps
+ * us drop-in compatible instead of 400-ing their exact payload.
+ */
+const CALLBACK_SENTINELS = new Set(["playground", "panel", "dashboard", "web", "app", "client", "none", "poll"]);
+
+export function isCallbackSentinel(raw: string | null | undefined): boolean {
+  if (!raw) return false;
+  return CALLBACK_SENTINELS.has(raw.trim().toLowerCase());
+}
+
+/**
  * Validate a caller-supplied webhook `callback_url` and return it parsed, or
  * throw `CallbackUrlError`. Rejects non-http(s) schemes, embedded credentials,
  * and any target that is — or resolves to — a loopback/private/link-local
