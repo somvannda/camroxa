@@ -105,18 +105,22 @@ export function AuthorizedAudio({
   src?: string | null;
   className?: string;
 }) {
-  const [cdnFailed, setCdnFailed] = useState(false);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-
-  const streamUrl = src && !cdnFailed ? src : null;
-  const proxyUrl = `/backend/me/download?clip_id=${encodeURIComponent(clipId)}&format=mp3`;
-  const audioSrc = streamUrl ?? proxyUrl;
+  // Prefer an already-ingested durable (B2) link. Suno's progressive CDN URL is
+  // DRM-encrypted, so anything else is streamed through the backend, which
+  // decrypts on the fly; if even that fails, fall back to the mp3 download route.
+  const durable = src && !/cloudfront\.net/i.test(src) ? src : null;
+  const streamUrl = `/backend/me/stream?clip_id=${encodeURIComponent(clipId)}&format=m4a`;
+  const downloadUrl = `/backend/me/download?clip_id=${encodeURIComponent(clipId)}&format=mp3`;
+  const [stage, setStage] = useState<"durable" | "stream" | "download">(durable ? "durable" : "stream");
+  const audioSrc = stage === "durable" && durable ? durable : stage === "download" ? downloadUrl : streamUrl;
 
   if (err) return <div className={`text-[11px] text-red-300 ${className ?? ""}`}>{err}</div>;
   return (
     <div className="relative">
       <audio
+        key={audioSrc}
         controls
         preload="metadata"
         className={`w-full h-8 [&::-webkit-media-controls-panel]:bg-black/60 ${className ?? ""}`}
@@ -124,11 +128,10 @@ export function AuthorizedAudio({
         onLoadedMetadata={() => setLoading(false)}
         onCanPlay={() => setLoading(false)}
         onError={() => {
-          if (streamUrl) {
-            // Expired/blocked CDN link → retry once through the backend proxy.
-            setCdnFailed(true);
-            setLoading(true);
-          } else {
+          setLoading(true);
+          if (stage === "durable") setStage("stream");
+          else if (stage === "stream") setStage("download");
+          else {
             setLoading(false);
             setErr("Audio not available. The clip may have expired, or credits are insufficient.");
           }

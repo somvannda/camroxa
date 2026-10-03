@@ -6,12 +6,11 @@
  * it as the source of truth and re-encode to the requested container with the
  * bundled `ffmpeg-static` binary, so MP3/WAV delivery does not depend on Suno's
  * paid download pipeline (which 401s when `is_download_unlocked` is false).
+ *
+ * Transcoding is fully streamed through pipes (stdin → stdout) so no scratch
+ * files are ever written to the VPS disk.
  */
-import { execFile } from "node:child_process";
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
-import { randomUUID } from "node:crypto";
+import { spawn } from "node:child_process";
 import ffmpegPath from "ffmpeg-static";
 
 export type AudioFormat = "mp3" | "wav";
@@ -22,25 +21,55 @@ function ffmpegBin(): string {
   return bin;
 }
 
-/** Transcode arbitrary audio bytes into the requested container. */
+/**
+ * ffmpeg cannot seek on a pipe, so a streamed WAV gets placeholder RIFF/data
+ * sizes. Patch them in memory using the actual byte length (audio data begins
+ * right after the `data` chunk header).
+ */
+function fixStreamedWavSizes(buf: Buffer): Buffer {
+  const dataIdx = buf.indexOf("data");
+  if (dataIdx < 0) return buf;
+  const dataSize = buf.length - (dataIdx + 8);
+  if (dataSize < 0) return buf;
+  buf.writeUInt32LE(buf.length - 8, 4);
+  buf.writeUInt32LE(dataSize, dataIdx + 4);
+  return buf;
+}
+
+/** Transcode arbitrary audio bytes into the requested container (no disk I/O). */
 export async function transcodeAudio(bytes: Buffer, format: AudioFormat): Promise<Buffer> {
   if (!bytes || bytes.length === 0) throw new Error("empty audio buffer");
-  const dir = await fs.mkdtemp(path.join(os.tmpdir(), "camxora-audio-"));
-  const inPath = path.join(dir, "in.bin");
-  const outPath = path.join(dir, `out.${format}`);
-  try {
-    await fs.writeFile(inPath, bytes);
-    const args =
-      format === "wav"
-        ? ["-y", "-i", inPath, "-vn", "-acodec", "pcm_s16le", outPath]
-        : ["-y", "-i", inPath, "-vn", "-acodec", "libmp3lame", "-q:a", "2", outPath];
-    await new Promise<void>((resolve, reject) => {
-      execFile(ffmpegBin(), args, { timeout: 300_000 }, (err) => (err ? reject(err) : resolve()));
+  const args = [
+    "-hide_banner",
+    "-loglevel",
+    "error",
+    "-i",
+    "pipe:0",
+    "-vn",
+    ...(format === "wav"
+      ? ["-acodec", "pcm_s16le", "-f", "wav", "pipe:1"]
+      : ["-acodec", "libmp3lame", "-q:a", "2", "-f", "mp3", "pipe:1"]),
+  ];
+  const out = await new Promise<Buffer>((resolve, reject) => {
+    const proc = spawn(ffmpegBin(), args, { stdio: ["pipe", "pipe", "pipe"] });
+    const chunks: Buffer[] = [];
+    let stderr = "";
+    proc.stdout.on("data", (c: Buffer) => chunks.push(c));
+    proc.stderr.on("data", (c: Buffer) => {
+      stderr += c.toString();
+      if (stderr.length > 4000) stderr = stderr.slice(-4000);
     });
-    return await fs.readFile(outPath);
-  } finally {
-    await fs.rm(dir, { recursive: true, force: true }).catch(() => {});
-  }
+    proc.on("error", reject);
+    proc.on("close", (code) => {
+      if (code === 0) resolve(Buffer.concat(chunks));
+      else reject(new Error(`ffmpeg exited ${code}: ${stderr.slice(-300)}`));
+    });
+    // ffmpeg may close stdin early on malformed input; ignore the EPIPE.
+    proc.stdin.on("error", () => undefined);
+    proc.stdin.end(bytes);
+  });
+  if (out.length < 400) throw new Error(`ffmpeg produced too little output (${out.length} bytes)`);
+  return format === "wav" ? fixStreamedWavSizes(out) : out;
 }
 
 /** True when a URL is Suno's non-playable placeholder rather than media. */
@@ -51,7 +80,9 @@ function isForbidden(url: string): boolean {
 /**
  * Find a publicly fetchable progressive audio URL on a clip object. Prefers
  * `media_urls[].url` (the CDN progressive file), then the stream URLs, then the
- * plain audio URL — skipping Suno's `/api/forbidden` placeholder.
+ * plain audio URL — skipping Suno's `/api/forbidden` placeholder. Note the
+ * progressive file is DRM-encrypted; callers must decrypt it first
+ * (see `sunoAudio.ts`).
  */
 export function pickPublicAudioUrl(item: Record<string, unknown>): string | null {
   const candidates: unknown[] = [];
