@@ -71,7 +71,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 >   were missing from this list until it was reconciled against `src/config.ts`):
 >   `CHMABA_API_KEY` (`ck_live_…`) and `CHMABA_WEBHOOK_SECRET` (`whsec_…`) — there is **no
 >   sandbox**, so create the replacement key in the ChmabaPay dashboard, mint a fresh webhook
->   secret, and re-point the endpoint at `https://musicapi.camxora.com/payments/chmaba/webhook`,
+>   secret, and re-point the endpoint at `https://sunoapi.camxora.com/payments/chmaba/webhook`,
 >   then revoke the old key. `CHMABA_STORE_ID` (`st_…`) is a store pointer, not a secret — do not
 >   rotate it. Both failures are safe and visible: checkout returns `503 Payments are not
 >   configured yet` until `apiKey` + `storeId` are both set, and an unverifiable webhook is
@@ -384,11 +384,11 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 >
 > **Note (4.2):** nginx terminates TLS for **three musicapi vhosts** (chose our own
 > subdomains rather than reusing the platform's `app`/`admin`, since the core's own docs
-> already advertise `https://musicapi.camxora.com`):
-> `musicapi.<env>` → core API `127.0.0.1:4003`, `app.musicapi.<env>` → web-user `:4001`,
-> `admin.musicapi.<env>` → web-admin `:4002` (sandbox `*.sandbox.camxora.com`, production
+> already advertise `https://sunoapi.camxora.com`):
+> `sunoapi.<env>` → core API `127.0.0.1:4003`, `sunoapi.<env>` → web-user `:4001`,
+> `admin.sunoapi.<env>` → web-admin `:4002` (sandbox `*.sandbox.camxora.com`, production
 > bare). Versioned pair `scripts/deploy/nginx-musicapi-{sandbox,production}.conf` with one
-> shared Let's Encrypt cert per env (`/etc/letsencrypt/live/musicapi.<env>/`) and a port-80
+> shared Let's Encrypt cert per env (`/etc/letsencrypt/live/sunoapi.<env>/`) and a port-80
 > → 443 redirect. Key decisions: (a) `proxy_read_timeout/proxy_send_timeout 600s` on every
 > core-API location, because the core's Fastify `requestTimeout` is 600 s — copying the
 > platform's 300 s would 504 the browser while the upstream still succeeded (the incident
@@ -469,7 +469,7 @@ Legend: `[ ]` pending · `[~]` in progress · `[x]` done
 > `/metrics` → `401` anon, helmet headers present, `x-ratelimit-limit: 300` global /
 > `10` on `/auth/login`, `/v1/*` preflight → `204` + `ACAO: *` while `/auth/*`
 > reflects only the allowlisted origin with `Allow-Credentials: true`. The HTTPS
-> vhost is skipped until `A` records for `musicapi|app.musicapi|admin.musicapi.sandbox.camxora.com`
+> vhost is skipped until `A` records for `musicapi|admin.sunoapi.sandbox.camxora.com`
 > exist (still `NXDOMAIN`); re-run with `--issue-cert` to bootstrap Let's Encrypt.
 > Production was **not** touched.
 

@@ -38,11 +38,11 @@ touch platform code by construction.
 |---|---|
 | Production VPS | `82.197.71.248` (`VPS_HOST` in `.deploy/secrets.production.env`) |
 | SSH user | `root` (`VPS_USER`) |
-| Apex (`musicapi.camxora.com`) | User portal + landing page → `127.0.0.1:4001`; **API mounted by path** (`/backend`, `/v1`, `/api/v1`, `/health`, `/payments`, `/me/download`) → `127.0.0.1:4003` |
-| Admin panel | `admin.musicapi.camxora.com` → `127.0.0.1:4002` |
+| Apex (`sunoapi.camxora.com`) | User portal + landing page → `127.0.0.1:4001`; **API mounted by path** (`/backend`, `/v1`, `/api/v1`, `/health`, `/payments`, `/me/download`) → `127.0.0.1:4003` |
+| Admin panel | `admin.sunoapi.camxora.com` → `127.0.0.1:4002` |
 | App root on host | `/opt/camxora/repo/musicapi` |
 | Generated secrets | `/opt/camxora/.deploy-secrets` (mode `600`) |
-| TLS cert | `/etc/letsencrypt/live/musicapi.camxora.com/` |
+| TLS cert | `/etc/letsencrypt/live/sunoapi.camxora.com/` |
 | DB | Postgres `sunoapi`, role `musicapi` |
 
 The production domain derives from `MUSICAPI_ENV=production` →
@@ -57,10 +57,10 @@ Two A records must point at `82.197.71.248` **before** the first `--issue-cert` 
 otherwise Let's Encrypt HTTP-01 validation fails and the remote installer skips the HTTPS
 vhost:
 
-- `musicapi.camxora.com` (apex — landing, user portal, and API by path)
-- `admin.musicapi.camxora.com`
+- `sunoapi.camxora.com` (apex — landing, user portal, and API by path)
+- `admin.sunoapi.camxora.com`
 
-There is no `app.musicapi.camxora.com` host: the portals route all API traffic through the
+There is no `app.sunoapi.camxora.com` host: the portals route all API traffic through the
 relative `/backend/*` path, so the apex only needs the API prefixes proxied to the core.
 
 ### 3.2 Secrets file
@@ -91,7 +91,7 @@ prefix; leave blank to have the host generate + persist it):
 | `MUSICAPI_TWOCAPTCHA_KEY` | 2Captcha |
 | `MUSICAPI_GOOGLE_CLIENT_ID`, `MUSICAPI_GOOGLE_CLIENT_SECRET` | Google OAuth for the **user app only** (`GOOGLE_REDIRECT_URI_USER` is derived from the apex host). Admin uses email/password — its redirect URI is intentionally not allowlisted. |
 | `MUSICAPI_CHMABA_API_KEY`, `MUSICAPI_CHMABA_STORE_ID`, `MUSICAPI_CHMABA_WEBHOOK_SECRET` | ChmabaPay live checkout. **Blank ⇒ `.env` gets empty `CHMABA_*` and checkout returns 503.** |
-| `MUSICAPI_FRONTEND_ORIGINS` | Defaults to `https://musicapi.camxora.com,https://admin.musicapi.camxora.com` |
+| `MUSICAPI_FRONTEND_ORIGINS` | Defaults to `https://sunoapi.camxora.com,https://admin.sunoapi.camxora.com` |
 | `MUSICAPI_LOG_LEVEL` | Defaults to `info` |
 | `MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN`, `MUSICAPI_ALERT_TELEGRAM_CHAT_ID` | Health-alert bot; falls back to `TELEGRAM_BOT_TOKEN` / `PLATFORM_TELEGRAM_*` if present |
 | `MUSICAPI_BACKUP_DIR` | Defaults to `/opt/camxora/backups/musicapi` |
@@ -164,11 +164,11 @@ python scripts/deploy/deploy_musicapi_production.py --yes --issue-cert
 On the host (the remote installer prints most of these):
 
 ```bash
-curl -sf https://musicapi.camxora.com/health          # {"ok":true,...}
-curl -s  -o /dev/null -w '%{http_code}\n' https://musicapi.camxora.com/           # user portal (200)
-curl -s  -o /dev/null -w '%{http_code}\n' https://musicapi.camxora.com/v1/models  # public API
-curl -s  -o /dev/null -w '%{http_code}\n' https://admin.musicapi.camxora.com/     # admin (200)
-curl -s  -o /dev/null -w '%{http_code}\n' https://musicapi.camxora.com/metrics   # 401 anon
+curl -sf https://sunoapi.camxora.com/health          # {"ok":true,...}
+curl -s  -o /dev/null -w '%{http_code}\n' https://sunoapi.camxora.com/           # user portal (200)
+curl -s  -o /dev/null -w '%{http_code}\n' https://sunoapi.camxora.com/v1/models  # public API
+curl -s  -o /dev/null -w '%{http_code}\n' https://admin.sunoapi.camxora.com/     # admin (200)
+curl -s  -o /dev/null -w '%{http_code}\n' https://sunoapi.camxora.com/metrics   # 401 anon
 systemctl is-active camxora-musicapi camxora-musicapi-web-user camxora-musicapi-web-admin nginx postgresql
 systemctl list-timers camxora-musicapi-backup.timer camxora-musicapi-healthcheck.timer
 ```

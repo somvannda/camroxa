@@ -26,7 +26,7 @@ export default function TermsOfServicePage() {
         These Terms of Service (&ldquo;Terms&rdquo;) govern your access to and use of{" "}
         <strong className="text-white">Camxora Music API</strong> (&ldquo;Camxora Music API&rdquo;, &ldquo;we&rdquo;,
         &ldquo;us&rdquo;), including our website at{" "}
-        <a href="https://musicapi.camxora.com" className="grad-text font-medium">musicapi.camxora.com</a>, our REST API,
+        <a href="https://sunoapi.camxora.com" className="grad-text font-medium">sunoapi.camxora.com</a>, our REST API,
         and our developer workspace (together, the &ldquo;Service&rdquo;). By creating an account, signing in, or using
         the Service, you agree to these Terms. If you do not agree, do not use the Service.
       </p>

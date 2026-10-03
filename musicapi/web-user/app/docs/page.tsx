@@ -72,19 +72,19 @@ const ENDPOINTS: Endpoint[] = [
     method: "GET",
     path: "/v1/credits",
     desc: "Get the remaining credits on your API key.",
-    example: "curl https://musicapi.camxora.com/v1/credits \\\n  -H \"Authorization: Bearer sk_...\"",
+    example: "curl https://sunoapi.camxora.com/v1/credits \\\n  -H \"Authorization: Bearer sk_...\"",
   },
   {
     method: "GET",
     path: "/v1/task/:id",
     desc: "Poll a task's status and result.",
-    example: "curl https://musicapi.camxora.com/v1/task/<job_id> \\\n  -H \"Authorization: Bearer sk_...\"\n// => { \"job_id\": \"...\", \"type\": \"music\", \"status\": \"complete\", \"result\": { ... } }",
+    example: "curl https://sunoapi.camxora.com/v1/task/<job_id> \\\n  -H \"Authorization: Bearer sk_...\"\n// => { \"job_id\": \"...\", \"type\": \"music\", \"status\": \"complete\", \"result\": { ... } }",
   },
   {
     method: "GET",
     path: "/api/v1/get-credits",
     desc: "Alias of GET /v1/credits with sunoapi.org response shape ({code, msg, data.credits}).",
-    example: "curl \"https://musicapi.camxora.com/api/v1/get-credits\" -H \"Authorization: Bearer sk_...\"\n// => { \"code\": 200, \"msg\": \"success\", \"data\": { \"credits\": 999, \"name\": \"...\" } }",
+    example: "curl \"https://sunoapi.camxora.com/api/v1/get-credits\" -H \"Authorization: Bearer sk_...\"\n// => { \"code\": 200, \"msg\": \"success\", \"data\": { \"credits\": 999, \"name\": \"...\" } }",
   },
   {
     method: "POST",
@@ -99,7 +99,7 @@ const ENDPOINTS: Endpoint[] = [
       { name: "model", required: false, desc: "Model key: chirp-hawk (V6) / chirp-goose (V6-Mini) / chirp-hawk-wild (V6-Wild)" },
       { name: "callBackUrl", required: false, desc: "Webhook URL for completion" },
     ],
-    example: "curl -X POST \"https://musicapi.camxora.com/api/v1/generate\" \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{ \"prompt\": \"Folk song about the sea\", \"customMode\": false, \"model\": \"chirp-hawk\" }'\n// => { \"code\": 200, \"msg\": \"success\", \"data\": { \"taskId\": \"suno_task_...\" } }",
+    example: "curl -X POST \"https://sunoapi.camxora.com/api/v1/generate\" \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{ \"prompt\": \"Folk song about the sea\", \"customMode\": false, \"model\": \"chirp-hawk\" }'\n// => { \"code\": 200, \"msg\": \"success\", \"data\": { \"taskId\": \"suno_task_...\" } }",
   },
   {
     method: "POST",
@@ -132,7 +132,7 @@ const ENDPOINTS: Endpoint[] = [
     method: "GET",
     path: "/api/v1/generate/record-info",
     desc: "Alias of GET /v1/task/:id with sunoapi.org query shape ?taskId= and {code,msg,data:{taskId,status,response}} response.",
-    example: "curl \"https://musicapi.camxora.com/api/v1/generate/record-info?taskId=<taskId>\" -H \"Authorization: Bearer sk_...\"",
+    example: "curl \"https://sunoapi.camxora.com/api/v1/generate/record-info?taskId=<taskId>\" -H \"Authorization: Bearer sk_...\"",
   },
 
   // ===== Music =====
@@ -151,7 +151,7 @@ const ENDPOINTS: Endpoint[] = [
       { name: "model", required: false, desc: "Model version key" },
       { name: "callback_url", required: false, desc: "Webhook URL for completion" },
     ],
-    example: "curl -X POST https://musicapi.camxora.com/v1/music \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"gpt_description_prompt\":\"Upbeat synthwave\",\"model\":\"chirp-hawk\"}'\n// => { \"job_id\": \"...\", \"status\": \"pending\" }",
+    example: "curl -X POST https://sunoapi.camxora.com/v1/music \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"gpt_description_prompt\":\"Upbeat synthwave\",\"model\":\"chirp-hawk\"}'\n// => { \"job_id\": \"...\", \"status\": \"pending\" }",
   },
   {
     method: "POST",
@@ -270,7 +270,7 @@ const ENDPOINTS: Endpoint[] = [
     path: "/v1/lyrics",
     desc: "Generate Lyrics — Create AI-powered lyrics for your songs.",
     params: [{ name: "prompt", required: true, desc: "Lyrics prompt / theme" }],
-    example: "curl -X POST https://musicapi.camxora.com/v1/lyrics \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"prompt\":\"A song about summer\"}'\n// => { \"job_id\": \"...\", \"status\": \"pending\" }",
+    example: "curl -X POST https://sunoapi.camxora.com/v1/lyrics \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"prompt\":\"A song about summer\"}'\n// => { \"job_id\": \"...\", \"status\": \"pending\" }",
   },
   {
     method: "GET",
@@ -335,7 +335,7 @@ const ENDPOINTS: Endpoint[] = [
       { name: "quantity", required: false, desc: "Number of videos (default 1)" },
       { name: "aspect_ratio", required: false, desc: "Aspect ratio: \"16:9\" (default), \"9:16\", etc." },
     ],
-    example: "curl -X POST https://musicapi.camxora.com/v1/mp4/generate \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"clip_id\":\"<clip_uuid>\",\"prompt\":\"neon city driving at night\",\"aspect_ratio\":\"16:9\"}'",
+    example: "curl -X POST https://sunoapi.camxora.com/v1/mp4/generate \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"clip_id\":\"<clip_uuid>\",\"prompt\":\"neon city driving at night\",\"aspect_ratio\":\"16:9\"}'",
   },
 
   // ===== Upload Workflow =====
@@ -349,7 +349,7 @@ const ENDPOINTS: Endpoint[] = [
       { name: "last_upload_id", required: false, desc: "Optional retry-chaining upload id" },
       { name: "callback_url", required: false, desc: "Webhook URL for completion" },
     ],
-    example: "curl -X POST https://musicapi.camxora.com/v1/upload/init \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"extension\":\"mp3\",\"upload_type\":\"file_upload\"}'",
+    example: "curl -X POST https://sunoapi.camxora.com/v1/upload/init \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"extension\":\"mp3\",\"upload_type\":\"file_upload\"}'",
   },
   {
     method: "POST",
@@ -362,7 +362,7 @@ const ENDPOINTS: Endpoint[] = [
       { name: "upload_title", required: false, desc: "Optional display title" },
       { name: "callback_url", required: false, desc: "Webhook URL for completion" },
     ],
-    example: "curl -X POST https://musicapi.camxora.com/v1/upload/register \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"upload_id\":\"<from-init>\",\"upload_type\":\"file_upload\",\"upload_filename\":\"demo.mp3\"}'",
+    example: "curl -X POST https://sunoapi.camxora.com/v1/upload/register \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"upload_id\":\"<from-init>\",\"upload_type\":\"file_upload\",\"upload_filename\":\"demo.mp3\"}'",
   },
   {
     method: "GET",
@@ -386,7 +386,7 @@ const ENDPOINTS: Endpoint[] = [
     path: "/v1/voice/phrase",
     desc: "Suno Voice op 1 — generate a reference phrase the user can read for voice-recording validation.",
     params: [{ name: "prompt", required: true, desc: "Prompt / context for the phrase generator" }],
-    example: "curl -X POST https://musicapi.camxora.com/v1/voice/phrase \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"prompt\":\"Create a 20 second reading phrase for voice enrollment.\"}'",
+    example: "curl -X POST https://sunoapi.camxora.com/v1/voice/phrase \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"prompt\":\"Create a 20 second reading phrase for voice enrollment.\"}'",
   },
   {
     method: "POST",
@@ -424,7 +424,7 @@ const ENDPOINTS: Endpoint[] = [
       { name: "tags", required: false, desc: "Style tags" },
       { name: "model", required: false, desc: "Model key (chirp-*)" },
     ],
-    example: "curl -X POST https://musicapi.camxora.com/v1/voice/apply \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"persona_id\":\"<persona_uuid>\",\"prompt\":\"A bright ballad about the sea\"}'",
+    example: "curl -X POST https://sunoapi.camxora.com/v1/voice/apply \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"persona_id\":\"<persona_uuid>\",\"prompt\":\"A bright ballad about the sea\"}'",
   },
   {
     method: "POST",
@@ -469,7 +469,7 @@ function slug(s: string): string {
 
 interface TocItem { id: string; label: string; level: number; }
 
-const DEFAULT_ORIGIN = "https://musicapi.camxora.com";
+const DEFAULT_ORIGIN = "https://sunoapi.camxora.com";
 
 function applyOrigin(s: string, origin: string): string {
   return s.split(DEFAULT_ORIGIN).join(origin);
@@ -663,11 +663,11 @@ export default function PublicDocsPage() {
             <h2 id="api-base-url" data-toc="API Base URL" className="scroll-mt-24 mb-4 text-2xl font-bold">API Base URL</h2>
             <p className="mb-3 text-sm text-[var(--muted)]">All API requests should be sent to:</p>
             <pre className="overflow-x-auto rounded-xl bg-black/40 p-4 font-mono text-sm">
-{applyOrigin(`https://musicapi.camxora.com`, baseOrigin)}
+{applyOrigin(`https://sunoapi.camxora.com`, baseOrigin)}
               <span className="block text-[var(--muted)]"># or http://localhost:4003 during local dev (API backend)</span>
             </pre>
             <p className="mt-2 text-xs text-[var(--muted)]">
-              <span className="text-violet-300">✓</span> In production deployments this value is automatically derived from the host you are visiting — no manual update required when you deploy to <code className="rounded bg-white/10 px-1.5 py-0.5">musicapi.camxora.com</code> or any other custom domain.
+              <span className="text-violet-300">✓</span> In production deployments this value is automatically derived from the host you are visiting — no manual update required when you deploy to <code className="rounded bg-white/10 px-1.5 py-0.5">sunoapi.camxora.com</code> or any other custom domain.
             </p>
           </section>
 
@@ -718,11 +718,11 @@ Authorization: Bearer YOUR_API_KEY
                 <h3 className="mb-3 text-lg font-semibold">Step 1 — Check your credits</h3>
                 <pre className="overflow-x-auto rounded-xl bg-black/40 p-4 font-mono text-sm">
 {applyOrigin(`# Check balance (Camxora native shape)
-curl "https://musicapi.camxora.com/v1/credits" \\
+curl "https://sunoapi.camxora.com/v1/credits" \\
   -H "Authorization: Bearer YOUR_API_KEY"
 
 # Or use the docs.sunoapi.org compatible alias
-curl "https://musicapi.camxora.com/api/v1/get-credits" \\
+curl "https://sunoapi.camxora.com/api/v1/get-credits" \\
   -H "Authorization: Bearer YOUR_API_KEY"`, baseOrigin)}
                 </pre>
               </div>
@@ -730,7 +730,7 @@ curl "https://musicapi.camxora.com/api/v1/get-credits" \\
                 <h3 className="mb-3 text-lg font-semibold">Step 2 — Generate your first song</h3>
                 <pre className="overflow-x-auto rounded-xl bg-black/40 p-4 font-mono text-sm">
 {applyOrigin(`# Native /v1/music endpoint
-curl -X POST "https://musicapi.camxora.com/v1/music" \\
+curl -X POST "https://sunoapi.camxora.com/v1/music" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{
@@ -739,7 +739,7 @@ curl -X POST "https://musicapi.camxora.com/v1/music" \\
   }'
 
 # Or use the docs.sunoapi.org-compatible alias
-curl -X POST "https://musicapi.camxora.com/api/v1/generate" \\
+curl -X POST "https://sunoapi.camxora.com/api/v1/generate" \\
   -H "Authorization: Bearer YOUR_API_KEY" \\
   -H "Content-Type: application/json" \\
   -d '{

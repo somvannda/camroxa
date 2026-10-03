@@ -25,7 +25,7 @@ export default function PrivacyPolicyPage() {
       <p>
         This Privacy Policy explains how <strong className="text-white">Camxora Music API</strong> (&ldquo;Camxora Music
         API&rdquo;, &ldquo;we&rdquo;, &ldquo;us&rdquo;) collects, uses, and protects information when you use our
-        website at <a href="https://musicapi.camxora.com" className="grad-text font-medium">musicapi.camxora.com</a>,
+        website at <a href="https://sunoapi.camxora.com" className="grad-text font-medium">sunoapi.camxora.com</a>,
         our REST API, and our developer workspace (together, the &ldquo;Service&rdquo;). It also describes how we handle
         information we receive from Google when you sign in with Google.
       </p>

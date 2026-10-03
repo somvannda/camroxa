@@ -119,7 +119,7 @@
       <div class="card">
         <p class="desc">All requests require a Bearer token in the <code>Authorization</code> header:</p>
         <pre><code>Authorization: Bearer YOUR_API_KEY</code></pre>
-        <p class="desc" style="margin-top:12px">Base URL: <code>https://musicapi.camxora.com</code> (use http://localhost:4003 for local dev).</p>
+        <p class="desc" style="margin-top:12px">Base URL: <code>https://sunoapi.camxora.com</code> (use http://localhost:4003 for local dev).</p>
       </div>
     </section>
 
@@ -129,7 +129,7 @@
       <div class="card">
         <div class="endpoint"><span class="method post">POST</span><span class="path">/v1/music</span></div>
         <p class="desc">Generate music from a description or your own lyrics.</p>
-        <pre><code>curl -X POST https://musicapi.camxora.com/v1/music \
+        <pre><code>curl -X POST https://sunoapi.camxora.com/v1/music \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"gpt_description_prompt":"an upbeat pop song about summer"}'</code></pre>
@@ -138,7 +138,7 @@
       <div class="card">
         <div class="endpoint"><span class="method post">POST</span><span class="path">/v1/lyrics</span></div>
         <p class="desc">Generate lyrics from a prompt.</p>
-        <pre><code>curl -X POST https://musicapi.camxora.com/v1/lyrics \
+        <pre><code>curl -X POST https://sunoapi.camxora.com/v1/lyrics \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"prompt":"a hopeful song about new beginnings"}'</code></pre>
@@ -147,7 +147,7 @@
       <div class="card">
         <div class="endpoint"><span class="method post">POST</span><span class="path">/v1/music/extend</span></div>
         <p class="desc">Extend an existing clip from a given timestamp (seconds).</p>
-        <pre><code>curl -X POST https://musicapi.camxora.com/v1/music/extend \
+        <pre><code>curl -X POST https://sunoapi.camxora.com/v1/music/extend \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"clip_id":"<song_id>","continue_at":170}'</code></pre>
@@ -156,7 +156,7 @@
       <div class="card">
         <div class="endpoint"><span class="method post">POST</span><span class="path">/v1/music/cover</span></div>
         <p class="desc">Reinterpret an existing clip.</p>
-        <pre><code>curl -X POST https://musicapi.camxora.com/v1/music/cover \
+        <pre><code>curl -X POST https://sunoapi.camxora.com/v1/music/cover \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{"clip_id":"<song_id>"}'</code></pre>
@@ -166,14 +166,14 @@
         <div class="endpoint"><span class="method get">GET</span><span class="path">/v1/task/:id</span></div>
         <p class="desc">Poll a job's status and result. Returns <code>status</code> (pending / running / complete / error) plus <code>result</code> when done.</p>
         <pre><code>curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://musicapi.camxora.com/v1/task/&lt;job_id&gt;</code></pre>
+  https://sunoapi.camxora.com/v1/task/&lt;job_id&gt;</code></pre>
       </div>
 
       <div class="card">
         <div class="endpoint"><span class="method get">GET</span><span class="path">/v1/credits</span></div>
         <p class="desc">Check remaining credits for your API key.</p>
         <pre><code>curl -H "Authorization: Bearer YOUR_API_KEY" \
-  https://musicapi.camxora.com/v1/credits</code></pre>
+  https://sunoapi.camxora.com/v1/credits</code></pre>
       </div>
     </section>
 

@@ -1,15 +1,14 @@
 #!/usr/bin/env python3
 """Apply the musicapi nginx config from repo to VPS (sandbox or production).
 
-Production has two vhosts:
-    musicapi.camxora.com        -> user portal + landing page 127.0.0.1:4001
+Production and sandbox use the same two-vhost shape (only the domain differs):
+    sunoapi.camxora.com         -> user portal + landing page 127.0.0.1:4001
                                    (API mounted by path -> 4003)
-    admin.musicapi.camxora.com  -> web-admin                  127.0.0.1:4002
+    admin.sunoapi.camxora.com   -> web-admin                  127.0.0.1:4002
 
-Sandbox has three vhosts (it keeps the legacy split):
-    musicapi.sandbox.camxora.com        -> core API   127.0.0.1:4003
-    app.musicapi.sandbox.camxora.com    -> web-user   127.0.0.1:4001
-    admin.musicapi.sandbox.camxora.com  -> web-admin  127.0.0.1:4002
+Sandbox mirrors it:
+    sunoapi.sandbox.camxora.com        -> user portal + landing page 127.0.0.1:4001
+    admin.sunoapi.sandbox.camxora.com  -> web-admin                  127.0.0.1:4002
 
 Usage:
     python scripts/deploy/apply_musicapi_nginx.py --env sandbox
@@ -41,9 +40,8 @@ ENV_CONFIG = {
         "remote_site": "/etc/nginx/sites-available/musicapi-sandbox",
         "site_link": "/etc/nginx/sites-enabled/musicapi-sandbox",
         "names": [
-            "musicapi.sandbox.camxora.com",
-            "app.musicapi.sandbox.camxora.com",
-            "admin.musicapi.sandbox.camxora.com",
+            "sunoapi.sandbox.camxora.com",
+            "admin.sunoapi.sandbox.camxora.com",
         ],
     },
     "production": {
@@ -52,8 +50,8 @@ ENV_CONFIG = {
         "remote_site": "/etc/nginx/sites-available/musicapi-production",
         "site_link": "/etc/nginx/sites-enabled/musicapi-production",
         "names": [
-            "musicapi.camxora.com",
-            "admin.musicapi.camxora.com",
+            "sunoapi.camxora.com",
+            "admin.sunoapi.camxora.com",
         ],
     },
 }

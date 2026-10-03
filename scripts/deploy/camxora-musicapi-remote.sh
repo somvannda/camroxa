@@ -52,11 +52,13 @@ if [[ "${MUSICAPI_ENV}" == "production" ]]; then
   APP_HOST_PREFIX=""
 else
   MUSICAPI_DOMAIN="sandbox.camxora.com"
-  APP_HOST_PREFIX="app."
+  # Sandbox mirrors production's single-host shape so the two environments
+  # advertise the same URL structure (only the domain differs).
+  APP_HOST_PREFIX=""
 fi
-API_HOST="musicapi.${MUSICAPI_DOMAIN}"
-APP_HOST="${APP_HOST_PREFIX}musicapi.${MUSICAPI_DOMAIN}"
-ADMIN_HOST="admin.musicapi.${MUSICAPI_DOMAIN}"
+API_HOST="sunoapi.${MUSICAPI_DOMAIN}"
+APP_HOST="${APP_HOST_PREFIX}sunoapi.${MUSICAPI_DOMAIN}"
+ADMIN_HOST="admin.sunoapi.${MUSICAPI_DOMAIN}"
 
 # TLS/nginx host list, deduped (in production APP_HOST == API_HOST).
 TLS_HOSTS=()
