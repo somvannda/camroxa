@@ -18,6 +18,8 @@ import { createJobQueue } from "./jobQueue.js";
 import { normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
+import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
+import { decryptSunoClip } from "./sunoAudio.js";
 import { JOB_OPS, isRunnableDescriptor, type JobDescriptor } from "./jobOps.js";
 
 // Fallback credit costs when the `pricing` table has no row for an endpoint.
@@ -1259,23 +1261,34 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (items.length === 0) return;
 
     let client: SunoClient | null = null;
+    const accountClient = async (): Promise<SunoClient> => {
+      if (client) return client;
+      // Prefer the account that generated the clip; its license authorizes the
+      // decrypt. Fall back to any healthy account.
+      const owning = job.accountId ? pool.get(job.accountId) : null;
+      client = owning ?? (await pool.pick());
+      return client;
+    };
     let changed = false;
     for (const item of items) {
       const clipId = typeof item.id === "string" ? item.id : undefined;
       if (!clipId) continue;
 
-      // Audio: use the account's download pipeline for real bytes (the raw clip
-      // URL is an encrypted placeholder), then store under the job's prefix.
-      if ((item.audio_url || item.audioUrl || item.media_urls) && !item.audio_storage_key) {
+      // Audio: the progressive URL is AES-CTR encrypted (Suno "mango" DRM).
+      // Fetch its license with the owning account and decrypt server-side, then
+      // store a playable MP3 plus the decrypted m4a master (source for WAV).
+      if (!item.audio_storage_key) {
         try {
-          if (!client) client = await pool.pick();
-          const { buffer, contentType } = await client.downloadBuffer(clipId, "mp3");
-          if (buffer && buffer.length > 400) {
-            const key = objectKey("clips", `${clipId}.mp3`);
-            await putObject(key, buffer, contentType || "audio/mpeg");
-            item.audio_storage_key = key;
-            changed = true;
-          }
+          const encryptedUrl = pickPublicAudioUrl(item) ?? undefined;
+          const m4a = await decryptSunoClip(await accountClient(), clipId, encryptedUrl);
+          const mp3Key = objectKey("clips", `${clipId}.mp3`);
+          const masterKey = objectKey("masters", `${clipId}.m4a`);
+          const mp3 = await transcodeAudio(m4a, "mp3");
+          await putObject(mp3Key, mp3, "audio/mpeg");
+          await putObject(masterKey, m4a, "audio/mp4");
+          item.audio_storage_key = mp3Key;
+          item.master_storage_key = masterKey;
+          changed = true;
         } catch (e) {
           console.error(`[storage] audio ingest failed for ${clipId}:`, e instanceof Error ? e.message : e);
         }
@@ -1327,6 +1340,38 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         console.error("[storage] persist failed:", e instanceof Error ? e.message : e),
       );
     }
+  }
+
+  /**
+   * Ensure a durable, playable copy of a clip exists and return its object key.
+   * MP3 comes straight from ingest; WAV is transcoded from the decrypted m4a
+   * master (or a fresh decrypt when the master is missing). Returns null when
+   * storage is off or the decrypt/transcode fails.
+   */
+  async function ensureAudio(clipId: string, format: "mp3" | "wav"): Promise<string | null> {
+    if (!storageConfigured()) return null;
+    const targetKey = objectKey(format === "wav" ? "wav" : "clips", `${clipId}.${format}`);
+    if (await objectExists(targetKey)) return targetKey;
+
+    const masterKey = objectKey("masters", `${clipId}.m4a`);
+    let source: Buffer | null = null;
+    if (await objectExists(masterKey)) {
+      source = await getObjectBytes(masterKey);
+    }
+    if (!source) {
+      try {
+        const client = await pool.pick();
+        source = await decryptSunoClip(client, clipId);
+        await putObject(masterKey, source, "audio/mp4");
+      } catch (e) {
+        console.error(`[me/download] decrypt failed for ${clipId}:`, e instanceof Error ? e.message : e);
+        return null;
+      }
+    }
+    if (!source) return null;
+    const out = await transcodeAudio(source, format);
+    await putObject(targetKey, out, format === "wav" ? "audio/wav" : "audio/mpeg");
+    return targetKey;
   }
 
   const RETRYABLE_ERROR = /captcha|timeout|timed out|rate limit|5\d{2}|no healthy|No healthy/i;
@@ -2974,8 +3019,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // instead of buffering the whole file through this process.
       if (storageConfigured()) {
         try {
-          const key = objectKey(format === "wav" ? "wav" : "clips", `${clipId}.${format}`);
-          if (await objectExists(key)) {
+          // Ensure a durable copy exists (decrypting + transcoding on demand for
+          // clips that were never ingested); returns the object key or null.
+          const key = await ensureAudio(clipId, format);
+          if (key) {
             if (q.force_download === "1") {
               const stored = await getObjectBytes(key);
               if (stored && stored.length > 400) {
@@ -3016,7 +3063,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const fallbackCandidates: string[] = [];
       if (sunoLike) {
         fallbackCandidates.push(`https://cdn1.suno.ai/${clipId}.${format}`);
-        fallbackCandidates.push(`https://d2lwuy8qc234o3.cloudfront.net/1/clip/${clipId}.m4a`);
         fallbackCandidates.push(`https://cdn1.suno.ai/${clipId}.mp3`);
         fallbackCandidates.push(`https://cdn1.suno.ai/${clipId}.wav`);
       }

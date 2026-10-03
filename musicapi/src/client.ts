@@ -710,6 +710,25 @@ export class SunoClient {
     return { buffer: Buffer.from(arr), contentType: ct };
   }
 
+  /**
+   * Fetch the DRM license for a clip from Suno's own license server
+   * (`POST /api/mango/rights`). The returned `key`/`iv` are wrapped with a key
+   * derived from the caller's auth token; `glt` is only present for anonymous
+   * playback. `clipIds` are decrypted client-side (see `sunoAudio.ts`).
+   */
+  async mangoRights(
+    contentId: string,
+    contentType = "clip",
+  ): Promise<{ key: string; iv: string; glt?: string }> {
+    const res = await this.request("/api/mango/rights", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ content_params: { content_id: contentId, content_type: contentType } }),
+    });
+    if (!res.ok) throw new Error(`mango/rights failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as { key: string; iv: string; glt?: string };
+  }
+
   /** Generate a "Sounds" clip (sound effect / sample) via the v2-web endpoint. */
   async generateSounds(params: SoundsParams): Promise<Clip[]> {
     const token = await this.ensureCaptchaToken();
