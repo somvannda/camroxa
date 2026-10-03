@@ -401,8 +401,16 @@ export class SunoClient {
     });
   }
 
-  /** Stem separation (vocal/instrumental stems + MIDI). Requires a paid plan. */
-  async stems(clipId: string): Promise<Clip[]> {
+  /** Stem separation. Live-verified modes:
+   *  - "vocal"   → 2 tracks (Vocals + Instrumental): stem_task "two"
+   *  - "stems"   → 12 tracks: stem_task "twelve"
+   *  - "advanced"→ falls back to the 12-track set (single-stem selection TBD).
+   *  Requires a paid plan. */
+  async stems(clipId: string, mode: "vocal" | "stems" | "advanced" = "stems"): Promise<Clip[]> {
+    const cfg =
+      mode === "vocal"
+        ? { stem_type_id: 0, stem_type_group_name: "Two", stem_task: "two" }
+        : { stem_type_id: 91, stem_type_group_name: "Twelve", stem_task: "twelve" };
     return this.submitClips("/api/generate/v2-web/", {
       task: "gen_stem",
       generation_type: "TEXT",
@@ -413,9 +421,7 @@ export class SunoClient {
       negative_tags: "",
       make_instrumental: true,
       continue_clip_id: clipId,
-      stem_type_id: 91,
-      stem_type_group_name: "Twelve",
-      stem_task: "twelve",
+      ...cfg,
     });
   }
 

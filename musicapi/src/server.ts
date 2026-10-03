@@ -2196,7 +2196,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.endpoint = "stems";
     job.credits = cost;
     job.prompt = separationType === "advanced" ? (body.trackName as string) || "stem" : undefined;
-    void submitDescribedJob(job, { op: "stems", args: { id: clipId } });
+    void submitDescribedJob(job, { op: "stems", args: { id: clipId, mode: separationType } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -5584,7 +5584,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("stems", (in_.callBackUrl as string) || (in_.callback_url as string) || undefined);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "stems"; job.credits = cost;
-    void submitDescribedJob(job, { op: "stems", args: { id: clip_id } });
+    // sunoapi.org `type`: separate_vocal → 2-track, split_stem → multi, split_stem_advanced → single stem.
+    const rawType = (in_.type as string) || "";
+    const mode = rawType === "separate_vocal" ? "vocal" : rawType === "split_stem_advanced" ? "advanced" : "stems";
+    void submitDescribedJob(job, { op: "stems", args: { id: clip_id, mode } });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 

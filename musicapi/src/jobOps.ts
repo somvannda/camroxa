@@ -62,7 +62,7 @@ export const JOB_OPS: Record<string, JobOp> = {
     mode: "result",
     run: (c, a) => c.downloadUrl(str(a, "id"), typeof a.format === "string" && a.format ? a.format : "wav"),
   },
-  stems: { mode: "clip", run: (c, a) => c.stems(str(a, "id")) },
+  stems: { mode: "clip", run: (c, a) => c.stems(str(a, "id"), (a.mode as "vocal" | "stems" | "advanced") ?? "stems") },
 };
 
 /** True when `value` is a descriptor this build knows how to run. */
