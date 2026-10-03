@@ -186,9 +186,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         {/* Logo */}
         <div className="flex items-center justify-between px-4 py-4">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="grad-bg flex h-7 w-7 items-center justify-center rounded-md text-xs font-bold text-white">
-              ♪
-            </div>
+            <img src="/camxora-logo.svg" alt="Camxora" className="h-7 w-7 rounded-md" />
             <span className="text-sm font-bold tracking-wide text-white">MUSIC API</span>
           </Link>
         </div>

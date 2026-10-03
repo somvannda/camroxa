@@ -19,7 +19,7 @@ export default function PublicLegalShell({
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-black/40 backdrop-blur-md">
         <div className="mx-auto flex h-16 max-w-3xl items-center justify-between px-6">
           <Link href="/" className="flex items-center gap-2">
-            <div className="grad-bg flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white">♪</div>
+            <img src="/camxora-logo.svg" alt="Camxora" className="h-8 w-8 rounded-lg" />
             <span className="text-lg font-bold">Camxora Music API</span>
           </Link>
           <Link href="/" className="text-sm text-[var(--muted)] hover:text-white">
