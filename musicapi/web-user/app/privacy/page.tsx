@@ -113,8 +113,9 @@ export default function PrivacyPolicyPage() {
       <Section id="retention" title="6. Retention and deletion">
         <p>
           We keep personal information for as long as your account is active and for a reasonable period afterwards to
-          meet legal, accounting, security, and backup requirements. Generated assets and their metadata are retained
-          according to your plan and our operational backup windows. You may request deletion of your account and
+          meet legal, accounting, security, and backup requirements. Generated media (audio, images, and their
+          metadata) is stored for as long as your account is active, so you can download it at any time. You may
+          request deletion of your account and
           associated personal data at any time by emailing{" "}
           <a href="mailto:privacy@camxora.com" className="grad-text font-medium">privacy@camxora.com</a>; we will
           delete or anonymize the data unless we are required to keep it by law.

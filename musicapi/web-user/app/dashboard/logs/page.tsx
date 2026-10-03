@@ -318,18 +318,6 @@ export default function LogsPage() {
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
-  const [showRetention, setShowRetention] = useState(false);
-
-  useEffect(() => {
-    queueMicrotask(() => {
-      try {
-        const dismissed = localStorage.getItem("logs_retention_dismissed");
-        if (!dismissed || Date.now() - Number(dismissed) > 24 * 60 * 60 * 1000) setShowRetention(true);
-      } catch {
-        setShowRetention(true);
-      }
-    });
-  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -380,15 +368,6 @@ export default function LogsPage() {
       void load();
     });
   }, [load]);
-
-  function dismissRetention() {
-    setShowRetention(false);
-    try {
-      localStorage.setItem("logs_retention_dismissed", String(Date.now()));
-    } catch {
-      /* ignore */
-    }
-  }
 
   const showError = (msg: string) => {
     setError(msg);
@@ -472,29 +451,6 @@ export default function LogsPage() {
 
       {error && <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
 
-      {showRetention && (
-        <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
-          <div>
-            <div className="text-sm font-semibold text-amber-200">Log Retention Policy Alert</div>
-            <p className="mt-1 text-xs text-amber-100/70">
-              Media files (images, videos, audio, etc.) are retained for 14 days, and log data is retained for 2 months
-            </p>
-            <p className="mt-0.5 text-xs text-amber-100/70">
-              Data beyond these periods will be permanently deleted. Please back up any important files or logs in advance.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={dismissRetention}
-            aria-label="Dismiss notice"
-            className="shrink-0 rounded-md p-1 text-amber-200/60 transition hover:bg-amber-500/10 hover:text-amber-100"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
-              <path d="M18 6 6 18M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
-      )}
 
       <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
         <div className="overflow-x-auto">
