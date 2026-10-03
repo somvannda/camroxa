@@ -148,7 +148,10 @@ export default function AccountsPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">Suno Accounts</h1>
-          <p className="text-sm text-[var(--muted)]">Worker accounts used to serve generation requests</p>
+          <p className="text-sm text-[var(--muted)]">
+            Worker accounts used to serve generation requests. Each Suno login is one account with its own
+            <code className="mx-1 rounded bg-black/30 px-1">__client</code> cookie — add as many (free or paid) as you need.
+          </p>
         </div>
         <button onClick={() => setShowForm((v) => !v)} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white">
           {showForm ? "Cancel" : "Add account"}
@@ -188,6 +191,10 @@ export default function AccountsPage() {
                 className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
                 placeholder="eyJ..."
               />
+              <p className="text-[11px] leading-snug text-[var(--muted)]">
+                Log in to suno.com, then copy the <code className="rounded bg-black/30 px-1">__client</code> cookie value
+                from auth.suno.com (DevTools → Application → Cookies). One cookie per account.
+              </p>
             </div>
             <div className="space-y-1">
               <label className="text-xs text-[var(--muted)]">Device ID</label>
@@ -195,8 +202,11 @@ export default function AccountsPage() {
                 value={form.device_id}
                 onChange={(e) => setForm({ ...form, device_id: e.target.value })}
                 className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-                placeholder="uuid"
+                placeholder="leave blank to auto-generate"
               />
+              <p className="text-[11px] leading-snug text-[var(--muted)]">
+                Optional — a unique id is generated for you when left blank.
+              </p>
             </div>
           </div>
           <button disabled={saving} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">

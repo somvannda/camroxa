@@ -48,6 +48,7 @@ interface IntegrationField {
   type: "string" | "secret" | "number" | "boolean";
   value: string | number | boolean;
   configured: boolean;
+  help?: string;
 }
 interface IntegrationGroup {
   key: string;
@@ -386,6 +387,7 @@ export default function SettingsPage() {
                         className={inputClass}
                       />
                     )}
+                    {f.help && <p className="text-[11px] leading-snug text-[var(--muted)]">{f.help}</p>}
                   </div>
                 );
               })}

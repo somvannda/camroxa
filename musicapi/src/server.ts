@@ -3978,9 +3978,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       client_cookie?: string;
       device_id?: string;
     };
-    if (!label || !client_cookie || !device_id) {
-      return reply.code(400).send({ error: "label, client_cookie and device_id are required." });
+    if (!label || !client_cookie) {
+      return reply.code(400).send({ error: "label and client_cookie are required." });
     }
+    // Each account needs its own device id; generate one when omitted so the
+    // operator only has to paste the cookie.
+    const deviceId = (device_id ?? "").trim() || randomUUID();
     // The label is the pool's account identity (src/pool.ts keys clients by it),
     // so a duplicate silently merges two accounts in routing and health views.
     const clash = await queryOne<{ id: string }>("SELECT id FROM suno_accounts WHERE label = $1", [label]);
@@ -3988,7 +3991,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const t = type === "paid" ? "paid" : "free";
     const rows = await query<{ id: string }>(
       "INSERT INTO suno_accounts (label, type, client_cookie, device_id) VALUES ($1, $2, $3, $4) RETURNING id",
-      [label, t, encryptCookie(client_cookie), device_id],
+      [label, t, encryptCookie(client_cookie), deviceId],
     );
     // Make the new account routable immediately (the pool is built once at boot).
     await pool.reload().catch((err) => app.log.warn({ err }, "account pool reload failed"));
