@@ -153,6 +153,15 @@ export const config = {
     useSit: (process.env.BAKONG_USE_SIT ?? "false") === "true",
   },
   /**
+   * Google OAuth for the user-facing sign-in (users sign in ONLY via Google).
+   * Managed from the admin console; env is the fallback (see runtimeSettings).
+   */
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID ?? "",
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET ?? "",
+    redirectUriUser: process.env.GOOGLE_REDIRECT_URI_USER ?? "http://localhost:4001/auth/callback",
+  },
+  /**
    * ChmabaPay (https://pay.chmaba.com) — KHQR / ABA PayWay payment provider for
    * the user billing page (§3.7). There is no sandbox: every `ck_live_…` key
    * moves real money. Checkout stays disabled until `apiKey` + `storeId` are set,

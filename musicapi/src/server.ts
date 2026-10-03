@@ -12,6 +12,7 @@ import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE_ADMIN, serializeSessionCookie, serializeClearedSessionCookie, readSessionCookie } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
+import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { captchaRequired } from "./captcha.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
@@ -505,17 +506,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   // --- Google OAuth ---------------------------------------------------------
-  const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID ?? "";
-  const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET ?? "";
+  // Google config is admin-managed (env is the fallback); read it per request so
+  // a settings change takes effect without a restart.
   // Google sign-in is enabled for the user-facing app ONLY. The admin console
   // authenticates with email/password exclusively, so its callback is
   // deliberately NOT allowlisted and any Google flow requesting it is rejected.
-  // Register only this redirect URI in the Google Cloud Console:
-  //   http://localhost:4001/auth/callback  (dev)  →  https://<user-host>/auth/callback (prod)
-  const GOOGLE_REDIRECT_ALLOWLIST: string[] = [
-    process.env.GOOGLE_REDIRECT_URI_USER ?? "http://localhost:4001/auth/callback",
-  ];
-  const googleConfigured = Boolean(GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET);
+  function googleRedirectAllowlist(): string[] {
+    return [config.google.redirectUriUser];
+  }
+  function googleConfigured(): boolean {
+    return Boolean(config.google.clientId && config.google.clientSecret);
+  }
 
   function resolveGoogleClient(redirectUri: string | undefined): {
     client: OAuth2Client | null;
@@ -523,18 +524,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   } {
     // Pick the requested redirect_uri if it's on the allowlist,
     // otherwise fall back to the user-facing default.
-    const defaultUri = GOOGLE_REDIRECT_ALLOWLIST[0];
+    const allowlist = googleRedirectAllowlist();
+    const defaultUri = allowlist[0];
     const chosen =
-      redirectUri && GOOGLE_REDIRECT_ALLOWLIST.includes(redirectUri)
-        ? redirectUri
-        : defaultUri;
-    if (!googleConfigured) return { client: null, redirectUri: chosen };
+      redirectUri && allowlist.includes(redirectUri) ? redirectUri : defaultUri;
+    if (!googleConfigured()) return { client: null, redirectUri: chosen };
     // Build a fresh client per request: `redirectUri` is not settable on a
     // shared client, and a per-request instance avoids concurrent Google
     // flows cross-wiring each other's redirect URI.
     const client = new OAuth2Client({
-      clientId: GOOGLE_CLIENT_ID,
-      clientSecret: GOOGLE_CLIENT_SECRET,
+      clientId: config.google.clientId,
+      clientSecret: config.google.clientSecret,
       redirectUri: chosen,
     });
     return { client, redirectUri: chosen };
@@ -1934,7 +1934,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   //         instead of silently falling back.
   app.get("/auth/google/url", (req, reply) => {
     const { redirect_uri } = (req.query ?? {}) as { redirect_uri?: string };
-    if (redirect_uri && !GOOGLE_REDIRECT_ALLOWLIST.includes(redirect_uri)) {
+    if (redirect_uri && !googleRedirectAllowlist().includes(redirect_uri)) {
       return reply.code(400).send({
         error: "Google sign-in is not enabled for this application.",
       });
@@ -1943,7 +1943,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!client) {
       return reply.code(503).send({
         error:
-          "Google sign-in is not configured. Set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables and restart.",
+          "Google sign-in is not configured. Set the Google client id/secret in Admin → Settings → Integrations.",
       });
     }
     // Signed state carries the allowlisted redirect URI and is echoed back by
@@ -1968,7 +1968,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!verifiedState) {
       return reply.code(400).send({ error: "Invalid or expired OAuth state." });
     }
-    if (!GOOGLE_REDIRECT_ALLOWLIST.includes(verifiedState.redirectUri)) {
+    if (!googleRedirectAllowlist().includes(verifiedState.redirectUri)) {
       return reply
         .code(400)
         .send({ error: "Google sign-in is not enabled for this application." });
@@ -1981,7 +1981,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const { tokens } = await client.getToken(code);
       const idToken = tokens.id_token;
       if (!idToken) return reply.code(400).send({ error: "Google did not return an id_token." });
-      const ticket = await client.verifyIdToken({ idToken, audience: GOOGLE_CLIENT_ID });
+      const ticket = await client.verifyIdToken({ idToken, audience: config.google.clientId });
       const payload = ticket.getPayload();
       if (!payload || !payload.email || !payload.sub) {
         return reply.code(400).send({ error: "Google did not return a valid profile." });
@@ -4825,7 +4825,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get("/admin/settings", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const [brand, alerts] = await Promise.all([loadBrandSettings(), loadAlertSettings()]);
-    return { brand, alerts };
+    return { brand, alerts, integrations: maskedIntegrations() };
   });
 
   app.put("/admin/settings", async (req, reply) => {
@@ -4864,6 +4864,29 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       req,
     });
     return { brand, alerts };
+  });
+
+  // Admin-managed integration keys (Suno, 2Captcha, Google, ChmabaPay, Bakong,
+  // B2, alerts). Secret fields are encrypted at rest and never returned; the
+  // merged result is applied to `config` immediately (no restart).
+  app.put("/admin/settings/integrations", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const body = (req.body ?? {}) as { values?: unknown };
+    if (!body.values || typeof body.values !== "object") {
+      return reply.code(400).send({ error: "Provide an integrations values patch." });
+    }
+    const values = body.values as Record<string, Record<string, unknown>>;
+    await updateIntegrations(values, admin.id);
+    await recordAudit({
+      actor: admin,
+      action: "settings.update",
+      targetType: "settings",
+      targetId: "integrations",
+      details: { groups: Object.keys(values) },
+      req,
+    });
+    return { integrations: maskedIntegrations() };
   });
 
   // Live alert report for the panel. Notifying Telegram is a side effect here so
