@@ -1,7 +1,7 @@
 /**
  * Admin-managed runtime settings.
  *
- * Integration keys (Suno, 2Captcha, Google, ChmabaPay, Bakong, B2, alerts) can
+ * Integration keys (Suno, 2Captcha, Google, ChmabaPay, B2, alerts) can
  * be set in the admin console instead of `.env`. They live in the existing
  * `app_settings` table under the `integrations` key; secret fields are encrypted
  * at rest with the same AES-256-GCM master key used for Suno cookies
@@ -82,18 +82,6 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
       { key: "storeId", label: "Store id", type: "string", env: "CHMABA_STORE_ID", def: "" },
       { key: "webhookSecret", label: "Webhook secret", type: "secret", env: "CHMABA_WEBHOOK_SECRET", def: "" },
       { key: "apiBaseUrl", label: "API base URL", type: "string", env: "CHMABA_API_BASE_URL", def: "https://pay.chmaba.com" },
-    ],
-  },
-  {
-    key: "bakong",
-    label: "Bakong",
-    fields: [
-      { key: "apiToken", label: "API token", type: "secret", env: "BAKONG_API_TOKEN", def: "" },
-      { key: "accountId", label: "Account id", type: "string", env: "BAKONG_ACCOUNT_ID", def: "" },
-      { key: "merchantName", label: "Merchant name", type: "string", env: "BAKONG_MERCHANT_NAME", def: "Camxora Music API" },
-      { key: "merchantCity", label: "Merchant city", type: "string", env: "BAKONG_MERCHANT_CITY", def: "Phnom Penh" },
-      { key: "apiBaseUrl", label: "API base URL", type: "string", env: "BAKONG_API_BASE_URL", def: "https://api-bakong.nbc.gov.kh" },
-      { key: "useSit", label: "Use SIT", type: "boolean", env: "BAKONG_USE_SIT", def: false },
     ],
   },
   {
@@ -211,13 +199,6 @@ function applyToConfig(): void {
   config.chmaba.storeId = str("chmaba", "storeId", config.chmaba.storeId);
   config.chmaba.webhookSecret = str("chmaba", "webhookSecret", config.chmaba.webhookSecret);
   config.chmaba.apiBaseUrl = str("chmaba", "apiBaseUrl", config.chmaba.apiBaseUrl);
-
-  config.bakong.apiToken = str("bakong", "apiToken", config.bakong.apiToken);
-  config.bakong.accountId = str("bakong", "accountId", config.bakong.accountId);
-  config.bakong.merchantName = str("bakong", "merchantName", config.bakong.merchantName);
-  config.bakong.merchantCity = str("bakong", "merchantCity", config.bakong.merchantCity);
-  config.bakong.apiBaseUrl = str("bakong", "apiBaseUrl", config.bakong.apiBaseUrl);
-  config.bakong.useSit = bool("bakong", "useSit", config.bakong.useSit);
 
   config.storage.endpoint = str("storage", "endpoint", config.storage.endpoint);
   config.storage.region = str("storage", "region", config.storage.region);

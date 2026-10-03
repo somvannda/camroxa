@@ -144,14 +144,6 @@ export const config = {
     /** How many jobs one consumer may run at once. */
     concurrency: Math.max(1, Number(process.env.QUEUE_CONCURRENCY ?? 4)),
   },
-  bakong: {
-    apiToken: process.env.BAKONG_API_TOKEN ?? "",
-    accountId: process.env.BAKONG_ACCOUNT_ID ?? "",
-    merchantName: process.env.BAKONG_MERCHANT_NAME ?? "Camxora Music API",
-    merchantCity: process.env.BAKONG_MERCHANT_CITY ?? "Phnom Penh",
-    apiBaseUrl: process.env.BAKONG_API_BASE_URL ?? "https://api-bakong.nbc.gov.kh",
-    useSit: (process.env.BAKONG_USE_SIT ?? "false") === "true",
-  },
   /**
    * Google OAuth for the user-facing sign-in (users sign in ONLY via Google).
    * Managed from the admin console; env is the fallback (see runtimeSettings).

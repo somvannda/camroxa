@@ -4866,7 +4866,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { brand, alerts };
   });
 
-  // Admin-managed integration keys (Suno, 2Captcha, Google, ChmabaPay, Bakong,
+  // Admin-managed integration keys (Suno, 2Captcha, Google, ChmabaPay,
   // B2, alerts). Secret fields are encrypted at rest and never returned; the
   // merged result is applied to `config` immediately (no restart).
   app.put("/admin/settings/integrations", async (req, reply) => {
@@ -6909,93 +6909,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   // ============================================================
-  // KHQR / Bakong Payment Endpoints
+  // Payment helpers
   // ============================================================
 
   function md5(str: string): string {
     return createHash("md5").update(str).digest("hex");
-  }
-
-  async function khqrGenerate(params: {
-    amount: number;
-    currency: "KHR" | "USD";
-    billNumber: string;
-    terminalLabel?: string;
-    storeLabel?: string;
-  }): Promise<{ qr: string; md5: string; deeplink?: string; mock: boolean }> {
-    const { bakong } = config;
-    const hasCreds = !!bakong.apiToken && !!bakong.accountId;
-
-    if (!hasCreds) {
-      const fakeQr = `00020101021229180014${bakong.accountId || "dev@bakong"}520459995303${params.currency === "KHR" ? "116" : "840"}540${String(params.amount).length}${params.amount}5802KH59${bakong.merchantName.length.toString().padStart(2, "0")}${bakong.merchantName}60${bakong.merchantCity.length.toString().padStart(2, "0")}${bakong.merchantCity}62${(2 + params.billNumber.length).toString().padStart(2, "0")}01${params.billNumber.length.toString().padStart(2, "0")}${params.billNumber}99170013${Date.now()}63040000`;
-      return {
-        qr: fakeQr,
-        md5: md5(fakeQr),
-        deeplink: `https://bakong.page.link/mock?qr=${encodeURIComponent(fakeQr)}`,
-        mock: true,
-      };
-    }
-
-    try {
-      const mod = await import("bakong-khqr-npm");
-      const KHQR = (mod as { KHQR: new (t: string) => unknown }).KHQR;
-      const khqr = new KHQR(bakong.apiToken) as {
-        create_qr: (p: Record<string, unknown>) => string;
-        generate_md5: (qr: string) => string;
-        generate_deeplink: (qr: string, cb: string, icon: string, name: string) => Promise<string>;
-      };
-      const qr = khqr.create_qr({
-        bank_account: bakong.accountId,
-        merchant_name: bakong.merchantName,
-        merchant_city: bakong.merchantCity,
-        amount: params.amount,
-        currency: params.currency,
-        store_label: params.storeLabel || "Camxora",
-        phone_number: "",
-        bill_number: params.billNumber,
-        terminal_label: params.terminalLabel || "web",
-        static: false,
-      });
-      const hash = khqr.generate_md5(qr);
-      let deeplink: string | undefined;
-      try {
-        deeplink = await khqr.generate_deeplink(
-          qr,
-          typeof window !== "undefined" ? window.location.origin : "",
-          "",
-          "Camxora",
-        );
-      } catch {
-        /* ignore */
-      }
-      return { qr, md5: hash, deeplink, mock: false };
-    } catch (e) {
-      const fakeQr = `00020101021229180014${bakong.accountId}520459995303${params.currency === "KHR" ? "116" : "840"}540${String(params.amount).length}${params.amount}5802KH59${bakong.merchantName.length.toString().padStart(2, "0")}${bakong.merchantName}60${bakong.merchantCity.length.toString().padStart(2, "0")}${bakong.merchantCity}62${(2 + params.billNumber.length).toString().padStart(2, "0")}01${params.billNumber.length.toString().padStart(2, "0")}${params.billNumber}99170013${Date.now()}63040000`;
-      return {
-        qr: fakeQr,
-        md5: md5(fakeQr),
-        mock: true,
-      };
-    }
-  }
-
-  async function khqrCheck(hash: string): Promise<"PAID" | "UNPAID" | "EXPIRED"> {
-    const { bakong } = config;
-    const hasCreds = !!bakong.apiToken;
-    if (!hasCreds) return "UNPAID";
-    try {
-      const mod = await import("bakong-khqr-npm");
-      const KHQR = (mod as { KHQR: new (t: string) => unknown }).KHQR;
-      const khqr = new KHQR(bakong.apiToken) as {
-        check_payment: (md5: string) => Promise<string>;
-      };
-      const status = await khqr.check_payment(hash);
-      if (status === "PAID") return "PAID";
-      if (status === "UNPAID") return "UNPAID";
-      return "UNPAID";
-    } catch {
-      return "UNPAID";
-    }
   }
 
   async function creditUser(
@@ -7004,7 +6922,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     amount: number,
     apiKeyId?: string,
     txId?: string,
-    label = "KHQR",
+    label = "Purchase",
   ): Promise<void> {
     if (apiKeyId) {
       await q(
@@ -7046,180 +6964,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return rows;
   });
 
-  // POST /payments/khqr/create — create a KHQR payment for a credit pack
-  app.post("/payments/khqr/create", async (req, reply) => {
-    const u = requireAuth(req, reply);
-    if (!u) return;
-    const in_ = (req.body ?? {}) as Record<string, unknown>;
-    const packId = in_.pack_id as string | undefined;
-    const currency = ((in_.currency as string) || "KHR").toUpperCase() as "KHR" | "USD";
-    const targetKeyId = in_.api_key_id as string | undefined;
-
-    if (!packId) return reply.code(400).send({ error: "pack_id is required." });
-
-    const pack = await queryOne<{ id: string; amount: number; price: string; currency: string }>(
-      "SELECT id, amount, price, currency FROM credit_packs WHERE id = $1 AND is_active = true",
-      [packId],
-    );
-    if (!pack) return reply.code(404).send({ error: "Pack not found or unavailable." });
-
-    const priceAmount = currency === pack.currency
-      ? Number(pack.price)
-      : currency === "KHR"
-        ? Math.round(Number(pack.price) * 4100) // approx 1 USD = 4100 KHR
-        : Math.round((Number(pack.price) * 4100)) / 4100;
-
-    if (!priceAmount || priceAmount <= 0) return reply.code(400).send({ error: "Invalid price for selected currency." });
-
-    const billNumber = `CMX${Date.now().toString(36).toUpperCase()}${randomUUID().slice(0, 4).toUpperCase()}`;
-
-    const generated = await khqrGenerate({
-      amount: priceAmount,
-      currency,
-      billNumber,
-      storeLabel: "Camxora",
-      terminalLabel: "web",
-    });
-
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
-
-    const inserted = await queryOne<{ id: string }>(
-      `INSERT INTO payment_transactions
-         (user_id, pack_id, credit_amount, currency, amount, payment_method, md5_hash, qr_string, deeplink, status, api_key_target_id, bill_number, expires_at)
-       VALUES ($1, $2, $3, $4, $5, 'khqr', $6, $7, $8, 'pending', $9, $10, $11)
-       RETURNING id`,
-      [u.id, packId, pack.amount, currency, priceAmount, generated.md5, generated.qr, generated.deeplink || null, targetKeyId || null, billNumber, expiresAt],
-    );
-
-    return {
-      transaction_id: inserted?.id,
-      bill_number: billNumber,
-      credits: pack.amount,
-      currency,
-      amount: priceAmount,
-      qr: generated.qr,
-      md5: generated.md5,
-      deeplink: generated.deeplink || null,
-      expires_at: expiresAt,
-      mock: generated.mock,
-      merchant_name: config.bakong.merchantName,
-      merchant_city: config.bakong.merchantCity,
-    };
-  });
-
-  // GET /payments/khqr/status/:id — check KHQR payment status and credit user if paid
-  app.get("/payments/khqr/status/:id", async (req, reply) => {
-    const u = requireAuth(req, reply);
-    if (!u) return;
-    const { id } = req.params as { id: string };
-    if (!id) return reply.code(400).send({ error: "id is required." });
-
-    const tx = await queryOne<{
-      id: string; status: string; md5_hash: string | null; expires_at: string; credit_amount: number;
-      api_key_target_id: string | null; error_message: string | null; paid_at: string | null;
-      amount: string; currency: string; bill_number: string;
-    }>(
-      `SELECT id, status, md5_hash, expires_at, credit_amount, api_key_target_id, error_message, paid_at, amount, currency, bill_number
-       FROM payment_transactions WHERE id = $1 AND user_id = $2`,
-      [id, u.id],
-    );
-    if (!tx) return reply.code(404).send({ error: "Transaction not found." });
-
-    let currentStatus = tx.status;
-    let paidAt = tx.paid_at;
-    let errorMessage = tx.error_message;
-    const expired = new Date(tx.expires_at).getTime() < Date.now();
-
-    if (currentStatus === "pending") {
-      if (expired) {
-        await query("UPDATE payment_transactions SET status = 'expired' WHERE id = $1 AND status = 'pending'", [tx.id]);
-        currentStatus = "expired";
-      } else if (tx.md5_hash) {
-        const bakongStatus = await khqrCheck(tx.md5_hash);
-        if (bakongStatus === "PAID") {
-          try {
-            // Claim the pending transaction and apply the credits in one DB
-            // transaction. The guarded UPDATE lets only the first poll claim it,
-            // so concurrent polls credit exactly once; a rollback leaves it
-            // 'pending' rather than half-credited.
-            await withTransaction(async (tq) => {
-              const claimed = await tq<{ id: string }>(
-                "UPDATE payment_transactions SET status = 'paid', paid_at = now() WHERE id = $1 AND status = 'pending' RETURNING id",
-                [tx.id],
-              );
-              if (claimed.length === 0) return;
-              await creditUser(tq, u.id, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
-            });
-          } catch (e) {
-            const err = e instanceof Error ? e.message : String(e);
-            await query(
-              "UPDATE payment_transactions SET status = 'failed', error_message = $1 WHERE id = $2 AND status = 'pending'",
-              [err, tx.id],
-            );
-          }
-          const fresh = await queryOne<{ status: string; paid_at: string | null; error_message: string | null }>(
-            "SELECT status, paid_at, error_message FROM payment_transactions WHERE id = $1",
-            [tx.id],
-          );
-          currentStatus = fresh?.status ?? tx.status;
-          paidAt = fresh?.paid_at ?? paidAt;
-          errorMessage = fresh?.error_message ?? errorMessage;
-        }
-      }
-    }
-
-    return {
-      transaction_id: tx.id,
-      status: currentStatus,
-      bill_number: tx.bill_number,
-      credits: tx.credit_amount,
-      currency: tx.currency,
-      amount: Number(tx.amount),
-      paid_at: paidAt,
-      expires_at: tx.expires_at,
-      error: errorMessage,
-      expired: currentStatus === "expired" ? true : expired && currentStatus === "pending",
-    };
-  });
-
-  // POST /payments/khqr/confirm-mock/:id — DEV-ONLY: force-complete a pending
-  // payment. Disabled outside NODE_ENV=development so it can never mint free
-  // credits in production (previously it activated whenever Bakong was unset).
-  app.post("/payments/khqr/confirm-mock/:id", async (req, reply) => {
-    if (process.env.NODE_ENV !== "development") {
-      return reply.code(404).send({ error: "Not found." });
-    }
-    const u = requireAuth(req, reply);
-    if (!u) return;
-    const { id } = req.params as { id: string };
-    if (!id) return reply.code(400).send({ error: "id is required." });
-
-    const tx = await queryOne<{
-      id: string; status: string; credit_amount: number; api_key_target_id: string | null;
-    }>(
-      `SELECT id, status, credit_amount, api_key_target_id FROM payment_transactions WHERE id = $1 AND user_id = $2`,
-      [id, u.id],
-    );
-    if (!tx) return reply.code(404).send({ error: "Transaction not found." });
-    if (tx.status !== "pending") return reply.code(409).send({ error: `Transaction already ${tx.status}.` });
-    try {
-      const credited = await withTransaction(async (tq) => {
-        const claimed = await tq<{ id: string }>(
-          "UPDATE payment_transactions SET status = 'paid', paid_at = now() WHERE id = $1 AND status = 'pending' RETURNING id",
-          [tx.id],
-        );
-        if (claimed.length === 0) return false;
-        await creditUser(tq, u.id, tx.credit_amount, tx.api_key_target_id ?? undefined, tx.id);
-        return true;
-      });
-      if (!credited) return reply.code(409).send({ error: "Transaction already processed." });
-      return { ok: true, status: "paid" };
-    } catch (e) {
-      return reply.code(500).send({ error: e instanceof Error ? e.message : String(e) });
-    }
-  });
-
-  // ============================================================
   // ChmabaPay (KHQR / ABA PayWay) Payment Endpoints — REQUIREMENTS §3.7
   // ============================================================
   // ChmabaPay never holds funds: money settles straight into the store's own

@@ -141,7 +141,7 @@ python scripts/deploy/deploy_musicapi_production.py --yes --issue-cert
 7. **Write `musicapi/.env` (mode 600) — wholesale rewrite.** This is the critical
    invariant: `NODE_ENV`, `PORT=4003`, `BACKEND_URL`, `DATABASE_URL`, `JWT_SECRET`,
    `COOKIE_ENCRYPTION_KEY`, `TRUST_PROXY=127.0.0.1`, `FRONTEND_ORIGINS`, `LOG_LEVEL`, the
-   `SUNO_*` / `TWOCAPTCHA_KEY` / `GOOGLE_*` / `BAKONG_*` / `CHMABA_*` blocks, and
+   `SUNO_*` / `TWOCAPTCHA_KEY` / `GOOGLE_*` / `CHMABA_*` blocks, and
    `ALERT_TELEGRAM_*` / `BACKUP_*`. **Never hand-edit `.env` on the host** — the next
    deploy overwrites it. Add secrets to the secrets file instead.
 8. **Build core** — `npm ci || npm install`, `npm run build` (`tsc` → `dist/`).
