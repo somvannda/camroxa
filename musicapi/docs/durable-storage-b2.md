@@ -78,8 +78,8 @@ musicapi/images/<clipId>.<ext>  # cover art (jpg/png/webp)
 
 ## Ops follow-ups
 
-- [ ] **Lifecycle rule** on the `musicapi/` prefix → delete after 14 days (parity)
-      if retention is desired. Set in the B2 console/CLI; not done in code.
+- **No lifecycle rule** on the `musicapi/` prefix: generated media (MP3/WAV/master)
+      is retained indefinitely. Do not add an expiry/delete rule.
 - [ ] Point `MUSICAPI_B2_PUBLIC_BASE_URL` at Cloudflare in front of B2 for free
       egress + public CDN URLs (currently presigned B2 URLs).
 - [ ] Optional: mirror WAV (only MP3 is ingested today) and separated stem outputs.
