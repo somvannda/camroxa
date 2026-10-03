@@ -813,6 +813,29 @@ export class SunoClient {
     throw new Error(`Timed out waiting for upload ${uploadId} to process.`);
   }
 
+  /** Full audio upload: create session → POST bytes to Suno's S3 → register →
+   *  poll for the processed clip id. Returns a clip id usable as a persona/task
+   *  root. Mirrors uploadImage but for audio (voice recordings / song demos). */
+  async uploadAudio(
+    bytes: Buffer,
+    extension = "wav",
+    uploadType: "voice_recording" | "file_upload" | "song_demo" = "voice_recording",
+  ): Promise<string> {
+    const ext = extension.replace(/^\./, "").toLowerCase() || "wav";
+    const session = await this.createAudioUpload({ extension: ext, uploadType });
+    const contentType = session.fields["Content-Type"] || `audio/${ext}`;
+    const form = new FormData();
+    for (const [k, v] of Object.entries(session.fields)) form.append(k, v);
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), `audio.${ext}`);
+    const up = await fetch(session.url, { method: "POST", body: form });
+    if (!up.ok && up.status !== 204) {
+      throw new Error(`audio S3 upload failed (${up.status}): ${await up.text()}`);
+    }
+    await this.registerAudioUpload(session.id, { uploadType, uploadFilename: `audio.${ext}` });
+    const status = await this.getAudioUploadStatus(session.id);
+    return status.clip_id || session.id;
+  }
+
   // =========================================
   // Image upload (cover art / reference)
   // =========================================

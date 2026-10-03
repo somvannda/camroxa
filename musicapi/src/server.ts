@@ -2362,6 +2362,31 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  // Upload a recorded/selected source sample to Suno and return a clip id usable
+  // as the voice/persona root. The bytes never leave this process's trust: the
+  // panel posts a data URL, we decode it and run Suno's upload pipeline.
+  app.post("/me/voice-source", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const body = (req.body ?? {}) as { data?: string; uploadType?: string };
+    const data = typeof body.data === "string" ? body.data : "";
+    const m = data.match(/^data:([a-z0-9.+-]+\/[a-z0-9.+-]+);base64,(.*)$/is);
+    if (!m) return reply.code(400).send({ error: "data must be a data: URL." });
+    const mime = m[1].toLowerCase();
+    const bytes = Buffer.from(m[2], "base64");
+    if (bytes.length === 0) return reply.code(400).send({ error: "Empty audio." });
+    if (bytes.length > 25 * 1024 * 1024) return reply.code(413).send({ error: "Audio exceeds 25MB." });
+    const ext = (mime.split("/")[1] || "wav").replace(/[^a-z0-9]/g, "").slice(0, 5) || "wav";
+    const uploadType = body.uploadType === "song_demo" ? "song_demo" : "voice_recording";
+    try {
+      const client = await pool.pickExcept([], undefined, "paid_only");
+      const clipId = await client.uploadAudio(bytes, ext, uploadType);
+      return { clip_id: clipId };
+    } catch (e) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : "Upload failed." });
+    }
+  });
+
   function normalizeClips(raw: unknown) {
     if (!raw || typeof raw !== "object") return [] as any[];
     const o = raw as any;
