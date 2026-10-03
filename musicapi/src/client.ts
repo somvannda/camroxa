@@ -165,10 +165,22 @@ export class SunoClient {
 
   async resolveJwt(): Promise<string> {
     const stored = this.account.clientCookie?.trim() ?? "";
-    // A one-off access JWT cannot be refreshed — use it as-is until it expires.
-    if (/^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(stored)) return stored;
-    // Durable `__client` cookie → mint a JWT from Clerk, renewing proactively
-    // ~5 minutes before expiry so in-flight jobs never hit a 401.
+    // Both an access JWT (token_type "access") and the durable __client refresh
+    // token are JWTs, so format alone is not enough — decode the claim.
+    if (/^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(stored)) {
+      let access = true;
+      try {
+        const payload = JSON.parse(
+          Buffer.from(stored.split(".")[1], "base64url").toString("utf8"),
+        ) as Record<string, unknown>;
+        access = payload["suno.com/claims/token_type"] === "access";
+      } catch {
+        access = true; // unknown JWT shape → treat as a one-off access token
+      }
+      if (access) return stored;
+    }
+    // Durable `__client` refresh cookie → mint a JWT from Clerk, renewing
+    // proactively ~5 minutes before expiry so jobs never hit a 401.
     const expiring = this.jwtExpiresAt > 0 && Date.now() > this.jwtExpiresAt - 5 * 60_000;
     if (!this.cachedJwt || expiring) {
       this.cachedJwt = await this.mintJwt(await this.getSessionId());
