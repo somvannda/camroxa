@@ -39,11 +39,11 @@ export default function RecoveryAudioPage() {
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          if (!sunoTaskId.trim()) return;
+          if (!sunoTaskId.trim() || !callBackUrl.trim()) return;
           reset();
           submit("/me/recovery", {
             sunoTaskId: sunoTaskId.trim(),
-            callBackUrl: callBackUrl.trim() || undefined,
+            callBackUrl: callBackUrl.trim(),
           });
         }}
         className="space-y-5"
@@ -74,7 +74,7 @@ export default function RecoveryAudioPage() {
           />
         </Field>
 
-        <PrimaryButton type="submit" busy={busy} disabled={!sunoTaskId.trim()}>
+        <PrimaryButton type="submit" busy={busy} disabled={!sunoTaskId.trim() || !callBackUrl.trim()}>
           Recover Audio
         </PrimaryButton>
       </form>

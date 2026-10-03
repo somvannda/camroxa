@@ -23,6 +23,13 @@ export default function ReplaceSectionPage() {
   const [infillEndS, setInfillEndS] = useState("10");
   const [negativeTags, setNegativeTags] = useState("");
   const [fullLyrics, setFullLyrics] = useState("");
+  const [lyrics, setLyrics] = useState("");
+  const [vocalGender, setVocalGender] = useState<"m" | "f">("m");
+  const [styleWeight, setStyleWeight] = useState("0.65");
+  const [audioWeight, setAudioWeight] = useState("0.65");
+  const [weirdnessConstraint, setWeirdnessConstraint] = useState("0.65");
+  const [personaId, setPersonaId] = useState("");
+  const [personaModel, setPersonaModel] = useState<"style_persona" | "voice_persona">("style_persona");
 
   const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "replace_section" });
 
@@ -75,6 +82,13 @@ export default function ReplaceSectionPage() {
             infillEndS: end,
             negativeTags: negativeTags || undefined,
             fullLyrics,
+            lyrics: lyrics || undefined,
+            vocalGender,
+            styleWeight: styleWeight === "" ? undefined : Number(styleWeight),
+            audioWeight: audioWeight === "" ? undefined : Number(audioWeight),
+            weirdnessConstraint: weirdnessConstraint === "" ? undefined : Number(weirdnessConstraint),
+            personaId: personaId || undefined,
+            personaModel: personaId ? personaModel : undefined,
           });
         }}
         className="space-y-5"
@@ -107,12 +121,23 @@ export default function ReplaceSectionPage() {
           </Field>
         </div>
 
-        <Field label="prompt" required help="Prompt describing the replacement segment content">
-          <input
-            className={inputCls}
+        <Field label="prompt" required help="Lyrics for the replaced segment. If lyrics is also provided, lyrics takes priority.">
+          <textarea
+            className={textareaCls}
+            rows={3}
             placeholder="A calm and relaxing piano track."
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
+          />
+        </Field>
+
+        <Field label="lyrics" help="Optional lyrics for the replaced segment only. Max 5000 characters for V6 models.">
+          <textarea
+            className={textareaCls}
+            rows={3}
+            placeholder="Optional — takes priority over prompt"
+            value={lyrics}
+            onChange={(e) => setLyrics(e.target.value.slice(0, 5000))}
           />
         </Field>
 
@@ -155,7 +180,7 @@ export default function ReplaceSectionPage() {
                 onChange={(e) => setInfillEndS(e.target.value)}
               />
               <p className={`mt-1.5 text-xs ${!durationOk ? "text-red-300" : "text-white/40"}`}>
-                {!durationOk ? "Duration must be at least 10 seconds" : "Duration must be at least 10 seconds"}
+                Duration must be at least 10 seconds
               </p>
             </div>
           </Field>
@@ -170,7 +195,7 @@ export default function ReplaceSectionPage() {
           />
         </Field>
 
-        <Field label="fullLyrics" required help="Complete lyrics after modification">
+        <Field label="fullLyrics" required help="Complete lyrics of the whole song after modification">
           <textarea
             className={textareaCls}
             rows={6}
@@ -179,6 +204,43 @@ export default function ReplaceSectionPage() {
             onChange={(e) => setFullLyrics(e.target.value)}
           />
         </Field>
+
+        <div className="grid gap-5 md:grid-cols-2">
+          <Field label="vocalGender" help="Preferred vocal gender">
+            <select
+              className={inputCls}
+              value={vocalGender}
+              onChange={(e) => setVocalGender(e.target.value as "m" | "f")}
+            >
+              <option value="m" className="bg-[#141416]">Male</option>
+              <option value="f" className="bg-[#141416]">Female</option>
+            </select>
+          </Field>
+          <Field label="styleWeight" help="Style adherence weight, range 0–1">
+            <input type="number" min="0" max="1" step="0.05" className={inputCls} value={styleWeight} onChange={(e) => setStyleWeight(e.target.value)} />
+          </Field>
+          <Field label="audioWeight" help="Audio consistency weight versus other controls, range 0–1">
+            <input type="number" min="0" max="1" step="0.05" className={inputCls} value={audioWeight} onChange={(e) => setAudioWeight(e.target.value)} />
+          </Field>
+          <Field label="weirdnessConstraint" help="Creativity/novelty constraint, range 0–1">
+            <input type="number" min="0" max="1" step="0.05" className={inputCls} value={weirdnessConstraint} onChange={(e) => setWeirdnessConstraint(e.target.value)} />
+          </Field>
+          <Field label="personaId" help="Persona ID or Voice ID to apply. When using a Voice ID, set personaModel to voice_persona.">
+            <input className={inputCls} placeholder="Optional" value={personaId} onChange={(e) => setPersonaId(e.target.value)} />
+          </Field>
+          {personaId && (
+            <Field label="personaModel" help="style_persona for Generate Persona IDs; voice_persona for Suno Voice IDs">
+              <select
+                className={inputCls}
+                value={personaModel}
+                onChange={(e) => setPersonaModel(e.target.value as "style_persona" | "voice_persona")}
+              >
+                <option value="style_persona" className="bg-[#141416]">style_persona</option>
+                <option value="voice_persona" className="bg-[#141416]">voice_persona</option>
+              </select>
+            </Field>
+          )}
+        </div>
 
         <PrimaryButton type="submit" busy={busy} disabled={!canRun}>
           Replace Section

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { AuthorizedAudio, downloadClip } from "@/components/playground";
 
@@ -47,7 +47,7 @@ const FILTER_TABS = [
   },
   {
     key: "recovery",
-    label: "recovery",
+    label: "recovery audio",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
@@ -102,7 +102,7 @@ const FILTER_TABS = [
   },
   {
     key: "video",
-    label: "video",
+    label: "lyrics video generator",
     icon: (
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
         <rect width="20" height="16" x="2" y="4" rx="2"/>
@@ -124,6 +124,18 @@ const FILTER_TABS = [
     match: (ep: string) => /voice|clone.*persona|persona|check.*voice|generate.*voice/i.test(ep),
   },
 ];
+
+// Endpoint substrings sent to GET /me/logs/page for each tab.
+const TAB_PATTERNS: Record<string, string[]> = {
+  audio: ["music", "generate", "audio"],
+  recovery: ["recovery"],
+  lyrics: ["lyric"],
+  subtitle: ["subtitle", "caption", "srt", "vtt"],
+  wav: ["wav"],
+  "vocal-removal": ["vocal", "stem", "separate", "split"],
+  video: ["video"],
+  voice: ["voice", "persona"],
+};
 
 function statusChip(status: string): React.ReactNode {
   const s = (status || "").toLowerCase();
@@ -278,43 +290,62 @@ function extractLyrics(row: LogRow): string | null {
   return null;
 }
 
+type DateKey = "today" | "7d" | "30d" | "3m" | "all";
+
+function dateWindow(key: DateKey): { start?: string; end?: string } {
+  if (key === "all") return {};
+  const iso = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const today = new Date();
+  const end = iso(today);
+  if (key === "today") return { start: end, end };
+  const days = key === "7d" ? 7 : key === "30d" ? 30 : 90;
+  const s = new Date(today);
+  s.setDate(s.getDate() - (days - 1));
+  return { start: iso(s), end };
+}
+
 export default function LogsPage() {
   const [rows, setRows] = useState<LogRow[]>([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState("");
   const [taskIdSearch, setTaskIdSearch] = useState("");
   const [activeTab, setActiveTab] = useState("audio");
   const [resultModal, setResultModal] = useState<{ row: LogRow; clips: LogClip[] } | null>(null);
+  const [dateKey, setDateKey] = useState<DateKey>("30d");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
+  const [pages, setPages] = useState(1);
+  const [showRetention, setShowRetention] = useState(false);
 
-  const loadLive = useCallback(async () => {
-    try {
-      const live = await apiFetch<Array<{ job_id: string; type: string; status: string; endpoint?: string; prompt?: string; model?: string; credits?: number; created_at?: number }>>("/me/jobs/running");
-      const now = Date.now();
-      return live.map<LogRow>((j) => ({
-        key: `live-${j.job_id}`,
-        id: j.job_id,
-        task_id: j.job_id,
-        endpoint: j.endpoint || j.type || "unknown",
-        model: j.model || null,
-        prompt: j.prompt || null,
-        status: j.status || "pending",
-        credits: j.credits ?? 0,
-        created_at: j.created_at || now,
-        result_json: null,
-      }));
-    } catch {
-      return [] as LogRow[];
-    }
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const dismissed = localStorage.getItem("logs_retention_dismissed");
+        if (!dismissed || Date.now() - Number(dismissed) > 24 * 60 * 60 * 1000) setShowRetention(true);
+      } catch {
+        setShowRetention(true);
+      }
+    });
   }, []);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
     try {
-      setError("");
-      const [db, live] = await Promise.all([
-        apiFetch<DbLogRow[]>("/me/logs").catch(() => [] as DbLogRow[]),
-        loadLive(),
-      ]);
-      const mapped: LogRow[] = db.map((d) => {
+      const { start, end } = dateWindow(dateKey);
+      const patterns = TAB_PATTERNS[activeTab] ?? [];
+      const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
+      if (start) params.set("start", start);
+      if (end) params.set("end", end);
+      if (patterns.length) params.set("endpoint", patterns.join(","));
+      if (taskIdSearch.trim()) params.set("task_id", taskIdSearch.trim());
+      const res = await apiFetch<{ rows: DbLogRow[]; total: number; page: number; pages: number }>(
+        `/me/logs/page?${params.toString()}`,
+      );
+      const mapped: LogRow[] = res.rows.map((d) => {
         const result = safeParseResult(d.result_json);
         const fields = extractPromptFields(d.prompt, result);
         return {
@@ -333,51 +364,31 @@ export default function LogsPage() {
           callback_url: fields.callback_url,
         };
       });
-      const seen = new Set(mapped.map((r) => r.task_id).filter(Boolean) as string[]);
-      const merged = [
-        ...live.filter((r) => !seen.has(r.task_id as string)),
-        ...mapped,
-      ].sort((a, b) => b.created_at - a.created_at);
-      setRows(merged);
-      return merged.filter((r) => ["pending", "running", "streaming", "queued"].includes((r.status || "").toLowerCase())).length;
+      setRows(mapped);
+      setTotal(res.total);
+      setPages(res.pages);
+      if (res.page !== page) setPage(res.page);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load logs");
-      return 0;
+    } finally {
+      setLoading(false);
     }
-  }, [loadLive]);
+  }, [dateKey, activeTab, page, pageSize, taskIdSearch]);
 
   useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
-    const tick = async () => {
-      const liveCount = await load();
-      if (!cancelled) setLoading(false);
-      if (!cancelled && liveCount > 0) {
-        timer = setTimeout(tick, 5000);
-      }
-    };
-    (async () => {
-      setLoading(true);
-      await tick();
-    })();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
+    queueMicrotask(() => {
+      void load();
+    });
   }, [load]);
 
-  const filtered = useMemo(() => {
-    let out = rows;
-    if (taskIdSearch.trim()) {
-      const q = taskIdSearch.trim().toLowerCase();
-      out = out.filter((r) => (r.task_id || "").toLowerCase().includes(q) || (r.id || "").toLowerCase().includes(q));
+  function dismissRetention() {
+    setShowRetention(false);
+    try {
+      localStorage.setItem("logs_retention_dismissed", String(Date.now()));
+    } catch {
+      /* ignore */
     }
-    if (activeTab) {
-      const tab = FILTER_TABS.find((t) => t.key === activeTab);
-      if (tab) out = out.filter((r) => tab.match(r.endpoint));
-    }
-    return out;
-  }, [rows, taskIdSearch, activeTab]);
+  }
 
   const showError = (msg: string) => {
     setError(msg);
@@ -391,7 +402,18 @@ export default function LogsPage() {
           <h1 className="text-2xl font-bold text-white">Logs</h1>
           <p className="mt-1 text-sm text-white/50">An overview of your latest requests</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <select
+            value={dateKey}
+            onChange={(e) => { setDateKey(e.target.value as typeof dateKey); setPage(1); }}
+            className="h-9 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-xs text-white/80 outline-none focus:border-white/20"
+          >
+            <option value="today" className="bg-[#141416]">Today</option>
+            <option value="7d" className="bg-[#141416]">Last 7 days</option>
+            <option value="30d" className="bg-[#141416]">Last 30 days</option>
+            <option value="3m" className="bg-[#141416]">Last 3 months</option>
+            <option value="all" className="bg-[#141416]">All time</option>
+          </select>
           <div className="relative">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-white/40">
               <circle cx="11" cy="11" r="8"/>
@@ -399,15 +421,26 @@ export default function LogsPage() {
             </svg>
             <input
               type="text"
-              value={taskIdSearch}
-              onChange={(e) => setTaskIdSearch(e.target.value)}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { setTaskIdSearch(searchInput); setPage(1); } }}
               placeholder="Enter taskId"
-              className="h-9 w-64 rounded-lg border border-white/10 bg-white/[0.03] pl-9 pr-3 text-xs text-white placeholder:text-white/35 focus:border-white/20 focus:bg-white/[0.05] focus:outline-none"
+              className="h-9 w-56 rounded-lg border border-white/10 bg-white/[0.03] pl-9 pr-8 text-xs text-white placeholder:text-white/35 focus:border-white/20 focus:bg-white/[0.05] focus:outline-none"
             />
+            {searchInput && (
+              <button
+                type="button"
+                onClick={() => { setSearchInput(""); setTaskIdSearch(""); setPage(1); }}
+                aria-label="Clear search"
+                className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-white/40 hover:text-white"
+              >
+                ×
+              </button>
+            )}
           </div>
           <button
             type="button"
-            onClick={() => { setLoading(true); void load().finally(() => setLoading(false)); }}
+            onClick={() => { setPage(1); void load(); }}
             disabled={loading}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 text-xs font-medium text-white/80 transition hover:bg-white/10 disabled:opacity-60"
           >
@@ -423,7 +456,7 @@ export default function LogsPage() {
             <button
               key={t.key}
               type="button"
-              onClick={() => setActiveTab(active ? "" : t.key)}
+              onClick={() => { setActiveTab(t.key); setPage(1); }}
               className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition ${
                 active
                   ? "border-white/15 bg-white/10 text-white shadow-sm"
@@ -438,6 +471,30 @@ export default function LogsPage() {
       </div>
 
       {error && <div className="mb-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>}
+
+      {showRetention && (
+        <div className="mb-4 flex items-start justify-between gap-4 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
+          <div>
+            <div className="text-sm font-semibold text-amber-200">Log Retention Policy Alert</div>
+            <p className="mt-1 text-xs text-amber-100/70">
+              Media files (images, videos, audio, etc.) are retained for 14 days, and log data is retained for 2 months
+            </p>
+            <p className="mt-0.5 text-xs text-amber-100/70">
+              Data beyond these periods will be permanently deleted. Please back up any important files or logs in advance.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissRetention}
+            aria-label="Dismiss notice"
+            className="shrink-0 rounded-md p-1 text-amber-200/60 transition hover:bg-amber-500/10 hover:text-amber-100"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
 
       <div className="overflow-hidden rounded-xl border border-white/5 bg-white/[0.02]">
         <div className="overflow-x-auto">
@@ -456,7 +513,7 @@ export default function LogsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((r) => {
+              {rows.map((r) => {
                 const clips = extractClipList(r.result_json);
                 const clipIds = clips.map((c) => c.id);
                 const st = (r.status || "").toLowerCase();
@@ -496,14 +553,61 @@ export default function LogsPage() {
                   </tr>
                 );
               })}
-              {loading && filtered.length === 0 && (
+              {loading && rows.length === 0 && (
                 <tr><td colSpan={9} className="px-4 py-14 text-center text-xs text-white/35">Loading…</td></tr>
               )}
-              {!loading && filtered.length === 0 && (
-                <tr><td colSpan={9} className="px-4 py-14 text-center text-xs text-white/40">No requests found for this filter.</td></tr>
+              {!loading && rows.length === 0 && (
+                <tr><td colSpan={9} className="px-4 py-14 text-center text-xs text-white/40">No logs found.</td></tr>
               )}
             </tbody>
           </table>
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-xs text-white/50">
+        <div className="flex items-center gap-2">
+          Rows per page
+          <select
+            value={pageSize}
+            onChange={(e) => { setPageSize(Number(e.target.value)); setPage(1); }}
+            className="h-8 rounded-lg border border-white/10 bg-white/[0.03] px-2 text-xs text-white/80 outline-none focus:border-white/20"
+          >
+            {[10, 20, 50].map((n) => (
+              <option key={n} value={n} className="bg-[#141416]">{n}</option>
+            ))}
+          </select>
+          <span className="ml-2">{total} logs</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page <= 1 || loading}
+            className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-40"
+          >
+            Previous
+          </button>
+          <span className="tabular-nums">{page} / {pages}</span>
+          <button
+            type="button"
+            onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            disabled={page >= pages || loading}
+            className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-40"
+          >
+            Next
+          </button>
+          <span className="ml-2 inline-flex items-center gap-1">
+            Go to
+            <input
+              type="number"
+              min={1}
+              max={pages}
+              value={page}
+              onChange={(e) => { const v = Number(e.target.value); if (v >= 1 && v <= pages) setPage(v); }}
+              className="h-8 w-14 rounded-md border border-white/10 bg-white/[0.03] px-2 text-center text-xs text-white outline-none focus:border-white/20"
+            />
+            page
+          </span>
         </div>
       </div>
 
@@ -588,11 +692,45 @@ function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: s
   const cover = extractCover(row.result_json);
   const lyrics = extractLyrics(row);
   const initials = (row.title || row.endpoint || "?").trim().charAt(0).toUpperCase() || "?";
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
+
+  // The table lives in an overflow container, so an absolutely-positioned card
+  // gets clipped. Render the preview with fixed coordinates instead, flipped up
+  // when there isn't room below the button.
+  function show() {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (!r) return;
+    const width = 288;
+    const left = Math.min(Math.max(8, r.right - width), window.innerWidth - width - 8);
+    const below = r.bottom + 8;
+    const top = below + 280 > window.innerHeight ? Math.max(8, r.top - 288) : below;
+    setPos({ top, left });
+  }
+  function hide() {
+    setPos(null);
+  }
+  useEffect(() => {
+    if (!pos) return;
+    const onScrollResize = () => setPos(null);
+    window.addEventListener("scroll", onScrollResize, true);
+    window.addEventListener("resize", onScrollResize);
+    return () => {
+      window.removeEventListener("scroll", onScrollResize, true);
+      window.removeEventListener("resize", onScrollResize);
+    };
+  }, [pos]);
+
   return (
-    <div className="group relative">
+    <div className="relative">
       <button
+        ref={btnRef}
         type="button"
         disabled={!canOpen}
+        onMouseEnter={() => canOpen && show()}
+        onMouseLeave={hide}
+        onFocus={() => canOpen && show()}
+        onBlur={hide}
         onClick={() => canOpen && onOpen()}
         className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-[11px] font-medium transition ${
           canOpen
@@ -607,8 +745,13 @@ function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: s
         </svg>
         Result
       </button>
-      {canOpen && (
-        <div className="pointer-events-none absolute right-0 top-full z-30 mt-1 hidden w-72 rounded-xl border border-white/10 bg-[#1a1a1d] p-3 shadow-2xl group-hover:block">
+      {canOpen && pos && (
+        <div
+          onMouseEnter={show}
+          onMouseLeave={hide}
+          style={{ position: "fixed", top: pos.top, left: pos.left, width: 288 }}
+          className="z-[60] rounded-xl border border-white/10 bg-[#1a1a1d] p-3 shadow-2xl"
+        >
           {cover ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={cover} alt="" className="mb-2 h-36 w-full rounded-lg object-cover" />
@@ -625,7 +768,7 @@ function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: s
           <button
             type="button"
             onClick={() => { void downloadClip(clipIds[0], "mp3").catch(() => {}); }}
-            className="pointer-events-auto mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10"
+            className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10"
           >
             Download MP3
           </button>

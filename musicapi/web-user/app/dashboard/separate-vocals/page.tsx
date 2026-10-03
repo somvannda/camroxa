@@ -10,20 +10,67 @@ import {
   inputCls,
   useJob,
 } from "@/components/playground";
+import { apiFetch } from "@/lib/api";
 import { useState } from "react";
 
 type SeparationType = "vocal" | "stems" | "advanced";
+
+// Common stem names offered by sunoapi.org's Advanced Split.
+const STEM_NAMES = [
+  "Vocals", "Instrumental", "Backing Vocals", "Lead Vocal", "Drums", "Bass", "Guitar",
+  "Acoustic Guitar", "Electric Guitar", "Piano", "Keyboard", "Percussion", "Strings",
+  "Synthesizer", "Effects", "Brass", "Woodwinds", "Cello", "Violin", "Saxophone",
+  "Trumpet", "Flute", "Organ", "Banjo", "Ukulele", "Harp", "Choir", "Kick", "Snare",
+  "Hi-Hat", "Cymbals", "Toms", "Claps", "Riser", "Foley", "Ambience", "Sub Bass",
+  "Synth Bass", "Arpeggio", "Pads", "Plucks", "Bell", "Marimba", "Xylophone",
+];
 
 export default function SeparateVocalsPage() {
   const [useCustomAudio, setUseCustomAudio] = useState(false);
   const [taskId, setTaskId] = useState("");
   const [audioId, setAudioId] = useState("");
   const [separationType, setSeparationType] = useState<SeparationType>("vocal");
-  const [trackName, setTrackName] = useState("");
+  const [stemName, setStemName] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadName, setUploadName] = useState("");
+  const [uploadError, setUploadError] = useState("");
+
+  async function handleAudioFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError("File size exceeds 20MB limit");
+      return;
+    }
+    setUploading(true);
+    setUploadError("");
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const resp = await apiFetch<{ clip_id: string }>("/me/voice-source", {
+        method: "POST",
+        body: JSON.stringify({ data: dataUrl, uploadType: "file_upload" }),
+      });
+      setAudioId(resp.clip_id);
+      setUploadName(file.name);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "stems" });
 
-  const canRun = !busy && (useCustomAudio ? audioId : taskId || audioId);
+  const canRun =
+    !busy &&
+    (useCustomAudio ? !!audioId.trim() : !!taskId.trim() && !!audioId.trim()) &&
+    (separationType !== "advanced" || !!stemName.trim());
 
   return (
     <PageShell
@@ -56,7 +103,8 @@ export default function SeparateVocalsPage() {
             taskId,
             audioId,
             separationType,
-            trackName,
+            stemName: separationType === "advanced" ? stemName : undefined,
+            trackName: separationType === "advanced" ? stemName : undefined,
           });
         }}
         className="space-y-5"
@@ -91,6 +139,19 @@ export default function SeparateVocalsPage() {
           </Field>
         </div>
 
+        {useCustomAudio && (
+          <div>
+            <Field label="Upload audio" help="MP3, WAV, OGG, M4A, FLAC, AAC · Max 20MB">
+              <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-xs text-white/55 transition hover:bg-white/[0.06] ${uploading ? "cursor-wait opacity-60" : ""}`}>
+                {uploading ? "Uploading…" : uploadName || "Click or drag audio file to upload"}
+                <input type="file" accept="audio/*" className="hidden" disabled={uploading} onChange={(e) => void handleAudioFile(e)} />
+              </label>
+            </Field>
+            {uploadError && <p className="mt-1 text-xs text-red-300">{uploadError}</p>}
+            <p className="mt-1 text-xs text-white/40">Choose one audio source — upload a file or enter an Audio ID.</p>
+          </div>
+        )}
+
         <Field label="Separation Type">
           <ChoiceCard
             value={separationType}
@@ -109,20 +170,26 @@ export default function SeparateVocalsPage() {
               {
                 key: "advanced",
                 title: "Advanced Split",
-                description: "Advanced stem separation with custom track name.",
+                description: "Advanced stem separation (Suno returns the full 12-stem set).",
               },
             ]}
           />
         </Field>
 
         {separationType === "advanced" && (
-          <Field label="trackName" required>
+          <Field label="Stem Name" required help="Select the stem you need. Suno returns the full 12-stem set, so you'll find it among the output tracks.">
             <input
               className={inputCls}
-              placeholder="Custom track name, e.g. drums"
-              value={trackName}
-              onChange={(e) => setTrackName(e.target.value)}
+              list="stem-name-options"
+              placeholder="Select stem name"
+              value={stemName}
+              onChange={(e) => setStemName(e.target.value)}
             />
+            <datalist id="stem-name-options">
+              {STEM_NAMES.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
           </Field>
         )}
 

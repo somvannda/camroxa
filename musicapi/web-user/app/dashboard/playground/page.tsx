@@ -76,11 +76,21 @@ interface TaskResult {
   job_id: string;
   type: string;
   status: string;
-  result?: any;
+  result?: { clips?: ClipLike[] } & Record<string, unknown>;
   error?: string;
 }
 
-function clipAudio(clip: any): string | null {
+interface ClipLike {
+  id?: string;
+  media_urls?: Array<{ url?: string }>;
+  audio_url?: string;
+  video_url?: string;
+  title?: string;
+  tags?: string;
+  model?: string;
+}
+
+function clipAudio(clip: ClipLike): string | null {
   const media = clip?.media_urls?.[0]?.url;
   if (media) return media;
   return clip?.audio_url ?? clip?.video_url ?? null;
@@ -265,13 +275,25 @@ export default function PlaygroundPage() {
   const [liveModels, setLiveModels] = useState<ModelOption[]>([]);
   const versions = useMemo(() => mergeVersions(liveModels, FALLBACK_VERSIONS), [liveModels]);
   const soundVersions = useMemo(() => mergeVersions(liveModels, FALLBACK_VERSIONS), [liveModels]);
-  const version = genType === "music" ? musicVersion : soundVersion;
 
   const [prompt, setPrompt] = useState("");
   const [title, setTitle] = useState("");
   const [tags, setTags] = useState("");
   const [negativeTags, setNegativeTags] = useState("");
   const [instrumental, setInstrumental] = useState(false);
+  const [lyrics, setLyrics] = useState("");
+  const [vocalGender, setVocalGender] = useState<"m" | "f">("m");
+  const [styleWeight, setStyleWeight] = useState("0.65");
+  const [audioWeight, setAudioWeight] = useState("0.65");
+  const [weirdnessConstraint, setWeirdnessConstraint] = useState("0.65");
+  const [personaId, setPersonaId] = useState("");
+  const [personaModel, setPersonaModel] = useState<"style_persona" | "voice_persona">("style_persona");
+  const [duration, setDuration] = useState("");
+  const [variety, setVariety] = useState("1");
+  const [refImages, setRefImages] = useState<string[]>([]);
+  const [uploadingImages, setUploadingImages] = useState(false);
+  const [audioUrl, setAudioUrl] = useState("");
+  const [videoUrl, setVideoUrl] = useState("");
 
   const [grabLyrics, setGrabLyrics] = useState(false);
   const [soundLoop, setSoundLoop] = useState(false);
@@ -315,15 +337,19 @@ export default function PlaygroundPage() {
   // A version persisted from a previous session may no longer be offered; move
   // it to the current default rather than submitting a model we cannot route.
   useEffect(() => {
-    if (!versions.length) return;
-    const keys = new Set(versions.map((v) => v.key));
-    setMusicVersion((v) => (keys.has(v) ? v : versions[0].key));
+    queueMicrotask(() => {
+      if (!versions.length) return;
+      const keys = new Set(versions.map((v) => v.key));
+      setMusicVersion((v) => (keys.has(v) ? v : versions[0].key));
+    });
   }, [versions]);
 
   useEffect(() => {
-    if (!soundVersions.length) return;
-    const keys = new Set(soundVersions.map((v) => v.key));
-    setSoundVersion((v) => (keys.has(v) ? v : soundVersions[0].key));
+    queueMicrotask(() => {
+      if (!soundVersions.length) return;
+      const keys = new Set(soundVersions.map((v) => v.key));
+      setSoundVersion((v) => (keys.has(v) ? v : soundVersions[0].key));
+    });
   }, [soundVersions]);
 
   useEffect(() => {
@@ -348,6 +374,87 @@ export default function PlaygroundPage() {
       }
     };
     pollRef.current = setTimeout(tick, 1500);
+  }
+
+  async function addRefImages(e: React.ChangeEvent<HTMLInputElement>) {
+    const remaining = Math.max(0, 5 - refImages.length);
+    const files = Array.from(e.target.files ?? []).slice(0, remaining);
+    e.target.value = "";
+    const readAsDataUrl = (f: File) =>
+      new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(f);
+      });
+    try {
+      setUploadingImages(true);
+      const urls: string[] = [];
+      for (const f of files) {
+        if (f.size > 10 * 1024 * 1024) continue;
+        const data = await readAsDataUrl(f);
+        const res = await apiFetch<{ url: string }>("/me/upload/reference", {
+          method: "POST",
+          body: JSON.stringify({ data, kind: "image" }),
+        });
+        urls.push(res.url);
+      }
+      setRefImages((a) => [...a, ...urls].slice(0, 5));
+    } catch {
+      setError("Could not upload the selected image.");
+    } finally {
+      setUploadingImages(false);
+    }
+  }
+
+  async function uploadRefAudio(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 50 * 1024 * 1024) {
+      setError("Audio exceeds 50MB.");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const res = await apiFetch<{ url: string }>("/me/upload/reference", {
+        method: "POST",
+        body: JSON.stringify({ data: dataUrl, kind: "audio" }),
+      });
+      setAudioUrl(res.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Audio upload failed");
+    }
+  }
+
+  async function uploadRefVideo(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 100 * 1024 * 1024) {
+      setError("Video exceeds 100MB.");
+      return;
+    }
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const res = await apiFetch<{ url: string }>("/me/upload/reference", {
+        method: "POST",
+        body: JSON.stringify({ data: dataUrl, kind: "video" }),
+      });
+      setVideoUrl(res.url);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Video upload failed");
+    }
   }
 
   async function onSubmit(e: React.FormEvent) {
@@ -378,7 +485,19 @@ export default function PlaygroundPage() {
           body.tags = tags || undefined;
           body.negative_tags = negativeTags || undefined;
           body.instrumental = instrumental;
+          body.prompt = lyrics || undefined;
+          body.vocal_gender = vocalGender;
+          body.style_weight = styleWeight === "" ? undefined : Number(styleWeight);
+          body.audio_weight = audioWeight === "" ? undefined : Number(audioWeight);
+          body.weirdness_constraint = weirdnessConstraint === "" ? undefined : Number(weirdnessConstraint);
+          body.duration = duration === "" ? undefined : Number(duration);
+          body.variety = Number(variety);
+          body.persona_id = personaId || undefined;
+          body.persona_model = personaId ? personaModel : undefined;
         }
+        if (refImages.length) body.imageUrls = refImages;
+        if (audioUrl.trim()) body.audioUrls = [audioUrl.trim()];
+        if (videoUrl.trim()) body.videoUrls = [videoUrl.trim()];
       }
       setLastBody(body);
       const created = await apiFetch<{ job_id: string }>("/me/generate", {
@@ -410,6 +529,14 @@ export default function PlaygroundPage() {
   }
 
   const promptLimit = genType === "music" ? 3000 : 500;
+  const attachmentCount =
+    genType === "music"
+      ? refImages.length +
+        (audioUrl.trim() ? 1 : 0) +
+        (videoUrl.trim() ? 1 : 0) +
+        (tags.trim() ? 1 : 0) +
+        (lyrics.trim() ? 1 : 0)
+      : 0;
   const featureList = [
     "Utilizes a streaming response system, delivering results in as fast as 20 seconds.",
     "Stable and watermark-free.",
@@ -483,36 +610,237 @@ export default function PlaygroundPage() {
                 </div>
               </div>
 
+              {/* Reference images — Suno's image upload (agentic_thinking) */}
+              <div>
+                <div className="mb-1.5 flex items-center justify-between">
+                  <div className="text-xs font-medium text-white/50">Reference Images (Optional)</div>
+                  <div className="text-[11px] text-white/30">{refImages.length}/5</div>
+                </div>
+                <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-xs text-white/50 transition-colors ${uploadingImages ? "cursor-wait opacity-60" : "hover:bg-white/[0.06]"}`}>
+                  {uploadingImages ? (
+                    <>
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white/80" />
+                      Uploading…
+                    </>
+                  ) : (
+                    <>
+                      <span className="text-base leading-none">+</span> Add image
+                    </>
+                  )}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/jpg,image/png,image/webp"
+                    multiple
+                    disabled={uploadingImages}
+                    className="hidden"
+                    onChange={(e) => void addRefImages(e)}
+                  />
+                </label>
+                {refImages.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {refImages.map((src, i) => (
+                      <div key={i} className="relative h-14 w-14 overflow-hidden rounded-lg border border-white/10">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={src} alt="reference" className="h-full w-full object-cover" />
+                        <button
+                          type="button"
+                          onClick={() => setRefImages((a) => a.filter((_, j) => j !== i))}
+                          className="absolute right-0 top-0 rounded-bl bg-black/70 px-1 text-[10px] text-white"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="mt-1 text-[11px] text-white/30">JPEG / JPG / PNG / WEBP · Max 10MB</div>
+              </div>
+
+              {/* Reference audio — Suno upload → cover (melody retained) */}
+              <div>
+                <div className="mb-1.5 text-xs font-medium text-white/50">Reference Audio URL (Optional)</div>
+                <input
+                  value={audioUrl}
+                  onChange={(e) => setAudioUrl(e.target.value)}
+                  placeholder="https://…/song.mp3"
+                  className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
+                />
+                <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50 transition-colors hover:bg-white/[0.06]">
+                  ⬆ Upload audio file
+                  <input type="file" accept="audio/*" className="hidden" onChange={(e) => void uploadRefAudio(e)} />
+                </label>
+                <div className="mt-1 text-[11px] text-white/30">
+                  Suno re-arranges the track in your style, keeping its melody.
+                </div>
+              </div>
+
+              {/* Reference video — first frame drives the image/agentic flow */}
+              <div>
+                <div className="mb-1.5 text-xs font-medium text-white/50">Reference Video (Optional)</div>
+                <input
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  placeholder="https://…/clip.mp4"
+                  className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
+                />
+                <label className="mt-2 flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-white/10 bg-white/[0.03] px-3 py-2 text-xs text-white/50 transition-colors hover:bg-white/[0.06]">
+                  ⬆ Upload video file
+                  <input type="file" accept="video/mp4,video/quicktime,video/webm" className="hidden" onChange={(e) => void uploadRefVideo(e)} />
+                </label>
+                <div className="mt-1 text-[11px] text-white/30">A frame is used to inspire the song. MP4 / MOV / WEBM · Max 100MB</div>
+              </div>
+
               {/* Custom mode fields */}
               {mode === "custom" && (
-                <div className="grid gap-3 md:grid-cols-2">
+                <div className="space-y-3">
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <div>
+                      <div className="mb-1 text-xs text-white/50">Title</div>
+                      <input
+                        value={title}
+                        onChange={(e) => setTitle(e.target.value)}
+                        placeholder="Song title"
+                        className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
+                      />
+                    </div>
+                    <div>
+                      <div className="mb-1 text-xs text-white/50">Style of Music / Tags</div>
+                      <input
+                        value={tags}
+                        onChange={(e) => setTags(e.target.value)}
+                        placeholder="synthwave, upbeat, 80s"
+                        className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
+                      />
+                    </div>
+                    <div className="md:col-span-2">
+                      <div className="mb-1 text-xs text-white/50">Negative Tags</div>
+                      <input
+                        value={negativeTags}
+                        onChange={(e) => setNegativeTags(e.target.value)}
+                        placeholder="Tags to exclude"
+                        className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Lyrics */}
                   <div>
-                    <div className="mb-1 text-xs text-white/50">Title</div>
-                    <input
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      placeholder="Song title"
-                      className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
+                    <div className="mb-1 flex items-center justify-between text-xs text-white/50">
+                      <span>Lyrics</span>
+                      <span className="text-white/30">{lyrics.length} / 3000</span>
+                    </div>
+                    <textarea
+                      value={lyrics}
+                      onChange={(e) => setLyrics(e.target.value.slice(0, 3000))}
+                      rows={5}
+                      placeholder="Write your own lyrics. Tip: two verses (8 lines) works best."
+                      className="w-full resize-y rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white placeholder-white/30 outline-none focus:border-[var(--violet)]"
                     />
                   </div>
-                  <div>
-                    <div className="mb-1 text-xs text-white/50">Style of Music / Tags</div>
-                    <input
-                      value={tags}
-                      onChange={(e) => setTags(e.target.value)}
-                      placeholder="synthwave, upbeat, 80s"
-                      className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
-                    />
-                  </div>
-                  <div className="md:col-span-2">
-                    <div className="mb-1 text-xs text-white/50">Negative Tags</div>
-                    <input
-                      value={negativeTags}
-                      onChange={(e) => setNegativeTags(e.target.value)}
-                      placeholder="Tags to exclude"
-                      className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm outline-none focus:border-[var(--violet)] text-white"
-                    />
-                  </div>
+
+                  {/* Advanced controls */}
+                  <details className="rounded-xl bg-white/[0.03] px-3 py-2">
+                    <summary className="cursor-pointer text-xs font-medium text-white/60">Advanced controls</summary>
+                    <div className="mt-3 grid gap-3 md:grid-cols-2">
+                      <div>
+                        <div className="mb-1 text-xs text-white/50">Vocal Gender</div>
+                        <select
+                          value={vocalGender}
+                          onChange={(e) => setVocalGender(e.target.value as "m" | "f")}
+                          className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-[var(--violet)]"
+                        >
+                          <option value="m" className="bg-[#141416]">Male</option>
+                          <option value="f" className="bg-[#141416]">Female</option>
+                        </select>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-xs text-white/50">Duration (seconds)</div>
+                        <input
+                          type="number"
+                          min="0"
+                          value={duration}
+                          onChange={(e) => setDuration(e.target.value)}
+                          placeholder="Auto"
+                          className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-[var(--violet)]"
+                        />
+                      </div>
+                      <div>
+                        <div className="mb-1 text-xs text-white/50">Style Weight (0–1)</div>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={styleWeight}
+                          onChange={(e) => setStyleWeight(e.target.value)}
+                          className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-[var(--violet)]"
+                        />
+                      </div>
+                      <div>
+                        <div className="mb-1 text-xs text-white/50">Audio Weight (0–1)</div>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={audioWeight}
+                          onChange={(e) => setAudioWeight(e.target.value)}
+                          className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-[var(--violet)]"
+                        />
+                      </div>
+                      <div>
+                        <div className="mb-1 text-xs text-white/50">Weirdness (0–1)</div>
+                        <input
+                          type="number"
+                          min="0"
+                          max="1"
+                          step="0.05"
+                          value={weirdnessConstraint}
+                          onChange={(e) => setWeirdnessConstraint(e.target.value)}
+                          className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-[var(--violet)]"
+                        />
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="mb-1 text-xs text-white/50">Variety (0–4)</div>
+                        <div className="flex gap-1 rounded-lg bg-black/20 p-1">
+                          {["0", "1", "2", "3", "4"].map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => setVariety(v)}
+                              className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition ${
+                                variety === v ? "bg-white/10 text-white" : "text-white/45 hover:text-white"
+                              }`}
+                            >
+                              {v}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="mb-1 text-xs text-white/50">Persona ID</div>
+                        <input
+                          value={personaId}
+                          onChange={(e) => setPersonaId(e.target.value)}
+                          placeholder="Optional persona / voice id"
+                          className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-[var(--violet)]"
+                        />
+                      </div>
+                      {personaId && (
+                        <div className="md:col-span-2">
+                          <div className="mb-1 text-xs text-white/50">Persona Model</div>
+                          <select
+                            value={personaModel}
+                            onChange={(e) => setPersonaModel(e.target.value as "style_persona" | "voice_persona")}
+                            className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-[var(--violet)]"
+                          >
+                            <option value="style_persona" className="bg-[#141416]">style_persona</option>
+                            <option value="voice_persona" className="bg-[#141416]">voice_persona</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+                  </details>
                 </div>
               )}
 
@@ -572,6 +900,13 @@ export default function PlaygroundPage() {
                 />
               </div>
             </>
+          )}
+
+          {/* Attachments counter */}
+          {genType === "music" && (
+            <div className="text-[11px] text-white/40">
+              Attachments used {attachmentCount}/10 (style, lyrics, images, video and audio combined)
+            </div>
           )}
 
           {/* Generate */}
@@ -706,7 +1041,7 @@ export default function PlaygroundPage() {
 
           {task.status === "complete" && Array.isArray(task.result?.clips) && (
             <div className="grid gap-4 md:grid-cols-2">
-              {task.result.clips.map((c: any, i: number) => {
+              {task.result.clips.map((c: ClipLike, i: number) => {
                 const audio = clipAudio(c);
                 const id = c?.id;
                 return (

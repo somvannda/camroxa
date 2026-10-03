@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { SunoClient, AccountCreds, BillingInfo } from "./client.js";
-import { decryptCookie } from "./cookieCrypto.js";
+import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { query } from "./db.js";
 import { normalizeModel } from "./models.js";
 
@@ -43,7 +43,20 @@ export class AccountPool {
   private captcha: Map<string, { required: boolean; updatedAt: number }> = new Map();
 
   constructor(accounts: AccountCreds[] = []) {
-    this.clients = accounts.map((a) => new SunoClient(a));
+    this.clients = accounts.map((a) => this.makeClient(a));
+  }
+
+  /** Build a client and attach cookie-rotation persistence for this account. */
+  private makeClient(a: AccountCreds): SunoClient {
+    a.persistCookie = (cookie: string) => {
+      void query("UPDATE suno_accounts SET client_cookie = $1 WHERE label = $2", [
+        encryptCookie(cookie),
+        a.id,
+      ]).catch(() => {
+        /* best-effort: a failed write just loses one rotation */
+      });
+    };
+    return new SunoClient(a);
   }
 
   get size(): number {
@@ -144,9 +157,19 @@ export class AccountPool {
    */
   async reload(): Promise<void> {
     const accounts = await AccountPool.loadCreds();
-    this.clients = accounts.map((a) => new SunoClient(a));
+    this.clients = accounts.map((a) => this.makeClient(a));
     this.health.clear();
     this.captcha.clear();
+  }
+
+  /**
+   * Best-effort renewal of every account's session. For `__client`-backed
+   * accounts this mints a fresh JWT (and persists any rotated cookie); for
+   * JWT-seeded accounts it is a no-op. Called by the keep-alive loop so long
+   * idle periods don't let a session lapse.
+   */
+  async refreshSessions(): Promise<void> {
+    await Promise.allSettled(this.clients.map((c) => c.refreshJwt()));
   }
 
   /** Load accounts from the `suno_accounts` table (single source of truth). */

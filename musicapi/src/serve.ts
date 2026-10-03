@@ -2,7 +2,8 @@ import "dotenv/config";
 import { existsSync } from "node:fs";
 import { AccountPool } from "./pool.js";
 import { buildServer } from "./server.js";
-import { pool as dbPool } from "./db.js";
+import { pool as dbPool, query, queryOne } from "./db.js";
+import { encryptCookie } from "./cookieCrypto.js";
 
 const port = Number(process.env.PORT ?? 4003);
 
@@ -18,6 +19,36 @@ try {
     "Check COOKIE_ENCRYPTION_KEY (must match the key the rows were encrypted with) and DATABASE_URL.",
   );
   process.exit(1);
+}
+if (pool.size === 0) {
+  // Production provisioning: a fresh host can seed its first account purely from
+  // a deploy secret, so no one has to sign in on the server. Prefer the durable
+  // `__client` cookie; a 'JWT' also works but expires in ~1h and cannot refresh.
+  const envSecret = (process.env.SUNO_CLIENT_COOKIE || process.env.SUNO_JWT || "").trim();
+  if (envSecret) {
+    try {
+      const label = process.env.SUNO_ACCOUNT_LABEL ?? "env-seed";
+      const existing = await queryOne<{ id: string }>(
+        "SELECT id FROM suno_accounts WHERE label = $1",
+        [label],
+      );
+      if (existing) {
+        await query(
+          "UPDATE suno_accounts SET type = 'paid', client_cookie = $1, device_id = COALESCE($2, device_id), is_active = true WHERE label = $3",
+          [encryptCookie(envSecret), process.env.SUNO_DEVICE_ID ?? null, label],
+        );
+      } else {
+        await query(
+          "INSERT INTO suno_accounts (label, type, client_cookie, device_id) VALUES ($1, 'paid', $2, $3)",
+          [label, encryptCookie(envSecret), process.env.SUNO_DEVICE_ID ?? ""],
+        );
+      }
+      pool = await AccountPool.fromDb();
+      console.log(`[seed] Seeded Suno account '${label}' from env (SUNO_CLIENT_COOKIE/SUNO_JWT).`);
+    } catch (e) {
+      console.error("[seed] env seeding failed:", e instanceof Error ? e.message : e);
+    }
+  }
 }
 if (pool.size === 0) {
   const accountsFile = process.env.ACCOUNTS_FILE ?? "accounts.json";

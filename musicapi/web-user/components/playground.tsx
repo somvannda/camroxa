@@ -98,88 +98,50 @@ export function AuthorizedAudio({
   clipId: string;
   /**
    * Direct provider/CDN URL. When present the browser streams it straight into
-   * `<audio>` (instant start, Range seeks, HTTP caching) instead of proxying the
-   * whole file through our backend. `/me/download` remains the fallback.
+   * `<audio>`. Otherwise the backend proxy URL is used, which 302-redirects to
+   * the stored object so the browser streams it with Range support — no
+   * whole-file blob buffering (that was the "Loading audio…" delay).
    */
   src?: string | null;
   className?: string;
 }) {
-  const [blobSrc, setBlobSrc] = useState<string | null>(null);
   const [cdnFailed, setCdnFailed] = useState(false);
-  const [loading, setLoading] = useState(!src);
+  const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
   const streamUrl = src && !cdnFailed ? src : null;
-
-  useEffect(() => {
-    // A direct CDN URL streams immediately — no proxy download, no blob copy.
-    if (streamUrl) {
-      setLoading(false);
-      setErr(null);
-      return;
-    }
-    let alive = true;
-    let createdBlob: string | null = null;
-    const ac = new AbortController();
-    (async () => {
-      try {
-        setLoading(true);
-        setErr(null);
-        const res = await authorizedFetch(
-          `/me/download?clip_id=${encodeURIComponent(clipId)}&format=mp3`,
-          { method: "GET", signal: ac.signal },
-        );
-        const blob = await res.blob();
-        createdBlob = URL.createObjectURL(blob);
-        if (alive) setBlobSrc(createdBlob);
-      } catch (e) {
-        if (!alive) return;
-        if (e instanceof DOMException && e.name === "AbortError") return;
-        const msg = e instanceof Error ? e.message : "Failed to load audio";
-        const friendly = /cannot reach server|failed to fetch|networkerror|load failed/i.test(msg)
-          ? "Audio not available — server unreachable."
-          : /not available|expired|502/i.test(msg)
-          ? "Audio not available. Clip may have expired."
-          : msg;
-        setErr(friendly);
-      } finally {
-        if (alive) setLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-      ac.abort();
-      if (createdBlob) URL.revokeObjectURL(createdBlob);
-    };
-  }, [clipId, streamUrl]);
+  const proxyUrl = `/backend/me/download?clip_id=${encodeURIComponent(clipId)}&format=mp3`;
+  const audioSrc = streamUrl ?? proxyUrl;
 
   if (err) return <div className={`text-[11px] text-red-300 ${className ?? ""}`}>{err}</div>;
-  if (loading) {
-    return (
-      <div className={`flex h-8 items-center gap-2 rounded-md bg-black/30 px-3 ${className ?? ""}`}>
-        <svg viewBox="0 0 24 24" fill="none" className="h-3.5 w-3.5 animate-spin text-white/40">
-          <circle cx="12" cy="12" r="10" stroke="currentColor" strokeOpacity="0.25" strokeWidth="4"/>
-          <path d="M22 12a10 10 0 0 1-10 10" stroke="currentColor" strokeWidth="4" strokeLinecap="round"/>
-        </svg>
-        <span className="text-[11px] text-white/40">Loading audio…</span>
-      </div>
-    );
-  }
-  const audioSrc = streamUrl ?? blobSrc;
-  if (!audioSrc) return null;
   return (
-    <audio
-      controls
-      preload="metadata"
-      className={`w-full h-8 [&::-webkit-media-controls-panel]:bg-black/60 ${className ?? ""}`}
-      src={audioSrc}
-      onError={() => {
-        // Expired/blocked CDN link → retry once through the backend proxy.
-        if (streamUrl) setCdnFailed(true);
-      }}
-    >
-      Your browser does not support the audio element.
-    </audio>
+    <div className="relative">
+      <audio
+        controls
+        preload="metadata"
+        className={`w-full h-8 [&::-webkit-media-controls-panel]:bg-black/60 ${className ?? ""}`}
+        src={audioSrc}
+        onLoadedMetadata={() => setLoading(false)}
+        onCanPlay={() => setLoading(false)}
+        onError={() => {
+          if (streamUrl) {
+            // Expired/blocked CDN link → retry once through the backend proxy.
+            setCdnFailed(true);
+            setLoading(true);
+          } else {
+            setLoading(false);
+            setErr("Audio not available. The clip may have expired, or credits are insufficient.");
+          }
+        }}
+      >
+        Your browser does not support the audio element.
+      </audio>
+      {loading && (
+        <span className="pointer-events-none absolute right-2 top-1.5 text-[10px] text-white/40">
+          Loading audio…
+        </span>
+      )}
+    </div>
   );
 }
 

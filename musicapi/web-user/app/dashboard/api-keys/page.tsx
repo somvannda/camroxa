@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
 
 interface KeyRow {
@@ -99,6 +99,15 @@ function CalendarIcon({ className = "w-4 h-4" }: { className?: string }) {
       <line x1="16" y1="2" x2="16" y2="6" />
       <line x1="8" y1="2" x2="8" y2="6" />
       <line x1="3" y1="10" x2="21" y2="10" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className = "w-3.5 h-3.5" }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M12 16v-4M12 8h.01" />
     </svg>
   );
 }
@@ -255,12 +264,12 @@ export default function ApiKeysPage() {
   const [safeHourly, setSafeHourly] = useState("");
   const [safeDaily, setSafeDaily] = useState("");
   const [safeTotal, setSafeTotal] = useState("");
-  const safeInitial = useRef<{ h: string; d: string; t: string } | null>(null);
+  const [safeInitial, setSafeInitial] = useState<{ h: string; d: string; t: string } | null>(null);
   function openSafe(k: KeyRow) {
     const h = k.safe_spend_hourly != null ? String(k.safe_spend_hourly) : "";
     const d = k.safe_spend_daily != null ? String(k.safe_spend_daily) : "";
     const t = (k.safe_spend_total ?? k.safe_spend_limit) != null ? String(k.safe_spend_total ?? k.safe_spend_limit) : "";
-    safeInitial.current = { h, d, t };
+    setSafeInitial({ h, d, t });
     setSafeHourly(h);
     setSafeDaily(d);
     setSafeTotal(t);
@@ -268,21 +277,22 @@ export default function ApiKeysPage() {
     setModal({ kind: "safe", key: k });
   }
   const safeDirty = useMemo(() => {
-    if (!safeInitial.current) return false;
+    if (!safeInitial) return false;
     return (
-      safeInitial.current.h !== safeHourly ||
-      safeInitial.current.d !== safeDaily ||
-      safeInitial.current.t !== safeTotal
+      safeInitial.h !== safeHourly ||
+      safeInitial.d !== safeDaily ||
+      safeInitial.t !== safeTotal
     );
-  }, [safeHourly, safeDaily, safeTotal]);
+  }, [safeInitial, safeHourly, safeDaily, safeTotal]);
   async function saveSafe(k: KeyRow) {
     setSaving(true);
     setError("");
     try {
-      const payload: any = {};
-      payload.safe_spend_hourly = safeHourly === "" ? null : Number(safeHourly);
-      payload.safe_spend_daily = safeDaily === "" ? null : Number(safeDaily);
-      payload.safe_spend_total = safeTotal === "" ? null : Number(safeTotal);
+      const payload: { safe_spend_hourly: number | null; safe_spend_daily: number | null; safe_spend_total: number | null } = {
+        safe_spend_hourly: safeHourly === "" ? null : Number(safeHourly),
+        safe_spend_daily: safeDaily === "" ? null : Number(safeDaily),
+        safe_spend_total: safeTotal === "" ? null : Number(safeTotal),
+      };
       await apiFetch(`/me/keys/${k.id}`, {
         method: "PUT",
         body: JSON.stringify(payload),
@@ -320,27 +330,6 @@ export default function ApiKeysPage() {
 
       {error && (
         <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</div>
-      )}
-
-      {newKey && (
-        <div className="mt-6 rounded-xl border border-[var(--emerald)]/30 bg-[var(--emerald)]/10 p-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="min-w-0">
-              <div className="text-sm font-semibold text-[var(--emerald)]">
-                Your new API key (copy now &mdash; shown only once)
-              </div>
-              <code className="mt-1 block break-all font-mono text-sm text-white">{newKey}</code>
-            </div>
-            <button
-              onClick={() => copyToClipboard(newKey)}
-              className="shrink-0 rounded-lg border border-white/10 bg-white/5 p-2 text-white/80 hover:text-white hover:bg-white/10"
-              aria-label="Copy full key"
-              title="Copy full key"
-            >
-              <CopyIcon />
-            </button>
-          </div>
-        </div>
       )}
 
       <div className="glass mt-6 rounded-2xl p-6">
@@ -394,32 +383,22 @@ export default function ApiKeysPage() {
                       </div>
                     </td>
                     <td className="py-3 pr-4">
-                      {ips.length === 0 ? (
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-white/10 bg-white/5 text-white/50"
+                          title={`All IPs allowed by default. Add up to 10 IP addresses to restrict access.\n\n${ips.length ? ips.join(", ") : "No IPs whitelisted yet"}`}
+                          aria-label="IP whitelist"
+                        >
+                          <ShieldIcon className="w-3.5 h-3.5" />
+                        </span>
                         <button
                           onClick={() => openIp(k)}
                           className="grad-bg inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-white"
                         >
-                          <ShieldIcon className="w-3.5 h-3.5" />
+                          <PlusIcon className="w-3.5 h-3.5" />
                           Add IP
                         </button>
-                      ) : (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          {ips.slice(0, 3).map((ip) => (
-                            <span key={ip} className="rounded-md border border-white/10 bg-white/5 px-2 py-0.5 text-xs text-white/80 font-mono">
-                              {ip}
-                            </span>
-                          ))}
-                          {ips.length > 3 && (
-                            <span className="text-xs text-white/50">+{ips.length - 3}</span>
-                          )}
-                          <button
-                            onClick={() => openIp(k)}
-                            className="rounded-md border border-white/10 bg-white/5 px-2.5 py-1 text-xs text-white/80 hover:text-white hover:bg-white/10"
-                          >
-                            Manage
-                          </button>
-                        </div>
-                      )}
+                      </div>
                     </td>
                     <td className="py-3 pr-4">
                       {!summary ? (
@@ -452,14 +431,16 @@ export default function ApiKeysPage() {
                         >
                           <PencilIcon />
                         </button>
-                        <button
-                          onClick={() => openDelete(k)}
-                          aria-label="Delete key"
-                          title="Delete key"
-                          className="rounded-md p-2 text-white/50 hover:text-red-300 hover:bg-red-500/10"
-                        >
-                          <TrashIcon />
-                        </button>
+                        {keys.length > 1 && (
+                          <button
+                            onClick={() => openDelete(k)}
+                            aria-label="Delete key"
+                            title="Delete key"
+                            className="rounded-md p-2 text-white/50 hover:text-red-300 hover:bg-red-500/10"
+                          >
+                            <TrashIcon />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -651,6 +632,12 @@ export default function ApiKeysPage() {
               <label className="inline-flex items-center gap-2 text-sm font-medium text-white">
                 <ClockIcon className="w-4 h-4 text-white/50" />
                 Hourly credit limit
+                <span
+                  className="text-white/35 hover:text-white/60"
+                  title="Maximum credits that can be consumed in any rolling 60-minute window. Requests are paused once the cap is reached."
+                >
+                  <InfoIcon />
+                </span>
               </label>
               <input
                 type="number"
@@ -666,6 +653,12 @@ export default function ApiKeysPage() {
               <label className="inline-flex items-center gap-2 text-sm font-medium text-white">
                 <CalendarIcon className="w-4 h-4 text-white/50" />
                 Daily credit limit
+                <span
+                  className="text-white/35 hover:text-white/60"
+                  title="Maximum credits that can be consumed from 00:00-24:00 UTC. Counter resets at midnight."
+                >
+                  <InfoIcon />
+                </span>
               </label>
               <input
                 type="number"
@@ -681,6 +674,12 @@ export default function ApiKeysPage() {
               <label className="inline-flex items-center gap-2 text-sm font-medium text-white">
                 <WalletIcon className="w-4 h-4 text-white/50" />
                 Total credit limit
+                <span
+                  className="text-white/35 hover:text-white/60"
+                  title="Maximum total credits that this API key can consume after this limit is set. Once the limit is reached, the key will be disabled."
+                >
+                  <InfoIcon />
+                </span>
               </label>
               <input
                 type="number"
@@ -721,13 +720,12 @@ export default function ApiKeysPage() {
           <Modal
             open
             onClose={() => setModal({ kind: "none" })}
-            title="Delete API key"
+            title="Confirm Delete"
             iconBeforeTitle={<TrashIcon className="w-4 h-4 text-red-300" />}
           >
             <div className="space-y-4">
               <p className="text-sm text-white/70">
-                Are you sure you want to delete <span className="font-semibold text-white">{k.name}</span>? This
-                permanently revokes the key &mdash; any app using it stops working immediately.
+                Are you sure you want to delete this API Key? This action cannot be undone.
               </p>
               {k.credits > 0 && (
                 <p className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-200">
@@ -759,6 +757,38 @@ export default function ApiKeysPage() {
           </Modal>
         );
       })()}
+
+      {/* Create success — save this key (shown once) */}
+      <Modal
+        open={!!newKey}
+        onClose={() => setNewKey(null)}
+        title="API Key Created Successfully"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-white/70">
+            Please save this API key somewhere safe and easily accessible.
+          </p>
+          <div className="flex items-center gap-2 rounded-lg border border-white/10 bg-black/30 p-3">
+            <code className="min-w-0 flex-1 break-all font-mono text-sm text-white">{newKey}</code>
+            <button
+              onClick={() => newKey && copyToClipboard(newKey)}
+              className="shrink-0 rounded-lg border border-white/10 bg-white/5 p-2 text-white/80 hover:bg-white/10 hover:text-white"
+              aria-label="Copy full key"
+              title="Copy full key"
+            >
+              <CopyIcon />
+            </button>
+          </div>
+          <div className="flex justify-end">
+            <button
+              onClick={() => setNewKey(null)}
+              className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const SESSION_COOKIE = "sunosession";
+const SESSION_COOKIE = "sunosession_admin";
 // Same backend the /backend/* rewrite targets (next.config.ts).
 const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:4003";
 

@@ -16,6 +16,8 @@ export interface AccountCreds {
   clientCookie: string;
   deviceId: string;
   type?: "free" | "paid";
+  /** Called when Clerk rotates the `__client` cookie so it can be persisted. */
+  persistCookie?: (cookie: string) => void;
 }
 
 export interface GenerateParams {
@@ -34,6 +36,19 @@ export interface GenerateParams {
   styleWeight?: number;
   weirdnessConstraint?: number;
   audioWeight?: number;
+  /** Diversity of generated results, integer 0–4 (live-verified accepted). */
+  variety?: number;
+  /** Base64-encoded images sent as `user_uploaded_images_b64` (legacy/ignored). */
+  imagesB64?: string[];
+  /** Image upload ids (from `uploadImage`) sent as `user_uploaded_image_ids`. */
+  imageIds?: string[];
+  /** Audio upload ids (from `createAudioUpload`) sent as `user_uploaded_audio_ids`. */
+  audioIds?: string[];
+  /** Suno internal task (e.g. "agentic_thinking") and create metadata. */
+  task?: string;
+  metadata?: Record<string, unknown>;
+  /** Suno clip id used as an artist/style reference. */
+  artistClipId?: string;
 }
 
 export interface SoundsParams {
@@ -74,8 +89,46 @@ export interface BillingInfo {
  */
 export class SunoClient {
   private cachedJwt?: string;
+  private jwtExpiresAt = 0;
 
   constructor(public readonly account: AccountCreds) {}
+
+  /**
+   * Capture a rotated `__client` cookie from a Clerk response and persist it,
+   * so the account stays authenticated without re-entering the cookie. Clerk
+   * rotates this cookie opportunistically; missing the rotation eventually
+   * invalidates the session.
+   */
+  private captureSetCookie(res: Response): void {
+    const anyHeaders = res.headers as unknown as { getSetCookie?: () => string[] };
+    const raw = typeof anyHeaders.getSetCookie === "function" ? anyHeaders.getSetCookie() : [];
+    const cookies: string[] = Array.isArray(raw) && raw.length
+      ? raw
+      : (() => { const single = res.headers.get("set-cookie"); return single ? [single] : []; })();
+    for (const sc of cookies) {
+      const m = sc.match(/__client=([^;]+)/);
+      const next = m?.[1];
+      if (next && next !== this.account.clientCookie) {
+        this.account.clientCookie = next;
+        try {
+          this.account.persistCookie?.(next);
+        } catch {
+          /* persistence is best-effort */
+        }
+      }
+    }
+  }
+
+  /** Read a JWT's `exp` claim (ms), or 0 when unparseable. */
+  private decodeExpiry(jwt: string): number {
+    try {
+      const payload = jwt.split(".")[1];
+      const json = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as { exp?: number };
+      return json.exp ? json.exp * 1000 : 0;
+    } catch {
+      return 0;
+    }
+  }
 
   private clerkHeaders(extra: Record<string, string> = {}): Record<string, string> {
     return {
@@ -89,6 +142,7 @@ export class SunoClient {
   private async getSessionId(): Promise<string> {
     const url = `${config.clerkUrl}/v1/client?__clerk_api_version=${CLERK_API_VERSION}&_clerk_js_version=${CLERK_VERSION}`;
     const res = await fetch(url, { headers: this.clerkHeaders(), signal: AbortSignal.timeout(15_000) });
+    this.captureSetCookie(res);
     if (!res.ok) throw new Error(`Clerk /client failed (${res.status}): ${await res.text()}`);
     const data = (await res.json()) as { response?: { last_active_session_id?: string } };
     const sid = data.response?.last_active_session_id;
@@ -103,14 +157,34 @@ export class SunoClient {
       headers: this.clerkHeaders({ "content-type": "application/x-www-form-urlencoded" }),
       signal: AbortSignal.timeout(15_000),
     });
+    this.captureSetCookie(res);
     if (!res.ok) throw new Error(`Clerk token mint failed (${res.status}): ${await res.text()}`);
     const data = (await res.json()) as { jwt?: string };
     if (!data.jwt) throw new Error("Clerk returned no jwt.");
+    this.jwtExpiresAt = this.decodeExpiry(data.jwt);
     return data.jwt;
   }
 
   async resolveJwt(): Promise<string> {
-    if (!this.cachedJwt) {
+    const stored = this.account.clientCookie?.trim() ?? "";
+    // Both an access JWT (token_type "access") and the durable __client refresh
+    // token are JWTs, so format alone is not enough — decode the claim.
+    if (/^eyJ[\w-]*\.[\w-]+\.[\w-]+$/.test(stored)) {
+      let access = true;
+      try {
+        const payload = JSON.parse(
+          Buffer.from(stored.split(".")[1], "base64url").toString("utf8"),
+        ) as Record<string, unknown>;
+        access = payload["suno.com/claims/token_type"] === "access";
+      } catch {
+        access = true; // unknown JWT shape → treat as a one-off access token
+      }
+      if (access) return stored;
+    }
+    // Durable `__client` refresh cookie → mint a JWT from Clerk, renewing
+    // proactively ~5 minutes before expiry so jobs never hit a 401.
+    const expiring = this.jwtExpiresAt > 0 && Date.now() > this.jwtExpiresAt - 5 * 60_000;
+    if (!this.cachedJwt || expiring) {
       this.cachedJwt = await this.mintJwt(await this.getSessionId());
     }
     return this.cachedJwt;
@@ -118,6 +192,7 @@ export class SunoClient {
 
   async refreshJwt(): Promise<string> {
     this.cachedJwt = undefined;
+    this.jwtExpiresAt = 0;
     return this.resolveJwt();
   }
 
@@ -207,13 +282,14 @@ export class SunoClient {
       generation_type: "TEXT",
       continue_at: null,
       continue_clip_id: null,
-      task: null,
+      task: params.task ?? null,
       token,
       gpt_description_prompt: params.gptDescriptionPrompt ?? "",
       tags: params.tags ?? "",
       title: params.title ?? "",
       negative_tags: params.negativeTags ?? "",
     };
+    if (params.metadata) payload.metadata = params.metadata;
     if (params.personaId) {
       payload.persona_id = params.personaId;
       payload.artist_clip_id = params.personaId;
@@ -224,6 +300,17 @@ export class SunoClient {
     if (params.styleWeight != null) payload.style_weight = params.styleWeight;
     if (params.weirdnessConstraint != null) payload.weirdness_constraint = params.weirdnessConstraint;
     if (params.audioWeight != null) payload.audio_weight = params.audioWeight;
+    if (params.variety != null) payload.variety = params.variety;
+    if (params.imagesB64 && params.imagesB64.length) {
+      payload.user_uploaded_images_b64 = params.imagesB64;
+    }
+    if (params.imageIds && params.imageIds.length) {
+      payload.user_uploaded_image_ids = params.imageIds;
+    }
+    if (params.audioIds && params.audioIds.length) {
+      payload.user_uploaded_audio_ids = params.audioIds;
+    }
+    if (params.artistClipId) payload.artist_clip_id = params.artistClipId;
 
     const res = await this.request("/api/generate/v2/", {
       method: "POST",
@@ -314,17 +401,27 @@ export class SunoClient {
     });
   }
 
-  /** Stem separation (vocal/instrumental stems + MIDI). Requires a paid plan. */
-  async stems(clipId: string): Promise<Clip[]> {
+  /** Stem separation. Live-verified modes:
+   *  - "vocal"   → 2 tracks (Vocals + Instrumental): stem_task "two"
+   *  - "stems"   → 12 tracks: stem_task "twelve"
+   *  - "advanced"→ falls back to the 12-track set (single-stem selection TBD).
+   *  Requires a paid plan. */
+  async stems(clipId: string, mode: "vocal" | "stems" | "advanced" = "stems"): Promise<Clip[]> {
+    const cfg =
+      mode === "vocal"
+        ? { stem_type_id: 0, stem_type_group_name: "Two", stem_task: "two" }
+        : { stem_type_id: 91, stem_type_group_name: "Twelve", stem_task: "twelve" };
     return this.submitClips("/api/generate/v2-web/", {
       task: "gen_stem",
       generation_type: "TEXT",
       mv: "chirp-v3-5-b",
+      prompt: "",
+      tags: "",
+      title: "",
+      negative_tags: "",
       make_instrumental: true,
       continue_clip_id: clipId,
-      stem_type_id: 91,
-      stem_type_group_name: "Twelve",
-      stem_task: "twelve",
+      ...cfg,
     });
   }
 
@@ -369,11 +466,34 @@ export class SunoClient {
   }
 
   /** Replace a time section of a clip. */
-  async replaceSection(clipId: string, params: { startS: number; endS: number; lyrics: string }): Promise<Clip[]> {
-    return this.submitClips("/api/generate/v2-web/", {
+  async replaceSection(
+    clipId: string,
+    params: {
+      startS: number;
+      endS: number;
+      lyrics: string;
+      model?: string;
+      prompt?: string;
+      tags?: string;
+      title?: string;
+      negativeTags?: string;
+      vocalGender?: string;
+      styleWeight?: number;
+      weirdnessConstraint?: number;
+      audioWeight?: number;
+      personaId?: string;
+      personaModel?: string;
+    },
+  ): Promise<Clip[]> {
+    const payload: Record<string, unknown> = {
       task: "infill",
       generation_type: "TEXT",
-      mv: config.model,
+      mv: params.model ?? config.model,
+      prompt: params.lyrics,
+      gpt_description_prompt: params.prompt ?? params.lyrics,
+      tags: params.tags ?? "",
+      title: params.title ?? "",
+      negative_tags: params.negativeTags ?? "",
       continue_clip_id: clipId,
       infill_context_start_s: params.startS,
       infill_context_end_s: params.endS,
@@ -382,7 +502,17 @@ export class SunoClient {
       infill_dur_s: params.endS - params.startS,
       infill_lyrics: params.lyrics,
       continued_aligned_prompt: params.lyrics,
-    });
+    };
+    if (params.vocalGender) payload.vocal_gender = params.vocalGender;
+    if (params.styleWeight != null) payload.style_weight = params.styleWeight;
+    if (params.weirdnessConstraint != null) payload.weirdness_constraint = params.weirdnessConstraint;
+    if (params.audioWeight != null) payload.audio_weight = params.audioWeight;
+    if (params.personaId) {
+      payload.persona_id = params.personaId;
+      payload.artist_clip_id = params.personaId;
+      payload.persona_model = params.personaModel ?? "style_persona";
+    }
+    return this.submitClips("/api/generate/v2-web/", payload);
   }
 
   /**
@@ -439,16 +569,16 @@ export class SunoClient {
       task: "cover_infill",
       generation_type: "TEXT",
       mv: config.model,
-      params: {
-        prompt: params.prompt ?? "",
-        cover_clip_id: coverClipId,
-        cover_start_s: params.coverStartS ?? 0,
-        cover_end_s: params.coverEndS ?? 60,
-        title: params.title ?? "",
-        tags: params.tags ?? "",
-      },
-      override_fields: ["prompt"],
+      prompt: params.prompt ?? "",
       make_instrumental: false,
+      // Pydantic `loc` names the model, so these are flat top-level fields.
+      cover_clip_id: coverClipId,
+      continue_clip_id: coverClipId,
+      cover_start_s: params.coverStartS ?? null,
+      cover_end_s: params.coverEndS ?? null,
+      title: params.title ?? "",
+      tags: params.tags ?? "",
+      override_fields: ["prompt"],
       transaction_uuid: randomUUID(),
     });
   }
@@ -653,21 +783,19 @@ export class SunoClient {
   }
 
   /** Step 3: register / finish upload (after S3 multipart PUT succeeded).
-   *  Confirmed via probe: POST /api/uploads/audio/{id}/upload-finish/ requires {spec.upload_type, spec.upload_filename}
-   */
+   *  Suno's Pydantic `loc` names the model, not a nesting level, so the fields are
+   *  flat top-level: {upload_type, upload_filename, upload_title}. */
   async registerAudioUpload(
     uploadId: string,
     params: { uploadType: string; uploadFilename: string; uploadTitle?: string }
   ): Promise<unknown> {
     const token = await this.ensureCaptchaToken();
     const body: Record<string, unknown> = {
-      spec: {
-        upload_type: params.uploadType,
-        upload_filename: params.uploadFilename,
-        upload_title: params.uploadTitle ?? "",
-      },
+      upload_type: params.uploadType,
+      upload_filename: params.uploadFilename,
+      upload_title: params.uploadTitle ?? "",
     };
-    if (token) (body.spec as Record<string, unknown>).token = token;
+    if (token) body.token = token;
     const res = await this.request(`/api/uploads/audio/${uploadId}/upload-finish/`, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -704,6 +832,73 @@ export class SunoClient {
     }
     if (last) return last;
     throw new Error(`Timed out waiting for upload ${uploadId} to process.`);
+  }
+
+  /** Full audio upload: create session → POST bytes to Suno's S3 → register →
+   *  poll for the processed clip id. Returns a clip id usable as a persona/task
+   *  root. Mirrors uploadImage but for audio (voice recordings / song demos). */
+  async uploadAudio(
+    bytes: Buffer,
+    extension = "wav",
+    uploadType: "voice_recording" | "file_upload" | "song_demo" = "voice_recording",
+  ): Promise<string> {
+    const ext = extension.replace(/^\./, "").toLowerCase() || "wav";
+    const session = await this.createAudioUpload({ extension: ext, uploadType });
+    const contentType = session.fields["Content-Type"] || `audio/${ext}`;
+    const form = new FormData();
+    for (const [k, v] of Object.entries(session.fields)) form.append(k, v);
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), `audio.${ext}`);
+    const up = await fetch(session.url, { method: "POST", body: form });
+    if (!up.ok && up.status !== 204) {
+      throw new Error(`audio S3 upload failed (${up.status}): ${await up.text()}`);
+    }
+    await this.registerAudioUpload(session.id, { uploadType, uploadFilename: `audio.${ext}` });
+    const status = await this.getAudioUploadStatus(session.id);
+    return status.clip_id || session.id;
+  }
+
+  // =========================================
+  // Image upload (cover art / reference)
+  // =========================================
+
+  /** Step 1: create an image upload session → { id, url, fields }.
+   *  Confirmed live: POST /api/uploads/image/ with { extension } (e.g. "jpg"). */
+  async createImageUpload(
+    extension: string,
+  ): Promise<{ id: string; url: string; fields: Record<string, string> }> {
+    const res = await this.request("/api/uploads/image/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ extension: extension.replace(/^\./, "") }),
+    });
+    if (!res.ok) throw new Error(`createImageUpload failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as { id: string; url: string; fields: Record<string, string> };
+  }
+
+  /** Full 2-step image upload: POST the bytes against Suno's S3 policy and return
+   *  the image id that goes in `user_uploaded_image_ids`. */
+  async uploadImage(bytes: Buffer, extension = "jpg"): Promise<string> {
+    const ext = extension.replace(/^\./, "").toLowerCase();
+    const { id, url, fields } = await this.createImageUpload(ext);
+    const contentType = fields["Content-Type"] || `image/${ext}`;
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), `image.${ext}`);
+    const up = await fetch(url, { method: "POST", body: form });
+    if (!up.ok && up.status !== 204) {
+      throw new Error(`image S3 upload failed (${up.status}): ${await up.text()}`);
+    }
+    // Confirm the upload with Suno (required — without this the generate call
+    // rejects the image as "not uploaded successfully").
+    const finish = await this.request(`/api/uploads/image/${id}/upload-finish/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!finish.ok) {
+      throw new Error(`image upload-finish failed (${finish.status}): ${await finish.text()}`);
+    }
+    return id;
   }
 
   // =========================================
@@ -823,12 +1018,18 @@ export class SunoClient {
 
   /** Generate recovery audio for a clip (placeholder; falls back to clip detail if separate task not yet discovered). */
   async generateRecoveryAudio(clipId: string, prompt = ""): Promise<Clip[]> {
+    const text = prompt && prompt.trim() ? prompt : "recovery audio, clean vocals";
     return this.submitClips("/api/generate/v2-web/", {
       task: "fixed_infill",
       mv: config.model,
       generation_type: "TEXT",
+      prompt: text,
+      gpt_description_prompt: text,
+      tags: "",
+      title: "Recovery audio",
+      negative_tags: "",
       params: {
-        prompt: prompt ?? "recovery audio, clean vocals",
+        prompt: text,
         continue_clip_id: clipId,
         title: "Recovery audio",
       },
