@@ -313,6 +313,96 @@ async function creditsPerUsdRate(): Promise<number> {
     : 200;
 }
 
+/**
+ * Self-describing OpenAPI 3.1 document for the public `/api/v1` surface, built
+ * from the live route table so it can never drift from the implementation.
+ */
+function buildOpenApi(routes: Array<{ method: string; url: string }>) {
+  const paths: Record<string, Record<string, unknown>> = {};
+  const tagSet = new Set<string>();
+  for (const r of routes) {
+    if (!r.url.startsWith("/api/v1/")) continue;
+    const path = r.url.slice("/api/v1".length) || "/";
+    const method = r.method.toLowerCase();
+    const tag = path.split("/").filter(Boolean)[0] ?? "root";
+    tagSet.add(tag);
+    const operationId =
+      `${method}${path}`
+        .replace(/[^a-zA-Z0-9]+(.)?/g, (_m, c: string | undefined) => (c ? c.toUpperCase() : ""))
+        .replace(/^[a-z]/, (c) => c.toUpperCase());
+    (paths[path] ??= {})[method] = {
+      tags: [tag],
+      summary: `${r.method} ${path}`,
+      operationId,
+      responses: {
+        "200": {
+          description: "Success",
+          content: { "application/json": { schema: { $ref: "#/components/schemas/Envelope" } } },
+        },
+        "400": { description: "Bad request" },
+        "401": { description: "Invalid or missing API key" },
+        "402": { description: "Insufficient credits" },
+      },
+    };
+  }
+  return {
+    openapi: "3.1.0",
+    info: {
+      title: "CAMXORA Music API",
+      version: "1.0.0",
+      description:
+        "White-label AI music generation API, drop-in compatible with docs.sunoapi.org. " +
+        "Every response uses the {code, msg, data} envelope; business errors travel in `code`.",
+    },
+    servers: [{ url: "/api/v1" }],
+    security: [{ bearerAuth: [] }],
+    tags: [...tagSet].map((name) => ({ name })),
+    paths,
+    components: {
+      securitySchemes: { bearerAuth: { type: "http", scheme: "bearer" } },
+      schemas: {
+        Envelope: {
+          type: "object",
+          properties: {
+            code: { type: "integer", example: 200 },
+            msg: { type: "string", example: "success" },
+            data: { description: "Endpoint-specific payload" },
+          },
+          required: ["code", "msg"],
+        },
+      },
+    },
+  };
+}
+
+/** LLM-friendly API guide served at /llms.txt (docs.sunoapi.org parity). */
+function buildLlmsTxt(): string {
+  return `# CAMXORA Music API
+
+> White-label AI music generation REST API, drop-in compatible with docs.sunoapi.org.
+
+## Base
+- Base URL: /api/v1
+- Auth: Authorization: Bearer <API_KEY>
+- Envelope: every response is {"code":200,"msg":"success","data":...}; business errors use a non-200 code with HTTP 200.
+
+## Core endpoints
+- POST /api/v1/generate — submit a generation; returns data.taskId.
+- GET /api/v1/generate/record-info?taskId= — poll status (PENDING | TEXT_SUCCESS | FIRST_SUCCESS | SUCCESS | *_FAILED); on SUCCESS, data.response.sunoData[] tracks carry a playable audio_url.
+- GET /api/v1/get-credits — remaining credits.
+- GET /api/v1/task/:id — task status (aliased shape).
+
+## Notes for agents
+- Pass callBackUrl for a webhook, or the sentinel "playground" to poll instead.
+- callback_url must be an absolute public URL; private/internal hosts are rejected.
+- Credits are debited per call; insufficient credits return HTTP 402 (code 402).
+
+## Links
+- Docs: /docs
+- OpenAPI: /openapi.json
+`;
+}
+
 export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance> {
   const app = Fastify({
     // JSON logs with request ids. Header redaction is defense-in-depth: Fastify's
@@ -457,6 +547,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (isTerminalJob(job)) jobs.delete(id);
     }
   }
+
+  // Collect every registered route so /openapi.json describes itself without a
+  // second source of truth (documentation only; never on the request path).
+  const documentedRoutes: Array<{ method: string; url: string }> = [];
+  app.addHook("onRoute", (routeOptions) => {
+    const methods = Array.isArray(routeOptions.method) ? routeOptions.method : [routeOptions.method];
+    for (const method of methods) {
+      if (method === "HEAD" || method === "OPTIONS") continue;
+      documentedRoutes.push({ method, url: routeOptions.url });
+    }
+  });
 
   // Reject unsafe caller-supplied webhook targets before any handler runs, so a
   // bad callback_url can't later reach the internal network — or, on routes that
@@ -2487,6 +2588,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   const PROFILE_COLUMNS = "id, email, name, language, role, status, email_subscription, credit_alert_thresholds, created_at";
 
   app.get("/settings", async () => ({ brand: await loadBrandSettings() }));
+
+  // Self-describing docs for drop-in integrators and LLM crawlers.
+  app.get("/openapi.json", async () => buildOpenApi(documentedRoutes));
+  app.get("/llms.txt", async (_req, reply) => {
+    reply.type("text/plain; charset=utf-8");
+    return buildLlmsTxt();
+  });
 
   app.get("/me/profile", async (req, reply) => {
     const u = requireAuth(req, reply);
