@@ -13,7 +13,7 @@ import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, v
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
 import { captchaRequired } from "./captcha.js";
-import { assertCallbackUrlAllowed, CallbackUrlError } from "./callbackUrl.js";
+import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
 import { normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
@@ -467,6 +467,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     for (const field of ["callback_url", "callBackUrl"]) {
       const value = body[field];
       if (typeof value !== "string" || !value.trim()) continue;
+      if (isCallbackSentinel(value)) continue; // panel sentinel, e.g. "playground"
       try {
         await assertCallbackUrlAllowed(value);
       } catch (err) {
@@ -913,21 +914,35 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     taskId: string;
     result?: unknown;
   }): Promise<void> {
-    await query(
-      `INSERT INTO usage_logs (user_id, api_key_id, endpoint, model, prompt, status, credits_consumed, task_id, result_json)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [
-        args.userId,
-        args.apiKeyId,
-        args.endpoint,
-        args.model ?? null,
-        args.prompt ?? null,
-        args.status,
-        args.credits,
-        args.taskId,
-        args.result ? JSON.stringify(args.result) : null,
-      ],
-    );
+    const insert = (apiKeyId: string | null) =>
+      query(
+        `INSERT INTO usage_logs (user_id, api_key_id, endpoint, model, prompt, status, credits_consumed, task_id, result_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        [
+          args.userId,
+          apiKeyId,
+          args.endpoint,
+          args.model ?? null,
+          args.prompt ?? null,
+          args.status,
+          args.credits,
+          args.taskId,
+          args.result ? JSON.stringify(args.result) : null,
+        ],
+      );
+    try {
+      await insert(args.apiKeyId);
+    } catch (e) {
+      // A job can outlive the API key that created it (the key was deleted before
+      // the job finalized). `usage_logs.api_key_id` is `ON DELETE SET NULL`, so
+      // retry without the stale id instead of failing the whole finalize step
+      // (which would also skip the callback).
+      if ((e as { code?: string }).code === "23503" && args.apiKeyId) {
+        await insert(null);
+      } else {
+        throw e;
+      }
+    }
   }
 
   // --- job persistence -----------------------------------------------------
@@ -1126,7 +1141,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   async function notify(job: Job): Promise<void> {
-    if (!job.callbackUrl) return;
+    if (!job.callbackUrl || isCallbackSentinel(job.callbackUrl)) return;
     try {
       // Re-check at the sink as well: a public hostname accepted earlier can be
       // re-pointed at an internal address before the job finishes (DNS rebinding).
@@ -5648,6 +5663,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
             track.image_url = url;
             track.imageUrl = url;
           }
+        }
+        // Suno puts a non-playable ".../api/forbidden" placeholder in `audio_url`
+        // for uncached clips; the progressive CDN `media_urls[].url` is the real,
+        // fetchable link sunoapi.org consumers expect.
+        const media = Array.isArray(track.media_urls)
+          ? (track.media_urls as Array<{ url?: string; delivery?: string }>)
+          : [];
+        const progressive = media.find((m) => m?.delivery === "progressive") ?? media[0];
+        const playable = progressive?.url;
+        if (typeof playable === "string") {
+          const bad = (v: unknown) => !v || /forbidden|undefined|null/i.test(String(v));
+          if (bad(track.audio_url)) { track.audio_url = playable; track.audioUrl = playable; }
+          if (bad(track.stream_audio_url)) { track.stream_audio_url = playable; track.streamAudioUrl = playable; }
+          if (bad(track.source_audio_url)) { track.source_audio_url = playable; track.sourceAudioUrl = playable; }
         }
         return track;
       }),
