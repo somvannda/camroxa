@@ -9,6 +9,12 @@ const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"]
 export const metadata: Metadata = {
   title: "Camxora Music API",
   description: "AI music generation platform",
+  // Optional Google Search Console ownership token (baked in at build time from
+  // GOOGLE_SITE_VERIFICATION) so the OAuth app's domain can be verified without
+  // editing code.
+  ...(process.env.GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: process.env.GOOGLE_SITE_VERIFICATION } }
+    : {}),
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

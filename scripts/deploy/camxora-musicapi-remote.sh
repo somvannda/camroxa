@@ -227,6 +227,7 @@ for app in web-user web-admin; do
     cd '${MUSICAPI_DIR}/${app}'
     npm ci --no-audit --no-fund || npm install --no-audit --no-fund
     echo 'BACKEND_URL=http://127.0.0.1:${MUSICAPI_PORT}' > .env.production
+    echo 'GOOGLE_SITE_VERIFICATION=${MUSICAPI_GOOGLE_SITE_VERIFICATION:-}' >> .env.production
     npm run build
   "
 done
