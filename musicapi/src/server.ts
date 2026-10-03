@@ -1128,7 +1128,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /** Read a job from the in-memory cache, falling back to the persisted row. */
+  // Job ids are always UUIDs (`newJob` uses randomUUID). Validate before the
+  // lookup so a malformed id returns "not found" instead of letting Postgres
+  // reject the `uuid` cast and surface a 500 to the caller.
   async function getJob(id: string): Promise<Job | null> {
+    if (!UUID_RE.test(id)) return null;
     const cached = jobs.get(id);
     if (cached) return cached;
     const row = await queryOne<JobRow>(`SELECT ${JOB_COLUMNS} FROM jobs WHERE id = $1`, [id]);
@@ -3621,7 +3625,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     const client = await pool.pick();
     try {
-      const data = await client.getAudioUploadStatus(id);
+      const data = await client.fetchAudioUploadStatus(id);
       return data;
     } catch (e) {
       return reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });
@@ -5386,7 +5390,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     const client = await pool.pick();
     try {
-      const data = await client.getAudioUploadStatus(id);
+      const data = await client.fetchAudioUploadStatus(id);
       return data;
     } catch (e) {
       return reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });
@@ -6543,7 +6547,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     const client = await pool.pick();
     try {
-      const data = await client.getAudioUploadStatus(id);
+      const data = await client.fetchAudioUploadStatus(id);
       return { code: 200, msg: "success", data };
     } catch (e) {
       return reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });
