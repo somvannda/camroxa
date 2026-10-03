@@ -39,6 +39,11 @@ function getClient(): S3Client {
   return client;
 }
 
+/** Drop the cached S3 client so a runtime credential change takes effect. */
+export function resetStorageClient(): void {
+  client = null;
+}
+
 /** Sanitise one path segment (no `/`, no surprises) and join under the prefix. */
 export function objectKey(...parts: Array<string | number>): string {
   const clean = parts

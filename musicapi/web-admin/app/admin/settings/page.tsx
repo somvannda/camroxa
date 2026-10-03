@@ -41,6 +41,28 @@ interface AlertReport {
   };
 }
 
+interface IntegrationField {
+  key: string;
+  label: string;
+  type: "string" | "secret" | "number" | "boolean";
+  value: string | number | boolean;
+  configured: boolean;
+}
+interface IntegrationGroup {
+  key: string;
+  label: string;
+  fields: IntegrationField[];
+}
+
+function initDraft(groups: IntegrationGroup[]): Record<string, Record<string, string | number | boolean>> {
+  const draft: Record<string, Record<string, string | number | boolean>> = {};
+  for (const g of groups) {
+    draft[g.key] = {};
+    for (const f of g.fields) draft[g.key][f.key] = f.type === "secret" ? "" : f.value;
+  }
+  return draft;
+}
+
 const inputClass =
   "w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]";
 const labelClass = "text-xs text-[var(--muted)]";
@@ -55,6 +77,11 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [integrations, setIntegrations] = useState<IntegrationGroup[]>([]);
+  const [draft, setDraft] = useState<Record<string, Record<string, string | number | boolean>>>({});
+  const [dirty, setDirty] = useState<Record<string, boolean>>({});
+  const [savingIntegrations, setSavingIntegrations] = useState(false);
+  const [integrationsNotice, setIntegrationsNotice] = useState("");
 
   const loadAlerts = useCallback(() => {
     setChecking(true);
@@ -66,11 +93,13 @@ export default function SettingsPage() {
 
   useEffect(() => {
     setLoading(true);
-    apiFetch<{ brand: BrandSettings; alerts: AlertSettings }>("/admin/settings")
+    apiFetch<{ brand: BrandSettings; alerts: AlertSettings; integrations: IntegrationGroup[] }>("/admin/settings")
       .then((s) => {
         setBrand(s.brand);
         setLanguagesText(s.brand.languages.join(", "));
         setAlerts(s.alerts);
+        setIntegrations(s.integrations ?? []);
+        setDraft(initDraft(s.integrations ?? []));
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load settings"))
       .finally(() => setLoading(false));
@@ -100,6 +129,42 @@ export default function SettingsPage() {
       setError(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function saveIntegrations() {
+    setSavingIntegrations(true);
+    setError("");
+    setIntegrationsNotice("");
+    try {
+      const values: Record<string, Record<string, string | number | boolean>> = {};
+      for (const g of integrations) {
+        const groupValues: Record<string, string | number | boolean> = {};
+        for (const f of g.fields) {
+          const key = `${g.key}.${f.key}`;
+          const value = draft[g.key]?.[f.key];
+          if (f.type === "secret") {
+            // Only send a secret the operator actually typed; omit otherwise so
+            // the stored value is left untouched (never cleared implicitly).
+            if (dirty[key] && String(value ?? "") !== "") groupValues[f.key] = value;
+          } else if (value !== undefined) {
+            groupValues[f.key] = value;
+          }
+        }
+        if (Object.keys(groupValues).length) values[g.key] = groupValues;
+      }
+      const saved = await apiFetch<{ integrations: IntegrationGroup[] }>("/admin/settings/integrations", {
+        method: "PUT",
+        body: JSON.stringify({ values }),
+      });
+      setIntegrations(saved.integrations);
+      setDraft(initDraft(saved.integrations));
+      setDirty({});
+      setIntegrationsNotice("Integrations saved and applied.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save integrations");
+    } finally {
+      setSavingIntegrations(false);
     }
   }
 
@@ -302,6 +367,77 @@ export default function SettingsPage() {
             )}
           </>
         )}
+      </section>
+
+      <section className="glass space-y-4 rounded-xl p-5">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-sm font-semibold">Integrations</h2>
+            <p className="text-xs text-[var(--muted)]">
+              Keys are encrypted at rest and applied immediately. Leave a secret blank to keep its current value.
+            </p>
+          </div>
+          <button
+            onClick={saveIntegrations}
+            disabled={savingIntegrations}
+            className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+          >
+            {savingIntegrations ? "Saving…" : "Save integrations"}
+          </button>
+        </div>
+
+        {integrationsNotice && (
+          <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+            {integrationsNotice}
+          </p>
+        )}
+
+        <div className="space-y-5">
+          {integrations.map((g) => (
+            <div key={g.key} className="space-y-3 rounded-lg border border-[var(--border)] p-4">
+              <h3 className="text-sm font-semibold">{g.label}</h3>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {g.fields.map((f) => {
+                  const value = draft[g.key]?.[f.key];
+                  const setValue = (v: string | number | boolean) =>
+                    setDraft((d) => ({ ...d, [g.key]: { ...d[g.key], [f.key]: v } }));
+                  return (
+                    <div key={f.key} className="space-y-1">
+                      <label className={labelClass}>{f.label}</label>
+                      {f.type === "boolean" ? (
+                        <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
+                          <input type="checkbox" checked={Boolean(value)} onChange={(e) => setValue(e.target.checked)} />
+                          Enabled
+                        </label>
+                      ) : (
+                        <input
+                          type={f.type === "secret" ? "password" : f.type === "number" ? "number" : "text"}
+                          value={String(value ?? "")}
+                          placeholder={
+                            f.type === "secret"
+                              ? f.configured
+                                ? "•••••••• (configured — type to replace)"
+                                : "not set"
+                              : undefined
+                          }
+                          autoComplete={f.type === "secret" ? "new-password" : undefined}
+                          onChange={(e) => {
+                            const v = f.type === "number" ? Number(e.target.value) : e.target.value;
+                            setValue(v);
+                            if (f.type === "secret") {
+                              setDirty((d) => ({ ...d, [`${g.key}.${f.key}`]: true }));
+                            }
+                          }}
+                          className={inputClass}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
     </div>
   );

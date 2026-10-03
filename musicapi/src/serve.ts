@@ -4,8 +4,14 @@ import { AccountPool } from "./pool.js";
 import { buildServer } from "./server.js";
 import { pool as dbPool, query, queryOne } from "./db.js";
 import { encryptCookie } from "./cookieCrypto.js";
+import { config } from "./config.js";
+import { loadRuntimeSettings } from "./runtimeSettings.js";
 
 const port = Number(process.env.PORT ?? 4003);
+
+// Load admin-managed integration settings (env is the fallback) before the
+// account pool, so a DB-configured Suno cookie/device is available to seed.
+await loadRuntimeSettings();
 
 let pool: AccountPool;
 try {
@@ -24,7 +30,7 @@ if (pool.size === 0) {
   // Production provisioning: a fresh host can seed its first account purely from
   // a deploy secret, so no one has to sign in on the server. Prefer the durable
   // `__client` cookie; a 'JWT' also works but expires in ~1h and cannot refresh.
-  const envSecret = (process.env.SUNO_CLIENT_COOKIE || process.env.SUNO_JWT || "").trim();
+  const envSecret = (config.clientCookie || config.jwt || "").trim();
   if (envSecret) {
     try {
       const label = process.env.SUNO_ACCOUNT_LABEL ?? "env-seed";
@@ -35,12 +41,12 @@ if (pool.size === 0) {
       if (existing) {
         await query(
           "UPDATE suno_accounts SET type = 'paid', client_cookie = $1, device_id = COALESCE($2, device_id), is_active = true WHERE label = $3",
-          [encryptCookie(envSecret), process.env.SUNO_DEVICE_ID ?? null, label],
+          [encryptCookie(envSecret), config.deviceId || null, label],
         );
       } else {
         await query(
           "INSERT INTO suno_accounts (label, type, client_cookie, device_id) VALUES ($1, 'paid', $2, $3)",
-          [label, encryptCookie(envSecret), process.env.SUNO_DEVICE_ID ?? ""],
+          [label, encryptCookie(envSecret), config.deviceId || ""],
         );
       }
       pool = await AccountPool.fromDb();
