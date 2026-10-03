@@ -1128,7 +1128,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /** Read a job from the in-memory cache, falling back to the persisted row. */
+  // Job ids are always UUIDs (`newJob` uses randomUUID). Validate before the
+  // lookup so a malformed id returns "not found" instead of letting Postgres
+  // reject the `uuid` cast and surface a 500 to the caller.
   async function getJob(id: string): Promise<Job | null> {
+    if (!UUID_RE.test(id)) return null;
     const cached = jobs.get(id);
     if (cached) return cached;
     const row = await queryOne<JobRow>(`SELECT ${JOB_COLUMNS} FROM jobs WHERE id = $1`, [id]);
