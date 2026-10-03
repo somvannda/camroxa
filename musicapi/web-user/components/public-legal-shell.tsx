@@ -40,6 +40,7 @@ export default function PublicLegalShell({
           <div className="flex gap-6">
             <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
             <Link href="/terms" className="hover:text-white">Terms of Service</Link>
+            <Link href="/data-deletion" className="hover:text-white">Data Deletion</Link>
             <a href="mailto:support@camxora.com" className="hover:text-white">Support</a>
           </div>
         </div>
