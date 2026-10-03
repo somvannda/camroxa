@@ -170,14 +170,14 @@ export default function SeparateVocalsPage() {
               {
                 key: "advanced",
                 title: "Advanced Split",
-                description: "Advanced stem separation (currently returns the full stem set).",
+                description: "Advanced stem separation (Suno returns the full 12-stem set).",
               },
             ]}
           />
         </Field>
 
         {separationType === "advanced" && (
-          <Field label="Stem Name" required help="Select the stem to extract. Single-stem selection is coming soon — all stems are returned for now.">
+          <Field label="Stem Name" required help="Select the stem you need. Suno returns the full 12-stem set, so you'll find it among the output tracks.">
             <input
               className={inputCls}
               list="stem-name-options"
