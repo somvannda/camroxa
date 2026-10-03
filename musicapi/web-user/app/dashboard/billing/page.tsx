@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { KhqrModal } from "@/components/billing/khqr-modal";
 
 interface Pack {
   id: string;
@@ -24,7 +25,12 @@ interface PricingRow {
 
 interface Checkout {
   transaction_id: string;
+  credits: number;
+  currency: string;
+  amount: number;
+  qr_url: string | null;
   checkout_url: string | null;
+  expires_at: string | null;
 }
 
 interface Tx {
@@ -72,8 +78,9 @@ export default function BillingPage() {
   const [transactions, setTransactions] = useState<Tx[]>([]);
   const [error, setError] = useState("");
   const [busyPackId, setBusyPackId] = useState<string | null>(null);
+  const [checkout, setCheckout] = useState<Checkout | null>(null);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     Promise.all([
       apiFetch<Billing>("/me/billing"),
       apiFetch<{ pricing: PricingRow[] }>("/pricing"),
@@ -86,6 +93,10 @@ export default function BillingPage() {
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
   }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   // Same cheapest-active-pack rate /me/usage uses, so the displayed value agrees.
   const creditValue = useMemo(() => {
@@ -126,12 +137,17 @@ export default function BillingPage() {
     setError("");
     setBusyPackId(pack.id);
     try {
-      const checkout = await apiFetch<Checkout>("/payments/chmaba/create", {
+      const session = await apiFetch<Checkout>("/payments/chmaba/create", {
         method: "POST",
         body: JSON.stringify({ pack_id: pack.id }),
       });
-      if (checkout.checkout_url) {
-        window.location.assign(checkout.checkout_url);
+      if (session.qr_url) {
+        setCheckout(session);
+        return;
+      }
+      // No inline QR from the provider — fall back to the hosted checkout.
+      if (session.checkout_url) {
+        window.location.assign(session.checkout_url);
         return;
       }
       setError("Checkout could not be started. Please try again.");
@@ -177,7 +193,7 @@ export default function BillingPage() {
               <button
                 className="grad-bg mt-4 w-full rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-60"
                 onClick={() => buy(p)}
-                disabled={busyPackId !== null}
+                disabled={busyPackId !== null || checkout !== null}
               >
                 {busyPackId === p.id ? "Starting…" : "Buy Credits"}
               </button>
@@ -276,6 +292,18 @@ export default function BillingPage() {
       <p className="mt-4 text-xs text-white/50">
         Payments are processed securely by ChmabaPay (KHQR / ABA PayWay). Credits are added to your account once payment is confirmed.
       </p>
+
+      {checkout && (
+        <KhqrModal
+          transactionId={checkout.transaction_id}
+          credits={checkout.credits}
+          currency={checkout.currency}
+          amount={checkout.amount}
+          expiresAt={checkout.expires_at}
+          onPaid={load}
+          onClose={() => setCheckout(null)}
+        />
+      )}
     </div>
   );
 }

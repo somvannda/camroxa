@@ -7194,7 +7194,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     });
   }
 
-  // POST /payments/chmaba/create — open a hosted ChmabaPay checkout for a pack.
+  // POST /payments/chmaba/create — mint a KHQR payment for a pack. The billing
+  // modal renders the returned code inline via `qr_url`.
   app.post("/payments/chmaba/create", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
@@ -7253,6 +7254,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         currency: pack.currency,
         amount,
         qr_string: payment.qr_string ?? null,
+        // Same-origin SVG the billing modal renders inline instead of bouncing
+        // the payer to the ChmabaPay hosted checkout.
+        qr_url: `/payments/chmaba/qr/${created.id}`,
         checkout_url: payment.checkout_url ?? null,
         expires_at: payment.expires_at ?? null,
       };
@@ -7264,6 +7268,46 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       );
       req.log.error({ err }, "chmaba payment create failed");
       return reply.code(502).send({ error: "Payment provider error. Please try again." });
+    }
+  });
+
+  // GET /payments/chmaba/qr/:id — the KHQR as an SVG image for one of the
+  // caller's own transactions. Proxies ChmabaPay's public, stateless renderer
+  // (`GET /v1/khqr/render.svg`) so the billing modal can show the code inline
+  // and the raw payload / provider origin stay server-side.
+  app.get("/payments/chmaba/qr/:id", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const { id } = req.params as { id: string };
+    if (!UUID_RE.test(id)) return reply.code(404).send({ error: "Transaction not found." });
+
+    const tx = await queryOne<{ qr_string: string | null; provider_payment_id: string | null }>(
+      `SELECT qr_string, provider_payment_id FROM payment_transactions
+       WHERE id = $1 AND user_id = $2 AND provider = 'chmaba'`,
+      [id, u.id],
+    );
+    if (!tx) return reply.code(404).send({ error: "Transaction not found." });
+
+    const base = config.chmaba.apiBaseUrl.replace(/\/+$/, "");
+    // Prefer the payload we stored at create; fall back to the provider's own
+    // hosted QR (which 410s once the code is dead) when only the id is known.
+    const url = tx.qr_string
+      ? `${base}/v1/khqr/render.svg?payload=${encodeURIComponent(tx.qr_string)}`
+      : tx.provider_payment_id
+        ? `${base}/pay/${encodeURIComponent(tx.provider_payment_id)}/qr.svg`
+        : null;
+    if (!url) return reply.code(404).send({ error: "No QR code for this payment." });
+
+    try {
+      const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) throw new Error(`render ${res.status}`);
+      const svg = await res.text();
+      reply.header("Content-Type", "image/svg+xml; charset=utf-8");
+      reply.header("Cache-Control", "private, max-age=60");
+      return reply.send(svg);
+    } catch (e) {
+      req.log.warn({ err: e }, "chmaba qr render failed");
+      return reply.code(502).send({ error: "QR code is unavailable. Please try again." });
     }
   });
 
