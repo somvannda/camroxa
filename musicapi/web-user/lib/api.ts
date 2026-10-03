@@ -22,6 +22,11 @@ export function redirectToLogin(): void {
   }
 }
 
+/** Absolute same-origin URL for a backend asset (e.g. an `<img src>`). */
+export function backendUrl(path: string): string {
+  return `${BASE}${path}`;
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
