@@ -60,6 +60,24 @@ PACKAGE_DIRS = ("musicapi", "scripts/deploy")
 DeployEnv = Literal["sandbox", "production"]
 
 
+def _force_utf8_stdio() -> None:
+    """Make stdout/stderr UTF-8 tolerant.
+
+    Remote build output contains Unicode spinner frames and ANSI escapes; on a
+    Windows console the default cp1252 codec raises UnicodeEncodeError mid-run
+    and aborts an otherwise healthy deploy. Reconfiguring the streams with
+    errors="replace" keeps the deploy going on any console.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        try:
+            reconfigure(encoding="utf-8", errors="replace")
+        except (ValueError, OSError):
+            pass
+
+
 def build_musicapi_tarball() -> Path:
     """Package musicapi/ + scripts/deploy/ (arcnames preserved) for upload."""
     tmp = Path(tempfile.mkdtemp(prefix="musicapi-deploy-"))
@@ -164,6 +182,7 @@ def upload_and_run(client, env: DeployEnv, secrets: dict[str, str], issue_cert: 
 
 
 def deploy(env: DeployEnv, issue_cert: bool = False) -> int:
+    _force_utf8_stdio()
     ensure_paramiko()
     if not REMOTE_SCRIPT.is_file():
         print(f"Missing {REMOTE_SCRIPT}")
