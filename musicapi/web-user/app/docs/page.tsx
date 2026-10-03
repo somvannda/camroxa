@@ -485,7 +485,7 @@ export default function PublicDocsPage() {
     if (typeof window !== "undefined") {
       const host = window.location.hostname;
       if (host !== "localhost" && host !== "127.0.0.1" && host !== "0.0.0.0") {
-        setBaseOrigin(window.location.origin);
+        queueMicrotask(() => setBaseOrigin(window.location.origin));
       }
     }
   }, []);
@@ -497,7 +497,7 @@ export default function PublicDocsPage() {
       label: h.dataset.toc || h.textContent || "",
       level: h.tagName === "H2" ? 2 : 3,
     }));
-    setToc(items);
+    queueMicrotask(() => setToc(items));
 
     const io = new IntersectionObserver(
       (entries) => {
@@ -598,6 +598,24 @@ export default function PublicDocsPage() {
             <p className="mt-3 text-[16px] text-[var(--muted)]">
               Complete Camxora API documentation — Your gateway to affordable and stable AI music API services.
             </p>
+            <div className="mt-5 flex flex-wrap gap-2 text-sm">
+              <a
+                href="/backend/openapi.json"
+                target="_blank"
+                rel="noreferrer"
+                className="glass rounded-lg px-3 py-1.5 transition hover:bg-white/10"
+              >
+                OpenAPI spec (JSON)
+              </a>
+              <a
+                href="/backend/llms.txt"
+                target="_blank"
+                rel="noreferrer"
+                className="glass rounded-lg px-3 py-1.5 transition hover:bg-white/10"
+              >
+                llms.txt
+              </a>
+            </div>
           </section>
 
           <section className="mb-12">
