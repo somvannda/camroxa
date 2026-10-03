@@ -34,6 +34,8 @@ export interface FieldDef {
   /** Additional env vars tried (e.g. platform-shared B2 secrets). */
   envFallbacks?: string[];
   def?: string | number | boolean;
+  /** Short helper text shown under the field in the admin UI. */
+  help?: string;
 }
 
 export interface GroupDef {
@@ -48,10 +50,10 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
     key: "suno",
     label: "Suno account auth",
     fields: [
-      { key: "clientCookie", label: "Durable __client cookie", type: "secret", env: "SUNO_CLIENT_COOKIE", def: "" },
+      { key: "clientCookie", label: "Durable __client cookie", type: "secret", env: "SUNO_CLIENT_COOKIE", def: "", help: "Boot-seed only. Each Suno login has its own __client cookie — add extra accounts on the Suno Accounts page." },
       { key: "cookie", label: "Full cookie header", type: "secret", env: "SUNO_COOKIE", def: "" },
-      { key: "jwt", label: "One-off access JWT", type: "secret", env: "SUNO_JWT", def: "" },
-      { key: "deviceId", label: "Device id", type: "string", env: "SUNO_DEVICE_ID", def: config.deviceId },
+      { key: "jwt", label: "One-off access JWT", type: "secret", env: "SUNO_JWT", def: "", help: "Expires in ~1 hour and cannot refresh. Prefer __client." },
+      { key: "deviceId", label: "Device id", type: "string", env: "SUNO_DEVICE_ID", def: config.deviceId, help: "Per-account. Leave blank when adding accounts and one is generated." },
       { key: "captchaToken", label: "Captcha token", type: "secret", env: "SUNO_CAPTCHA_TOKEN", def: "" },
       { key: "model", label: "Default model", type: "string", env: "SUNO_MODEL", def: "chirp-hawk" },
       { key: "clerkUrl", label: "Clerk URL", type: "string", env: "SUNO_CLERK_URL", def: "https://auth.suno.com" },
@@ -63,13 +65,13 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
   {
     key: "captcha",
     label: "Captcha solving",
-    fields: [{ key: "twoCaptchaKey", label: "2Captcha key", type: "secret", env: "TWOCAPTCHA_KEY", def: "" }],
+    fields: [{ key: "twoCaptchaKey", label: "2Captcha key", type: "secret", env: "TWOCAPTCHA_KEY", def: "", help: "Solves Suno's captcha gate at generation time. Get it from 2captcha.com." }],
   },
   {
     key: "google",
     label: "Google sign-in",
     fields: [
-      { key: "clientId", label: "Client id", type: "string", env: "GOOGLE_CLIENT_ID", def: "" },
+      { key: "clientId", label: "Client id", type: "string", env: "GOOGLE_CLIENT_ID", def: "", help: "Google Cloud Console → Credentials (OAuth client). Users sign in ONLY via Google." },
       { key: "clientSecret", label: "Client secret", type: "secret", env: "GOOGLE_CLIENT_SECRET", def: "" },
       { key: "redirectUriUser", label: "User redirect URI", type: "string", env: "GOOGLE_REDIRECT_URI_USER", def: "http://localhost:4001/auth/callback" },
     ],
@@ -78,9 +80,9 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
     key: "chmaba",
     label: "ChmabaPay",
     fields: [
-      { key: "apiKey", label: "API key", type: "secret", env: "CHMABA_API_KEY", def: "" },
+      { key: "apiKey", label: "API key", type: "secret", env: "CHMABA_API_KEY", def: "", help: "ChmabaPay live key (ck_live_…). Checkout stays disabled until key + store id are set." },
       { key: "storeId", label: "Store id", type: "string", env: "CHMABA_STORE_ID", def: "" },
-      { key: "webhookSecret", label: "Webhook secret", type: "secret", env: "CHMABA_WEBHOOK_SECRET", def: "" },
+      { key: "webhookSecret", label: "Webhook secret", type: "secret", env: "CHMABA_WEBHOOK_SECRET", def: "", help: "whsec_… used to verify ChmabaPay payment webhooks." },
       { key: "apiBaseUrl", label: "API base URL", type: "string", env: "CHMABA_API_BASE_URL", def: "https://pay.chmaba.com" },
     ],
   },
@@ -90,7 +92,7 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
     fields: [
       { key: "endpoint", label: "Endpoint", type: "string", env: "MUSICAPI_B2_ENDPOINT", envFallbacks: ["PLATFORM_STREAMING_B2_ENDPOINT"], def: "https://s3.us-east-005.backblazeb2.com" },
       { key: "region", label: "Region", type: "string", env: "MUSICAPI_B2_REGION", envFallbacks: ["PLATFORM_STREAMING_B2_REGION"], def: "us-east-005" },
-      { key: "bucket", label: "Bucket", type: "string", env: "MUSICAPI_B2_BUCKET", envFallbacks: ["PLATFORM_STREAMING_B2_BUCKET"], def: "" },
+      { key: "bucket", label: "Bucket", type: "string", env: "MUSICAPI_B2_BUCKET", envFallbacks: ["PLATFORM_STREAMING_B2_BUCKET"], def: "", help: "Backblaze B2 bucket that stores the generated MP3/WAV and cover images." },
       { key: "keyId", label: "Key id", type: "secret", env: "MUSICAPI_B2_KEY_ID", envFallbacks: ["PLATFORM_STREAMING_B2_KEY_ID"], def: "" },
       { key: "applicationKey", label: "Application key", type: "secret", env: "MUSICAPI_B2_APPLICATION_KEY", envFallbacks: ["PLATFORM_STREAMING_B2_APPLICATION_KEY"], def: "" },
       { key: "prefix", label: "Key prefix", type: "string", env: "MUSICAPI_B2_PREFIX", def: "musicapi" },
@@ -110,7 +112,7 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
     key: "callbacks",
     label: "Webhook callbacks",
     fields: [
-      { key: "allowedHosts", label: "Allowed callback hosts (comma-separated)", type: "string", env: "CALLBACK_ALLOWED_HOSTS", def: "" },
+      { key: "allowedHosts", label: "Allowed callback hosts (comma-separated)", type: "string", env: "CALLBACK_ALLOWED_HOSTS", def: "", help: "Optional SSRF guard for customer webhooks. Each API request can set its own callback_url; when this is set, the callback host must match an entry (or a subdomain). Empty = any public host is allowed; private/internal addresses are always blocked." },
     ],
   },
 ];
@@ -281,6 +283,7 @@ export interface MaskedField {
   /** Secret fields always return ""; the UI shows a masked placeholder instead. */
   value: string | number | boolean;
   configured: boolean;
+  help?: string;
 }
 export interface MaskedGroup {
   key: string;
@@ -297,9 +300,9 @@ export function maskedIntegrations(): MaskedGroup[] {
       const value = current[group.key]?.[f.key];
       const configured = value !== undefined && value !== null && value !== "";
       if (f.type === "secret") {
-        return { key: f.key, label: f.label, type: f.type, value: "", configured };
+        return { key: f.key, label: f.label, type: f.type, value: "", configured, help: f.help };
       }
-      return { key: f.key, label: f.label, type: f.type, value: (value ?? f.def ?? "") as string | number | boolean, configured };
+      return { key: f.key, label: f.label, type: f.type, value: (value ?? f.def ?? "") as string | number | boolean, configured, help: f.help };
     }),
   }));
 }
