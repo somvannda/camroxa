@@ -251,6 +251,11 @@ export class AccountPool {
     throw new Error(lastError);
   }
 
+  /** Return the client for a specific account id, or null when not pooled. */
+  get(accountId: string): SunoClient | null {
+    return this.clients.find((c) => c.account.id === accountId) ?? null;
+  }
+
   /**
    * Like pick() but skips clients whose account id is in excludeIds.
    * Throws if no candidates remain after filtering.

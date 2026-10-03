@@ -172,12 +172,39 @@ storage/CDN, not their own:
 | `source_image_url` | `cdn2.suno.ai/image_<id>.jpeg` | Suno original (still populated for images) |
 | `source_audio_url` | **empty string** | they no longer surface Suno's original audio |
 
-**Our current behavior (contrast):** no storage at all. `GET /me/download` live-drives Suno's
-3-step flow (authorize → poll `/download/clip` → signed S3 URL), streams bytes, falls back to
-`cdn1.suno.ai`. Links are ephemeral; clips can expire; there is no retention guarantee and no
-recovery endpoint. We charge once per `(clip, format)` through `download_purchases`.
+**Our current behavior (contrast):** updated — we now ingest completed media into Backblaze B2
+(MP3 + cover image), `/me/download` 302-redirects to a presigned object (Range streaming) and
+caches on demand, so links no longer depend on Suno. See the DRM subsection below for how
+MP3/WAV are obtained on accounts without download entitlement.
 
 > This is the core of "download without limitation": **they cached it; we proxy on demand.**
+
+### Suno v5.5 audio encryption ("mango" DRM) — our decrypt-and-cache
+
+Since Suno **v5.5** (Aug 2026) the progressive stream (`media_urls[].url`,
+`d2lwuy8qc234o3.cloudfront.net/1/clip/<id>.m4a`, `content_type:"m4a-opus"`) is **AES-CTR
+encrypted** — it has no `ftyp`/`moov`/`mdat` and `ffprobe` rejects it. `cdn1.suno.ai/<id>.mp3`
+returns CloudFront 403 and `audio_url` is the literal `.../api/forbidden` placeholder, so the old
+`authorize → poll → signed S3` pipeline only works on accounts that still have download
+entitlement. This is an industry-wide break (see `gcui-art/suno-api` issue #289).
+
+We reproduce Suno's own client-side license flow server-side (`musicapi/src/sunoAudio.ts`):
+
+1. `POST /api/mango/rights` with `{content_params:{content_id, content_type:"clip"}}`,
+   authenticated with the account's token → `{ key, iv }` (base64, AES-GCM wrapped).
+2. `userKey = SHA-256(authToken)` → AES-256-GCM key.
+3. `contentKey = AES-256-GCM-decrypt(key, iv=wrapped[0..12], aad=clipId)` (AES-128 key);
+   `contentIv = AES-256-GCM-decrypt(iv, …)` (16-byte counter).
+4. `audio = AES-128-CTR-decrypt(<clip>.m4a, contentKey, contentIv)` → valid MP4/AAC (m4a).
+5. Transcode with bundled `ffmpeg-static` → MP3 (`libmp3lame`) and WAV (`pcm_s16le`).
+
+`ingestMedia` stores `clips/<id>.mp3` + `masters/<id>.m4a` (the decrypted source) in B2 and
+rewrites `audio_url` to a stable presigned URL; `/me/download?format=wav` transcodes from the
+master on demand. **No third-party rights service and no paid-download entitlement required.**
+
+> ⚠️ This is DRM circumvention: it relies on Suno's current scheme (which can rotate) and is
+> contrary to Suno's terms. It is isolated in `src/sunoAudio.ts` so it can be disabled without
+> affecting delivery of already-stored media.
 
 ---
 
