@@ -170,14 +170,14 @@ export default function SeparateVocalsPage() {
               {
                 key: "advanced",
                 title: "Advanced Split",
-                description: "Advanced stem separation with custom track name.",
+                description: "Advanced stem separation (currently returns the full stem set).",
               },
             ]}
           />
         </Field>
 
         {separationType === "advanced" && (
-          <Field label="Stem Name" required help="Select the stem to extract">
+          <Field label="Stem Name" required help="Select the stem to extract. Single-stem selection is coming soon — all stems are returned for now.">
             <input
               className={inputCls}
               list="stem-name-options"
