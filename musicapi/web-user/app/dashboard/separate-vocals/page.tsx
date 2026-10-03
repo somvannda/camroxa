@@ -10,6 +10,7 @@ import {
   inputCls,
   useJob,
 } from "@/components/playground";
+import { apiFetch } from "@/lib/api";
 import { useState } from "react";
 
 type SeparationType = "vocal" | "stems" | "advanced";
@@ -30,6 +31,39 @@ export default function SeparateVocalsPage() {
   const [audioId, setAudioId] = useState("");
   const [separationType, setSeparationType] = useState<SeparationType>("vocal");
   const [stemName, setStemName] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [uploadName, setUploadName] = useState("");
+  const [uploadError, setUploadError] = useState("");
+
+  async function handleAudioFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      setUploadError("File size exceeds 20MB limit");
+      return;
+    }
+    setUploading(true);
+    setUploadError("");
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(r.error);
+        r.readAsDataURL(file);
+      });
+      const resp = await apiFetch<{ clip_id: string }>("/me/voice-source", {
+        method: "POST",
+        body: JSON.stringify({ data: dataUrl, uploadType: "file_upload" }),
+      });
+      setAudioId(resp.clip_id);
+      setUploadName(file.name);
+    } catch (err) {
+      setUploadError(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setUploading(false);
+    }
+  }
 
   const { busy, task, error, submit, reset, retry, canRetry, retryCost } = useJob({ endpoint: "stems" });
 
@@ -104,6 +138,19 @@ export default function SeparateVocalsPage() {
             />
           </Field>
         </div>
+
+        {useCustomAudio && (
+          <div>
+            <Field label="Upload audio" help="MP3, WAV, OGG, M4A, FLAC, AAC · Max 20MB">
+              <label className={`flex cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-white/10 bg-white/[0.03] px-3 py-3 text-xs text-white/55 transition hover:bg-white/[0.06] ${uploading ? "cursor-wait opacity-60" : ""}`}>
+                {uploading ? "Uploading…" : uploadName || "Click or drag audio file to upload"}
+                <input type="file" accept="audio/*" className="hidden" disabled={uploading} onChange={(e) => void handleAudioFile(e)} />
+              </label>
+            </Field>
+            {uploadError && <p className="mt-1 text-xs text-red-300">{uploadError}</p>}
+            <p className="mt-1 text-xs text-white/40">Choose one audio source — upload a file or enter an Audio ID.</p>
+          </div>
+        )}
 
         <Field label="Separation Type">
           <ChoiceCard

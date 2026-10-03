@@ -2377,7 +2377,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (bytes.length === 0) return reply.code(400).send({ error: "Empty audio." });
     if (bytes.length > 25 * 1024 * 1024) return reply.code(413).send({ error: "Audio exceeds 25MB." });
     const ext = (mime.split("/")[1] || "wav").replace(/[^a-z0-9]/g, "").slice(0, 5) || "wav";
-    const uploadType = body.uploadType === "song_demo" ? "song_demo" : "voice_recording";
+    const reqType = body.uploadType;
+    const uploadType: "file_upload" | "voice_recording" | "song_demo" =
+      reqType === "file_upload" ? "file_upload" : reqType === "song_demo" ? "song_demo" : "voice_recording";
     try {
       const client = await pool.pickExcept([], undefined, "paid_only");
       const clipId = await client.uploadAudio(bytes, ext, uploadType);
