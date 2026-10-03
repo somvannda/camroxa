@@ -19,7 +19,7 @@ import { normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
 import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
-import { decryptSunoClip } from "./sunoAudio.js";
+import { decryptSunoClip, openDecryptedM4aStream } from "./sunoAudio.js";
 import { JOB_OPS, isRunnableDescriptor, type JobDescriptor } from "./jobOps.js";
 
 // Fallback credit costs when the `pricing` table has no row for an endpoint.
@@ -1383,9 +1383,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           const encryptedUrl = pickPublicAudioUrl(item) ?? undefined;
           const m4a = await decryptSunoClip(await accountClient(), clipId, encryptedUrl);
           const mp3Key = objectKey("clips", `${clipId}.mp3`);
+          const wavKey = objectKey("wav", `${clipId}.wav`);
           const masterKey = objectKey("masters", `${clipId}.m4a`);
           const mp3 = await transcodeAudio(m4a, "mp3");
+          const wav = await transcodeAudio(m4a, "wav");
           await putObject(mp3Key, mp3, "audio/mpeg");
+          await putObject(wavKey, wav, "audio/wav");
           await putObject(masterKey, m4a, "audio/mp4");
           item.audio_storage_key = mp3Key;
           item.master_storage_key = masterKey;
@@ -3075,6 +3078,55 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       credits: Number(credits?.sum ?? 0),
       packs: packs.map((p) => ({ id: p.id, amount: p.amount, price: Number(p.price), currency: p.currency })),
     };
+  });
+
+  // Progressive, decrypt-on-the-fly playback for a clip. Serves the durable B2
+  // object when present, otherwise decrypts Suno's encrypted m4a in memory and
+  // streams it, so playback starts while a clip is still generating. No VPS
+  // buffering or scratch files.
+  app.get("/me/stream", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const q = (req.query ?? {}) as { clip_id?: string; format?: string };
+    const clipId = q.clip_id;
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const format = q.format === "wav" ? "wav" : q.format === "m4a" ? "m4a" : "mp3";
+
+    if (storageConfigured()) {
+      try {
+        const key = objectKey(format === "wav" ? "wav" : "clips", `${clipId}.${format}`);
+        if (await objectExists(key)) {
+          const url = await getReadUrl(key);
+          if (url) return reply.redirect(url, 302);
+        }
+      } catch {
+        /* fall through to the live decrypt stream */
+      }
+    }
+
+    // Only the raw m4a streams directly (a browser plays AAC/Opus-in-MP4); mp3
+    // and wav need a transcode and are served by the download route.
+    if (format !== "m4a") {
+      return reply.redirect(`/me/download?clip_id=${encodeURIComponent(clipId)}&format=${format}`, 302);
+    }
+
+    try {
+      const client = await pool.pick();
+      const range = typeof req.headers.range === "string" ? req.headers.range : undefined;
+      const out = await openDecryptedM4aStream(client, clipId, range);
+      reply.header("Content-Type", out.contentType);
+      reply.header("Accept-Ranges", "bytes");
+      reply.header("Cache-Control", "no-store");
+      if (out.totalBytes != null) {
+        reply.header("Content-Range", `bytes ${out.rangeStart}-${out.totalBytes - 1}/${out.totalBytes}`);
+        reply.header("Content-Length", String(out.totalBytes - out.rangeStart));
+        reply.code(206);
+      }
+      return reply.send(out.stream);
+    } catch (e) {
+      req.log.warn({ err: e, clipId }, "me/stream failed");
+      return reply.code(502).send({ error: "Audio stream unavailable." });
+    }
   });
 
   // T4: GET /me/download — calls Suno 3-step (authorize → poll /download/clip → ready) → stream real MP3/WAV bytes from S3
