@@ -4315,7 +4315,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // per-user breakdowns plus success/failure counts and revenue trends, all
   // derived from usage_logs. Revenue is credits_consumed converted to USD using
   // the same cheapest-active-pack rate the user-facing /me/usage reports use, so
-  // the two views never disagree.
+  // the two views never disagree. `previous_totals` covers the equally long
+  // window immediately before the requested range, powering period-over-period
+  // deltas in the admin UI.
   app.get("/admin/analytics", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const daysParam = Number((req.query as { days?: string })?.days ?? 30);
@@ -4341,6 +4343,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     const totals = await queryOne<AggRow>(
       `SELECT ${AGG} FROM usage_logs WHERE created_at > now() - interval '${days} days'`,
+    );
+    // Same-length window immediately before the requested range, for deltas.
+    const previous = await queryOne<AggRow>(
+      `SELECT ${AGG} FROM usage_logs
+       WHERE created_at > now() - interval '${days * 2} days'
+         AND created_at <= now() - interval '${days} days'`,
     );
     const byEndpoint = await query<AggRow & { endpoint: string }>(
       `SELECT COALESCE(endpoint, '(none)') AS endpoint, ${AGG} FROM usage_logs
@@ -4371,6 +4379,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       range: { days },
       credits_per_usd: creditsPerUsd,
       totals: totals ? shape(totals) : { count: 0, success: 0, failed: 0, credits: 0, revenue: 0 },
+      previous_totals: previous ? shape(previous) : { count: 0, success: 0, failed: 0, credits: 0, revenue: 0 },
       by_endpoint: byEndpoint.map((r) => ({ endpoint: r.endpoint, ...shape(r) })),
       by_model: byModel.map((r) => ({ model: r.model, ...shape(r) })),
       by_user: byUser.map((r) => ({ user_id: r.user_id, email: r.email, ...shape(r) })),
