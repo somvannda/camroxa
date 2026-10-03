@@ -4,7 +4,7 @@
 Production has two vhosts:
     musicapi.camxora.com        -> user portal + landing page 127.0.0.1:4001
                                    (API mounted by path -> 4003)
-    admin.musicapi.camxora.com  -> web-admin                  127.0.0.1:4002
+    admin-musicapi.camxora.com  -> web-admin                  127.0.0.1:4002
 
 Sandbox has three vhosts (it keeps the legacy split):
     musicapi.sandbox.camxora.com        -> core API   127.0.0.1:4003
@@ -30,7 +30,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deploy import ensure_deploy_key, load_secrets, ssh_connect  # noqa: E402
+from deploy import ensure_deploy_key, load_production_secrets, load_sandbox_secrets, ssh_connect  # noqa: E402
 
 DEPLOY_DIR = Path(__file__).resolve().parent
 
@@ -53,7 +53,7 @@ ENV_CONFIG = {
         "site_link": "/etc/nginx/sites-enabled/musicapi-production",
         "names": [
             "musicapi.camxora.com",
-            "admin.musicapi.camxora.com",
+            "admin-musicapi.camxora.com",
         ],
     },
 }
@@ -141,9 +141,9 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    secrets = load_secrets()
-    host = secrets.get("PRODUCTION_VPS_HOST") if args.env == "production" else secrets["VPS_HOST"]
-    user = secrets.get("PRODUCTION_VPS_USER") or secrets["VPS_USER"]
+    secrets = load_production_secrets() if args.env == "production" else load_sandbox_secrets()
+    host = secrets.get("PRODUCTION_VPS_HOST") or secrets.get("VPS_HOST")
+    user = secrets.get("PRODUCTION_VPS_USER") or secrets.get("VPS_USER")
     if not host:
         print(f"No VPS host configured for {args.env}. Set VPS_HOST or PRODUCTION_VPS_HOST in .deploy/secrets.env")
         return 1
