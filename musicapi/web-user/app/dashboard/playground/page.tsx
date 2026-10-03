@@ -289,6 +289,7 @@ export default function PlaygroundPage() {
   const [personaId, setPersonaId] = useState("");
   const [personaModel, setPersonaModel] = useState<"style_persona" | "voice_persona">("style_persona");
   const [duration, setDuration] = useState("");
+  const [variety, setVariety] = useState("1");
   const [refImages, setRefImages] = useState<string[]>([]);
   const [uploadingImages, setUploadingImages] = useState(false);
   const [audioUrl, setAudioUrl] = useState("");
@@ -490,6 +491,7 @@ export default function PlaygroundPage() {
           body.audio_weight = audioWeight === "" ? undefined : Number(audioWeight);
           body.weirdness_constraint = weirdnessConstraint === "" ? undefined : Number(weirdnessConstraint);
           body.duration = duration === "" ? undefined : Number(duration);
+          body.variety = Number(variety);
           body.persona_id = personaId || undefined;
           body.persona_model = personaId ? personaModel : undefined;
         }
@@ -797,6 +799,23 @@ export default function PlaygroundPage() {
                           onChange={(e) => setWeirdnessConstraint(e.target.value)}
                           className="w-full rounded-lg border border-white/5 bg-white/[0.03] px-3 py-2 text-sm text-white outline-none focus:border-[var(--violet)]"
                         />
+                      </div>
+                      <div className="md:col-span-2">
+                        <div className="mb-1 text-xs text-white/50">Variety (0–4)</div>
+                        <div className="flex gap-1 rounded-lg bg-black/20 p-1">
+                          {["0", "1", "2", "3", "4"].map((v) => (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => setVariety(v)}
+                              className={`flex-1 rounded-md px-2 py-1 text-xs font-medium transition ${
+                                variety === v ? "bg-white/10 text-white" : "text-white/45 hover:text-white"
+                              }`}
+                            >
+                              {v}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                       <div>
                         <div className="mb-1 text-xs text-white/50">Persona ID</div>

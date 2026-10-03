@@ -1604,6 +1604,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           : params.audioWeight != null
             ? Number(params.audioWeight)
             : undefined,
+      variety:
+        params.variety != null
+          ? Number(params.variety)
+          : undefined,
     };
   }
 

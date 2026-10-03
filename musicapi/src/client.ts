@@ -36,6 +36,8 @@ export interface GenerateParams {
   styleWeight?: number;
   weirdnessConstraint?: number;
   audioWeight?: number;
+  /** Diversity of generated results, integer 0–4 (live-verified accepted). */
+  variety?: number;
   /** Base64-encoded images sent as `user_uploaded_images_b64` (legacy/ignored). */
   imagesB64?: string[];
   /** Image upload ids (from `uploadImage`) sent as `user_uploaded_image_ids`. */
@@ -298,6 +300,7 @@ export class SunoClient {
     if (params.styleWeight != null) payload.style_weight = params.styleWeight;
     if (params.weirdnessConstraint != null) payload.weirdness_constraint = params.weirdnessConstraint;
     if (params.audioWeight != null) payload.audio_weight = params.audioWeight;
+    if (params.variety != null) payload.variety = params.variety;
     if (params.imagesB64 && params.imagesB64.length) {
       payload.user_uploaded_images_b64 = params.imagesB64;
     }
