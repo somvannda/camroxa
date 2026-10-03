@@ -526,7 +526,7 @@ export default function PublicDocsPage() {
               aria-label="Toggle menu"
             >☰</button>
             <Link href="/" className="flex items-center gap-2">
-              <div className="grad-bg flex h-8 w-8 items-center justify-center rounded-lg text-sm font-bold text-white">♪</div>
+              <img src="/camxora-logo.svg" alt="Camxora" className="h-8 w-8 rounded-lg" />
               <span className="text-lg font-bold">Camxora Music API</span>
             </Link>
           </div>

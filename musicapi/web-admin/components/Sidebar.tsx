@@ -43,7 +43,7 @@ export default function Sidebar() {
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-[var(--border)] bg-black/20 p-4">
       <Link href="/admin" className="mb-6 flex items-center gap-2 px-2">
-        <div className="grad-bg h-7 w-7 rounded-lg" />
+        <img src="/camxora-logo.svg" alt="Camxora" className="h-7 w-7 rounded-lg" />
         <span className="font-bold">Camxora Admin</span>
       </Link>
 

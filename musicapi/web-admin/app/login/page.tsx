@@ -43,7 +43,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center p-6">
       <form onSubmit={onSubmit} className="glass w-full max-w-sm rounded-2xl p-8 space-y-5">
         <div className="text-center">
-          <div className="grad-bg mx-auto mb-4 h-11 w-11 rounded-xl" />
+          <img src="/camxora-logo.svg" alt="Camxora" className="mx-auto mb-4 h-11 w-11 rounded-xl" />
           <h1 className="text-2xl font-bold">Admin sign in</h1>
           <p className="text-sm text-[var(--muted)]">Camxora Music API admin console</p>
         </div>
