@@ -350,7 +350,7 @@ export default function LandingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-[var(--border)] bg-black/30">
+      <footer className="border-t border-[var(--border)]">
         <div className="mx-auto max-w-6xl px-6 py-14">
           <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-5">
             <div className="lg:col-span-2">
@@ -362,9 +362,6 @@ export default function LandingPage() {
                 A REST API for watermark-free AI music generation — vocals, instrumentals, extensions and covers, with
                 durable MP3/WAV delivery.
               </p>
-              <Link href="/login" className="grad-bg mt-5 inline-block rounded-lg px-4 py-2 text-xs font-semibold text-white">
-                Get started free
-              </Link>
             </div>
 
             <FooterCol

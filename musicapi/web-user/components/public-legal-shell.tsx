@@ -34,7 +34,7 @@ export default function PublicLegalShell({
         <div className="mt-8 space-y-8 text-sm leading-relaxed text-[var(--muted)]">{children}</div>
       </main>
 
-      <footer className="border-t border-[var(--border)] bg-black/30">
+      <footer className="border-t border-[var(--border)]">
         <div className="mx-auto flex max-w-3xl flex-col items-center justify-between gap-3 px-6 py-8 text-sm text-[var(--muted)] md:flex-row">
           <span>© {new Date().getFullYear()} Camxora Music API. All rights reserved.</span>
           <div className="flex gap-6">
