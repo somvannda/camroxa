@@ -351,24 +351,81 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-[var(--border)] bg-black/30">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-8 text-sm text-[var(--muted)] md:flex-row">
-          <div className="flex items-center gap-2">
-            <div className="grad-bg h-6 w-6 rounded-md" />
-            <span className="font-semibold text-white">Camxora Music API</span>
+        <div className="mx-auto max-w-6xl px-6 py-14">
+          <div className="grid grid-cols-1 gap-10 md:grid-cols-2 lg:grid-cols-5">
+            <div className="lg:col-span-2">
+              <Link href="/" className="flex items-center gap-2">
+                <img src="/camxora-logo.svg" alt="Camxora Music API" className="h-9 w-9 rounded-lg" />
+                <span className="text-lg font-bold text-white">Camxora Music API</span>
+              </Link>
+              <p className="mt-4 max-w-xs text-sm leading-relaxed text-[var(--muted)]">
+                A REST API for watermark-free AI music generation — vocals, instrumentals, extensions and covers, with
+                durable MP3/WAV delivery.
+              </p>
+              <Link href="/login" className="grad-bg mt-5 inline-block rounded-lg px-4 py-2 text-xs font-semibold text-white">
+                Get started free
+              </Link>
+            </div>
+
+            <FooterCol
+              title="Product"
+              links={[
+                { label: "Features", href: "#features" },
+                { label: "Pricing", href: "#pricing" },
+                { label: "Use cases", href: "#about" },
+                { label: "Playground", href: "/dashboard/playground" },
+              ]}
+            />
+            <FooterCol
+              title="Developers"
+              links={[
+                { label: "API reference", href: "/docs" },
+                { label: "Endpoint status", href: "/docs" },
+                { label: "Service health", href: "/health" },
+                { label: "Status & updates", href: "/dashboard/updates" },
+              ]}
+            />
+            <FooterCol
+              title="Company & legal"
+              links={[
+                { label: "Contact", href: "mailto:support@camxora.com" },
+                { label: "Privacy Policy", href: "/privacy" },
+                { label: "Terms of Service", href: "/terms" },
+                { label: "Data Deletion", href: "/data-deletion" },
+              ]}
+            />
           </div>
-          <div className="flex flex-wrap justify-center gap-6">
-            <a href="#about" className="hover:text-white">About</a>
-            <a href="#features" className="hover:text-white">Features</a>
-            <a href="#pricing" className="hover:text-white">Pricing</a>
-            <a href="/docs" className="hover:text-white">Docs</a>
-            <Link href="/privacy" className="hover:text-white">Privacy Policy</Link>
-            <Link href="/terms" className="hover:text-white">Terms of Service</Link>
-            <Link href="/data-deletion" className="hover:text-white">Data Deletion</Link>
-            <a href="mailto:support@camxora.com" className="hover:text-white">Support</a>
+
+          <div className="mt-12 flex flex-col items-center justify-between gap-4 border-t border-[var(--border)] pt-6 text-xs text-[var(--muted)] md:flex-row">
+            <div>© {new Date().getFullYear()} Camxora Music API. All rights reserved.</div>
+            <div className="flex flex-wrap items-center justify-center gap-x-5 gap-y-2">
+              <Link href="/privacy" className="hover:text-white">Privacy</Link>
+              <Link href="/terms" className="hover:text-white">Terms</Link>
+              <Link href="/data-deletion" className="hover:text-white">Data Deletion</Link>
+              <a href="mailto:support@camxora.com" className="hover:text-white">Support</a>
+            </div>
           </div>
-          <div>© {new Date().getFullYear()} Camxora Music API. All rights reserved.</div>
         </div>
       </footer>
+    </div>
+  );
+}
+
+function FooterCol({ title, links }: { title: string; links: { label: string; href: string }[] }) {
+  return (
+    <div>
+      <h4 className="text-xs font-semibold uppercase tracking-wider text-white">{title}</h4>
+      <ul className="mt-4 space-y-2.5 text-sm text-[var(--muted)]">
+        {links.map((l) => (
+          <li key={l.label}>
+            {l.href.startsWith("http") || l.href.startsWith("mailto:") ? (
+              <a href={l.href} className="transition hover:text-white">{l.label}</a>
+            ) : (
+              <Link href={l.href} className="transition hover:text-white">{l.label}</Link>
+            )}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
