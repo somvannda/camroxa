@@ -3625,7 +3625,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     const client = await pool.pick();
     try {
-      const data = await client.getAudioUploadStatus(id);
+      const data = await client.fetchAudioUploadStatus(id);
       return data;
     } catch (e) {
       return reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });
@@ -5390,7 +5390,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     const client = await pool.pick();
     try {
-      const data = await client.getAudioUploadStatus(id);
+      const data = await client.fetchAudioUploadStatus(id);
       return data;
     } catch (e) {
       return reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });
@@ -6547,7 +6547,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     const client = await pool.pick();
     try {
-      const data = await client.getAudioUploadStatus(id);
+      const data = await client.fetchAudioUploadStatus(id);
       return { code: 200, msg: "success", data };
     } catch (e) {
       return reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });

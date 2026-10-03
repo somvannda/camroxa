@@ -853,6 +853,24 @@ export class SunoClient {
     throw new Error(`Timed out waiting for upload ${uploadId} to process.`);
   }
 
+  /** Single-shot upload-status read for HTTP status endpoints. Unlike
+   *  getAudioUploadStatus it does NOT poll, so a bogus id returns promptly
+   *  instead of holding the request open for up to a minute. Callers that need
+   *  to wait for processing should keep using getAudioUploadStatus. */
+  async fetchAudioUploadStatus(
+    uploadId: string,
+  ): Promise<{ id: string; status: string; title?: string; copyright_muted?: boolean; clip_id?: string }> {
+    const res = await this.request(`/api/uploads/audio/${uploadId}/`, { method: "GET" });
+    if (!res.ok) throw new Error(`getAudioUploadStatus failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as {
+      id: string;
+      status: string;
+      title?: string;
+      copyright_muted?: boolean;
+      clip_id?: string;
+    };
+  }
+
   /** Full audio upload: create session → POST bytes to Suno's S3 → register →
    *  poll for the processed clip id. Returns a clip id usable as a persona/task
    *  root. Mirrors uploadImage but for audio (voice recordings / song demos). */
