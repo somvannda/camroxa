@@ -31,6 +31,8 @@ const DEFAULT_COSTS: Record<string, number> = {
   extend: 17,
   cover: 17,
   stems: 8,
+  stems_split: 20,
+  stems_advanced: 12,
   sounds: 3,
   remaster: 17,
   mashup: 17,
@@ -2350,12 +2352,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const clipId = (body.taskId || body.audioId || body.clip_id || body.task_id) as string | undefined;
     if (!clipId) return reply.code(400).send({ error: "taskId is required." });
-    const cost = await costFor("stems");
+    const separationType = (body.separationType || "vocal") as "vocal" | "stems" | "advanced" | string;
+    const stemsKey = separationType === "advanced" ? "stems_advanced" : separationType === "stems" ? "stems_split" : "stems";
+    const cost = await costFor(stemsKey);
     const key = await chargeUserKey(u.id, cost);
     if (cost > 0 && !key) {
       return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
     }
-    const separationType = (body.separationType || "vocal") as "vocal" | "stems" | "advanced" | string;
     const jobType: Job["type"] =
       separationType === "stems" || separationType === "advanced" ? "stems" : "stems";
     const job = newJob(jobType);
@@ -5095,7 +5098,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
-  function clipRoute(path: string, type: Job["type"]) {
+  function clipRoute(path: string, type: Job["type"], pricingKey: string = type) {
     app.post(path, async (req, reply) => {
       const key = await requireKey(req, reply);
       if (!key) return;
@@ -5105,7 +5108,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // Only remaster takes a model; the other clip operations use the
       // account's default, so they stay on the endpoint-wide price.
       const model = type === "remaster" ? (body.model as string) || undefined : undefined;
-      const cost = await costFor(type, model);
+      const cost = await costFor(pricingKey, model);
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
       const job = newJob(type, body.callback_url as string | undefined);
@@ -5134,7 +5137,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   clipRoute("/v1/music/extend", "extend");
   clipRoute("/v1/music/cover", "cover");
-  clipRoute("/v1/music/stems", "stems");
+  clipRoute("/v1/music/stems", "stems", "stems_split");
   clipRoute("/v1/music/remaster", "remaster");
   clipRoute("/v1/music/add-vocals", "add_vocals");
   clipRoute("/v1/music/add-instrumental", "add_instrumental");
@@ -5840,13 +5843,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const in_ = (req.body ?? {}) as Record<string, unknown>;
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
-    const cost = await costFor("stems");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
-    const job = newJob("stems", (in_.callBackUrl as string) || (in_.callback_url as string) || undefined);
-    job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "stems"; job.credits = cost;
     // sunoapi.org `type`: separate_vocal → 2-track, split_stem → multi, split_stem_advanced → single stem.
     const rawType = (in_.type as string) || "";
     const mode = rawType === "separate_vocal" ? "vocal" : rawType === "split_stem_advanced" ? "advanced" : "stems";
+    const stemsKey = mode === "advanced" ? "stems_advanced" : mode === "stems" ? "stems_split" : "stems";
+    const cost = await costFor(stemsKey);
+    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+    const job = newJob("stems", (in_.callBackUrl as string) || (in_.callback_url as string) || undefined);
+    job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "stems"; job.credits = cost;
     void submitDescribedJob(job, { op: "stems", args: { id: clip_id, mode } });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
