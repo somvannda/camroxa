@@ -11,7 +11,7 @@ import { encryptCookie } from "./cookieCrypto.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE_ADMIN, serializeSessionCookie, serializeClearedSessionCookie, readSessionCookie } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
-import { config } from "./config.js";
+import { config, isProduction } from "./config.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
@@ -4914,6 +4914,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   /** Deliver one Telegram message; false when creds are unset or delivery fails. */
   async function sendTelegram(text: string): Promise<boolean> {
+    // Production-only. Sandbox and production share the same alert bot/chat, so
+    // delivering from a non-production process would spam the live ops channel.
+    if (!isProduction()) {
+      app.log.debug(
+        { environment: config.environment },
+        "telegram alert delivery skipped (non-production)",
+      );
+      return false;
+    }
     const { telegramBotToken, telegramChatId } = config.alerts;
     if (!telegramBotToken || !telegramChatId) return false;
     try {
@@ -4936,22 +4945,26 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   /**
    * Diff a fresh report against the last notified state and push only the
-   * differences: one message per newly-raised or changed alert, one per alert
-   * that has since cleared. Keeps the channel quiet while nothing changes.
+   * differences: one message per newly-raised alert, one per alert whose
+   * severity changed, and one per alert that has since cleared. Dedupe on
+   * `type|severity` — not the message body, whose live numbers (`304/403`, a
+   * dropping rate, account balances) change every evaluation. Keying on the body
+   * re-paged an ongoing incident every check interval.
    */
   async function syncAlertState(report: AlertReport): Promise<void> {
     const current = new Map<string, string>();
-    for (const a of report.alerts) current.set(a.id, `${a.severity}|${a.message}`);
+    for (const a of report.alerts) current.set(a.id, a.severity);
+    const scope = `Camxora Music API (${config.environment})`;
     for (const alert of report.alerts) {
       if (alertState.get(alert.id) !== current.get(alert.id)) {
-        if (await sendTelegram(`[ALERT] Camxora Music API — ${alert.type}\n${alert.message}`)) {
+        if (await sendTelegram(`[ALERT] ${scope} — ${alert.type}\n${alert.message}`)) {
           app.log.warn({ alert: alert.id }, "alert notification sent");
         }
       }
     }
     for (const id of [...alertState.keys()]) {
       if (!current.has(id)) {
-        if (await sendTelegram(`[RESOLVED] Camxora Music API — ${id} cleared.`)) {
+        if (await sendTelegram(`[RESOLVED] ${scope} — ${id} cleared.`)) {
           app.log.info({ alert: id }, "alert recovery notification sent");
         }
       }
