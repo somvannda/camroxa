@@ -357,8 +357,13 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 while True:
                     await asyncio.sleep(max(60, b2_backfill_interval))
                     try:
-                        stats = await StreamingUploadService(db_pool).run_backfill_sweep()
-                        if any(
+                        # Single-winner across uvicorn workers: the loop starts in
+                        # every worker, but only one claims each interval so the
+                        # sweep (and its alert) does not run 4x.
+                        stats = await StreamingUploadService(db_pool).run_backfill_sweep_periodic(
+                            b2_backfill_interval
+                        )
+                        if stats and any(
                             stats.get(key)
                             for key in (
                                 "jobs_failed",
