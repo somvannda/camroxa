@@ -4,8 +4,11 @@
 # Driven by camxora-musicapi-healthcheck.timer (every 5 minutes). Checks the
 # three systemd units and the core `/health` endpoint, and alerts only on a
 # state CHANGE (healthy -> unhealthy, and the recovery) so a long outage pages
-# once instead of every run. No Telegram creds configured => the probe still
-# runs and still exits non-zero on failure; it just cannot alert anyone.
+# once instead of every run. The `/health` probe retries for a while because the
+# remote installer starts this unit right after restarting the stack, so a
+# booting API must not read as an outage. No Telegram creds configured => the
+# probe still runs and still exits non-zero on failure; it just cannot alert
+# anyone.
 #
 # Run standalone to test:  bash scripts/deploy/musicapi-healthcheck.sh
 # Force an alert path:     PORT=1 bash scripts/deploy/musicapi-healthcheck.sh
@@ -51,16 +54,59 @@ send_alert() {
   fi
 }
 
+# /health retry budget. The remote installer starts this unit immediately after
+# a restart (camxora-musicapi-remote.sh), so give the API time to bind :4003
+# before declaring it down; a genuine outage still exhausts every attempt.
+HEALTH_RETRIES="${HEALTH_RETRIES:-6}"
+HEALTH_RETRY_DELAY="${HEALTH_RETRY_DELAY:-5}"
+[[ "${HEALTH_RETRIES}" -ge 1 ]] 2>/dev/null || HEALTH_RETRIES=1
+
+# Probe /health, retrying transient boot failures. On success prints the body
+# and returns 0; once attempts are exhausted prints a human-readable reason
+# (distinguishing "no HTTP response" from a non-200 / bad body) and returns 1.
+probe_health() {
+  local attempt code body tmp
+  tmp="$(mktemp)"
+  for ((attempt = 1; attempt <= HEALTH_RETRIES; attempt++)); do
+    code="$(curl -sS -m 10 -o "${tmp}" -w '%{http_code}' "${HEALTH_URL}" 2>/dev/null || true)"
+    body="$(cat "${tmp}" 2>/dev/null || true)"
+    if [[ "${code}" == "200" && "${body}" == *'"ok":true'* ]]; then
+      rm -f "${tmp}"
+      printf '%s' "${body}"
+      return 0
+    fi
+    [[ "${attempt}" -lt "${HEALTH_RETRIES}" ]] && sleep "${HEALTH_RETRY_DELAY}"
+  done
+  rm -f "${tmp}"
+  if [[ -z "${code}" || "${code}" == "000" ]]; then
+    printf '%s did not answer after %s attempts' "${HEALTH_URL}" "${HEALTH_RETRIES}"
+  else
+    printf '%s returned HTTP %s: %s' "${HEALTH_URL}" "${code}" "${body:-<empty>}"
+  fi
+  return 1
+}
+
+# Persist the last state. Writes a sibling temp file and renames it into place:
+# rename only needs write access to the directory, so a stale root-owned state
+# file (the "cannot write ..." WARN) gets replaced instead of blocking the
+# alert dedupe forever.
+write_state() {
+  local tmp="${STATE_FILE}.$$"
+  if printf '%s\n' "$1" >"${tmp}" 2>/dev/null && mv -f "${tmp}" "${STATE_FILE}" 2>/dev/null; then
+    return 0
+  fi
+  rm -f "${tmp}" 2>/dev/null || true
+  return 1
+}
+
 failures=()
 for unit in "${UNITS[@]}"; do
   systemctl is-active --quiet "${unit}" || failures+=("unit ${unit} is not active")
 done
 
-health="$(curl -fsS -m 10 "${HEALTH_URL}" 2>/dev/null || true)"
-if [[ -z "${health}" ]]; then
-  failures+=("${HEALTH_URL} did not answer")
-elif [[ "${health}" != *'"ok":true'* ]]; then
-  failures+=("${HEALTH_URL} returned: ${health}")
+health=""
+if ! health="$(probe_health)"; then
+  failures+=("${health}")
 fi
 
 prev="$(cat "${STATE_FILE}" 2>/dev/null || echo unknown)"
@@ -79,7 +125,7 @@ if [[ "${state}" != "${prev}" ]]; then
   elif [[ "${prev}" == "down" ]]; then
     send_alert "$(hostname) musicapi RECOVERED: health OK, all units active."
   fi
-  echo "${state}" >"${STATE_FILE}" 2>/dev/null || log "WARN: cannot write ${STATE_FILE}"
+  write_state "${state}" || log "WARN: cannot write ${STATE_FILE}"
 fi
 
 [[ "${state}" == "ok" ]]
