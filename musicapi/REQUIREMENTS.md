@@ -123,7 +123,7 @@ Left sidebar navigation + bottom section.
 
 ### 4.10 Settings & alerts `[DONE]`
 - Brand name, docs URL, Telegram support link, languages — stored in `app_settings`, editable at `GET`/`PUT /admin/settings`.
-- Alerts: low credits and failure-rate spikes — evaluated at `GET /admin/alerts` and pushed to the ops Telegram channel on state change. Captcha is deliberately not an alert: a captcha-required account is healthy while a solver is configured, so it is never actionable.
+- Alerts: low credits, captcha that genuinely blocks generation (no 2Captcha key while accounts need one, or the 2Captcha balance at/below the configured threshold), and failure-rate spikes — evaluated at `GET /admin/alerts` and pushed to the ops Telegram channel on state change. A captcha challenge is not an alert while a funded solver is configured, because the worker solves it automatically at generation time.
 
 ### 4.11 Audit log `[DONE]`
 - Record admin actions (top-up credits, ban user, change pricing) — append-only `audit_logs` table; all admin mutations write an entry (actor id+email, action, target, details JSONB, IP); readable at `GET /admin/audit`.

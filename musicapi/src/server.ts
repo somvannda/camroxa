@@ -92,14 +92,17 @@ export interface BrandSettings {
 
 /**
  * Thresholds/switches for the alerts the admin panel surfaces (task 5.5,
- * REQUIREMENTS §4.10): Suno accounts running low on credits, and a spike in the
- * job failure rate. Captcha is intentionally not an alert: a captcha-required
- * account is healthy while a solver is configured (the worker solves the
- * Turnstile automatically at generation time), so it is never actionable.
+ * REQUIREMENTS §4.10): Suno accounts running low on credits, a captcha that
+ * cannot actually be solved (no 2Captcha key, or a drained balance), and a
+ * spike in the job failure rate. A captcha challenge is only an alert when it
+ * is actionable — while a funded solver is configured, the worker solves it
+ * automatically at generation time.
  */
 export interface AlertSettings {
   enabled: boolean;
   low_credits_threshold: number;
+  /** Alert when the 2Captcha balance (USD) is at or below this. 0 disables. */
+  captcha_balance_threshold: number;
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
   window_minutes: number;
@@ -115,6 +118,7 @@ const DEFAULT_BRAND: BrandSettings = {
 const DEFAULT_ALERTS: AlertSettings = {
   enabled: true,
   low_credits_threshold: 50,
+  captcha_balance_threshold: 1,
   failure_rate_threshold: 0.25,
   failure_rate_min_requests: 20,
   window_minutes: 60,
@@ -172,6 +176,12 @@ function coerceAlerts(value: unknown): AlertSettings {
   return {
     enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_ALERTS.enabled,
     low_credits_threshold: clampInt(o.low_credits_threshold, DEFAULT_ALERTS.low_credits_threshold, 0, 1_000_000),
+    captcha_balance_threshold: clampNumber(
+      o.captcha_balance_threshold,
+      DEFAULT_ALERTS.captcha_balance_threshold,
+      0,
+      100_000,
+    ),
     failure_rate_threshold: clampNumber(o.failure_rate_threshold, DEFAULT_ALERTS.failure_rate_threshold, 0, 1),
     failure_rate_min_requests: clampInt(
       o.failure_rate_min_requests,
@@ -232,6 +242,7 @@ function mergeAlerts(
   }
   const numeric: Array<[keyof AlertSettings, number, number]> = [
     ["low_credits_threshold", 0, 1_000_000],
+    ["captcha_balance_threshold", 0, 100_000],
     ["failure_rate_threshold", 0, 1],
     ["failure_rate_min_requests", 1, 1_000_000],
     ["window_minutes", 5, 1440],
@@ -242,7 +253,8 @@ function mergeAlerts(
     if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
       return { ok: false, error: `alerts.${key} must be a number between ${min} and ${max}.` };
     }
-    (next[key] as number) = key === "failure_rate_threshold" ? value : Math.round(value);
+    (next[key] as number) =
+      key === "failure_rate_threshold" || key === "captcha_balance_threshold" ? value : Math.round(value);
   }
   return { ok: true, value: next };
 }
@@ -4374,7 +4386,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return coerceAlerts(await readSettingsValue("alerts"));
   }
 
-  type AlertType = "low_credits" | "failure_rate";
+  type AlertType = "low_credits" | "captcha_no_solver" | "captcha_balance" | "failure_rate";
 
   interface AlertItem {
     id: AlertType;
@@ -4391,10 +4403,34 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     alerts: AlertItem[];
     summary: {
       low_credits: number;
+      captcha_required: number;
+      captcha_balance: number | null;
       failure_rate: number | null;
       requests: number;
       failures: number;
     };
+  }
+
+  /**
+   * Best-effort 2Captcha balance in USD, or null when the key is unset, the
+   * request fails, or the response is unparseable. Never throws: a failed probe
+   * must not produce a captcha alert.
+   */
+  async function fetchTwoCaptchaBalance(): Promise<number | null> {
+    if (!config.twoCaptchaKey) return null;
+    try {
+      const res = await fetch(
+        `https://2captcha.com/res.php?key=${encodeURIComponent(config.twoCaptchaKey)}&action=getbalance&json=1`,
+        { signal: AbortSignal.timeout(8_000) },
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as { status?: number; request?: string };
+      if (data.status !== 1) return null;
+      const balance = Number(data.request);
+      return Number.isFinite(balance) ? balance : null;
+    } catch {
+      return null;
+    }
   }
 
   /**
@@ -4407,6 +4443,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const checkedAt = new Date().toISOString();
     const summary: AlertReport["summary"] = {
       low_credits: 0,
+      captcha_required: 0,
+      captcha_balance: null,
       failure_rate: null,
       requests: 0,
       failures: 0,
@@ -4433,7 +4471,36 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       });
     }
 
-    // 2. Failure-rate spike over the configured sliding window.
+    // 2. Captcha: only alert when it actually blocks generation. A funded
+    //    solver makes a captcha challenge a no-op, so the actionable cases are
+    //    "accounts need a captcha but no solver is configured" and "the solver
+    //    is drained/broken".
+    const captchaAccounts = health.filter((h) => h.captchaRequired);
+    summary.captcha_required = captchaAccounts.length;
+    if (captchaAccounts.length > 0 && !config.twoCaptchaKey) {
+      alerts.push({
+        id: "captcha_no_solver",
+        type: "captcha_no_solver",
+        severity: "warning",
+        message: `${captchaAccounts.length} Suno account(s) require a captcha but no 2Captcha key is configured; generation on them will fail until a key is added.`,
+        details: { accounts: captchaAccounts.map((h) => h.id) },
+      });
+    }
+    if (config.twoCaptchaKey && thresholds.captcha_balance_threshold > 0) {
+      const balance = await fetchTwoCaptchaBalance();
+      summary.captcha_balance = balance;
+      if (balance !== null && balance <= thresholds.captcha_balance_threshold) {
+        alerts.push({
+          id: "captcha_balance",
+          type: "captcha_balance",
+          severity: balance <= 0 ? "critical" : "warning",
+          message: `2Captcha balance is $${balance.toFixed(2)}, at or below the $${thresholds.captcha_balance_threshold.toFixed(2)} threshold — top up so captcha-solved generations keep working.`,
+          details: { balance, threshold: thresholds.captcha_balance_threshold },
+        });
+      }
+    }
+
+    // 3. Failure-rate spike over the configured sliding window.
     const row = await queryOne<{ total: string; failed: string }>(
       `SELECT count(*)::text AS total,
               count(*) FILTER (WHERE status <> 'complete')::text AS failed

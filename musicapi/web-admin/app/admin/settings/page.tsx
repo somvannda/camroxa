@@ -14,6 +14,7 @@ interface BrandSettings {
 interface AlertSettings {
   enabled: boolean;
   low_credits_threshold: number;
+  captcha_balance_threshold: number;
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
   window_minutes: number;
@@ -34,6 +35,8 @@ interface AlertReport {
   alerts: AlertItem[];
   summary: {
     low_credits: number;
+    captcha_required: number;
+    captcha_balance: number | null;
     failure_rate: number | null;
     requests: number;
     failures: number;
@@ -280,6 +283,11 @@ export default function SettingsPage() {
               <p className="text-xs text-[var(--muted)]">Alert when a Suno account has this many credits or fewer.</p>
             </div>
             <div className="space-y-1">
+              <label className={labelClass}>2Captcha balance threshold ($)</label>
+              <input type="number" min={0} step="0.5" value={alerts.captcha_balance_threshold} onChange={(e) => setAlerts({ ...alerts, captcha_balance_threshold: Number(e.target.value) })} className={inputClass} />
+              <p className="text-xs text-[var(--muted)]">Alert when the 2Captcha balance falls to this. 0 disables. Captcha accounts with no key are always flagged.</p>
+            </div>
+            <div className="space-y-1">
               <label className={labelClass}>Failure-rate threshold (%)</label>
               <input type="number" min={0} max={100} step={1} value={Math.round(alerts.failure_rate_threshold * 100)} onChange={(e) => setAlerts({ ...alerts, failure_rate_threshold: Number(e.target.value) / 100 })} className={inputClass} />
             </div>
@@ -413,6 +421,8 @@ export default function SettingsPage() {
             <>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
                 <Stat label="Low-credit accounts" value={String(s?.low_credits ?? 0)} />
+                <Stat label="Captcha accounts" value={String(s?.captcha_required ?? 0)} />
+                <Stat label="2Captcha balance" value={s?.captcha_balance == null ? "—" : `$${s.captcha_balance.toFixed(2)}`} />
                 <Stat label="Failure rate" value={s?.failure_rate == null ? "—" : `${(s.failure_rate * 100).toFixed(1)}%`} />
                 <Stat label="Requests / failures" value={s ? `${s.requests} / ${s.failures}` : "—"} />
               </div>
