@@ -560,6 +560,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     config.suno.maxQueue,
   );
 
+  // In-flight jobs per Suno account. Account selection is least-loaded-first
+  // (see `orderByLoad`), so a burst spreads across the pool instead of landing
+  // on one account; an account at `maxConcurrentPerAccount` is used only when no
+  // under-cap account is available. Counted per attempt, in-process.
+  const accountInflight = new Map<string, number>();
+  const accountLoad = (id: string): number => accountInflight.get(id) ?? 0;
+  const markAccountStart = (id: string): void => {
+    accountInflight.set(id, accountLoad(id) + 1);
+  };
+  const markAccountEnd = (id: string): void => {
+    const next = accountLoad(id) - 1;
+    if (next > 0) accountInflight.set(id, next);
+    else accountInflight.delete(id);
+  };
+
   // Edge request counters for the admin `/metrics` snapshot. In-memory and reset
   // on restart, which is all a single-process deployment needs.
   const requestCounters = { total: 0, clientErrors: 0, serverErrors: 0 };
@@ -2155,14 +2170,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const excludeAttemptedIds: string[] = [];
     const maxAttempts = Math.min(3, pool.size);
     const errors: string[] = [];
+    const accountOpts = { load: accountLoad, maxPerAccount: config.suno.maxConcurrentPerAccount };
 
     await saveJob(job);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
         client = options?.needFeature
-          ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any")
-          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
+          ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any", accountOpts)
+          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any", accountOpts);
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
         break;
@@ -2172,6 +2188,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.status = "running";
       job.accountId = client.account.id;
       await saveJob(job);
+      markAccountStart(client.account.id);
       try {
         const clips = await submitFactory(client);
         const ids = clips.map((c) => c.id);
@@ -2190,6 +2207,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           await finalizeJob(job);
           return;
         }
+      } finally {
+        markAccountEnd(client.account.id);
       }
     }
 
@@ -2215,14 +2234,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const excludeAttemptedIds: string[] = [];
     const maxAttempts = Math.min(3, pool.size);
     const errors: string[] = [];
+    const accountOpts = { load: accountLoad, maxPerAccount: config.suno.maxConcurrentPerAccount };
 
     await saveJob(job);
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
         client = options?.needFeature
-          ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any")
-          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
+          ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any", accountOpts)
+          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any", accountOpts);
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
         break;
@@ -2232,6 +2252,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.status = "running";
       job.accountId = client.account.id;
       await saveJob(job);
+      markAccountStart(client.account.id);
       try {
         job.result = await submitFactory(client);
         job.status = "complete";
@@ -2246,6 +2267,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           await finalizeJob(job);
           return;
         }
+      } finally {
+        markAccountEnd(client.account.id);
       }
     }
 
@@ -2601,6 +2624,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         capacity:
           config.suno.maxConcurrent ?? Math.max(1, pool.size * config.suno.concurrentPerAccount),
         maxConcurrentPerUser: config.suno.maxConcurrentPerUser,
+        maxConcurrentPerAccount: config.suno.maxConcurrentPerAccount,
+        // In-flight jobs per Suno account (fairness view).
+        byAccount: Object.fromEntries(accountInflight),
       },
     };
   });
