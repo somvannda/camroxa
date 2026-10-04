@@ -13,22 +13,43 @@
  * `max` is evaluated on every admission, adding a Suno account raises capacity
  * without a restart.
  */
+/** Thrown by `acquire()` when the waiting queue is at its configured bound. */
+export class QueueFullError extends Error {
+  constructor() {
+    super("Job queue is full.");
+    this.name = "QueueFullError";
+  }
+}
+
 export class ConcurrencyGate {
   private active = 0;
   private readonly ownerActive = new Map<string, number>();
   private readonly waiting: Array<{ owner: string; cap: number; resolve: () => void }> = [];
 
-  constructor(private readonly max: () => number) {}
+  /**
+   * @param max     Global admission ceiling (re-evaluated per admission).
+   * @param maxQueue Maximum jobs allowed to wait; `<= 0` means unbounded. When
+   *                 the queue is full, `acquire()` rejects with `QueueFullError`
+   *                 so a flood cannot accumulate unbounded pending jobs.
+   */
+  constructor(
+    private readonly max: () => number,
+    private readonly maxQueue = 0,
+  ) {}
 
   /**
-   * Resolve once both a global slot and an owner slot are free. The returned
-   * promise never rejects; the caller MUST invoke the returned release function
-   * exactly once (typically in a `finally`).
+   * Resolve once both a global slot and an owner slot are free, or reject with
+   * `QueueFullError` if the waiting queue is already at `maxQueue`. On success
+   * the caller MUST invoke the returned release function exactly once (typically
+   * in a `finally`).
    */
   acquire(owner: string, cap: number): Promise<() => void> {
     if (this.canStart(owner, cap)) {
       this.start(owner);
       return Promise.resolve(() => this.release(owner));
+    }
+    if (this.maxQueue > 0 && this.waiting.length >= this.maxQueue) {
+      return Promise.reject(new QueueFullError());
     }
     return new Promise<() => void>((resolve) => {
       this.waiting.push({ owner, cap, resolve: () => resolve(() => this.release(owner)) });
@@ -68,7 +89,7 @@ export class ConcurrencyGate {
   }
 
   /** Snapshot for the admin `/metrics` view. */
-  stats(): { active: number; waiting: number } {
-    return { active: this.active, waiting: this.waiting.length };
+  stats(): { active: number; waiting: number; maxQueue: number } {
+    return { active: this.active, waiting: this.waiting.length, maxQueue: this.maxQueue };
   }
 }

@@ -140,6 +140,13 @@ export const config = {
       : null,
     /** Default per-user concurrent-job cap when `rate_limits` has no override. */
     maxConcurrentPerUser: Math.max(1, Number(process.env.SUNO_MAX_CONCURRENT_PER_USER ?? 2)),
+    /**
+     * How many jobs may wait for a slot before new arrivals are rejected
+     * (0 = unbounded). Bounds the detached-job backlog so a flood cannot grow
+     * the in-memory promise queue without limit; a rejected job fails out with
+     * a retryable error and its charge refunded.
+     */
+    maxQueue: Math.max(0, Number(process.env.SUNO_MAX_QUEUE ?? 1000)),
   },
   /**
    * Outbound alert delivery (task 5.5, REQUIREMENTS §4.10). Reuses the same
