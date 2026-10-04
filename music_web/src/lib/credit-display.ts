@@ -54,3 +54,99 @@ export function creditResetLabel(plan: {
   if (monthly > 0) return 'Credit reset monthly';
   return null;
 }
+
+/** Wallet fields the header card needs. Structurally compatible with `CreditBalance`. */
+export type CreditDisplayInput = {
+  total_credits: number;
+  monthly_credits: number;
+  monthly_credits_used: number;
+  topup_credits: number;
+  daily_free_credits: number;
+  daily_free_limit: number;
+  has_subscription: boolean;
+  grant_remaining?: number;
+  reset_label?: string | null;
+};
+
+export type CreditDisplay = {
+  used: number;
+  limit: number;
+  remaining: number;
+  progressPct: number;
+  resetLabel: string | null;
+  promoText: string | null;
+  isLow: boolean;
+  hasSubscription: boolean;
+};
+
+/**
+ * Derive the header/sidebar credit card numbers from a wallet balance.
+ *
+ * The plan's monthly pool is only a floor, not the spendable balance: a free
+ * user can hold stacked grants and top-ups above it. Showing `grant_remaining`
+ * (clamped to the pool) froze the card while credits were really being debited,
+ * so the free case now reports the authoritative `total_credits` and a capacity
+ * that cannot sit below it.
+ */
+export function computeCreditDisplay(balance: CreditDisplayInput | null): CreditDisplay {
+  if (!balance) {
+    return {
+      used: 0,
+      limit: 50,
+      remaining: 0,
+      progressPct: 0,
+      resetLabel: null,
+      promoText: 'Get more credits with Pro.',
+      isLow: true,
+      hasSubscription: false,
+    };
+  }
+
+  const resetLabel = creditResetLabel({
+    daily_credits: balance.daily_free_limit,
+    monthly_credits: balance.monthly_credits,
+    reset_label: balance.reset_label,
+  });
+
+  if (balance.has_subscription) {
+    const remaining = Math.max(0, balance.total_credits);
+    const capacity = Math.max(
+      remaining,
+      balance.monthly_credits + balance.monthly_credits_used + balance.topup_credits,
+      1,
+    );
+    return {
+      used: remaining,
+      limit: capacity,
+      remaining,
+      progressPct: Math.min(100, Math.round((remaining / capacity) * 100)),
+      resetLabel,
+      promoText:
+        balance.topup_credits > 0
+          ? `Includes ${balance.topup_credits.toLocaleString('en-US')} top-up credits`
+          : null,
+      isLow: remaining > 0 && remaining < 30,
+      hasSubscription: true,
+    };
+  }
+
+  const dailyLimit = Math.max(0, balance.daily_free_limit);
+  const monthlyLimit = Math.max(0, balance.monthly_credits);
+  const planAllowance = dailyLimit > 0 ? dailyLimit : monthlyLimit;
+  const remaining = Math.max(0, balance.total_credits);
+  const limit = Math.max(planAllowance, remaining, 1);
+
+  return {
+    used: remaining,
+    limit,
+    remaining,
+    progressPct: Math.min(100, Math.round((remaining / limit) * 100)),
+    resetLabel,
+    promoText:
+      balance.topup_credits > 0
+        ? `Includes ${balance.topup_credits.toLocaleString('en-US')} top-up credits`
+        : 'Get more credits with Pro.',
+    isLow: remaining > 0 && remaining < 30,
+    hasSubscription: false,
+  };
+}

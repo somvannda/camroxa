@@ -811,11 +811,21 @@ class WebMusicService:
         user_id: UUID,
         *,
         reference_id: str | None = None,
+        task_id: str | None = None,
     ) -> None:
         if await self._credits_only_v3_enabled():
             charge = self._open_charges.pop(reference_id, None) if reference_id else None
             if charge is not None:
                 await self._web_music_charge_bridge().refund(user_id, charge)
+                return
+            # The charge lives in the API process's ``_open_charges``; a worker
+            # process (or a restarted API) never has it. Reverse the recorded
+            # debit instead, idempotently, so a failed song is really refunded.
+            await self._refund_v3_music_by_reference(
+                user_id,
+                reference_id=reference_id,
+                task_id=task_id,
+            )
             return
         if await self._has_pro(user_id) or self._credit_service is None:
             return
@@ -824,6 +834,79 @@ class WebMusicService:
             WEB_MUSIC_CREDITS_PER_SONG,
             "web_music_generation",
             reference_id=reference_id,
+        )
+
+    async def _refund_v3_music_by_reference(
+        self,
+        user_id: UUID,
+        *,
+        reference_id: str | None,
+        task_id: str | None,
+    ) -> None:
+        """Reverse a v3 ``music`` debit when the in-memory charge is gone.
+
+        The charge is written to ``credit_transactions`` (reason ``v3_music``)
+        keyed by the reservation id, which ``_link_generation_debit_reference``
+        rewrites to the task id once the job is queued. Either id can be present
+        by the time a failed submit is refunded, so match on both. The refund is
+        keyed on the debit row id, making worker re-attempts no-ops.
+        """
+        refs = [ref for ref in (reference_id, task_id) if ref]
+        if not refs:
+            return
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, amount
+            FROM credit_transactions
+            WHERE user_id = $1
+              AND direction = 'debit'
+              AND reason = 'v3_music'
+              AND ref_id = ANY($2::text[])
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            refs,
+        )
+        if row is None:
+            logger.warning(
+                "No v3_music debit to refund user=%s refs=%s", user_id, refs
+            )
+            return
+        amount_units = int(row["amount"] or 0)
+        if amount_units <= 0:
+            return
+        from platform_api.services.credit_units import units_to_credits
+
+        await self._v3_refund_billing().refund(
+            user_id=user_id,
+            op="music",
+            amount_credits=units_to_credits(amount_units),
+            ref_id=str(row["id"]),
+        )
+
+    def _v3_refund_billing(self) -> Any:
+        """A refund-only v3 billing service.
+
+        The worker process may not have Redis/usage-enforcement wired (it
+        tolerates ``get_redis`` failing), so the durable refund builds the
+        credits-only service without the enforcement collaborator rather than
+        going through ``get_v3_billing_service``.
+        """
+        from platform_api.dependencies import (
+            get_credit_pricing_service,
+            get_credit_repo,
+            get_v3_store,
+        )
+        from platform_api.services.v3.credits_only_billing_service import (
+            CreditsOnlyBillingService,
+        )
+
+        return CreditsOnlyBillingService(
+            store=get_v3_store(),
+            credit_repo=get_credit_repo(),
+            pricing_service=get_credit_pricing_service(),
+            enforcement=None,
         )
 
     async def _link_generation_debit_reference(
@@ -1131,7 +1214,11 @@ class WebMusicService:
         try:
             external_task_id = await self._generation.submit_suno_external_id(request)
         except Exception:
-            await self._release_daily_slot(user_id, reference_id=reservation_id)
+            await self._release_daily_slot(
+                user_id,
+                reference_id=reservation_id,
+                task_id=str(task_id),
+            )
             await self._pool.execute(
                 """
                 UPDATE suno_tasks

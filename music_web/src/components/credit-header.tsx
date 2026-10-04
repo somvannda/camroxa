@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react';
 import { LogOut, Plus, Sparkles } from 'lucide-react';
-import { creditResetLabel, fetchCreditBalance, type CreditBalance } from '@/lib/subscription-api';
+import { fetchCreditBalance, type CreditBalance } from '@/lib/subscription-api';
+import { computeCreditDisplay, type CreditDisplay } from '@/lib/credit-display';
 import TopupModal from '@/components/topup-modal';
 import PricingModal from '@/components/pricing-modal';
 import { useAuth } from '@/components/auth-provider';
@@ -11,79 +12,6 @@ import { cn } from '@/lib/cn';
 type CreditHeaderProps = {
   variant?: 'header' | 'compact' | 'sidebar';
 };
-
-type CreditDisplay = {
-  used: number;
-  limit: number;
-  remaining: number;
-  progressPct: number;
-  resetLabel: string | null;
-  promoText: string | null;
-  isLow: boolean;
-  hasSubscription: boolean;
-};
-
-function computeCreditDisplay(balance: CreditBalance | null): CreditDisplay {
-  if (!balance) {
-    return {
-      used: 0,
-      limit: 50,
-      remaining: 0,
-      progressPct: 0,
-      resetLabel: null,
-      promoText: 'Get more credits with Pro.',
-      isLow: true,
-      hasSubscription: false,
-    };
-  }
-
-  const resetLabel = creditResetLabel({
-    daily_credits: balance.daily_free_limit,
-    monthly_credits: balance.monthly_credits,
-    reset_label: balance.reset_label,
-  });
-
-  if (balance.has_subscription) {
-    const remaining = Math.max(0, balance.total_credits);
-    const capacity = Math.max(
-      remaining,
-      balance.monthly_credits + balance.monthly_credits_used + balance.topup_credits,
-      1,
-    );
-    return {
-      used: remaining,
-      limit: capacity,
-      remaining,
-      progressPct: Math.min(100, Math.round((remaining / capacity) * 100)),
-      resetLabel,
-      promoText:
-        balance.topup_credits > 0
-          ? `Includes ${balance.topup_credits.toLocaleString('en-US')} top-up credits`
-          : null,
-      isLow: remaining > 0 && remaining < 30,
-      hasSubscription: true,
-    };
-  }
-
-  const dailyLimit = Math.max(0, balance.daily_free_limit);
-  const monthlyLimit = Math.max(0, balance.monthly_credits);
-  const remaining =
-    dailyLimit > 0
-      ? Math.max(0, balance.daily_free_credits)
-      : Math.max(0, balance.grant_remaining ?? balance.total_credits);
-  const limit = Math.max(dailyLimit > 0 ? dailyLimit : monthlyLimit, remaining, 1);
-
-  return {
-    used: remaining,
-    limit,
-    remaining,
-    progressPct: Math.min(100, Math.round((remaining / limit) * 100)),
-    resetLabel,
-    promoText: 'Get more credits with Pro.',
-    isLow: remaining > 0 && remaining < 30,
-    hasSubscription: false,
-  };
-}
 
 function CreditProgressCard({
   display,
