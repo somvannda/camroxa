@@ -87,7 +87,7 @@ Left sidebar navigation + bottom section.
 
 ### 4.1 Overview dashboard `[DONE]`
 - `[DONE]` Total users, requests, success rate, credits consumed.
-- `[DONE]` Revenue ($), Suno accounts health summary — `GET /admin/stats` adds `revenue` + `credits_per_usd` (rate from the cheapest active credit pack, same as `/me/usage` and `/admin/analytics`) and `account_health` (`total`/`healthy`/`disabled`/`low_credits`/`captcha_required`, using the same flags and low-credits threshold as the Accounts page).
+- `[DONE]` Revenue ($), Suno accounts health summary — `GET /admin/stats` adds `revenue` + `credits_per_usd` (rate from the cheapest active credit pack, same as `/me/usage` and `/admin/analytics`) and `account_health` (`total`/`healthy`/`disabled`/`low_credits`/`captcha_required`/`captcha_solver`, using the same flags and low-credits threshold as the Accounts page). `captcha_solver` reports whether a 2Captcha key is configured; a captcha-required account is counted `healthy` when a solver is present (it is solved automatically at generation time) and only flagged when there is none.
 
 ### 4.2 Suno Accounts (worker pool) — core `[DONE]`
 - `[DONE]` Add accounts; tag free/paid; load from DB; auto-pull plan/credits/models (live `billing/info`).

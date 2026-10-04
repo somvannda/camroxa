@@ -443,9 +443,14 @@ export class SunoClient {
       task: "mashup_condition",
       generation_type: "TEXT",
       mv: config.model,
-      mashup_clip_ids: clipIds,
+      prompt: prompt ?? "",
       gpt_description_prompt: prompt ?? "",
+      title: "",
+      tags: "",
+      negative_tags: "",
+      mashup_clip_ids: clipIds,
       override_fields: ["prompt"],
+      transaction_uuid: randomUUID(),
     });
   }
 
@@ -601,25 +606,35 @@ export class SunoClient {
     });
     if (!stemRes.ok) throw new Error(`vox-stem failed (${stemRes.status}): ${await stemRes.text()}`);
     const stem = (await stemRes.json()) as { id?: string };
-    const res = await this.request("/api/persona/create/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        root_clip_id: clipId,
-        name,
-        description,
-        is_public: true,
-        persona_type: "vox",
-        vox_audio_id: stem.id,
-        vocal_start_s: vocalStartS,
-        vocal_end_s: vocalEndS,
-        user_input_styles: styles ?? "",
-        clips: [clipId],
-        token,
-      }),
-    });
-    if (!res.ok) throw new Error(`persona/create failed (${res.status}): ${await res.text()}`);
-    return res.json();
+    // /api/clip/{id}/vox-stem returns {status:"submitted"} and processes
+    // asynchronously; persona/create answers "Vocal audio is still processing"
+    // until it is ready. Retry with backoff rather than guessing a fixed delay.
+    let lastErr = "persona/create failed";
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const res = await this.request("/api/persona/create/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          root_clip_id: clipId,
+          name,
+          description,
+          is_public: true,
+          persona_type: "vox",
+          vox_audio_id: stem.id,
+          vocal_start_s: vocalStartS,
+          vocal_end_s: vocalEndS,
+          user_input_styles: styles ?? "",
+          clips: [clipId],
+          token,
+        }),
+      });
+      if (res.ok) return res.json();
+      const text = await res.text();
+      lastErr = `persona/create failed (${res.status}): ${text}`;
+      if (!/still processing|processing/i.test(text) || attempt === 7) break;
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    throw new Error(lastErr);
   }
 
   /** Generate cover art for a clip. */
@@ -656,7 +671,7 @@ export class SunoClient {
       }
       throw new Error(`download/authorize failed (${authorizeResp.status}): ${await authorizeResp.text()}`);
     }
-    const maxPolls = 600;
+    const maxPolls = 120;
     const pollMs = 500;
     for (let i = 0; i < maxPolls; i++) {
       const r = await this.request(
@@ -678,6 +693,14 @@ export class SunoClient {
       const text = await r.text();
       let data: any = null;
       try { data = JSON.parse(text); } catch { data = { ok: false, raw: text }; }
+      // A 200 `{ok:false}` (e.g. reason "not_authorized"/"quota_exhausted" once the
+      // account's monthly download quota is spent) is a terminal denial, not a
+      // "still processing" state — fail fast instead of polling for minutes.
+      if (data && typeof data === "object" && data.ok === false) {
+        throw new Error(
+          `download/clip denied: ${data.reason ?? "unknown"}${data.message ? ` — ${data.message}` : ""}`,
+        );
+      }
       if (data && typeof data === "object" && (data.status === "ready" || data.status === "ok")) {
         const url = data.download_url ?? data.url ?? data.cdn_url ?? data.downloadUrl;
         if (url && typeof url === "string") return url;
@@ -782,7 +805,7 @@ export class SunoClient {
    */
   async createAudioUpload(params: {
     extension: string;
-    uploadType?: "file_upload" | "voice_recording" | "song_demo";
+    uploadType?: "file_upload" | "voice_recording" | "audio_recording" | "song_demo";
     lastUploadId?: string;
   }): Promise<{ id: string; url: string; fields: Record<string, string>; is_file_uploaded?: boolean }> {
     const token = await this.ensureCaptchaToken();
@@ -942,22 +965,37 @@ export class SunoClient {
   // Detail endpoints (GET, no captcha usually)
   // =========================================
 
-  /** GET /api/download/clip/{clip_id} — returns clip metadata + playback URLs (confirmed 200 via probe with invalid UUID). */
-  async getClipDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-    if (!res.ok) throw new Error(`getClipDetail failed (${res.status}): ${await res.text()}`);
-    return res.json();
+  /**
+   * GET /api/clip/{clip_id} — Suno's canonical per-clip record (metadata,
+   * media_urls, image_url, video_url, ownership). This is the durable read
+   * source: the old `/api/download/clip/{id}` route is gated by a per-account
+   * monthly download quota and returns HTTP 200 `{ok:false, reason:"not_authorized"}`
+   * once that quota is spent, so it can no longer back a detail API.
+   */
+  async getClipObject(clipId: string): Promise<Record<string, unknown>> {
+    const res = await this.request(`/api/clip/${clipId}`, { method: "GET" });
+    if (!res.ok) throw new Error(`getClipObject failed (${res.status}): ${await res.text()}`);
+    const data = await res.json();
+    return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   }
 
-  /** Fetch lyrics detail (full text / structured lines / timestamped) for a clip. */
+  /** Clip detail — the full clip record. */
+  async getClipDetail(clipId: string): Promise<unknown> {
+    return this.getClipObject(clipId);
+  }
+
+  /**
+   * Lyrics detail, derived from the clip record's `metadata.prompt` (the
+   * lyric/prompt text captured at generation). Suno exposes no standalone
+   * lyrics route — `/api/clip/{id}/lyrics` is a plain 404 — so the clip record
+   * is the only source. Word-level alignment isn't available and is returned
+   * empty rather than fabricated.
+   */
   async lyricsDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/lyrics`, { method: "GET" });
-    if (!res.ok) {
-      const fallback = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-      if (!fallback.ok) throw new Error(`lyricsDetail failed (${res.status}): ${await res.text()}`);
-      return fallback.json();
-    }
-    return res.json();
+    const clip = await this.getClipObject(clipId);
+    const meta = (clip.metadata ?? {}) as Record<string, unknown>;
+    const lyrics = typeof meta.prompt === "string" ? meta.prompt : "";
+    return { ...clip, lyrics, aligned_words: [] };
   }
 
   /** WAV download detail endpoint — same as downloadUrl but exposed as detail for parity. */
@@ -966,87 +1004,44 @@ export class SunoClient {
     return { clip_id: clipId, format, download_url: url };
   }
 
-  /** Stems (vocal-separation) detail — returns {stems_urls, status} for a stems task. */
+  /** Stems (vocal-separation) detail — `/api/clip/{id}/stems` is still served. */
   async stemsDetail(clipId: string): Promise<unknown> {
     const res = await this.request(`/api/clip/${clipId}/stems`, { method: "GET" });
-    if (!res.ok) {
-      const fallback = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-      if (!fallback.ok) throw new Error(`stemsDetail failed (${res.status}): ${await res.text()}`);
-      return fallback.json();
-    }
-    return res.json();
+    if (res.ok) return res.json();
+    return this.getClipObject(clipId);
   }
 
-  /** Video / MP4 generate detail for a clip. */
+  /** Video/MP4 detail — the clip record carries `video_url` once a video exists. */
   async videoDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/mp4`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/download/mp4/${clipId}`, { method: "GET" });
-      if (!fb.ok) throw new Error(`videoDetail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipId);
   }
 
-  /** Cover image detail for a clip. */
+  /** Cover image detail — the clip record carries `image_url`/`image_large_url`. */
   async coverDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/image`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-      if (!fb.ok) throw new Error(`coverDetail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipId);
   }
 
-  /** Subtitle / captions detail for a clip (SRT / VTT). */
+  /** Subtitle/captions detail — Suno exposes no captions route; derive from clip lyrics. */
   async subtitleDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/subtitles`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/download/subtitle/${clipId}`, { method: "GET" });
-      if (!fb.ok) {
-        const fb2 = await this.request(`/api/clip/${clipId}/lyrics`, { method: "GET" });
-        if (!fb2.ok) throw new Error(`subtitleDetail failed (${res.status}): ${await res.text()}`);
-        return fb2.json();
-      }
-      return fb.json();
-    }
-    return res.json();
+    const clip = await this.getClipObject(clipId);
+    const meta = (clip.metadata ?? {}) as Record<string, unknown>;
+    const lyrics = typeof meta.prompt === "string" ? meta.prompt : "";
+    return { ...clip, lyrics, subtitle: "" };
   }
 
-  /** Recovery audio detail endpoint. */
+  /** Recovery audio detail — no dedicated Suno route; return the clip record. */
   async recoveryDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/recovery`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-      if (!fb.ok) throw new Error(`recoveryDetail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipId);
   }
 
-  /** MP4 generate task detail endpoint. */
+  /** MP4 task detail — no dedicated Suno route; return the clip record. */
   async mp4Detail(clipIdOrTaskId: string): Promise<unknown> {
-    const res = await this.request(`/api/download/mp4/${clipIdOrTaskId}`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/video_gen/mp4/generate`, {
-        method: "GET",
-      });
-      if (!fb.ok) throw new Error(`mp4Detail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipIdOrTaskId);
   }
 
-  /** MIDI download / detail endpoint. */
+  /** MIDI detail — no dedicated Suno route; return the clip record. */
   async midiDetail(clipIdOrTaskId: string): Promise<unknown> {
-    const res = await this.request(`/api/download/midi/${clipIdOrTaskId}`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/clip/${clipIdOrTaskId}/midi`, { method: "GET" });
-      if (!fb.ok) throw new Error(`midiDetail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipIdOrTaskId);
   }
 
   // =========================================
@@ -1118,17 +1113,27 @@ export class SunoClient {
     stylePrompt: string,
     params: { startS?: number; endS?: number } = {}
   ): Promise<Clip[]> {
+    const startS = params.startS ?? 0;
+    const endS = params.endS ?? 60;
+    // Top-level infill shape (matches replaceSection, which Suno accepts); the
+    // nested `params` wrapper was rejected with a `params.prompt` 422.
     return this.submitClips("/api/generate/v2-web/", {
       task: "infill",
-      mv: config.model,
       generation_type: "TEXT",
-      params: {
-        prompt: stylePrompt,
-        continue_clip_id: clipId,
-        title: `Boost: ${stylePrompt.slice(0, 40)}`,
-        infill_start_s: params.startS ?? 0,
-        infill_end_s: params.endS ?? 60,
-      },
+      mv: config.model,
+      prompt: stylePrompt,
+      gpt_description_prompt: stylePrompt,
+      tags: "",
+      title: `Boost: ${stylePrompt.slice(0, 40)}`,
+      negative_tags: "",
+      continue_clip_id: clipId,
+      infill_context_start_s: startS,
+      infill_context_end_s: endS,
+      infill_start_s: startS,
+      infill_end_s: endS,
+      infill_dur_s: Math.max(1, endS - startS),
+      infill_lyrics: stylePrompt,
+      continued_aligned_prompt: stylePrompt,
       override_fields: ["prompt"],
       transaction_uuid: randomUUID(),
     });
@@ -1156,39 +1161,107 @@ export class SunoClient {
   // Suno Voice 6 operations (phrase / validate / record / generate / apply + 1 more for 6)
   // =========================================
 
-  /** Voice op 1: phrase — generate a reference prompt for voice cloning. */
-  async voicePhrase(prompt: string): Promise<{ phrase: string }> {
-    const token = await this.ensureCaptchaToken();
-    const res = await this.request("/api/persona/phrase/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt, token }),
-    });
-    if (!res.ok) {
-      // Fallback: return default phrase as placeholder if endpoint not found.
-      return { phrase: prompt.trim() || "Please use this sample phrase for voice validation." };
-    }
-    return (await res.json()) as { phrase: string };
+  /** Voice op 1: phrase — fetch the validation phrase the user must record. */
+  async voicePhrase(_prompt?: string): Promise<{ phrase_id: string; phrase_text: string }> {
+    const res = await this.request("/api/voice-verification/phrase", { method: "GET" });
+    if (!res.ok) throw new Error(`voice phrase failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as { phrase_id: string; phrase_text: string };
   }
 
-  /** Voice op 2: validate — check if a voice sample / URL passes validation. */
-  async voiceValidate(params: { uploadId?: string; audioUrl?: string }): Promise<{ valid: boolean; score?: number }> {
-    const token = await this.ensureCaptchaToken();
-    const res = await this.request("/api/persona/validate/", {
+  /**
+   * Upload audio for a voice flow and WAIT for `status:"complete"` before
+   * returning the upload session id. `uploadAudio` returns as soon as
+   * `passed_audio_processing`, which is too early: `processed_clip/voice-vox-stem`
+   * then answers `{"detail":"Upload not found"}`.
+   */
+  async uploadForVoice(bytes: Buffer, uploadType: "voice_recording" | "audio_recording" = "voice_recording"): Promise<string> {
+    const session = await this.createAudioUpload({ extension: "mp3", uploadType });
+    const contentType = session.fields["Content-Type"] || "audio/mpeg";
+    const form = new FormData();
+    for (const [k, v] of Object.entries(session.fields)) form.append(k, v);
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), "voice.mp3");
+    const up = await fetch(session.url, { method: "POST", body: form });
+    if (!up.ok && up.status !== 204) throw new Error(`audio S3 upload failed (${up.status}): ${await up.text()}`);
+    await this.registerAudioUpload(session.id, { uploadType, uploadFilename: "voice.mp3" });
+    for (let i = 0; i < 30; i++) {
+      const st = await this.fetchAudioUploadStatus(session.id).catch(() => null);
+      if (st?.status === "complete") break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    return session.id;
+  }
+
+  /**
+   * Voice op 2: validate. Suno's custom-voice workflow exposes the validation
+   * phrase via `GET /api/voice-verification/phrase`; the actual verification
+   * (comparing the spoken phrase against the singing recording) happens later at
+   * `POST /api/voice-verification/` with both recording ids and the phrase id.
+   * We surface the phrase-generation step here.
+   */
+  async voiceValidate(
+    params: { uploadId?: string; audioUrl?: string; voiceUrl?: string; language?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const phrase = await this.voicePhrase();
+    const out: Record<string, unknown> = { ...phrase };
+    // Best-effort: extract the source vocal stem so a later voice/generate can
+    // verify against it. This needs a Voice-entitled (Premier) account; when it
+    // is unavailable we still return the phrase and record the reason.
+    const sourceUrl = params.voiceUrl ?? params.audioUrl;
+    try {
+      let uploadId = params.uploadId;
+      if (!uploadId && sourceUrl) {
+        const resp = await fetch(sourceUrl, { signal: AbortSignal.timeout(60_000) });
+        if (!resp.ok) throw new Error(`Could not download the source recording (${resp.status}).`);
+        uploadId = await this.uploadForVoice(Buffer.from(await resp.arrayBuffer()));
+      }
+      if (uploadId) {
+        const stem = await this.voiceVoxStem(uploadId);
+        const vr = stem.voice_recording_id ?? stem.id;
+        if (typeof vr === "string") out.voice_recording_id = vr;
+        else out.voice_recording_error = "voice-vox-stem returned no recording id (Voice entitlement required).";
+      }
+    } catch (e) {
+      out.voice_recording_error = e instanceof Error ? e.message : String(e);
+    }
+    return out;
+  }
+
+  /**
+   * Custom Voice step: extract the vocal stem from a source recording upload
+   * (`upload_id` from the audio upload flow) — the `voice_recording_id` used by
+   * voice verification. Requires a Voice-entitled (Premier) account.
+   */
+  async voiceVoxStem(uploadId: string): Promise<Record<string, unknown>> {
+    const res = await this.request("/api/processed_clip/voice-vox-stem", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ upload_id: uploadId }),
+    });
+    if (!res.ok) throw new Error(`voice-vox-stem failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /**
+   * Custom Voice step: verify the user's spoken recording of the validation
+   * phrase against the source voice. `POST /api/voice-verification/` takes the
+   * three ids FLAT (not nested under `spec`). Requires a Voice-entitled account.
+   */
+  async verifyVoice(params: {
+    phraseId: string;
+    voiceRecordingId: string;
+    verificationRecordingId: string;
+  }): Promise<Record<string, unknown>> {
+    const res = await this.request("/api/voice-verification/", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
-        upload_id: params.uploadId,
-        audio_url: params.audioUrl,
-        token,
+        voice_recording_id: params.voiceRecordingId,
+        verification_recording_id: params.verificationRecordingId,
+        phrase_id: params.phraseId,
       }),
     });
-    if (!res.ok) {
-      // Fallback: persona/create/vox-stem pattern with status only.
-      return { valid: true, score: 0.9 };
-    }
-    const data = (await res.json()) as { valid?: boolean; score?: number };
-    return { valid: data.valid ?? true, score: data.score ?? 0.9 };
+    if (!res.ok) throw new Error(`voice-verification failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as Record<string, unknown>;
   }
 
   /** Voice op 3: record — alias for createAudioUpload(uploadType: voice_recording), returns session same shape. */

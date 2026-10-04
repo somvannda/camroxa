@@ -21,6 +21,7 @@ UNITS=(
   camxora-musicapi.service
   camxora-musicapi-web-user.service
   camxora-musicapi-web-admin.service
+  camxora-musicapi-midi.service
   camxora-musicapi-backup.service
   camxora-musicapi-backup.timer
   camxora-musicapi-healthcheck.service
@@ -46,6 +47,13 @@ systemctl daemon-reload
 # restart unconditionally so the new build is always the one running.
 log "Enabling services (start on boot)..."
 systemctl enable "${SERVICES[@]}"
+
+# MIDI microservice is best-effort: it needs the Basic Pitch venv (provisioned
+# by the deploy script). Start it when present; warn but never fail the deploy.
+log "Enabling MIDI microservice..."
+systemctl enable camxora-musicapi-midi.service >/dev/null 2>&1 || true
+systemctl restart camxora-musicapi-midi.service 2>/dev/null \
+  || log "WARN: camxora-musicapi-midi did not start (Basic Pitch venv missing?)"
 
 log "Restarting services so the freshly built tree is what actually runs..."
 systemctl restart "${SERVICES[@]}"
