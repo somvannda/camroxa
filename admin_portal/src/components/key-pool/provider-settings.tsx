@@ -101,7 +101,7 @@ export function ProviderSettings({ provider }: ProviderSettingsProps) {
             step={10}
             value={cooldown}
             onChange={(e) => setCooldown(Number(e.target.value))}
-            className="bg-navy-900 border-navy-700 text-white"
+            className="w-full"
           />
         </div>
       </div>
@@ -117,7 +117,7 @@ export function ProviderSettings({ provider }: ProviderSettingsProps) {
           placeholder="Default (PLATFORM_SUNO_API_BASE_URL)"
           value={baseUrl}
           onChange={(e) => setBaseUrl(e.target.value)}
-          className="bg-navy-900 border-navy-700 text-white"
+          className="w-full"
         />
         <datalist id={`base-url-presets-${provider}`}>
           {UPSTREAM_HOST_PRESETS.map((preset) => (
