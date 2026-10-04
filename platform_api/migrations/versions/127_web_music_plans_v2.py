@@ -10,12 +10,13 @@ music.camxora.com mirrors the live musicapi.camxora.com credit packs exactly:
 Yearly rows keep the existing 15% discount. The Free plan is intentionally left
 untouched (it is admin-managed and already grants the 50-credit testing allowance).
 
-Top-up packs become three recommended tiers with a volume bonus on top of the
-plan credits at that price:
+Top-up packs become three recommended tiers that cost MORE per credit than the
+plan (subscribing is the better deal), so each grants fewer credits than the
+plan at that price:
 
-    $5  -> 1,300 credits (1,000 + 30%)
-    $10 -> 2,760 credits (2,300 + 20%)
-    $30 -> 9,680 credits (8,800 + 10%)
+    $5  -> 700 credits   (1,000 - 30%)
+    $10 -> 1,840 credits (2,300 - 20%)
+    $30 -> 7,920 credits (8,800 - 10%)
 
 Revision ID: 127_web_music_plans_v2
 Revises: 126_provider_base_url
@@ -50,9 +51,9 @@ _PLANS = (
 
 # (slug, name, total_credits, price_cents, display_order)
 _PACKS = (
-    ("small", "Small Pack", 1300, 500, 1),
-    ("medium", "Medium Pack", 2760, 1000, 2),
-    ("large", "Large Pack", 9680, 3000, 3),
+    ("small", "Small Pack", 700, 500, 1),
+    ("medium", "Medium Pack", 1840, 1000, 2),
+    ("large", "Large Pack", 7920, 3000, 3),
 )
 
 

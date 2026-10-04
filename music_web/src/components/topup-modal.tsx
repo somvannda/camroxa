@@ -8,8 +8,6 @@ import {
   fetchCreditPacks,
   purchaseTopup,
   formatPrice,
-  packBaseCredits,
-  packBonusPercent,
   type CreditPack,
 } from '@/lib/subscription-api';
 
@@ -117,8 +115,6 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                 const isPurchasing = purchasingPackId === pack.id;
                 // Largest pack has the best credits-per-dollar value, like musicapi.
                 const isPopular = index === packs.length - 1;
-                const bonus = packBonusPercent(pack);
-                const baseCredits = packBaseCredits(pack);
 
                 return (
                   <div
@@ -132,13 +128,6 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                     {isPopular && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-medium">
                         Best value
-                      </div>
-                    )}
-
-                    {/* Volume bonus */}
-                    {bonus > 0 && (
-                      <div className="absolute right-4 top-4 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-semibold text-green-400">
-                        +{bonus}% bonus
                       </div>
                     )}
 
@@ -176,11 +165,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                         </div>
                       </div>
                       <div className="text-xs text-slate-500">
-                        {pack.total_credits.toLocaleString()} credits
-                        {bonus > 0
-                          ? ` (${baseCredits.toLocaleString()} + ${(pack.total_credits - baseCredits).toLocaleString()} bonus)`
-                          : ''}{' '}
-                        • Never expire
+                        {pack.total_credits.toLocaleString()} credits • Never expire
                       </div>
                     </div>
 

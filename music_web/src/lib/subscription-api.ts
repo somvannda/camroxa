@@ -553,37 +553,6 @@ export function creditsToSongs(credits: number, creditsPerGenerate = 10): number
   return Math.floor(Math.max(0, Number(credits) || 0) / per) * 2;
 }
 
-/**
- * Base (no-bonus) top-up credits by price, mirroring the plan ladder and the
- * live musicapi.camxora.com packs: $5 -> 1,000, $10 -> 2,300, $20 -> 5,500,
- * $30 -> 8,800.
- */
-const TOPUP_BASE_CREDITS: Record<number, number> = {
-  500: 1000,
-  1000: 2300,
-  3000: 8800,
-};
-
-/** Canonical entry-tier credit rate shared with musicapi.camxora.com. */
-export const CREDITS_PER_DOLLAR = 350;
-
-/** Base (no-bonus) credits a top-up pack grants at its price. */
-export function packBaseCredits(pack: { price_cents: number; total_credits: number }): number {
-  const known = TOPUP_BASE_CREDITS[pack.price_cents];
-  if (known != null) return known;
-  return Math.round((Number(pack.price_cents) / 100) * CREDITS_PER_DOLLAR);
-}
-
-/**
- * Volume bonus a top-up pack grants over its base credits.
- * Returns a rounded whole percentage, e.g. 30 for a +30% pack.
- */
-export function packBonusPercent(pack: { price_cents: number; total_credits: number }): number {
-  const base = packBaseCredits(pack);
-  if (!(base > 0)) return 0;
-  return Math.round(((Number(pack.total_credits) - base) / base) * 100);
-}
-
 export function isHiddenLegacyPrice(plan: { price_cents: number }): boolean {
   return Number(plan.price_cents) === 7900;
 }
