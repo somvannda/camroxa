@@ -54,10 +54,10 @@ const USE_CASES = [
 // section never renders empty. The real prices come from the `credit_packs`
 // table via GET /pricing, so this list can't drift from what billing charges.
 const FALLBACK_PLANS = [
-  { name: "Credit pack", amount: "1,000", price: "USD 10", bonus: "" },
-  { name: "Credit pack", amount: "5,000", price: "USD 30", bonus: "" },
-  { name: "Credit pack", amount: "20,000", price: "USD 60", bonus: "" },
-  { name: "Credit pack", amount: "50,000", price: "USD 100", bonus: "Best value" },
+  { name: "Credit pack", amount: "1,000", price: "USD 5", bonus: "" },
+  { name: "Credit pack", amount: "2,300", price: "USD 10", bonus: "" },
+  { name: "Credit pack", amount: "5,500", price: "USD 20", bonus: "" },
+  { name: "Credit pack", amount: "8,800", price: "USD 30", bonus: "Best value" },
 ];
 
 interface Plan {

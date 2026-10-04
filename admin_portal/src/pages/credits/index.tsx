@@ -56,6 +56,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { ModelCostsSection } from '@/pages/credits/model-costs-section';
 import { formatCredits, formatDollars } from '@/lib/credit-format';
+import { providerLabel } from '@/lib/provider-labels';
 import {
   computeMargins,
   marginFromPricing,
@@ -142,6 +143,11 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'V5', label: 'V5 (deprecated)' },
     { value: 'V5_5', label: 'V5.5 (deprecated)' },
     { value: 'lyrics', label: 'lyrics (Suno lyric API)' },
+  ],
+  camxora_music_api: [
+    { value: 'v6', label: 'v6' },
+    { value: 'v6-wild', label: 'v6-wild' },
+    { value: 'v6-mini', label: 'v6-mini' },
   ],
 };
 
@@ -702,7 +708,7 @@ function PricingSection() {
                 onClick={() => setProviderFilter(provider)}
                 className="capitalize"
               >
-                {provider}
+                {providerLabel(provider)}
               </Button>
             ))}
           </div>
@@ -738,7 +744,7 @@ function PricingSection() {
                     >
                       <TableCell>
                         <div className="flex flex-col gap-1">
-                          <span className="font-medium">{aiService}</span>
+                          <span className="font-medium">{providerLabel(aiService)}</span>
                           <div className="flex flex-wrap items-center gap-2">
                             <ServiceAvailabilityBadge status={availabilityMap[aiService]} />
                             {item.needs_review && (
@@ -846,7 +852,7 @@ function PricingSection() {
                   {aiServices.map((service) => (
                     <SelectItem key={service} value={service}>
                       <span className="flex items-center gap-2">
-                        {service}
+                        {providerLabel(service)}
                         <ServiceAvailabilityBadge status={availabilityMap[service]} />
                       </span>
                     </SelectItem>

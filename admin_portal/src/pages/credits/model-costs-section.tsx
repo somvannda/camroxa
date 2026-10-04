@@ -17,6 +17,7 @@ import {
 } from '@/hooks/use-credits';
 import type { ModelCost } from '@/types/models';
 import { toast } from '@/hooks/use-toast';
+import { providerLabel } from '@/lib/provider-labels';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -365,7 +366,7 @@ export function ModelCostsSection() {
                       setModelFilter('all');
                     }}
                   >
-                    {provider}
+                    {providerLabel(provider)}
                   </Button>
                 ))}
               </div>
@@ -407,7 +408,7 @@ export function ModelCostsSection() {
                   {filteredCosts.length > 0 ? (
                     filteredCosts.map((item) => (
                       <TableRow key={item.id}>
-                        <TableCell className="font-medium capitalize">{item.ai_service}</TableCell>
+                        <TableCell className="font-medium">{providerLabel(item.ai_service)}</TableCell>
                         <TableCell className="font-mono text-sm">
                           {item.sub_model || <span className="text-muted-foreground italic">default</span>}
                         </TableCell>

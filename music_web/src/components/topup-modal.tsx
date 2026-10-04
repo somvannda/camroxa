@@ -110,10 +110,11 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
               <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {packs.map((pack, index) => {
                 const isPurchasing = purchasingPackId === pack.id;
-                const isPopular = index === 1; // Medium pack is most popular
+                // Largest pack has the best credits-per-dollar value, like musicapi.
+                const isPopular = index === packs.length - 1;
 
                 return (
                   <div
@@ -126,7 +127,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                   >
                     {isPopular && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-medium">
-                        Popular
+                        Best value
                       </div>
                     )}
 

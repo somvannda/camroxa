@@ -1,6 +1,6 @@
 'use client';
 
-import { Check, Crown, Loader2, Sparkles, Zap } from 'lucide-react';
+import { Check, Crown, Gem, Loader2, Sparkles, Zap } from 'lucide-react';
 import {
   calculateDiscount,
   creditCaptionLines,
@@ -11,7 +11,7 @@ import {
   type SubscriptionPlan,
 } from '@/lib/subscription-api';
 
-const PLAN_ICONS = [Sparkles, Zap, Crown];
+const PLAN_ICONS = [Sparkles, Zap, Crown, Gem];
 
 type AvailablePlansGridProps = {
   plans: SubscriptionPlan[];
@@ -76,7 +76,7 @@ export default function AvailablePlansGrid({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-2 xl:grid-cols-4">
         {displayPlans.map((plan, index) => {
           const pricePerMonth =
             plan.billing_cycle === 'yearly' ? plan.price_cents / 12 : plan.price_cents;

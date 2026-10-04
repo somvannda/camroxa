@@ -28,6 +28,7 @@ const planIcons = {
   Free: Gift,
   Starter: Sparkles,
   Creator: Zap,
+  Pro: Crown,
   Studio: Crown,
 };
 
@@ -35,6 +36,7 @@ const planColors = {
   Free: 'from-slate-500 to-slate-600',
   Starter: 'from-blue-500 to-cyan-500',
   Creator: 'from-purple-500 to-pink-500',
+  Pro: 'from-violet-500 to-indigo-500',
   Studio: 'from-yellow-500 to-orange-500',
 };
 
@@ -196,7 +198,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
               <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
             </div>
           ) : (
-            <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 ${freePlan ? "xl:grid-cols-4" : "xl:grid-cols-3"}`}>
+            <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 ${freePlan ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
               {freePlan ? (
               <div className="relative flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/5 p-4 sm:p-6">
                 <div className="relative z-10 flex items-center gap-3 border-b border-white/10 pb-4">
@@ -258,9 +260,10 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
               {/* Paid plans */}
               {filteredPlans.map((plan) => {
                 const displayName = formatPlanDisplayName(plan.name);
-                const Icon = planIcons[displayName as keyof typeof planIcons] || Sparkles;
-                const colorClass = planColors[displayName as keyof typeof planColors] || 'from-purple-500 to-pink-500';
-                const isPopular = displayName === 'Creator';
+                const baseName = displayName.replace(/\s*\((Monthly|Yearly)\)$/i, '');
+                const Icon = planIcons[baseName as keyof typeof planIcons] || Sparkles;
+                const colorClass = planColors[baseName as keyof typeof planColors] || 'from-purple-500 to-pink-500';
+                const isPopular = baseName === 'Creator';
                 const tierKey = plan.name.split('_')[0].split(' ')[0].toLowerCase();
 
                 let discount: number | null = null;
