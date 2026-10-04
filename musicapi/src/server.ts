@@ -3605,45 +3605,80 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   // Paginated logs for the Logs page: date window + optional endpoint-type
   // filter, newest first. Mirrors sunoapi.org's server-side pagination.
+  //
+  // Records must be visible from submit through completion, the way
+  // sunoapi.org's `record-info` is: a task shows `PENDING`/`RUNNING` right after
+  // the request is accepted, then flips to `SUCCESS`/`FAILED` when it settles.
+  // `usage_logs` is only written at finalize (after Suno and the B2 ingest), so
+  // the settled ledger is UNIONed with the in-flight rows still in `jobs`; a job
+  // drops out of the `jobs` half the moment it finalizes into `usage_logs`, so
+  // there is exactly one row per task at any time.
   app.get("/me/logs/page", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
     const q = req.query as { task_id?: string; endpoint?: string; start?: string; end?: string; page?: string; page_size?: string };
-    const clauses: string[] = ["user_id = $1"];
+    // Built twice — once per side of the UNION ALL — because the ledger
+    // (`usage_logs`) and the job store (`jobs`) name some columns differently.
+    // Both sides share the same positional params.
+    const logClauses: string[] = ["ul.user_id = $1"];
+    const jobClauses: string[] = ["j.user_id = $1"];
     const params: unknown[] = [u.id];
     if (q.task_id && typeof q.task_id === "string" && q.task_id.trim()) {
       params.push(`%${q.task_id.trim()}%`);
-      clauses.push(`(CAST(task_id AS text) ILIKE $${params.length} OR CAST(id AS text) ILIKE $${params.length})`);
+      logClauses.push(`(CAST(ul.task_id AS text) ILIKE $${params.length} OR CAST(ul.id AS text) ILIKE $${params.length})`);
+      jobClauses.push(`CAST(j.id AS text) ILIKE $${params.length}`);
     }
     if (q.endpoint && typeof q.endpoint === "string" && q.endpoint.trim()) {
       const patterns = q.endpoint.split(",").map((p) => p.trim()).filter(Boolean);
       if (patterns.length > 0) {
-        const orGroup: string[] = [];
+        const logOr: string[] = [];
+        const jobOr: string[] = [];
         for (const p of patterns) {
           params.push(`%${p}%`);
-          orGroup.push(`endpoint ILIKE $${params.length}`);
+          logOr.push(`ul.endpoint ILIKE $${params.length}`);
+          // A running job may not have stamped `endpoint` yet; fall back to
+          // its `type` so it still lands on the right tab.
+          jobOr.push(`COALESCE(j.endpoint, j.type) ILIKE $${params.length}`);
         }
-        clauses.push(`(${orGroup.join(" OR ")})`);
+        logClauses.push(`(${logOr.join(" OR ")})`);
+        jobClauses.push(`(${jobOr.join(" OR ")})`);
       }
     }
     if (typeof q.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(q.start)) {
       params.push(q.start);
-      clauses.push(`created_at >= $${params.length}::date`);
+      logClauses.push(`ul.created_at >= $${params.length}::date`);
+      jobClauses.push(`j.created_at >= $${params.length}::date`);
     }
     if (typeof q.end === "string" && /^\d{4}-\d{2}-\d{2}$/.test(q.end)) {
       params.push(q.end);
-      clauses.push(`created_at < ($${params.length}::date + interval '1 day')`);
+      logClauses.push(`ul.created_at < ($${params.length}::date + interval '1 day')`);
+      jobClauses.push(`j.created_at < ($${params.length}::date + interval '1 day')`);
     }
     const pageSize = Math.min(100, Math.max(1, Number(q.page_size ?? 20) || 20));
     const requestedPage = Math.max(1, Number(q.page ?? 1) || 1);
-    const where = `WHERE ${clauses.join(" AND ")}`;
-    const totalRow = await queryOne<{ count: string }>(`SELECT count(*)::text AS count FROM usage_logs ${where}`, params);
+    const combined = `
+      SELECT ul.id::text AS id, ul.endpoint AS endpoint, ul.model AS model,
+             ul.prompt AS prompt, ul.status AS status,
+             ul.credits_consumed AS credits_consumed, ul.task_id AS task_id,
+             ul.result_json AS result_json, ul.created_at AS created_at
+      FROM usage_logs ul
+      WHERE ${logClauses.join(" AND ")}
+      UNION ALL
+      SELECT j.id::text AS id, COALESCE(j.endpoint, j.type) AS endpoint, j.model AS model,
+             j.prompt AS prompt, j.status AS status,
+             COALESCE(j.credits, 0) AS credits_consumed, j.id::text AS task_id,
+             j.result_json AS result_json, j.created_at AS created_at
+      FROM jobs j
+      WHERE ${jobClauses.join(" AND ")}
+        AND j.status IN ('pending','running','streaming')
+    `;
+    const totalRow = await queryOne<{ count: string }>(`SELECT count(*)::text AS count FROM (${combined}) combined`, params);
     const total = Number(totalRow?.count ?? 0);
     const pages = Math.max(1, Math.ceil(total / pageSize));
     const page = Math.min(requestedPage, pages);
     const offset = (page - 1) * pageSize;
     const rows = await query<Record<string, unknown>>(
-      `SELECT id, endpoint, model, prompt, status, credits_consumed, task_id, result_json, created_at FROM usage_logs ${where} ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`,
+      `SELECT * FROM (${combined}) combined ORDER BY created_at DESC LIMIT ${pageSize} OFFSET ${offset}`,
       params,
     );
     const hydrate = (rs: Record<string, unknown>[]) => rs.map((r) => ({ ...r, clips: normalizeClips(r.result_json) }));

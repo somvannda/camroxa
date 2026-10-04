@@ -316,7 +316,9 @@ export default function LogsPage() {
         const result = safeParseResult(d.result_json);
         const fields = extractPromptFields(d.prompt, result);
         return {
-          key: `db-${d.id}`,
+          // Key on task_id so a row keeps its identity when an in-flight job
+          // (`jobs.id`) settles into its ledger row (`usage_logs.id`).
+          key: `db-${d.task_id || d.id}`,
           id: d.id,
           task_id: d.task_id,
           endpoint: d.endpoint || "unknown",
