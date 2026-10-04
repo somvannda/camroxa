@@ -141,6 +141,17 @@ const DEFAULT_ALERTS: AlertSettings = {
 };
 
 /**
+ * Error written when a job still `pending`/`running`/`streaming` at process
+ * shutdown is failed out by `recoverJobs()` on the next boot. It is an
+ * operator/deploy artifact (a deploy restarts the process; the memory queue
+ * cannot re-run descriptor-less jobs), not a generation failure, so the
+ * failure-rate alert excludes it — otherwise every deploy pages ops as the
+ * interrupted jobs sit in the 60-minute window. The raw count is still recorded
+ * in `usage_logs` and shown in the user/admin dashboards.
+ */
+const RESTART_INTERRUPT_ERROR = "Interrupted by server restart.";
+
+/**
  * Normalize an operator-entered Telegram support value into an absolute https
  * URL. Operators commonly paste a bare handle (`@name` or `name`); used as an
  * `href` the browser resolves that relative to the panel origin, so "Get
@@ -1359,7 +1370,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         }
       }
       job.status = "error";
-      job.error = "Interrupted by server restart.";
+      job.error = RESTART_INTERRUPT_ERROR;
       await saveJob(job);
       await finalizeJob(job);
       interrupted++;
@@ -4868,13 +4879,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
 
-    // 3. Failure-rate spike over the configured sliding window.
+    // 3. Failure-rate spike over the configured sliding window. Jobs failed out
+    //    by a deploy/restart (`recoverJobs` -> "Interrupted by server restart.")
+    //    are excluded: they are operator-caused, not generation failures, and
+    //    would otherwise page ops after every deploy as they sit in the window.
+    //    The raw rows still land in `usage_logs` and the user/admin dashboards.
     const row = await queryOne<{ total: string; failed: string }>(
       `SELECT count(*)::text AS total,
-              count(*) FILTER (WHERE status <> 'complete')::text AS failed
-       FROM usage_logs
-       WHERE created_at > now() - ($1 || ' minutes')::interval`,
-      [String(thresholds.window_minutes)],
+              count(*) FILTER (
+                WHERE ul.status <> 'complete'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM jobs j
+                    WHERE j.id::text = ul.task_id
+                      AND j.status = 'error'
+                      AND j.error = $2
+                  )
+              )::text AS failed
+       FROM usage_logs ul
+       WHERE ul.created_at > now() - ($1 || ' minutes')::interval`,
+      [String(thresholds.window_minutes), RESTART_INTERRUPT_ERROR],
     );
     const total = Number(row?.total ?? 0);
     const failed = Number(row?.failed ?? 0);
@@ -4894,9 +4917,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
                     count(*)::text AS count
              FROM jobs
              WHERE status = 'error'
+               AND error <> $2
                AND updated_at > now() - ($1 || ' minutes')::interval
              GROUP BY 1 ORDER BY count(*) DESC LIMIT 3`,
-            [String(thresholds.window_minutes)],
+            [String(thresholds.window_minutes), RESTART_INTERRUPT_ERROR],
           );
           topReasons = reasonRows.map((r) => ({
             reason: r.reason.replace(/\s+/g, " ").trim(),

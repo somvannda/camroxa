@@ -27,8 +27,10 @@ causes** in the failure-rate alert.
   `[RESOLVED]` pages, or the standalone musicapi healthcheck page.
 - A sustained failure-rate spike pages **once**, and again only if its severity
   changes (warning ↔ critical) or it clears (a single `[RESOLVED]`).
+- Deploy-induced job interruptions no longer count toward the failure rate, so a
+  routine redeploy cannot page ops (the jobs are still logged for users/admins).
 - The failure-rate page now names the dominant reasons, e.g.
-  `Top causes: Interrupted by server restart. (212); captcha_required (9).`
+  `Top causes: captcha_required (9); No healthy account available. (4).`
 - The B2 sweep alert is rate-limited (default 6 h) so a persistent transient
   companion-WAV failure cannot page every 15 minutes.
 
@@ -56,6 +58,9 @@ causes** in the failure-rate alert.
     alert text names the environment.
   - The failure-rate alert groups the window's `jobs.error` values and appends
     the top 3 (`details.top_reasons`).
+  - The failure-rate count excludes jobs failed out by a restart
+    (`RESTART_INTERRUPT_ERROR`), matching the exclusions in `recoverJobs()` and
+    the top-causes query.
 - `scripts/deploy/camxora-musicapi-remote.sh`: writes `MUSICAPI_ENV=${MUSICAPI_ENV}`
   into `musicapi/.env`.
 - `scripts/deploy/musicapi-healthcheck.sh`: resolves `MUSICAPI_ENV` (falling
@@ -76,8 +81,9 @@ The most likely cause is the deploy itself: musicapi runs the **in-memory**
 queue (`QUEUE_DRIVER` is unset), so on restart `recoverJobs()` marks every still
 `pending`/`running`/`streaming` job as `error` — `"Interrupted by server
 restart."` — and finalizes each into `usage_logs`, which the failure-rate alert
-then counts. A deploy with a deep pending backlog produces exactly this burst.
-The new `Top causes:` line will confirm it on the next occurrence.
+then counted. A deploy with a deep pending backlog produces exactly this burst.
+These rows are now excluded from the failure-rate alert (and from its
+top-causes), so a routine deploy stays quiet.
 
 Follow-up (not in this change, needs an explicit decision): set
 `QUEUE_DRIVER=redis` for musicapi so descriptor-backed jobs are re-queued on
