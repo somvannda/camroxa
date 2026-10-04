@@ -554,18 +554,32 @@ export function creditsToSongs(credits: number, creditsPerGenerate = 10): number
 }
 
 /**
- * Canonical credit value shared with musicapi.camxora.com: 350 credits per USD
- * (the entry-tier rate). Top-up pack bonuses are measured against this base.
+ * Base (no-bonus) top-up credits by price, mirroring the plan ladder and
+ * musicapi.camxora.com: $10 -> 3,500 and $30 -> 11,000 are musicapi's exact
+ * pack amounts; $5 uses the same 350 credits/USD entry rate.
  */
+const TOPUP_BASE_CREDITS: Record<number, number> = {
+  500: 1750,
+  1000: 3500,
+  3000: 11000,
+};
+
+/** Canonical entry-tier credit rate shared with musicapi.camxora.com. */
 export const CREDITS_PER_DOLLAR = 350;
 
+/** Base (no-bonus) credits a top-up pack grants at its price. */
+export function packBaseCredits(pack: { price_cents: number; total_credits: number }): number {
+  const known = TOPUP_BASE_CREDITS[pack.price_cents];
+  if (known != null) return known;
+  return Math.round((Number(pack.price_cents) / 100) * CREDITS_PER_DOLLAR);
+}
+
 /**
- * Volume bonus a top-up pack grants on top of the base 350 cr/$ value.
+ * Volume bonus a top-up pack grants over its base credits.
  * Returns a rounded whole percentage, e.g. 30 for a +30% pack.
  */
 export function packBonusPercent(pack: { price_cents: number; total_credits: number }): number {
-  const dollars = Number(pack.price_cents) / 100;
-  const base = dollars * CREDITS_PER_DOLLAR;
+  const base = packBaseCredits(pack);
   if (!(base > 0)) return 0;
   return Math.round(((Number(pack.total_credits) - base) / base) * 100);
 }

@@ -1,22 +1,23 @@
 """Reprice web music plans to the $5/$10/$20/$30 ladder and refresh top-up packs.
 
-music.camxora.com now follows the same credit value as musicapi.camxora.com
-(350 credits per USD at the entry tier), so the paid monthly tiers become:
+music.camxora.com follows the same credit value as musicapi.camxora.com. The
+$10 and $30 tiers grant the exact same credit amounts as musicapi's $10 and $30
+packs; the $5 and $20 tiers use the same 350 credits/USD entry rate:
 
-    Starter  $5  -> 1,750 credits/mo
-    Creator  $10 -> 3,500 credits/mo
-    Pro      $20 -> 7,000 credits/mo
-    Studio   $30 -> 10,500 credits/mo
+    Starter  $5  -> 1,750 credits/mo   (350 cr/$)
+    Creator  $10 -> 3,500 credits/mo   (same as musicapi $10 pack)
+    Pro      $20 -> 7,000 credits/mo   (350 cr/$)
+    Studio   $30 -> 11,000 credits/mo  (same as musicapi $30 pack)
 
 Yearly rows keep the existing 15% discount. The Free plan is intentionally left
 untouched (it is admin-managed and already grants the 50-credit testing allowance).
 
 Top-up packs become three recommended tiers with a volume bonus on top of the
-350 cr/$ base:
+plan credits at that price:
 
-    $5  -> 2,275 credits (+30%)
-    $10 -> 4,200 credits (+20%)
-    $30 -> 11,550 credits (+10%)
+    $5  -> 2,275 credits  (1,750 + 30%)
+    $10 -> 4,200 credits  (3,500 + 20%)
+    $30 -> 12,100 credits (11,000 + 10%)
 
 Revision ID: 127_web_music_plans_v2
 Revises: 126_provider_base_url
@@ -45,15 +46,15 @@ _PLANS = (
     ("creator_yearly", 10200, 365, 3500, 2),
     ("pro_monthly", 2000, 30, 7000, 3),
     ("pro_yearly", 20400, 365, 7000, 3),
-    ("studio_monthly", 3000, 30, 10500, 4),
-    ("studio_yearly", 30600, 365, 10500, 4),
+    ("studio_monthly", 3000, 30, 11000, 4),
+    ("studio_yearly", 30600, 365, 11000, 4),
 )
 
 # (slug, name, total_credits, price_cents, display_order)
 _PACKS = (
     ("small", "Small Pack", 2275, 500, 1),
     ("medium", "Medium Pack", 4200, 1000, 2),
-    ("large", "Large Pack", 11550, 3000, 3),
+    ("large", "Large Pack", 12100, 3000, 3),
 )
 
 

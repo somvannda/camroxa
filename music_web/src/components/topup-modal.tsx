@@ -8,6 +8,7 @@ import {
   fetchCreditPacks,
   purchaseTopup,
   formatPrice,
+  packBaseCredits,
   packBonusPercent,
   type CreditPack,
 } from '@/lib/subscription-api';
@@ -116,7 +117,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                 const isPurchasing = purchasingPackId === pack.id;
                 const isPopular = index === 1; // Balanced $10 pack is the recommended pick
                 const bonus = packBonusPercent(pack);
-                const baseCredits = Math.round((pack.price_cents / 100) * 350);
+                const baseCredits = packBaseCredits(pack);
 
                 return (
                   <div
