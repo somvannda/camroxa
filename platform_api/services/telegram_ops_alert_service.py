@@ -360,6 +360,46 @@ def schedule_ops_message(text: str) -> None:
     loop.create_task(_run(), name="telegram-ops-alert")
 
 
+# Provider-capacity failures (no paid Suno account / no credits) hit every song
+# in a batch; debounce so ops gets one page per window instead of a flood.
+_PROVIDER_CAPACITY_ALERT_COOLDOWN_S = 900.0
+_provider_capacity_alert_last: dict[str, float] = {}
+
+
+def notify_provider_capacity_failure(
+    *,
+    failure_type: str = "provider_capacity",
+    error_message: str = "",
+    batch_id: Any = None,
+    song_id: Any = None,
+) -> None:
+    """Debounced ops alert when the music provider has no usable account.
+
+    Operational, not user error: a missing paid Suno account or an unfunded key
+    makes every song fail, so page ops once per cooldown window rather than once
+    per song.
+    """
+    key = str(failure_type or "provider_capacity").strip() or "provider_capacity"
+    now = time.monotonic()
+    last = _provider_capacity_alert_last.get(key, 0.0)
+    if last and (now - last) < _PROVIDER_CAPACITY_ALERT_COOLDOWN_S:
+        return
+    _provider_capacity_alert_last[key] = now
+
+    detail = str(error_message or "").strip()[:300] or "no usable Suno account / credits"
+    lines = [
+        f"🚨 <b>SUNO PROVIDER UNAVAILABLE</b> · {_esc(environment_display_label())}",
+        f"issue: <b>{_esc(key)}</b>",
+        f"detail: {_esc(detail)}",
+    ]
+    if batch_id:
+        lines.append(f"batch: <code>{_esc(batch_id)}</code>")
+    if song_id:
+        lines.append(f"song: <code>{_esc(song_id)}</code>")
+    lines.append(f"time: {_esc(_now_label())}")
+    schedule_ops_message("\n".join(lines))
+
+
 def _schedule_enriched(
     kind: str,
     *,
