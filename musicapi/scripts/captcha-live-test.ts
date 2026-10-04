@@ -10,6 +10,10 @@
  *   npx tsx scripts/captcha-live-test.ts            # status only — no spend
  *   npx tsx scripts/captcha-live-test.ts --solve    # solve one Turnstile (pays 2Captcha)
  *   npx tsx scripts/captcha-live-test.ts --generate # real V6-Mini generation (spends Suno credits)
+ *
+ * Add `--account <label>` to force a specific pool account instead of the
+ * default `chirp-goose`/`prefer_free` route (which always returns the first
+ * free account, leaving the others unexercised).
  */
 
 import "dotenv/config";
@@ -20,6 +24,13 @@ import { solveCaptchaForAccount } from "../src/captcha.js";
 import { pool as dbPool } from "../src/db.js";
 
 const flags = new Set(process.argv.slice(2));
+
+function argValue(name: string): string | undefined {
+  const i = process.argv.indexOf(name);
+  return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+const accountFlag = argValue("--account");
 
 async function main() {
   // Pick up a 2Captcha key saved in the admin console, not just .env.
@@ -51,8 +62,12 @@ async function main() {
     );
   }
 
-  const chosen = await pool.pick("chirp-goose", "prefer_free");
-  console.log(`\nRoute chirp-goose/prefer_free -> ${chosen.account.id} (${chosen.account.type ?? "free"})`);
+  const chosen = accountFlag ? pool.get(accountFlag) : await pool.pick("chirp-goose", "prefer_free");
+  if (!chosen) throw new Error(`Account not found in pool: ${accountFlag ?? "(pick returned null)"}`);
+  console.log(
+    `\nUsing ${chosen.account.id} (${chosen.account.type ?? "free"})` +
+      (accountFlag ? " [--account]" : " [pick chirp-goose/prefer_free]"),
+  );
 
   if (flags.has("--solve")) {
     console.log("\nSolving one Turnstile via 2Captcha (costs a few cents)…");
