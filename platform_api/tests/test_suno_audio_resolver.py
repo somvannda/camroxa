@@ -245,6 +245,29 @@ def test_extract_callback_synthesizes_cdn_url_when_clip_has_id_only() -> None:
     )
 
 
+def test_extract_callback_musicapi_storage_clip_does_not_synthesize() -> None:
+    """A musicapi clip carrying a storage key must never become a tempfile URL."""
+    parsed = extract_callback_download_urls(
+        {
+            "code": 200,
+            "data": {
+                "callbackType": "complete",
+                "data": [
+                    {
+                        "id": "clip-ok",
+                        "source_audio_url": "https://cdn.example.com/ok.mp3",
+                        "audio_storage_key": "clips/ok.mp3",
+                    },
+                    {"id": "clip-alt", "audio_storage_key": "clips/alt.mp3"},
+                ],
+            },
+        }
+    )
+    assert parsed.audio_url_ok == "https://cdn.example.com/ok.mp3"
+    assert parsed.audio_url_alt == ""
+    assert parsed.audio_id_alt == ""
+
+
 def test_cdn_url_for_suno_audio_id() -> None:
     from platform_api.clients.suno_client import cdn_url_for_suno_audio_id, coerce_suno_download_url
 
@@ -303,6 +326,39 @@ def test_extract_clip_download_url_musicfile_only_synthesizes_tempfile() -> None
         "sourceAudioUrl": "https://cdn1.suno.ai/unsigned.mp3",
     }
     assert _extract_clip_download_url(clip) == f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
+
+
+def test_no_tempfile_synthesis_for_musicapi_provider() -> None:
+    """musicapi serves audio from its own storage; an id is not a playable URL."""
+    from platform_api.clients.suno_client import (
+        cdn_url_for_suno_audio_id,
+        coerce_suno_download_url,
+        tempfile_url_for_suno_audio_id,
+    )
+    from platform_api.clients.suno_routing import set_active_suno_base_url
+
+    clip_id = "952982b2-f134-4ac6-a3d2-aa1404df1ee9"
+    clip = {
+        "id": clip_id,
+        "audioUrl": "https://musicfile.removeai.ai/Y2Y0YWU2MmI",
+    }
+    set_active_suno_base_url("https://musicapi.camxora.com")
+    try:
+        assert tempfile_url_for_suno_audio_id(clip_id) == ""
+        assert cdn_url_for_suno_audio_id(clip_id) == ""
+        assert coerce_suno_download_url(url="", audio_id=clip_id) == ""
+        assert _extract_clip_download_url(clip) == ""
+
+        parsed = parse_suno_generate_poll(
+            {"code": 200, "data": {"status": "SUCCESS", "response": {"data": [clip]}}}
+        )
+        # A real failure (ingest produced no durable copy), not a fabricated URL.
+        assert parsed.state == "failed"
+        assert "no audio URLs" in parsed.error
+        assert parsed.audio_url_ok == ""
+    finally:
+        set_active_suno_base_url("")
+
 
 
 def test_payload_is_mpeg_audio_rejects_iso_bmff() -> None:

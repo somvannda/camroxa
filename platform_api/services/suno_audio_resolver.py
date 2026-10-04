@@ -698,6 +698,7 @@ async def _download_once(url: str, *, reject_mp4: bool = True) -> bytes:
 def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownloadUrls:
     """Parse sunoapi.org callback payloads with nested clip arrays."""
     from platform_api.clients.suno_client import (
+        _clip_has_durable_storage_key,
         _extract_clip_audio_id,
         _extract_clip_duration,
         cdn_url_for_suno_audio_id,
@@ -720,9 +721,9 @@ def extract_callback_download_urls(raw_payload: dict[str, Any]) -> SunoTaskDownl
         from platform_api.clients.suno_client import _extract_clip_image_url
 
         audio_id = _extract_clip_audio_id(clip)
-        url = _extract_clip_download_url(clip) or cdn_url_for_suno_audio_id(audio_id)
-        if not url and not audio_id:
-            continue
+        url = _extract_clip_download_url(clip)
+        if not url and not _clip_has_durable_storage_key(clip):
+            url = cdn_url_for_suno_audio_id(audio_id)
         if not url:
             continue
         download_urls.append(url)

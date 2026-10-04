@@ -750,6 +750,39 @@ class TestExecuteWithFailover:
         assert fake_repo._entries[key_a.id].status == KeyStatus.EXHAUSTED
 
     @pytest.mark.asyncio
+    async def test_wrapped_402_triggers_exhausted_and_failover(
+        self, service: KeyPoolService, fake_repo: FakeKeyPoolRepository, encryption: KeyEncryption
+    ) -> None:
+        """A provider-wrapped 402 (ExternalServiceError) must also rotate keys.
+
+        SunoClient raises ExternalServiceError rather than httpx.HTTPStatusError,
+        so failover has to read the status code from its ``details`` dict.
+        """
+        from platform_api.exceptions import ExternalServiceError
+
+        key_a = _make_entry(encryption, label="key-A", priority=10, key_value="value-A")
+        key_b = _make_entry(encryption, label="key-B", priority=20, key_value="value-B")
+        fake_repo._entries[key_a.id] = key_a
+        fake_repo._entries[key_b.id] = key_b
+
+        async def execute_fn(key: str) -> dict[str, str]:
+            if key == "value-A":
+                raise ExternalServiceError(
+                    "Suno API error 402",
+                    is_retryable=False,
+                    details={
+                        "provider": "suno",
+                        "status_code": 402,
+                        "reason": "Insufficient credits.",
+                    },
+                )
+            return {"result": "ok", "key_used": key}
+
+        result = await service.execute_with_failover("suno", execute_fn)
+        assert result == {"result": "ok", "key_used": "value-B"}
+        assert fake_repo._entries[key_a.id].status == KeyStatus.EXHAUSTED
+
+    @pytest.mark.asyncio
     async def test_403_billing_triggers_exhausted_and_failover(
         self, service: KeyPoolService, fake_repo: FakeKeyPoolRepository, encryption: KeyEncryption
     ) -> None:

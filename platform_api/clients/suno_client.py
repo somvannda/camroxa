@@ -223,9 +223,11 @@ def _extract_clip_download_url(clip: dict[str, Any]) -> str:
     if primary:
         return primary
     # Callback only carried rejected hosts (e.g. musicfile cover JPEG) or no
-    # usable URL. The finished MP3 lives on the tempfile host keyed by clip id.
-    # Same id => no new Suno generation/charge.
-    if audio_id:
+    # usable URL. For sunoapi.org the finished MP3 lives on the tempfile host
+    # keyed by clip id (same id => no new generation/charge), but musicapi
+    # serves audio from its own storage: a clip carrying a storage key must
+    # never be turned into a fabricated tempfile URL.
+    if audio_id and not _clip_has_durable_storage_key(clip):
         return tempfile_url_for_suno_audio_id(audio_id)
     return ""
 
@@ -275,6 +277,29 @@ def _extract_clip_audio_id(clip: dict[str, Any]) -> str:
     return ""
 
 
+_DURABLE_STORAGE_KEY_FIELDS = (
+    "audio_storage_key",
+    "audioStorageKey",
+    "master_storage_key",
+    "masterStorageKey",
+    "storage_key",
+    "storageKey",
+)
+
+
+def _clip_has_durable_storage_key(clip: dict[str, Any]) -> bool:
+    """True when a clip references provider-side object storage (musicapi).
+
+    sunoapi.org clips never carry storage keys; musicapi clips do (the callback
+    and record-info payloads spread the stored clip). Callers use this to avoid
+    synthesizing a sunoapi.org tempfile URL for musicapi audio even when the
+    active-provider context is unavailable (e.g. an inbound callback).
+    """
+    return any(
+        str(clip.get(field) or "").strip() for field in _DURABLE_STORAGE_KEY_FIELDS
+    )
+
+
 _SUNO_CDN_HOST_MARKERS = ("cdn1.suno.ai", "cdn2.suno.ai", "cdn.suno.ai")
 _SIGNED_CDN_QUERY_MARKERS = ("key-pair-id=", "signature=", "policy=")
 _TEMPFILE_AUDIO_PREFIX = "https://tempfile.aiquickdraw.com/r/"
@@ -307,6 +332,21 @@ def is_unsigned_suno_cdn_url(url: str | None) -> bool:
     return not any(marker in query for marker in _SIGNED_CDN_QUERY_MARKERS)
 
 
+def active_provider_is_musicapi() -> bool:
+    """True when the active upstream host is Camxora's ``musicapi``.
+
+    ``musicapi`` decrypts Suno's DRM stream server-side and serves it from its
+    own storage; when a job reports complete without a durable URL the audio is
+    genuinely unavailable (its ingest is best-effort), not sitting on the
+    sunoapi.org tempfile host. Fabricating a ``tempfile.aiquickdraw.com`` link
+    from the clip id there produces a false success that later 403s and turns
+    into an endless recovery loop, so callers must not synthesize one.
+    """
+    from platform_api.clients.suno_routing import get_active_suno_base_url
+
+    return "musicapi" in get_active_suno_base_url().lower()
+
+
 def tempfile_url_for_suno_audio_id(audio_id: str | None) -> str:
     """Working download host for a Suno clip id (unsigned CDN returns 403)."""
     value = str(audio_id or "").strip()
@@ -314,6 +354,11 @@ def tempfile_url_for_suno_audio_id(audio_id: str | None) -> str:
         return ""
     if value.startswith(("http://", "https://")):
         return prefer_suno_mpeg_cdn_url(value)
+    if active_provider_is_musicapi():
+        # musicapi never serves clips from the sunoapi.org tempfile host; an id
+        # alone is not a playable URL. Return empty so callers treat it as "no
+        # audio URL" rather than a fabricated, dead link.
+        return ""
     return f"{_TEMPFILE_AUDIO_PREFIX}{value}.mp3"
 
 

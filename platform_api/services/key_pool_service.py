@@ -19,7 +19,7 @@ import httpx
 from redis.asyncio import Redis
 
 from platform_api.clients.suno_routing import set_active_suno_base_url
-from platform_api.exceptions import DuplicateKeyLabelError, NoAvailableKeysError
+from platform_api.exceptions import DuplicateKeyLabelError, ExternalServiceError, NoAvailableKeysError
 from platform_api.models.domain import ApiKeyEntry, KeyPoolConfig, KeyStatusEvent
 from platform_api.models.enums import KeyStatus, SelectionStrategy
 from platform_api.repositories.key_pool_repo import KeyPoolRepository
@@ -568,10 +568,9 @@ class KeyPoolService:
                 await self.report_key_success(provider, selected.id)
                 return response
 
-            except httpx.HTTPStatusError as exc:
+            except (httpx.HTTPStatusError, ExternalServiceError) as exc:
                 last_exception = exc
-                status_code = exc.response.status_code
-                response_body = exc.response.text[:500] if exc.response.text else ""
+                status_code, response_body = self._failover_status(exc)
 
                 if status_code == 429:
                     # Rate limited — mark key and retry
@@ -616,6 +615,27 @@ class KeyPoolService:
         all_keys = await self._repo.list_by_provider(provider)
         status_counts = self._compute_status_counts(all_keys)
         raise NoAvailableKeysError(provider=provider, status_counts=status_counts)
+
+    @staticmethod
+    def _failover_status(exc: BaseException) -> tuple[int, str]:
+        """Extract ``(http_status, body)`` from a failover exception.
+
+        Provider clients (Suno) wrap ``httpx.HTTPStatusError`` in
+        ``ExternalServiceError``, so the status code must also be read from its
+        ``details``; otherwise a 402/403 never rotates the key and failover is
+        silently skipped. Returns ``(0, "")`` when no HTTP status is available.
+        """
+        if isinstance(exc, httpx.HTTPStatusError):
+            body = exc.response.text[:500] if exc.response.text else ""
+            return exc.response.status_code, body
+        details = getattr(exc, "details", None)
+        if isinstance(details, dict):
+            try:
+                status = int(details.get("status_code") or 0)
+            except (TypeError, ValueError):
+                status = 0
+            return status, str(details.get("reason") or "")[:500]
+        return 0, ""
 
     async def report_key_success(self, provider: str, key_id: UUID) -> None:
         """Report a successful API call for usage tracking.
@@ -705,7 +725,8 @@ class KeyPoolService:
 
         # Determine cooldown duration
         config = await self._get_provider_config(provider)
-        retry_after = exc.response.headers.get("Retry-After")
+        response = getattr(exc, "response", None)
+        retry_after = response.headers.get("Retry-After") if response is not None else None
         if retry_after and retry_after.isdigit():
             cooldown_seconds = min(int(retry_after), 3600)
         else:

@@ -88,6 +88,25 @@ def normalize_suno_status(status: object) -> str:
     return str(status or "").strip().upper()
 
 
+# Provider pool/billing errors (musicapi raises these from its account pool).
+# They are operational, not prompt problems, so users must not be told to
+# "try different lyrics".
+_SUNO_CAPACITY_ERROR_MARKERS: tuple[str, ...] = (
+    "no paid suno account",
+    "no suno account with available credits",
+    "no suno accounts configured",
+    "no suno accounts available",
+    "no healthy account",
+    "insufficient credits",
+)
+
+
+def is_suno_capacity_error(error_message: object) -> bool:
+    """True when the provider failed for account/credit reasons, not content."""
+    text = str(error_message or "").strip().lower()
+    return any(marker in text for marker in _SUNO_CAPACITY_ERROR_MARKERS)
+
+
 def is_suno_failure_status(status: object) -> bool:
     normalized = normalize_suno_status(status)
     return normalized in SUNO_FAILURE_STATUSES
@@ -124,6 +143,13 @@ def suno_task_failure_message(
 
     provider_error = str(error_message or "").strip()
     normalized_status = normalize_suno_status(status)
+
+    if provider_error and is_suno_capacity_error(provider_error):
+        return (
+            "Music generation is temporarily unavailable: the music provider has "
+            "no usable account right now. This is a server-side issue, not your "
+            "prompt — please try again later or contact support."
+        )
 
     if normalized_status in _STATUS_USER_MESSAGES:
         base = _STATUS_USER_MESSAGES[normalized_status]
@@ -189,4 +215,6 @@ def classify_suno_failure_type(
         )
     ):
         return "SENSITIVE_WORD_ERROR"
+    if is_suno_capacity_error(error_message):
+        return "provider_capacity"
     return "other"
