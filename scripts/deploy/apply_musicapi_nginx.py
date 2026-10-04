@@ -4,7 +4,7 @@
 Production has two vhosts:
     musicapi.camxora.com        -> user portal + landing page 127.0.0.1:4001
                                    (API mounted by path -> 4003)
-    admin-musicapi.camxora.com  -> web-admin                  127.0.0.1:4002
+    admin.musicapi.camxora.com  -> web-admin                  127.0.0.1:4002
 
 Sandbox has three vhosts (it keeps the legacy split):
     musicapi.sandbox.camxora.com        -> core API   127.0.0.1:4003
@@ -53,7 +53,7 @@ ENV_CONFIG = {
         "site_link": "/etc/nginx/sites-enabled/musicapi-production",
         "names": [
             "musicapi.camxora.com",
-            "admin-musicapi.camxora.com",
+            "admin.musicapi.camxora.com",
         ],
     },
 }

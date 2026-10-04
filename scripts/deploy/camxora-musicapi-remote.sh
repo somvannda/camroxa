@@ -50,16 +50,16 @@ if [[ "${MUSICAPI_ENV}" == "production" ]]; then
   # Production has no app.* host: the apex IS the user app portal + landing page,
   # and the core API is mounted by path (/backend, /v1, /api/v1, /payments).
   APP_HOST_PREFIX=""
-  # One-level admin host so Cloudflare's Universal SSL (*.camxora.com) covers it
-  # (the nested admin.musicapi.camxora.com falls outside the wildcard).
-  ADMIN_HOST="admin-musicapi.${MUSICAPI_DOMAIN}"
 else
   MUSICAPI_DOMAIN="sandbox.camxora.com"
   APP_HOST_PREFIX="app."
-  ADMIN_HOST="admin.musicapi.${MUSICAPI_DOMAIN}"
 fi
 API_HOST="musicapi.${MUSICAPI_DOMAIN}"
 APP_HOST="${APP_HOST_PREFIX}musicapi.${MUSICAPI_DOMAIN}"
+# Admin console host: the nested name (dot) in both environments. Production's is
+# DNS-only (grey cloud) pointed straight at the origin, whose Let's Encrypt cert
+# covers this name, so it does not need a one-level Cloudflare Universal SSL host.
+ADMIN_HOST="admin.musicapi.${MUSICAPI_DOMAIN}"
 
 # TLS/nginx host list, deduped (in production APP_HOST == API_HOST).
 TLS_HOSTS=()
