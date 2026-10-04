@@ -1,5 +1,9 @@
 """Fire-and-forget Telegram group feed for signups, payments, and credit burns.
 
+Delivery is **production-only**: sandbox/staging share the same bot token and
+chat id as production, so `get_telegram_ops_service()` returns ``None`` outside
+production to keep sandbox activity out of the live ops channel.
+
 Never raises into product paths. Missing token/chat, env kill-switch, or
 system_settings ``telegram_ops_alerts_enabled=false`` all no-op.
 
@@ -21,7 +25,11 @@ from uuid import UUID
 
 import httpx
 
-from platform_api.config import environment_display_label, get_settings
+from platform_api.config import (
+    environment_display_label,
+    get_settings,
+    is_production,
+)
 from platform_api.services.credit_units import format_display_credits, units_to_credits
 
 logger = logging.getLogger(__name__)
@@ -200,7 +208,30 @@ class TelegramOpsAlertService:
         return self._http_client
 
 
+def _telegram_delivery_allowed() -> bool:
+    """Whether this process may post to the ops Telegram channel.
+
+    Sandbox/staging share the production bot token + chat id, so a bare
+    "configured" check let non-production traffic (signups, spend feed, sweeps,
+    health reports) land in the live ops channel. Delivery is production-only;
+    the admin panel and settings still expose configuration everywhere.
+    """
+    try:
+        return is_production()
+    except Exception:
+        # Settings resolution failed: fall back to the raw env var and fail closed.
+        return (os.environ.get("PLATFORM_ENVIRONMENT") or "").strip().lower() in {
+            "production",
+            "prod",
+        }
+
+
 def get_telegram_ops_service() -> TelegramOpsAlertService | None:
+    # Only production may deliver to the shared ops channel (see
+    # `_telegram_delivery_allowed`). Returning ``None`` here makes every caller
+    # (activity feed, health report, sweeps, /stats poller) a no-op on sandbox.
+    if not _telegram_delivery_allowed():
+        return None
     token = (os.environ.get("PLATFORM_TELEGRAM_BOT_TOKEN") or "").strip()
     chat_id = str(os.environ.get("PLATFORM_TELEGRAM_CHAT_ID") or "").strip()
     raw_enabled = (os.environ.get("PLATFORM_TELEGRAM_OPS_ENABLED") or "true").strip().lower()
