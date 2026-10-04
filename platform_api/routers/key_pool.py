@@ -137,6 +137,8 @@ async def update_key(
         label=request.label,
         priority=request.priority,
         key_value=request.key_value,
+        base_url=request.base_url,
+        clear_base_url=request.clear_base_url,
     )
 
     # Fetch updated entry
@@ -166,6 +168,7 @@ async def update_key(
         last_failure_at=updated_entry.last_failure_at,
         cooldown_remaining_seconds=None,
         created_at=updated_entry.created_at,
+        base_url=updated_entry.base_url,
     )
 
 
@@ -237,6 +240,7 @@ async def enable_key(
         last_failure_at=updated_entry.last_failure_at,
         cooldown_remaining_seconds=None,
         created_at=updated_entry.created_at,
+        base_url=updated_entry.base_url,
     )
 
 
@@ -286,6 +290,7 @@ async def disable_key(
         last_failure_at=updated_entry.last_failure_at,
         cooldown_remaining_seconds=None,
         created_at=updated_entry.created_at,
+        base_url=updated_entry.base_url,
     )
 
 
@@ -350,6 +355,7 @@ async def list_keys(
                 last_failure_at=entry.last_failure_at,
                 cooldown_remaining_seconds=cooldown_remaining,
                 created_at=entry.created_at,
+                base_url=entry.base_url,
             )
         )
     return results
@@ -379,6 +385,7 @@ async def add_key(
         key_value=request.key_value,
         label=request.label,
         priority=request.priority,
+        base_url=request.base_url,
     )
 
     # Fetch the created entry to return full response
@@ -404,6 +411,7 @@ async def add_key(
         last_failure_at=entry.last_failure_at,
         cooldown_remaining_seconds=None,
         created_at=entry.created_at,
+        base_url=entry.base_url,
     )
 
 
@@ -430,12 +438,14 @@ async def get_provider_config(
             provider=provider,
             selection_strategy="priority",
             cooldown_seconds=60,
+            base_url=None,
         )
 
     return ProviderConfigResponse(
         provider=config.provider,
         selection_strategy=config.selection_strategy.value,
         cooldown_seconds=config.cooldown_seconds,
+        base_url=config.base_url,
     )
 
 
@@ -458,12 +468,15 @@ async def update_provider_config(
         provider,
         strategy=request.selection_strategy,
         cooldown_seconds=request.cooldown_seconds,
+        base_url=request.base_url,
+        clear_base_url=request.clear_base_url,
     )
 
     return ProviderConfigResponse(
         provider=provider,
         selection_strategy=request.selection_strategy,
         cooldown_seconds=request.cooldown_seconds,
+        base_url=None if request.clear_base_url else request.base_url,
     )
 
 

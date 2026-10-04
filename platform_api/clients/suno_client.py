@@ -693,8 +693,12 @@ class SunoClient:
         )
 
     def _build_client(self, api_key: str) -> httpx.AsyncClient:
+        # Key selection publishes the active upstream host for this request so a
+        # pool can switch between sunoapi.org and musicapi without a restart.
+        from platform_api.clients.suno_routing import get_active_suno_base_url
+
         return httpx.AsyncClient(
-            base_url=self._base_url,
+            base_url=get_active_suno_base_url(self._base_url),
             timeout=self._timeout,
             headers={
                 "Authorization": f"Bearer {api_key}",

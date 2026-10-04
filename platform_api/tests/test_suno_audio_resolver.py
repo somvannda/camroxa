@@ -774,3 +774,57 @@ async def test_recover_suno_task_download_urls_reads_data_task_id(
     mapping = await resolver.recover_suno_task_download_urls(object(), "task-1")
     assert mapping == {"c1": "https://b2.example.com/c1.wav"}
     assert state["polls"] == 2
+
+
+@pytest.mark.asyncio
+async def test_active_suno_key_values_filters_by_active_host(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Keys are filtered to the provider's configured active host."""
+    from platform_api.clients.suno_routing import get_active_suno_base_url
+    from platform_api.services import suno_audio_resolver as resolver
+
+    captured: dict[str, object] = {}
+
+    class FakePool:
+        async def fetchval(self, query: str) -> str:
+            return "https://musicapi.camxora.com"
+
+        async def fetch(self, query: str, *args: object) -> list[object]:
+            captured["args"] = args
+            captured["query"] = query
+            return []
+
+    monkeypatch.setenv("PLATFORM_ENCRYPTION_MASTER_KEY", "x")
+    keys = await resolver.active_suno_key_values(FakePool())
+
+    assert keys == []
+    assert captured["args"] == ("https://musicapi.camxora.com",)
+    assert "base_url = $1" in str(captured["query"])
+    assert get_active_suno_base_url() == "https://musicapi.camxora.com"
+
+
+@pytest.mark.asyncio
+async def test_suno_client_uses_active_base_url() -> None:
+    """SunoClient resolves its host from the per-request routing context."""
+    from types import SimpleNamespace
+
+    from platform_api.clients.suno_client import SunoClient
+    from platform_api.clients.suno_routing import set_active_suno_base_url
+
+    settings = SimpleNamespace(
+        suno_api_base_url="https://default.example.com",
+        suno_callback_base_url="",
+        suno_timeout_seconds=30,
+    )
+    client = SunoClient(settings)
+
+    set_active_suno_base_url("https://musicapi.camxora.com")
+    active = client._build_client("k")
+    assert str(active.base_url).rstrip("/") == "https://musicapi.camxora.com"
+    await active.aclose()
+
+    set_active_suno_base_url("")
+    fallback = client._build_client("k")
+    assert str(fallback.base_url).rstrip("/") == "https://default.example.com"
+    await fallback.aclose()

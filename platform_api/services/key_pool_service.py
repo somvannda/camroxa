@@ -18,6 +18,7 @@ from uuid import UUID, uuid4
 import httpx
 from redis.asyncio import Redis
 
+from platform_api.clients.suno_routing import set_active_suno_base_url
 from platform_api.exceptions import DuplicateKeyLabelError, NoAvailableKeysError
 from platform_api.models.domain import ApiKeyEntry, KeyPoolConfig, KeyStatusEvent
 from platform_api.models.enums import KeyStatus, SelectionStrategy
@@ -69,7 +70,10 @@ class KeyPoolService:
         Raises:
             NoAvailableKeysError: If no active keys exist for the provider.
         """
-        active_keys = await self._get_active_keys(provider)
+        config = await self._get_provider_config(provider)
+        if provider == "suno":
+            set_active_suno_base_url(config.base_url)
+        active_keys = await self._get_active_keys(provider, base_url=config.base_url)
 
         if not active_keys:
             # Build status counts for the error
@@ -77,7 +81,6 @@ class KeyPoolService:
             status_counts = self._compute_status_counts(all_keys)
             raise NoAvailableKeysError(provider=provider, status_counts=status_counts)
 
-        config = await self._get_provider_config(provider)
         strategy = config.selection_strategy
 
         if strategy == SelectionStrategy.ROUND_ROBIN:
@@ -160,7 +163,12 @@ class KeyPoolService:
     # -----------------------------------------------------------------------
 
     async def add_key(
-        self, provider: str, key_value: str, label: str, priority: int
+        self,
+        provider: str,
+        key_value: str,
+        label: str,
+        priority: int,
+        base_url: str | None = None,
     ) -> UUID:
         """Add a new key to a provider's pool.
 
@@ -172,6 +180,8 @@ class KeyPoolService:
             key_value: The raw API key string (1–500 characters).
             label: User-friendly label (1–100 characters, unique per provider).
             priority: Selection priority (1–100, lower = higher priority).
+            base_url: Upstream host this key belongs to (for provider
+                switching). ``None`` = host-agnostic (legacy).
 
         Returns:
             The UUID of the newly created key entry.
@@ -193,6 +203,7 @@ class KeyPoolService:
             encrypted_key_value=encrypted_value,
             priority=priority,
             status=KeyStatus.ACTIVE,
+            base_url=(base_url or "").strip().rstrip("/") or None,
         )
         created = await self._repo.create(entry)
 
@@ -224,14 +235,18 @@ class KeyPoolService:
         label: str | None = None,
         priority: int | None = None,
         key_value: str | None = None,
+        base_url: str | None = None,
+        clear_base_url: bool = False,
     ) -> None:
-        """Update key metadata (label, priority, or key value).
+        """Update key metadata (label, priority, value, or host).
 
         Args:
             key_id: The UUID of the key entry to update.
             label: New label (optional).
             priority: New priority (optional).
             key_value: New key value to encrypt and store (optional).
+            base_url: New upstream host for the key (optional).
+            clear_base_url: When True, reset the key to host-agnostic.
         """
         entry = await self._repo.get_by_id(key_id)
         if entry is None:
@@ -251,6 +266,11 @@ class KeyPoolService:
 
         if key_value is not None:
             entry.encrypted_key_value = self._encryption.encrypt(key_value)
+
+        if clear_base_url:
+            entry.base_url = None
+        elif base_url is not None:
+            entry.base_url = (base_url or "").strip().rstrip("/") or None
 
         await self._repo.update(entry)
         await self._invalidate_cache(entry.provider)
@@ -323,6 +343,11 @@ class KeyPoolService:
         """
         return await self._get_provider_config(provider)
 
+    async def active_base_url(self, provider: str) -> str | None:
+        """Return the configured active upstream host, or None for the default."""
+        config = await self._get_provider_config(provider)
+        return config.base_url
+
     async def get_recent_events(self, provider: str, limit: int = 50) -> list[dict]:
         """Get recent status transition events for a provider.
 
@@ -377,8 +402,10 @@ class KeyPoolService:
         *,
         strategy: str | None = None,
         cooldown_seconds: int | None = None,
+        base_url: str | None = None,
+        clear_base_url: bool = False,
     ) -> None:
-        """Configure selection strategy and cooldown for a provider.
+        """Configure selection strategy, cooldown and active host for a provider.
 
         Creates a new configuration if none exists, or updates the existing one.
 
@@ -386,6 +413,10 @@ class KeyPoolService:
             provider: The provider identifier.
             strategy: Selection strategy ("round_robin" or "priority").
             cooldown_seconds: Cooldown duration in seconds (10–3600).
+            base_url: Active upstream host. When set, only keys tagged with the
+                same host are selected, enabling reversible provider switching.
+            clear_base_url: When True, fall back to the environment default and
+                accept every active key (legacy behaviour).
         """
         config = await self._repo.get_provider_config(provider)
         if config is None:
@@ -399,6 +430,11 @@ class KeyPoolService:
 
         if cooldown_seconds is not None:
             config.cooldown_seconds = cooldown_seconds
+
+        if clear_base_url:
+            config.base_url = None
+        elif base_url is not None:
+            config.base_url = (base_url or "").strip().rstrip("/") or None
 
         await self._repo.upsert_provider_config(config)
 
@@ -493,9 +529,15 @@ class KeyPoolService:
         tried_key_ids: set[UUID] = set()
         last_exception: BaseException | None = None
 
+        # Resolve the active host once per execution: only keys tagged with that
+        # host are eligible, and the Suno client reads it to pick its base URL.
+        config = await self._get_provider_config(provider)
+        if provider == "suno":
+            set_active_suno_base_url(config.base_url)
+
         for attempt in range(max_retries):
             # Get active keys excluding already-tried ones
-            active_keys = await self._get_active_keys(provider)
+            active_keys = await self._get_active_keys(provider, base_url=config.base_url)
             available_keys = [k for k in active_keys if k.id not in tried_key_ids]
 
             if not available_keys:
@@ -1033,7 +1075,9 @@ class KeyPoolService:
     # Internal Helpers
     # -----------------------------------------------------------------------
 
-    async def _get_active_keys(self, provider: str) -> list[ApiKeyEntry]:
+    async def _get_active_keys(
+        self, provider: str, base_url: str | None = None
+    ) -> list[ApiKeyEntry]:
         """Fetch active keys for a provider, using Redis cache when available.
 
         First checks for rate-limited keys whose cooldown has expired and
@@ -1044,6 +1088,8 @@ class KeyPoolService:
 
         Args:
             provider: The provider identifier.
+            base_url: When set, only keys tagged with this upstream host are
+                returned (provider switching). ``None`` returns every active key.
 
         Returns:
             List of active ApiKeyEntry records.
@@ -1062,7 +1108,10 @@ class KeyPoolService:
             pass
 
         # Fall back to (or confirm with) PostgreSQL
-        return await self._repo.get_active_by_provider(provider)
+        keys = await self._repo.get_active_by_provider(provider)
+        if base_url:
+            keys = [k for k in keys if (k.base_url or "") == base_url]
+        return keys
 
     async def _get_provider_config(self, provider: str) -> KeyPoolConfig:
         """Get provider configuration, returning defaults if not configured.

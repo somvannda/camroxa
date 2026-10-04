@@ -1663,3 +1663,62 @@ class TestRedisCache:
 
         # Should not raise — just log a warning
         await service.load_all_caches()
+
+
+# ---------------------------------------------------------------------------
+# Tests: provider host switching (api_key_entries.base_url / config.base_url)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_get_key_filters_by_active_provider_host(
+    service: KeyPoolService,
+    fake_repo: FakeKeyPoolRepository,
+    encryption: KeyEncryption,
+) -> None:
+    """Only keys tagged with the configured active host are eligible."""
+    legacy = _make_entry(encryption, label="legacy", key_value="sk-legacy")
+    legacy.base_url = "https://apibox.erweima.ai"
+    modern = _make_entry(encryption, label="modern", key_value="sk-modern")
+    modern.base_url = "https://musicapi.camxora.com"
+    fake_repo._entries[legacy.id] = legacy
+    fake_repo._entries[modern.id] = modern
+
+    fake_repo._configs["suno"] = KeyPoolConfig(
+        provider="suno", base_url="https://musicapi.camxora.com"
+    )
+
+    key = await service.get_key("suno")
+    assert key == "sk-modern"
+
+    from platform_api.clients.suno_routing import get_active_suno_base_url
+
+    assert get_active_suno_base_url() == "https://musicapi.camxora.com"
+
+
+@pytest.mark.asyncio
+async def test_configure_provider_base_url_toggle_and_clear(
+    service: KeyPoolService,
+    fake_repo: FakeKeyPoolRepository,
+) -> None:
+    await service.configure_provider("suno", base_url="https://musicapi.camxora.com")
+    assert fake_repo._configs["suno"].base_url == "https://musicapi.camxora.com"
+
+    await service.configure_provider("suno", clear_base_url=True)
+    assert fake_repo._configs["suno"].base_url is None
+
+
+@pytest.mark.asyncio
+async def test_add_key_tags_base_url(
+    service: KeyPoolService,
+    fake_repo: FakeKeyPoolRepository,
+) -> None:
+    key_id = await service.add_key(
+        "suno",
+        key_value="sk-new",
+        label="musicapi-key",
+        priority=10,
+        base_url="https://musicapi.camxora.com/",
+    )
+    entry = fake_repo._entries[key_id]
+    assert entry.base_url == "https://musicapi.camxora.com"

@@ -219,6 +219,22 @@ def _envelope_is_terminal_success(payload: dict[str, Any]) -> bool:
     return False
 
 
+async def _active_suno_base_url(pool: Any) -> str | None:
+    """Return the provider's configured active upstream host, or None.
+
+    ``key_pool_configs.base_url`` is set by the admin provider toggle; when it
+    is unset the environment default and every active key are used.
+    """
+    try:
+        value = await pool.fetchval(
+            "SELECT base_url FROM key_pool_configs WHERE provider = 'suno'"
+        )
+    except Exception:
+        return None
+    text = str(value or "").strip().rstrip("/")
+    return text or None
+
+
 async def active_suno_key_values(pool: Any) -> list[str]:
     """Decrypt every active Suno key value, best-effort.
 
@@ -226,19 +242,38 @@ async def active_suno_key_values(pool: Any) -> list[str]:
     that created the task. With a multi-account pool we must try each key until
     one owns the task; a 401/403 there means "wrong owner", not "key exhausted",
     so these calls bypass the failover wrapper (which would mark keys dead).
+
+    Only keys tagged for the provider's active host are returned, so
+    sunoapi.org and musicapi keys can coexist while a single host is live. The
+    resolved host is also published for the HTTP client.
     """
     import os
 
+    from platform_api.clients.suno_routing import set_active_suno_base_url
     from platform_api.services.key_encryption import KeyEncryption
 
-    rows = await pool.fetch(
-        """
-        SELECT encrypted_key_value
-        FROM api_key_entries
-        WHERE provider = 'suno' AND status = 'active'
-        ORDER BY priority DESC, created_at ASC
-        """
-    )
+    base_url = await _active_suno_base_url(pool)
+    set_active_suno_base_url(base_url)
+
+    if base_url:
+        rows = await pool.fetch(
+            """
+            SELECT encrypted_key_value
+            FROM api_key_entries
+            WHERE provider = 'suno' AND status = 'active' AND base_url = $1
+            ORDER BY priority DESC, created_at ASC
+            """,
+            base_url,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT encrypted_key_value
+            FROM api_key_entries
+            WHERE provider = 'suno' AND status = 'active'
+            ORDER BY priority DESC, created_at ASC
+            """
+        )
     if not rows:
         return []
     master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
@@ -272,7 +307,11 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
     api_keys = await active_suno_key_values(pool)
     if not api_keys:
         return {}
-    base = os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://musicapi.camxora.com").strip().rstrip("/")
+    from platform_api.clients.suno_routing import get_active_suno_base_url
+
+    base = get_active_suno_base_url(
+        os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://musicapi.camxora.com")
+    ).strip().rstrip("/")
     callback = os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip().rstrip("/")
     callback_url = (
         f"{callback}/api/v3/callbacks/suno" if callback else "https://api.camxora.com/health"
