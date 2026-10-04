@@ -6161,6 +6161,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /** `YYYY-MM-DD HH:MM:SS` timestamp, matching sunoapi.org's record-info. */
+  function sunoTime(ms: number): string {
+    const d = new Date(ms);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return (
+      `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+      `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+    );
+  }
+
   /**
    * WAV-conversion record-info in sunoapi.org's exact shape: `data.response.audioWavUrl`
    * plus a `successFlag` (PENDING | SUCCESS | GENERATE_WAV_FAILED), instead of the
@@ -6179,14 +6189,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.status === "complete"
         ? ((res.download_url as string) ?? (res.wav_url as string) ?? null)
         : null;
-    const fmt = (ms: number): string => {
-      const d = new Date(ms);
-      const p = (n: number) => String(n).padStart(2, "0");
-      return (
-        `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
-        `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-      );
-    };
     const terminal = job.status === "complete" || job.status === "error";
     return {
       code: 200,
@@ -6196,14 +6198,183 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         musicId: (res.clip_id as string) ?? null,
         musicIndex: typeof res.music_index === "number" ? res.music_index : 0,
         callbackUrl: job.callbackUrl ?? "",
-        completeTime: terminal ? fmt(job.completedAt ?? job.createdAt) : null,
+        completeTime: terminal ? sunoTime(job.completedAt ?? job.createdAt) : null,
         response: { audioWavUrl: wavUrl },
         successFlag,
-        createTime: fmt(job.createdAt),
+        createTime: sunoTime(job.createdAt),
         errorCode: job.status === "error" ? 500 : null,
         errorMessage: job.status === "error" ? job.error ?? null : null,
       },
     };
+  }
+
+  /**
+   * Lyrics-generation record-info in sunoapi.org's shape:
+   * `data.response.data[]` of `{text,title,status,errorMessage}`, plus `type: "LYRICS"`.
+   */
+  function lyricsRecordInfo(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    const status =
+      job.status === "complete"
+        ? "SUCCESS"
+        : job.status === "error"
+          ? "GENERATE_LYRICS_FAILED"
+          : "PENDING";
+    const hasLyrics = job.status === "complete" && typeof res.text === "string";
+    return {
+      code: 200,
+      msg: job.status === "error" ? job.error || "Lyrics generation failed" : "success",
+      data: {
+        taskId: job.id,
+        param: JSON.stringify({ prompt: job.prompt ?? "" }),
+        response: hasLyrics
+          ? {
+              taskId: job.id,
+              data: [
+                {
+                  text: res.text,
+                  title: (res.title as string) ?? "",
+                  status: "complete",
+                  errorMessage: "",
+                },
+              ],
+            }
+          : null,
+        status,
+        type: "LYRICS",
+        errorCode: job.status === "error" ? 500 : null,
+        errorMessage: job.status === "error" ? job.error ?? null : null,
+      },
+    };
+  }
+
+  /** Normalised stem name → sunoapi.org vocal-removal response field. */
+  const STEM_URL_FIELD: Record<string, string> = {
+    vocals: "vocalUrl",
+    vocal: "vocalUrl",
+    instrumental: "instrumentalUrl",
+    "backing vocals": "backingVocalsUrl",
+    drums: "drumsUrl",
+    bass: "bassUrl",
+    guitar: "guitarUrl",
+    keyboard: "keyboardUrl",
+    piano: "keyboardUrl",
+    percussion: "percussionUrl",
+    strings: "stringsUrl",
+    synth: "synthUrl",
+    synthesizer: "synthUrl",
+    fx: "fxUrl",
+    effects: "fxUrl",
+    brass: "brassUrl",
+    woodwinds: "woodwindsUrl",
+    woodwind: "woodwindsUrl",
+  };
+
+  /**
+   * Vocal-separation record-info in sunoapi.org's shape: a `response` object with
+   * per-stem URLs (`vocalUrl`, `instrumentalUrl`, `drumsUrl`, …) plus `originData`.
+   * Derived from our stem clips' `metadata.stem_type_group_name` / `stem_from_id`.
+   */
+  async function vocalRemovalRecordInfo(job: Job) {
+    const clips: Array<Record<string, unknown>> = [];
+    collectClipObjects(job.result, clips);
+    const successFlag =
+      job.status === "complete"
+        ? "SUCCESS"
+        : job.status === "error"
+          ? "GENERATE_AUDIO_FAILED"
+          : "PENDING";
+    const response: Record<string, unknown> = {
+      id: null,
+      originUrl: null,
+      originData: null,
+      instrumentalUrl: null,
+      vocalUrl: null,
+      backingVocalsUrl: null,
+      drumsUrl: null,
+      bassUrl: null,
+      guitarUrl: null,
+      keyboardUrl: null,
+      percussionUrl: null,
+      stringsUrl: null,
+      synthUrl: null,
+      fxUrl: null,
+      brassUrl: null,
+      woodwindsUrl: null,
+    };
+    let sourceId: string | null = null;
+    if (job.status === "complete") {
+      const originData: Array<Record<string, unknown>> = [];
+      // A stem task can return several variations (e.g. two vocal + two
+      // instrumental takes). sunoapi.org reports one entry per stem, so keep the
+      // first take of each distinct stem name.
+      const seen = new Set<string>();
+      for (const c of clips) {
+        const meta = (c.metadata ?? {}) as Record<string, unknown>;
+        let url = (c.audio_url as string) ?? null;
+        const audioKey = c.audio_storage_key;
+        if (typeof audioKey === "string") {
+          const signed = await getReadUrl(audioKey);
+          if (signed) url = signed;
+        }
+        const name = String(meta.stem_type_group_name ?? c.title ?? "")
+          .replace(/[()]/g, "")
+          .trim();
+        const norm = name.toLowerCase();
+        if (!sourceId && typeof meta.stem_from_id === "string") sourceId = meta.stem_from_id;
+        if (norm && seen.has(norm)) continue;
+        if (norm) seen.add(norm);
+        const field = STEM_URL_FIELD[norm];
+        if (field && url) response[field] = url;
+        originData.push({
+          duration: (meta.duration as number) ?? null,
+          audio_url: url,
+          stem_type_group_name: name || null,
+          id: c.id,
+        });
+      }
+      response.originData = originData;
+      if (sourceId) {
+        try {
+          const mp3Key = objectKey("clips", `${sourceId}.mp3`);
+          if (await objectExists(mp3Key)) response.originUrl = await getReadUrl(mp3Key);
+        } catch {
+          /* best-effort */
+        }
+      }
+    }
+    const terminal = job.status === "complete" || job.status === "error";
+    return {
+      code: 200,
+      msg: job.status === "error" ? job.error || "Vocal separation failed" : "success",
+      data: {
+        taskId: job.id,
+        musicId: sourceId,
+        musicIndex: 0,
+        callbackUrl: job.callbackUrl ?? "",
+        completeTime: terminal ? sunoTime(job.completedAt ?? job.createdAt) : null,
+        response,
+        successFlag,
+        createTime: sunoTime(job.createdAt),
+        errorCode: job.status === "error" ? 500 : null,
+        errorMessage: job.status === "error" ? job.error ?? null : null,
+      },
+    };
+  }
+
+  /** Register a family-specific record-info route (same auth/ownership checks). */
+  function shapedRecordInfoRoute(sunoPath: string, build: (job: Job) => unknown | Promise<unknown>) {
+    app.get(`${PREFIX}${sunoPath}`, async (req, reply) => {
+      const key = await requireKey(req, reply);
+      if (!key) return;
+      const q = (req.query ?? {}) as { taskId?: string; task_id?: string };
+      const id = q.taskId || q.task_id;
+      if (!id) return reply.code(400).send({ error: "taskId is required." });
+      const job = await getJob(id);
+      if (!job) return reply.code(404).send({ error: "task not found." });
+      if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+      return await build(job);
+    });
   }
 
   function wavRecordInfoRoute() {
@@ -6219,6 +6390,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return await wavRecordInfo(job);
     });
   }
+
 
   // Add camelCase aliases (and vice versa) for the track fields sunoapi.org
   // returns in both spellings. Leaves any other fields untouched.
@@ -6265,9 +6437,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   recordInfoRoute("/add-instrumental/record-info");
   recordInfoRoute("/music-remaster/record-info");
   wavRecordInfoRoute();
-  recordInfoRoute("/vocal-removal/record-info");
+  shapedRecordInfoRoute("/vocal-removal/record-info", vocalRemovalRecordInfo);
   recordInfoRoute("/create-music-video/record-info");
-  recordInfoRoute("/lyrics/record-info");
+  shapedRecordInfoRoute("/lyrics/record-info", lyricsRecordInfo);
   recordInfoRoute("/generate-persona/record-info");
   recordInfoRoute("/generate/upload-cover/record-info");
   recordInfoRoute("/generate/upload-extend/record-info");
