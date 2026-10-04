@@ -4142,6 +4142,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           disabled: !row.is_active,
           low_credits: liveCredits <= thresholds.low_credits_threshold,
           captcha_required: l?.captchaRequired ?? false,
+          // When a solver key is configured, a captcha-required account is still
+          // fully usable — the Turnstile is solved automatically at generation
+          // time, so the UI should not flag it as broken.
+          captcha_solver: Boolean(config.twoCaptchaKey),
         },
       };
     });
@@ -4347,7 +4351,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       creditsPerUsdRate(),
     ]);
     const liveByLabel = new Map(live.map((l) => [l.id, l]));
-    const accountHealth = { total: accountRows.length, healthy: 0, disabled: 0, low_credits: 0, captcha_required: 0 };
+    const captchaSolver = Boolean(config.twoCaptchaKey);
+    const accountHealth = { total: accountRows.length, healthy: 0, disabled: 0, low_credits: 0, captcha_required: 0, captcha_solver: captchaSolver };
     // Aggregate Suno credit monitor (REQUIREMENTS §4.6): the size of the live
     // credit pool across the configured accounts. `active` sums only enabled
     // accounts — the credits actually available to serve requests right now —
@@ -4364,7 +4369,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (disabled) accountHealth.disabled += 1;
       if (lowCredits) accountHealth.low_credits += 1;
       if (captcha) accountHealth.captcha_required += 1;
-      if (!disabled && !lowCredits && !captcha) accountHealth.healthy += 1;
+      // A captcha-required account stays healthy when a solver key is configured
+      // (solved automatically at generation time). It only counts against health
+      // when there is no solver — i.e. when generation would actually fail.
+      if (!disabled && !lowCredits && (!captcha || captchaSolver)) accountHealth.healthy += 1;
     }
     const spentCredits = Number(spent?.sum ?? 0);
     return {

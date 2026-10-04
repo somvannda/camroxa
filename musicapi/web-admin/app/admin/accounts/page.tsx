@@ -16,13 +16,21 @@ interface Account {
     disabled: boolean;
     low_credits: boolean;
     captcha_required: boolean;
+    /** A 2Captcha key is configured, so captchas are solved automatically. */
+    captcha_solver: boolean;
   };
 }
 
 function healthBadges(a: Account) {
   const badges: { label: string; cls: string }[] = [];
   if (a.health.disabled) badges.push({ label: "Disabled", cls: "bg-red-500/15 text-red-300" });
-  if (a.health.captcha_required) badges.push({ label: "Captcha required", cls: "bg-amber-500/15 text-amber-300" });
+  if (a.health.captcha_required && !a.health.captcha_solver) {
+    // No solver configured: generation on this account would actually fail.
+    badges.push({ label: "Captcha required", cls: "bg-amber-500/15 text-amber-300" });
+  } else if (a.health.captcha_required && a.health.captcha_solver) {
+    // Solved automatically at generation time — informational, not a problem.
+    badges.push({ label: "Captcha auto-solve", cls: "bg-sky-500/15 text-sky-300" });
+  }
   if (a.health.low_credits) badges.push({ label: "Low credits", cls: "bg-amber-500/15 text-amber-300" });
   if (badges.length === 0) badges.push({ label: "Healthy", cls: "bg-emerald-500/15 text-emerald-300" });
   return badges;

@@ -9,6 +9,8 @@ interface AccountHealth {
   disabled: number;
   low_credits: number;
   captcha_required: number;
+  /** A 2Captcha key is configured, so captcha requirements are solved automatically. */
+  captcha_solver: boolean;
 }
 
 interface Stats {
@@ -54,7 +56,9 @@ export default function AdminDashboard() {
   const healthChips: Array<{ label: string; value: number; cls: string }> = [
     { label: "Healthy", value: h.healthy, cls: "bg-emerald-500/15 text-emerald-300" },
     { label: "Low credits", value: h.low_credits, cls: "bg-amber-500/15 text-amber-300" },
-    { label: "Captcha required", value: h.captcha_required, cls: "bg-amber-500/15 text-amber-300" },
+    h.captcha_solver
+      ? { label: "Captcha (auto-solve)", value: h.captcha_required, cls: "bg-sky-500/15 text-sky-300" }
+      : { label: "Captcha required", value: h.captcha_required, cls: "bg-amber-500/15 text-amber-300" },
     { label: "Disabled", value: h.disabled, cls: "bg-red-500/15 text-red-300" },
   ];
 
