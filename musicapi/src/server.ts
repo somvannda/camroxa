@@ -7961,7 +7961,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get(`${PREFIX}/generate/credit`, async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;
-    return { code: 200, msg: "success", data: key.credits };
+    // sunoapi.org reports the account's spendable balance, not a single key's
+    // allocation. Credits are pooled across a user's active keys, so return the
+    // pool (the same value /get-credits exposes) as a bare integer.
+    const bal = await accountCredits(key.user_id);
+    return { code: 200, msg: "success", data: bal.credits };
   });
 
   // --- missing product routes (checklist §C) ---
