@@ -46,7 +46,10 @@ export default function CreditBalanceCard() {
     balance.grant_remaining ?? Math.max(0, balance.monthly_credits - balance.monthly_credits_used);
   const monthlySongs = creditsToSongs(grantLeft);
   const topupSongs = creditsToSongs(balance.topup_credits);
-  const dailyRemaining = Math.max(0, balance.daily_free_limit - balance.daily_free_used);
+  // Free plans can be a daily grant or a monthly one; either way the wallet is
+  // the authoritative spendable balance, not just the daily allowance.
+  const freeRemaining = Math.max(0, balance.total_credits);
+  const hasDailyGrant = Math.max(0, balance.daily_free_limit) > 0;
   const isFreePlan = !balance.has_subscription;
 
   return (
@@ -71,15 +74,17 @@ export default function CreditBalanceCard() {
         <div className="mb-6 pb-6 border-b border-white/10">
           <div className="flex items-baseline gap-2">
             <span className="text-5xl font-bold text-white">
-              {isFreePlan ? dailyRemaining : totalSongs}
+              {isFreePlan ? freeRemaining.toLocaleString() : totalSongs}
             </span>
             <span className="text-lg text-slate-400">
-              {isFreePlan ? 'credits left today' : 'songs'}
+              {isFreePlan ? 'credits' : 'songs'}
             </span>
           </div>
           <div className="text-sm text-slate-500 mt-1">
             {isFreePlan
-              ? `${dailyRemaining} / ${balance.daily_free_limit} daily free credits`
+              ? hasDailyGrant
+                ? `${freeRemaining.toLocaleString()} of ${balance.daily_free_limit.toLocaleString()} daily free credits`
+                : `${freeRemaining.toLocaleString()} credits on the Free plan`
               : `${balance.total_credits.toLocaleString()} credits total`}
           </div>
         </div>
