@@ -201,7 +201,7 @@ async def test_get_all_balances_lists_keys() -> None:
             return "sk-suno"
 
     class _Service(ProviderKeyBalanceService):
-        async def _fetch_provider_balance(self, provider, api_key):
+        async def _fetch_provider_balance(self, provider, api_key, base_url=None):
             return 100.0, None, "credits", {"credits": 100}, "ok", None
 
     service = _Service(redis=None, key_pool=_Pool(), settings=SimpleNamespace())
@@ -211,3 +211,44 @@ async def test_get_all_balances_lists_keys() -> None:
     assert suno["keys"][0]["label"] == "suno-main"
     assert suno["keys"][0]["balance"] == 100.0
     assert suno["keys"][0]["fetch_status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_fetch_suno_uses_per_key_base_url(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A key tagged with a host is probed on that host, not the env default."""
+    service = ProviderKeyBalanceService(
+        redis=None,
+        key_pool=None,
+        settings=SimpleNamespace(suno_api_base_url="https://default.example.com"),
+    )
+    captured: dict[str, str] = {}
+
+    class _Resp:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self):
+            return {"code": 200, "data": 100}
+
+    class _Client:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+        async def get(self, url, headers=None):
+            captured["url"] = url
+            return _Resp()
+
+    monkeypatch.setattr(
+        "platform_api.services.provider_key_balance_service.httpx.AsyncClient",
+        lambda *a, **k: _Client(),
+    )
+
+    amount, _currency, _unit, _raw, status, _error = await service._fetch_suno(
+        "sk-key", base_url="https://musicapi.camxora.com"
+    )
+    assert status == "ok"
+    assert amount == 100
+    assert captured["url"] == "https://musicapi.camxora.com/api/v1/generate/credit"
