@@ -350,10 +350,12 @@ function buildOpenApi(routes: Array<{ method: string; url: string }>) {
   const paths: Record<string, Record<string, unknown>> = {};
   const tagSet = new Set<string>();
   for (const r of routes) {
-    if (!r.url.startsWith("/api/v1/")) continue;
-    const path = r.url.slice("/api/v1".length) || "/";
+    const isV1 = r.url.startsWith("/api/v1/");
+    const isFile = r.url.startsWith("/api/file-");
+    if (!isV1 && !isFile) continue;
+    const path = isV1 ? r.url.slice("/api/v1".length) || "/" : r.url;
     const method = r.method.toLowerCase();
-    const tag = path.split("/").filter(Boolean)[0] ?? "root";
+    const tag = isV1 ? path.split("/").filter(Boolean)[0] ?? "root" : "file-upload";
     tagSet.add(tag);
     const operationId =
       `${method}${path}`
@@ -363,6 +365,9 @@ function buildOpenApi(routes: Array<{ method: string; url: string }>) {
       tags: [tag],
       summary: `${r.method} ${path}`,
       operationId,
+      // File-upload routes live at /api/file-* (not under /api/v1), so pin them
+      // to the root server rather than the global /api/v1 base.
+      ...(isFile ? { servers: [{ url: "/" }] } : {}),
       responses: {
         "200": {
           description: "Success",

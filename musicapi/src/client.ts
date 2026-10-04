@@ -443,9 +443,14 @@ export class SunoClient {
       task: "mashup_condition",
       generation_type: "TEXT",
       mv: config.model,
-      mashup_clip_ids: clipIds,
+      prompt: prompt ?? "",
       gpt_description_prompt: prompt ?? "",
+      title: "",
+      tags: "",
+      negative_tags: "",
+      mashup_clip_ids: clipIds,
       override_fields: ["prompt"],
+      transaction_uuid: randomUUID(),
     });
   }
 
@@ -1098,17 +1103,27 @@ export class SunoClient {
     stylePrompt: string,
     params: { startS?: number; endS?: number } = {}
   ): Promise<Clip[]> {
+    const startS = params.startS ?? 0;
+    const endS = params.endS ?? 60;
+    // Top-level infill shape (matches replaceSection, which Suno accepts); the
+    // nested `params` wrapper was rejected with a `params.prompt` 422.
     return this.submitClips("/api/generate/v2-web/", {
       task: "infill",
-      mv: config.model,
       generation_type: "TEXT",
-      params: {
-        prompt: stylePrompt,
-        continue_clip_id: clipId,
-        title: `Boost: ${stylePrompt.slice(0, 40)}`,
-        infill_start_s: params.startS ?? 0,
-        infill_end_s: params.endS ?? 60,
-      },
+      mv: config.model,
+      prompt: stylePrompt,
+      gpt_description_prompt: stylePrompt,
+      tags: "",
+      title: `Boost: ${stylePrompt.slice(0, 40)}`,
+      negative_tags: "",
+      continue_clip_id: clipId,
+      infill_context_start_s: startS,
+      infill_context_end_s: endS,
+      infill_start_s: startS,
+      infill_end_s: endS,
+      infill_dur_s: Math.max(1, endS - startS),
+      infill_lyrics: stylePrompt,
+      continued_aligned_prompt: stylePrompt,
       override_fields: ["prompt"],
       transaction_uuid: randomUUID(),
     });
@@ -1145,8 +1160,7 @@ export class SunoClient {
       body: JSON.stringify({ prompt, token }),
     });
     if (!res.ok) {
-      // Fallback: return default phrase as placeholder if endpoint not found.
-      return { phrase: prompt.trim() || "Please use this sample phrase for voice validation." };
+      throw new Error(`voicePhrase failed (${res.status}): ${await res.text()}`);
     }
     return (await res.json()) as { phrase: string };
   }
@@ -1164,11 +1178,10 @@ export class SunoClient {
       }),
     });
     if (!res.ok) {
-      // Fallback: persona/create/vox-stem pattern with status only.
-      return { valid: true, score: 0.9 };
+      throw new Error(`voiceValidate failed (${res.status}): ${await res.text()}`);
     }
     const data = (await res.json()) as { valid?: boolean; score?: number };
-    return { valid: data.valid ?? true, score: data.score ?? 0.9 };
+    return { valid: data.valid ?? false, score: data.score ?? 0 };
   }
 
   /** Voice op 3: record — alias for createAudioUpload(uploadType: voice_recording), returns session same shape. */
