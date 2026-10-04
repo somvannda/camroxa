@@ -227,6 +227,21 @@ sudo -u camxora -H bash -lc "
   npm run build
 "
 
+# The bundled ffmpeg-static binary must exist and be executable or every WAV /
+# MP4 conversion job fails: `spawn .../ffmpeg-static/ffmpeg ENOENT` when the
+# postinstall download did not run, `EACCES` when it lacks the execute bit (seen
+# in production on 2026-10-04). Repair the mode here and fail the deploy loudly
+# if the binary is genuinely absent.
+log "Verifying bundled ffmpeg (ffmpeg-static)..."
+FFMPEG_BIN="${MUSICAPI_DIR}/node_modules/ffmpeg-static/ffmpeg"
+if [[ -f "${FFMPEG_BIN}" ]]; then
+  chmod +x "${FFMPEG_BIN}"
+  log "ffmpeg-static binary ready: ${FFMPEG_BIN}"
+else
+  log "ERROR: ${FFMPEG_BIN} is missing after npm install; WAV/MP4 conversion would fail."
+  exit 1
+fi
+
 log "Applying database migrations..."
 sudo -u camxora -H bash -lc "
   set -e

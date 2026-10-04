@@ -127,3 +127,39 @@ async def test_get_generation_does_not_retry_ready_clips() -> None:
     await service.get_generation(user_id, task_id)
 
     assert scheduled == []
+
+
+@pytest.mark.asyncio
+async def test_download_wav_resubmits_after_terminal_failure() -> None:
+    """A terminal ``wav_status='failed'`` must drop the dead ``wav_task_id`` and
+    submit a fresh conversion, instead of re-polling the errored upstream job."""
+    user_id = uuid4()
+    task_id = uuid4()
+    row = {
+        "id": task_id,
+        "title": "Track",
+        "status": "success",
+        "audio_url_ok": "https://cdn.example/ok.mp3",
+        "audio_url_alt": "https://cdn.example/alt.mp3",
+        "external_task_id": "ext-1",
+        "wav_task_id": "dead-wav-task",
+        "wav_url": None,
+        "wav_status": "failed",
+        "b2_wav_key": None,
+        "audio_id": "audio-1",
+    }
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value=row)
+    pool.execute = AsyncMock()
+    service = WebMusicService(pool, AsyncMock(), redis=None)
+
+    # The re-submit path raises once it runs out of configured Suno keys; what
+    # matters is that the dead conversion was cleared first.
+    with pytest.raises(Exception):
+        await service._download_wav_inner(user_id, task_id, variant="ok")
+
+    statements = [str(call.args[0]) for call in pool.execute.await_args_list if call.args]
+    assert any(
+        "wav_task_id_ok = NULL" in sql and "wav_status_ok = 'pending'" in sql
+        for sql in statements
+    ), statements
