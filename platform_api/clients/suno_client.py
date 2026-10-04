@@ -511,17 +511,60 @@ def _suno_api_code(payload: Any) -> int:
         return 0
 
 
-def _extract_suno_wav_url(data: dict[str, Any]) -> str | None:
-    for key in ("audioWavUrl", "wavUrl", "audio_wav_url", "wav_url", "url"):
-        url = str(data.get(key) or "").strip()
-        if url.startswith("http"):
-            return url
-    nested = data.get("response")
-    if isinstance(nested, dict):
-        for key in ("audioWavUrl", "wavUrl", "audio_wav_url", "wav_url", "url"):
-            url = str(nested.get(key) or "").strip()
+_WAV_URL_KEYS = (
+    "audioWavUrl",
+    "wavUrl",
+    "audio_wav_url",
+    "wav_url",
+    "url",
+    "download_url",
+    "downloadUrl",
+)
+
+
+def _wav_url_from_entry(value: Any) -> str:
+    """Return an http(s) WAV URL from a string entry or a track/object."""
+    if isinstance(value, str):
+        text = value.strip()
+        return text if text.startswith("http") else ""
+    if isinstance(value, dict):
+        for key in _WAV_URL_KEYS:
+            url = str(value.get(key) or "").strip()
             if url.startswith("http"):
                 return url
+    return ""
+
+
+def _extract_suno_wav_url(data: dict[str, Any]) -> str | None:
+    """Locate the WAV URL in either provider's record-info shape.
+
+    sunoapi.org puts it directly on ``data`` (``audioWavUrl``); Camxora's
+    `musicapi` returns the standard job envelope, so the URL is a bare string
+    inside ``data.response.sunoData[]`` / ``data.response.data[]`` (or a
+    ``{clip_id, format, download_url}`` object for the detail op).
+    """
+    direct = _wav_url_from_entry(data)
+    if direct:
+        return direct
+    nested = data.get("response")
+    if isinstance(nested, dict):
+        url = _wav_url_from_entry(nested)
+        if url:
+            return url
+        for key in ("sunoData", "data"):
+            items = nested.get(key)
+            if isinstance(items, list):
+                for item in items:
+                    url = _wav_url_from_entry(item)
+                    if url:
+                        return url
+    for key in ("sunoData", "data"):
+        items = data.get(key)
+        if isinstance(items, list):
+            for item in items:
+                url = _wav_url_from_entry(item)
+                if url:
+                    return url
     return None
 
 
@@ -725,10 +768,18 @@ class SunoClient:
             else:
                 callback = "https://localhost/api/v3/callbacks/suno"
 
+        # Instrumentals have no lyrics; several resellers (incl. Camxora's
+        # musicapi) reject custom-mode requests whose ``prompt``/lyrics are both
+        # empty. Suno's own UI sends the literal "[Instrumental]" as the prompt,
+        # so mirror it. This is a no-op for non-instrumental tracks.
+        normalized_prompt = normalized_lyrics
+        if instrumental and not normalized_prompt:
+            normalized_prompt = "[Instrumental]"
+
         payload: dict[str, Any] = {
             "model": model,
             "title": normalized_title,
-            "prompt": normalized_lyrics,
+            "prompt": normalized_prompt,
             "style": normalized_style,
             "instrumental": instrumental,
             "customMode": True,
@@ -737,6 +788,7 @@ class SunoClient:
 
         # V6 exposes a dedicated ``lyrics`` field that takes priority over
         # ``prompt`` in custom mode. Send both so V6 sings the exact lyrics.
+        # (Instrumentals keep this empty so no placeholder gets sung.)
         if str(model or "").strip().upper().startswith("V6"):
             payload["lyrics"] = normalized_lyrics
 

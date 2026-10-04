@@ -3511,8 +3511,15 @@ class BatchService:
             if not external_task_id:
                 continue
             try:
-                poll_result = await self._generation_service.poll_suno_generate_status(
-                    external_task_id
+                # record-info is account-scoped; iterate the pool so a
+                # multi-account setup polls with the task's owner key.
+                from platform_api.dependencies import get_db_pool
+                from platform_api.services.suno_audio_resolver import (
+                    poll_suno_generate_with_pool,
+                )
+
+                poll_result = await poll_suno_generate_with_pool(
+                    get_db_pool(), external_task_id
                 )
             except Exception as exc:
                 logger.warning(

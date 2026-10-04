@@ -470,3 +470,201 @@ def test_callback_indicates_success_for_complete_callback_type() -> None:
 
 def test_extract_callback_task_id_from_nested_payload() -> None:
     assert extract_callback_task_id({"data": {"task_id": "task-42"}}) == "task-42"
+
+
+def test_parse_suno_wav_poll_reads_musicapi_envelope_string() -> None:
+    from platform_api.clients.suno_client import parse_suno_wav_poll
+
+    status, url, error = parse_suno_wav_poll(
+        {
+            "code": 200,
+            "msg": "success",
+            "data": {
+                "status": "SUCCESS",
+                "response": {"taskId": "w1", "sunoData": ["https://b2.example.com/wav/clip.wav"]},
+            },
+        }
+    )
+    assert status == "success"
+    assert url == "https://b2.example.com/wav/clip.wav"
+    assert error is None
+
+
+def test_parse_suno_wav_poll_reads_musicapi_download_url_object() -> None:
+    from platform_api.clients.suno_client import parse_suno_wav_poll
+
+    status, url, _error = parse_suno_wav_poll(
+        {
+            "code": 200,
+            "data": {
+                "status": "SUCCESS",
+                "response": {
+                    "sunoData": [
+                        {
+                            "clip_id": "c1",
+                            "format": "wav",
+                            "download_url": "https://b2.example.com/c1.wav",
+                        }
+                    ]
+                },
+            },
+        }
+    )
+    assert status == "success"
+    assert url == "https://b2.example.com/c1.wav"
+
+
+def test_parse_suno_wav_poll_musicapi_pending_has_no_url() -> None:
+    from platform_api.clients.suno_client import parse_suno_wav_poll
+
+    status, url, _error = parse_suno_wav_poll({"code": 200, "data": {"status": "PENDING"}})
+    assert status == "pending"
+    assert url is None
+
+
+def test_recovery_tracks_flattens_both_provider_shapes() -> None:
+    from platform_api.services.suno_audio_resolver import _recovery_tracks
+
+    assert _recovery_tracks(
+        {"status": "SUCCESS", "response": {"sunoData": [{"id": "c1", "audio_url": "u1"}]}}
+    ) == [{"id": "c1", "audio_url": "u1"}]
+    assert _recovery_tracks([{"id": "c2"}]) == [{"id": "c2"}]
+    assert _recovery_tracks({"response": {"data": [{"id": "c3"}]}}) == [{"id": "c3"}]
+    assert _recovery_tracks({"nothing": True}) == []
+
+
+@pytest.mark.asyncio
+async def test_submit_task_instrumental_gets_placeholder_prompt(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from types import SimpleNamespace
+
+    from platform_api.clients.suno_client import SunoClient
+
+    captured: dict[str, object] = {}
+
+    class FakeResponse:
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict[str, object]:
+            return {"code": 200, "data": {"taskId": "t1"}}
+
+    class FakeClient:
+        async def post(self, path: str, json: dict[str, object] | None = None) -> FakeResponse:
+            captured["path"] = path
+            captured["json"] = json
+            return FakeResponse()
+
+        async def aclose(self) -> None:
+            return None
+
+    settings = SimpleNamespace(
+        suno_api_base_url="https://musicapi.camxora.com",
+        suno_callback_base_url="",
+        suno_timeout_seconds=30,
+    )
+    client = SunoClient(settings)
+    monkeypatch.setattr(client, "_build_client", lambda api_key: FakeClient())
+
+    await client.submit_task(
+        model="V6", title="T", lyrics="", style="lofi", instrumental=True, api_key="k"
+    )
+    payload = captured["json"]
+    assert isinstance(payload, dict)
+    assert payload["prompt"] == "[Instrumental]"
+    assert payload["lyrics"] == ""
+
+    await client.submit_task(
+        model="V6", title="T", lyrics="la la", style="pop", instrumental=False, api_key="k"
+    )
+    payload = captured["json"]
+    assert isinstance(payload, dict)
+    assert payload["prompt"] == "la la"
+
+
+@pytest.mark.asyncio
+async def test_poll_suno_generate_tries_next_key_on_owner_403(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.clients.suno_client import SunoClient
+    from platform_api.exceptions import ExternalServiceError
+    from platform_api.services import suno_audio_resolver as resolver
+
+    async def fake_keys(_pool: object) -> list[str]:
+        return ["owner", "other"]
+
+    calls: list[str] = []
+
+    async def fake_check_status(self: SunoClient, task_id: str, *, api_key: str | None = None):
+        del self, task_id
+        calls.append(str(api_key))
+        if api_key == "owner":
+            raise ExternalServiceError(
+                "Suno API error 403", is_retryable=False, details={"status_code": 403}
+            )
+        return {
+            "code": 200,
+            "data": {
+                "status": "SUCCESS",
+                "response": {
+                    "sunoData": [{"id": "c1", "audio_url": "https://b2.example.com/c1.mp3"}]
+                },
+            },
+        }
+
+    monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
+    monkeypatch.setattr(SunoClient, "check_status", fake_check_status)
+
+    parsed = await resolver.poll_suno_generate_with_pool(object(), "task-1")
+    assert parsed.state == "success"
+    assert parsed.audio_url_ok == "https://b2.example.com/c1.mp3"
+    assert calls == ["owner", "other"]
+
+
+@pytest.mark.asyncio
+async def test_call_with_owning_suno_key_skips_non_owner(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.exceptions import ExternalServiceError
+    from platform_api.services import suno_audio_resolver as resolver
+
+    async def fake_keys(_pool: object) -> list[str]:
+        return ["a", "b", "c"]
+
+    monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
+    seen: list[str] = []
+
+    async def fn(key: str) -> str:
+        seen.append(key)
+        if key in {"a", "b"}:
+            raise ExternalServiceError(
+                "Suno API error 403", is_retryable=False, details={"status_code": 403}
+            )
+        return f"ok-{key}"
+
+    result, used = await resolver.call_with_owning_suno_key(object(), fn)
+    assert result == "ok-c"
+    assert used == "c"
+    assert seen == ["a", "b", "c"]
+
+
+@pytest.mark.asyncio
+async def test_call_with_owning_suno_key_reraises_real_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.exceptions import ExternalServiceError
+    from platform_api.services import suno_audio_resolver as resolver
+
+    async def fake_keys(_pool: object) -> list[str]:
+        return ["a"]
+
+    monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
+
+    async def fn(key: str) -> str:
+        raise ExternalServiceError(
+            "Suno API error 500", is_retryable=True, details={"status_code": 500}
+        )
+
+    with pytest.raises(ExternalServiceError):
+        await resolver.call_with_owning_suno_key(object(), fn)

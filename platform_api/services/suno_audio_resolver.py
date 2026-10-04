@@ -187,6 +187,73 @@ async def refresh_suno_task_download_urls(
     return urls_from_generate_poll(poll_result)
 
 
+def _recovery_tracks(data: Any) -> list[dict[str, Any]]:
+    """Flatten recovered clips from either provider's recovery payload.
+
+    sunoapi.org may inline a list directly in ``data``; Camxora's `musicapi`
+    returns the standard job envelope (``data.response.sunoData[]`` /
+    ``data.response.data[]``). Returns only dict entries.
+    """
+    if isinstance(data, list):
+        return [item for item in data if isinstance(item, dict)]
+    if isinstance(data, dict):
+        response = data.get("response")
+        if isinstance(response, dict):
+            for key in ("sunoData", "data"):
+                items = response.get(key)
+                if isinstance(items, list):
+                    return [item for item in items if isinstance(item, dict)]
+        items = data.get("data")
+        if isinstance(items, list):
+            return [item for item in items if isinstance(item, dict)]
+    return []
+
+
+def _envelope_is_terminal_success(payload: dict[str, Any]) -> bool:
+    """True when ``data.status`` marks a job complete (musicapi envelope)."""
+    data = payload.get("data")
+    if isinstance(data, dict):
+        status = str(data.get("status") or "").upper()
+        if status in {"SUCCESS", "COMPLETE", "COMPLETED", "DONE"}:
+            return True
+    return False
+
+
+async def active_suno_key_values(pool: Any) -> list[str]:
+    """Decrypt every active Suno key value, best-effort.
+
+    Read endpoints (record-info / recovery / details) are scoped to the account
+    that created the task. With a multi-account pool we must try each key until
+    one owns the task; a 401/403 there means "wrong owner", not "key exhausted",
+    so these calls bypass the failover wrapper (which would mark keys dead).
+    """
+    import os
+
+    from platform_api.services.key_encryption import KeyEncryption
+
+    rows = await pool.fetch(
+        """
+        SELECT encrypted_key_value
+        FROM api_key_entries
+        WHERE provider = 'suno' AND status = 'active'
+        ORDER BY priority DESC, created_at ASC
+        """
+    )
+    if not rows:
+        return []
+    master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
+    if not master_key:
+        return []
+    encryption = KeyEncryption(master_key=master_key)
+    keys: list[str] = []
+    for row in rows:
+        try:
+            keys.append(encryption.decrypt(bytes(row["encrypted_key_value"])))
+        except Exception:
+            continue
+    return keys
+
+
 async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> dict[str, str]:
     """Fresh playable URLs for an expired task, keyed by clip id.
 
@@ -199,51 +266,40 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
 
     import httpx
 
-    from platform_api.services.key_encryption import KeyEncryption
-
     task_id = str(external_task_id or "").strip()
     if not task_id:
         return {}
-    rows = await pool.fetch(
-        """
-        SELECT encrypted_key_value
-        FROM api_key_entries
-        WHERE provider = 'suno' AND status = 'active'
-        ORDER BY priority DESC, created_at ASC
-        """
-    )
-    if not rows:
+    api_keys = await active_suno_key_values(pool)
+    if not api_keys:
         return {}
-    master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
-    if not master_key:
-        return {}
-    encryption = KeyEncryption(master_key=master_key)
-    base = os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://apibox.erweima.ai").strip().rstrip("/")
+    base = os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://musicapi.camxora.com").strip().rstrip("/")
     callback = os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip().rstrip("/")
     callback_url = (
         f"{callback}/api/v3/callbacks/suno" if callback else "https://api.camxora.com/health"
     )
     async with httpx.AsyncClient(timeout=30.0) as client:
-        for row in rows:
-            try:
-                api_key = encryption.decrypt(bytes(row["encrypted_key_value"]))
-            except Exception:
-                continue
+        for api_key in api_keys:
             try:
                 response = await client.post(
                     f"{base}/api/v1/suno/recovery",
                     headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                    json={"sunoTaskId": task_id, "callBackUrl": callback_url},
+                    # sunoapi.org reads ``sunoTaskId``; musicapi reads ``taskId``.
+                    # Send both so one adapter serves either provider.
+                    json={"sunoTaskId": task_id, "taskId": task_id, "callBackUrl": callback_url},
                 )
                 body = response.json()
             except Exception as exc:
                 logger.warning("Recovery request failed for task %s: %s", task_id, str(exc)[:160])
                 continue
-            if int(body.get("code", 0) or 0) != 200:
+            if not isinstance(body, dict) or int(body.get("code", 0) or 0) != 200:
                 continue
             data = body.get("data")
-            tracks = data if isinstance(data, list) else []
-            recovery_task_id = str(body.get("task_id") or "").strip()
+            tracks = _recovery_tracks(data)
+            recovery_task_id = str(
+                body.get("task_id")
+                or (data.get("taskId") if isinstance(data, dict) else "")
+                or ""
+            ).strip()
             if not tracks and recovery_task_id:
                 # Async recovery: poll record-info until it finishes.
                 for _ in range(20):
@@ -260,18 +316,35 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
                     poll_code = int(poll_body.get("code", 0) or 0)
                     if poll_code == 200:
                         poll_data = poll_body.get("data")
-                        tracks = poll_data if isinstance(poll_data, list) else []
-                        break
+                        if isinstance(poll_data, list):
+                            # sunoapi.org: inline list (empty = terminal).
+                            tracks = [item for item in poll_data if isinstance(item, dict)]
+                            break
+                        poll_tracks = _recovery_tracks(poll_data)
+                        if poll_tracks:
+                            tracks = poll_tracks
+                            break
+                        if _envelope_is_terminal_success(poll_body):
+                            tracks = poll_tracks
+                            break
+                        continue  # still processing — keep polling
                     if poll_code == 500:
                         break
             mapping: dict[str, str] = {}
             for item in tracks:
                 if not isinstance(item, dict):
                     continue
-                if str(item.get("status") or "").lower() != "success":
+                item_status = str(item.get("status") or "").lower()
+                if item_status and item_status != "success":
                     continue
                 clip_id = str(item.get("id") or "").strip()
-                url = normalize_http_download_url(item.get("audio_url"))
+                url = normalize_http_download_url(item.get("audio_url")) or normalize_http_download_url(
+                    item.get("audioUrl")
+                )
+                if not url:
+                    from platform_api.clients.suno_client import _extract_clip_download_url
+
+                    url = _extract_clip_download_url(item)
                 if clip_id and url:
                     mapping[clip_id] = url
             if mapping:
@@ -280,77 +353,88 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
 
 
 async def poll_suno_generate_with_pool(pool: Any, external_task_id: str):
-    """Poll Suno record-info using the DB pool (works outside FastAPI lifespan)."""
+    """Poll Suno record-info using the DB pool (works outside FastAPI lifespan).
+
+    Tries every active key until one owns the task: with a multi-account pool
+    the record-info call is account-scoped, and a 401/403 from a non-owner key
+    must not fail the poll (or disable that key).
+    """
     import os
     from types import SimpleNamespace
 
     from platform_api.clients.suno_client import SunoClient, SunoGeneratePollResult, parse_suno_generate_poll
-    from platform_api.services.key_encryption import KeyEncryption
+    from platform_api.exceptions import ExternalServiceError
 
     task_id = str(external_task_id or "").strip()
     if not task_id:
         return SunoGeneratePollResult(state="failed", error="Missing Suno task id.")
 
-    row = await pool.fetchrow(
-        """
-        SELECT encrypted_key_value
-        FROM api_key_entries
-        WHERE provider = 'suno' AND status = 'active'
-        ORDER BY priority DESC, created_at ASC
-        LIMIT 1
-        """
-    )
-    if not row:
+    api_keys = await active_suno_key_values(pool)
+    if not api_keys:
         return SunoGeneratePollResult(state="failed", error="No active Suno API key configured.")
 
-    master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
-    if not master_key:
-        return SunoGeneratePollResult(state="failed", error="Encryption master key is not configured.")
-
-    encryption = KeyEncryption(master_key=master_key)
-    api_key = encryption.decrypt(bytes(row["encrypted_key_value"]))
     settings = SimpleNamespace(
-        suno_api_base_url=os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://apibox.erweima.ai").strip(),
+        suno_api_base_url=os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://musicapi.camxora.com").strip(),
         suno_callback_base_url=os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip(),
         suno_timeout_seconds=int(os.environ.get("PLATFORM_SUNO_TIMEOUT_SECONDS", "30") or 30),
     )
     client = SunoClient(settings)
-    response = await client.check_status(task_id, api_key=api_key)
-    return parse_suno_generate_poll(response)
+    last_owner_error: ExternalServiceError | None = None
+    for api_key in api_keys:
+        try:
+            response = await client.check_status(task_id, api_key=api_key)
+        except ExternalServiceError as exc:
+            # 401/403 == this key doesn't own the task; try the next account.
+            if exc.details.get("status_code") in (401, 403):
+                last_owner_error = exc
+                continue
+            raise
+        return parse_suno_generate_poll(response)
+    if last_owner_error is not None:
+        raise last_owner_error
+    return SunoGeneratePollResult(state="failed", error="No active Suno key owns this task.")
 
 
-async def _suno_client_with_pool_key(pool: Any):
-    """Return (SunoClient, api_key) using the active DB key pool entry."""
+def _suno_client_from_env():
+    """Build a SunoClient from env settings (no key selection)."""
     import os
     from types import SimpleNamespace
 
     from platform_api.clients.suno_client import SunoClient
-    from platform_api.services.key_encryption import KeyEncryption
 
-    row = await pool.fetchrow(
-        """
-        SELECT encrypted_key_value
-        FROM api_key_entries
-        WHERE provider = 'suno' AND status = 'active'
-        ORDER BY priority DESC, created_at ASC
-        LIMIT 1
-        """
-    )
-    if not row:
-        raise RuntimeError("No active Suno API key configured.")
-
-    master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
-    if not master_key:
-        raise RuntimeError("Encryption master key is not configured.")
-
-    encryption = KeyEncryption(master_key=master_key)
-    api_key = encryption.decrypt(bytes(row["encrypted_key_value"]))
     settings = SimpleNamespace(
-        suno_api_base_url=os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://apibox.erweima.ai").strip(),
+        suno_api_base_url=os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://musicapi.camxora.com").strip(),
         suno_callback_base_url=os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip(),
         suno_timeout_seconds=int(os.environ.get("PLATFORM_SUNO_TIMEOUT_SECONDS", "30") or 30),
     )
-    return SunoClient(settings), api_key
+    return SunoClient(settings)
+
+
+async def call_with_owning_suno_key(pool: Any, fn: Any) -> tuple[Any, str]:
+    """Run ``fn(api_key)`` against the pool key that owns the task.
+
+    Account-scoped calls (WAV convert, timestamped lyrics, recovery) fail with
+    401/403 when attempted with a non-owner key. This iterates every active key
+    until one succeeds, returning ``(result, api_key_used)`` so a follow-up poll
+    can reuse the same account.
+    """
+    api_keys = await active_suno_key_values(pool)
+    if not api_keys:
+        raise RuntimeError("No active Suno API key configured.")
+    last_owner_error: Exception | None = None
+    for api_key in api_keys:
+        try:
+            return await fn(api_key), api_key
+        except Exception as exc:
+            details = getattr(exc, "details", None) or {}
+            status = details.get("status_code") if isinstance(details, dict) else None
+            if status in (401, 403):
+                last_owner_error = exc
+                continue
+            raise
+    if last_owner_error is not None:
+        raise last_owner_error
+    raise RuntimeError("No active Suno key owns this task.")
 
 
 async def fetch_timestamped_lrc_with_pool(
@@ -375,17 +459,42 @@ async def fetch_timestamped_lrc_with_pool(
     if not task_id or not clip_id:
         return ""
 
+    api_keys = await active_suno_key_values(pool)
+    if not api_keys:
+        logger.warning("Suno timestamped lyrics: no active Suno key configured.")
+        return ""
+
+    client = _suno_client_from_env()
     tries = max(1, int(attempts or 1))
     delay = max(0.0, float(delay_seconds or 0.0))
     last_error = ""
     for attempt in range(1, tries + 1):
-        try:
-            client, api_key = await _suno_client_with_pool_key(pool)
-            payload = await client.get_timestamped_lyrics(
-                task_id=task_id,
-                audio_id=clip_id,
-                api_key=api_key,
+        payload: dict[str, Any] | None = None
+        for api_key in api_keys:
+            try:
+                payload = await client.get_timestamped_lyrics(
+                    task_id=task_id,
+                    audio_id=clip_id,
+                    api_key=api_key,
+                )
+                break  # 2xx => this key owns the task
+            except Exception as exc:
+                last_error = str(exc)[:200]
+                details = getattr(exc, "details", None) or {}
+                status = details.get("status_code") if isinstance(details, dict) else None
+                if status in (401, 403):
+                    continue  # not this task's owner — try the next key
+                break
+        if payload is None:
+            logger.warning(
+                "Suno timestamped lyrics error task=%s audio=%s attempt=%s/%s: %s",
+                task_id,
+                clip_id[:12],
+                attempt,
+                tries,
+                last_error,
             )
+        else:
             code = int(payload.get("code", 0) or 0)
             if code != 200:
                 last_error = f"code={code} msg={str(payload.get('msg') or '')[:160]}"
@@ -416,16 +525,6 @@ async def fetch_timestamped_lrc_with_pool(
                     attempt,
                     tries,
                 )
-        except Exception as exc:
-            last_error = str(exc)[:200]
-            logger.warning(
-                "Suno timestamped lyrics error task=%s audio=%s attempt=%s/%s: %s",
-                task_id,
-                clip_id[:12],
-                attempt,
-                tries,
-                last_error,
-            )
         if attempt < tries and delay > 0:
             await asyncio.sleep(delay)
 
