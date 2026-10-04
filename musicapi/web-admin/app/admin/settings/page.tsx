@@ -18,6 +18,7 @@ interface AlertSettings {
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
   window_minutes: number;
+  queue_backlog_depth: number;
 }
 
 interface AlertItem {
@@ -40,6 +41,7 @@ interface AlertReport {
     failure_rate: number | null;
     requests: number;
     failures: number;
+    queue_backlog: number;
   };
 }
 
@@ -299,6 +301,11 @@ export default function SettingsPage() {
               <label className={labelClass}>Window (minutes)</label>
               <input type="number" min={5} max={1440} value={alerts.window_minutes} onChange={(e) => setAlerts({ ...alerts, window_minutes: Number(e.target.value) })} className={inputClass} />
             </div>
+            <div className="space-y-1">
+              <label className={labelClass}>Queue backlog depth</label>
+              <input type="number" min={0} value={alerts.queue_backlog_depth} onChange={(e) => setAlerts({ ...alerts, queue_backlog_depth: Number(e.target.value) })} className={inputClass} />
+              <p className="text-xs text-[var(--muted)]">Alert when this many jobs are waiting for a Suno slot. 0 disables.</p>
+            </div>
           </div>
           <button onClick={saveAlerts} disabled={saving} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
             {saving ? "Saving…" : "Save alerts"}
@@ -419,12 +426,13 @@ export default function SettingsPage() {
 
           {report?.enabled && (
             <>
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
                 <Stat label="Low-credit accounts" value={String(s?.low_credits ?? 0)} />
                 <Stat label="Captcha accounts" value={String(s?.captcha_required ?? 0)} />
                 <Stat label="2Captcha balance" value={s?.captcha_balance == null ? "—" : `$${s.captcha_balance.toFixed(2)}`} />
                 <Stat label="Failure rate" value={s?.failure_rate == null ? "—" : `${(s.failure_rate * 100).toFixed(1)}%`} />
                 <Stat label="Requests / failures" value={s ? `${s.requests} / ${s.failures}` : "—"} />
+                <Stat label="Queue backlog" value={String(s?.queue_backlog ?? 0)} />
               </div>
 
               {report.alerts.length === 0 ? (
