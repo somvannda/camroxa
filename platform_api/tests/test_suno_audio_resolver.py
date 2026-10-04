@@ -668,3 +668,109 @@ async def test_call_with_owning_suno_key_reraises_real_error(
 
     with pytest.raises(ExternalServiceError):
         await resolver.call_with_owning_suno_key(object(), fn)
+
+
+def test_parse_suno_wav_poll_successflag_success() -> None:
+    from platform_api.clients.suno_client import parse_suno_wav_poll
+
+    status, url, _error = parse_suno_wav_poll(
+        {
+            "code": 200,
+            "data": {
+                "successFlag": "SUCCESS",
+                "response": {"audioWavUrl": "https://b2.example.com/c1.wav"},
+            },
+        }
+    )
+    assert status == "success"
+    assert url == "https://b2.example.com/c1.wav"
+
+
+def test_parse_suno_wav_poll_successflag_failed() -> None:
+    from platform_api.clients.suno_client import parse_suno_wav_poll
+
+    status, url, error = parse_suno_wav_poll(
+        {
+            "code": 200,
+            "data": {
+                "successFlag": "GENERATE_WAV_FAILED",
+                "response": {"audioWavUrl": None},
+                "errorMessage": "conversion failed",
+            },
+        }
+    )
+    assert status == "failed"
+    assert url is None
+    assert error
+
+
+def test_parse_suno_wav_poll_successflag_pending() -> None:
+    from platform_api.clients.suno_client import parse_suno_wav_poll
+
+    status, url, _error = parse_suno_wav_poll(
+        {"code": 200, "data": {"successFlag": "PENDING", "response": {"audioWavUrl": None}}}
+    )
+    assert status == "pending"
+    assert url is None
+
+
+@pytest.mark.asyncio
+async def test_recover_suno_task_download_urls_reads_data_task_id(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """musicapi's recovery create returns data.task_id (snake) then a track list."""
+    from platform_api.services import suno_audio_resolver as resolver
+
+    async def fake_keys(_pool: object) -> list[str]:
+        return ["k1"]
+
+    monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("asyncio.sleep", no_sleep)
+
+    state = {"polls": 0}
+
+    class FakeResponse:
+        def __init__(self, payload: dict[str, object]) -> None:
+            self._payload = payload
+
+        def json(self) -> dict[str, object]:
+            return self._payload
+
+    class FakeAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+        async def post(self, url: str, headers: object = None, json: object = None) -> FakeResponse:
+            return FakeResponse({"code": 200, "msg": "success", "data": {"task_id": "rt1"}})
+
+        async def get(self, url: str, headers: object = None, params: object = None) -> FakeResponse:
+            state["polls"] += 1
+            if state["polls"] == 1:
+                return FakeResponse({"code": 201, "task_id": "rt1", "msg": "success", "data": None})
+            return FakeResponse(
+                {
+                    "code": 200,
+                    "task_id": "rt1",
+                    "msg": "success",
+                    "data": [
+                        {"id": "c1", "audio_url": "https://b2.example.com/c1.wav", "status": "success"},
+                        {"id": None, "audio_url": "", "status": "failed"},
+                    ],
+                }
+            )
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeAsyncClient)
+
+    mapping = await resolver.recover_suno_task_download_urls(object(), "task-1")
+    assert mapping == {"c1": "https://b2.example.com/c1.wav"}
+    assert state["polls"] == 2

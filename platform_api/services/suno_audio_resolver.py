@@ -295,9 +295,12 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
                 continue
             data = body.get("data")
             tracks = _recovery_tracks(data)
+            # sunoapi.org exposes the recovery task id at the top level; musicapi
+            # nests it as data.task_id (snake_case) under the create response.
             recovery_task_id = str(
                 body.get("task_id")
                 or (data.get("taskId") if isinstance(data, dict) else "")
+                or (data.get("task_id") if isinstance(data, dict) else "")
                 or ""
             ).strip()
             if not tracks and recovery_task_id:

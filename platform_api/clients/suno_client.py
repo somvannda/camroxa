@@ -623,18 +623,23 @@ def parse_suno_wav_poll(response: dict[str, Any]) -> tuple[str, str | None, str 
     code = _suno_api_code(response)
     data = response.get("data") if isinstance(response.get("data"), dict) else {}
     status = str(data.get("status", "")).strip().upper()
+    # sunoapi.org / musicapi report WAV state via `successFlag`
+    # (PENDING | SUCCESS | GENERATE_WAV_FAILED) rather than `status`.
+    success_flag = str(data.get("successFlag") or data.get("success_flag") or "").strip().upper()
     error_message = str(data.get("errorMessage") or data.get("error") or "").strip()
     wav_url = _extract_suno_wav_url(data) or _extract_suno_wav_url(response)
 
     if wav_url and (code == 200 or is_suno_success_status(status) or not status):
         return ("success", wav_url, None)
-    if is_suno_failure_status(status):
+    if success_flag in {"GENERATE_WAV_FAILED", "FAILED", "ERROR"} or is_suno_failure_status(status):
         return (
             "failed",
             None,
-            suno_task_failure_message(status=status, error_message=error_message),
+            suno_task_failure_message(
+                status=status or success_flag, error_message=error_message
+            ),
         )
-    if is_suno_success_status(status):
+    if success_flag == "SUCCESS" or is_suno_success_status(status):
         if wav_url:
             return ("success", wav_url, None)
         return ("pending", None, None)
