@@ -833,6 +833,102 @@ async def test_recover_suno_task_download_urls_reads_data_task_id(
 
 
 @pytest.mark.asyncio
+async def test_recover_suno_task_download_urls_stops_after_terminal_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """One un-recoverable musicapi task must not fan out across every active key.
+
+    Regression for the 2026-10-04 recovery storm: recovery kept re-posting the
+    same task under each key whenever the mapping came back empty, turning one
+    dead task into ~6 recovery jobs.
+    """
+    from platform_api.clients.suno_routing import set_active_suno_base_url
+    from platform_api.services import suno_audio_resolver as resolver
+
+    set_active_suno_base_url("https://musicapi.camxora.com")
+
+    async def fake_keys(_pool: object) -> list[str]:
+        return ["k1", "k2", "k3"]
+
+    monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
+
+    async def no_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("asyncio.sleep", no_sleep)
+
+    state = {"posts": 0, "polls": 0}
+
+    class FakeResponse:
+        def __init__(self, payload: dict[str, object]) -> None:
+            self._payload = payload
+
+        def json(self) -> dict[str, object]:
+            return self._payload
+
+    class FakeAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+        async def post(self, url: str, headers: object = None, json: object = None) -> FakeResponse:
+            state["posts"] += 1
+            return FakeResponse({"code": 200, "msg": "success", "data": {"task_id": "rt1"}})
+
+        async def get(self, url: str, headers: object = None, params: object = None) -> FakeResponse:
+            state["polls"] += 1
+            return FakeResponse({"code": 500, "msg": "no_audio_id_mappings", "data": None})
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeAsyncClient)
+
+    mapping = await resolver.recover_suno_task_download_urls(object(), "task-missing")
+
+    assert mapping == {}
+    assert state["posts"] == 1, "must not replay a terminal task under every active key"
+
+
+@pytest.mark.asyncio
+async def test_recover_suno_task_download_urls_disabled_by_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """RECOVERY_AUDIO_ENABLED=0 short-circuits the fallback without any request."""
+    from platform_api.services import suno_audio_resolver as resolver
+
+    monkeypatch.setenv("RECOVERY_AUDIO_ENABLED", "0")
+
+    async def fake_keys(_pool: object) -> list[str]:
+        return ["k1"]
+
+    monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
+
+    state = {"posts": 0}
+
+    class FakeAsyncClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        async def __aenter__(self) -> "FakeAsyncClient":
+            return self
+
+        async def __aexit__(self, *args: object) -> bool:
+            return False
+
+        async def post(self, *args: object, **kwargs: object) -> object:  # pragma: no cover
+            state["posts"] += 1
+            raise AssertionError("recovery must not be attempted when disabled")
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeAsyncClient)
+
+    assert await resolver.recover_suno_task_download_urls(object(), "task-1") == {}
+    assert state["posts"] == 0
+
+
+@pytest.mark.asyncio
 async def test_active_suno_key_values_filters_by_active_host(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

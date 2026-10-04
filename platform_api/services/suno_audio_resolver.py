@@ -292,14 +292,20 @@ async def active_suno_key_values(pool: Any) -> list[str]:
 async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> dict[str, str]:
     """Fresh playable URLs for an expired task, keyed by clip id.
 
-    Uses the provider's Recovery Audio endpoint. It is scoped to the API
-    key/account that generated the task, so every active Suno key is tried
-    until one recovers the task. Returns ``{clip_id: audio_url}`` (may be .m4a).
+    Uses the provider's Recovery Audio endpoint. sunoapi.org scopes recovery to
+    the API key/account that generated the task, so every active key is tried
+    until one recovers it. Camxora's ``musicapi`` re-signs our own stored media
+    regardless of which key asks, so a single attempt is enough. Returns
+    ``{clip_id: audio_url}`` (may be .m4a). Set ``RECOVERY_AUDIO_ENABLED=0`` to
+    disable the fallback entirely.
     """
     import asyncio
     import os
 
     import httpx
+
+    if os.environ.get("RECOVERY_AUDIO_ENABLED", "1") == "0":
+        return {}
 
     task_id = str(external_task_id or "").strip()
     if not task_id:
@@ -312,6 +318,11 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
     base = get_active_suno_base_url(
         os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://musicapi.camxora.com")
     ).strip().rstrip("/")
+    # ``musicapi`` recovery re-signs our own stored media regardless of which
+    # key asks, so one active key is enough. Replaying the same task under every
+    # remaining key only multiplies work (incident 2026-10-04: one
+    # un-recoverable task fanned out to ~6 recovery jobs).
+    single_attempt = "musicapi" in base.lower()
     callback = os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip().rstrip("/")
     callback_url = (
         f"{callback}/api/v3/callbacks/suno" if callback else "https://api.camxora.com/health"
@@ -391,6 +402,10 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
                     mapping[clip_id] = url
             if mapping:
                 return mapping
+            if single_attempt:
+                # A key accepted the recovery yet produced no playable track;
+                # for a non-account-scoped provider that result is terminal.
+                return {}
     return {}
 
 
