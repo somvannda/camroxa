@@ -116,6 +116,37 @@ export const config = {
     perUserEnabled: (process.env.RATE_LIMIT_PER_USER_ENABLED ?? "true") === "true",
     /** How long a user's `rate_limits` row is cached before re-reading the DB. */
     perUserCacheMs: Number(process.env.RATE_LIMIT_PER_USER_CACHE_MS ?? 30_000),
+    /**
+     * Window for the per-user `requests_per_window` budget, kept separate from
+     * the global edge `windowMs` so a 10-second budget (sunoapi.org's 20/10s
+     * shape) does not also loosen/tighten the whole-API edge limiter.
+     */
+    userWindowMs: Number(process.env.RATE_LIMIT_USER_WINDOW_MS ?? 10_000),
+  },
+  /**
+   * Concurrency limits for Suno-backed work. A tiny account pool must not take
+   * an unbounded burst: every job calls `pool.pick()` and submits in parallel,
+   * so exceeding what the pool can absorb yields captcha/429 churn and wasted
+   * credits. The gate admits at most `maxConcurrent` (explicit) or
+   * `pool.size × concurrentPerAccount` jobs at once, and at most
+   * `maxConcurrentPerUser` per user unless their `rate_limits` row overrides it.
+   */
+  suno: {
+    /** Concurrent jobs to plan per pooled Suno account. */
+    concurrentPerAccount: Math.max(1, Number(process.env.SUNO_CONCURRENT_PER_ACCOUNT ?? 4)),
+    /** Explicit hard ceiling on concurrent jobs; null derives it from pool size. */
+    maxConcurrent: process.env.SUNO_MAX_CONCURRENT
+      ? Math.max(1, Number(process.env.SUNO_MAX_CONCURRENT))
+      : null,
+    /** Default per-user concurrent-job cap when `rate_limits` has no override. */
+    maxConcurrentPerUser: Math.max(1, Number(process.env.SUNO_MAX_CONCURRENT_PER_USER ?? 2)),
+    /**
+     * How many jobs may wait for a slot before new arrivals are rejected
+     * (0 = unbounded). Bounds the detached-job backlog so a flood cannot grow
+     * the in-memory promise queue without limit; a rejected job fails out with
+     * a retryable error and its charge refunded.
+     */
+    maxQueue: Math.max(0, Number(process.env.SUNO_MAX_QUEUE ?? 1000)),
   },
   /**
    * Outbound alert delivery (task 5.5, REQUIREMENTS §4.10). Reuses the same

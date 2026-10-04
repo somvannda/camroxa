@@ -13,9 +13,9 @@ import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, v
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
-import { captchaRequired } from "./captcha.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
+import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
@@ -92,17 +92,28 @@ export interface BrandSettings {
 }
 
 /**
- * Thresholds/switches for the three alerts the admin panel surfaces (task 5.5,
- * REQUIREMENTS §4.10): Suno accounts running low on credits, Suno demanding a
- * captcha, and a spike in the job failure rate.
+ * Thresholds/switches for the alerts the admin panel surfaces (task 5.5,
+ * REQUIREMENTS §4.10): Suno accounts running low on credits, a captcha that
+ * cannot actually be solved (no 2Captcha key, or a drained balance), a spike in
+ * the job failure rate, and a backlog of jobs waiting for a Suno concurrency
+ * slot. A captcha challenge is only an alert when it is actionable — while a
+ * funded solver is configured, the worker solves it automatically at generation
+ * time.
  */
 export interface AlertSettings {
   enabled: boolean;
   low_credits_threshold: number;
-  captcha_locked: boolean;
+  /** Alert when the 2Captcha balance (USD) is at or below this. 0 disables. */
+  captcha_balance_threshold: number;
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
   window_minutes: number;
+  /**
+   * Alert when this many jobs are waiting for a Suno slot. `0` disables the
+   * check. Guards against the pool being saturated (a growing backlog means the
+   * account pool can't keep up with demand).
+   */
+  queue_backlog_depth: number;
 }
 
 const DEFAULT_BRAND: BrandSettings = {
@@ -115,10 +126,11 @@ const DEFAULT_BRAND: BrandSettings = {
 const DEFAULT_ALERTS: AlertSettings = {
   enabled: true,
   low_credits_threshold: 50,
-  captcha_locked: true,
+  captcha_balance_threshold: 1,
   failure_rate_threshold: 0.25,
   failure_rate_min_requests: 20,
   window_minutes: 60,
+  queue_backlog_depth: 50,
 };
 
 /**
@@ -173,7 +185,12 @@ function coerceAlerts(value: unknown): AlertSettings {
   return {
     enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_ALERTS.enabled,
     low_credits_threshold: clampInt(o.low_credits_threshold, DEFAULT_ALERTS.low_credits_threshold, 0, 1_000_000),
-    captcha_locked: typeof o.captcha_locked === "boolean" ? o.captcha_locked : DEFAULT_ALERTS.captcha_locked,
+    captcha_balance_threshold: clampNumber(
+      o.captcha_balance_threshold,
+      DEFAULT_ALERTS.captcha_balance_threshold,
+      0,
+      100_000,
+    ),
     failure_rate_threshold: clampNumber(o.failure_rate_threshold, DEFAULT_ALERTS.failure_rate_threshold, 0, 1),
     failure_rate_min_requests: clampInt(
       o.failure_rate_min_requests,
@@ -182,6 +199,12 @@ function coerceAlerts(value: unknown): AlertSettings {
       1_000_000,
     ),
     window_minutes: clampInt(o.window_minutes, DEFAULT_ALERTS.window_minutes, 5, 1440),
+    queue_backlog_depth: clampInt(
+      o.queue_backlog_depth,
+      DEFAULT_ALERTS.queue_backlog_depth,
+      0,
+      1_000_000,
+    ),
   };
 }
 
@@ -226,7 +249,7 @@ function mergeAlerts(
   if (typeof patch !== "object" || patch === null) return { ok: false, error: "alerts must be an object." };
   const o = patch as Record<string, unknown>;
   const next: AlertSettings = { ...current };
-  for (const key of ["enabled", "captcha_locked"] as const) {
+  for (const key of ["enabled"] as const) {
     if (o[key] !== undefined) {
       if (typeof o[key] !== "boolean") return { ok: false, error: `alerts.${key} must be a boolean.` };
       next[key] = o[key] as boolean;
@@ -234,9 +257,11 @@ function mergeAlerts(
   }
   const numeric: Array<[keyof AlertSettings, number, number]> = [
     ["low_credits_threshold", 0, 1_000_000],
+    ["captcha_balance_threshold", 0, 100_000],
     ["failure_rate_threshold", 0, 1],
     ["failure_rate_min_requests", 1, 1_000_000],
     ["window_minutes", 5, 1440],
+    ["queue_backlog_depth", 0, 1_000_000],
   ];
   for (const [key, min, max] of numeric) {
     if (o[key] === undefined) continue;
@@ -244,7 +269,8 @@ function mergeAlerts(
     if (typeof value !== "number" || !Number.isFinite(value) || value < min || value > max) {
       return { ok: false, error: `alerts.${key} must be a number between ${min} and ${max}.` };
     }
-    (next[key] as number) = key === "failure_rate_threshold" ? value : Math.round(value);
+    (next[key] as number) =
+      key === "failure_rate_threshold" || key === "captcha_balance_threshold" ? value : Math.round(value);
   }
   return { ok: true, value: next };
 }
@@ -524,6 +550,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // `QUEUE_DRIVER=redis` hands descriptor-backed jobs to a BullMQ work list.
   const queue = await createJobQueue();
 
+  // Caps how many Suno-backed jobs run at once, so a burst queues instead of
+  // stampeding a small account pool (see `src/concurrency.ts`). The global
+  // ceiling is re-evaluated per admission, so adding an account raises capacity
+  // without a restart; `SUNO_MAX_CONCURRENT` pins it explicitly. The waiting
+  // queue is bounded by `SUNO_MAX_QUEUE` so a flood cannot grow it without limit.
+  const sunoSlots = new ConcurrencyGate(
+    () => config.suno.maxConcurrent ?? Math.max(1, pool.size * config.suno.concurrentPerAccount),
+    config.suno.maxQueue,
+  );
+
   // Edge request counters for the admin `/metrics` snapshot. In-memory and reset
   // on restart, which is all a single-process deployment needs.
   const requestCounters = { total: 0, clientErrors: 0, serverErrors: 0 };
@@ -747,12 +783,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // time. Counters are in-memory fixed windows, matching the edge limiter
   // (a single-process deployment doesn't need a shared store).
   interface UserRateLimits {
+    /** Requests allowed per `config.rateLimit.userWindowMs` (sunoapi.org 20/10s shape). */
+    perWindow: number | null;
     perMinute: number | null;
     perDay: number | null;
+    /** Cap on this user's concurrently running Suno jobs; null = config default. */
+    maxConcurrentJobs: number | null;
   }
 
   const DAY_MS = 86_400_000;
   const rateLimitCache = new Map<string, { limits: UserRateLimits | null; at: number }>();
+  const windowWindows = new Map<string, { start: number; count: number }>();
   const minuteWindows = new Map<string, { start: number; count: number }>();
   const dayWindows = new Map<string, { start: number; count: number }>();
   const RATE_LIMIT_MAP_CAP = Number(process.env.RATE_LIMIT_MAP_CAP ?? 20_000);
@@ -761,13 +802,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const now = Date.now();
     const cached = rateLimitCache.get(userId);
     if (cached && now - cached.at < config.rateLimit.perUserCacheMs) return cached.limits;
-    const row = await queryOne<{ requests_per_minute: number | null; requests_per_day: number | null }>(
-      "SELECT requests_per_minute, requests_per_day FROM rate_limits WHERE user_id = $1 LIMIT 1",
+    const row = await queryOne<{
+      requests_per_window: number | null;
+      requests_per_minute: number | null;
+      requests_per_day: number | null;
+      max_concurrent_jobs: number | null;
+    }>(
+      "SELECT requests_per_window, requests_per_minute, requests_per_day, max_concurrent_jobs FROM rate_limits WHERE user_id = $1 LIMIT 1",
       [userId],
     );
     const limits =
-      row && (row.requests_per_minute != null || row.requests_per_day != null)
-        ? { perMinute: row.requests_per_minute, perDay: row.requests_per_day }
+      row &&
+      (row.requests_per_window != null ||
+        row.requests_per_minute != null ||
+        row.requests_per_day != null ||
+        row.max_concurrent_jobs != null)
+        ? {
+            perWindow: row.requests_per_window,
+            perMinute: row.requests_per_minute,
+            perDay: row.requests_per_day,
+            maxConcurrentJobs: row.max_concurrent_jobs,
+          }
         : null;
     // Bound the cache: drop entries that no longer match the current window.
     if (rateLimitCache.size > RATE_LIMIT_MAP_CAP) {
@@ -794,8 +849,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   interface UserRateResult {
     allowed: boolean;
-    exceeded: "minute" | "day" | null;
+    exceeded: "window" | "minute" | "day" | null;
     retryAfterSec: number;
+    windowRemaining: number | null;
     minuteRemaining: number | null;
     dayRemaining: number | null;
   }
@@ -803,12 +859,33 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   function checkUserRateLimit(userId: string, limits: UserRateLimits): UserRateResult {
     const now = Date.now();
     const windowMs = config.rateLimit.windowMs;
+    const userWindowMs = config.rateLimit.userWindowMs;
     const minuteStart = now - (now % windowMs);
+    const userWindowStart = now - (now % userWindowMs);
     const day = new Date(now);
     const dayStart = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
+    let windowRemaining: number | null = null;
     let minuteRemaining: number | null = null;
     let dayRemaining: number | null = null;
 
+    // Short per-window budget first: it is the tightest and mirrors sunoapi.org.
+    if (limits.perWindow != null) {
+      if (windowWindows.size > RATE_LIMIT_MAP_CAP) {
+        for (const [id, w] of windowWindows) if (w.start !== userWindowStart) windowWindows.delete(id);
+      }
+      const count = bumpWindow(windowWindows, userId, userWindowStart);
+      windowRemaining = Math.max(0, limits.perWindow - count);
+      if (count > limits.perWindow) {
+        return {
+          allowed: false,
+          exceeded: "window",
+          retryAfterSec: Math.max(1, Math.ceil((userWindowStart + userWindowMs - now) / 1000)),
+          windowRemaining: 0,
+          minuteRemaining,
+          dayRemaining,
+        };
+      }
+    }
     if (limits.perMinute != null) {
       if (minuteWindows.size > RATE_LIMIT_MAP_CAP) {
         for (const [id, w] of minuteWindows) if (w.start !== minuteStart) minuteWindows.delete(id);
@@ -820,6 +897,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           allowed: false,
           exceeded: "minute",
           retryAfterSec: Math.max(1, Math.ceil((minuteStart + windowMs - now) / 1000)),
+          windowRemaining,
           minuteRemaining: 0,
           dayRemaining,
         };
@@ -836,12 +914,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           allowed: false,
           exceeded: "day",
           retryAfterSec: Math.max(1, Math.ceil((dayStart + DAY_MS - now) / 1000)),
+          windowRemaining,
           minuteRemaining,
           dayRemaining: 0,
         };
       }
     }
-    return { allowed: true, exceeded: null, retryAfterSec: 0, minuteRemaining, dayRemaining };
+    return {
+      allowed: true,
+      exceeded: null,
+      retryAfterSec: 0,
+      windowRemaining,
+      minuteRemaining,
+      dayRemaining,
+    };
   }
 
   /**
@@ -853,6 +939,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const limits = await loadUserRateLimits(userId);
     if (!limits) return true;
     const result = checkUserRateLimit(userId, limits);
+    if (limits.perWindow != null) {
+      reply.header("x-user-rate-limit-window", String(limits.perWindow));
+      reply.header("x-user-rate-remaining-window", String(result.windowRemaining ?? 0));
+    }
     if (limits.perMinute != null) {
       reply.header("x-user-rate-limit", String(limits.perMinute));
       reply.header("x-user-rate-remaining", String(result.minuteRemaining ?? 0));
@@ -863,12 +953,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     if (result.allowed) return true;
     reply.header("retry-after", String(result.retryAfterSec));
-    reply.code(429).send({
-      error:
-        result.exceeded === "day"
-          ? `Daily request limit exceeded (${limits.perDay}/day).`
-          : `Request rate limit exceeded (${limits.perMinute}/min).`,
-    });
+    const error =
+      result.exceeded === "day"
+        ? `Daily request limit exceeded (${limits.perDay}/day).`
+        : result.exceeded === "window"
+          ? `Request rate limit exceeded (${limits.perWindow} per ${Math.round(config.rateLimit.userWindowMs / 1000)}s).`
+          : `Request rate limit exceeded (${limits.perMinute}/min).`;
+    reply.code(429).send({ error });
     return false;
   }
 
@@ -1911,18 +2002,36 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           "Source voice recording is unavailable — the source must be extracted on a Voice-entitled (Premier) account.",
         );
       }
-      const client = await pool.pick();
+      const client = await pool.pickFeature("studio");
       const resp = await fetch(params.verifyUrl, { signal: AbortSignal.timeout(60_000) });
       if (!resp.ok) throw new Error(`Could not download verifyUrl (${resp.status}).`);
-      const verificationRecordingId = await client.uploadAudio(
-        Buffer.from(await resp.arrayBuffer()),
-        "mp3",
-        "voice_recording",
-      );
-      const verified = await client.verifyVoice({ phraseId, voiceRecordingId, verificationRecordingId });
-      const voiceId =
-        (verified.id as string) ?? (verified.voice_id as string) ?? (verified.voiceId as string) ?? null;
-      job.result = { voice_verification: verified, voice_id: voiceId, voice_name: params.voiceName ?? null };
+      // Create the verification recording: upload the recording, then extract it
+      // with recording_type="verification" (the field the create-voice UI sends).
+      const uploadId = await client.uploadForVoice(Buffer.from(await resp.arrayBuffer()));
+      const vstem = await client.voiceVoxStem(uploadId, "verification");
+      const verificationRecordingId =
+        (vstem.voice_recording_id as string) ?? (vstem.id as string) ?? "";
+      if (!verificationRecordingId) throw new Error("Could not create the verification recording.");
+      let verified = await client.verifyVoice({ phraseId, voiceRecordingId, verificationRecordingId });
+      let status = typeof verified.status === "string" ? verified.status : "";
+      if (status === "pending") {
+        for (let i = 0; i < 40; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          verified = await client.getVoiceVerification(String(verified.id));
+          status = typeof verified.status === "string" ? verified.status : "";
+          if (status && status !== "pending") break;
+        }
+      }
+      if (status !== "approved") {
+        throw new Error(
+          `Voice verification ${status || "failed"}${verified.rejection_reason ? ` (${String(verified.rejection_reason)})` : ""}.`,
+        );
+      }
+      job.result = {
+        voice_verification: verified,
+        voice_id: (verified.id as string) ?? null,
+        voice_name: params.voiceName ?? null,
+      };
       job.status = "complete";
     } catch (e) {
       job.status = "error";
@@ -1955,6 +2064,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   interface RetryOptions {
     model?: string;
     policy?: RoutingPolicy;
+    /** Prefer an account advertising this capability (e.g. "studio" for Voice). */
+    needFeature?: string;
   }
 
   // Detached job workers run outside any request lifecycle. Track them so
@@ -1993,12 +2104,47 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     await queue.close();
   });
 
+  /**
+   * Per-user concurrent-job cap: the user's `rate_limits.max_concurrent_jobs`
+   * override, else the configured default. Jobs with no user share one
+   * `"system"` owner bounded only by the global ceiling.
+   */
+  async function sunoUserCap(userId: string | undefined): Promise<number> {
+    if (!userId) return Number.MAX_SAFE_INTEGER;
+    const limits = await loadUserRateLimits(userId);
+    return limits?.maxConcurrentJobs ?? config.suno.maxConcurrentPerUser;
+  }
+
+  /** Run `fn` while holding one global + one per-user Suno slot. */
+  async function withSunoSlot<T>(job: Job, fn: () => Promise<T>): Promise<T | undefined> {
+    const owner = job.userId ?? "system";
+    let release: () => void;
+    try {
+      release = await sunoSlots.acquire(owner, await sunoUserCap(job.userId));
+    } catch (e) {
+      if (e instanceof QueueFullError) {
+        // The backlog is at its bound: fail the job out (refund + callback)
+        // with a retryable error rather than queueing it indefinitely.
+        job.status = "error";
+        job.error = "Server busy: too many queued jobs. Please retry shortly.";
+        await finalizeJob(job);
+        return undefined;
+      }
+      throw e;
+    }
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
   function runClipJobWithRetry(
     job: Job,
     submitFactory: (client: SunoClient) => Promise<import("./client.js").Clip[]>,
     options?: RetryOptions,
   ): Promise<void> {
-    return trackJob(runClipJobWithRetryImpl(job, submitFactory, options));
+    return trackJob(withSunoSlot(job, () => runClipJobWithRetryImpl(job, submitFactory, options)));
   }
 
   async function runClipJobWithRetryImpl(
@@ -2014,7 +2160,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
-        client = await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
+        client = options?.needFeature
+          ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any")
+          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
         break;
@@ -2056,7 +2204,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     submitFactory: (client: SunoClient) => Promise<unknown>,
     options?: RetryOptions,
   ): Promise<void> {
-    return trackJob(runResultJobWithRetryImpl(job, submitFactory, options));
+    return trackJob(withSunoSlot(job, () => runResultJobWithRetryImpl(job, submitFactory, options)));
   }
 
   async function runResultJobWithRetryImpl(
@@ -2072,7 +2220,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
-        client = await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
+        client = options?.needFeature
+          ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any")
+          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
         break;
@@ -2444,6 +2594,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       requests: { ...requestCounters },
       jobs: { total: jobs.size, byStatus },
       accounts: pool.size,
+      // Suno concurrency: `capacity` is the effective global ceiling, `active`
+      // jobs currently holding a slot, `waiting` jobs queued behind them.
+      suno: {
+        ...sunoSlots.stats(),
+        capacity:
+          config.suno.maxConcurrent ?? Math.max(1, pool.size * config.suno.concurrentPerAccount),
+        maxConcurrentPerUser: config.suno.maxConcurrentPerUser,
+      },
     };
   });
 
@@ -2960,7 +3118,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "voice_validate";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }), {
+      needFeature: "studio",
+    });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -4376,7 +4536,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return coerceAlerts(await readSettingsValue("alerts"));
   }
 
-  type AlertType = "low_credits" | "captcha_locked" | "failure_rate";
+  type AlertType =
+    | "low_credits"
+    | "captcha_no_solver"
+    | "captcha_balance"
+    | "failure_rate"
+    | "queue_backlog";
 
   interface AlertItem {
     id: AlertType;
@@ -4393,15 +4558,39 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     alerts: AlertItem[];
     summary: {
       low_credits: number;
-      captcha_locked: boolean;
+      captcha_required: number;
+      captcha_balance: number | null;
       failure_rate: number | null;
       requests: number;
       failures: number;
+      queue_backlog: number;
     };
   }
 
   /**
-   * Evaluate the three §4.10 alert conditions against live state. Pure read — it
+   * Best-effort 2Captcha balance in USD, or null when the key is unset, the
+   * request fails, or the response is unparseable. Never throws: a failed probe
+   * must not produce a captcha alert.
+   */
+  async function fetchTwoCaptchaBalance(): Promise<number | null> {
+    if (!config.twoCaptchaKey) return null;
+    try {
+      const res = await fetch(
+        `https://2captcha.com/res.php?key=${encodeURIComponent(config.twoCaptchaKey)}&action=getbalance&json=1`,
+        { signal: AbortSignal.timeout(8_000) },
+      );
+      if (!res.ok) return null;
+      const data = (await res.json()) as { status?: number; request?: string };
+      if (data.status !== 1) return null;
+      const balance = Number(data.request);
+      return Number.isFinite(balance) ? balance : null;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Evaluate the §4.10 alert conditions against live state. Pure read — it
    * never delivers anything — so both the admin endpoint and the background loop
    * can call it freely; `syncAlertState` is what decides whether to notify.
    */
@@ -4410,10 +4599,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const checkedAt = new Date().toISOString();
     const summary: AlertReport["summary"] = {
       low_credits: 0,
-      captcha_locked: false,
+      captcha_required: 0,
+      captcha_balance: null,
       failure_rate: null,
       requests: 0,
       failures: 0,
+      queue_backlog: 0,
     };
     if (!thresholds.enabled) {
       return { enabled: false, checked_at: checkedAt, thresholds, alerts: [], summary };
@@ -4437,17 +4628,31 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       });
     }
 
-    // 2. Suno currently demanding a captcha for generation.
-    if (thresholds.captcha_locked) {
-      const required = await captchaRequired();
-      summary.captcha_locked = required;
-      if (required) {
+    // 2. Captcha: only alert when it actually blocks generation. A funded
+    //    solver makes a captcha challenge a no-op, so the actionable cases are
+    //    "accounts need a captcha but no solver is configured" and "the solver
+    //    is drained/broken".
+    const captchaAccounts = health.filter((h) => h.captchaRequired);
+    summary.captcha_required = captchaAccounts.length;
+    if (captchaAccounts.length > 0 && !config.twoCaptchaKey) {
+      alerts.push({
+        id: "captcha_no_solver",
+        type: "captcha_no_solver",
+        severity: "warning",
+        message: `${captchaAccounts.length} Suno account(s) require a captcha but no 2Captcha key is configured; generation on them will fail until a key is added.`,
+        details: { accounts: captchaAccounts.map((h) => h.id) },
+      });
+    }
+    if (config.twoCaptchaKey && thresholds.captcha_balance_threshold > 0) {
+      const balance = await fetchTwoCaptchaBalance();
+      summary.captcha_balance = balance;
+      if (balance !== null && balance <= thresholds.captcha_balance_threshold) {
         alerts.push({
-          id: "captcha_locked",
-          type: "captcha_locked",
-          severity: "warning",
-          message: "Suno is requiring a captcha for generation (captcha-locked).",
-          details: {},
+          id: "captcha_balance",
+          type: "captcha_balance",
+          severity: balance <= 0 ? "critical" : "warning",
+          message: `2Captcha balance is $${balance.toFixed(2)}, at or below the $${thresholds.captcha_balance_threshold.toFixed(2)} threshold — top up so captcha-solved generations keep working.`,
+          details: { balance, threshold: thresholds.captcha_balance_threshold },
         });
       }
     }
@@ -4478,6 +4683,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           details: { rate, failed, total, window_minutes: thresholds.window_minutes },
         });
       }
+    }
+
+    // 4. Suno concurrency gate backlog: jobs waiting for a slot to free up.
+    const gate = sunoSlots.stats();
+    summary.queue_backlog = gate.waiting;
+    if (thresholds.queue_backlog_depth > 0 && gate.waiting >= thresholds.queue_backlog_depth) {
+      alerts.push({
+        id: "queue_backlog",
+        type: "queue_backlog",
+        severity: gate.waiting >= thresholds.queue_backlog_depth * 2 ? "critical" : "warning",
+        message: `${gate.waiting} job(s) waiting for a Suno slot with ${gate.active} running (above the ${thresholds.queue_backlog_depth} threshold). The account pool can't keep up with demand.`,
+        details: { waiting: gate.waiting, active: gate.active, threshold: thresholds.queue_backlog_depth },
+      });
     }
 
     return { enabled: true, checked_at: checkedAt, thresholds, alerts, summary };
@@ -5028,14 +5246,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get("/admin/users/:id/rate-limits", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const { id } = req.params as { id: string };
-    const row = await queryOne<{ requests_per_minute: number | null; requests_per_day: number | null }>(
-      "SELECT requests_per_minute, requests_per_day FROM rate_limits WHERE user_id = $1 LIMIT 1",
+    const row = await queryOne<{
+      requests_per_window: number | null;
+      requests_per_minute: number | null;
+      requests_per_day: number | null;
+      max_concurrent_jobs: number | null;
+    }>(
+      "SELECT requests_per_window, requests_per_minute, requests_per_day, max_concurrent_jobs FROM rate_limits WHERE user_id = $1 LIMIT 1",
       [id],
     );
     return {
       user_id: id,
+      requests_per_window: row?.requests_per_window ?? null,
       requests_per_minute: row?.requests_per_minute ?? null,
       requests_per_day: row?.requests_per_day ?? null,
+      max_concurrent_jobs: row?.max_concurrent_jobs ?? null,
+      // Context so the admin UI can render the window/limit units.
+      window_ms: config.rateLimit.userWindowMs,
+      default_max_concurrent_jobs: config.suno.maxConcurrentPerUser,
     };
   });
 
@@ -5044,8 +5272,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!admin) return;
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as {
+      requests_per_window?: number | null;
       requests_per_minute?: number | null;
       requests_per_day?: number | null;
+      max_concurrent_jobs?: number | null;
     };
     // A limit is a positive integer, or null to clear it.
     const parseLimit = (value: unknown): { ok: true; value: number | null } | { ok: false } => {
@@ -5053,25 +5283,37 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return { ok: false };
       return { ok: true, value };
     };
+    const perWindow = parseLimit(body.requests_per_window);
     const perMinute = parseLimit(body.requests_per_minute);
     const perDay = parseLimit(body.requests_per_day);
-    if (!perMinute.ok || !perDay.ok) {
-      return reply
-        .code(400)
-        .send({ error: "requests_per_minute/requests_per_day must be positive integers or null." });
+    const maxConcurrent = parseLimit(body.max_concurrent_jobs);
+    if (!perWindow.ok || !perMinute.ok || !perDay.ok || !maxConcurrent.ok) {
+      return reply.code(400).send({
+        error:
+          "requests_per_window/requests_per_minute/requests_per_day/max_concurrent_jobs " +
+          "must be positive integers or null.",
+      });
     }
     const user = await queryOne<{ id: string }>("SELECT id FROM users WHERE id = $1", [id]);
     if (!user) return reply.code(404).send({ error: "User not found." });
-    if (perMinute.value === null && perDay.value === null) {
+    if (
+      perWindow.value === null &&
+      perMinute.value === null &&
+      perDay.value === null &&
+      maxConcurrent.value === null
+    ) {
       await query("DELETE FROM rate_limits WHERE user_id = $1", [id]);
     } else {
       await query(
-        `INSERT INTO rate_limits (user_id, requests_per_minute, requests_per_day)
-         VALUES ($1, $2, $3)
+        `INSERT INTO rate_limits
+           (user_id, requests_per_window, requests_per_minute, requests_per_day, max_concurrent_jobs)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (user_id) DO UPDATE SET
+           requests_per_window = EXCLUDED.requests_per_window,
            requests_per_minute = EXCLUDED.requests_per_minute,
-           requests_per_day = EXCLUDED.requests_per_day`,
-        [id, perMinute.value, perDay.value],
+           requests_per_day = EXCLUDED.requests_per_day,
+           max_concurrent_jobs = EXCLUDED.max_concurrent_jobs`,
+        [id, perWindow.value, perMinute.value, perDay.value, maxConcurrent.value],
       );
     }
     // Drop the cached row so the new limits apply on the next request.
@@ -5081,14 +5323,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       action: "user.rate_limits",
       targetType: "user",
       targetId: id,
-      details: { requests_per_minute: perMinute.value, requests_per_day: perDay.value },
+      details: {
+        requests_per_window: perWindow.value,
+        requests_per_minute: perMinute.value,
+        requests_per_day: perDay.value,
+        max_concurrent_jobs: maxConcurrent.value,
+      },
       req,
     });
     return {
       ok: true,
       user_id: id,
+      requests_per_window: perWindow.value,
       requests_per_minute: perMinute.value,
       requests_per_day: perDay.value,
+      max_concurrent_jobs: maxConcurrent.value,
     };
   });
 
@@ -6139,7 +6388,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "voice_validate";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }), {
+      needFeature: "studio",
+    });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -7531,7 +7782,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("voice_validate", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "voice_validate"; job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }), {
+      needFeature: "studio",
+    });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
