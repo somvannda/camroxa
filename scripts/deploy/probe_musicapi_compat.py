@@ -32,8 +32,15 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 import time
+from pathlib import Path
 from typing import Any
+
+# Make the repo's platform_api importable when run as a loose script.
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
 
 import httpx
 
@@ -219,11 +226,11 @@ def probe_wav(
 
 
 def probe_recovery(
-    client: httpx.Client, base_url: str, key: str, task_id: str
+    client: httpx.Client, base_url: str, key: str, task_id: str, audio_id: str
 ) -> None:
     resp = client.post(
         f"{base_url}/api/v1/suno/recovery",
-        json={"sunoTaskId": task_id, "taskId": task_id},
+        json={"sunoTaskId": task_id, "taskId": task_id, "audioId": audio_id},
         headers=_headers(key),
     )
     try:
@@ -231,6 +238,20 @@ def probe_recovery(
     except Exception:  # noqa: BLE001
         body = resp.text[:500]
     _print(f"suno/recovery HTTP {resp.status_code}", body)
+
+
+def _first_audio_id(body: Any) -> str:
+    """Pull the first clip id from a record-info success payload."""
+    data = body.get("data") if isinstance(body, dict) else {}
+    response = data.get("response") if isinstance(data, dict) else {}
+    tracks = None
+    if isinstance(response, dict):
+        tracks = response.get("sunoData") or response.get("data")
+    if isinstance(tracks, list):
+        for item in tracks:
+            if isinstance(item, dict) and isinstance(item.get("id"), str) and item["id"]:
+                return item["id"]
+    return ""
 
 
 def main() -> int:
@@ -273,19 +294,19 @@ def main() -> int:
             return 0
 
         key = keys[0]
-        generated = args.task_id
-        if args.audio_id:
-            probe_timestamped_lyrics(client, base_url, key, generated, args.audio_id)
-            probe_wav(client, base_url, key, generated, args.audio_id)
-            probe_recovery(client, base_url, key, generated)
+        task_id = args.task_id
+        audio_id = args.audio_id
+        if not audio_id:
+            task_id = probe_generate_instrumental(client, base_url, key) or task_id
+            body = poll_until_success(client, base_url, key, task_id) if task_id else None
+            audio_id = _first_audio_id(body)
+            print(f"\nresolved taskId={task_id} audioId={audio_id}")
+        if audio_id:
+            probe_timestamped_lyrics(client, base_url, key, task_id, audio_id)
+            probe_wav(client, base_url, key, task_id, audio_id)
+            probe_recovery(client, base_url, key, task_id, audio_id)
         else:
-            new_task = probe_generate_instrumental(client, base_url, key)
-            if new_task:
-                poll_until_success(client, base_url, key, new_task)
-            print(
-                "\nNo --audio-id supplied: ran instrumental-generate probe only. "
-                "Re-run with --task-id/--audio-id for WAV/timestamped/recovery."
-            )
+            print("\nNo audioId resolved; skipping WAV/timestamped/recovery.")
     return 0
 
 
