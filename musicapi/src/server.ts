@@ -1352,6 +1352,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         });
         return;
       }
+      // MIDI has its own callback envelope: {task_id,code,msg,data:{state,instruments}}.
+      if (job.type === "midi_generate" || job.endpoint === "midi_generate") {
+        const ok = job.status === "complete";
+        const res = (job.result ?? {}) as Record<string, unknown>;
+        await fetch(job.callbackUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify({
+            task_id: job.id,
+            code: ok ? 200 : 500,
+            msg: ok ? "success" : (job.error || "MIDI generation failed"),
+            data: ok ? (res.midi_data ?? null) : null,
+          }),
+        });
+        return;
+      }
       // sunoapi.org's callback envelope: {code,msg,data:{callbackType,task_id,data[]}}.
       // Our jobs finalize atomically, so we emit one terminal callback ("complete"
       // or "error") rather than their intermediate text/first stages.
@@ -1678,6 +1696,100 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const url = await getReadUrl(key);
       if (!url) throw new Error("Could not sign the video URL.");
       job.result = { clip_id: clipId, video_url: url, download_url: url, url };
+      job.status = "complete";
+    } catch (e) {
+      job.status = "error";
+      job.error = e instanceof Error ? e.message : String(e);
+    }
+    await finalizeJob(job);
+  }
+
+  /** Basic Pitch MIDI microservice (see `musicapi/midi-service`). */
+  const MIDI_SERVICE_URL = process.env.MIDI_SERVICE_URL ?? "http://127.0.0.1:4010";
+
+  /** POST one stem's audio to the Basic Pitch service; returns its note events. */
+  async function transcribeStem(
+    audio: Buffer,
+    name: string,
+  ): Promise<{ name: string; notes: Array<Record<string, unknown>> }> {
+    const res = await fetch(`${MIDI_SERVICE_URL}/transcribe`, {
+      method: "POST",
+      headers: { "content-type": "audio/mpeg", "x-stem-name": (name || "Instrument").slice(0, 80) },
+      body: new Uint8Array(audio),
+      signal: AbortSignal.timeout(300_000),
+    });
+    if (!res.ok) throw new Error(`midi-service HTTP ${res.status}`);
+    const data = (await res.json()) as { ok?: boolean; error?: string; name?: string; notes?: unknown };
+    if (!data.ok) throw new Error(`midi-service: ${data.error ?? "failed"}`);
+    return {
+      name: typeof data.name === "string" && data.name ? data.name : name || "Instrument",
+      notes: Array.isArray(data.notes) ? (data.notes as Array<Record<string, unknown>>) : [],
+    };
+  }
+
+  /** Read a stem clip's audio (stored B2 copy, else decrypt/transcode on demand). */
+  async function stemAudio(clip: Record<string, unknown>): Promise<Buffer | null> {
+    const key = clip.audio_storage_key;
+    if (typeof key === "string") {
+      try {
+        return await getObjectBytes(key);
+      } catch {
+        /* fall through to on-demand */
+      }
+    }
+    const id = typeof clip.id === "string" ? clip.id : null;
+    if (!id) return null;
+    const ensured = await ensureAudio(id, "mp3");
+    if (!ensured) return null;
+    return getObjectBytes(ensured);
+  }
+
+  /**
+   * Complete a MIDI job by transcribing audio with the Basic Pitch service.
+   * The source is a completed vocal-separation task (`sourceTaskId`, optionally
+   * narrowed by `audioId`) or a single clip (`clipId`). Suno has no MIDI API, so
+   * — like sunoapi.org — we transcribe the stems ourselves. 3-credit job.
+   */
+  async function runMidiJob(
+    job: Job,
+    params: { sourceTaskId?: string; audioId?: string; clipId?: string },
+  ): Promise<void> {
+    try {
+      const instruments: Array<{ name: string; notes: Array<Record<string, unknown>> }> = [];
+
+      if (params.sourceTaskId) {
+        const parent = await getJob(params.sourceTaskId);
+        if (!parent) throw new Error("Source separation task not found.");
+        const clips: Array<Record<string, unknown>> = [];
+        collectClipObjects(parent.result, clips);
+        let selected = clips;
+        if (params.audioId) {
+          selected = clips.filter((c) => c.id === params.audioId);
+          if (selected.length === 0) throw new Error("No separated audio for the requested audioId.");
+        }
+        for (const c of selected) {
+          const meta = (c.metadata ?? {}) as Record<string, unknown>;
+          const name =
+            String(meta.stem_type_group_name ?? c.title ?? "Instrument")
+              .replace(/[()]/g, "")
+              .trim() || "Instrument";
+          const audio = await stemAudio(c);
+          if (audio) instruments.push(await transcribeStem(audio, name));
+        }
+        if (instruments.length === 0) throw new Error("No audio to transcribe.");
+      } else if (params.clipId) {
+        const key = await ensureAudio(params.clipId, "mp3");
+        if (!key) throw new Error("Could not prepare audio for MIDI.");
+        instruments.push(await transcribeStem(await getObjectBytes(key), "Instrument"));
+      } else {
+        throw new Error("taskId or clip_id is required.");
+      }
+
+      job.result = {
+        midi_data: { state: "complete", instruments },
+        audio_id: params.audioId ?? params.clipId ?? null,
+        source_task_id: params.sourceTaskId ?? null,
+      };
       job.status = "complete";
     } catch (e) {
       job.status = "error";
@@ -3755,13 +3867,30 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
-  // POST /me/music/midi
-  meClipRoute(
-    "/me/music/midi",
-    "midi_generate",
-    (body) => (client) => client.generateMIDI(body.clip_id as string, body.prompt as string | undefined),
-    (body) => (body.clip_id ? null : "clip_id is required."),
-  );
+  // POST /me/music/midi — Basic Pitch transcription of a clip (or a separation task).
+  app.post("/me/music/midi", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const sourceTaskId = (body.task_id as string) || (body.taskId as string) || undefined;
+    const audioId = (body.audio_id as string) || (body.audioId as string) || undefined;
+    const clipId = (body.clip_id as string) || (sourceTaskId ? undefined : audioId);
+    if (!sourceTaskId && !clipId) {
+      return reply.code(400).send({ error: "clip_id or task_id is required." });
+    }
+    const cost = await costFor("midi_generate");
+    const key = await chargeUserKey(u.id, cost);
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
+    const job = newJob("midi_generate", (body.callback_url as string) || undefined);
+    job.userId = u.id;
+    if (key) job.apiKeyId = key.id;
+    job.endpoint = "midi_generate";
+    job.credits = cost;
+    void trackJob(runMidiJob(job, { sourceTaskId, audioId, clipId }));
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
 
   // POST /me/generate/upload-extend
   meClipRoute(
@@ -5818,8 +5947,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const clipId = body.clip_id as string;
-    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const sourceTaskId = (body.task_id as string) || (body.taskId as string) || undefined;
+    const audioId = (body.audio_id as string) || (body.audioId as string) || undefined;
+    const clipId = (body.clip_id as string) || (sourceTaskId ? undefined : audioId);
+    if (!sourceTaskId && !clipId) {
+      return reply.code(400).send({ error: "task_id or clip_id is required." });
+    }
     const cost = await costFor("midi_generate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -5828,8 +5961,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "midi_generate";
     job.credits = cost;
-    const prompt = body.prompt as string | undefined;
-    void runClipJobWithRetry(job, (client) => client.generateMIDI(clipId, prompt));
+    void trackJob(runMidiJob(job, { sourceTaskId, audioId, clipId }));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6486,6 +6618,34 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /**
+   * MIDI record-info in sunoapi.org's shape: an integer `successFlag`
+   * (0 pending / 1 success / 2 create-failed / 3 generate-failed), `midiData`,
+   * and epoch-millisecond timestamps.
+   */
+  function midiRecordInfo(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    const ok = job.status === "complete";
+    const successFlag = ok ? 1 : job.status === "error" ? 3 : 0;
+    const terminal = ok || job.status === "error";
+    return {
+      code: 200,
+      msg: job.status === "error" ? job.error || "MIDI generation failed" : "success",
+      data: {
+        taskId: job.id,
+        recordTaskId: -1,
+        audioId: (res.audio_id as string) ?? null,
+        callbackUrl: job.callbackUrl ?? "",
+        completeTime: terminal ? (job.completedAt ?? job.createdAt) : null,
+        midiData: ok ? (res.midi_data ?? null) : null,
+        successFlag,
+        createTime: job.createdAt,
+        errorCode: job.status === "error" ? "500" : null,
+        errorMessage: job.status === "error" ? job.error ?? null : null,
+      },
+    };
+  }
+
   /** Register a family-specific record-info route (same auth/ownership checks). */
   function shapedRecordInfoRoute(sunoPath: string, build: (job: Job) => unknown | Promise<unknown>) {
     app.get(`${PREFIX}${sunoPath}`, async (req, reply) => {
@@ -6571,7 +6731,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   recordInfoRoute("/generate/add-instrumental/record-info");
   recordInfoRoute("/generate/boost/record-info");
   recordInfoRoute("/generate/mashup/record-info");
-  recordInfoRoute("/generate/midi/record-info");
+  shapedRecordInfoRoute("/generate/midi/record-info", midiRecordInfo);
   recordInfoRoute("/generate/cover/record-info");
   recordInfoRoute("/generate/cover-image/record-info");
   recordInfoRoute("/generate/recovery/record-info");
@@ -6832,15 +6992,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
-    const clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
-    if (!clipId) return reply.code(400).send({ error: "audioId (clip_id) is required." });
+    const sourceTaskId = (in_.taskId as string) || (in_.task_id as string) || undefined;
+    const audioId = (in_.audioId as string) || (in_.audio_id as string) || undefined;
+    const clipId = (in_.clip_id as string) || (sourceTaskId ? undefined : audioId);
+    if (!sourceTaskId && !clipId) {
+      return reply.code(400).send({ error: "taskId or audioId (clip_id) is required." });
+    }
     const cost = await costFor("midi_generate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
     const job = newJob("midi_generate", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "midi_generate"; job.credits = cost;
-    const prompt = (in_.prompt as string) || undefined;
-    void runClipJobWithRetry(job, (client) => client.generateMIDI(clipId, prompt));
+    void trackJob(runMidiJob(job, { sourceTaskId, audioId, clipId }));
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
