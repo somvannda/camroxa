@@ -805,7 +805,7 @@ export class SunoClient {
    */
   async createAudioUpload(params: {
     extension: string;
-    uploadType?: "file_upload" | "voice_recording" | "song_demo";
+    uploadType?: "file_upload" | "voice_recording" | "audio_recording" | "song_demo";
     lastUploadId?: string;
   }): Promise<{ id: string; url: string; fields: Record<string, string>; is_file_uploaded?: boolean }> {
     const token = await this.ensureCaptchaToken();
@@ -1169,6 +1169,29 @@ export class SunoClient {
   }
 
   /**
+   * Upload audio for a voice flow and WAIT for `status:"complete"` before
+   * returning the upload session id. `uploadAudio` returns as soon as
+   * `passed_audio_processing`, which is too early: `processed_clip/voice-vox-stem`
+   * then answers `{"detail":"Upload not found"}`.
+   */
+  async uploadForVoice(bytes: Buffer, uploadType: "voice_recording" | "audio_recording" = "voice_recording"): Promise<string> {
+    const session = await this.createAudioUpload({ extension: "mp3", uploadType });
+    const contentType = session.fields["Content-Type"] || "audio/mpeg";
+    const form = new FormData();
+    for (const [k, v] of Object.entries(session.fields)) form.append(k, v);
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), "voice.mp3");
+    const up = await fetch(session.url, { method: "POST", body: form });
+    if (!up.ok && up.status !== 204) throw new Error(`audio S3 upload failed (${up.status}): ${await up.text()}`);
+    await this.registerAudioUpload(session.id, { uploadType, uploadFilename: "voice.mp3" });
+    for (let i = 0; i < 30; i++) {
+      const st = await this.fetchAudioUploadStatus(session.id).catch(() => null);
+      if (st?.status === "complete") break;
+      await new Promise((r) => setTimeout(r, 2000));
+    }
+    return session.id;
+  }
+
+  /**
    * Voice op 2: validate. Suno's custom-voice workflow exposes the validation
    * phrase via `GET /api/voice-verification/phrase`; the actual verification
    * (comparing the spoken phrase against the singing recording) happens later at
@@ -1189,11 +1212,11 @@ export class SunoClient {
       if (!uploadId && sourceUrl) {
         const resp = await fetch(sourceUrl, { signal: AbortSignal.timeout(60_000) });
         if (!resp.ok) throw new Error(`Could not download the source recording (${resp.status}).`);
-        uploadId = await this.uploadAudio(Buffer.from(await resp.arrayBuffer()), "mp3", "voice_recording");
+        uploadId = await this.uploadForVoice(Buffer.from(await resp.arrayBuffer()));
       }
       if (uploadId) {
         const stem = await this.voiceVoxStem(uploadId);
-        const vr = stem.id ?? stem.voice_recording_id;
+        const vr = stem.voice_recording_id ?? stem.id;
         if (typeof vr === "string") out.voice_recording_id = vr;
         else out.voice_recording_error = "voice-vox-stem returned no recording id (Voice entitlement required).";
       }
