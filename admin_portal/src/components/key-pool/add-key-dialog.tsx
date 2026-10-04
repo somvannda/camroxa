@@ -23,6 +23,7 @@ import {
   FormDescription,
 } from '@/components/ui/form';
 import { useAddKey } from '@/hooks/use-key-pool';
+import { UPSTREAM_HOST_PRESETS } from '@/types/key-pool';
 
 const addKeySchema = z.object({
   key_value: z
@@ -38,6 +39,11 @@ const addKeySchema = z.object({
     .int('Priority must be a whole number')
     .min(1, 'Priority must be at least 1')
     .max(100, 'Priority must be at most 100'),
+  base_url: z
+    .string()
+    .max(500, 'Host must be 500 characters or fewer')
+    .optional()
+    .or(z.literal('')),
 });
 
 type AddKeyFormValues = z.infer<typeof addKeySchema>;
@@ -57,16 +63,23 @@ export function AddKeyDialog({ provider, open, onOpenChange }: AddKeyDialogProps
       key_value: '',
       label: '',
       priority: 50,
+      base_url: '',
     },
   });
 
   function onSubmit(values: AddKeyFormValues) {
-    addKey.mutate(values, {
-      onSuccess: () => {
-        form.reset();
-        onOpenChange(false);
+    addKey.mutate(
+      {
+        ...values,
+        base_url: values.base_url?.trim() ? values.base_url.trim() : null,
       },
-    });
+      {
+        onSuccess: () => {
+          form.reset();
+          onOpenChange(false);
+        },
+      },
+    );
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -147,6 +160,35 @@ export function AddKeyDialog({ provider, open, onOpenChange }: AddKeyDialogProps
                   </FormControl>
                   <FormDescription>
                     1 = highest priority, 100 = lowest. Default is 50.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="base_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Upstream Host (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      list="add-key-host-presets"
+                      placeholder="Leave blank for host-agnostic"
+                      {...field}
+                    />
+                  </FormControl>
+                  <datalist id="add-key-host-presets">
+                    {UPSTREAM_HOST_PRESETS.map((preset) => (
+                      <option key={preset.value} value={preset.value}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </datalist>
+                  <FormDescription>
+                    Tag the key with its host so the provider can switch between
+                    upstreams.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>

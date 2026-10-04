@@ -24,7 +24,8 @@ import {
   FormDescription,
 } from '@/components/ui/form';
 import { useUpdateKey } from '@/hooks/use-key-pool';
-import type { ApiKeyEntry } from '@/types/key-pool';
+import { UPSTREAM_HOST_PRESETS } from '@/types/key-pool';
+import type { ApiKeyEntry, UpdateKeyRequest } from '@/types/key-pool';
 
 const editKeySchema = z.object({
   label: z
@@ -39,6 +40,11 @@ const editKeySchema = z.object({
   key_value: z
     .string()
     .max(500, 'Key value must be 500 characters or fewer')
+    .optional()
+    .or(z.literal('')),
+  base_url: z
+    .string()
+    .max(500, 'Host must be 500 characters or fewer')
     .optional()
     .or(z.literal('')),
 });
@@ -66,6 +72,7 @@ export function EditKeyDialog({
       label: entry?.label ?? '',
       priority: entry?.priority ?? 50,
       key_value: '',
+      base_url: entry?.base_url ?? '',
     },
   });
 
@@ -75,6 +82,7 @@ export function EditKeyDialog({
         label: entry.label,
         priority: entry.priority,
         key_value: '',
+        base_url: entry.base_url ?? '',
       });
     }
   }, [entry, open, form]);
@@ -82,11 +90,16 @@ export function EditKeyDialog({
   function onSubmit(values: EditKeyFormValues) {
     if (!entry) return;
 
-    const updates: Record<string, string | number> = {};
+    const updates: UpdateKeyRequest = {};
     if (values.label !== entry.label) updates.label = values.label;
     if (values.priority !== entry.priority) updates.priority = values.priority;
     if (values.key_value && values.key_value.length > 0) {
       updates.key_value = values.key_value;
+    }
+    const nextBase = (values.base_url ?? '').trim();
+    if (nextBase !== (entry.base_url ?? '')) {
+      if (nextBase) updates.base_url = nextBase;
+      else updates.clear_base_url = true;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -172,6 +185,35 @@ export function EditKeyDialog({
                   </FormControl>
                   <FormDescription>
                     Only fill this if you want to replace the existing key value.
+                  </FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
+
+            <FormField
+              control={form.control}
+              name="base_url"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Upstream Host (optional)</FormLabel>
+                  <FormControl>
+                    <Input
+                      list="edit-key-host-presets"
+                      placeholder="Blank = host-agnostic"
+                      {...field}
+                    />
+                  </FormControl>
+                  <datalist id="edit-key-host-presets">
+                    {UPSTREAM_HOST_PRESETS.map((preset) => (
+                      <option key={preset.value} value={preset.value}>
+                        {preset.label}
+                      </option>
+                    ))}
+                  </datalist>
+                  <FormDescription>
+                    Which upstream this key belongs to. Clear it to make the key
+                    host-agnostic.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
