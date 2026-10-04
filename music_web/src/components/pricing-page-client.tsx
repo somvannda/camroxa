@@ -206,6 +206,7 @@ export default function PricingPageClient() {
             const Icon = index === 0 ? Sparkles : index === 1 ? Zap : index === 2 ? Crown : Gem;
             const isPopular = index === 1;
             const displayName = formatPlanDisplayName(plan.name);
+            const tierName = displayName.replace(/\s*\((Monthly|Yearly)\)$/i, '');
 
             return (
               <div
@@ -235,7 +236,7 @@ export default function PricingPageClient() {
 
                 {/* Plan Name */}
                 <h3 className="text-xl font-display font-bold text-center mb-2">
-                  {displayName}
+                  {tierName}
                 </h3>
 
                 {/* Price */}
@@ -292,7 +293,7 @@ export default function PricingPageClient() {
                       <span>Processing...</span>
                     </>
                   ) : (
-                    <span>Get {displayName}</span>
+                    <span>Get {tierName}</span>
                   )}
                 </button>
               </div>

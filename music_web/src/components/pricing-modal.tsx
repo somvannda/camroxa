@@ -301,7 +301,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                         <Icon className="h-5 w-5 text-white" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-lg font-bold leading-tight text-white sm:text-xl">{displayName}</p>
+                        <p className="text-lg font-bold leading-tight text-white sm:text-xl">{baseName}</p>
                       </div>
                     </div>
 
@@ -357,7 +357,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                           Processing...
                         </>
                       ) : (
-                        `Get ${displayName}`
+                        `Get ${baseName}`
                       )}
                     </button>
                   </div>
