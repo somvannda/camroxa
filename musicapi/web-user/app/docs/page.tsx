@@ -288,11 +288,12 @@ const ENDPOINTS: Endpoint[] = [
   {
     method: "POST",
     path: "/v1/music/wav",
-    desc: "Convert to WAV Format — Authorize signed WAV download for high-resolution WAV output.",
+    desc: "Convert to WAV Format — Queue a high-resolution WAV conversion. Served from our own storage (decrypt + transcode on demand), so it never depends on the upstream account's download quota.",
     params: [
-      { name: "clip_id", required: true, desc: "Clip to download" },
-      { name: "format", required: false, desc: "Format: wav (default) or m4a" },
+      { name: "clip_id", required: true, desc: "Clip to convert" },
+      { name: "format", required: false, desc: "Format: wav (default) or mp3" },
     ],
+    example: "curl -X POST https://musicapi.camxora.com/v1/music/wav \\\n  -H \"Authorization: Bearer sk_...\" \\\n  -H \"Content-Type: application/json\" \\\n  -d '{\"clip_id\":\"<clip_uuid>\"}'\n// => { \"job_id\": \"...\", \"status\": \"pending\" }\n// poll GET /v1/task/<job_id> -> { download_url, format }",
   },
   {
     method: "POST",
@@ -439,7 +440,7 @@ const ENDPOINTS: Endpoint[] = [
 
   // ===== Asset Detail (GET) =====
   { method: "GET", path: "/v1/clip/:id", desc: "Clip detail — playback URLs (m4a, image), metadata, status." },
-  { method: "GET", path: "/v1/music/wav/:id", desc: "WAV Conversion Detail — Monitor WAV format conversion tasks and download status." },
+  { method: "GET", path: "/v1/music/wav/:id", desc: "WAV Conversion Detail — poll a conversion task; on success the result carries a signed WAV download URL (the /api/v1/wav/record-info alias exposes it as data.response.audioWavUrl with a successFlag)." },
   { method: "GET", path: "/v1/music/stems/:id", desc: "Vocal Separation Detail — Check progress and access separated audio files." },
   { method: "GET", path: "/v1/music/video/:id", desc: "Music Video Detail — Track music video generation progress and retrieve download links." },
   { method: "GET", path: "/v1/music/cover/:id", desc: "Cover Detail — Monitor the status of music cover tasks and get cover results." },
