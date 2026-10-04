@@ -61,6 +61,7 @@ PROVIDER_CAPABILITIES: MappingProxyType[str, frozenset[ServiceType]] = MappingPr
         "cala": frozenset({ServiceType.IMAGE_GENERATION}),
         "kie": frozenset({ServiceType.IMAGE_GENERATION}),
         "suno": frozenset({ServiceType.MUSIC_GENERATION, ServiceType.TEXT_GENERATION}),
+        "camxora_music_api": frozenset({ServiceType.MUSIC_GENERATION}),
     }
 )
 

@@ -87,6 +87,7 @@ class AIService(StrEnum):
     """External AI service providers integrated with the platform."""
 
     SUNO = "suno"
+    CAMXORA_MUSIC_API = "camxora_music_api"
     FAL = "fal"
     OPENAI = "openai"
     DEEPSEEK = "deepseek"
