@@ -3796,6 +3796,35 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
     const formatRaw = (q.format as string) || "mp3";
+
+    // Music-video download. `runMusicVideoJob` stores the rendered render at
+    // `videos/<clipId>.mp4`; the MP4 generation job already charged for it, so
+    // re-fetching is free and bypasses the audio download-purchase ledger.
+    if (formatRaw === "mp4") {
+      if (!storageConfigured()) {
+        return reply.code(404).send({ error: "Media storage is not configured." });
+      }
+      try {
+        const videoKey = objectKey("videos", `${clipId}.mp4`);
+        if (!(await objectExists(videoKey))) {
+          return reply.code(404).send({ error: "No video found for this clip." });
+        }
+        const videoBytes = await getObjectBytes(videoKey);
+        const videoName = `${slug(clipId).replace(/^-+|-+$/g, "") || "video"}.mp4`;
+        const encoded = encodeURIComponent(videoName);
+        reply.header("Content-Type", "video/mp4");
+        reply.header("Content-Length", String(videoBytes.length));
+        reply.header("Accept-Ranges", "bytes");
+        reply.header(
+          "Content-Disposition",
+          `attachment; filename="${videoName}"; filename*=UTF-8''${encoded}`,
+        );
+        return reply.send(videoBytes);
+      } catch (e) {
+        return reply.code(500).send({ error: e instanceof Error ? e.message : "Video download failed" });
+      }
+    }
+
     const format = formatRaw === "wav" ? "wav" : "mp3";
 
     // A clip is bought once per format: the first download charges the pricing
