@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import GoogleSignInButton from "@/components/google-signin-button";
@@ -14,30 +14,24 @@ interface Props {
 
 export default function AuthModal({ open, onClose }: Props) {
   const router = useRouter();
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
 
   useEffect(() => {
+    // The dialog is only mounted while `open` (see the early return below), so
+    // opening the native dialog is the whole job here.
     const d = dialogRef.current;
-    if (!d) return;
-    if (open && !d.open) {
-      d.showModal();
-    } else if (!open && d.open) {
-      d.close();
-    }
-  }, [open]);
-
-  useEffect(() => {
-    if (open) {
-      setError("");
-      setLoading(false);
-    }
+    if (d && !d.open) d.showModal();
   }, [open]);
 
   const handleCancel = useCallback(() => {
     onClose();
   }, [onClose]);
+
+  // Render nothing while closed. The root layout mounts this provider on every
+  // page, and Google's OAuth branding review must not see a sign-in form in the
+  // server-rendered HTML of public pages (home / privacy / terms) — otherwise
+  // the home page looks "behind a login page".
+  if (!open) return null;
 
   return (
     <dialog
@@ -77,12 +71,6 @@ export default function AuthModal({ open, onClose }: Props) {
               router.replace("/dashboard");
             }}
           />
-
-          {error && (
-            <div className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {error}
-            </div>
-          )}
 
           <p className="text-center text-xs text-[var(--muted)]">
             By continuing, you agree to our{" "}

@@ -80,7 +80,13 @@ export default function LandingPage() {
   const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS);
 
   useEffect(() => {
-    apiFetch<{ packs: Array<{ id: string; amount: number; price: number; currency: string }> }>("/pricing")
+    // Public page: never let a 401 bounce an anonymous visitor (or a review
+    // crawler) to /login — a failed pricing load just hides the section.
+    apiFetch<{ packs: Array<{ id: string; amount: number; price: number; currency: string }> }>(
+      "/pricing",
+      {},
+      { allowUnauthenticated: true },
+    )
       .then((data) => {
         if (!data.packs?.length) return;
         const top = Math.max(...data.packs.map((p) => p.amount));
@@ -136,8 +142,15 @@ export default function LandingPage() {
                 Generate watermark-free music with a <span className="grad-text">simple API</span>
               </h1>
               <p className="mt-5 max-w-lg text-[var(--muted)]">
-                Production-quality AI music — vocals, instrumentals, extensions and covers — delivered through a stable
-                REST API with fast streaming output and transparent credit pricing.
+                <strong className="text-white">Camxora Music API</strong> is a developer platform that
+                generates original, watermark-free AI music — vocals, instrumentals, extensions and covers —
+                and delivers it through a documented REST API with fast streaming output and transparent
+                credit pricing. Developers and businesses use it to add music generation to their own
+                products and workflows.
+              </p>
+              <p className="mt-4 max-w-lg text-sm text-[var(--muted)]">
+                You can read about the service, pricing and documentation on this page without signing in.
+                An account is only needed to create API keys and manage credits.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link href="/docs" className="grad-bg rounded-lg px-5 py-3 text-sm font-semibold text-white">
@@ -186,14 +199,29 @@ export default function LandingPage() {
             <div className="mx-auto max-w-3xl text-center">
               <h2 className="text-3xl font-bold">What is Camxora Music API?</h2>
               <p className="mt-4 text-[var(--muted)]">
-                Camxora Music API is a developer platform for AI music generation. Our purpose is to let developers and
-                businesses add studio-quality, watermark-free music — vocals, instrumentals, extensions and covers — to
-                their own products and workflows through a simple, reliable REST API. You create an account, generate
-                an API key, and call our endpoints to generate audio, monitor usage, and manage credits.
+                Camxora Music API is a developer platform for AI music generation. Our purpose is to let
+                developers and businesses add studio-quality, watermark-free music — vocals, instrumentals,
+                extensions and covers — to their own products and workflows through a simple, reliable REST
+                API. You create an account, generate an API key, and call our endpoints to generate audio,
+                monitor usage, and manage credits. Browsing this page and our documentation requires no
+                account.
               </p>
               <p className="mt-4 text-[var(--muted)]">
-                The Service is operated by Camxora and is intended for lawful, authorized use only. It is not intended
-                for creating deceptive, harmful, or non-consensual content.
+                The Service is operated by Camxora and is intended for lawful, authorized use only. It is
+                not intended for creating deceptive, harmful, or non-consensual content.
+              </p>
+              <p className="mt-4 text-[var(--muted)]">
+                We offer sign-in with Google only to authenticate you and secure your workspace. We request
+                just your basic profile (name, email address, and avatar) and never access Gmail, Google
+                Drive, Calendar, YouTube, or any other Google data. See our{" "}
+                <Link href="/privacy" className="grad-text font-medium">
+                  Privacy Policy
+                </Link>{" "}
+                and{" "}
+                <Link href="/terms" className="grad-text font-medium">
+                  Terms of Service
+                </Link>{" "}
+                for details.
               </p>
             </div>
             <div className="mx-auto mt-12 grid max-w-4xl gap-5 sm:grid-cols-3">
