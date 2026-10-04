@@ -1548,6 +1548,39 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return targetKey;
   }
 
+  /**
+   * Complete an audio-delivery job (`wav` / `wav_detail`) from our own media
+   * pipeline: reuse the durable B2 copy when present, otherwise decrypt the
+   * clip's mango-encrypted stream and transcode it on demand (see
+   * `ensureAudio`). This deliberately does NOT touch Suno's `/api/download/*`,
+   * which is gated by a per-account monthly download quota and returns
+   * `{ok:false, reason:"not_authorized"}` once spent. Serving from our own
+   * storage is how sunoapi.org keeps downloads working regardless of the
+   * upstream account's quota. 0-credit jobs, so they aren't queue-durable.
+   */
+  async function runAudioDeliveryJob(job: Job, clipId: string, format: "mp3" | "wav"): Promise<void> {
+    try {
+      if (!storageConfigured()) throw new Error("Media storage is not configured.");
+      const key = await ensureAudio(clipId, format);
+      if (!key) throw new Error(`Could not prepare the ${format.toUpperCase()} for this clip.`);
+      const url = await getReadUrl(key);
+      if (!url) throw new Error("Could not sign the media URL.");
+      job.result = {
+        clip_id: clipId,
+        format,
+        download_url: url,
+        audio_url: url,
+        url,
+        ...(format === "wav" ? { wav_url: url } : {}),
+      };
+      job.status = "complete";
+    } catch (e) {
+      job.status = "error";
+      job.error = e instanceof Error ? e.message : String(e);
+    }
+    await finalizeJob(job);
+  }
+
   const RETRYABLE_ERROR = /captcha|timeout|timed out|rate limit|5\d{2}|no healthy|No healthy/i;
 
   interface RetryOptions {
@@ -3574,13 +3607,28 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     },
   );
 
-  // POST /me/music/wav (result job - downloadUrl)
-  meResultRoute(
-    "/me/music/wav",
-    "wav",
-    (body) => (client) => client.downloadUrl(body.clip_id as string, (body.format as string) || "wav"),
-    (body) => (body.clip_id ? null : "clip_id is required."),
-  );
+  // POST /me/music/wav — served from our own B2/decrypt pipeline
+  // (runAudioDeliveryJob), not Suno's quota-gated download endpoint.
+  app.post("/me/music/wav", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = body.clip_id as string;
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const format = (body.format as string) || "wav";
+    const cost = await costFor("wav");
+    const key = await chargeUserKey(u.id, cost);
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
+    const job = newJob("wav", (body.callback_url as string) || undefined);
+    job.userId = u.id;
+    job.apiKeyId = key?.id;
+    job.endpoint = "wav";
+    job.credits = cost;
+    void trackJob(runAudioDeliveryJob(job, clipId, format === "mp3" ? "mp3" : "wav"));
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
 
   // POST /me/music/midi
   meClipRoute(
@@ -3770,7 +3818,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   // Detail GET routes (T3 - meDetailRoute)
-  meDetailRoute("/me/music/wav/:id", "wav_detail");
   meDetailRoute("/me/music/stems/:id", "stems_detail");
   meDetailRoute("/me/music/video/:id", "video_detail");
   meDetailRoute("/me/music/cover/:id", "cover_detail");
@@ -3779,6 +3826,32 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   meDetailRoute("/me/mp4/:id", "mp4_detail");
   meDetailRoute("/me/music/midi/:id", "midi_detail");
   meDetailRoute("/me/clip/:id", "lyrics_detail");
+
+  // GET /me/music/wav/:id — our own media pipeline (runAudioDeliveryJob),
+  // independent of Suno's quota-gated download endpoint.
+  app.get("/me/music/wav/:id", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const { id } = req.params as { id: string };
+    if (!id) return reply.code(400).send({ error: "id is required." });
+    let cost = 0;
+    try {
+      cost = await costFor("wav_detail");
+    } catch {
+      cost = 0;
+    }
+    const key = await chargeUserKey(u.id, cost);
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
+    const job = newJob("wav_detail");
+    job.userId = u.id;
+    if (key) job.apiKeyId = key.id;
+    job.endpoint = "wav_detail";
+    job.credits = cost;
+    void trackJob(runAudioDeliveryJob(job, id, "wav"));
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
 
   // POST /me/mp4/generate (result job)
   meResultRoute(
@@ -5316,7 +5389,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "wav";
     job.credits = cost;
-    void submitDescribedJob(job, { op: "wav", args: { id: clipId, format } });
+    void trackJob(runAudioDeliveryJob(job, clipId, format === "mp3" ? "mp3" : "wav"));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -5522,7 +5595,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     });
   }
 
-  detailRoute("/v1/music/wav/:id", "wav_detail");
   detailRoute("/v1/music/stems/:id", "stems_detail");
   detailRoute("/v1/music/video/:id", "video_detail");
   detailRoute("/v1/music/cover/:id", "cover_detail");
@@ -5531,6 +5603,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   detailRoute("/v1/mp4/:id", "mp4_detail");
   detailRoute("/v1/music/midi/:id", "midi_detail");
   detailRoute("/v1/clip/:id", "lyrics_detail");
+
+  // WAV detail is served from our own media pipeline (runAudioDeliveryJob),
+  // because Suno's /api/download/* is gated by a per-account monthly quota.
+  app.get("/v1/music/wav/:id", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    const { id } = req.params as { id: string };
+    if (!id) return reply.code(400).send({ error: "id is required." });
+    const cost = await costFor("wav_detail");
+    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+    const job = newJob("wav_detail");
+    job.userId = key.user_id;
+    job.apiKeyId = key.id;
+    job.endpoint = "wav_detail";
+    job.credits = cost;
+    void trackJob(runAudioDeliveryJob(job, id, "wav"));
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
 
   // -------- MP4 generate POST + detail --------
   app.post("/v1/mp4/generate", async (req, reply) => {
@@ -6032,6 +6122,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       ["source_stream_audio_url", "sourceStreamAudioUrl"],
       ["image_url", "imageUrl"],
       ["source_image_url", "sourceImageUrl"],
+      ["wav_url", "wavUrl"],
+      ["download_url", "downloadUrl"],
       ["model_name", "modelName"],
     ];
     for (const [snake, camel] of pairs) {
@@ -6263,10 +6355,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("wav", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "wav"; job.credits = cost;
-    void submitDescribedJob(job, {
-      op: "wav",
-      args: { id: clip_id, format: (in_.format as string) || "wav" },
-    });
+    void trackJob(runAudioDeliveryJob(job, clip_id, (in_.format as string) === "mp3" ? "mp3" : "wav"));
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
@@ -6521,7 +6610,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("wav", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "wav"; job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.downloadUrl(clip_id, (in_.format as string) || "wav"));
+    void trackJob(runAudioDeliveryJob(job, clip_id, (in_.format as string) === "mp3" ? "mp3" : "wav"));
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
