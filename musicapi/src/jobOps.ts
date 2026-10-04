@@ -47,7 +47,6 @@ function str(args: Record<string, unknown>, key: string): string {
  */
 export const JOB_OPS: Record<string, JobOp> = {
   // Clip-asset detail reads (`meDetailRoute` / `detailRoute`).
-  wav_detail: { mode: "result", run: (c, a) => c.wavDetail(str(a, "id"), "wav") },
   stems_detail: { mode: "result", run: (c, a) => c.stemsDetail(str(a, "id")) },
   video_detail: { mode: "result", run: (c, a) => c.videoDetail(str(a, "id")) },
   cover_detail: { mode: "result", run: (c, a) => c.coverDetail(str(a, "id")) },
@@ -58,10 +57,6 @@ export const JOB_OPS: Record<string, JobOp> = {
   lyrics_detail: { mode: "result", run: (c, a) => c.getClipDetail(str(a, "id")) },
   timestamped_lyrics_detail: { mode: "result", run: (c, a) => c.lyricsDetail(str(a, "id")) },
   // Clip-id keyed operations.
-  wav: {
-    mode: "result",
-    run: (c, a) => c.downloadUrl(str(a, "id"), typeof a.format === "string" && a.format ? a.format : "wav"),
-  },
   stems: { mode: "clip", run: (c, a) => c.stems(str(a, "id"), (a.mode as "vocal" | "stems" | "advanced") ?? "stems") },
 };
 
