@@ -21,8 +21,11 @@ export default function UsersPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [limitsFor, setLimitsFor] = useState<User | null>(null);
+  const [rpw, setRpw] = useState("");
   const [rpm, setRpm] = useState("");
   const [rpd, setRpd] = useState("");
+  const [mcj, setMcj] = useState("");
+  const [windowMs, setWindowMs] = useState(10_000);
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
@@ -63,14 +66,23 @@ export default function UsersPage() {
   async function openLimits(u: User) {
     setError("");
     setLimitsFor(u);
+    setRpw("");
     setRpm("");
     setRpd("");
+    setMcj("");
     try {
-      const data = await apiFetch<{ requests_per_minute: number | null; requests_per_day: number | null }>(
-        `/admin/users/${u.id}/rate-limits`,
-      );
+      const data = await apiFetch<{
+        requests_per_window: number | null;
+        requests_per_minute: number | null;
+        requests_per_day: number | null;
+        max_concurrent_jobs: number | null;
+        window_ms?: number;
+      }>(`/admin/users/${u.id}/rate-limits`);
+      setRpw(data.requests_per_window?.toString() ?? "");
       setRpm(data.requests_per_minute?.toString() ?? "");
       setRpd(data.requests_per_day?.toString() ?? "");
+      setMcj(data.max_concurrent_jobs?.toString() ?? "");
+      if (data.window_ms) setWindowMs(data.window_ms);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load rate limits");
     }
@@ -84,9 +96,16 @@ export default function UsersPage() {
       if (!Number.isInteger(n) || n <= 0) return undefined;
       return n;
     };
+    const perWindow = parse(rpw);
     const perMinute = parse(rpm);
     const perDay = parse(rpd);
-    if (perMinute === undefined || perDay === undefined) {
+    const maxConcurrent = parse(mcj);
+    if (
+      perWindow === undefined ||
+      perMinute === undefined ||
+      perDay === undefined ||
+      maxConcurrent === undefined
+    ) {
       setError("Limits must be positive whole numbers, or left empty to clear.");
       return;
     }
@@ -95,7 +114,12 @@ export default function UsersPage() {
     try {
       await apiFetch(`/admin/users/${limitsFor.id}/rate-limits`, {
         method: "PUT",
-        body: JSON.stringify({ requests_per_minute: perMinute, requests_per_day: perDay }),
+        body: JSON.stringify({
+          requests_per_window: perWindow,
+          requests_per_minute: perMinute,
+          requests_per_day: perDay,
+          max_concurrent_jobs: maxConcurrent,
+        }),
       });
       setLimitsFor(null);
     } catch (e) {
@@ -179,6 +203,18 @@ export default function UsersPage() {
             <h2 className="text-lg font-semibold">Rate limits</h2>
             <p className="mb-4 text-sm text-[var(--muted)]">{limitsFor.email}</p>
             <label className="mb-3 block text-sm">
+              <span className="mb-1 block text-[var(--muted)]">
+                Requests per {Math.round(windowMs / 1000)}s window
+              </span>
+              <input
+                value={rpw}
+                onChange={(e) => setRpw(e.target.value)}
+                inputMode="numeric"
+                placeholder="Unlimited"
+                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
+              />
+            </label>
+            <label className="mb-3 block text-sm">
               <span className="mb-1 block text-[var(--muted)]">Requests per minute</span>
               <input
                 value={rpm}
@@ -188,7 +224,7 @@ export default function UsersPage() {
                 className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
               />
             </label>
-            <label className="block text-sm">
+            <label className="mb-3 block text-sm">
               <span className="mb-1 block text-[var(--muted)]">Requests per day</span>
               <input
                 value={rpd}
@@ -198,7 +234,20 @@ export default function UsersPage() {
                 className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
               />
             </label>
-            <p className="mt-3 text-xs text-[var(--muted)]">Leave a field empty for no limit.</p>
+            <label className="block text-sm">
+              <span className="mb-1 block text-[var(--muted)]">Max concurrent jobs</span>
+              <input
+                value={mcj}
+                onChange={(e) => setMcj(e.target.value)}
+                inputMode="numeric"
+                placeholder="Default"
+                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
+              />
+            </label>
+            <p className="mt-3 text-xs text-[var(--muted)]">
+              Leave a field empty for no limit (concurrent jobs falls back to the pool default).
+              The window budget mirrors sunoapi.org&apos;s 20 req/10s shape.
+            </p>
             <div className="mt-5 flex justify-end gap-2">
               <button
                 onClick={() => setLimitsFor(null)}
