@@ -5,45 +5,57 @@ issues. This runbook maps each issue to its root cause and the exact action.
 
 | # | Reviewer message | Root cause | Fix |
 |---|------------------|-----------|-----|
-| 1 | Home page URL is not registered to you | No `google-site-verification` meta tag is served; `musicapi.camxora.com` was never verified in Search Console for the OAuth project's Google account | Search Console verification (below) + wait 24 h |
+| 1 | Home page URL is not registered to you | No `google-site-verification` meta tag is served; `musicapi.camxora.com` was not yet verified in Search Console for the OAuth project's Google account | **Resolved** — ownership verified via the deployed HTML file `web-user/public/googlecc93aaa6b03dea9f.html` (plus a DNS TXT and a Domain property). See §1 |
 | 2 | Privacy policy has insufficient content | Cloudflare Email Address Obfuscation rewrote our contact addresses into `[email protected]` / `/cdn-cgi/l/email-protection#…`, so the policy appears to have no reachable contact. Policy text has also been expanded. | Disable email obfuscation + deploy the expanded policy |
 | 3 | Home page is behind a login page | The root layout rendered the (closed) sign-in `<dialog>` into **every** page's HTML, so a reviewer's crawler saw a sign-in form on `/`. A `401` from any API call also hard-redirected public pages to `/login`. | Code fixed: modal renders only when opened; public pricing fetch never redirects on 401 |
 | 4 | Home page does not explain the app | Purpose copy exists, but the same crawl problems (1–3) prevented it from being read | Code fixed: explicit purpose + Google-data statement above the fold |
 
-## 1. Verify domain ownership (Search Console)
+## 1. Verify domain ownership (Search Console) — ✅ done
 
-Use the **same Google account that owns the OAuth consent screen / Cloud project.**
+Ownership is verified with the **HTML-file method**. The file is committed at
+`web-user/public/googlecc93aaa6b03dea9f.html` and served at
+<https://musicapi.camxora.com/googlecc93aaa6b03dea9f.html>, returning:
 
-1. Open <https://search.google.com/search-console> → **Add property** → **URL prefix**.
-2. Enter `https://musicapi.camxora.com/` (exactly, with the trailing slash).
-3. Choose **HTML tag** verification and copy the `content` value (the token after
-   `google-site-verification=`).
+```
+google-site-verification: googlecc93aaa6b03dea9f.html
+```
 
-   *Alternative:* use a **DNS TXT** record. In Cloudflare DNS add a `TXT` on
-   `musicapi` with value `google-site-verification=<token>`. DNS verification
-   usually does not require a redeploy.
+A `google-site-verification` DNS TXT record on `musicapi.camxora.com` and a
+**Domain property** for `camxora.com` are also in place, so the `https`/`http`,
+`www`/non-`www` and subdomain variations are all covered.
 
-4. Put the token in the deploy secrets and redeploy so it is baked into
-   `web-user/.env.production` (the deploy script writes it from
-   `MUSICAPI_GOOGLE_SITE_VERIFICATION`):
+> The property was added under the Google account **somvannda@gmail.com**, which
+> must be the same account that owns the OAuth consent screen / Cloud project.
 
-   ```bash
-   # .deploy/secrets.production.env
-   MUSICAPI_GOOGLE_SITE_VERIFICATION=<token-from-search-console>
-   # then:
-   python scripts/deploy/deploy_musicapi_production.py --yes
-   ```
+### Fallback: HTML meta tag
 
-5. Confirm the tag is live **before** clicking Verify:
+The app also supports the **HTML tag** method if the HTML file is ever removed.
+`web-user/app/layout.tsx` renders `<meta name="google-site-verification">` from
+`process.env.GOOGLE_SITE_VERIFICATION`, which the deploy script bakes in from the
+`MUSICAPI_GOOGLE_SITE_VERIFICATION` secret (currently empty):
 
-   ```bash
-   curl -s https://musicapi.camxora.com/ | grep -o 'google-site-verification[^>]*'
-   # => google-site-verification" content="<token>"
-   ```
+```bash
+# .deploy/secrets.production.env
+MUSICAPI_GOOGLE_SITE_VERIFICATION=<token-from-search-console>
+python scripts/deploy/deploy_musicapi_production.py --yes
+```
 
-6. Back in Search Console click **Verify** (should pass immediately).
-7. **Wait 24 hours** before retrying the OAuth brand verification — Google's
-   systems cache ownership for up to a day.
+Confirm the tag is live **before** clicking Verify:
+
+```bash
+curl -s https://musicapi.camxora.com/ | grep -o 'google-site-verification[^>]*'
+# => google-site-verification" content="<token>"
+```
+
+### Sitemap
+
+`https://musicapi.camxora.com/sitemap.xml` was submitted in Search Console
+(Oct 2026) and is also advertised from `robots.txt`. Googlebot fetches it with
+`200` / `application/xml`. If Search Console reports "Couldn't fetch", allow
+24–48 h for the first read before troubleshooting.
+
+> **Wait 24 hours** after any ownership change before retrying the OAuth brand
+> verification — Google's systems cache ownership for up to a day.
 
 ## 2. Fix the privacy policy rendering (Cloudflare)
 
@@ -96,11 +108,12 @@ The app now also ships `robots.txt` (allows `/`, blocks `/dashboard/`, `/admin/`
 
 ## 5. Re-submit checklist
 
-- [ ] `MUSICAPI_GOOGLE_SITE_VERIFICATION` set and present in the live home page `<head>`.
-- [ ] Search Console shows the property **Verified**.
-- [ ] `curl -s https://musicapi.camxora.com/ | grep -c 'Continue with Google'` → `0`
-      (no sign-in form in the public HTML).
-- [ ] Home page explains the app's purpose and how Google data is used (visible without login).
+- [x] Domain ownership verified (HTML file `googlecc93aaa6b03dea9f.html` served from `web-user/public/`; DNS TXT + Domain property also in place).
+- [x] Search Console shows the property **Verified** (added under somvannda@gmail.com).
+- [x] `sitemap.xml` submitted (allow 24–48 h for the first read).
+- [x] `curl -s https://musicapi.camxora.com/ | grep -c 'Continue with Google'` → `0`
+      (no sign-in form in the public HTML). Verified Oct 2026.
+- [x] Home page explains the app's purpose and how Google data is used (visible without login). Verified Oct 2026.
 - [ ] `https://musicapi.camxora.com/privacy` shows real `privacy@camxora.com` /
       `support@camxora.com` addresses and the expanded sections.
 - [ ] Cloudflare email obfuscation off; no bot challenge on public paths; cache purged.
