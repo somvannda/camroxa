@@ -1303,21 +1303,20 @@ export class SunoClient {
     title?: string;
     tags?: string;
     model?: string;
+    personaModel?: string;
   }): Promise<Clip[]> {
     const persona = params.personaId ?? params.clipId ?? "";
     if (!persona) throw new Error("personaId or clipId required for voiceApply.");
-    return this.submitClips("/api/generate/v2-web/", {
-      task: "artist_vox",
-      mv: normalizeModel(params.model) ?? config.model,
-      generation_type: "TEXT",
-      params: {
-        prompt: params.prompt ?? "",
-        title: params.title ?? "",
-        tags: params.tags ?? "",
-        root_clip_id: persona,
-      },
-      override_fields: ["prompt"],
-      transaction_uuid: randomUUID(),
+    // Applying a voice/persona is a normal generation with persona_id + persona_model
+    // (the same `/api/generate/v2/` payload music generation uses). `voice_persona`
+    // for a Suno Voice id, `style_persona` for a Generate Persona id.
+    return this.generateMusic({
+      personaId: persona,
+      personaModel: params.personaModel ?? "voice_persona",
+      prompt: params.prompt,
+      title: params.title,
+      tags: params.tags,
+      model: params.model,
     });
   }
 
@@ -1327,20 +1326,19 @@ export class SunoClient {
     clipId?: string;
     continueAt?: number;
     prompt?: string;
+    personaModel?: string;
   }): Promise<Clip[]> {
-    const persona = params.personaId ?? params.clipId ?? "";
-    if (!persona) throw new Error("personaId or clipId required for voiceExtend.");
-    return this.submitClips("/api/generate/v2-web/", {
-      task: "vox_extend",
-      mv: config.model,
-      generation_type: "TEXT",
-      params: {
-        prompt: params.prompt ?? "",
-        continue_clip_id: persona,
-        continue_at: params.continueAt ?? 170,
-      },
-      override_fields: ["prompt"],
-      transaction_uuid: randomUUID(),
-    });
+    const clip = params.clipId ?? "";
+    if (!clip) throw new Error("clipId is required to extend — a persona has no audio to continue.");
+    // Extend an existing clip; attach the persona/voice so the continuation keeps it.
+    const payload = this.remixPayload("extend", clip);
+    payload.prompt = params.prompt ?? "";
+    payload.continue_at = params.continueAt ?? 170;
+    if (params.personaId) {
+      payload.persona_id = params.personaId;
+      payload.artist_clip_id = params.personaId;
+      payload.persona_model = params.personaModel ?? "voice_persona";
+    }
+    return this.submitClips("/api/generate/v2-web/", payload);
   }
 }
