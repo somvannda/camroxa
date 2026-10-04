@@ -8158,12 +8158,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // sunoapi.org sends both taskId (the generation task) and audioId (the
+    // clip). Alignment reads the clip record, so the clip id must win — using
+    // taskId here 404s against /api/clip/{taskId}.
     const id =
-      (in_.taskId as string) ||
-      (in_.task_id as string) ||
       (in_.audioId as string) ||
-      (in_.clip_id as string);
-    if (!id) return reply.code(400).send({ error: "taskId is required." });
+      (in_.audio_id as string) ||
+      (in_.clip_id as string) ||
+      (in_.clipId as string) ||
+      (in_.taskId as string) ||
+      (in_.task_id as string);
+    if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
     const cost = await costFor("timestamped_lyrics_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("timestamped_lyrics_detail", callbackUrl(in_));
