@@ -4968,9 +4968,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // --- admin routes --------------------------------------------------------
   app.get("/admin/keys", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
+    // `credits` is the balance parked on this individual key, but spending is
+    // pooled across every active key a user owns (see `charge`/`chargeUserKey`).
+    // Return both so the admin console can group by owner and show the true
+    // account-level balance instead of reading 0-balance keys as empty wallets.
     return query<Record<string, unknown>>(
-      `SELECT k.id, k.name, k.key_prefix, k.credits, k.is_active, u.email
-       FROM api_keys k JOIN users u ON u.id = k.user_id ORDER BY k.created_at DESC`,
+      `SELECT k.id, k.name, k.key_prefix, k.credits, k.is_active, u.id AS user_id, u.email,
+              (SELECT COALESCE(sum(k2.credits), 0) FROM api_keys k2 WHERE k2.user_id = k.user_id) AS account_credits,
+              (SELECT count(*) FROM api_keys k2 WHERE k2.user_id = k.user_id) AS key_count
+       FROM api_keys k JOIN users u ON u.id = k.user_id
+       ORDER BY u.email, k.created_at DESC`,
     );
   });
 
