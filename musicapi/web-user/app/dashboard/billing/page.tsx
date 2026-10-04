@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { buildPlans, DEFAULT_MUSIC_COST, musicCostFromPricing, usd } from "@/lib/packs";
 import { KhqrModal } from "@/components/billing/khqr-modal";
 
 interface Pack {
@@ -106,6 +107,12 @@ export default function BillingPage() {
     return cheapest.price / cheapest.amount;
   }, [billing]);
 
+  // Same value framing the landing page uses, so both surfaces agree.
+  const plans = useMemo(() => {
+    const cost = musicCostFromPricing(pricing) ?? DEFAULT_MUSIC_COST;
+    return buildPlans(billing?.packs ?? [], cost);
+  }, [billing, pricing]);
+
   function exportHistory() {
     const header = ["DateTime", "Credits", "Amount", "Status", "Bill Number"];
     const lines = [header.map(csvCell).join(",")];
@@ -182,16 +189,47 @@ export default function BillingPage() {
       <div className="glass mt-6 rounded-2xl p-6">
         <h2 className="text-lg font-semibold text-white">Add Credits</h2>
         <p className="mt-1 text-sm text-white/50">Buy credits before you integrate. Top up any time.</p>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          {(billing?.packs ?? []).map((p) => (
-            <div key={p.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-              <div className="text-2xl font-bold text-white">{p.amount.toLocaleString()}</div>
-              <div className="text-sm text-white/50">credits</div>
-              <div className="mt-4 text-lg font-semibold text-white">
-                {p.currency} {p.price}
+        <div className="mt-5 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          {plans.map((p) => (
+            <div
+              key={p.id}
+              className={`relative flex flex-col rounded-xl border bg-white/[0.02] p-5 ${
+                p.badge === "Best value" ? "border-[var(--violet)]/50" : "border-white/10"
+              }`}
+            >
+              {p.badge && (
+                <span className="grad-bg absolute -top-2.5 left-4 rounded-full px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                  {p.badge}
+                </span>
+              )}
+              <div className="text-xs font-medium uppercase tracking-wide text-white/50">{p.tier}</div>
+              <div className="mt-2 text-2xl font-bold text-white">
+                {p.currency} {p.price.toLocaleString()}
               </div>
+              <div className="text-sm text-white/50">{p.amount.toLocaleString()} credits</div>
+              {p.bonusCredits > 0 && (
+                <div className="mt-1 text-xs font-medium text-[var(--emerald)]">
+                  +{p.bonusCredits.toLocaleString()} bonus ({Math.round(p.bonusPct)}% more)
+                </div>
+              )}
+
+              <dl className="mb-4 mt-4 space-y-1.5 border-t border-white/10 pt-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <dt className="text-white/50">Songs</dt>
+                  <dd className="font-semibold text-white">≈ {p.songs.toLocaleString()}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-white/50">Cost per song</dt>
+                  <dd className="font-semibold text-white">{usd(p.perSong)}</dd>
+                </div>
+                <div className="flex items-center justify-between">
+                  <dt className="text-white/50">Credits per $1</dt>
+                  <dd className="font-semibold text-white">{Math.round(p.creditsPerUsd).toLocaleString()}</dd>
+                </div>
+              </dl>
+
               <button
-                className="grad-bg mt-4 w-full rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-60"
+                className="grad-bg mt-auto w-full rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-60"
                 onClick={() => buy(p)}
                 disabled={busyPackId !== null || checkout !== null}
               >
@@ -200,7 +238,7 @@ export default function BillingPage() {
             </div>
           ))}
           {(!billing || billing.packs.length === 0) && (
-            <div className="col-span-3 rounded-xl border border-white/5 p-8 text-center text-sm text-white/50">
+            <div className="col-span-full rounded-xl border border-white/5 p-8 text-center text-sm text-white/50">
               No credit packs available yet.
             </div>
           )}

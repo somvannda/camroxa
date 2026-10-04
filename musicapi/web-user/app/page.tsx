@@ -1,8 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { apiFetch } from "@/lib/api";
+import {
+  buildPlans,
+  DEFAULT_MUSIC_COST,
+  FALLBACK_PACKS,
+  musicCostFromPricing,
+  SONGS_PER_GENERATION,
+  usd,
+  type PricingRow,
+  type RawPack,
+} from "@/lib/packs";
 
 const FEATURES = [
   {
@@ -27,7 +37,7 @@ const FEATURES = [
   },
   {
     title: "Transparent, Usage-Based Pricing",
-    desc: "Simple credit packages with predictable costs. Top up anytime and scale without overspending.",
+    desc: "Simple credit packages with predictable costs — bigger packs buy credits at a better rate. Top up anytime without overspending.",
     icon: "◫",
   },
   {
@@ -50,26 +60,9 @@ const USE_CASES = [
   { title: "Startups", desc: "Ship an MVP with music generation without backend heavy-lifting." },
 ];
 
-// Shown only until the live packs load (or if the API is unreachable) so the
-// section never renders empty. The real prices come from the `credit_packs`
-// table via GET /pricing, so this list can't drift from what billing charges.
-const FALLBACK_PLANS = [
-  { name: "Credit pack", amount: "1,000", price: "USD 10", bonus: "" },
-  { name: "Credit pack", amount: "5,000", price: "USD 30", bonus: "" },
-  { name: "Credit pack", amount: "20,000", price: "USD 60", bonus: "" },
-  { name: "Credit pack", amount: "50,000", price: "USD 100", bonus: "Best value" },
-];
-
-interface Plan {
-  name: string;
-  amount: string;
-  price: string;
-  bonus: string;
-}
-
 const FAQS = [
   { q: "What is Camxora Music API?", a: "A REST API that generates watermark-free AI music on top of the latest models — vocals, instrumentals, extensions and covers." },
-  { q: "How do credits work?", a: "Every request consumes credits at the rates published on your billing page. Buy a credit package and top up anytime from your dashboard." },
+  { q: "How do credits work?", a: "Every request consumes credits at the rates published on your billing page — a full music generation costs 15 credits and returns 2 songs. Bigger packs buy credits at a better rate, so your cost per song drops as you scale. Top up anytime from your dashboard; credits never expire." },
   { q: "Is the music safe for commercial use?", a: "Yes. Generated tracks are watermark-free and ready for commercial projects with no additional fees." },
   { q: "How fast are results?", a: "Streaming output typically delivers in around 20 seconds, with real-time task status polling." },
   { q: "How do I get started?", a: "Create an account, generate an API key, add credits, then call the REST endpoints with your bearer token." },
@@ -77,24 +70,21 @@ const FAQS = [
 ];
 
 export default function LandingPage() {
-  const [plans, setPlans] = useState<Plan[]>(FALLBACK_PLANS);
+  const [packs, setPacks] = useState<RawPack[]>(FALLBACK_PACKS);
+  const [musicCost, setMusicCost] = useState(DEFAULT_MUSIC_COST);
 
   useEffect(() => {
-    apiFetch<{ packs: Array<{ id: string; amount: number; price: number; currency: string }> }>("/pricing")
+    apiFetch<{ packs?: RawPack[]; pricing?: PricingRow[] }>("/pricing")
       .then((data) => {
-        if (!data.packs?.length) return;
-        const top = Math.max(...data.packs.map((p) => p.amount));
-        setPlans(
-          data.packs.map((p) => ({
-            name: "Credit pack",
-            amount: p.amount.toLocaleString(),
-            price: `${p.currency} ${p.price.toLocaleString()}`,
-            bonus: data.packs.length > 1 && p.amount === top ? "Best value" : "",
-          })),
-        );
+        if (data.packs?.length) setPacks(data.packs);
+        const cost = musicCostFromPricing(data.pricing);
+        if (cost) setMusicCost(cost);
       })
       .catch(() => { /* keep the fallback list */ });
   }, []);
+
+  const plans = useMemo(() => buildPlans(packs, musicCost), [packs, musicCost]);
+  const bestPerSong = plans.length ? plans[plans.length - 1].perSong : 0;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -159,6 +149,10 @@ export default function LandingPage() {
                 <div>
                   <div className="text-xl font-bold">REST</div>
                   <div className="text-xs text-[var(--muted)]">JSON API</div>
+                </div>
+                <div>
+                  <div className="text-xl font-bold text-[var(--emerald)]">from {usd(bestPerSong)}</div>
+                  <div className="text-xs text-[var(--muted)]">per song</div>
                 </div>
               </div>
             </div>
@@ -269,25 +263,80 @@ export default function LandingPage() {
           <div className="mx-auto max-w-6xl px-6 py-20">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-3xl font-bold">Transparent credit packages</h2>
-              <p className="mt-3 text-[var(--muted)]">Buy credits before you integrate. Top up anytime from your billing dashboard.</p>
+              <p className="mt-3 text-[var(--muted)]">
+                Every generation costs the same {musicCost} credits and returns {SONGS_PER_GENERATION} songs. The
+                bigger the pack, the lower your cost per song — credits never expire and can be topped up anytime.
+              </p>
             </div>
             <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {plans.map((p, i) => (
-                <div key={i} className={`glass relative rounded-2xl p-6 ${p.bonus ? "border-[var(--violet)]/50" : ""}`}>
-                  {p.bonus && (
+              {plans.map((p) => (
+                <div
+                  key={p.id}
+                  className={`glass relative flex flex-col rounded-2xl p-6 ${
+                    p.badge === "Best value" ? "border-[var(--violet)]/50" : ""
+                  }`}
+                >
+                  {p.badge && (
                     <span className="grad-bg absolute -top-3 left-4 rounded-full px-3 py-0.5 text-xs font-semibold text-white">
-                      {p.bonus}
+                      {p.badge}
                     </span>
                   )}
-                  <div className="text-sm font-medium capitalize text-[var(--muted)]">{p.name}</div>
-                  <div className="mt-2 text-3xl font-extrabold">{p.price}</div>
-                  <div className="mt-1 text-sm text-[var(--muted)]">{p.amount} credits</div>
-                  <Link href="/login" className="grad-bg mt-5 block w-full rounded-lg py-2.5 text-center text-sm font-semibold text-white">
+                  <div className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{p.tier}</div>
+                  <div className="mt-2 text-3xl font-extrabold">
+                    {p.currency} {p.price.toLocaleString()}
+                  </div>
+                  <div className="mt-1 text-sm font-medium text-white">{p.amount.toLocaleString()} credits</div>
+                  {p.bonusCredits > 0 && (
+                    <div className="mt-1 text-xs font-medium text-[var(--emerald)]">
+                      +{p.bonusCredits.toLocaleString()} bonus credits ({Math.round(p.bonusPct)}% more)
+                    </div>
+                  )}
+
+                  <dl className="mb-6 mt-5 space-y-2 border-t border-[var(--border)] pt-4 text-sm">
+                    <div className="flex items-center justify-between">
+                      <dt className="text-[var(--muted)]">Songs</dt>
+                      <dd className="font-semibold text-white">≈ {p.songs.toLocaleString()}</dd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <dt className="text-[var(--muted)]">Cost per song</dt>
+                      <dd className="font-semibold text-white">{usd(p.perSong)}</dd>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <dt className="text-[var(--muted)]">Credits per $1</dt>
+                      <dd className="font-semibold text-white">{Math.round(p.creditsPerUsd).toLocaleString()}</dd>
+                    </div>
+                  </dl>
+
+                  <Link
+                    href="/login"
+                    className="grad-bg mt-auto block w-full rounded-lg py-2.5 text-center text-sm font-semibold text-white"
+                  >
                     Buy credits
                   </Link>
                 </div>
               ))}
             </div>
+
+            <div className="mx-auto mt-10 max-w-3xl">
+              <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-[var(--muted)]">
+                <span className="inline-flex items-center gap-1.5 text-white/80">
+                  <span className="grad-text font-bold">✓</span> Watermark-free
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-white/80">
+                  <span className="grad-text font-bold">✓</span> Commercial use
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-white/80">
+                  <span className="grad-text font-bold">✓</span> All latest models
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-white/80">
+                  <span className="grad-text font-bold">✓</span> MP3 &amp; WAV delivery
+                </span>
+                <span className="inline-flex items-center gap-1.5 text-white/80">
+                  <span className="grad-text font-bold">✓</span> Credits never expire
+                </span>
+              </div>
+            </div>
+
             <p className="mt-6 text-center text-sm text-[var(--muted)]">
               Need help choosing? <a href="mailto:support@camxora.com" className="grad-text font-medium">Contact us</a>
             </p>
