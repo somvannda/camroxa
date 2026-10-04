@@ -158,6 +158,10 @@ BACKUP_RETENTION_DAYS="${MUSICAPI_BACKUP_RETENTION_DAYS:-14}"
 log "Writing ${MUSICAPI_DIR}/.env..."
 sudo -u camxora tee "${MUSICAPI_DIR}/.env" >/dev/null <<EOF
 NODE_ENV=production
+# Deployment target (sandbox|production). The runtime reads this to keep
+# Telegram alert delivery production-only — sandbox shares the same alert
+# bot/chat as production. Do not remove; see musicapi/src/config.ts.
+MUSICAPI_ENV=${MUSICAPI_ENV}
 PORT=${MUSICAPI_PORT}
 BACKEND_URL=http://127.0.0.1:${MUSICAPI_PORT}
 DATABASE_URL=${DATABASE_URL}
