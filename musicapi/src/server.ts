@@ -289,6 +289,8 @@ interface Job {
   prompt?: string;
   credits?: number;
   createdAt: number;
+  /** When the job reached a terminal state (complete/error). Used for WAV `completeTime`. */
+  completedAt?: number;
   /**
    * Serializable form of the submission (roadmap R4). Present only for jobs
    * whose op is in the registry, so a consumer — this process after a restart,
@@ -1310,6 +1312,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // Re-check at the sink as well: a public hostname accepted earlier can be
       // re-pointed at an internal address before the job finishes (DNS rebinding).
       await assertCallbackUrlAllowed(job.callbackUrl);
+      // WAV conversion uses sunoapi.org's own callback envelope:
+      // {code,msg,data:{audioWavUrl,task_id}}, not the track-list envelope below.
+      if (job.type === "wav" || job.endpoint === "wav") {
+        const ok = job.status === "complete";
+        const res = (job.result ?? {}) as Record<string, unknown>;
+        const wavUrl = ok
+          ? ((res.download_url as string) ?? (res.wav_url as string) ?? null)
+          : null;
+        await fetch(job.callbackUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify({
+            code: ok ? 200 : 400,
+            msg: ok ? "success" : (job.error || "WAV format conversion failed"),
+            data: { audioWavUrl: wavUrl, task_id: job.id },
+          }),
+        });
+        return;
+      }
       // sunoapi.org's callback envelope: {code,msg,data:{callbackType,task_id,data[]}}.
       // Our jobs finalize atomically, so we emit one terminal callback ("complete"
       // or "error") rather than their intermediate text/first stages.
@@ -1397,6 +1420,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
       job.status = "complete";
     }
+    if (job.status === "complete" || job.status === "error") job.completedAt ??= Date.now();
     await saveJob(job);
     // Log every user-attributed job, not only key-charged ones: free endpoints
     // reached from the session UI (and any priced-at-0 row) carry a userId but
@@ -1558,7 +1582,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * storage is how sunoapi.org keeps downloads working regardless of the
    * upstream account's quota. 0-credit jobs, so they aren't queue-durable.
    */
-  async function runAudioDeliveryJob(job: Job, clipId: string, format: "mp3" | "wav"): Promise<void> {
+  async function runAudioDeliveryJob(
+    job: Job,
+    clipId: string,
+    format: "mp3" | "wav",
+    musicIndex = 0,
+  ): Promise<void> {
     try {
       if (!storageConfigured()) throw new Error("Media storage is not configured.");
       const key = await ensureAudio(clipId, format);
@@ -1567,6 +1596,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!url) throw new Error("Could not sign the media URL.");
       job.result = {
         clip_id: clipId,
+        music_index: musicIndex,
         format,
         download_url: url,
         audio_url: url,
@@ -1579,6 +1609,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.error = e instanceof Error ? e.message : String(e);
     }
     await finalizeJob(job);
+  }
+
+  /**
+   * Index of a clip within its originating generation task (0 or 1), matching
+   * sunoapi.org's `musicIndex`. Returns 0 when the task is unknown or the clip
+   * isn't found, so the field is always present and sane.
+   */
+  async function clipIndexInTask(taskId: string | undefined, clipId: string): Promise<number> {
+    if (!taskId) return 0;
+    try {
+      const parent = await getJob(taskId);
+      if (!parent) return 0;
+      const clips: Array<Record<string, unknown>> = [];
+      collectClipObjects(parent.result, clips);
+      const idx = clips.findIndex((c) => c.id === clipId);
+      return idx > 0 ? idx : 0;
+    } catch {
+      return 0;
+    }
   }
 
   const RETRYABLE_ERROR = /captcha|timeout|timed out|rate limit|5\d{2}|no healthy|No healthy/i;
@@ -3626,7 +3675,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "wav";
     job.credits = cost;
-    void trackJob(runAudioDeliveryJob(job, clipId, format === "mp3" ? "mp3" : "wav"));
+    const musicIndex = await clipIndexInTask((body.taskId as string) || (body.task_id as string) || undefined, clipId);
+    void trackJob(runAudioDeliveryJob(job, clipId, format === "mp3" ? "mp3" : "wav", musicIndex));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -5397,7 +5447,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "wav";
     job.credits = cost;
-    void trackJob(runAudioDeliveryJob(job, clipId, format === "mp3" ? "mp3" : "wav"));
+    const musicIndex = await clipIndexInTask((body.taskId as string) || (body.task_id as string) || undefined, clipId);
+    void trackJob(runAudioDeliveryJob(job, clipId, format === "mp3" ? "mp3" : "wav", musicIndex));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6118,6 +6169,65 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /**
+   * WAV-conversion record-info in sunoapi.org's exact shape: `data.response.audioWavUrl`
+   * plus a `successFlag` (PENDING | SUCCESS | GENERATE_WAV_FAILED), instead of the
+   * generic track list. Only `/convert-to-wav/record-info` (+ its `/wav/record-info`
+   * alias) uses this.
+   */
+  function wavRecordInfo(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    const successFlag =
+      job.status === "complete"
+        ? "SUCCESS"
+        : job.status === "error"
+          ? "GENERATE_WAV_FAILED"
+          : "PENDING";
+    const wavUrl =
+      job.status === "complete"
+        ? ((res.download_url as string) ?? (res.wav_url as string) ?? null)
+        : null;
+    const fmt = (ms: number): string => {
+      const d = new Date(ms);
+      const p = (n: number) => String(n).padStart(2, "0");
+      return (
+        `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+        `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+      );
+    };
+    const terminal = job.status === "complete" || job.status === "error";
+    return {
+      code: 200,
+      msg: job.status === "error" ? job.error || "WAV format conversion failed" : "success",
+      data: {
+        taskId: job.id,
+        musicId: (res.clip_id as string) ?? null,
+        musicIndex: typeof res.music_index === "number" ? res.music_index : 0,
+        callbackUrl: job.callbackUrl ?? "",
+        completeTime: terminal ? fmt(job.completedAt ?? job.createdAt) : null,
+        response: { audioWavUrl: wavUrl },
+        successFlag,
+        createTime: fmt(job.createdAt),
+        errorCode: job.status === "error" ? 500 : null,
+        errorMessage: job.status === "error" ? job.error ?? null : null,
+      },
+    };
+  }
+
+  function wavRecordInfoRoute() {
+    app.get(`${PREFIX}/convert-to-wav/record-info`, async (req, reply) => {
+      const key = await requireKey(req, reply);
+      if (!key) return;
+      const q = (req.query ?? {}) as { taskId?: string; task_id?: string };
+      const id = q.taskId || q.task_id;
+      if (!id) return reply.code(400).send({ error: "taskId is required." });
+      const job = await getJob(id);
+      if (!job) return reply.code(404).send({ error: "task not found." });
+      if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+      return await wavRecordInfo(job);
+    });
+  }
+
   // Add camelCase aliases (and vice versa) for the track fields sunoapi.org
   // returns in both spellings. Leaves any other fields untouched.
   function sunoTrack(value: unknown): unknown {
@@ -6162,7 +6272,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   recordInfoRoute("/add-vocals/record-info");
   recordInfoRoute("/add-instrumental/record-info");
   recordInfoRoute("/music-remaster/record-info");
-  recordInfoRoute("/convert-to-wav/record-info");
+  wavRecordInfoRoute();
   recordInfoRoute("/vocal-removal/record-info");
   recordInfoRoute("/create-music-video/record-info");
   recordInfoRoute("/lyrics/record-info");
@@ -6363,7 +6473,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("wav", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "wav"; job.credits = cost;
-    void trackJob(runAudioDeliveryJob(job, clip_id, (in_.format as string) === "mp3" ? "mp3" : "wav"));
+    const musicIndex = await clipIndexInTask((in_.taskId as string) || (in_.task_id as string) || undefined, clip_id);
+    void trackJob(runAudioDeliveryJob(job, clip_id, (in_.format as string) === "mp3" ? "mp3" : "wav", musicIndex));
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
@@ -6618,7 +6729,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("wav", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "wav"; job.credits = cost;
-    void trackJob(runAudioDeliveryJob(job, clip_id, (in_.format as string) === "mp3" ? "mp3" : "wav"));
+    const musicIndex = await clipIndexInTask((in_.taskId as string) || (in_.task_id as string) || undefined, clip_id);
+    void trackJob(runAudioDeliveryJob(job, clip_id, (in_.format as string) === "mp3" ? "mp3" : "wav", musicIndex));
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
