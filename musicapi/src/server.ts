@@ -1370,6 +1370,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         });
         return;
       }
+      // Recovery has its own callback envelope: {code,msg,task_id,data[]}.
+      if (job.type === "recovery_audio" || job.endpoint === "recovery_audio") {
+        const res = (job.result ?? {}) as Record<string, unknown>;
+        const tracks = Array.isArray(res.tracks) ? res.tracks : null;
+        const ok = job.status === "complete";
+        await fetch(job.callbackUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify({
+            code: ok ? 200 : 500,
+            msg: ok ? "success" : (job.error || "Recovery failed"),
+            task_id: job.id,
+            data: tracks,
+          }),
+        });
+        return;
+      }
       // sunoapi.org's callback envelope: {code,msg,data:{callbackType,task_id,data[]}}.
       // Our jobs finalize atomically, so we emit one terminal callback ("complete"
       // or "error") rather than their intermediate text/first stages.
@@ -1794,6 +1813,73 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     } catch (e) {
       job.status = "error";
       job.error = e instanceof Error ? e.message : String(e);
+    }
+    await finalizeJob(job);
+  }
+
+  /**
+   * Complete a recovery job: return fresh playable audio links for an existing
+   * generation task (`sunoTaskId`) or a single clip — sunoapi.org's "Recovery
+   * Audio" recovers links, it does not generate. We re-sign the durable B2 copy
+   * (decrypting/transcoding on demand when it is missing). No credits spent on
+   * Suno.
+   */
+  async function runRecoveryJob(
+    job: Job,
+    params: { sunoTaskId?: string; clipId?: string },
+  ): Promise<void> {
+    const tracks: Array<Record<string, unknown>> = [];
+    try {
+      let clips: Array<Record<string, unknown>> = [];
+      if (params.sunoTaskId) {
+        const src = await getJob(params.sunoTaskId);
+        if (src) collectClipObjects(src.result, clips);
+      } else if (params.clipId) {
+        clips = [{ id: params.clipId, title: "" }];
+      }
+      if (clips.length === 0) throw new Error("no_audio_id_mappings");
+
+      for (const c of clips) {
+        const id = typeof c.id === "string" ? c.id : null;
+        const title = typeof c.title === "string" ? c.title : "";
+        if (!id) {
+          tracks.push({ id: null, audio_url: "", title, status: "failed", error: "no_audio_id_mappings" });
+          continue;
+        }
+        try {
+          let url: string | null = null;
+          const key = c.audio_storage_key;
+          if (typeof key === "string") url = await getReadUrl(key);
+          if (!url) {
+            const ensured = await ensureAudio(id, "mp3");
+            if (ensured) url = await getReadUrl(ensured);
+          }
+          tracks.push(
+            url
+              ? { id, audio_url: url, title, status: "success", error: "" }
+              : { id, audio_url: "", title, status: "failed", error: "mango_transfer_failed" },
+          );
+        } catch (e) {
+          tracks.push({
+            id,
+            audio_url: "",
+            title,
+            status: "failed",
+            error: e instanceof Error ? e.message : "clip_error",
+          });
+        }
+      }
+      job.result = { tracks };
+      if (tracks.some((t) => t.status === "success")) {
+        job.status = "complete";
+      } else {
+        job.status = "error";
+        job.error = "All tracks failed to recover.";
+      }
+    } catch (e) {
+      job.status = "error";
+      job.error = e instanceof Error ? e.message : String(e);
+      job.result = { tracks };
     }
     await finalizeJob(job);
   }
@@ -2660,9 +2746,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const clipId = body.sunoTaskId || body.clip_id || body.task_id;
-    if (!clipId || typeof clipId !== "string") {
-      return reply.code(400).send({ error: "sunoTaskId is required." });
+    const sunoTaskId =
+      (body.sunoTaskId as string) || (body.task_id as string) || (body.taskId as string) || undefined;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : undefined;
+    if (!sunoTaskId && !clipId) {
+      return reply.code(400).send({ error: "sunoTaskId or clip_id is required." });
     }
     const cost = await costFor("recovery_audio");
     const key = await chargeUserKey(u.id, cost);
@@ -2674,8 +2762,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    const prompt = (body.prompt as string) || "";
-    void runClipJobWithRetry(job, (client) => client.generateRecoveryAudio(clipId, prompt));
+    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -4035,8 +4122,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
+    const sunoTaskId =
+      (body.sunoTaskId as string) || (body.task_id as string) || (body.taskId as string) || undefined;
     const clipId = body.clip_id as string | undefined;
-    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    if (!sunoTaskId && !clipId) {
+      return reply.code(400).send({ error: "clip_id or sunoTaskId is required." });
+    }
     const cost = await costFor("recovery_audio");
     const key = await chargeUserKey(u.id, cost);
     if (cost > 0 && !key) {
@@ -4047,8 +4138,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    const prompt = (body.prompt as string) || undefined;
-    void runClipJobWithRetry(job, (client) => client.generateRecoveryAudio(clipId, prompt));
+    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -5807,8 +5897,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const clipId = body.clip_id as string;
-    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const sunoTaskId =
+      (body.sunoTaskId as string) || (body.task_id as string) || (body.taskId as string) || undefined;
+    const clipId = body.clip_id as string | undefined;
+    if (!sunoTaskId && !clipId) {
+      return reply.code(400).send({ error: "clip_id or sunoTaskId is required." });
+    }
     const cost = await costFor("recovery_audio");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -5817,8 +5911,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    const prompt = body.prompt as string | undefined;
-    void runClipJobWithRetry(job, (client) => client.generateRecoveryAudio(clipId, prompt));
+    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6638,6 +6731,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /**
+   * Recovery record-info in sunoapi.org's shape: top-level `code` (201 running /
+   * 200 recovered / 500 all failed), `task_id`, and a per-track `data` array.
+   */
+  function recoveryRecordInfo(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    if (job.status !== "complete" && job.status !== "error") {
+      return { code: 201, task_id: job.id, msg: "success", data: null };
+    }
+    const tracks = Array.isArray(res.tracks) ? (res.tracks as Array<Record<string, unknown>>) : null;
+    const recovered = (tracks ?? []).filter((t) => t.status === "success");
+    return {
+      code: recovered.length > 0 ? 200 : 500,
+      task_id: job.id,
+      msg: recovered.length > 0 ? "success" : (job.error || "Recovery failed"),
+      data: tracks,
+    };
+  }
+
   /** Register a family-specific record-info route (same auth/ownership checks). */
   function shapedRecordInfoRoute(sunoPath: string, build: (job: Job) => unknown | Promise<unknown>) {
     app.get(`${PREFIX}${sunoPath}`, async (req, reply) => {
@@ -6726,7 +6838,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   shapedRecordInfoRoute("/generate/midi/record-info", midiRecordInfo);
   recordInfoRoute("/generate/cover/record-info");
   recordInfoRoute("/generate/cover-image/record-info");
-  recordInfoRoute("/generate/recovery/record-info");
+  shapedRecordInfoRoute("/generate/recovery/record-info", recoveryRecordInfo);
   recordInfoRoute("/voice/record-info");
 
   // ============================================================
@@ -7004,27 +7116,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
-    let clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
-    // sunoapi.org's recovery call passes `taskId`; resolve it to a clip id.
-    if (!clipId) {
-      const taskId = (in_.taskId as string) || (in_.task_id as string) || undefined;
-      if (taskId) {
-        const src = await getJob(taskId);
-        const clips: Array<Record<string, unknown>> = [];
-        if (src) collectClipObjects(src.result, clips);
-        const first = clips.find((c) => typeof c.id === "string");
-        if (first) clipId = first.id as string;
-      }
+    const sunoTaskId =
+      (in_.sunoTaskId as string) || (in_.taskId as string) || (in_.task_id as string) || undefined;
+    const clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
+    if (!sunoTaskId && !clipId) {
+      return reply.code(400).send({ error: "sunoTaskId or audioId (clip_id) is required." });
     }
-    if (!clipId) return reply.code(400).send({ error: "audioId (clip_id) or taskId is required." });
     const cost = await costFor("recovery_audio");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
     const job = newJob("recovery_audio", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "recovery_audio"; job.credits = cost;
-    const prompt = (in_.prompt as string) || undefined;
-    void runClipJobWithRetry(job, (client) => client.generateRecoveryAudio(clipId, prompt));
-    return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
+    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    return reply.code(202).send({ code: 200, msg: "success", data: { task_id: job.id } });
   });
 
   // ============================================================
