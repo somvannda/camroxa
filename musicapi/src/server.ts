@@ -1002,7 +1002,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     if (effectiveTotalLimit != null) {
       const spent = await queryOne<{ sum: string }>(
-        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1",
+        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND status <> 'error'",
         [key.id],
       );
       if (Number(spent?.sum ?? 0) + amount > effectiveTotalLimit) return false;
@@ -1010,7 +1010,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     if (key.safe_spend_hourly != null) {
       const spent = await queryOne<{ sum: string }>(
-        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND created_at >= now() - interval '1 hour'",
+        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND status <> 'error' AND created_at >= now() - interval '1 hour'",
         [key.id],
       );
       if (Number(spent?.sum ?? 0) + amount > key.safe_spend_hourly) return false;
@@ -1018,7 +1018,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     if (key.safe_spend_daily != null) {
       const spent = await queryOne<{ sum: string }>(
-        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND created_at >= now() - interval '1 day'",
+        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND status <> 'error' AND created_at >= now() - interval '1 day'",
         [key.id],
       );
       if (Number(spent?.sum ?? 0) + amount > key.safe_spend_daily) return false;
@@ -1065,14 +1065,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
            AND credits >= $2
            AND (credits_expire_at IS NULL OR credits_expire_at > now())
            AND (COALESCE(safe_spend_total, safe_spend_limit) IS NULL
-                OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs WHERE api_key_id = api_keys.id) + $2
+                OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs WHERE api_key_id = api_keys.id AND status <> 'error') + $2
                    <= COALESCE(safe_spend_total, safe_spend_limit))
            AND (safe_spend_hourly IS NULL
                 OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs
-                    WHERE api_key_id = api_keys.id AND created_at >= now() - interval '1 hour') + $2 <= safe_spend_hourly)
+                    WHERE api_key_id = api_keys.id AND status <> 'error' AND created_at >= now() - interval '1 hour') + $2 <= safe_spend_hourly)
            AND (safe_spend_daily IS NULL
                 OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs
-                    WHERE api_key_id = api_keys.id AND created_at >= now() - interval '1 day') + $2 <= safe_spend_daily)
+                    WHERE api_key_id = api_keys.id AND status <> 'error' AND created_at >= now() - interval '1 day') + $2 <= safe_spend_daily)
          ORDER BY created_at ASC
          LIMIT 1
        )
@@ -1672,7 +1672,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         model: job.model,
         prompt: job.prompt,
         status: job.status,
-        credits: job.credits ?? 0,
+        // Net credits: a failed job is refunded, so it must not count as spend
+        // (safe-spend limits sum usage_logs.credits_consumed) nor show as
+        // charged in the dashboard. The gross charge stays in credit_transactions.
+        credits: job.status === "error" ? 0 : (job.credits ?? 0),
         taskId: job.id,
         result: job.result,
       });
@@ -2476,6 +2479,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * ran here or on another node.
    */
   async function runDescribedJob(job: Job, descriptor: JobDescriptor): Promise<void> {
+    // Recovery re-signs an existing job's stored media and needs local helpers
+    // (getJob/ensureAudio), not a Suno client call.
+    if (descriptor.op === "recovery_audio") {
+      const args = descriptor.args ?? {};
+      await runRecoveryJob(job, {
+        sunoTaskId: typeof args.sunoTaskId === "string" ? args.sunoTaskId : undefined,
+        clipId: typeof args.clipId === "string" ? args.clipId : undefined,
+      });
+      return;
+    }
     // Timestamped lyrics have no upstream alignment source on Suno's direct
     // API; when the LRC microservice is enabled we produce the timing ourselves
     // instead of running the plain-lyrics `JOB_OPS` fallback.
@@ -3190,7 +3203,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    void submitDescribedJob(job, { op: "recovery_audio", args: { sunoTaskId, clipId } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -4631,7 +4644,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    void submitDescribedJob(job, { op: "recovery_audio", args: { sunoTaskId, clipId } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6566,7 +6579,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    void submitDescribedJob(job, { op: "recovery_audio", args: { sunoTaskId, clipId } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -7839,7 +7852,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("recovery_audio", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "recovery_audio"; job.credits = cost;
-    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    void submitDescribedJob(job, { op: "recovery_audio", args: { sunoTaskId, clipId } });
     return reply.code(202).send({ code: 200, msg: "success", data: { task_id: job.id } });
   });
 

@@ -58,6 +58,16 @@ export const JOB_OPS: Record<string, JobOp> = {
   timestamped_lyrics_detail: { mode: "result", run: (c, a) => c.lyricsDetail(str(a, "id")) },
   // Clip-id keyed operations.
   stems: { mode: "clip", run: (c, a) => c.stems(str(a, "id"), (a.mode as "vocal" | "stems" | "advanced") ?? "stems") },
+  // Recovery re-signs an existing job's stored media and makes no Suno client
+  // call, so runDescribedJob() handles it directly (getJob/ensureAudio). It is
+  // registered here only so isRunnableDescriptor()/recoverJobs() treat it as
+  // durable and re-queue it after a restart instead of failing it out.
+  recovery_audio: {
+    mode: "result",
+    run: async () => {
+      throw new Error("recovery_audio is handled directly by runDescribedJob.");
+    },
+  },
 };
 
 /** True when `value` is a descriptor this build knows how to run. */
