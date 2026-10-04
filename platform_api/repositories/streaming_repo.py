@@ -19,6 +19,13 @@ ASSET_RECOVERY_ADVISORY_LOCK_ID = 730000003
 # Periodic streaming-capture health report (Telegram) last-sent row + lock.
 STREAMING_HEALTH_REPORT_SETTING_KEY = "streaming_health_report_v1"
 STREAMING_HEALTH_REPORT_ADVISORY_LOCK_ID = 730000004
+# Durable B2 backfill sweep: single-winner claim so the in-process loop runs in
+# one uvicorn worker per interval instead of all of them, plus a last-alert row
+# so a chronic sweep failure cannot page on every 15-minute pass.
+B2_BACKFILL_SWEEP_SETTING_KEY = "streaming_b2_backfill_sweep_v1"
+B2_BACKFILL_SWEEP_ADVISORY_LOCK_ID = 730000005
+B2_BACKFILL_ALERT_SETTING_KEY = "streaming_b2_backfill_alert_v1"
+B2_BACKFILL_ALERT_ADVISORY_LOCK_ID = 730000006
 
 # A web-music task is "missing the durable MP3" for a variant when Suno produced
 # an audio URL for it but no B2 copy exists and it is not marked permanently

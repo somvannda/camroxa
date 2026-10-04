@@ -204,6 +204,15 @@ export const config = {
     apiBaseUrl: process.env.CHMABA_API_BASE_URL ?? "https://pay.chmaba.com",
   },
   /**
+   * Deployment environment. The remote installer writes `MUSICAPI_ENV`
+   * (`sandbox` | `production`); local runs fall back to `NODE_ENV`. Used to keep
+   * Telegram alert delivery production-only, because sandbox and production
+   * share the same alert bot/chat and would otherwise post to the live channel.
+   */
+  environment: (process.env.MUSICAPI_ENV ?? process.env.NODE_ENV ?? "development")
+    .trim()
+    .toLowerCase(),
+  /**
    * Durable object storage for generated media (Backblaze B2 via its S3 API).
    * Reuses the platform's `PLATFORM_STREAMING_B2_*` deploy secrets by default;
    * `MUSICAPI_B2_*` wins when set, so musicapi can be pointed at its own bucket
@@ -238,4 +247,13 @@ export const config = {
 export function storageConfigured(): boolean {
   const s = config.storage;
   return Boolean(s.endpoint && s.bucket && s.keyId && s.applicationKey);
+}
+
+/**
+ * True when this process targets production. Alert delivery is production-only:
+ * sandbox and production share the same Telegram bot/chat, so sandbox must not
+ * post to the live ops channel. Local/unknown environments return false.
+ */
+export function isProduction(): boolean {
+  return config.environment === "production" || config.environment === "prod";
 }

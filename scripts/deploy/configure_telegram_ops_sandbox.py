@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
-"""Write Telegram ops bot env on sandbox, restart API, send a test ping.
+"""Write Telegram ops bot env on sandbox, restart API, optionally send a ping.
 
 Reads TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID from .deploy/secrets.sandbox.env
 (or the process environment). Never prints the token.
+
+Note: the ops feed is production-only at runtime
+(`platform_api.services.telegram_ops_alert_service`), so configuring sandbox no
+longer makes it post. The test ping is therefore opt-in: set
+SANDBOX_TELEGRAM_PING=1 to deliberately send one message to the shared channel.
 """
 
 from __future__ import annotations
@@ -93,10 +98,19 @@ echo TELEGRAM_OPS_ENV_DONE
     if code != 0:
         return code
 
+    # The runtime no longer posts from sandbox; only ping when explicitly asked
+    # so this script cannot silently spam the shared production ops channel.
+    if (os.environ.get("SANDBOX_TELEGRAM_PING") or "").strip() not in {"1", "true", "yes"}:
+        print(
+            "Sandbox Telegram ops delivery stays off (production-only runtime gate). "
+            "Set SANDBOX_TELEGRAM_PING=1 to send one test message anyway."
+        )
+        return 0
+
     payload = json.dumps(
         {
             "chat_id": chat_id,
-            "text": "✅ CAMXORA sandbox Telegram ops feed is on. Signups, payments, and every credit spend will post here. Turn off with PLATFORM_TELEGRAM_OPS_ENABLED=false.",
+            "text": "✅ CAMXORA sandbox Telegram ops feed test ping (manual).",
             "disable_web_page_preview": True,
         }
     ).encode("utf-8")

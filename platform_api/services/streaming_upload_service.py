@@ -13,7 +13,13 @@ from typing import Any
 from uuid import UUID
 
 from platform_api.models.enums import ImageKind
-from platform_api.repositories.streaming_repo import StreamingRepository
+from platform_api.repositories.streaming_repo import (
+    B2_BACKFILL_ALERT_ADVISORY_LOCK_ID,
+    B2_BACKFILL_ALERT_SETTING_KEY,
+    B2_BACKFILL_SWEEP_ADVISORY_LOCK_ID,
+    B2_BACKFILL_SWEEP_SETTING_KEY,
+    StreamingRepository,
+)
 from platform_api.services.storage_service import StorageService, StorageServiceError
 from platform_api.services.mp3_duration_header import ensure_mp3_duration_header_async
 from platform_api.services.streaming_config_service import resolve_streaming_storage_config
@@ -74,6 +80,11 @@ _ASSET_PASS_TASK_LIMIT = int(os.getenv("WEB_MUSIC_ASSET_PASS_TASK_LIMIT", "8"))
 _ASSET_WAV_MAX_PER_PASS = int(os.getenv("WEB_MUSIC_ASSET_WAV_MAX_PER_PASS", "2"))
 _ASSET_LRC_MAX_PER_PASS = int(os.getenv("WEB_MUSIC_ASSET_LRC_MAX_PER_PASS", "6"))
 _ASSET_SRT_ENABLED = os.getenv("WEB_MUSIC_ASSET_SRT_ENABLED", "1") != "0"
+
+# Durable B2 backfill sweep. The periodic loop claims a single winner per
+# interval across uvicorn workers, and the failure alert is rate-limited so a
+# chronic (often transient) companion-asset failure cannot page every pass.
+_B2_BACKFILL_ALERT_COOLDOWN_S = float(os.getenv("B2_BACKFILL_ALERT_COOLDOWN_S", "21600"))
 
 # Web-music MP3 capture. Web-music uploads do not create stream_upload_jobs rows,
 # so the desktop auto-retry cannot see them. This pass re-runs the web-music B2
@@ -2089,16 +2100,41 @@ class StreamingUploadService:
             try:
                 from platform_api.services.telegram_ops_alert_service import schedule_ops_message
 
-                schedule_ops_message(
-                    "<b>B2 backfill sweep</b>\n"
-                    f"jobs retried={stats['jobs_retried']} ok={stats['jobs_succeeded']} "
-                    f"failed={stats['jobs_failed']} permanent={stats['permanent']}\n"
-                    f"backfilled={stats['backfilled']} backfill_failed={stats['backfill_failed']} "
-                    f"wav={stats['wav_backfilled']} wav_failed={stats['wav_failed']}"
+                # Rate-limit the alert: a chronic failure (often a transient
+                # companion WAV that keeps getting retried) would otherwise page
+                # on every 15-minute sweep. Claim a single window across workers.
+                should_alert = await self._repo.claim_periodic_report(
+                    key=B2_BACKFILL_ALERT_SETTING_KEY,
+                    lock_id=B2_BACKFILL_ALERT_ADVISORY_LOCK_ID,
+                    interval_s=_B2_BACKFILL_ALERT_COOLDOWN_S,
                 )
+                if should_alert:
+                    schedule_ops_message(
+                        "<b>B2 backfill sweep</b>\n"
+                        f"jobs retried={stats['jobs_retried']} ok={stats['jobs_succeeded']} "
+                        f"failed={stats['jobs_failed']} permanent={stats['permanent']}\n"
+                        f"backfilled={stats['backfilled']} backfill_failed={stats['backfill_failed']} "
+                        f"wav={stats['wav_backfilled']} wav_failed={stats['wav_failed']}"
+                    )
             except Exception:
                 logger.warning("Could not send B2 backfill sweep alert", exc_info=True)
         return stats
+
+    async def run_backfill_sweep_periodic(self, interval_s: float) -> dict[str, Any] | None:
+        """One periodic sweep, claimed by a single uvicorn worker.
+
+        ``main`` starts the backfill loop in every worker process, so without a
+        cross-worker claim the same sweep ran (and alerted) once per worker each
+        interval. Returns ``None`` when another worker already won this window.
+        """
+        claimed = await self._repo.claim_periodic_report(
+            key=B2_BACKFILL_SWEEP_SETTING_KEY,
+            lock_id=B2_BACKFILL_SWEEP_ADVISORY_LOCK_ID,
+            interval_s=interval_s,
+        )
+        if not claimed:
+            return None
+        return await self.run_backfill_sweep()
 
 
 async def run_streaming_auto_retry_loop(pool: Any) -> None:

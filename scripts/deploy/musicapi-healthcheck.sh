@@ -16,6 +16,11 @@
 # Alert creds are resolved first-non-empty-wins from:
 #   1. ALERT_TELEGRAM_BOT_TOKEN / ALERT_TELEGRAM_CHAT_ID   (musicapi/.env)
 #   2. PLATFORM_TELEGRAM_BOT_TOKEN / PLATFORM_TELEGRAM_CHAT_ID (platform_api/.env)
+#
+# Delivery is production-only: sandbox shares the same bot/chat, so a non-prod
+# host records state and exits non-zero on failure but never pages. The target is
+# `MUSICAPI_ENV` (musicapi/.env) with `PLATFORM_ENVIRONMENT` (platform_api/.env)
+# as the fallback already present on both hosts.
 set -uo pipefail
 
 log() { echo "[musicapi-health] $*"; }
@@ -36,9 +41,17 @@ TELEGRAM_CHAT_ID="${ALERT_TELEGRAM_CHAT_ID:-$(env_key /opt/camxora/repo/musicapi
 [[ -n "${TELEGRAM_BOT_TOKEN}" ]] || TELEGRAM_BOT_TOKEN="$(env_key /opt/camxora/repo/platform_api/.env PLATFORM_TELEGRAM_BOT_TOKEN)"
 [[ -n "${TELEGRAM_CHAT_ID}" ]] || TELEGRAM_CHAT_ID="$(env_key /opt/camxora/repo/platform_api/.env PLATFORM_TELEGRAM_CHAT_ID)"
 
+DEPLOY_ENV="${MUSICAPI_ENV:-$(env_key /opt/camxora/repo/musicapi/.env MUSICAPI_ENV)}"
+[[ -n "${DEPLOY_ENV}" ]] || DEPLOY_ENV="$(env_key /opt/camxora/repo/platform_api/.env PLATFORM_ENVIRONMENT)"
+DEPLOY_ENV="$(printf '%s' "${DEPLOY_ENV}" | tr '[:upper:]' '[:lower:]')"
+
 send_alert() {
   local text="$1"
   log "ALERT: ${text}"
+  if [[ "${DEPLOY_ENV}" != "production" && "${DEPLOY_ENV}" != "prod" ]]; then
+    log "non-production environment (${DEPLOY_ENV:-unknown}); alert not delivered"
+    return 0
+  fi
   if [[ -z "${TELEGRAM_BOT_TOKEN}" || -z "${TELEGRAM_CHAT_ID}" ]]; then
     log "no Telegram creds configured; alert not delivered"
     return 0

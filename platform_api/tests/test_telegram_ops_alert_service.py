@@ -120,6 +120,23 @@ def test_install_telegram_ops_hooks_is_idempotent() -> None:
     install_telegram_ops_hooks()
 
 
+def test_get_telegram_ops_service_is_production_only(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Sandbox/staging reuse production's bot/chat, so delivery is gated."""
+    from platform_api.services import telegram_ops_alert_service as mod
+
+    monkeypatch.setenv("PLATFORM_TELEGRAM_BOT_TOKEN", "123:abc")
+    monkeypatch.setenv("PLATFORM_TELEGRAM_CHAT_ID", "-1001")
+    monkeypatch.setenv("PLATFORM_TELEGRAM_OPS_ENABLED", "true")
+
+    monkeypatch.setattr(mod, "is_production", lambda: False)
+    assert mod.get_telegram_ops_service() is None
+
+    monkeypatch.setattr(mod, "is_production", lambda: True)
+    assert mod.get_telegram_ops_service() is not None
+
+
 def test_is_stats_command() -> None:
     from platform_api.services.telegram_ops_commands import is_stats_command
 

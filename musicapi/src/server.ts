@@ -11,7 +11,7 @@ import { encryptCookie } from "./cookieCrypto.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE_ADMIN, serializeSessionCookie, serializeClearedSessionCookie, readSessionCookie } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
-import { config } from "./config.js";
+import { config, isProduction } from "./config.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
@@ -139,6 +139,17 @@ const DEFAULT_ALERTS: AlertSettings = {
   window_minutes: 60,
   queue_backlog_depth: 50,
 };
+
+/**
+ * Error written when a job still `pending`/`running`/`streaming` at process
+ * shutdown is failed out by `recoverJobs()` on the next boot. It is an
+ * operator/deploy artifact (a deploy restarts the process; the memory queue
+ * cannot re-run descriptor-less jobs), not a generation failure, so the
+ * failure-rate alert excludes it — otherwise every deploy pages ops as the
+ * interrupted jobs sit in the 60-minute window. The raw count is still recorded
+ * in `usage_logs` and shown in the user/admin dashboards.
+ */
+const RESTART_INTERRUPT_ERROR = "Interrupted by server restart.";
 
 /**
  * Normalize an operator-entered Telegram support value into an absolute https
@@ -1359,7 +1370,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         }
       }
       job.status = "error";
-      job.error = "Interrupted by server restart.";
+      job.error = RESTART_INTERRUPT_ERROR;
       await saveJob(job);
       await finalizeJob(job);
       interrupted++;
@@ -4868,13 +4879,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
 
-    // 3. Failure-rate spike over the configured sliding window.
+    // 3. Failure-rate spike over the configured sliding window. Jobs failed out
+    //    by a deploy/restart (`recoverJobs` -> "Interrupted by server restart.")
+    //    are excluded: they are operator-caused, not generation failures, and
+    //    would otherwise page ops after every deploy as they sit in the window.
+    //    The raw rows still land in `usage_logs` and the user/admin dashboards.
     const row = await queryOne<{ total: string; failed: string }>(
       `SELECT count(*)::text AS total,
-              count(*) FILTER (WHERE status <> 'complete')::text AS failed
-       FROM usage_logs
-       WHERE created_at > now() - ($1 || ' minutes')::interval`,
-      [String(thresholds.window_minutes)],
+              count(*) FILTER (
+                WHERE ul.status <> 'complete'
+                  AND NOT EXISTS (
+                    SELECT 1 FROM jobs j
+                    WHERE j.id::text = ul.task_id
+                      AND j.status = 'error'
+                      AND j.error = $2
+                  )
+              )::text AS failed
+       FROM usage_logs ul
+       WHERE ul.created_at > now() - ($1 || ' minutes')::interval`,
+      [String(thresholds.window_minutes), RESTART_INTERRUPT_ERROR],
     );
     const total = Number(row?.total ?? 0);
     const failed = Number(row?.failed ?? 0);
@@ -4884,14 +4907,47 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const rate = total > 0 ? failed / total : 0;
       summary.failure_rate = rate;
       if (rate >= thresholds.failure_rate_threshold) {
+        // Surface the dominant error text so an operator can act on the page
+        // without digging through the DB. Terminal errors live on the `jobs`
+        // row; queried only when this alert actually fires.
+        let topReasons: Array<{ reason: string; count: number }> = [];
+        try {
+          const reasonRows = await query<{ reason: string; count: string }>(
+            `SELECT COALESCE(NULLIF(left(error, 160), ''), 'unknown') AS reason,
+                    count(*)::text AS count
+             FROM jobs
+             WHERE status = 'error'
+               AND error <> $2
+               AND updated_at > now() - ($1 || ' minutes')::interval
+             GROUP BY 1 ORDER BY count(*) DESC LIMIT 3`,
+            [String(thresholds.window_minutes), RESTART_INTERRUPT_ERROR],
+          );
+          topReasons = reasonRows.map((r) => ({
+            reason: r.reason.replace(/\s+/g, " ").trim(),
+            count: Number(r.count),
+          }));
+        } catch (err) {
+          app.log.warn({ err }, "failure-rate reason lookup failed");
+        }
+        const reasonSuffix = topReasons.length
+          ? ` Top causes: ${topReasons.map((r) => `${r.reason} (${r.count})`).join("; ")}.`
+          : "";
         alerts.push({
           id: "failure_rate",
           type: "failure_rate",
           severity: rate >= 0.5 ? "critical" : "warning",
-          message: `Job failure rate ${(rate * 100).toFixed(1)}% over the last ${
-            thresholds.window_minutes
-          } min (${failed}/${total}), above the ${(thresholds.failure_rate_threshold * 100).toFixed(1)}% threshold.`,
-          details: { rate, failed, total, window_minutes: thresholds.window_minutes },
+          message:
+            `Job failure rate ${(rate * 100).toFixed(1)}% over the last ${
+              thresholds.window_minutes
+            } min (${failed}/${total}), above the ${(thresholds.failure_rate_threshold * 100).toFixed(1)}% threshold.` +
+            reasonSuffix,
+          details: {
+            rate,
+            failed,
+            total,
+            window_minutes: thresholds.window_minutes,
+            top_reasons: topReasons,
+          },
         });
       }
     }
@@ -4914,6 +4970,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   /** Deliver one Telegram message; false when creds are unset or delivery fails. */
   async function sendTelegram(text: string): Promise<boolean> {
+    // Production-only. Sandbox and production share the same alert bot/chat, so
+    // delivering from a non-production process would spam the live ops channel.
+    if (!isProduction()) {
+      app.log.debug(
+        { environment: config.environment },
+        "telegram alert delivery skipped (non-production)",
+      );
+      return false;
+    }
     const { telegramBotToken, telegramChatId } = config.alerts;
     if (!telegramBotToken || !telegramChatId) return false;
     try {
@@ -4936,22 +5001,26 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   /**
    * Diff a fresh report against the last notified state and push only the
-   * differences: one message per newly-raised or changed alert, one per alert
-   * that has since cleared. Keeps the channel quiet while nothing changes.
+   * differences: one message per newly-raised alert, one per alert whose
+   * severity changed, and one per alert that has since cleared. Dedupe on
+   * `type|severity` — not the message body, whose live numbers (`304/403`, a
+   * dropping rate, account balances) change every evaluation. Keying on the body
+   * re-paged an ongoing incident every check interval.
    */
   async function syncAlertState(report: AlertReport): Promise<void> {
     const current = new Map<string, string>();
-    for (const a of report.alerts) current.set(a.id, `${a.severity}|${a.message}`);
+    for (const a of report.alerts) current.set(a.id, a.severity);
+    const scope = `Camxora Music API (${config.environment})`;
     for (const alert of report.alerts) {
       if (alertState.get(alert.id) !== current.get(alert.id)) {
-        if (await sendTelegram(`[ALERT] Camxora Music API — ${alert.type}\n${alert.message}`)) {
+        if (await sendTelegram(`[ALERT] ${scope} — ${alert.type}\n${alert.message}`)) {
           app.log.warn({ alert: alert.id }, "alert notification sent");
         }
       }
     }
     for (const id of [...alertState.keys()]) {
       if (!current.has(id)) {
-        if (await sendTelegram(`[RESOLVED] Camxora Music API — ${id} cleared.`)) {
+        if (await sendTelegram(`[RESOLVED] ${scope} — ${id} cleared.`)) {
           app.log.info({ alert: id }, "alert recovery notification sent");
         }
       }
