@@ -112,10 +112,10 @@ async function main() {
   if (!packs.rows.length) {
     await pool.query(
       `INSERT INTO credit_packs (amount, price, currency) VALUES
+         (1000, 5, 'USD'),
          (2500, 10, 'USD'),
-         (10000, 30, 'USD'),
-         (20000, 60, 'USD'),
-         (35000, 100, 'USD')`,
+         (5800, 20, 'USD'),
+         (9000, 30, 'USD')`,
     );
   }
 

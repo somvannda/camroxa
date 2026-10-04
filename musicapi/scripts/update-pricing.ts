@@ -74,10 +74,10 @@ async function main() {
   // transactions keep their pack_id via ON DELETE SET NULL.
   await pool.query("DELETE FROM credit_packs");
   await pool.query(
-    "INSERT INTO credit_packs (amount, price, currency) VALUES (2500, 10, 'USD'), (10000, 30, 'USD'), (20000, 60, 'USD'), (35000, 100, 'USD')",
+    "INSERT INTO credit_packs (amount, price, currency) VALUES (1000, 5, 'USD'), (2500, 10, 'USD'), (5800, 20, 'USD'), (9000, 30, 'USD')",
   );
   console.log(
-    `Pricing upserted: ${PRICING.length} endpoints to the production snapshot (music=10). Packs $10/2.5k, $30/10k, $60/20k, $100/35k.`,
+    `Pricing upserted: ${PRICING.length} endpoints to the production snapshot (music=10). Packs $5/1k, $10/2.5k, $20/5.8k, $30/9k.`,
   );
   await pool.end();
 }
