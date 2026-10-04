@@ -1,0 +1,22 @@
+[Unit]
+Description=CamXora Music API — LRC (faster-whisper lyric alignment) microservice
+After=network.target
+
+[Service]
+User=camxora
+Group=camxora
+WorkingDirectory=/opt/camxora/lrc-service
+Environment=TZ=Asia/Phnom_Penh
+Environment=LRC_PORT=4011
+Environment=HF_HOME=/opt/camxora/lrc-service/models
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/opt/camxora/lrc-service/.venv/bin/python /opt/camxora/lrc-service/server.py
+Restart=always
+RestartSec=5
+# Model load (or first-run download) can take a while on a cold host.
+TimeoutStartSec=300
+MemoryMax=3G
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target
