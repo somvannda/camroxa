@@ -10,6 +10,8 @@ export interface AccountHealth {
   credits: number;
   models: string[];
   plan: string;
+  /** `billing/info.accessible_features` names (e.g. "studio", "persona"). */
+  features: string[];
   /**
    * The raw Suno model entries (usable ones only) that `models` was derived
    * from. Kept so the catalog endpoint can report names/versions without a
@@ -187,6 +189,7 @@ export class AccountPool {
       credits: info.total_credits_left ?? 0,
       models: usable.map((m) => m.external_key ?? "").filter(Boolean),
       plan: typeof subType === "string" ? subType : subType ? "paid" : "free",
+      features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
     this.health.set(client.account.id, { info: health, updatedAt: Date.now() });
@@ -249,6 +252,51 @@ export class AccountPool {
     }
     if (fallback) return fallback;
     throw new Error(lastError);
+  }
+
+  /**
+   * Pick a healthy account that advertises a capability, falling back to the
+   * generic pick when none does. Used for features only some plans have — e.g.
+   * custom Voice needs a Premier account (`studio`).
+   */
+  async pickFeature(feature: string, model?: string, policy: RoutingPolicy = "any"): Promise<SunoClient> {
+    const want = normalizeModel(model);
+    for (const client of this.clients) {
+      if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
+      try {
+        const health = await this.healthFor(client);
+        if (health.credits <= 0 || !health.features.includes(feature)) continue;
+        if (want && health.models.length && !health.models.includes(want)) continue;
+        return client;
+      } catch {
+        /* try the next account */
+      }
+    }
+    return this.pick(model, policy);
+  }
+
+  /** Feature-aware `pickExcept` for retries across accounts. */
+  async pickFeatureExcept(
+    feature: string,
+    excludeIds: string[],
+    model?: string,
+    policy: RoutingPolicy = "any",
+  ): Promise<SunoClient> {
+    const exclude = new Set(excludeIds);
+    const want = normalizeModel(model);
+    for (const client of this.clients) {
+      if (exclude.has(client.account.id)) continue;
+      if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
+      try {
+        const health = await this.healthFor(client);
+        if (health.credits <= 0 || !health.features.includes(feature)) continue;
+        if (want && health.models.length && !health.models.includes(want)) continue;
+        return client;
+      } catch {
+        /* try the next account */
+      }
+    }
+    return this.pickExcept(excludeIds, model, policy);
   }
 
   /** Return the client for a specific account id, or null when not pooled. */

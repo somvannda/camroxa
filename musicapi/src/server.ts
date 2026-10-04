@@ -1985,7 +1985,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           "Source voice recording is unavailable — the source must be extracted on a Voice-entitled (Premier) account.",
         );
       }
-      const client = await pool.pick();
+      const client = await pool.pickFeature("studio");
       const resp = await fetch(params.verifyUrl, { signal: AbortSignal.timeout(60_000) });
       if (!resp.ok) throw new Error(`Could not download verifyUrl (${resp.status}).`);
       const verificationRecordingId = await client.uploadForVoice(Buffer.from(await resp.arrayBuffer()));
@@ -2025,6 +2025,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   interface RetryOptions {
     model?: string;
     policy?: RoutingPolicy;
+    /** Prefer an account advertising this capability (e.g. "studio" for Voice). */
+    needFeature?: string;
   }
 
   // Detached job workers run outside any request lifecycle. Track them so
@@ -2106,7 +2108,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
-        client = await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
+        client = options?.needFeature
+          ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any")
+          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
         break;
@@ -2164,7 +2168,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
-        client = await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
+        client = options?.needFeature
+          ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any")
+          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any");
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
         break;
@@ -3060,7 +3066,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "voice_validate";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }), {
+      needFeature: "studio",
+    });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6308,7 +6316,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "voice_validate";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }), {
+      needFeature: "studio",
+    });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -7700,7 +7710,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("voice_validate", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "voice_validate"; job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }), {
+      needFeature: "studio",
+    });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 

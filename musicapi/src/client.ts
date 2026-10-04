@@ -71,6 +71,7 @@ export interface Clip {
 export interface BillingInfo {
   total_credits_left?: number;
   subscription_type?: string;
+  accessible_features?: Array<{ name?: string }>;
   models?: Array<{
     name?: string;
     external_key?: string;
