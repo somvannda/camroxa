@@ -4884,14 +4884,46 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const rate = total > 0 ? failed / total : 0;
       summary.failure_rate = rate;
       if (rate >= thresholds.failure_rate_threshold) {
+        // Surface the dominant error text so an operator can act on the page
+        // without digging through the DB. Terminal errors live on the `jobs`
+        // row; queried only when this alert actually fires.
+        let topReasons: Array<{ reason: string; count: number }> = [];
+        try {
+          const reasonRows = await query<{ reason: string; count: string }>(
+            `SELECT COALESCE(NULLIF(left(error, 160), ''), 'unknown') AS reason,
+                    count(*)::text AS count
+             FROM jobs
+             WHERE status = 'error'
+               AND updated_at > now() - ($1 || ' minutes')::interval
+             GROUP BY 1 ORDER BY count(*) DESC LIMIT 3`,
+            [String(thresholds.window_minutes)],
+          );
+          topReasons = reasonRows.map((r) => ({
+            reason: r.reason.replace(/\s+/g, " ").trim(),
+            count: Number(r.count),
+          }));
+        } catch (err) {
+          app.log.warn({ err }, "failure-rate reason lookup failed");
+        }
+        const reasonSuffix = topReasons.length
+          ? ` Top causes: ${topReasons.map((r) => `${r.reason} (${r.count})`).join("; ")}.`
+          : "";
         alerts.push({
           id: "failure_rate",
           type: "failure_rate",
           severity: rate >= 0.5 ? "critical" : "warning",
-          message: `Job failure rate ${(rate * 100).toFixed(1)}% over the last ${
-            thresholds.window_minutes
-          } min (${failed}/${total}), above the ${(thresholds.failure_rate_threshold * 100).toFixed(1)}% threshold.`,
-          details: { rate, failed, total, window_minutes: thresholds.window_minutes },
+          message:
+            `Job failure rate ${(rate * 100).toFixed(1)}% over the last ${
+              thresholds.window_minutes
+            } min (${failed}/${total}), above the ${(thresholds.failure_rate_threshold * 100).toFixed(1)}% threshold.` +
+            reasonSuffix,
+          details: {
+            rate,
+            failed,
+            total,
+            window_minutes: thresholds.window_minutes,
+            top_reasons: topReasons,
+          },
         });
       }
     }
