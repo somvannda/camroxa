@@ -158,8 +158,15 @@ def test_server_prompt_defaults_override_stale_local_prefs(qapp: QApplication, t
     assert view._automation_card.selected_mood_id() == "mood-1"
 
 
-def test_prompt_selection_override_survives_page_revisit(qapp: QApplication) -> None:
+def test_prompt_selection_override_survives_page_revisit(
+    qapp: QApplication, tmp_path, monkeypatch
+) -> None:
     from dataclasses import replace
+
+    # Hermetic: this test's desc-2 must not depend on / leak into the real
+    # on-disk workspace prefs (or a valid stale id would be restored).
+    monkeypatch.setattr("shared.lib.app_paths.get_user_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("shared.services.local_user_scope.get_user_data_dir", lambda: tmp_path)
 
     payload = replace(
         _payload(),
@@ -201,6 +208,59 @@ def test_prompt_selection_override_survives_page_revisit(qapp: QApplication) -> 
     assert view._automation_card.selected_mood_id() == "mood-2"
 
     view.deactivate_page()
+    view.activate_page()
+    view._on_loaded(payload)
+
+    assert view._automation_card.selected_description_id() == "desc-2"
+    assert view._automation_card.selected_structure_id() == "struct-2"
+    assert view._automation_card.selected_mood_id() == "mood-2"
+
+
+def test_valid_local_prompt_selection_is_restored(
+    qapp: QApplication, tmp_path, monkeypatch
+) -> None:
+    """A still-valid last-session selection beats the server default on reload."""
+    from dataclasses import replace
+
+    from features.music.services.music_local_store import MusicLocalStore, MusicWorkspacePrefs
+
+    monkeypatch.setattr("shared.lib.app_paths.get_user_data_dir", lambda: tmp_path)
+    monkeypatch.setattr("shared.services.local_user_scope.get_user_data_dir", lambda: tmp_path)
+
+    MusicLocalStore().write_workspace_prefs(
+        MusicWorkspacePrefs(
+            selected_description_id="desc-2",
+            selected_structure_id="struct-2",
+            selected_mood_id="mood-2",
+        )
+    )
+
+    payload = replace(
+        _payload(),
+        description_options=[
+            PromptNameOption(id="desc-1", name="Cinematic Pop"),
+            PromptNameOption(id="desc-2", name="EDM Workout"),
+        ],
+        structure_options=[
+            PromptNameOption(id="struct-1", name="Verse Chorus Bridge"),
+            PromptNameOption(id="struct-2", name="Workout Gym"),
+        ],
+        mood_options=[
+            PromptNameOption(id="mood-1", name="Hopeful Dawn"),
+            PromptNameOption(id="mood-2", name="Bittersweet Night"),
+        ],
+        settings=UserSettingsResponse.model_validate(
+            {
+                "imageSourceMode": "ai",
+                "defaultSongCount": 4,
+                "defaultDescriptionId": "desc-1",
+                "defaultStructureId": "struct-1",
+                "defaultMoodId": "mood-1",
+            }
+        ),
+    )
+
+    view = MusicView(PlatformApi())
     view.activate_page()
     view._on_loaded(payload)
 
