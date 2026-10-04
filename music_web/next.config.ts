@@ -19,6 +19,16 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    // Local dev only: the browser calls same-origin /api/v3/* and production
+    // routes it to the Platform API via the host/proxy. When running `next dev`
+    // standalone there is no proxy, so forward to the local API instead.
+    if (process.env.NODE_ENV !== 'development') return [];
+    const backend = (process.env.PLATFORM_API_URL || 'http://localhost:8000').replace(/\/$/, '');
+    return [
+      { source: '/api/v3/:path*', destination: `${backend}/api/v3/:path*` },
+    ];
+  },
 };
 
 export default nextConfig;
