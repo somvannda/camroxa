@@ -695,6 +695,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     key.credits_expire_at = null;
   }
 
+  /**
+   * The user's spendable balance, pooled across all their active keys (matching
+   * how charges fall back across keys). Returns the earliest expiry among funded
+   * keys so clients can show when the balance lapses.
+   */
+  async function accountCredits(userId: string): Promise<{ credits: number; credits_expire_at: string | null }> {
+    const row = await queryOne<{ credits: string; expires: string | null }>(
+      `SELECT COALESCE(sum(credits), 0)::text AS credits,
+              min(credits_expire_at) FILTER (WHERE credits > 0 AND credits_expire_at IS NOT NULL) AS expires
+       FROM api_keys WHERE user_id = $1 AND is_active = true`,
+      [userId],
+    );
+    return { credits: Number(row?.credits ?? 0), credits_expire_at: row?.expires ?? null };
+  }
+
   async function requireKey(req: FastifyRequest, reply: FastifyReply): Promise<DbApiKey | null> {
     const auth = req.headers.authorization ?? "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
@@ -1366,6 +1381,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   // --- background workers --------------------------------------------------
   async function finalizeJob(job: Job): Promise<void> {
+    // Durable delivery FIRST: copy finished media into B2 and rewrite the result
+    // to stable URLs, so a job only becomes "complete" once playable audio is
+    // actually available. Best-effort: a storage failure must not lose the job
+    // (the response then exposes an empty audio_url rather than an unplayable one).
+    if (job.status === "complete" && storageConfigured()) {
+      try {
+        await ingestMedia(job);
+      } catch (e) {
+        console.error("[storage] ingest failed:", e instanceof Error ? e.message : e);
+      }
+    }
     await saveJob(job);
     // Log every user-attributed job, not only key-charged ones: free endpoints
     // reached from the session UI (and any priced-at-0 row) carry a userId but
@@ -1386,13 +1412,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       });
     }
     await notify(job);
-
-    // Durable delivery: copy the finished media into object storage and rewrite
-    // the result to stable URLs. Detached and best-effort so a slow/failed copy
-    // never delays the terminal state the client is polling for.
-    if (job.status === "complete" && storageConfigured()) {
-      trackJob(ingestMedia(job));
-    }
   }
 
   /**
@@ -5071,7 +5090,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get("/v1/credits", async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;
-    return { name: key.name, credits: key.credits, credits_expire_at: key.credits_expire_at };
+    const bal = await accountCredits(key.user_id);
+    return { name: key.name, credits: bal.credits, credits_expire_at: bal.credits_expire_at };
   });
 
   app.post("/v1/lyrics", async (req, reply) => {
@@ -5806,13 +5826,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get(`${PREFIX}/get-credits`, async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;
-    return { code: 200, msg: "success", data: { credits: key.credits, name: key.name, credits_expire_at: key.credits_expire_at } };
+    const bal = await accountCredits(key.user_id);
+    return { code: 200, msg: "success", data: { credits: bal.credits, name: key.name, credits_expire_at: bal.credits_expire_at } };
   });
   // Alias: /v1/get-credits so both work
   app.get(`/v1/get-credits`, async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;
-    return { code: 200, msg: "success", data: { credits: key.credits, name: key.name, credits_expire_at: key.credits_expire_at } };
+    const bal = await accountCredits(key.user_id);
+    return { code: 200, msg: "success", data: { credits: bal.credits, name: key.name, credits_expire_at: bal.credits_expire_at } };
   });
 
   // POST /api/v1/generate -> /v1/music (with payload translation)
@@ -5953,20 +5975,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
             track.imageUrl = url;
           }
         }
-        // Suno puts a non-playable ".../api/forbidden" placeholder in `audio_url`
-        // for uncached clips; the progressive CDN `media_urls[].url` is the real,
-        // fetchable link sunoapi.org consumers expect.
-        const media = Array.isArray(track.media_urls)
-          ? (track.media_urls as Array<{ url?: string; delivery?: string }>)
-          : [];
-        const progressive = media.find((m) => m?.delivery === "progressive") ?? media[0];
-        const playable = progressive?.url;
-        if (typeof playable === "string") {
-          const bad = (v: unknown) => !v || /forbidden|undefined|null/i.test(String(v));
-          if (bad(track.audio_url)) { track.audio_url = playable; track.audioUrl = playable; }
-          if (bad(track.stream_audio_url)) { track.stream_audio_url = playable; track.streamAudioUrl = playable; }
-          if (bad(track.source_audio_url)) { track.source_audio_url = playable; track.sourceAudioUrl = playable; }
-        }
+        // Never hand back Suno's progressive CDN URL as `audio_url`: it is
+        // DRM-encrypted (unplayable). A completed clip already has a durable B2
+        // copy from ingest above; if it somehow doesn't, expose an empty field so
+        // clients know it isn't ready instead of a 200 that won't play.
+        const bad = (v: unknown) => !v || /forbidden|undefined|null/i.test(String(v));
+        if (bad(track.audio_url)) { track.audio_url = ""; track.audioUrl = ""; }
+        if (bad(track.stream_audio_url)) { track.stream_audio_url = ""; track.streamAudioUrl = ""; }
+        if (bad(track.source_audio_url)) { track.source_audio_url = ""; track.sourceAudioUrl = ""; }
         return track;
       }),
     );
