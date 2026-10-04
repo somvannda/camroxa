@@ -850,10 +850,10 @@ curl -X POST "https://musicapi.camxora.com/api/v1/generate" \\
                 </thead>
                 <tbody>
                   {[
-                    ["$10", "3,500", "$0.00286"],
-                    ["$30", "11,000", "$0.00273"],
-                    ["$60", "23,000", "$0.00261"],
-                    ["$100", "40,000", "$0.00250"],
+                    ["$10", "2,500", "$0.00400"],
+                    ["$30", "10,000", "$0.00300"],
+                    ["$60", "20,000", "$0.00300"],
+                    ["$100", "33,000", "$0.00303"],
                   ].map(([p, c, r]) => (
                     <tr key={p} className="border-t border-[var(--border)]">
                       <td className="px-3 py-2 text-white">{p}</td>
@@ -876,7 +876,7 @@ curl -X POST "https://musicapi.camxora.com/api/v1/generate" \\
                 </thead>
                 <tbody>
                   {[
-                    ["Generate, extend, cover, remaster, mashup, add vocals/instrumental, upload cover/extend, recovery audio, voice generate/apply/extend", "17"],
+                    ["Generate, extend, cover, remaster, mashup, add vocals/instrumental, upload cover/extend, recovery audio, voice generate/apply/extend", "10"],
                     ["Split stems — 12-track (vocal-removal type split_stem)", "20"],
                     ["Advanced split stem", "12"],
                     ["Replace section", "9"],
