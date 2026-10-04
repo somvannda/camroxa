@@ -1386,11 +1386,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // actually available. Best-effort: a storage failure must not lose the job
     // (the response then exposes an empty audio_url rather than an unplayable one).
     if (job.status === "complete" && storageConfigured()) {
+      // Gate the terminal state on durable media: while we decrypt + copy to B2,
+      // keep reporting the job as still-running so a poll never receives an empty
+      // audio_url; it flips to "complete" only once the B2 copy exists.
+      job.status = "running";
       try {
         await ingestMedia(job);
       } catch (e) {
         console.error("[storage] ingest failed:", e instanceof Error ? e.message : e);
       }
+      job.status = "complete";
     }
     await saveJob(job);
     // Log every user-attributed job, not only key-charged ones: free endpoints
