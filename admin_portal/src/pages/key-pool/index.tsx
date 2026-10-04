@@ -13,7 +13,7 @@ const PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'kie', '
 type Provider = (typeof PROVIDERS)[number];
 
 const PROVIDER_LABELS: Record<Provider, string> = {
-  suno: 'Suno',
+  suno: 'Camxora Pool Key',
   fal: 'FAL',
   openai: 'OpenAI',
   deepseek: 'DeepSeek',

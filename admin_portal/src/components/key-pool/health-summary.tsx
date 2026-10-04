@@ -15,7 +15,7 @@ const PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'kie', '
 const DASHBOARD_ROW_PROVIDERS = ['suno', 'fal', 'openai', 'deepseek', 'slai', 'cala', 'kie'] as const;
 
 const PROVIDER_LABELS: Record<string, string> = {
-  suno: 'Suno',
+  suno: 'Camxora Pool Key',
   fal: 'FAL',
   openai: 'OpenAI',
   deepseek: 'DeepSeek',

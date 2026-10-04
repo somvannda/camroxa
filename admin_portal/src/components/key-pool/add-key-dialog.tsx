@@ -23,6 +23,7 @@ import {
   FormDescription,
 } from '@/components/ui/form';
 import { useAddKey } from '@/hooks/use-key-pool';
+import { formatProviderLabel } from '@/lib/usage-labels';
 import { UPSTREAM_HOST_PRESETS } from '@/types/key-pool';
 
 const addKeySchema = z.object({
@@ -96,7 +97,7 @@ export function AddKeyDialog({ provider, open, onOpenChange }: AddKeyDialogProps
         <DialogHeader>
           <DialogTitle>Add API Key</DialogTitle>
           <DialogDescription>
-            Add a new API key to the {provider} pool.
+            Add a new API key to the {formatProviderLabel(provider)} pool.
           </DialogDescription>
         </DialogHeader>
 
