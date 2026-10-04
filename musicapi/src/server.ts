@@ -16,7 +16,7 @@ import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
-import { normalizeModel } from "./models.js";
+import { defaultRoutingPolicy, normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
 import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
@@ -1086,20 +1086,23 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return row?.credit_cost ?? DEFAULT_COSTS[endpoint] ?? 9;
   }
 
-  /** Routing policy for a model: admin override from `routing_rules`, else defaults. */
+  /**
+   * Routing policy for a model: an admin override from `routing_rules` (keyed
+   * on the normalised model so retired aliases still match), else the built-in
+   * default — chirp-goose prefers free accounts, every other model is paid-only.
+   */
   async function routingPolicy(model?: string): Promise<"prefer_free" | "paid_only" | "any"> {
-    if (model) {
+    const want = normalizeModel(model);
+    if (want) {
       const row = await queryOne<{ policy: string }>(
         "SELECT policy FROM routing_rules WHERE model = $1 LIMIT 1",
-        [model],
+        [want],
       );
       if (row?.policy === "prefer_free" || row?.policy === "paid_only" || row?.policy === "any") {
         return row.policy;
       }
     }
-    if (model === "chirp-auk-turbo") return "prefer_free";
-    if (model === "chirp-crow" || model === "chirp-fenix") return "paid_only";
-    return "any";
+    return defaultRoutingPolicy(want);
   }
 
   function requireAuth(req: FastifyRequest, reply: FastifyReply): UserPayload | null {
@@ -4047,7 +4050,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.credits = cost;
       if (body.prompt) job.prompt = body.prompt as string;
       if (model) job.model = model;
-      const policy = model ? await routingPolicy(model) : "any";
+      const policy = await routingPolicy(model);
       void runClipJobWithRetry(job, makeSubmit(body), { model, policy });
       return reply.code(202).send({ job_id: job.id, status: job.status });
     });
@@ -6493,7 +6496,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.endpoint = "voice_apply";
     job.credits = cost;
     job.prompt = (body.prompt as string) || undefined;
-    const vpolicy = model ? await routingPolicy(model) : "any";
+    const vpolicy = await routingPolicy(model);
     void runClipJobWithRetry(
       job,
       (client) =>

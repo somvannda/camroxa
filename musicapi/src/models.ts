@@ -59,3 +59,19 @@ export function normalizeModel(model?: string | null): string | undefined {
   if (!key) return undefined;
   return MODEL_ALIASES[key.toLowerCase().replace(/_/g, "-")] ?? key;
 }
+
+/**
+ * Default account-routing policy for a model when no `routing_rules` row
+ * overrides it.
+ *
+ * `chirp-goose` (V6-Mini) is the free-tier model, so it runs on free accounts
+ * first — falling back to a paid account only when none is available. Every
+ * other model is premium and must use a paid account. The model is normalised
+ * first so retired keys that fold onto chirp-goose (`v6-mini`, `v3-5`, …) route
+ * the same as the canonical key. Pure so it can be unit-tested without a pool.
+ */
+export function defaultRoutingPolicy(
+  model?: string | null,
+): "prefer_free" | "paid_only" {
+  return normalizeModel(model) === "chirp-goose" ? "prefer_free" : "paid_only";
+}
