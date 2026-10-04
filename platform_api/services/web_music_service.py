@@ -2327,14 +2327,29 @@ class WebMusicService:
         wav_url = str(_row_value(row, "wav_url") or "").strip()
         wav_status = str(_row_value(row, "wav_status") or "pending").strip().lower()
         if wav_status == "failed":
+            # The recorded conversion is terminal — its upstream job already
+            # errored (e.g. the bundled ffmpeg-static binary was missing) — so
+            # re-polling the same wav_task_id can never succeed. Drop it and
+            # submit a fresh conversion instead of being stuck on the dead job.
             logger.info(
-                "Retrying web music WAV conversion task=%s variant=%s existing_task=%s",
+                "Re-submitting web music WAV conversion task=%s variant=%s stale_task=%s",
                 task_id,
                 variant_key,
                 wav_task_id or "-",
             )
+            await self._pool.execute(
+                f"""
+                UPDATE suno_tasks
+                SET {wav_task_id_col} = NULL,
+                    {wav_url_col} = NULL,
+                    {wav_status_col} = 'pending'
+                WHERE id = $1
+                """,
+                task_id,
+            )
+            wav_task_id = ""
+            wav_url = ""
             wav_status = "pending"
-            # Keep wav_task_id so we re-poll instead of submitting a duplicate job.
 
         if not wav_task_id:
             audio_id = str(_row_value(row, "audio_id") or "").strip()

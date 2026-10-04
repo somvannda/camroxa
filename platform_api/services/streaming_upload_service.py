@@ -1014,6 +1014,7 @@ class StreamingUploadService:
             
             wav_task_id_col = "wav_task_id_ok" if variant == "ok" else "wav_task_id_alt"
             wav_url_col = "wav_url_ok" if variant == "ok" else "wav_url_alt"
+            wav_status_col = "wav_status_ok" if variant == "ok" else "wav_status_alt"
             audio_id = context.get(f"audio_id_{variant}") or ""
             external_task_id = str(context.get("external_task_id") or "").strip()
             
@@ -1024,7 +1025,8 @@ class StreamingUploadService:
             # Check if WAV conversion already started
             row = await self._pool.fetchrow(
                 f"""
-                SELECT {wav_task_id_col} as wav_task_id, {wav_url_col} as wav_url
+                SELECT {wav_task_id_col} as wav_task_id, {wav_url_col} as wav_url,
+                       {wav_status_col} as wav_status
                 FROM suno_tasks
                 WHERE id = $1
                 """,
@@ -1033,6 +1035,23 @@ class StreamingUploadService:
             
             wav_task_id = row.get("wav_task_id") if row else None
             wav_url = row.get("wav_url") if row else None
+            wav_status = str((row.get("wav_status") if row else "") or "").strip().lower()
+            if wav_status == "failed" and wav_task_id:
+                # Terminal upstream failure: the stored task id can never
+                # resolve, so clear it and let the submit path below create a
+                # fresh conversion rather than re-polling a dead job forever.
+                logger.info(
+                    "Resetting failed WAV conversion for task=%s variant=%s stale_task=%s",
+                    suno_task_id,
+                    variant,
+                    wav_task_id,
+                )
+                await self._pool.execute(
+                    f"UPDATE suno_tasks SET {wav_task_id_col} = NULL, {wav_url_col} = NULL WHERE id = $1",
+                    suno_task_id,
+                )
+                wav_task_id = None
+                wav_url = None
             suno = _suno_client_from_env()
             
             # Submit WAV conversion if not started

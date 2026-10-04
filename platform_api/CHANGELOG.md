@@ -7,6 +7,25 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-04] — B2 sweep WAV terminal-failure handling
+
+### Fixed
+
+- The durable B2 backfill sweep re-counted (and re-paged on) web-music WAV
+  variants already marked `wav_status_* = 'failed'` — a terminal upstream
+  conversion failure — because `list_web_music_tasks_missing_wav` ignored
+  `wav_status`. It now excludes failed variants, matching the asset-recovery
+  eligibility check. The recurring `B2 backfill sweep … wav_failed=2` page came
+  from one task whose two WAV conversions failed with
+  `spawn …/ffmpeg-static/ffmpeg ENOENT/EACCES` on the musicapi host.
+- Retrying a WAV download for a task with a terminal failure now drops the dead
+  `wav_task_id_*` and submits a fresh conversion instead of re-polling the
+  errored upstream job forever (`web_music_service._download_wav_inner`,
+  `streaming_upload_service._upload_web_music_wav`).
+- `scripts/deploy/camxora-musicapi-remote.sh` now verifies the bundled
+  `ffmpeg-static` binary after `npm ci` (`chmod +x`, fail the deploy if it is
+  missing). See `docs/changelog/2026-10-04-b2-wav-terminal-failure-recovery.md`.
+
 ## [2026-10-02] — SLAI image model `cx/gpt-image-2.5`
 
 ### Changed
