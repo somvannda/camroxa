@@ -606,25 +606,35 @@ export class SunoClient {
     });
     if (!stemRes.ok) throw new Error(`vox-stem failed (${stemRes.status}): ${await stemRes.text()}`);
     const stem = (await stemRes.json()) as { id?: string };
-    const res = await this.request("/api/persona/create/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        root_clip_id: clipId,
-        name,
-        description,
-        is_public: true,
-        persona_type: "vox",
-        vox_audio_id: stem.id,
-        vocal_start_s: vocalStartS,
-        vocal_end_s: vocalEndS,
-        user_input_styles: styles ?? "",
-        clips: [clipId],
-        token,
-      }),
-    });
-    if (!res.ok) throw new Error(`persona/create failed (${res.status}): ${await res.text()}`);
-    return res.json();
+    // /api/clip/{id}/vox-stem returns {status:"submitted"} and processes
+    // asynchronously; persona/create answers "Vocal audio is still processing"
+    // until it is ready. Retry with backoff rather than guessing a fixed delay.
+    let lastErr = "persona/create failed";
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const res = await this.request("/api/persona/create/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          root_clip_id: clipId,
+          name,
+          description,
+          is_public: true,
+          persona_type: "vox",
+          vox_audio_id: stem.id,
+          vocal_start_s: vocalStartS,
+          vocal_end_s: vocalEndS,
+          user_input_styles: styles ?? "",
+          clips: [clipId],
+          token,
+        }),
+      });
+      if (res.ok) return res.json();
+      const text = await res.text();
+      lastErr = `persona/create failed (${res.status}): ${text}`;
+      if (!/still processing|processing/i.test(text) || attempt === 7) break;
+      await new Promise((r) => setTimeout(r, 5000));
+    }
+    throw new Error(lastErr);
   }
 
   /** Generate cover art for a clip. */
@@ -1151,37 +1161,24 @@ export class SunoClient {
   // Suno Voice 6 operations (phrase / validate / record / generate / apply + 1 more for 6)
   // =========================================
 
-  /** Voice op 1: phrase — generate a reference prompt for voice cloning. */
-  async voicePhrase(prompt: string): Promise<{ phrase: string }> {
-    const token = await this.ensureCaptchaToken();
-    const res = await this.request("/api/persona/phrase/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ prompt, token }),
-    });
-    if (!res.ok) {
-      throw new Error(`voicePhrase failed (${res.status}): ${await res.text()}`);
-    }
-    return (await res.json()) as { phrase: string };
+  /** Voice op 1: phrase — fetch the validation phrase the user must record. */
+  async voicePhrase(_prompt?: string): Promise<{ phrase_id: string; phrase_text: string }> {
+    const res = await this.request("/api/voice-verification/phrase", { method: "GET" });
+    if (!res.ok) throw new Error(`voice phrase failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as { phrase_id: string; phrase_text: string };
   }
 
-  /** Voice op 2: validate — check if a voice sample / URL passes validation. */
-  async voiceValidate(params: { uploadId?: string; audioUrl?: string }): Promise<{ valid: boolean; score?: number }> {
-    const token = await this.ensureCaptchaToken();
-    const res = await this.request("/api/persona/validate/", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        upload_id: params.uploadId,
-        audio_url: params.audioUrl,
-        token,
-      }),
-    });
-    if (!res.ok) {
-      throw new Error(`voiceValidate failed (${res.status}): ${await res.text()}`);
-    }
-    const data = (await res.json()) as { valid?: boolean; score?: number };
-    return { valid: data.valid ?? false, score: data.score ?? 0 };
+  /**
+   * Voice op 2: validate. Suno's custom-voice workflow exposes the validation
+   * phrase via `GET /api/voice-verification/phrase`; the actual verification
+   * (comparing the spoken phrase against the singing recording) happens later at
+   * `POST /api/voice-verification/` with both recording ids and the phrase id.
+   * We surface the phrase-generation step here.
+   */
+  async voiceValidate(
+    _params: { uploadId?: string; audioUrl?: string; language?: string } = {},
+  ): Promise<{ phrase_id: string; phrase_text: string }> {
+    return this.voicePhrase();
   }
 
   /** Voice op 3: record — alias for createAudioUpload(uploadType: voice_recording), returns session same shape. */
