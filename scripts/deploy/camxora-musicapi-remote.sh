@@ -239,6 +239,17 @@ log "Preparing backup directory..."
 mkdir -p "${BACKUP_DIR}"
 chown camxora:camxora "${BACKUP_DIR}"
 
+# MIDI microservice (Basic Pitch). Deploy server.py outside the repo tree so a
+# redeploy's `rm -rf musicapi` never disturbs the running service; provision the
+# venv only when missing (it is ~550MB).
+log "Preparing MIDI microservice..."
+install -d -o camxora -g camxora /opt/camxora/midi-service
+install -m 644 "${MUSICAPI_DIR}/midi-service/server.py" /opt/camxora/midi-service/server.py
+chown camxora:camxora /opt/camxora/midi-service/server.py
+if [[ ! -x /opt/camxora/midi-service/.venv/bin/python ]]; then
+  bash "${MUSICAPI_DIR}/midi-service/provision.sh" || log "WARN: MIDI provisioning failed"
+fi
+
 log "Installing systemd units..."
 REPO_DIR="${REPO_DIR}" bash "${REPO_DIR}/scripts/deploy/systemd/install_musicapi_services.sh"
 
