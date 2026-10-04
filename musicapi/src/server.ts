@@ -1978,11 +1978,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const client = await pool.pick();
       const resp = await fetch(params.verifyUrl, { signal: AbortSignal.timeout(60_000) });
       if (!resp.ok) throw new Error(`Could not download verifyUrl (${resp.status}).`);
-      const verificationRecordingId = await client.uploadAudio(
-        Buffer.from(await resp.arrayBuffer()),
-        "mp3",
-        "voice_recording",
-      );
+      const verificationRecordingId = await client.uploadForVoice(Buffer.from(await resp.arrayBuffer()));
       const verified = await client.verifyVoice({ phraseId, voiceRecordingId, verificationRecordingId });
       const voiceId =
         (verified.id as string) ?? (verified.voice_id as string) ?? (verified.voiceId as string) ?? null;
