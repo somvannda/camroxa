@@ -66,6 +66,8 @@ causes** in the failure-rate alert.
 - `scripts/deploy/musicapi-healthcheck.sh`: resolves `MUSICAPI_ENV` (falling
   back to `PLATFORM_ENVIRONMENT`) and skips Telegram outside production.
 - `musicapi/.env.example`: documents `MUSICAPI_ENV`.
+- `scripts/deploy/configure_telegram_ops_sandbox.py`: no longer pings the shared
+  channel; the test message is opt-in via `SANDBOX_TELEGRAM_PING=1`.
 
 No schema change. The sweep/alert claims use the existing `system_settings` KV
 table.
