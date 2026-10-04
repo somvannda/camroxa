@@ -92,6 +92,16 @@ async def main() -> None:
         )
         print("added", item["label"], key_id)
 
+    tag_host = payload.get("tag_existing_untagged")
+    if tag_host:
+        tagged = await pool.fetch(
+            "UPDATE api_key_entries SET base_url = $1 "
+            "WHERE provider = $2 AND base_url IS NULL RETURNING id",
+            tag_host,
+            provider,
+        )
+        print("tagged_existing_untagged", len(tagged), tag_host)
+
     if clear:
         await service.configure_provider(provider, clear_base_url=True)
     elif base_url is not None:
@@ -133,6 +143,12 @@ def main() -> int:
     parser.add_argument("--base-url", default=None)
     parser.add_argument("--clear", action="store_true")
     parser.add_argument(
+        "--tag-existing",
+        default=None,
+        help="Set base_url on existing untagged provider keys (e.g. the legacy host), "
+        "so a later rollback can select them.",
+    )
+    parser.add_argument(
         "--verify-task-id",
         default=None,
         help="Poll this musicapi task through the pool after applying (integration check).",
@@ -147,8 +163,14 @@ def main() -> int:
             return 2
         keys.append({"label": label, "key": value})
 
-    if not keys and not args.clear and args.base_url is None and not args.verify_task_id:
-        print("Nothing to do: pass --key, --base-url, --clear, or --verify-task-id.")
+    if (
+        not keys
+        and not args.clear
+        and args.base_url is None
+        and not args.verify_task_id
+        and not args.tag_existing
+    ):
+        print("Nothing to do: pass --key, --base-url, --clear, --tag-existing, or --verify-task-id.")
         return 2
 
     payload = base64.b64encode(
@@ -158,6 +180,7 @@ def main() -> int:
                 "base_url": args.base_url,
                 "clear_base_url": args.clear,
                 "keys": keys,
+                "tag_existing_untagged": args.tag_existing,
                 "verify_task_id": args.verify_task_id,
             }
         ).encode()
