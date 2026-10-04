@@ -656,7 +656,7 @@ export class SunoClient {
       }
       throw new Error(`download/authorize failed (${authorizeResp.status}): ${await authorizeResp.text()}`);
     }
-    const maxPolls = 600;
+    const maxPolls = 120;
     const pollMs = 500;
     for (let i = 0; i < maxPolls; i++) {
       const r = await this.request(
@@ -678,6 +678,14 @@ export class SunoClient {
       const text = await r.text();
       let data: any = null;
       try { data = JSON.parse(text); } catch { data = { ok: false, raw: text }; }
+      // A 200 `{ok:false}` (e.g. reason "not_authorized"/"quota_exhausted" once the
+      // account's monthly download quota is spent) is a terminal denial, not a
+      // "still processing" state — fail fast instead of polling for minutes.
+      if (data && typeof data === "object" && data.ok === false) {
+        throw new Error(
+          `download/clip denied: ${data.reason ?? "unknown"}${data.message ? ` — ${data.message}` : ""}`,
+        );
+      }
       if (data && typeof data === "object" && (data.status === "ready" || data.status === "ok")) {
         const url = data.download_url ?? data.url ?? data.cdn_url ?? data.downloadUrl;
         if (url && typeof url === "string") return url;
@@ -942,22 +950,37 @@ export class SunoClient {
   // Detail endpoints (GET, no captcha usually)
   // =========================================
 
-  /** GET /api/download/clip/{clip_id} — returns clip metadata + playback URLs (confirmed 200 via probe with invalid UUID). */
-  async getClipDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-    if (!res.ok) throw new Error(`getClipDetail failed (${res.status}): ${await res.text()}`);
-    return res.json();
+  /**
+   * GET /api/clip/{clip_id} — Suno's canonical per-clip record (metadata,
+   * media_urls, image_url, video_url, ownership). This is the durable read
+   * source: the old `/api/download/clip/{id}` route is gated by a per-account
+   * monthly download quota and returns HTTP 200 `{ok:false, reason:"not_authorized"}`
+   * once that quota is spent, so it can no longer back a detail API.
+   */
+  async getClipObject(clipId: string): Promise<Record<string, unknown>> {
+    const res = await this.request(`/api/clip/${clipId}`, { method: "GET" });
+    if (!res.ok) throw new Error(`getClipObject failed (${res.status}): ${await res.text()}`);
+    const data = await res.json();
+    return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   }
 
-  /** Fetch lyrics detail (full text / structured lines / timestamped) for a clip. */
+  /** Clip detail — the full clip record. */
+  async getClipDetail(clipId: string): Promise<unknown> {
+    return this.getClipObject(clipId);
+  }
+
+  /**
+   * Lyrics detail, derived from the clip record's `metadata.prompt` (the
+   * lyric/prompt text captured at generation). Suno exposes no standalone
+   * lyrics route — `/api/clip/{id}/lyrics` is a plain 404 — so the clip record
+   * is the only source. Word-level alignment isn't available and is returned
+   * empty rather than fabricated.
+   */
   async lyricsDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/lyrics`, { method: "GET" });
-    if (!res.ok) {
-      const fallback = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-      if (!fallback.ok) throw new Error(`lyricsDetail failed (${res.status}): ${await res.text()}`);
-      return fallback.json();
-    }
-    return res.json();
+    const clip = await this.getClipObject(clipId);
+    const meta = (clip.metadata ?? {}) as Record<string, unknown>;
+    const lyrics = typeof meta.prompt === "string" ? meta.prompt : "";
+    return { ...clip, lyrics, aligned_words: [] };
   }
 
   /** WAV download detail endpoint — same as downloadUrl but exposed as detail for parity. */
@@ -966,87 +989,44 @@ export class SunoClient {
     return { clip_id: clipId, format, download_url: url };
   }
 
-  /** Stems (vocal-separation) detail — returns {stems_urls, status} for a stems task. */
+  /** Stems (vocal-separation) detail — `/api/clip/{id}/stems` is still served. */
   async stemsDetail(clipId: string): Promise<unknown> {
     const res = await this.request(`/api/clip/${clipId}/stems`, { method: "GET" });
-    if (!res.ok) {
-      const fallback = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-      if (!fallback.ok) throw new Error(`stemsDetail failed (${res.status}): ${await res.text()}`);
-      return fallback.json();
-    }
-    return res.json();
+    if (res.ok) return res.json();
+    return this.getClipObject(clipId);
   }
 
-  /** Video / MP4 generate detail for a clip. */
+  /** Video/MP4 detail — the clip record carries `video_url` once a video exists. */
   async videoDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/mp4`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/download/mp4/${clipId}`, { method: "GET" });
-      if (!fb.ok) throw new Error(`videoDetail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipId);
   }
 
-  /** Cover image detail for a clip. */
+  /** Cover image detail — the clip record carries `image_url`/`image_large_url`. */
   async coverDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/image`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-      if (!fb.ok) throw new Error(`coverDetail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipId);
   }
 
-  /** Subtitle / captions detail for a clip (SRT / VTT). */
+  /** Subtitle/captions detail — Suno exposes no captions route; derive from clip lyrics. */
   async subtitleDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/subtitles`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/download/subtitle/${clipId}`, { method: "GET" });
-      if (!fb.ok) {
-        const fb2 = await this.request(`/api/clip/${clipId}/lyrics`, { method: "GET" });
-        if (!fb2.ok) throw new Error(`subtitleDetail failed (${res.status}): ${await res.text()}`);
-        return fb2.json();
-      }
-      return fb.json();
-    }
-    return res.json();
+    const clip = await this.getClipObject(clipId);
+    const meta = (clip.metadata ?? {}) as Record<string, unknown>;
+    const lyrics = typeof meta.prompt === "string" ? meta.prompt : "";
+    return { ...clip, lyrics, subtitle: "" };
   }
 
-  /** Recovery audio detail endpoint. */
+  /** Recovery audio detail — no dedicated Suno route; return the clip record. */
   async recoveryDetail(clipId: string): Promise<unknown> {
-    const res = await this.request(`/api/clip/${clipId}/recovery`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/download/clip/${clipId}`, { method: "GET" });
-      if (!fb.ok) throw new Error(`recoveryDetail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipId);
   }
 
-  /** MP4 generate task detail endpoint. */
+  /** MP4 task detail — no dedicated Suno route; return the clip record. */
   async mp4Detail(clipIdOrTaskId: string): Promise<unknown> {
-    const res = await this.request(`/api/download/mp4/${clipIdOrTaskId}`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/video_gen/mp4/generate`, {
-        method: "GET",
-      });
-      if (!fb.ok) throw new Error(`mp4Detail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipIdOrTaskId);
   }
 
-  /** MIDI download / detail endpoint. */
+  /** MIDI detail — no dedicated Suno route; return the clip record. */
   async midiDetail(clipIdOrTaskId: string): Promise<unknown> {
-    const res = await this.request(`/api/download/midi/${clipIdOrTaskId}`, { method: "GET" });
-    if (!res.ok) {
-      const fb = await this.request(`/api/clip/${clipIdOrTaskId}/midi`, { method: "GET" });
-      if (!fb.ok) throw new Error(`midiDetail failed (${res.status}): ${await res.text()}`);
-      return fb.json();
-    }
-    return res.json();
+    return this.getClipObject(clipIdOrTaskId);
   }
 
   // =========================================
