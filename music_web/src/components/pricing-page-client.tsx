@@ -154,15 +154,15 @@ export default function PricingPageClient() {
                 <Gift className="h-6 w-6 text-purple-400" />
               </div>
             </div>
-            <h3 className="mb-2 text-center font-display text-2xl font-bold">Free</h3>
+            <h3 className="mb-2 text-center font-display text-xl font-bold">Free</h3>
             <div className="mb-6 text-center">
               <div className="flex items-baseline justify-center gap-1">
-                <span className="text-4xl font-bold">$0</span>
+                <span className="text-3xl font-bold">$0</span>
                 <span className="text-gray-400">/month</span>
               </div>
             </div>
             <div className="mb-6 border-b border-purple-500/20 pb-6 text-center">
-              <div className="text-3xl font-bold text-purple-400">
+              <div className="text-2xl font-bold text-purple-400">
                 {creditHeadlineNumber(freePlan).toLocaleString()}
               </div>
               {creditCaptionLines(freePlan).map((line, index) => (
@@ -217,7 +217,7 @@ export default function PricingPageClient() {
                 }`}
               >
                 {isPopular && (
-                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 px-4 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-sm font-medium">
+                  <div className="absolute -top-4 left-1/2 -translate-x-1/2 whitespace-nowrap rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-3 py-1 text-sm font-medium">
                     Most Popular
                   </div>
                 )}
@@ -234,14 +234,14 @@ export default function PricingPageClient() {
                 </div>
 
                 {/* Plan Name */}
-                <h3 className="text-2xl font-display font-bold text-center mb-2">
+                <h3 className="text-xl font-display font-bold text-center mb-2">
                   {displayName}
                 </h3>
 
                 {/* Price */}
                 <div className="text-center mb-6">
                   <div className="flex items-baseline justify-center gap-1">
-                    <span className="text-4xl font-bold">{formatPrice(Math.floor(pricePerMonth))}</span>
+                    <span className="text-3xl font-bold">{formatPrice(Math.floor(pricePerMonth))}</span>
                     <span className="text-gray-400">/month</span>
                   </div>
                   {plan.billing_cycle === 'yearly' && (
@@ -253,7 +253,7 @@ export default function PricingPageClient() {
 
                 {/* Credits */}
                 <div className="text-center mb-6 pb-6 border-b border-purple-500/20">
-                  <div className="text-3xl font-bold text-purple-400">
+                  <div className="text-2xl font-bold text-purple-400">
                     {creditHeadlineNumber(plan).toLocaleString()}
                   </div>
                   {creditCaptionLines(plan).map((line, index) => (
