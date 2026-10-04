@@ -308,6 +308,15 @@ class MusicView(QWidget):
             self._composer.primary_profile_ids = list(prefs.primary_profile_ids)
         if prefs.secondary_profile_ids:
             self._composer.secondary_profile_ids = list(prefs.secondary_profile_ids)
+        # Restore the last explicit prompt selection. It only wins if the id is
+        # still present in the workspace catalog; otherwise _apply_prompt_selection
+        # treats it as stale and falls back to the server-configured default.
+        if prefs.selected_description_id:
+            self._selected_description_id = prefs.selected_description_id
+        if prefs.selected_structure_id:
+            self._selected_structure_id = prefs.selected_structure_id
+        if prefs.selected_mood_id:
+            self._selected_mood_id = prefs.selected_mood_id
 
     def _current_workspace_prefs(self) -> MusicWorkspacePrefs:
         return MusicWorkspacePrefs(
@@ -626,6 +635,32 @@ class MusicView(QWidget):
         self._composer.structure = self._automation_card.selected_structure_name()
         self._apply_description_language_mode(self._selected_description_id)
 
+    @staticmethod
+    def _pick_prompt_id(
+        local_id: str,
+        default_id: str,
+        options: list[tuple[str, str]],
+        *,
+        allow_free_sentinels: bool = False,
+    ) -> str:
+        """Choose a prompt id: valid local selection, else server default, else first option.
+
+        A local id that is no longer in the catalog is stale and must not override
+        the server-configured default (see the stale-prefs guard test).
+        """
+        option_ids = {option_id for option_id, _name in options}
+        if local_id:
+            if local_id in option_ids:
+                return local_id
+            if allow_free_sentinels:
+                from features.music.widgets.automation_card import FREE_STRUCTURE_SENTINELS
+
+                if local_id in FREE_STRUCTURE_SENTINELS:
+                    return local_id
+        if default_id and default_id in option_ids:
+            return default_id
+        return options[0][0] if options else ""
+
     def _apply_prompt_selection(
         self,
         descriptions: list[tuple[str, str]],
@@ -634,18 +669,22 @@ class MusicView(QWidget):
     ) -> None:
         preferred_description_id, preferred_structure_id, preferred_mood_id = self._saved_prompt_defaults()
         if not self._prompt_selection_touched:
-            if preferred_description_id:
-                self._selected_description_id = preferred_description_id
-            elif not self._selected_description_id and descriptions:
-                self._selected_description_id = descriptions[0][0]
-            if preferred_structure_id:
-                self._selected_structure_id = preferred_structure_id
-            elif not self._selected_structure_id and structures:
-                self._selected_structure_id = structures[0][0]
-            if preferred_mood_id:
-                self._selected_mood_id = preferred_mood_id
-            elif not self._selected_mood_id and moods:
-                self._selected_mood_id = moods[0][0]
+            self._selected_description_id = self._pick_prompt_id(
+                self._selected_description_id,
+                preferred_description_id,
+                descriptions,
+            )
+            self._selected_structure_id = self._pick_prompt_id(
+                self._selected_structure_id,
+                preferred_structure_id,
+                structures,
+                allow_free_sentinels=True,
+            )
+            self._selected_mood_id = self._pick_prompt_id(
+                self._selected_mood_id,
+                preferred_mood_id,
+                moods,
+            )
         else:
             if not self._selected_description_id and descriptions:
                 self._selected_description_id = descriptions[0][0]
@@ -1992,6 +2031,19 @@ class MusicView(QWidget):
         if not run_dates:
             self._show_workspace_error("Choose a valid batch date range before creating a batch.")
             return
+        # The picker is the single source of truth: a missing description or (for
+        # template mode) structure would otherwise reach Suno as the generic
+        # "Contemporary pop" style or fail later at draft time.
+        selected_description_id = self._automation_card.selected_description_id() or None
+        if selected_description_id is None:
+            self._show_workspace_error("Choose a song description before creating a batch.")
+            return
+        structure_mode = self._automation_card.selected_structure_mode()
+        selected_structure_id = self._automation_card.selected_structure_id() or None
+        if structure_mode == "template" and selected_structure_id is None:
+            self._show_workspace_error("Choose a song structure before creating a batch.")
+            return
+        selected_mood_id = self._automation_card.selected_mood_id() or None
         image_source_mode = normalize_image_source_mode(self._settings_raw.get("imageSourceMode"))
         requests: list[BatchCreateRequest] = []
         for run_date in run_dates:
@@ -2001,10 +2053,10 @@ class MusicView(QWidget):
                     BatchCreateRequest(
                         ok_profile_id=ok_profile.id,
                         alt_profile_id=alt_profile.id,
-                        description_id=self._selected_description_id or None,
-                        structure_id=self._automation_card.selected_structure_id() or None,
-                        mood_id=self._automation_card.selected_mood_id() or None,
-                        structure_mode=self._automation_card.selected_structure_mode(),
+                        description_id=selected_description_id,
+                        structure_id=selected_structure_id,
+                        mood_id=selected_mood_id,
+                        structure_mode=structure_mode,
                         shuffle_structure=self._automation_card.shuffle_structure(),
                         shuffle_mood=self._automation_card.shuffle_mood(),
                         auto_gen_image=self._music_settings.auto_gen_image,
