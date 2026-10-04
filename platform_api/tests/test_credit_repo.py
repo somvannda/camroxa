@@ -199,6 +199,23 @@ class FakeAsyncPGPool:
             self._transactions.append(txn)
             return "INSERT 0 1"
 
+        # SELECT 1 FROM credit_transactions WHERE ... reason = $2 AND ref_id = $3
+        if (
+            "select 1" in q
+            and "from credit_transactions" in q
+            and "reason = $2" in q
+            and "ref_id = $3" in q
+        ):
+            user_id, reason, ref_id = args[0], args[1], args[2]
+            found = any(
+                t["user_id"] == user_id
+                and t.get("direction") == "refund"
+                and t.get("reason") == reason
+                and t.get("ref_id") == ref_id
+                for t in self._transactions
+            )
+            return 1 if found else None
+
         # SELECT COUNT(*) FROM credit_transactions
         if "select count" in q and "credit_transactions" in q:
             user_id = args[0]
@@ -451,6 +468,51 @@ class TestRefund:
     ) -> None:
         new_balance = await repo.refund(user_id, 50, "retroactive_refund")
         assert new_balance == 50
+
+
+# ---------------------------------------------------------------------------
+# Tests: refund_once (idempotent refund for retried operations)
+# ---------------------------------------------------------------------------
+
+
+class TestRefundOnce:
+    """Retried refunds of the same charge must credit exactly once."""
+
+    async def test_first_refund_applies_second_is_a_noop(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 100)
+        first = await repo.refund_once(user_id, 25, "v3_refund_music", ref_id="debit-1")
+        second = await repo.refund_once(user_id, 25, "v3_refund_music", ref_id="debit-1")
+
+        assert first is True
+        assert second is False
+        assert pool._wallets[user_id] == 125
+        refunds = [t for t in pool._transactions if t["direction"] == "refund"]
+        assert len(refunds) == 1
+
+    async def test_distinct_references_refund_separately(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 0)
+        assert await repo.refund_once(user_id, 10, "v3_refund_music", ref_id="debit-1") is True
+        assert await repo.refund_once(user_id, 10, "v3_refund_music", ref_id="debit-2") is True
+        assert pool._wallets[user_id] == 20
+
+    async def test_missing_reference_falls_back_to_plain_refund(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 0)
+        assert await repo.refund_once(user_id, 10, "v3_refund_music") is True
+        assert await repo.refund_once(user_id, 10, "v3_refund_music") is True
+        assert pool._wallets[user_id] == 20
+
+    async def test_zero_amount_raises_validation_error(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 100)
+        with pytest.raises(ValidationError):
+            await repo.refund_once(user_id, 0, "v3_refund_music", ref_id="debit-1")
 
 
 # ---------------------------------------------------------------------------

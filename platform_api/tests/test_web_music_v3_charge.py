@@ -263,5 +263,50 @@ async def test_reserve_charges_pro_when_flag_on() -> None:
     assert service._open_charges["r1"].path == "v3"
 
 
+@pytest.mark.asyncio
+async def test_release_refunds_recorded_debit_when_memory_charge_missing() -> None:
+    """The worker has no in-memory charge; the recorded debit must be reversed."""
+    debit_id = uuid4()
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value={"id": debit_id, "amount": credits_to_units(15)})
+    service = WebMusicService(
+        pool,
+        AsyncMock(),
+        credit_service=FakeV2Credits(0),
+        settings_repo=SimpleNamespace(get_system_setting=AsyncMock(return_value=True)),
+    )
+    billing = SimpleNamespace(refund=AsyncMock())
+    service._v3_refund_billing = lambda: billing  # type: ignore[method-assign]
+
+    await service._release_daily_slot(USER_ID, reference_id="res-1", task_id="task-1")
+
+    billing.refund.assert_awaited_once()
+    kwargs = billing.refund.await_args.kwargs
+    assert kwargs["op"] == "music"
+    assert kwargs["amount_credits"] == 15.0
+    # Keyed on the debit row id so worker re-attempts are no-ops.
+    assert kwargs["ref_id"] == str(debit_id)
+    # Lookup matches the reservation id and the linked task id.
+    assert pool.fetchrow.await_args.args[2] == ["res-1", "task-1"]
+
+
+@pytest.mark.asyncio
+async def test_release_does_not_refund_when_no_debit_recorded() -> None:
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value=None)
+    service = WebMusicService(
+        pool,
+        AsyncMock(),
+        credit_service=FakeV2Credits(0),
+        settings_repo=SimpleNamespace(get_system_setting=AsyncMock(return_value=True)),
+    )
+    billing = SimpleNamespace(refund=AsyncMock())
+    service._v3_refund_billing = lambda: billing  # type: ignore[method-assign]
+
+    await service._release_daily_slot(USER_ID, reference_id="res-1", task_id="task-1")
+
+    billing.refund.assert_not_awaited()
+
+
 def test_units_round_trip() -> None:
     assert units_to_credits(credits_to_units(10)) == 10.0

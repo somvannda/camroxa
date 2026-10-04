@@ -413,6 +413,126 @@ class CreditRepository:
                 )
                 return new_balance
 
+    async def refund_once(
+        self,
+        user_id: UUID,
+        amount: int,
+        reason: str,
+        ref_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> bool:
+        """Refund credits at most once per ``(user_id, reason, ref_id)``.
+
+        Retried operations (a worker re-attempting a failed Suno submit, a
+        process restart) must not refund the same charge twice. The wallet row
+        is locked first, which serializes concurrent refunds for the same user:
+        the loser re-reads after the winner commits, sees the refund row and
+        no-ops. A missing ``ref_id`` has nothing stable to key on, so it falls
+        back to a plain :meth:`refund`.
+
+        Returns:
+            True when this call performed the refund, False when an identical
+            refund already existed.
+
+        Raises:
+            ValidationError: If amount is not a positive integer.
+            InsufficientCreditsError: If the balance cap would be exceeded.
+        """
+        if amount <= 0:
+            raise ValidationError(
+                "Refund amount must be a positive integer.",
+                details={"amount": amount},
+            )
+        if not ref_id:
+            await self.refund(user_id, amount, reason, ref_id, metadata)
+            return True
+
+        async with self._connection() as conn:
+            async with conn.transaction():
+                # Lock first so the existence check below cannot race a
+                # concurrent refund for the same reference.
+                current_balance = await conn.fetchval(
+                    "SELECT balance FROM credit_wallets WHERE user_id = $1 FOR UPDATE",
+                    user_id,
+                )
+                if current_balance is None:
+                    current_balance = 0
+                    await conn.execute(
+                        """
+                        INSERT INTO credit_wallets (user_id, balance, updated_at)
+                        VALUES ($1, 0, NOW())
+                        """,
+                        user_id,
+                    )
+
+                existing = await conn.fetchval(
+                    """
+                    SELECT 1
+                    FROM credit_transactions
+                    WHERE user_id = $1
+                      AND direction = 'refund'
+                      AND reason = $2
+                      AND ref_id = $3
+                    LIMIT 1
+                    """,
+                    user_id,
+                    reason,
+                    ref_id,
+                )
+                if existing:
+                    return False
+
+                new_balance = current_balance + amount
+                if new_balance > MAX_WALLET_BALANCE:
+                    raise InsufficientCreditsError(
+                        f"Refunding {amount} credits would exceed the maximum wallet "
+                        f"balance of {MAX_WALLET_BALANCE:,}. Current balance: {current_balance:,}.",
+                        details={
+                            "current_balance": current_balance,
+                            "amount": amount,
+                            "max_balance": MAX_WALLET_BALANCE,
+                        },
+                    )
+
+                await conn.execute(
+                    """
+                    UPDATE credit_wallets
+                    SET balance = $2, updated_at = NOW()
+                    WHERE user_id = $1
+                    """,
+                    user_id,
+                    new_balance,
+                )
+                await conn.execute(
+                    """
+                    INSERT INTO credit_transactions
+                        (id, user_id, amount, direction, reason, ref_id, metadata, created_at)
+                    VALUES ($1, $2, $3, 'refund', $4, $5, $6::jsonb, NOW())
+                    """,
+                    uuid4(),
+                    user_id,
+                    amount,
+                    reason,
+                    ref_id,
+                    json.dumps(metadata) if metadata else None,
+                )
+                credit_log.log_refunded(
+                    user_id=user_id,
+                    amount_units=amount,
+                    reason=reason,
+                    ref_id=ref_id,
+                    new_balance_units=new_balance,
+                )
+                logger.debug(
+                    "Refund-once %s to user %s (reason=%s, ref=%s). New balance: %s",
+                    format_credit_log_amount(amount),
+                    user_id,
+                    reason,
+                    ref_id,
+                    format_credit_log_amount(new_balance),
+                )
+                return True
+
     async def get_balance(self, user_id: UUID | str) -> int:
         """Return the current credit balance for a user.
 

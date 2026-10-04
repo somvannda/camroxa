@@ -224,17 +224,31 @@ class CreditsOnlyBillingService:
             credits = float(amount_credits)
 
         if units > 0:
-            await self._credit_repo.refund(
-                user_id,
-                units,
-                reason=f"v3_refund_{operation}",
-                ref_id=ref_id,
-                metadata={
-                    "billing": "platform_absorb" if absorb else "wallet_refund",
-                    "source": "v3",
-                    "op": operation,
-                },
-            )
+            reason = f"v3_refund_{operation}"
+            metadata = {
+                "billing": "platform_absorb" if absorb else "wallet_refund",
+                "source": "v3",
+                "op": operation,
+            }
+            # A stable ref_id makes the refund idempotent, so a retried or
+            # cross-process refund of the same charge cannot double-credit.
+            refund_once = getattr(self._credit_repo, "refund_once", None)
+            if ref_id and callable(refund_once):
+                await refund_once(
+                    user_id,
+                    units,
+                    reason=reason,
+                    ref_id=ref_id,
+                    metadata=metadata,
+                )
+            else:
+                await self._credit_repo.refund(
+                    user_id,
+                    units,
+                    reason=reason,
+                    ref_id=ref_id,
+                    metadata=metadata,
+                )
         used = None
         if absorb and self._enforcement is not None:
             used = await self._enforcement.record_fail_absorb(user_id)

@@ -57,6 +57,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Web Create charged for a song that failed to start at Suno but never refunded it: the v3 charge lived in the API process's in-memory `_open_charges`, which the worker (running the submit) never had, so `_release_daily_slot` silently no-oped despite the "Credits were refunded" message. The worker now reverses the recorded `v3_music` debit by reference, idempotently (`CreditRepository.refund_once`), so retried submits cannot double-credit. See `docs/changelog/2026-10-04-web-music-credit-display-and-refund.md`.
 - `POST /web-music/generate` was capped at 5 songs/day **per IP** regardless of plan or credit balance, so paid users behind a shared network got 429 `IP_DAILY_LIMIT`. Generation is now gated by credits: users who can pay for a song (paid web subscription, desktop Pro license, or positive spendable balance) are exempt from the per-IP daily cap; signup-farm caps are unchanged. See `docs/changelog/2026-09-27-web-music-credit-gated-generation.md`.
 
 ### Added

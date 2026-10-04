@@ -173,3 +173,8 @@ async def test_fulfill_refunds_when_suno_rejects() -> None:
         await service.fulfill_queued_generate(user_id, task_id, reservation_id="res-1")
 
     service._release_daily_slot.assert_awaited()
+    # The worker must pass the task id too: the recorded debit's ref_id may have
+    # been relinked from the reservation id to the task id before the refund.
+    kwargs = service._release_daily_slot.await_args.kwargs
+    assert kwargs["reference_id"] == "res-1"
+    assert kwargs["task_id"] == str(task_id)
