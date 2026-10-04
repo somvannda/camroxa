@@ -99,6 +99,14 @@ operators can set them via `PUT /admin/users/:id/rate-limits` until the UI lands
   `max_concurrent_jobs` on `rate_limits`.
 - `npx tsx src/serve.ts` against the throwaway DB (port 4103) → booted,
   `GET /health` → `{"ok":true,"accounts":0,"jobs":0}`. Throwaway DB dropped after.
+- **Live sandbox burst test** (post-deploy, capacity `8`, `maxConcurrentPerUser`
+  default `2`), against `POST /v1/lyrics`, sampling admin `/metrics` `suno` stats:
+  - per-user cap raised to 100, 20 requests → `maxActive=8` (global ceiling
+    held), `maxWaiting=12`, all `202`.
+  - per-user cap 2, 12 requests → `maxActive=2` (per-user cap held),
+    `maxWaiting=9`, all `202`.
+  - gate drained to `{active:0,waiting:0}` afterwards. Throwaway users + jobs
+    removed afterwards.
 
 ## Follow-ups
 
