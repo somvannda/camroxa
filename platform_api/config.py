@@ -83,7 +83,11 @@ class Settings(BaseSettings):
     ]
 
     # --- External API Keys ---
-    suno_api_base_url: str = "https://apibox.erweima.ai"
+    # Suno-compatible reseller endpoint. Camxora's own `musicapi` is a
+    # sunoapi.org drop-in (same /api/v1 contract, Bearer auth, {code,msg,data}
+    # envelope), so it replaces the legacy upstream `https://apibox.erweima.ai`.
+    # Overridable per environment via PLATFORM_SUNO_API_BASE_URL.
+    suno_api_base_url: str = "https://musicapi.camxora.com"
     suno_callback_base_url: str = ""
     suno_callback_hmac_secret: str = ""
     # Comma-separated IPs allowed when HMAC is not configured (dev/staging only).
