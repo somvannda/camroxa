@@ -115,7 +115,8 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
             <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {packs.map((pack, index) => {
                 const isPurchasing = purchasingPackId === pack.id;
-                const isPopular = index === 1; // Balanced $10 pack is the recommended pick
+                // Largest pack has the best credits-per-dollar value, like musicapi.
+                const isPopular = index === packs.length - 1;
                 const bonus = packBonusPercent(pack);
                 const baseCredits = packBaseCredits(pack);
 
@@ -130,7 +131,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                   >
                     {isPopular && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-medium">
-                        Recommended
+                        Best value
                       </div>
                     )}
 

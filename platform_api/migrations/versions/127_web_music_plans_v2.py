@@ -1,13 +1,11 @@
 """Reprice web music plans to the $5/$10/$20/$30 ladder and refresh top-up packs.
 
-music.camxora.com follows the same credit value as musicapi.camxora.com. The
-$10 and $30 tiers grant the exact same credit amounts as musicapi's $10 and $30
-packs; the $5 and $20 tiers use the same 350 credits/USD entry rate:
+music.camxora.com mirrors the live musicapi.camxora.com credit packs exactly:
 
-    Starter  $5  -> 1,750 credits/mo   (350 cr/$)
-    Creator  $10 -> 3,500 credits/mo   (same as musicapi $10 pack)
-    Pro      $20 -> 7,000 credits/mo   (350 cr/$)
-    Studio   $30 -> 11,000 credits/mo  (same as musicapi $30 pack)
+    Starter  $5  -> 1,000 credits/mo
+    Creator  $10 -> 2,300 credits/mo
+    Pro      $20 -> 5,500 credits/mo
+    Studio   $30 -> 8,800 credits/mo
 
 Yearly rows keep the existing 15% discount. The Free plan is intentionally left
 untouched (it is admin-managed and already grants the 50-credit testing allowance).
@@ -15,9 +13,9 @@ untouched (it is admin-managed and already grants the 50-credit testing allowanc
 Top-up packs become three recommended tiers with a volume bonus on top of the
 plan credits at that price:
 
-    $5  -> 2,275 credits  (1,750 + 30%)
-    $10 -> 4,200 credits  (3,500 + 20%)
-    $30 -> 12,100 credits (11,000 + 10%)
+    $5  -> 1,300 credits (1,000 + 30%)
+    $10 -> 2,760 credits (2,300 + 20%)
+    $30 -> 9,680 credits (8,800 + 10%)
 
 Revision ID: 127_web_music_plans_v2
 Revises: 126_provider_base_url
@@ -40,21 +38,21 @@ _FEATURES_JSON = '\'{"music": true, "images": true, "topup": true}\'::jsonb'
 
 # (name, price_cents, billing_cycle_days, monthly_credits, display_order)
 _PLANS = (
-    ("starter_monthly", 500, 30, 1750, 1),
-    ("starter_yearly", 5100, 365, 1750, 1),
-    ("creator_monthly", 1000, 30, 3500, 2),
-    ("creator_yearly", 10200, 365, 3500, 2),
-    ("pro_monthly", 2000, 30, 7000, 3),
-    ("pro_yearly", 20400, 365, 7000, 3),
-    ("studio_monthly", 3000, 30, 11000, 4),
-    ("studio_yearly", 30600, 365, 11000, 4),
+    ("starter_monthly", 500, 30, 1000, 1),
+    ("starter_yearly", 5100, 365, 1000, 1),
+    ("creator_monthly", 1000, 30, 2300, 2),
+    ("creator_yearly", 10200, 365, 2300, 2),
+    ("pro_monthly", 2000, 30, 5500, 3),
+    ("pro_yearly", 20400, 365, 5500, 3),
+    ("studio_monthly", 3000, 30, 8800, 4),
+    ("studio_yearly", 30600, 365, 8800, 4),
 )
 
 # (slug, name, total_credits, price_cents, display_order)
 _PACKS = (
-    ("small", "Small Pack", 2275, 500, 1),
-    ("medium", "Medium Pack", 4200, 1000, 2),
-    ("large", "Large Pack", 12100, 3000, 3),
+    ("small", "Small Pack", 1300, 500, 1),
+    ("medium", "Medium Pack", 2760, 1000, 2),
+    ("large", "Large Pack", 9680, 3000, 3),
 )
 
 

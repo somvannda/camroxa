@@ -554,14 +554,14 @@ export function creditsToSongs(credits: number, creditsPerGenerate = 10): number
 }
 
 /**
- * Base (no-bonus) top-up credits by price, mirroring the plan ladder and
- * musicapi.camxora.com: $10 -> 3,500 and $30 -> 11,000 are musicapi's exact
- * pack amounts; $5 uses the same 350 credits/USD entry rate.
+ * Base (no-bonus) top-up credits by price, mirroring the plan ladder and the
+ * live musicapi.camxora.com packs: $5 -> 1,000, $10 -> 2,300, $20 -> 5,500,
+ * $30 -> 8,800.
  */
 const TOPUP_BASE_CREDITS: Record<number, number> = {
-  500: 1750,
-  1000: 3500,
-  3000: 11000,
+  500: 1000,
+  1000: 2300,
+  3000: 8800,
 };
 
 /** Canonical entry-tier credit rate shared with musicapi.camxora.com. */
