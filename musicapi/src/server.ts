@@ -6060,8 +6060,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const prompt = body.prompt as string;
-    if (!prompt) return reply.code(400).send({ error: "prompt is required." });
+    const prompt = body.prompt as string | undefined;
     const cost = await costFor("voice_phrase");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -6079,11 +6078,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const uploadId = body.upload_id as string | undefined;
-    const audioUrl = body.audio_url as string | undefined;
-    if (!uploadId && !audioUrl) {
-      return reply.code(400).send({ error: "upload_id or audio_url is required." });
-    }
+    const uploadId = (body.upload_id as string) || (body.uploadId as string) || undefined;
+    const audioUrl = (body.audio_url as string) || (body.audioUrl as string) || undefined;
     const cost = await costFor("voice_validate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -6755,6 +6751,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /** Suno Voice "get verification phrase" in sunoapi.org's shape. */
+  function voiceValidateInfo(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    const phrase = typeof res.phrase_text === "string" ? res.phrase_text : "";
+    const failed = job.status === "error";
+    const status = failed ? "processing_validate_fail" : phrase ? "wait_validating" : "processing_validate";
+    return {
+      code: 200,
+      msg: failed ? job.error || "Validation phrase failed" : "success",
+      data: {
+        taskId: job.id,
+        validateInfo: phrase,
+        status,
+        errorCode: failed ? 500 : null,
+        errorMessage: failed ? job.error ?? null : null,
+      },
+    };
+  }
+
   /** Register a family-specific record-info route (same auth/ownership checks). */
   function shapedRecordInfoRoute(sunoPath: string, build: (job: Job) => unknown | Promise<unknown>) {
     app.get(`${PREFIX}${sunoPath}`, async (req, reply) => {
@@ -6841,6 +6856,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   recordInfoRoute("/generate/boost/record-info");
   recordInfoRoute("/generate/mashup/record-info");
   shapedRecordInfoRoute("/generate/midi/record-info", midiRecordInfo);
+  shapedRecordInfoRoute("/voice/validate-info", voiceValidateInfo);
   recordInfoRoute("/generate/cover/record-info");
   recordInfoRoute("/generate/cover-image/record-info");
   shapedRecordInfoRoute("/generate/recovery/record-info", recoveryRecordInfo);
@@ -7404,7 +7420,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
     const prompt = (in_.prompt as string) || undefined;
-    if (!prompt) return reply.code(400).send({ error: "prompt is required." });
     const cost = await costFor("voice_phrase");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
@@ -7421,9 +7436,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const in_ = (req.body ?? {}) as Record<string, unknown>;
     const uploadId = (in_.upload_id as string) || (in_.uploadId as string) || undefined;
     const audioUrl = (in_.audio_url as string) || (in_.audioUrl as string) || (in_.verifyUrl as string) || undefined;
-    if (!uploadId && !audioUrl) {
-      return reply.code(400).send({ error: "upload_id or audioUrl is required." });
-    }
     const cost = await costFor("voice_validate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
@@ -7589,7 +7601,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   sunoAlias("GET", `${PREFIX}/suno/cover/record-info`, `${PREFIX}/cover-suno/record-info`);
   sunoAlias("POST", `${PREFIX}/suno/recovery`, `${PREFIX}/generate/recovery`);
   sunoAlias("GET", `${PREFIX}/suno/recovery/record-info`, `${PREFIX}/generate/recovery/record-info`);
-  sunoAlias("GET", `${PREFIX}/voice/validate-info`, `${PREFIX}/voice/record-info`);
   sunoAlias("POST", `${PREFIX}/voice/regenerate`, `${PREFIX}/voice/phrase`);
 
   // --- credit: sunoapi returns `data` as a bare integer (checklist §B1) ---
