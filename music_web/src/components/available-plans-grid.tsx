@@ -35,9 +35,11 @@ export default function AvailablePlansGrid({
   const displayPlans = (billingCycle === 'monthly' ? monthlyPlans : yearlyPlans).sort(
     (a, b) => a.price_cents - b.price_cents,
   );
+  const paidMonthly = monthlyPlans.filter((plan) => plan.price_cents > 0);
+  const paidYearly = yearlyPlans.filter((plan) => plan.price_cents > 0);
   const yearlyDiscount =
-    monthlyPlans[0] && yearlyPlans[0]
-      ? calculateDiscount(monthlyPlans[0].price_cents, yearlyPlans[0].price_cents)
+    paidMonthly[0] && paidYearly[0]
+      ? calculateDiscount(paidMonthly[0].price_cents, paidYearly[0].price_cents)
       : 15;
 
   return (

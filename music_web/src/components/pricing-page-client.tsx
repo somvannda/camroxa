@@ -91,9 +91,11 @@ export default function PricingPageClient() {
       plan.name.replace(/[_-]/g, " ").toLowerCase().includes("free"),
   );
 
-  // Calculate yearly discount
-  const yearlyDiscount = monthlyPlans[0] && yearlyPlans[0]
-    ? calculateDiscount(monthlyPlans[0].price_cents, yearlyPlans[0].price_cents)
+  // Calculate yearly discount from the first paid tier (Free has price 0).
+  const paidMonthly = monthlyPlans.filter((plan) => plan.price_cents > 0);
+  const paidYearly = yearlyPlans.filter((plan) => plan.price_cents > 0);
+  const yearlyDiscount = paidMonthly[0] && paidYearly[0]
+    ? calculateDiscount(paidMonthly[0].price_cents, paidYearly[0].price_cents)
     : 15;
 
   if (loading) {
