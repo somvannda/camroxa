@@ -1,31 +1,24 @@
 /**
  * Capture the durable Suno `__client` cookie for the auto-refresh mechanism.
  *
- * Two modes:
+ * Chrome refuses DevTools (CDP) on the *default* user-data-dir, so we stage a
+ * copy of the target profile into a temp dir and launch from there. The copied
+ * cookies decrypt on the same Windows user (DPAPI), so an existing suno.com
+ * session carries over — no sign-in needed.
  *
- * 1. Reuse your existing Chrome profile (default, no sign-in needed).
- *    If `suno.com` is already signed in in Chrome, this reads `__client` from the
- *    profile and stores it. Chrome must be fully closed first (the profile is
- *    locked while it runs).
+ *   SUNO_CHROME_PROFILE_DIR="Profile 1" npm run suno:login
  *
- *      npm run suno:login
- *      # profile overrides:
- *      SUNO_CHROME_PROFILE="C:\Users\me\AppData\Local\Google\Chrome\User Data" \
- *      SUNO_CHROME_PROFILE_DIR="Default" npm run suno:login
- *
- * 2. Fresh interactive sign-in (for email/password accounts):
- *
- *      SUNO_LOGIN_FRESH=1 npm run suno:login
- *
- *    Note: a fresh automation context cannot complete a Google sign-in — Google
- *    blocks automated browsers — so mode 1 is required for Google accounts.
- *
- * Either way, after this the API mints JWTs from `__client` automatically.
+ * Options:
+ *   SUNO_CHROME_PROFILE      full path to Chrome "User Data" (default: standard)
+ *   SUNO_CHROME_PROFILE_DIR  profile folder name (default: "Default")
+ *   SUNO_LOGIN_FRESH=1       skip staging; open a fresh browser (email/password only)
+ *   ACCOUNT_LABEL            suno_accounts.label to upsert (default iamduke1987@gmail.com)
+ *   LOGIN_TIMEOUT_MS         wait for a Clerk session (default 5 min)
  */
 import "dotenv/config";
 import os from "node:os";
+import { existsSync, cpSync, mkdtempSync, rmSync } from "node:fs";
 import path from "node:path";
-import fs, { existsSync } from "node:fs";
 import { chromium, type BrowserContext } from "playwright-core";
 import { pool } from "../src/db.js";
 import { encryptCookie } from "../src/cookieCrypto.js";
@@ -41,6 +34,28 @@ function defaultProfileDir(): string {
     return path.join(os.homedir(), "Library", "Application Support", "Google", "Chrome");
   }
   return path.join(os.homedir(), ".config", "google-chrome");
+}
+
+const SKIP_DIRS = new Set([
+  "Cache", "Code Cache", "GPUCache", "ShaderCache", "Media Cache", "DawnCache",
+  "GrShaderCache", "Service Worker", "Crashpad", "BrowserMetrics",
+]);
+
+/** Copy the profile into a temp user-data-dir Chrome will allow CDP on. */
+function stageProfile(userDataDir: string, profileName: string): string {
+  const tmp = mkdtempSync(path.join(os.tmpdir(), "camxora-chrome-"));
+  const localState = path.join(userDataDir, "Local State");
+  if (existsSync(localState)) cpSync(localState, path.join(tmp, "Local State"));
+  const srcProfile = path.join(userDataDir, profileName);
+  if (!existsSync(srcProfile)) throw new Error(`Chrome profile not found: ${srcProfile}`);
+  cpSync(srcProfile, path.join(tmp, profileName), {
+    recursive: true,
+    filter: (src) => !SKIP_DIRS.has(path.basename(src)),
+  });
+  for (const f of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+    rmSync(path.join(tmp, f), { force: true });
+  }
+  return tmp;
 }
 
 async function store(clientCookie: string, ajs: string | undefined): Promise<void> {
@@ -66,75 +81,73 @@ async function store(clientCookie: string, ajs: string | undefined): Promise<voi
 }
 
 async function cookieFrom(context: BrowserContext): Promise<{ client: string; ajs?: string } | null> {
-  const cookies = await context.cookies("https://suno.com");
-  const client = cookies.find((c) => c.name === "__client")?.value;
+  // `__client` lives on auth.suno.com (Clerk), not .suno.com, so read all cookies.
+  const all = await context.cookies();
+  const onSuno = (c: { domain: string }) => /(^|\.)suno\.com$/.test(c.domain.replace(/^\./, ""));
+  const client = all.find((c) => c.name === "__client" && onSuno(c))?.value;
   if (!client) return null;
-  const ajs = cookies.find((c) => c.name === "ajs_anonymous_id")?.value;
+  // Signed in iff a `__session` JWT exists and isn't expired. (suno.com does not
+  // expose window.Clerk, so we cannot rely on that.)
+  const session = all.find((c) => c.name === "__session" && onSuno(c))?.value;
+  let signedIn = false;
+  if (session) {
+    try {
+      const payload = JSON.parse(Buffer.from(session.split(".")[1], "base64url").toString("utf8")) as { exp?: number };
+      signedIn = !payload.exp || payload.exp * 1000 > Date.now();
+    } catch {
+      signedIn = false;
+    }
+  }
+  if (!signedIn) return null;
+  const ajs = all.find((c) => c.name === "ajs_anonymous_id")?.value;
   return { client, ajs };
 }
 
 async function main(): Promise<void> {
   const fresh = process.env.SUNO_LOGIN_FRESH === "1";
-  const profileDir = process.env.SUNO_CHROME_PROFILE ?? defaultProfileDir();
+  const srcProfileDir = process.env.SUNO_CHROME_PROFILE ?? defaultProfileDir();
   const profileName = process.env.SUNO_CHROME_PROFILE_DIR ?? "Default";
-
+  let tempDir: string | null = null;
   let context: BrowserContext;
   let browser = null as Awaited<ReturnType<typeof chromium.launch>> | null;
 
-  if (!fresh && existsSync(profileDir)) {
-    console.log(`Reusing Chrome profile: ${profileDir} (${profileName})`);
-    try {
-      context = await chromium.launchPersistentContext(profileDir, {
+  try {
+    if (!fresh && existsSync(srcProfileDir)) {
+      tempDir = stageProfile(srcProfileDir, profileName);
+      console.log(`Staged Chrome profile -> ${tempDir} (${profileName})`);
+      context = await chromium.launchPersistentContext(tempDir, {
         channel: "chrome",
         headless: false,
         args: [`--profile-directory=${profileName}`],
       });
-    } catch (e) {
-      throw new Error(
-        `Could not open the Chrome profile (${e instanceof Error ? e.message : e}). ` +
-          `Fully quit Chrome (all windows, and check the tray) and retry.`,
-      );
+    } else {
+      browser = await chromium.launch({ channel: "chrome", headless: false });
+      context = await browser.newContext();
+      console.log("Opened a fresh browser — sign in to Suno (email/password only).");
     }
-  } else {
-    browser = await chromium.launch({ channel: "chrome", headless: false });
-    context = await browser.newContext();
-    console.log("Opened a fresh browser — sign in to Suno in the window (email/password only).");
-  }
 
-  const page = context.pages()[0] ?? (await context.newPage());
-  await page.goto("https://suno.com/", { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
+    const page = context.pages()[0] ?? (await context.newPage());
+    await page.goto("https://suno.com/", { waitUntil: "domcontentloaded", timeout: 60_000 }).catch(() => {});
 
-  // Look for an existing session first (profile mode usually has one).
-  let found = await cookieFrom(context);
-  if (found) {
-    const signedIn = await page
-      .evaluate(() => Boolean((window as unknown as { Clerk?: { session?: unknown } }).Clerk?.session))
-      .catch(() => false);
-    if (!signedIn) found = null; // __client exists but this is a signed-out/anonymous session
-  }
-
-  const deadline = Date.now() + TIMEOUT_MS;
-  while (!found && Date.now() < deadline) {
-    console.log("Waiting for a signed-in Suno session...");
-    await new Promise((r) => setTimeout(r, 3000));
-    const signedIn = await page
-      .evaluate(() => Boolean((window as unknown as { Clerk?: { session?: unknown } }).Clerk?.session))
-      .catch(() => false);
-    if (signedIn) found = await cookieFrom(context);
-  }
-
-  if (!found) {
+    let found = await cookieFrom(context);
+    const deadline = Date.now() + TIMEOUT_MS;
+    while (!found && Date.now() < deadline) {
+      console.log("Waiting for a signed-in Suno session...");
+      await new Promise((r) => setTimeout(r, 3000));
+      found = await cookieFrom(context);
+    }
+    if (!found) {
+      throw new Error("No signed-in Suno session found in this profile.");
+    }
+    await store(found.client, found.ajs);
     await context.close().catch(() => {});
+  } finally {
     await browser?.close().catch(() => {});
-    throw new Error(
-      "No signed-in Suno session found. If you reused a profile, make sure you are signed into suno.com in Chrome and Chrome is fully closed.",
-    );
+    if (tempDir) {
+      try { rmSync(tempDir, { recursive: true, force: true }); } catch { /* Chrome may still hold it */ }
+    }
+    await pool.end().catch(() => {});
   }
-
-  await store(found.client, found.ajs);
-  await context.close().catch(() => {});
-  await browser?.close().catch(() => {});
-  await pool.end().catch(() => {});
 }
 
 main().catch((e) => {
