@@ -139,7 +139,10 @@ export default function LandingPage() {
                 All systems operational
               </div>
               <h1 className="text-4xl font-extrabold leading-tight sm:text-5xl">
-                Generate watermark-free music with a <span className="grad-text">simple API</span>
+                <span className="grad-text">Camxora Music API</span>
+                <span className="mt-3 block text-2xl font-bold text-white sm:text-3xl">
+                  Generate watermark-free music with a <span className="grad-text">simple API</span>
+                </span>
               </h1>
               <p className="mt-5 max-w-lg text-[var(--muted)]">
                 <strong className="text-white">Camxora Music API</strong> is a developer platform that
