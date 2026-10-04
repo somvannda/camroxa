@@ -3,7 +3,7 @@ import Link from "next/link";
 import PublicLegalShell from "@/components/public-legal-shell";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy",
+  title: "Privacy Policy — Camxora Music API",
   description:
     "How Camxora Music API collects, uses, shares, and protects information, including data received through Google Sign-In.",
 };

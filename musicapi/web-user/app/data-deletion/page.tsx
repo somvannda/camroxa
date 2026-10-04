@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import PublicLegalShell from "@/components/public-legal-shell";
 
 export const metadata: Metadata = {
-  title: "Data Deletion",
+  title: "Data Deletion — Camxora Music API",
   description:
     "How to request deletion of your Camxora Music API account, generated media, and Google Sign-In data.",
 };

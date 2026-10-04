@@ -3,7 +3,7 @@ import Link from "next/link";
 import PublicLegalShell from "@/components/public-legal-shell";
 
 export const metadata: Metadata = {
-  title: "Terms of Service",
+  title: "Terms of Service — Camxora Music API",
   description:
     "The terms that govern your use of Camxora Music API, including acceptable use rules and our prohibition on AI-generated non-consensual intimate imagery (AI NCII).",
 };
