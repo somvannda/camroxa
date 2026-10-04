@@ -200,18 +200,18 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
           ) : (
             <div className={`grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 ${freePlan ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
               {freePlan ? (
-              <div className="relative flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/5 p-4 sm:p-6">
+              <div className="relative flex min-w-0 flex-col rounded-2xl border border-white/10 bg-white/5 p-3 sm:p-5">
                 <div className="relative z-10 flex items-center gap-3 border-b border-white/10 pb-4">
                   <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br ${planColors.Free}`}>
                     <Gift className="h-5 w-5 text-white" />
                   </div>
                   <div className="min-w-0">
-                    <p className="text-xl font-bold leading-tight text-white sm:text-2xl">Free</p>
+                    <p className="text-lg font-bold leading-tight text-white sm:text-xl">Free</p>
                   </div>
                 </div>
                 <div className="mt-4">
                   <div className="flex items-baseline gap-2">
-                    <span className="text-4xl font-bold text-white">$0</span>
+                    <span className="text-3xl font-bold text-white">$0</span>
                     <span className="text-slate-400">/mo</span>
                   </div>
                 </div>
@@ -221,7 +221,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                     return (
                       <>
                         <div className="text-sm text-slate-400">{unit}</div>
-                        <div className="mt-1 text-2xl font-bold text-white">
+                        <div className="mt-1 text-xl font-bold text-white">
                           {creditHeadlineNumber(freePlan).toLocaleString()}
                         </div>
                         {hints.map((line) => (
@@ -280,7 +280,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                 return (
                   <div
                     key={plan.id}
-                    className={`relative flex min-w-0 flex-col rounded-2xl border p-4 transition-all sm:p-6 ${
+                    className={`relative flex min-w-0 flex-col rounded-2xl border p-3 transition-all sm:p-5 ${
                       isPopular
                         ? 'border-purple-500/50 bg-gradient-to-b from-purple-500/10 to-transparent pt-8'
                         : 'border-white/10 bg-white/5'
@@ -288,7 +288,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                   >
                     {isPopular ? (
                       <div className="absolute -top-3 left-1/2 z-20 -translate-x-1/2">
-                        <span className="rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-1 text-xs font-bold text-white shadow-lg">
+                        <span className="whitespace-nowrap rounded-full bg-gradient-to-r from-purple-600 to-pink-600 px-3 py-1 text-xs font-bold text-white shadow-lg">
                           MOST POPULAR
                         </span>
                       </div>
@@ -301,13 +301,13 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                         <Icon className="h-5 w-5 text-white" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xl font-bold leading-tight text-white sm:text-2xl">{displayName}</p>
+                        <p className="text-lg font-bold leading-tight text-white sm:text-xl">{baseName}</p>
                       </div>
                     </div>
 
                     <div className="mt-4">
                       <div className="flex items-baseline gap-2">
-                        <span className="text-4xl font-bold text-white">{formatPrice(plan.price_cents)}</span>
+                        <span className="text-3xl font-bold text-white">{formatPrice(plan.price_cents)}</span>
                         <span className="text-slate-400">/{billingCycle === 'monthly' ? 'mo' : 'yr'}</span>
                       </div>
                       {discount ? (
@@ -321,7 +321,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                         return (
                           <>
                             <div className="text-sm text-slate-400">{unit}</div>
-                            <div className="mt-1 text-2xl font-bold text-white">
+                            <div className="mt-1 text-xl font-bold text-white">
                               {creditHeadlineNumber(plan).toLocaleString()}
                             </div>
                             {hints.map((line) => (
@@ -357,7 +357,7 @@ export default function PricingModal({ isOpen, onClose, defaultBillingCycle = 'm
                           Processing...
                         </>
                       ) : (
-                        `Get ${displayName}`
+                        `Get ${baseName}`
                       )}
                     </button>
                   </div>

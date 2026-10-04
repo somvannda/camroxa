@@ -84,6 +84,7 @@ export default function AvailablePlansGrid({
           const isCurrent = Boolean(currentPlanId && plan.id === currentPlanId);
           const isPopular = !isCurrent && index === 1;
           const displayName = formatPlanDisplayName(plan.name);
+          const tierName = displayName.replace(/\s*\((Monthly|Yearly)\)$/i, '');
 
           return (
             <div
@@ -118,7 +119,7 @@ export default function AvailablePlansGrid({
                 </div>
               </div>
 
-              <h4 className="mb-2 text-center font-display text-xl font-bold">{displayName}</h4>
+              <h4 className="mb-2 text-center font-display text-xl font-bold">{tierName}</h4>
               <div className="mb-4 text-center">
                 <div className="flex items-baseline justify-center gap-1">
                   <span className="text-3xl font-bold">{formatPrice(Math.floor(pricePerMonth))}</span>
@@ -174,7 +175,7 @@ export default function AvailablePlansGrid({
                 ) : isCurrent ? (
                   'Current plan'
                 ) : (
-                  `Switch to ${displayName.replace(/\s*\((Monthly|Yearly)\)$/i, '')}`
+                  `Switch to ${tierName}`
                 )}
               </button>
             </div>
