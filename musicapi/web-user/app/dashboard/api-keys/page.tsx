@@ -365,15 +365,12 @@ export default function ApiKeysPage() {
                     <td className="py-3 pr-4 text-white font-medium">{k.name}</td>
                     <td className="py-3 pr-4">
                       <div className="flex items-center gap-2">
-                        <code className="font-mono text-white/80">{maskKey(k.key_prefix)}</code>
-                        <button
-                          onClick={() => copyToClipboard(maskKey(k.key_prefix))}
-                          className="rounded-md p-1 text-white/40 hover:text-white/80 hover:bg-white/5"
-                          aria-label="Copy masked key"
-                          title="Copy masked key"
+                        <code
+                          className="font-mono text-white/80"
+                          title="For security, only the key prefix is stored — the full key is shown once, right after it is created."
                         >
-                          <CopyIcon className="w-3.5 h-3.5" />
-                        </button>
+                          {maskKey(k.key_prefix)}
+                        </code>
                       </div>
                     </td>
                     <td className="py-3 pr-4 text-white/70 font-mono text-xs">
