@@ -260,6 +260,8 @@ interface DbApiKey {
   safe_spend_total: number | null;
   ip_whitelist: string[];
   is_active: boolean;
+  /** When the credit balance expires (12 months after the last grant). */
+  credits_expire_at: string | null;
 }
 
 interface DbUser {
@@ -668,11 +670,29 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   async function findKey(token: string): Promise<DbApiKey | null> {
-    return queryOne<DbApiKey>(
-      `SELECT id, user_id, name, key_prefix, credits, safe_spend_limit, safe_spend_hourly, safe_spend_daily, safe_spend_total, ip_whitelist, is_active
+    const key = await queryOne<DbApiKey>(
+      `SELECT id, user_id, name, key_prefix, credits, safe_spend_limit, safe_spend_hourly, safe_spend_daily, safe_spend_total, ip_whitelist, is_active, credits_expire_at
        FROM api_keys WHERE key_hash = $1 AND is_active = true`,
       [hashKey(token)],
     );
+    if (key) await enforceCreditExpiry(key);
+    return key;
+  }
+
+  /**
+   * Purchased credits are valid for 12 months from the most recent grant. On
+   * access an expired balance is zeroed once and can no longer be spent
+   * (the spend statements also carry a `credits_expire_at` guard).
+   */
+  async function enforceCreditExpiry(key: DbApiKey): Promise<void> {
+    if (!key.credits_expire_at) return;
+    if (new Date(key.credits_expire_at).getTime() > Date.now()) return;
+    await query(
+      "UPDATE api_keys SET credits = 0, credits_expire_at = NULL WHERE id = $1 AND credits_expire_at IS NOT NULL AND credits_expire_at <= now()",
+      [key.id],
+    ).catch(() => {});
+    key.credits = 0;
+    key.credits_expire_at = null;
   }
 
   async function requireKey(req: FastifyRequest, reply: FastifyReply): Promise<DbApiKey | null> {
@@ -858,7 +878,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
 
     const rows = await query<{ credits: number }>(
-      "UPDATE api_keys SET credits = credits - $1, last_used_at = now() WHERE id = $2 AND credits >= $1 RETURNING credits",
+      "UPDATE api_keys SET credits = credits - $1, last_used_at = now() WHERE id = $2 AND credits >= $1 AND (credits_expire_at IS NULL OR credits_expire_at > now()) RETURNING credits",
       [amount, key.id],
     );
     if (rows.length === 0) {
@@ -896,6 +916,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
          WHERE user_id = $1
            AND is_active = true
            AND credits >= $2
+           AND (credits_expire_at IS NULL OR credits_expire_at > now())
            AND (COALESCE(safe_spend_total, safe_spend_limit) IS NULL
                 OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs WHERE api_key_id = api_keys.id) + $2
                    <= COALESCE(safe_spend_total, safe_spend_limit))
@@ -909,7 +930,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
          LIMIT 1
        )
        UPDATE api_keys SET credits = credits - $2, last_used_at = now()
-       WHERE id IN (SELECT id FROM candidate) AND credits >= $2
+       WHERE id IN (SELECT id FROM candidate) AND credits >= $2 AND (credits_expire_at IS NULL OR credits_expire_at > now())
        RETURNING id, user_id, name, key_prefix, credits, safe_spend_limit, safe_spend_hourly, safe_spend_daily, safe_spend_total, ip_whitelist, is_active`,
       [userId, amount],
     );
@@ -1339,7 +1360,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         [job.userId, amount, `refund for failed ${job.type} job`, job.id],
       );
       if (refunded.length === 0) return; // already refunded
-      await tx("UPDATE api_keys SET credits = credits + $1 WHERE id = $2", [amount, job.apiKeyId]);
+      await tx("UPDATE api_keys SET credits = credits + $1, credits_expire_at = now() + interval '12 months' WHERE id = $2", [amount, job.apiKeyId]);
     });
   }
 
@@ -2162,7 +2183,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     return query<DbApiKey>(
-      "SELECT id, name, key_prefix, credits, safe_spend_limit, safe_spend_hourly, safe_spend_daily, safe_spend_total, ip_whitelist, is_active, created_at, last_used_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
+      "SELECT id, name, key_prefix, credits, safe_spend_limit, safe_spend_hourly, safe_spend_daily, safe_spend_total, ip_whitelist, is_active, created_at, last_used_at, credits_expire_at FROM api_keys WHERE user_id = $1 ORDER BY created_at DESC",
       [u.id],
     );
   });
@@ -2236,7 +2257,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         });
       }
       await withTransaction(async (tx) => {
-        await tx("UPDATE api_keys SET credits = credits + $1 WHERE id = $2", [key.credits, next.id]);
+        await tx("UPDATE api_keys SET credits = credits + $1, credits_expire_at = now() + interval '12 months' WHERE id = $2", [key.credits, next.id]);
         await tx("DELETE FROM api_keys WHERE id = $1", [id]);
       });
     } else {
@@ -3176,7 +3197,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const refund = async (): Promise<void> => {
       if (!purchaseId || !chargedKey) return;
       await query("DELETE FROM download_purchases WHERE id = $1", [purchaseId]).catch(() => {});
-      await query("UPDATE api_keys SET credits = credits + $1 WHERE id = $2", [cost, chargedKey.id]).catch(() => {});
+      await query("UPDATE api_keys SET credits = credits + $1, credits_expire_at = now() + interval '12 months' WHERE id = $2", [cost, chargedKey.id]).catch(() => {});
     };
     try {
       // Audio delivery is priced per format from the `pricing` table, like every
@@ -4476,7 +4497,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       `WITH target AS (
          SELECT id, credits FROM api_keys WHERE id = $2 FOR UPDATE
        ), applied AS (
-         UPDATE api_keys SET credits = GREATEST(0, target.credits + $1)
+         UPDATE api_keys SET credits = GREATEST(0, target.credits + $1), credits_expire_at = CASE WHEN $1 > 0 THEN now() + interval '12 months' ELSE credits_expire_at END
          FROM target WHERE api_keys.id = target.id
          RETURNING api_keys.credits AS credits, target.credits AS prev_credits
        )
@@ -5050,7 +5071,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get("/v1/credits", async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;
-    return { name: key.name, credits: key.credits };
+    return { name: key.name, credits: key.credits, credits_expire_at: key.credits_expire_at };
   });
 
   app.post("/v1/lyrics", async (req, reply) => {
@@ -5785,13 +5806,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get(`${PREFIX}/get-credits`, async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;
-    return { code: 200, msg: "success", data: { credits: key.credits, name: key.name } };
+    return { code: 200, msg: "success", data: { credits: key.credits, name: key.name, credits_expire_at: key.credits_expire_at } };
   });
   // Alias: /v1/get-credits so both work
   app.get(`/v1/get-credits`, async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;
-    return { code: 200, msg: "success", data: { credits: key.credits, name: key.name } };
+    return { code: 200, msg: "success", data: { credits: key.credits, name: key.name, credits_expire_at: key.credits_expire_at } };
   });
 
   // POST /api/v1/generate -> /v1/music (with payload translation)
@@ -7073,7 +7094,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   ): Promise<void> {
     if (apiKeyId) {
       await q(
-        "UPDATE api_keys SET credits = credits + $1 WHERE id = $2 AND user_id = $3",
+        "UPDATE api_keys SET credits = credits + $1, credits_expire_at = now() + interval '12 months' WHERE id = $2 AND user_id = $3",
         [amount, apiKeyId, userId],
       );
     } else {
@@ -7083,12 +7104,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       );
       if (keys.length === 0) {
         await q(
-          `INSERT INTO api_keys (user_id, name, key_hash, key_prefix, credits) VALUES ($1, $2, $3, $4, $5)`,
+          `INSERT INTO api_keys (user_id, name, key_hash, key_prefix, credits, credits_expire_at) VALUES ($1, $2, $3, $4, $5, now() + interval '12 months')`,
           [userId, "Auto-Created Key", md5(randomUUID() + Date.now()), "auto_" + randomUUID().slice(0, 5), amount],
         );
       } else {
         await q(
-          "UPDATE api_keys SET credits = credits + $1 WHERE id = $2",
+          "UPDATE api_keys SET credits = credits + $1, credits_expire_at = now() + interval '12 months' WHERE id = $2",
           [amount, keys[0].id],
         );
       }
