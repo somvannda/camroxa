@@ -57,7 +57,7 @@ export async function authorizedFetch(path: string, init: RequestInit = {}): Pro
 
 const downloadClipLock = new Map<string, AbortController>();
 
-export async function downloadClip(clipId: string | number | undefined | null, format: "mp3" | "wav"): Promise<void> {
+export async function downloadClip(clipId: string | number | undefined | null, format: "mp3" | "wav" | "mp4"): Promise<void> {
   if (!clipId) return;
   const id = String(clipId);
   const lockKey = `${id}:${format}`;
@@ -74,7 +74,7 @@ export async function downloadClip(clipId: string | number | undefined | null, f
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    const ext = format === "wav" ? "wav" : "mp3";
+    const ext = format === "wav" ? "wav" : format === "mp4" ? "mp4" : "mp3";
     const cd = res.headers.get("content-disposition");
     const match = cd?.match(/filename\*?=(?:UTF-8'')?"?([^";]+)"?/i);
     a.download = match?.[1] ? decodeURIComponent(match[1].replace(/^UTF-8''/, "")) : `${id}.${ext}`;

@@ -3,6 +3,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { AuthorizedAudio, downloadClip } from "@/components/playground";
+import {
+  buildMidiFile,
+  classifyResult,
+  downloadBytes,
+  type Artifact,
+  type TextAsset,
+} from "@/lib/artifacts";
 
 interface DbLogRow {
   id: string;
@@ -184,34 +191,6 @@ function safeParseResult(r: unknown): unknown {
   return r;
 }
 
-/** A result clip plus its best inline CDN URL, for direct streaming playback. */
-interface LogClip {
-  id: string;
-  audioUrl: string | null;
-}
-
-function extractClipList(result: unknown): LogClip[] {
-  let list: unknown[] = [];
-  if (Array.isArray(result)) {
-    list = result;
-  } else if (result && typeof result === "object") {
-    const rec = result as Record<string, unknown>;
-    if (Array.isArray(rec.clips)) list.push(...rec.clips);
-    if (Array.isArray(rec.items)) list.push(...rec.items);
-    if (Array.isArray(rec.data)) list.push(...rec.data);
-  }
-  const out: LogClip[] = [];
-  for (const c of list) {
-    if (!c || typeof c !== "object") continue;
-    const rec = c as { id?: unknown; audio_url?: unknown; media_urls?: Array<{ url?: unknown }> };
-    if (typeof rec.id !== "string" || !rec.id) continue;
-    const media = Array.isArray(rec.media_urls) ? rec.media_urls[0]?.url : null;
-    const audioUrl = typeof media === "string" ? media : typeof rec.audio_url === "string" ? rec.audio_url : null;
-    out.push({ id: rec.id, audioUrl });
-  }
-  return out;
-}
-
 function firstClip(result: unknown): Record<string, unknown> | null {
   if (!result) return null;
   if (Array.isArray(result)) {
@@ -312,7 +291,7 @@ export default function LogsPage() {
   const [searchInput, setSearchInput] = useState("");
   const [taskIdSearch, setTaskIdSearch] = useState("");
   const [activeTab, setActiveTab] = useState("audio");
-  const [resultModal, setResultModal] = useState<{ row: LogRow; clips: LogClip[] } | null>(null);
+  const [resultModal, setResultModal] = useState<LogRow | null>(null);
   const [dateKey, setDateKey] = useState<DateKey>("30d");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -470,11 +449,11 @@ export default function LogsPage() {
             </thead>
             <tbody>
               {rows.map((r) => {
-                const clips = extractClipList(r.result_json);
-                const clipIds = clips.map((c) => c.id);
+                const artifact = classifyResult(r.result_json, r.endpoint);
                 const st = (r.status || "").toLowerCase();
                 const isComplete = st === "complete" || st === "success";
-                const canDownload = clipIds.length > 0 && isComplete;
+                const hasResult = r.result_json != null;
+                const canAct = isComplete && artifact.kind !== "raw";
                 return (
                   <tr key={r.key} className="border-b border-white/[0.035] transition hover:bg-white/[0.015] last:border-b-0">
                     <td className="px-4 py-3.5 text-white/55 whitespace-nowrap text-xs tabular-nums align-top">
@@ -495,15 +474,11 @@ export default function LogsPage() {
                       {r.task_id ? r.task_id : <span className="text-white/25">—</span>}
                     </td>
                     <td className="px-4 py-3.5 align-top">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <DownloadButton format="mp3" clipId={clipIds[0]} enabled={canDownload} onError={showError} />
-                        <DownloadButton format="wav" clipId={clipIds[0]} enabled={canDownload} onError={showError} />
-                        {!canDownload && clipIds.length === 0 && <span className="text-[10px] text-white/20">no clip</span>}
-                      </div>
+                      <ArtifactActions artifact={artifact} enabled={canAct} onError={showError} />
                     </td>
                     <td className="px-4 py-3.5 align-top">
                       <div className="flex justify-end">
-                        <ResultCell row={r} clipIds={clipIds} canOpen={canDownload} onOpen={() => setResultModal({ row: r, clips })} />
+                        <ResultCell row={r} artifact={artifact} canOpen={hasResult} onOpen={() => setResultModal(r)} />
                       </div>
                     </td>
                   </tr>
@@ -569,8 +544,7 @@ export default function LogsPage() {
 
       {resultModal && (
         <ResultModal
-          clips={resultModal.clips}
-          row={resultModal.row}
+          row={resultModal}
           onClose={() => setResultModal(null)}
           onError={showError}
         />
@@ -619,34 +593,142 @@ function PromptCard({ row }: { row: LogRow }) {
   );
 }
 
-function DownloadButton({ format, clipId, enabled, onError }: { format: "mp3" | "wav"; clipId?: string; enabled: boolean; onError: (msg: string) => void }) {
-  const tone = format === "mp3"
-    ? "border-[var(--emerald)]/20 bg-[var(--emerald)]/10 text-[var(--emerald)] hover:bg-[var(--emerald)]/20"
-    : "border-indigo-500/20 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20";
+type ButtonTone = "neutral" | "mp3" | "wav" | "mp4" | "midi" | "text";
+
+const BUTTON_TONES: Record<ButtonTone, string> = {
+  neutral: "border-white/10 bg-white/[0.04] text-white/75 hover:bg-white/10",
+  mp3: "border-[var(--emerald)]/20 bg-[var(--emerald)]/10 text-[var(--emerald)] hover:bg-[var(--emerald)]/20",
+  wav: "border-indigo-500/20 bg-indigo-500/10 text-indigo-300 hover:bg-indigo-500/20",
+  mp4: "border-sky-500/20 bg-sky-500/10 text-sky-300 hover:bg-sky-500/20",
+  midi: "border-fuchsia-500/20 bg-fuchsia-500/10 text-fuchsia-300 hover:bg-fuchsia-500/20",
+  text: "border-amber-500/20 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20",
+};
+
+function MiniButton({ label, title, enabled = true, tone = "neutral", onClick }: {
+  label: string;
+  title?: string;
+  enabled?: boolean;
+  tone?: ButtonTone;
+  onClick: () => void;
+}) {
   return (
     <button
       type="button"
+      title={title}
       aria-disabled={!enabled}
+      onClick={() => { if (enabled) onClick(); }}
+      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition ${
+        enabled ? BUTTON_TONES[tone] : "border-white/5 bg-white/[0.015] text-white/20 pointer-events-none cursor-not-allowed"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function DownloadButton({ format, clipId, enabled, onError }: { format: "mp3" | "wav" | "mp4"; clipId?: string | null; enabled: boolean; onError: (msg: string) => void }) {
+  return (
+    <MiniButton
+      label={format.toUpperCase()}
+      tone={format}
+      enabled={enabled && !!clipId}
       onClick={() => {
-        if (!enabled || !clipId) return;
         void downloadClip(clipId, format).catch((e) => {
           if (e instanceof DOMException && e.name === "AbortError") return;
           onError(e?.message ?? `${format.toUpperCase()} download failed`);
         });
       }}
-      className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[10px] font-medium transition ${
-        enabled ? tone : "border-white/5 bg-white/[0.015] text-white/20 pointer-events-none cursor-not-allowed"
-      }`}
-    >
-      {format.toUpperCase()}
-    </button>
+    />
   );
 }
 
-/** Result cell: hover reveals a preview card (cover image, lyrics, download); click opens playback. */
-function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: string[]; canOpen: boolean; onOpen: () => void }) {
-  const cover = extractCover(row.result_json);
-  const lyrics = extractLyrics(row);
+/**
+ * Render the correct export actions for a result artifact: MP3/WAV for audio,
+ * MP4 for videos, a generated `.mid` for MIDI transcriptions, and LRC/SRT/TXT
+ * for lyric/subtitle text. Nothing is downloadable for a persona.
+ */
+function ArtifactActions({ artifact, enabled, onError }: { artifact: Artifact; enabled: boolean; onError: (msg: string) => void }) {
+  switch (artifact.kind) {
+    case "audio": {
+      const clipId = artifact.clips[0]?.id;
+      return (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <DownloadButton format="mp3" clipId={clipId} enabled={enabled} onError={onError} />
+          <DownloadButton format="wav" clipId={clipId} enabled={enabled} onError={onError} />
+        </div>
+      );
+    }
+    case "video":
+      return <DownloadButton format="mp4" clipId={artifact.clipId} enabled={enabled} onError={onError} />;
+    case "midi":
+      return (
+        <MiniButton
+          label="MID"
+          tone="midi"
+          title="Download Standard MIDI File"
+          enabled={enabled}
+          onClick={() => downloadBytes("transcription.mid", buildMidiFile(artifact.instruments), "audio/midi")}
+        />
+      );
+    case "text":
+      return (
+        <div className="flex flex-wrap items-center gap-1.5">
+          {artifact.assets.map((a) => (
+            <MiniButton key={a.label} label={a.label} tone="text" title={`Download ${a.filename}`} enabled={enabled}
+              onClick={() => downloadBytes(a.filename, a.content, a.mime)} />
+          ))}
+        </div>
+      );
+    case "image":
+      return <MiniButton label="IMG" title="Open cover image" enabled={enabled}
+        onClick={() => window.open(artifact.imageUrl, "_blank", "noopener")} />;
+    case "persona":
+      return <span className="text-[10px] text-white/30">persona</span>;
+    default:
+      return <span className="text-[10px] text-white/20">no media</span>;
+  }
+}
+
+function artifactSummary(artifact: Artifact): string {
+  switch (artifact.kind) {
+    case "video": return "Music video (MP4)";
+    case "midi": return `${artifact.instruments.length} instrument${artifact.instruments.length === 1 ? "" : "s"} transcribed`;
+    case "text": return artifact.assets.map((a) => a.label).join(" · ");
+    case "persona": return "Voice persona";
+    case "image": return "Cover image";
+    case "raw": return "Raw response";
+    case "audio": return "";
+  }
+}
+
+/** The single most useful export for the hover preview card. */
+function primaryDownload(artifact: Artifact): { label: string; run: () => void } | null {
+  switch (artifact.kind) {
+    case "audio": {
+      const id = artifact.clips[0]?.id;
+      return id ? { label: "Download MP3", run: () => { void downloadClip(id, "mp3").catch(() => {}); } } : null;
+    }
+    case "video":
+      return artifact.clipId ? { label: "Download MP4", run: () => { void downloadClip(artifact.clipId, "mp4").catch(() => {}); } } : null;
+    case "midi":
+      return { label: "Download MID", run: () => downloadBytes("transcription.mid", buildMidiFile(artifact.instruments), "audio/midi") };
+    case "text": {
+      const a = artifact.assets[0];
+      return a ? { label: `Download ${a.label}`, run: () => downloadBytes(a.filename, a.content, a.mime) } : null;
+    }
+    case "image":
+      return { label: "Open image", run: () => window.open(artifact.imageUrl, "_blank", "noopener") };
+    default:
+      return null;
+  }
+}
+
+/** Result cell: hover reveals a preview card (cover image, lyrics, download); click opens the artifact. */
+function ResultCell({ row, artifact, canOpen, onOpen }: { row: LogRow; artifact: Artifact; canOpen: boolean; onOpen: () => void }) {
+  const cover = artifact.kind === "audio" ? extractCover(row.result_json) : artifact.kind === "image" ? artifact.imageUrl : null;
+  const lyrics = artifact.kind === "audio" || artifact.kind === "text" ? extractLyrics(row) : null;
+  const summary = artifactSummary(artifact);
+  const primary = primaryDownload(artifact);
   const initials = (row.title || row.endpoint || "?").trim().charAt(0).toUpperCase() || "?";
   const btnRef = useRef<HTMLButtonElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -716,25 +798,55 @@ function ResultCell({ row, clipIds, canOpen, onOpen }: { row: LogRow; clipIds: s
               {initials}
             </div>
           )}
-          {lyrics ? (
+          {summary ? (
+            <p className="text-[11px] text-white/70">{summary}</p>
+          ) : lyrics ? (
             <p className="line-clamp-6 whitespace-pre-wrap text-[11px] leading-relaxed text-white/60">{lyrics}</p>
           ) : (
             <p className="text-[11px] text-white/35">No lyrics for this request.</p>
           )}
-          <button
-            type="button"
-            onClick={() => { void downloadClip(clipIds[0], "mp3").catch(() => {}); }}
-            className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10"
-          >
-            Download MP3
-          </button>
+          {primary && (
+            <button
+              type="button"
+              onClick={primary.run}
+              className="mt-2.5 inline-flex w-full items-center justify-center gap-1.5 rounded-md border border-white/10 bg-white/5 px-3 py-1.5 text-[11px] font-medium text-white/80 transition hover:bg-white/10"
+            >
+              {primary.label}
+            </button>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function ResultModal({ clips, row, onClose, onError }: { clips: LogClip[]; row: LogRow; onClose: () => void; onError?: (msg: string) => void }) {
+function TextAssetCard({ asset, onError }: { asset: TextAsset; onError?: (msg: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className="rounded-lg border border-white/5 bg-black/30 p-3">
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <span className="text-[11px] font-semibold text-white/60">{asset.label}</span>
+        <div className="flex items-center gap-1.5">
+          <MiniButton
+            label={copied ? "Copied" : "Copy"}
+            onClick={() => {
+              void navigator.clipboard
+                ?.writeText(asset.content)
+                .then(() => { setCopied(true); window.setTimeout(() => setCopied(false), 1500); })
+                .catch(() => onError?.("Copy failed"));
+            }}
+          />
+          <MiniButton label={`Download ${asset.label}`} tone="text" onClick={() => downloadBytes(asset.filename, asset.content, asset.mime)} />
+        </div>
+      </div>
+      <pre className="max-h-[260px] overflow-auto whitespace-pre-wrap text-[11px] leading-relaxed text-white/60">{asset.content}</pre>
+    </div>
+  );
+}
+
+function ResultModal({ row, onClose, onError }: { row: LogRow; onClose: () => void; onError?: (msg: string) => void }) {
+  const artifact = classifyResult(row.result_json, row.endpoint);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", onKey);
@@ -766,12 +878,11 @@ function ResultModal({ clips, row, onClose, onError }: { clips: LogClip[]; row: 
         </div>
 
         <div className="space-y-3">
-          {clips.length === 0 && (
+          {artifact.kind === "audio" && (artifact.clips.length === 0 ? (
             <div className="rounded-lg border border-white/5 bg-black/30 p-4 text-xs text-white/50">
               No downloadable audio clips found for this request.
             </div>
-          )}
-          {clips.map(({ id, audioUrl }) => (
+          ) : artifact.clips.map(({ id, audioUrl }) => (
             <div key={id} className="rounded-lg border border-white/5 bg-black/30 p-3">
               <div className="mb-2 flex items-center justify-between gap-2">
                 <span className="font-mono text-[11px] text-white/55">{id}</span>
@@ -782,7 +893,79 @@ function ResultModal({ clips, row, onClose, onError }: { clips: LogClip[]; row: 
               </div>
               <AuthorizedAudio clipId={id} src={audioUrl} />
             </div>
+          )))}
+
+          {artifact.kind === "video" && (
+            <div className="rounded-lg border border-white/5 bg-black/30 p-3">
+              {artifact.videoUrl ? (
+                <video controls src={artifact.videoUrl} className="w-full rounded-lg border border-white/5 bg-black" />
+              ) : (
+                <div className="text-xs text-white/50">The video is not directly previewable. Use the MP4 download.</div>
+              )}
+              {artifact.clipId && (
+                <div className="mt-2 flex justify-end">
+                  <DownloadButton format="mp4" clipId={artifact.clipId} enabled onError={(m) => onError?.(m)} />
+                </div>
+              )}
+            </div>
+          )}
+
+          {artifact.kind === "midi" && (
+            <div className="rounded-lg border border-white/5 bg-black/30 p-3">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <span className="text-[11px] text-white/55">
+                  {artifact.instruments.length} instrument{artifact.instruments.length === 1 ? "" : "s"} ·{" "}
+                  {artifact.instruments.reduce((n, inst) => n + inst.notes.length, 0)} notes
+                </span>
+                <MiniButton label="Download MID" tone="midi"
+                  onClick={() => downloadBytes("transcription.mid", buildMidiFile(artifact.instruments), "audio/midi")} />
+              </div>
+              <div className="space-y-1.5">
+                {artifact.instruments.map((inst, i) => (
+                  <div key={`${inst.name}-${i}`} className="flex items-center justify-between rounded-md border border-white/5 bg-white/[0.02] px-2.5 py-1.5 text-[11px]">
+                    <span className="truncate text-white/75">{inst.name}</span>
+                    <span className="text-white/40">{inst.notes.length} notes</span>
+                  </div>
+                ))}
+                {artifact.instruments.length === 0 && (
+                  <div className="text-xs text-white/45">No instruments were transcribed.</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {artifact.kind === "text" && artifact.assets.map((asset) => (
+            <TextAssetCard key={asset.label} asset={asset} onError={onError} />
           ))}
+
+          {artifact.kind === "persona" && (
+            <div className="rounded-lg border border-white/5 bg-black/30 p-3">
+              <p className="mb-2 text-xs text-white/50">This request created a voice persona — there is no downloadable audio.</p>
+              {artifact.fields.length > 0 && (
+                <div className="space-y-1.5">
+                  {artifact.fields.map((f) => (
+                    <div key={f.label} className="flex items-center justify-between gap-3 text-[11px]">
+                      <span className="font-medium text-white/45">{f.label}</span>
+                      <span className="min-w-0 flex-1 truncate text-right text-white/75" title={f.value}>{f.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {artifact.kind === "image" && (
+            <div className="rounded-lg border border-white/5 bg-black/30 p-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={artifact.imageUrl} alt="" className="max-h-[360px] w-full rounded-lg object-contain" />
+            </div>
+          )}
+
+          {artifact.kind === "raw" && (
+            <div className="rounded-lg border border-white/5 bg-black/30 p-4 text-xs text-white/50">
+              No playable media for this request. See the raw response below.
+            </div>
+          )}
         </div>
 
         {row.result_json != null && (
