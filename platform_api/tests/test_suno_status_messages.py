@@ -61,6 +61,29 @@ def test_classify_suno_failure_type_other() -> None:
     assert classify_suno_failure_type(status="CREATE_TASK_FAILED", error_message="timeout") == "other"
 
 
+def test_suno_task_failure_message_capacity_error() -> None:
+    message = suno_task_failure_message(
+        status="GENERATE_AUDIO_FAILED",
+        error_message=(
+            "No paid Suno account is available for this model; "
+            "premium models require a paid account."
+        ),
+    )
+    assert "temporarily unavailable" in message.lower()
+    # Must not tell the user their prompt was the problem.
+    assert "different lyrics" not in message.lower()
+
+
+def test_classify_suno_failure_type_provider_capacity() -> None:
+    assert (
+        classify_suno_failure_type(
+            status="GENERATE_AUDIO_FAILED",
+            error_message="No Suno account with available credits for this model.",
+        )
+        == "provider_capacity"
+    )
+
+
 def test_parse_suno_generate_poll_rejected_fails() -> None:
     parsed = parse_suno_generate_poll({"code": 200, "data": {"status": "REJECTED"}})
     assert parsed.state == "failed"

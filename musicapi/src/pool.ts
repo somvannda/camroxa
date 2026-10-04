@@ -254,16 +254,25 @@ export class AccountPool {
       if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
       return true;
     });
+    if (filtered.length === 0 && policy === "paid_only") {
+      throw new Error(
+        "No paid Suno account is available for this model; premium models require a paid account.",
+      );
+    }
     const ordered = orderByLoad(filtered, opts.load ?? (() => 0), {
       preferFree: policy === "prefer_free",
       maxPerAccount: opts.maxPerAccount,
     });
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
+    let sawZeroCredits = false;
     for (const client of ordered) {
       try {
         const health = await this.healthFor(client);
-        if (health.credits <= 0) continue;
+        if (health.credits <= 0) {
+          sawZeroCredits = true;
+          continue;
+        }
         if (want && health.models.length && !health.models.includes(want)) {
           // Suno isn't advertising this model for the account — but a key it
           // won't advertise may still be accepted, so keep the account as a
@@ -277,6 +286,9 @@ export class AccountPool {
       }
     }
     if (fallback) return fallback;
+    if (sawZeroCredits) {
+      throw new Error("No Suno account with available credits for this model.");
+    }
     throw new Error(lastError);
   }
 
@@ -362,17 +374,29 @@ export class AccountPool {
       if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
       return true;
     });
-    if (filtered.length === 0) throw new Error("No Suno accounts available after excluding attempted ones.");
+    if (filtered.length === 0) {
+      const anyPaid = this.clients.some((c) => (c.account.type ?? "free") === "paid");
+      if (policy === "paid_only" && !anyPaid) {
+        throw new Error(
+          "No paid Suno account is available for this model; premium models require a paid account.",
+        );
+      }
+      throw new Error("No Suno accounts available after excluding attempted ones.");
+    }
     const ordered = orderByLoad(filtered, opts.load ?? (() => 0), {
       preferFree: policy === "prefer_free",
       maxPerAccount: opts.maxPerAccount,
     });
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
+    let sawZeroCredits = false;
     for (const client of ordered) {
       try {
         const health = await this.healthFor(client);
-        if (health.credits <= 0) continue;
+        if (health.credits <= 0) {
+          sawZeroCredits = true;
+          continue;
+        }
         if (want && health.models.length && !health.models.includes(want)) {
           // See pick(): an unlisted model is attempted with a healthy account
           // rather than filtered out, so a key Suno accepts but doesn't
@@ -386,6 +410,9 @@ export class AccountPool {
       }
     }
     if (fallback) return fallback;
+    if (sawZeroCredits) {
+      throw new Error("No Suno account with available credits for this model.");
+    }
     throw new Error(lastError);
   }
 }

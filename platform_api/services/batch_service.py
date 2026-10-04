@@ -4763,16 +4763,33 @@ class BatchService:
         is_retry: bool = False,
         blocked_terms: list[str] | None = None,
     ) -> None:
+        failure_type = classify_suno_failure_type(
+            status=status,
+            error_message=error_message,
+        )
         draft_log.log_suno_failure_metric(
             batch_id=str(batch_id) if batch_id else None,
             song_id=str(song_id) if song_id else None,
-            failure_type=classify_suno_failure_type(
-                status=status,
-                error_message=error_message,
-            ),
+            failure_type=failure_type,
             is_retry=is_retry,
             blocked_terms_extracted=blocked_terms,
         )
+        if failure_type == "provider_capacity":
+            # Operational (not user error): page ops so a missing paid account /
+            # unfunded key is fixed instead of silently failing every song.
+            try:
+                from platform_api.services.telegram_ops_alert_service import (
+                    notify_provider_capacity_failure,
+                )
+
+                notify_provider_capacity_failure(
+                    failure_type=failure_type,
+                    error_message=str(error_message or ""),
+                    batch_id=batch_id,
+                    song_id=song_id,
+                )
+            except Exception:
+                logger.debug("Provider capacity alert skipped", exc_info=True)
 
     async def _promote_suno_blocked_terms(self, blocked_terms: list[str]) -> None:
         """Promote parsed Suno block terms into the learned blocklist registry."""

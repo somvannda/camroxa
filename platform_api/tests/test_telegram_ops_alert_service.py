@@ -25,6 +25,37 @@ def test_classify_activity_music_and_image() -> None:
     assert classify_activity("video_manual via slai") == "video"
 
 
+def test_notify_provider_capacity_failure_is_debounced(monkeypatch) -> None:
+    from platform_api.services import telegram_ops_alert_service as svc
+
+    sent: list[str] = []
+    monkeypatch.setattr(svc, "schedule_ops_message", lambda text: sent.append(text))
+    svc._provider_capacity_alert_last.clear()
+    try:
+        svc.notify_provider_capacity_failure(
+            failure_type="provider_capacity",
+            error_message="No paid Suno account is available for this model.",
+            batch_id="b1",
+            song_id="s1",
+        )
+        # Same failure type within the cooldown window must not send again.
+        svc.notify_provider_capacity_failure(
+            failure_type="provider_capacity",
+            error_message="No paid Suno account is available for this model.",
+            batch_id="b1",
+            song_id="s2",
+        )
+        assert len(sent) == 1
+        assert "SUNO PROVIDER UNAVAILABLE" in sent[0]
+        assert "No paid Suno account" in sent[0]
+
+        # A distinct failure type is tracked separately.
+        svc.notify_provider_capacity_failure(failure_type="provider_capacity_credits")
+        assert len(sent) == 2
+    finally:
+        svc._provider_capacity_alert_last.clear()
+
+
 def test_format_login_message() -> None:
     text = format_ops_message(
         kind="login",
