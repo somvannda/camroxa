@@ -81,9 +81,22 @@ if [[ -f "${SECRETS_FILE}" ]]; then
   source "${SECRETS_FILE}"
 fi
 
+COOKIE_KEY_GENERATED=0
 MUSICAPI_DB_PASSWORD="${MUSICAPI_DB_PASSWORD:-$(gen_hex 24)}"
 MUSICAPI_JWT_SECRET="${MUSICAPI_JWT_SECRET:-$(gen_hex 48)}"
-MUSICAPI_COOKIE_ENCRYPTION_KEY="${MUSICAPI_COOKIE_ENCRYPTION_KEY:-$(gen_hex 32)}"
+if [[ -z "${MUSICAPI_COOKIE_ENCRYPTION_KEY:-}" ]]; then
+  MUSICAPI_COOKIE_ENCRYPTION_KEY="$(gen_hex 32)"
+  COOKIE_KEY_GENERATED=1
+fi
+
+# Keep a timestamped copy before rewriting: a regenerated cookie key is the only
+# thing that can decrypt the stored Suno account cookies, so losing it is
+# unrecoverable. Never overwrite without a rollback copy.
+if [[ -f "${SECRETS_FILE}" ]]; then
+  cp -p "${SECRETS_FILE}" "${SECRETS_FILE}.bak.$(date -u +%Y%m%dT%H%M%SZ)" 2>/dev/null || true
+  # Keep the five most recent backups.
+  ls -1t "${SECRETS_FILE}.bak."* 2>/dev/null | tail -n +6 | xargs -r rm -f 2>/dev/null || true
+fi
 
 {
   echo "# Generated $(date -u +%Y-%m-%dT%H:%M:%SZ) — keep private"
@@ -137,6 +150,26 @@ sudo -u postgres psql -v ON_ERROR_STOP=1 \
   -c "GRANT ALL PRIVILEGES ON DATABASE ${DB_NAME} TO ${DB_USER};"
 sudo -u postgres psql -d "${DB_NAME}" -v ON_ERROR_STOP=1 \
   -c "GRANT ALL ON SCHEMA public TO ${DB_USER};" 2>/dev/null || true
+
+# Refuse to mint a fresh cookie key over existing encrypted Suno accounts. The
+# new key cannot decrypt them, so the service would crash-loop on startup with
+# "COOKIE_ENCRYPTION_KEY does not match the key these rows were encrypted with".
+# Fail before writing .env / restarting and roll the secrets file back.
+if [[ "${COOKIE_KEY_GENERATED}" == "1" ]] && command -v psql >/dev/null 2>&1; then
+  existing_accounts="$(sudo -u postgres psql -d "${DB_NAME}" -tAc \
+    "SELECT count(*) FROM suno_accounts WHERE COALESCE(client_cookie,'') <> ''" 2>/dev/null || true)"
+  if [[ -n "${existing_accounts}" && "${existing_accounts}" != "0" ]]; then
+    log "FATAL: ${DB_NAME}.suno_accounts has ${existing_accounts} encrypted account(s), but MUSICAPI_COOKIE_ENCRYPTION_KEY is absent from ${SECRETS_FILE}."
+    log "A new key was generated and would make those cookies undecryptable."
+    latest_backup="$(ls -1t "${SECRETS_FILE}.bak."* 2>/dev/null | head -n 1 || true)"
+    if [[ -n "${latest_backup}" ]]; then
+      cp -p "${latest_backup}" "${SECRETS_FILE}" || true
+      log "Restored ${SECRETS_FILE} from ${latest_backup}; aborting before restart."
+    fi
+    log "Fix: add MUSICAPI_COOKIE_ENCRYPTION_KEY=<the key that encrypted them> to the deploy secrets (or re-run the Suno login flow), then redeploy."
+    exit 1
+  fi
+fi
 
 log "Extracting uploaded source tarball..."
 mkdir -p "${REPO_DIR}"
