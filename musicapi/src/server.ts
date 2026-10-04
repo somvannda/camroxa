@@ -121,6 +121,23 @@ const DEFAULT_ALERTS: AlertSettings = {
 };
 
 /**
+ * Normalize an operator-entered Telegram support value into an absolute https
+ * URL. Operators commonly paste a bare handle (`@name` or `name`); used as an
+ * `href` the browser resolves that relative to the panel origin, so "Get
+ * Support" points back at the site (e.g. `/@name`) instead of Telegram. Accept
+ * a full http(s) URL or scheme-less `t.me/...` as-is, otherwise treat the value
+ * as a handle.
+ */
+function normalizeTelegramUrl(raw: string): string {
+  const value = raw.trim();
+  if (!value) return "";
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^(t\.me|telegram\.me)\//i.test(value)) return `https://${value}`;
+  const handle = value.replace(/^@+/, "").trim();
+  return handle ? `https://t.me/${handle}` : "";
+}
+
+/**
  * Normalize a stored/upstream `brand` document, falling back to defaults per
  * field so a hand-edited row can never break the settings endpoint.
  */
@@ -133,7 +150,9 @@ function coerceBrand(value: unknown): BrandSettings {
     name: typeof o.name === "string" && o.name.trim() ? o.name.trim() : DEFAULT_BRAND.name,
     docs_url: typeof o.docs_url === "string" ? o.docs_url.trim() : DEFAULT_BRAND.docs_url,
     support_telegram_url:
-      typeof o.support_telegram_url === "string" ? o.support_telegram_url.trim() : DEFAULT_BRAND.support_telegram_url,
+      typeof o.support_telegram_url === "string"
+        ? normalizeTelegramUrl(o.support_telegram_url)
+        : DEFAULT_BRAND.support_telegram_url,
     languages: languages.length ? languages : [...DEFAULT_BRAND.languages],
   };
 }
@@ -187,7 +206,7 @@ function mergeBrand(
     if (typeof o.support_telegram_url !== "string") {
       return { ok: false, error: "brand.support_telegram_url must be a string." };
     }
-    next.support_telegram_url = o.support_telegram_url.trim();
+    next.support_telegram_url = normalizeTelegramUrl(o.support_telegram_url);
   }
   if (o.languages !== undefined) {
     if (!Array.isArray(o.languages) || !o.languages.every((l) => typeof l === "string" && l.trim())) {

@@ -253,6 +253,7 @@ export default function SettingsPage() {
             <div className="space-y-1">
               <label className={labelClass}>Telegram support link</label>
               <input value={brand.support_telegram_url} onChange={(e) => setBrand({ ...brand, support_telegram_url: e.target.value })} className={inputClass} placeholder="https://t.me/your_support" />
+              <p className="text-xs text-[var(--muted)]">Enter a full link or a bare handle — <code>@your_support</code> is saved as <code>https://t.me/your_support</code>.</p>
             </div>
             <div className="space-y-1">
               <label className={labelClass}>Languages (comma-separated)</label>
