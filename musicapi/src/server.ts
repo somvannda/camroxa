@@ -13,7 +13,6 @@ import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, v
 import { OAuth2Client } from "google-auth-library";
 import { config } from "./config.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
-import { captchaRequired } from "./captcha.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
 import { normalizeModel } from "./models.js";
@@ -92,14 +91,15 @@ export interface BrandSettings {
 }
 
 /**
- * Thresholds/switches for the three alerts the admin panel surfaces (task 5.5,
- * REQUIREMENTS §4.10): Suno accounts running low on credits, Suno demanding a
- * captcha, and a spike in the job failure rate.
+ * Thresholds/switches for the alerts the admin panel surfaces (task 5.5,
+ * REQUIREMENTS §4.10): Suno accounts running low on credits, and a spike in the
+ * job failure rate. Captcha is intentionally not an alert: a captcha-required
+ * account is healthy while a solver is configured (the worker solves the
+ * Turnstile automatically at generation time), so it is never actionable.
  */
 export interface AlertSettings {
   enabled: boolean;
   low_credits_threshold: number;
-  captcha_locked: boolean;
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
   window_minutes: number;
@@ -115,7 +115,6 @@ const DEFAULT_BRAND: BrandSettings = {
 const DEFAULT_ALERTS: AlertSettings = {
   enabled: true,
   low_credits_threshold: 50,
-  captcha_locked: true,
   failure_rate_threshold: 0.25,
   failure_rate_min_requests: 20,
   window_minutes: 60,
@@ -173,7 +172,6 @@ function coerceAlerts(value: unknown): AlertSettings {
   return {
     enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_ALERTS.enabled,
     low_credits_threshold: clampInt(o.low_credits_threshold, DEFAULT_ALERTS.low_credits_threshold, 0, 1_000_000),
-    captcha_locked: typeof o.captcha_locked === "boolean" ? o.captcha_locked : DEFAULT_ALERTS.captcha_locked,
     failure_rate_threshold: clampNumber(o.failure_rate_threshold, DEFAULT_ALERTS.failure_rate_threshold, 0, 1),
     failure_rate_min_requests: clampInt(
       o.failure_rate_min_requests,
@@ -226,7 +224,7 @@ function mergeAlerts(
   if (typeof patch !== "object" || patch === null) return { ok: false, error: "alerts must be an object." };
   const o = patch as Record<string, unknown>;
   const next: AlertSettings = { ...current };
-  for (const key of ["enabled", "captcha_locked"] as const) {
+  for (const key of ["enabled"] as const) {
     if (o[key] !== undefined) {
       if (typeof o[key] !== "boolean") return { ok: false, error: `alerts.${key} must be a boolean.` };
       next[key] = o[key] as boolean;
@@ -4376,7 +4374,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return coerceAlerts(await readSettingsValue("alerts"));
   }
 
-  type AlertType = "low_credits" | "captcha_locked" | "failure_rate";
+  type AlertType = "low_credits" | "failure_rate";
 
   interface AlertItem {
     id: AlertType;
@@ -4393,7 +4391,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     alerts: AlertItem[];
     summary: {
       low_credits: number;
-      captcha_locked: boolean;
       failure_rate: number | null;
       requests: number;
       failures: number;
@@ -4401,7 +4398,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
-   * Evaluate the three §4.10 alert conditions against live state. Pure read — it
+   * Evaluate the §4.10 alert conditions against live state. Pure read — it
    * never delivers anything — so both the admin endpoint and the background loop
    * can call it freely; `syncAlertState` is what decides whether to notify.
    */
@@ -4410,7 +4407,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const checkedAt = new Date().toISOString();
     const summary: AlertReport["summary"] = {
       low_credits: 0,
-      captcha_locked: false,
       failure_rate: null,
       requests: 0,
       failures: 0,
@@ -4437,22 +4433,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       });
     }
 
-    // 2. Suno currently demanding a captcha for generation.
-    if (thresholds.captcha_locked) {
-      const required = await captchaRequired();
-      summary.captcha_locked = required;
-      if (required) {
-        alerts.push({
-          id: "captcha_locked",
-          type: "captcha_locked",
-          severity: "warning",
-          message: "Suno is requiring a captcha for generation (captcha-locked).",
-          details: {},
-        });
-      }
-    }
-
-    // 3. Failure-rate spike over the configured sliding window.
+    // 2. Failure-rate spike over the configured sliding window.
     const row = await queryOne<{ total: string; failed: string }>(
       `SELECT count(*)::text AS total,
               count(*) FILTER (WHERE status <> 'complete')::text AS failed
