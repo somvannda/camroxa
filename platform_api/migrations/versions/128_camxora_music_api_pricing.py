@@ -8,9 +8,10 @@ Camxora Music API (musicapi.camxora.com) as a distinct provider alongside
 
 Costs mirror exactly what musicapi.camxora.com charges today: its live pricing
 table has ``music`` at 10 credits per generation, so each V6 model is priced at
-10 credits. ``cost_usd`` is the provider COGS estimate and
-``credits_per_operation`` / ``external_cost_cents`` are stored as micro-units
-(1 display credit = 10,000 units).
+10 credits. ``cost_usd`` is the provider COGS estimate ($0.05 = 10 musicapi
+credits valued at its entry $5 / 1,000 rate) and ``credits_per_operation`` /
+``external_cost_cents`` are stored as micro-units (1 display credit = 10,000
+units).
 
 Rows are sourced ``manual`` so a later "Seed from registry" run does not prune
 them (the registry does not model this provider).
@@ -30,7 +31,7 @@ branch_labels = None
 depends_on = None
 
 _AI_SERVICE = "camxora_music_api"
-_COST_USD = 0.03
+_COST_USD = 0.05  # value of 10 musicapi credits at its entry ($5 / 1,000) rate
 _CREDIT_UNITS = 100_000  # 10 display credits (matches live musicapi pricing)
 _MODELS = ("v6", "v6-wild", "v6-mini")
 
