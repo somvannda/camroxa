@@ -586,6 +586,14 @@ export default function PublicDocsPage() {
                 <a href="#support" className="block rounded-md px-3 py-1.5 text-sm hover:bg-white/5">Support &amp; Community</a>
               </nav>
             </div>
+            <div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-[var(--muted)]">Reference</div>
+              <nav className="space-y-1">
+                <a href="#pricing" className="block rounded-md px-3 py-1.5 text-sm hover:bg-white/5">Pricing &amp; Credits</a>
+                <a href="#error-codes" className="block rounded-md px-3 py-1.5 text-sm hover:bg-white/5">Error Codes</a>
+                <a href="#rate-limits" className="block rounded-md px-3 py-1.5 text-sm hover:bg-white/5">Rate Limits</a>
+              </nav>
+            </div>
           </div>
         </aside>
 
@@ -801,16 +809,151 @@ curl -X POST "https://musicapi.camxora.com/api/v1/generate" \\
               will issue a webhook POST to that URL once the job transitions to <code className="rounded bg-white/10 px-1.5 py-0.5">complete</code> or <code className="rounded bg-white/10 px-1.5 py-0.5">error</code>.
             </p>
             <pre className="overflow-x-auto rounded-xl bg-black/40 p-4 font-mono text-sm">
-{`// Example callback payload (POSTed to your callBackUrl)
+{`// Exact payload POSTed to your callBackUrl (same envelope as
+// /api/v1/generate/record-info, so one parser handles both):
 {
-  "job_id":      "suno_task_01H...",
-  "type":        "music",
-  "status":      "complete",
-  "result":      { "clips": [ { "id": "...", "audio_url": "...", "image_url": "..." } ] },
-  "endpoint":    "music",
-  "credits":     9
-}`}
+  "code": 200,
+  "msg": "All generated successfully.",
+  "data": {
+    "callbackType": "complete",             // "complete" | "error"
+    "task_id": "suno_task_01H...",
+    "data": [ { "id": "...", "audio_url": "...", "image_url": "...", "title": "..." } ]
+  }
+}
+
+// Failure:
+{ "code": 400, "msg": "<reason>", "data": { "callbackType": "error", "task_id": "...", "data": null } }`}
             </pre>
+            <p className="mt-3 text-sm text-[var(--muted)]">
+              Callbacks fire only on a terminal state (<code className="rounded bg-white/10 px-1.5 py-0.5">complete</code> /{" "}
+              <code className="rounded bg-white/10 px-1.5 py-0.5">error</code>) — there are no intermediate callbacks. Pass the
+              sentinel <code className="rounded bg-white/10 px-1.5 py-0.5">&quot;playground&quot;</code> to disable callbacks and
+              poll instead. The callback is <strong className="text-white">not signed</strong>: treat it as a notification and
+              re-fetch <code className="rounded bg-white/10 px-1.5 py-0.5">/v1/task/:id</code> to confirm before granting entitlements.
+            </p>
+          </section>
+
+          <section className="mb-12">
+            <h2 id="pricing" data-toc="Pricing & Credits" className="scroll-mt-24 mb-4 text-2xl font-bold">Pricing &amp; Credits</h2>
+            <p className="mb-3 text-sm text-[var(--muted)]">
+              Every operation is billed in <strong className="text-white">credits</strong> from your API key&rsquo;s balance.
+              One music generation returns <strong className="text-white">two</strong> tracks for a single charge.
+            </p>
+            <div className="overflow-hidden rounded-xl border border-[var(--border)]">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-white/5 text-left text-[var(--muted)]">
+                    <th className="px-3 py-2">Pack</th>
+                    <th className="px-3 py-2">Credits</th>
+                    <th className="px-3 py-2">Price / credit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ["$10", "3,500", "$0.00286"],
+                    ["$30", "11,000", "$0.00273"],
+                    ["$60", "23,000", "$0.00261"],
+                    ["$100", "40,000", "$0.00250"],
+                  ].map(([p, c, r]) => (
+                    <tr key={p} className="border-t border-[var(--border)]">
+                      <td className="px-3 py-2 text-white">{p}</td>
+                      <td className="px-3 py-2">{c}</td>
+                      <td className="px-3 py-2">{r}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            <p className="mt-5 mb-2 text-sm text-[var(--muted)]">Credit cost per operation:</p>
+            <div className="overflow-hidden rounded-xl border border-[var(--border)]">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-white/5 text-left text-[var(--muted)]">
+                    <th className="px-3 py-2">Operation</th>
+                    <th className="px-3 py-2">Credits</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ["Generate, extend, cover, remaster, mashup, add vocals/instrumental, upload cover/extend, recovery audio, voice generate/apply/extend", "17"],
+                    ["Split stems — 12-track (vocal-removal type split_stem)", "20"],
+                    ["Advanced split stem", "12"],
+                    ["Replace section", "9"],
+                    ["Separate vocal — 2-track", "8"],
+                    ["Sounds, MIDI", "3"],
+                    ["Generate MP4 (music video)", "2"],
+                    ["Upload init/register, voice phrase/validate/record", "1"],
+                    ["Lyrics, cover image, persona, boost style, WAV/MP3 download, all record-info & detail endpoints", "0 — free"],
+                  ].map(([op, cr]) => (
+                    <tr key={op} className="border-t border-[var(--border)] align-top">
+                      <td className="px-3 py-2 text-[var(--muted)]">{op}</td>
+                      <td className="whitespace-nowrap px-3 py-2 font-semibold text-white">{cr}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs text-[var(--muted)]">
+              Credits are charged when a job is accepted and automatically refunded if the job fails. Your live balance is
+              authoritative at <code className="rounded bg-white/10 px-1.5 py-0.5">GET /v1/credits</code>.
+            </p>
+          </section>
+
+          <section className="mb-12">
+            <h2 id="error-codes" data-toc="Error Codes" className="scroll-mt-24 mb-4 text-2xl font-bold">Error Codes</h2>
+            <div className="overflow-hidden rounded-xl border border-[var(--border)]">
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-white/5 text-left text-[var(--muted)]">
+                    <th className="px-3 py-2">HTTP</th>
+                    <th className="px-3 py-2">Meaning</th>
+                    <th className="px-3 py-2">Notes</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ["200", "Success", "A create was accepted. On /api/v1 this is remapped from the native 202."],
+                    ["202", "Accepted", "Native /v1 async create — poll /v1/task/:id."],
+                    ["400", "Bad request", "Missing or invalid parameter."],
+                    ["401", "Unauthorized", "Missing or invalid API key."],
+                    ["402", "Insufficient credits", "Native /v1 and /me. On /api/v1 this is returned as 429."],
+                    ["403", "Forbidden", "API-key IP not allowed, cross-origin request blocked, or account suspended."],
+                    ["404", "Not found", "Unknown task id, clip id, or route."],
+                    ["409", "Conflict", "Duplicate resource."],
+                    ["413", "Payload too large", "Request body exceeds 50 MB."],
+                    ["415", "Unsupported media type", "Send Content-Type: application/json on POST/PUT."],
+                    ["429", "Too many requests", "Rate limited (native + per-key). On /api/v1 it also signals insufficient credits, matching sunoapi.org."],
+                    ["5xx", "Server error", "Transient — retry with backoff."],
+                  ].map(([code, meaning, note]) => (
+                    <tr key={code} className="border-t border-[var(--border)] align-top">
+                      <td className="whitespace-nowrap px-3 py-2 font-mono text-white">{code}</td>
+                      <td className="px-3 py-2 text-white">{meaning}</td>
+                      <td className="px-3 py-2 text-[var(--muted)]">{note}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="mt-3 text-xs text-[var(--muted)]">
+              The sunoapi.org-compatible <code className="rounded bg-white/10 px-1.5 py-0.5">/api/v1/*</code> surface also puts
+              business errors in the body <code className="rounded bg-white/10 px-1.5 py-0.5">code</code> field
+              (<code className="rounded bg-white/10 px-1.5 py-0.5">{"{code,msg,data}"}</code>), so always read the body.
+            </p>
+          </section>
+
+          <section className="mb-12">
+            <h2 id="rate-limits" data-toc="Rate Limits" className="scroll-mt-24 mb-4 text-2xl font-bold">Rate Limits</h2>
+            <ul className="space-y-2 text-sm text-[var(--muted)]">
+              <li>&bull; <strong className="text-white">Global:</strong> 300 requests per minute per IP (all routes).</li>
+              <li>&bull; <strong className="text-white">Auth endpoints</strong> (<code className="rounded bg-white/10 px-1.5 py-0.5">/auth/*</code>): 10 requests per minute per IP.</li>
+              <li>&bull; <strong className="text-white">Per API key:</strong> optional per-minute and per-day caps enforced across all of a user&rsquo;s keys.</li>
+              <li>&bull; Exceeding a limit returns <code className="rounded bg-white/10 px-1.5 py-0.5">429</code> with a{" "}
+                <code className="rounded bg-white/10 px-1.5 py-0.5">Retry-After</code> header. Per-key responses also include{" "}
+                <code className="rounded bg-white/10 px-1.5 py-0.5">X-User-Rate-Limit</code> /{" "}
+                <code className="rounded bg-white/10 px-1.5 py-0.5">X-User-Rate-Remaining</code> (and <code className="rounded bg-white/10 px-1.5 py-0.5">-day</code>) so you can self-throttle.</li>
+              <li>&bull; Provider-side generation concurrency is managed internally; your requests queue rather than fail.</li>
+            </ul>
           </section>
 
           <section className="mb-16">
