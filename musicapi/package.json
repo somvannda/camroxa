@@ -11,6 +11,7 @@
     "serve": "tsx src/serve.ts",
     "suno:login": "tsx scripts/suno-login.ts",
     "test:contract": "tsx scripts/smoke-test-sunoapi-contract.ts",
+    "test:lrc": "tsx scripts/test-lrc.ts",
     "build": "tsc",
     "start": "node dist/serve.js",
     "typecheck": "tsc --noEmit"

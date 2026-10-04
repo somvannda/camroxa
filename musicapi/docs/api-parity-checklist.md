@@ -161,3 +161,25 @@ Still open:
       durable `__client` cookie is seeded.
 - [ ] Production secret seeding (`MUSICAPI_SUNO_CLIENT_COOKIE`).
 - [ ] Commit (not yet — awaiting explicit go-ahead per project ship gates).
+- [ ] Host smoke of the LRC microservice after provisioning (see §J).
+
+## J. Timestamped lyrics — self-hosted alignment (2026-10-04)
+
+The one known product gap — routes wired and billed but returning
+`aligned_words: []` / no LRC — is addressed by computing alignment ourselves
+instead of reselling it (`platform_api` used sunoapi.org).
+
+- `musicapi/lrc-service/` — localhost Python sidecar (faster-whisper, CPU `int8`):
+  `POST /align {url|audio_b64, lyrics}` → `{lines, words, lrc}`.
+- `musicapi/src/lrc.ts` — ports `platform_api/services/suno_lrc.py`
+  (`npm run test:lrc`, 25 checks).
+- `server.ts` intercepts the `timestamped_lyrics_detail` descriptor
+  (`runTimestampedLyricsJob`) and stores `aligned`, `lrc`, `lrc_format`,
+  `aligned_lines`, `aligned_words`. Set `LRC_SERVICE_ENABLED=0` to force the
+  plain-lyrics fallback; timing is never fabricated.
+- Deploy: `camxora-musicapi-lrc.service` + `lrc-service/provision.sh`, wired
+  best-effort in the musicapi remote deploy (model is pre-downloaded once).
+
+Covers §C `generate/get-timestamped-lyrics`, plus `/me/lyrics/:id` and
+`/v1/lyrics/:id`.
+

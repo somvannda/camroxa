@@ -23,6 +23,13 @@ import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
 import { renderMusicVideo } from "./video.js";
 import { decryptSunoClip, openDecryptedM4aStream } from "./sunoAudio.js";
 import { JOB_OPS, isRunnableDescriptor, type JobDescriptor } from "./jobOps.js";
+import {
+  alignedLinesToLrc,
+  alignedWordsToLrc,
+  parseAlignedWordsPayload,
+  type AlignedLine,
+  type AlignedWord,
+} from "./lrc.js";
 
 // Fallback credit costs when the `pricing` table has no row for an endpoint.
 // Real costs are read from the DB and configurable in the admin panel.
@@ -1878,6 +1885,110 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
+   * faster-whisper lyric-alignment microservice (see `musicapi/lrc-service`).
+   * Suno's direct API returns lyric text but no timing; we compute it ourselves.
+   * Set `LRC_SERVICE_ENABLED=0` to force the plain-lyrics fallback.
+   */
+  const LRC_SERVICE_URL = process.env.LRC_SERVICE_URL ?? "http://127.0.0.1:4011";
+  const LRC_ENABLED = process.env.LRC_SERVICE_ENABLED !== "0";
+
+  interface LyricAlignment {
+    lines: AlignedLine[];
+    words: AlignedWord[];
+    lrc: string;
+  }
+
+  /**
+   * Align a clip's known lyric text against its own audio via the LRC service.
+   * Returns `null` (never throws) when media storage, the service, or the
+   * alignment itself is unavailable, so callers fall back to plain lyrics.
+   */
+  async function alignLyrics(clipId: string, lyrics: string): Promise<LyricAlignment | null> {
+    if (!LRC_ENABLED || !lyrics.trim() || !storageConfigured()) return null;
+    const audioKey = await ensureAudio(clipId, "mp3");
+    if (!audioKey) return null;
+
+    const body: Record<string, unknown> = { lyrics };
+    const url = await getReadUrl(audioKey);
+    if (url) body.url = url;
+    else body.audio_b64 = (await getObjectBytes(audioKey)).toString("base64");
+
+    let res: Response;
+    try {
+      res = await fetch(`${LRC_SERVICE_URL}/align`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(600_000),
+      });
+    } catch (e) {
+      console.error(`[lrc] align request failed for ${clipId}:`, e instanceof Error ? e.message : e);
+      return null;
+    }
+    if (!res.ok) {
+      console.error(`[lrc] align HTTP ${res.status} for ${clipId}`);
+      return null;
+    }
+    const data = (await res.json()) as {
+      ok?: boolean;
+      error?: string;
+      lines?: unknown;
+      words?: unknown;
+      lrc?: unknown;
+    };
+    if (!data.ok) {
+      console.error(`[lrc] align failed for ${clipId}: ${data.error ?? "unknown"}`);
+      return null;
+    }
+    const lines = Array.isArray(data.lines) ? (data.lines as AlignedLine[]) : [];
+    const words = Array.isArray(data.words)
+      ? (data.words as AlignedWord[])
+      : parseAlignedWordsPayload(data);
+    if (lines.length === 0 && words.length === 0) return null;
+    const lrc =
+      typeof data.lrc === "string" && data.lrc
+        ? data.lrc
+        : lines.length
+          ? alignedLinesToLrc(lines)
+          : alignedWordsToLrc(words);
+    return { lines, words, lrc };
+  }
+
+  /**
+   * Complete a timestamped-lyrics job from our own alignment pipeline.
+   *
+   * The clip's lyric text is the transcript; the real audio is aligned against
+   * it so `/me/lyrics/:id`, `/v1/lyrics/:id`, and
+   * `POST /api/v1/generate/get-timestamped-lyrics` return line-level LRC plus
+   * word/line timings. Falls back to plain lyrics (`aligned: false`) when the
+   * microservice or media pipeline is unavailable — never fabricates timing.
+   */
+  async function runTimestampedLyricsJob(job: Job, clipId: string): Promise<void> {
+    try {
+      job.status = "running";
+      const client = await pool.pick();
+      const clip = await client.getClipObject(clipId);
+      const meta = (clip.metadata ?? {}) as Record<string, unknown>;
+      const lyrics = typeof meta.prompt === "string" ? meta.prompt : "";
+      const alignment = lyrics.trim() ? await alignLyrics(clipId, lyrics) : null;
+      job.result = {
+        ...clip,
+        lyrics,
+        aligned: Boolean(alignment),
+        lrc: alignment?.lrc ?? "",
+        lrc_format: alignment ? "lrc" : null,
+        aligned_lines: alignment?.lines ?? [],
+        aligned_words: alignment?.words ?? [],
+      };
+      job.status = "complete";
+    } catch (e) {
+      job.status = "error";
+      job.error = e instanceof Error ? e.message : String(e);
+    }
+    await finalizeJob(job);
+  }
+
+  /**
    * Complete a MIDI job by transcribing audio with the Basic Pitch service.
    * The source is a completed vocal-separation task (`sourceTaskId`, optionally
    * narrowed by `audioId`) or a single clip (`clipId`). Suno has no MIDI API, so
@@ -2289,6 +2400,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * ran here or on another node.
    */
   async function runDescribedJob(job: Job, descriptor: JobDescriptor): Promise<void> {
+    // Timestamped lyrics have no upstream alignment source on Suno's direct
+    // API; when the LRC microservice is enabled we produce the timing ourselves
+    // instead of running the plain-lyrics `JOB_OPS` fallback.
+    if (descriptor.op === "timestamped_lyrics_detail" && LRC_ENABLED) {
+      await runTimestampedLyricsJob(job, String((descriptor.args ?? {}).id ?? ""));
+      return;
+    }
     const op = JOB_OPS[descriptor.op];
     if (!op) {
       job.status = "error";

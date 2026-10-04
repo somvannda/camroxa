@@ -250,6 +250,17 @@ if [[ ! -x /opt/camxora/midi-service/.venv/bin/python ]]; then
   bash "${MUSICAPI_DIR}/midi-service/provision.sh" || log "WARN: MIDI provisioning failed"
 fi
 
+# LRC microservice (faster-whisper lyric alignment). Same pattern: server.py
+# outside the repo tree, venv + model provisioned only when missing. The core
+# API degrades to plain lyrics when it is absent, so this is best-effort.
+log "Preparing LRC microservice..."
+install -d -o camxora -g camxora /opt/camxora/lrc-service
+install -m 644 "${MUSICAPI_DIR}/lrc-service/server.py" /opt/camxora/lrc-service/server.py
+chown camxora:camxora /opt/camxora/lrc-service/server.py
+if [[ ! -x /opt/camxora/lrc-service/.venv/bin/python ]]; then
+  bash "${MUSICAPI_DIR}/lrc-service/provision.sh" || log "WARN: LRC provisioning failed"
+fi
+
 log "Installing systemd units..."
 REPO_DIR="${REPO_DIR}" bash "${REPO_DIR}/scripts/deploy/systemd/install_musicapi_services.sh"
 
