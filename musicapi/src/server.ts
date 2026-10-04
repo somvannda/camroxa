@@ -1914,11 +1914,33 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const client = await pool.pickFeature("studio");
       const resp = await fetch(params.verifyUrl, { signal: AbortSignal.timeout(60_000) });
       if (!resp.ok) throw new Error(`Could not download verifyUrl (${resp.status}).`);
-      const verificationRecordingId = await client.uploadForVoice(Buffer.from(await resp.arrayBuffer()));
-      const verified = await client.verifyVoice({ phraseId, voiceRecordingId, verificationRecordingId });
-      const voiceId =
-        (verified.id as string) ?? (verified.voice_id as string) ?? (verified.voiceId as string) ?? null;
-      job.result = { voice_verification: verified, voice_id: voiceId, voice_name: params.voiceName ?? null };
+      // Create the verification recording: upload the recording, then extract it
+      // with recording_type="verification" (the field the create-voice UI sends).
+      const uploadId = await client.uploadForVoice(Buffer.from(await resp.arrayBuffer()));
+      const vstem = await client.voiceVoxStem(uploadId, "verification");
+      const verificationRecordingId =
+        (vstem.voice_recording_id as string) ?? (vstem.id as string) ?? "";
+      if (!verificationRecordingId) throw new Error("Could not create the verification recording.");
+      let verified = await client.verifyVoice({ phraseId, voiceRecordingId, verificationRecordingId });
+      let status = typeof verified.status === "string" ? verified.status : "";
+      if (status === "pending") {
+        for (let i = 0; i < 40; i++) {
+          await new Promise((r) => setTimeout(r, 1500));
+          verified = await client.getVoiceVerification(String(verified.id));
+          status = typeof verified.status === "string" ? verified.status : "";
+          if (status && status !== "pending") break;
+        }
+      }
+      if (status !== "approved") {
+        throw new Error(
+          `Voice verification ${status || "failed"}${verified.rejection_reason ? ` (${String(verified.rejection_reason)})` : ""}.`,
+        );
+      }
+      job.result = {
+        voice_verification: verified,
+        voice_id: (verified.id as string) ?? null,
+        voice_name: params.voiceName ?? null,
+      };
       job.status = "complete";
     } catch (e) {
       job.status = "error";

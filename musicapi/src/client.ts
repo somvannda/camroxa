@@ -1232,13 +1232,22 @@ export class SunoClient {
    * (`upload_id` from the audio upload flow) — the `voice_recording_id` used by
    * voice verification. Requires a Voice-entitled (Premier) account.
    */
-  async voiceVoxStem(uploadId: string): Promise<Record<string, unknown>> {
+  async voiceVoxStem(uploadId: string, recordingType?: "verification"): Promise<Record<string, unknown>> {
+    const body: Record<string, unknown> = { upload_id: uploadId };
+    if (recordingType) body.recording_type = recordingType;
     const res = await this.request("/api/processed_clip/voice-vox-stem", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ upload_id: uploadId }),
+      body: JSON.stringify(body),
     });
     if (!res.ok) throw new Error(`voice-vox-stem failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /** Poll a voice verification by id (`GET /api/voice-verification/{id}`). */
+  async getVoiceVerification(verificationId: string): Promise<Record<string, unknown>> {
+    const res = await this.request(`/api/voice-verification/${verificationId}`);
+    if (!res.ok) throw new Error(`voice-verification get failed (${res.status}): ${await res.text()}`);
     return (await res.json()) as Record<string, unknown>;
   }
 
