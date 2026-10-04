@@ -94,10 +94,11 @@ export interface BrandSettings {
 /**
  * Thresholds/switches for the alerts the admin panel surfaces (task 5.5,
  * REQUIREMENTS §4.10): Suno accounts running low on credits, a captcha that
- * cannot actually be solved (no 2Captcha key, or a drained balance), and a
- * spike in the job failure rate. A captcha challenge is only an alert when it
- * is actionable — while a funded solver is configured, the worker solves it
- * automatically at generation time.
+ * cannot actually be solved (no 2Captcha key, or a drained balance), a spike in
+ * the job failure rate, and a backlog of jobs waiting for a Suno concurrency
+ * slot. A captcha challenge is only an alert when it is actionable — while a
+ * funded solver is configured, the worker solves it automatically at generation
+ * time.
  */
 export interface AlertSettings {
   enabled: boolean;
@@ -107,6 +108,12 @@ export interface AlertSettings {
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
   window_minutes: number;
+  /**
+   * Alert when this many jobs are waiting for a Suno slot. `0` disables the
+   * check. Guards against the pool being saturated (a growing backlog means the
+   * account pool can't keep up with demand).
+   */
+  queue_backlog_depth: number;
 }
 
 const DEFAULT_BRAND: BrandSettings = {
@@ -123,6 +130,7 @@ const DEFAULT_ALERTS: AlertSettings = {
   failure_rate_threshold: 0.25,
   failure_rate_min_requests: 20,
   window_minutes: 60,
+  queue_backlog_depth: 50,
 };
 
 /**
@@ -191,6 +199,12 @@ function coerceAlerts(value: unknown): AlertSettings {
       1_000_000,
     ),
     window_minutes: clampInt(o.window_minutes, DEFAULT_ALERTS.window_minutes, 5, 1440),
+    queue_backlog_depth: clampInt(
+      o.queue_backlog_depth,
+      DEFAULT_ALERTS.queue_backlog_depth,
+      0,
+      1_000_000,
+    ),
   };
 }
 
@@ -247,6 +261,7 @@ function mergeAlerts(
     ["failure_rate_threshold", 0, 1],
     ["failure_rate_min_requests", 1, 1_000_000],
     ["window_minutes", 5, 1440],
+    ["queue_backlog_depth", 0, 1_000_000],
   ];
   for (const [key, min, max] of numeric) {
     if (o[key] === undefined) continue;
@@ -4499,7 +4514,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return coerceAlerts(await readSettingsValue("alerts"));
   }
 
-  type AlertType = "low_credits" | "captcha_no_solver" | "captcha_balance" | "failure_rate";
+  type AlertType =
+    | "low_credits"
+    | "captcha_no_solver"
+    | "captcha_balance"
+    | "failure_rate"
+    | "queue_backlog";
 
   interface AlertItem {
     id: AlertType;
@@ -4521,6 +4541,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       failure_rate: number | null;
       requests: number;
       failures: number;
+      queue_backlog: number;
     };
   }
 
@@ -4561,6 +4582,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       failure_rate: null,
       requests: 0,
       failures: 0,
+      queue_backlog: 0,
     };
     if (!thresholds.enabled) {
       return { enabled: false, checked_at: checkedAt, thresholds, alerts: [], summary };
@@ -4639,6 +4661,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           details: { rate, failed, total, window_minutes: thresholds.window_minutes },
         });
       }
+    }
+
+    // 4. Suno concurrency gate backlog: jobs waiting for a slot to free up.
+    const gate = sunoSlots.stats();
+    summary.queue_backlog = gate.waiting;
+    if (thresholds.queue_backlog_depth > 0 && gate.waiting >= thresholds.queue_backlog_depth) {
+      alerts.push({
+        id: "queue_backlog",
+        type: "queue_backlog",
+        severity: gate.waiting >= thresholds.queue_backlog_depth * 2 ? "critical" : "warning",
+        message: `${gate.waiting} job(s) waiting for a Suno slot with ${gate.active} running (above the ${thresholds.queue_backlog_depth} threshold). The account pool can't keep up with demand.`,
+        details: { waiting: gate.waiting, active: gate.active, threshold: thresholds.queue_backlog_depth },
+      });
     }
 
     return { enabled: true, checked_at: checkedAt, thresholds, alerts, summary };
