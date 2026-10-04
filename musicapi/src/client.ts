@@ -989,8 +989,14 @@ export class SunoClient {
    * Lyrics detail, derived from the clip record's `metadata.prompt` (the
    * lyric/prompt text captured at generation). Suno exposes no standalone
    * lyrics route — `/api/clip/{id}/lyrics` is a plain 404 — so the clip record
-   * is the only source. Word-level alignment isn't available and is returned
-   * empty rather than fabricated.
+   * is the only source. Word-level alignment isn't available from Suno and is
+   * returned empty here rather than fabricated.
+   *
+   * This is the *fallback* path: when the LRC microservice is enabled,
+   * `runTimestampedLyricsJob` in `server.ts` intercepts the job and aligns the
+   * clip's audio against this lyric text (`musicapi/lrc-service`) to emit real
+   * line-level LRC. This method answers with plain lyrics only when alignment
+   * is disabled/unavailable.
    */
   async lyricsDetail(clipId: string): Promise<unknown> {
     const clip = await this.getClipObject(clipId);
@@ -1022,7 +1028,12 @@ export class SunoClient {
     return this.getClipObject(clipId);
   }
 
-  /** Subtitle/captions detail — Suno exposes no captions route; derive from clip lyrics. */
+  /**
+   * Subtitle/captions detail — Suno exposes no captions route; derive from clip lyrics.
+   *
+   * `subtitle` is empty here; when alignment is enabled, the timestamped-lyrics
+   * pipeline produces LRC that can be converted to SRT via `lrcToSrt`.
+   */
   async subtitleDetail(clipId: string): Promise<unknown> {
     const clip = await this.getClipObject(clipId);
     const meta = (clip.metadata ?? {}) as Record<string, unknown>;
