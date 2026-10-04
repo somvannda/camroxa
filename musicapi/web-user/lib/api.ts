@@ -27,7 +27,21 @@ export function backendUrl(path: string): string {
   return `${BASE}${path}`;
 }
 
-export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+export interface ApiFetchOptions {
+  /**
+   * When true, a 401 response does NOT bounce the browser to `/login`. Use it
+   * for calls made by genuinely public pages (e.g. the landing page loading
+   * pricing) so an anonymous visitor — including a verification crawler — is
+   * never redirected into a login wall.
+   */
+  allowUnauthenticated?: boolean;
+}
+
+export async function apiFetch<T>(
+  path: string,
+  init: RequestInit = {},
+  options: ApiFetchOptions = {},
+): Promise<T> {
   const headers: Record<string, string> = {
     "content-type": "application/json",
     ...(init.headers as Record<string, string> | undefined),
@@ -45,7 +59,7 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     }
     throw new Error(e instanceof Error ? e.message : "Request failed");
   }
-  if (res.status === 401) redirectToLogin();
+  if (res.status === 401 && !options.allowUnauthenticated) redirectToLogin();
   if (!res.ok) {
     const body = (await res.json().catch(() => ({}))) as { error?: string };
     throw new Error(body.error ?? `Request failed (${res.status})`);

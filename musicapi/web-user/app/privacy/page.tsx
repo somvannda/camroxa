@@ -8,7 +8,7 @@ export const metadata: Metadata = {
     "How Camxora Music API collects, uses, shares, and protects information, including data received through Google Sign-In.",
 };
 
-const EFFECTIVE_DATE = "October 2, 2026";
+const EFFECTIVE_DATE = "October 4, 2026";
 
 function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
   return (
@@ -29,6 +29,37 @@ export default function PrivacyPolicyPage() {
         our REST API, and our developer workspace (together, the &ldquo;Service&rdquo;). It also describes how we handle
         information we receive from Google when you sign in with Google.
       </p>
+
+      <div className="rounded-xl border border-[var(--border)] bg-white/[0.02] p-5">
+        <h2 className="text-base font-bold text-white">At a glance</h2>
+        <ul className="mt-3 list-disc space-y-2 pl-5">
+          <li>
+            <strong className="text-white">What we collect:</strong> the basic Google profile you share at
+            sign-in (account identifier, email, name, and avatar), plus the prompts, lyrics, audio, and API
+            activity you submit, your credit and billing records, and basic diagnostics such as IP address and
+            error logs.
+          </li>
+          <li>
+            <strong className="text-white">Why we collect it:</strong> to sign you in, create and secure your
+            account, generate and deliver music, meter credits and prevent abuse, support you, and keep the
+            Service reliable and secure.
+          </li>
+          <li>
+            <strong className="text-white">Who we share it with:</strong> infrastructure, payment, and
+            AI/audio model providers that process it on our behalf so the Service can run. We never sell your
+            personal information, and we do not use Google user data for advertising or to train AI models.
+          </li>
+          <li>
+            <strong className="text-white">Your controls:</strong> you can revoke our access to your Google
+            account, and you can request access to, correction of, export of, or deletion of your data at any
+            time — see{" "}
+            <Link href="/data-deletion" className="grad-text font-medium">
+              Data Deletion
+            </Link>
+            .
+          </li>
+        </ul>
+      </div>
 
       <Section id="who-we-are" title="1. Who we are">
         <p>
@@ -77,6 +108,10 @@ export default function PrivacyPolicyPage() {
           </a>
           , including the Limited Use requirements.
         </p>
+        <p>
+          We do not use Google user data to train, fine-tune, or otherwise develop AI or machine-learning
+          models, and we do not use it for advertising.
+        </p>
         <p>In particular, with respect to Google user data we:</p>
         <ul className="list-disc space-y-1.5 pl-6">
           <li>use it only to authenticate you, create and secure your account, display your name/avatar, and contact you about the Service;</li>
@@ -120,6 +155,28 @@ export default function PrivacyPolicyPage() {
           <a href="mailto:privacy@camxora.com" className="grad-text font-medium">privacy@camxora.com</a>; we will
           delete or anonymize the data unless we are required to keep it by law.
         </p>
+        <p>In practice, we retain data for the following periods:</p>
+        <ul className="list-disc space-y-1.5 pl-6">
+          <li>
+            <strong className="text-white">Account, profile, and Google identifiers</strong> — while your
+            account is active; deleted or anonymized within 30 days of a verified account-deletion request.
+          </li>
+          <li>
+            <strong className="text-white">Generated media and inputs</strong> (prompts, lyrics, audio) —
+            until you delete them or your account; removed within 30 days of account deletion.
+          </li>
+          <li>
+            <strong className="text-white">Usage logs and diagnostics</strong> — up to 12 months, then
+            deleted or aggregated.
+          </li>
+          <li>
+            <strong className="text-white">Billing and tax records</strong> — for as long as the law requires
+            after a purchase, even if you close your account.
+          </li>
+          <li>
+            <strong className="text-white">Backups</strong> — encrypted backups are cycled out within 90 days.
+          </li>
+        </ul>
       </Section>
 
       <Section id="cookies" title="7. Cookies and sessions">
