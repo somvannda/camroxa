@@ -30,26 +30,16 @@ export interface PricingRow {
 }
 
 /**
- * A `music` generation costs 10 credits and returns two songs
- * (live production/sandbox pricing, reconciled by
- * migrations/0025_credit_pack_production_parity.sql). Used only to translate
- * packs into "songs" for display; the live cost is read from GET /pricing
- * whenever it is reachable.
+ * A `music` generation costs 10 credits and returns two songs. Both the cost
+ * and the pack prices are read live from `GET /pricing`; this constant is only
+ * a defensive default for the (rare) case where the response is missing the
+ * `music` row, so the "songs" math never divides by zero. Pack prices and
+ * credits are never hardcoded — they come straight from the DB.
  */
 export const DEFAULT_MUSIC_COST = 10;
 
 /** Every `music` generation returns this many tracks. */
 export const SONGS_PER_GENERATION = 2;
-
-// Shown only until the live packs load (or if the API is unreachable) so the
-// pricing section never renders empty. Values mirror the live production and
-// sandbox credit-pack ladder ($10–$100).
-export const FALLBACK_PACKS: RawPack[] = [
-  { id: "fallback-1", amount: 2500, price: 10, currency: "USD" },
-  { id: "fallback-2", amount: 10000, price: 30, currency: "USD" },
-  { id: "fallback-3", amount: 20000, price: 60, currency: "USD" },
-  { id: "fallback-4", amount: 33000, price: 100, currency: "USD" },
-];
 
 const TIER_NAMES = ["Starter", "Creator", "Pro", "Studio"];
 

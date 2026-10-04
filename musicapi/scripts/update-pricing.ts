@@ -19,38 +19,66 @@ async function upsertPrice(endpoint: string, model: string | null, creditCost: n
   }
 }
 
-async function main() {
-  const nineCredit = [
-    "extend", "cover", "sounds", "stems", "remaster",
-    "mashup", "add_vocals", "add_instrumental", "replace_section",
-    "persona", "upload_extend", "upload_cover",
-    "recovery_audio", "boost_style", "midi_generate",
-    "voice_phrase", "voice_generate", "voice_apply", "voice_extend",
-  ];
-  for (const ep of nineCredit) await upsertPrice(ep, null, 9);
-  await upsertPrice("music", null, 10);
-  const oneCredit = [
-    "upload_init", "upload_register", "voice_validate", "voice_record",
-    "lyrics_detail", "stems_detail", "video_detail",
-    "cover_detail", "subtitle_detail", "recovery_detail", "mp4_detail",
-    "midi_detail", "timestamped_lyrics_detail",
-  ];
-  for (const ep of oneCredit) await upsertPrice(ep, null, 1);
-  // WAV is download-only: the conversion routes only resolve a signed URL, and
-  // the bytes are paid for by `wav_download` on GET /me/download.
-  await upsertPrice("wav", null, 0);
-  await upsertPrice("wav_detail", null, 0);
-  await upsertPrice("mp3_download", null, 0);
-  await upsertPrice("wav_download", null, 3);
-  await upsertPrice("lyrics", null, 2);
-  await upsertPrice("cover_image", null, 5);
-  await upsertPrice("mp4_generate", null, 5);
+// Mirror the live production/sandbox pricing snapshot (see
+// migrations/0026_pricing_production_alignment.sql), so a manual
+// `update-pricing` run can never re-introduce local-only prices.
+const PRICING: Array<[string, number]> = [
+  ["music", 10],
+  ["extend", 10],
+  ["cover", 10],
+  ["mashup", 10],
+  ["add_vocals", 10],
+  ["add_instrumental", 10],
+  ["remaster", 10],
+  ["recovery_audio", 10],
+  ["upload_extend", 10],
+  ["upload_cover", 10],
+  ["voice_generate", 10],
+  ["voice_apply", 10],
+  ["voice_extend", 10],
+  ["replace_section", 9],
+  ["stems", 8],
+  ["stems_advanced", 12],
+  ["stems_split", 20],
+  ["sounds", 3],
+  ["midi_generate", 3],
+  ["mp4_generate", 2],
+  ["upload_init", 1],
+  ["upload_register", 1],
+  ["voice_phrase", 1],
+  ["voice_validate", 1],
+  ["voice_record", 1],
+  ["boost_style", 0],
+  ["lyrics", 0],
+  ["lyrics_detail", 0],
+  ["cover_detail", 0],
+  ["cover_image", 0],
+  ["persona", 0],
+  ["midi_detail", 0],
+  ["mp3_download", 0],
+  ["mp4_detail", 0],
+  ["recovery_detail", 0],
+  ["stems_detail", 0],
+  ["subtitle_detail", 0],
+  ["timestamped_lyrics_detail", 0],
+  ["video_detail", 0],
+  ["wav", 0],
+  ["wav_detail", 0],
+  ["wav_download", 0],
+];
 
+async function main() {
+  for (const [endpoint, creditCost] of PRICING) await upsertPrice(endpoint, null, creditCost);
+
+  // `credit_packs` has no unique key, so it is rebuilt wholesale. Historical
+  // transactions keep their pack_id via ON DELETE SET NULL.
   await pool.query("DELETE FROM credit_packs");
   await pool.query(
-    "INSERT INTO credit_packs (amount, price, currency) VALUES (2500, 10, 'USD'), (10000, 30, 'USD'), (20000, 60, 'USD'), (33000, 100, 'USD')",
+    "INSERT INTO credit_packs (amount, price, currency) VALUES (2500, 10, 'USD'), (10000, 30, 'USD'), (20000, 60, 'USD'), (35000, 100, 'USD')",
   );
-  console.log(`Pricing upserted: ${nineCredit.length} endpoints @ 9 credits, music=10, ${oneCredit.length} @ 1 credit, lyrics=2, cover_image=5, mp4_generate=5, wav/wav_detail/mp3_download=0, wav_download=3. Packs $10/2.5k, $30/10k, $60/20k, $100/33k.`);
+  console.log(
+    `Pricing upserted: ${PRICING.length} endpoints to the production snapshot (music=10). Packs $10/2.5k, $30/10k, $60/20k, $100/35k.`,
+  );
   await pool.end();
 }
 

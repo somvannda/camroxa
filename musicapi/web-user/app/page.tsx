@@ -6,7 +6,6 @@ import { apiFetch } from "@/lib/api";
 import {
   buildPlans,
   DEFAULT_MUSIC_COST,
-  FALLBACK_PACKS,
   musicCostFromPricing,
   SONGS_PER_GENERATION,
   usd,
@@ -70,21 +69,25 @@ const FAQS = [
 ];
 
 export default function LandingPage() {
-  const [packs, setPacks] = useState<RawPack[]>(FALLBACK_PACKS);
+  // `null` = still loading. Pack price/credits always come from the DB via
+  // GET /pricing — there is no hardcoded price list to drift.
+  const [packs, setPacks] = useState<RawPack[] | null>(null);
   const [musicCost, setMusicCost] = useState(DEFAULT_MUSIC_COST);
+  const [pricingError, setPricingError] = useState(false);
 
   useEffect(() => {
     apiFetch<{ packs?: RawPack[]; pricing?: PricingRow[] }>("/pricing")
       .then((data) => {
-        if (data.packs?.length) setPacks(data.packs);
+        setPacks(data.packs ?? []);
         const cost = musicCostFromPricing(data.pricing);
         if (cost) setMusicCost(cost);
       })
-      .catch(() => { /* keep the fallback list */ });
+      .catch(() => setPricingError(true));
   }, []);
 
-  const plans = useMemo(() => buildPlans(packs, musicCost), [packs, musicCost]);
+  const plans = useMemo(() => (packs ? buildPlans(packs, musicCost) : []), [packs, musicCost]);
   const bestPerSong = plans.length ? plans[plans.length - 1].perSong : 0;
+  const pricingLoading = packs === null && !pricingError;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -150,10 +153,12 @@ export default function LandingPage() {
                   <div className="text-xl font-bold">REST</div>
                   <div className="text-xs text-[var(--muted)]">JSON API</div>
                 </div>
-                <div>
-                  <div className="text-xl font-bold text-[var(--emerald)]">from {usd(bestPerSong)}</div>
-                  <div className="text-xs text-[var(--muted)]">per song</div>
-                </div>
+                {plans.length > 0 && (
+                  <div>
+                    <div className="text-xl font-bold text-[var(--emerald)]">from {usd(bestPerSong)}</div>
+                    <div className="text-xs text-[var(--muted)]">per song</div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -264,58 +269,92 @@ export default function LandingPage() {
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-3xl font-bold">Transparent credit packages</h2>
               <p className="mt-3 text-[var(--muted)]">
-                Every generation costs the same {musicCost} credits and returns {SONGS_PER_GENERATION} songs. The
-                bigger the pack, the lower your cost per song — credits never expire and can be topped up anytime.
+                {plans.length > 0 ? (
+                  <>
+                    Every generation costs the same {musicCost} credits and returns {SONGS_PER_GENERATION} songs. The
+                    bigger the pack, the lower your cost per song — credits never expire and can be topped up anytime.
+                  </>
+                ) : (
+                  <>Simple credit packages with predictable costs — bigger packs buy credits at a better rate.</>
+                )}
               </p>
             </div>
-            <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
-              {plans.map((p) => (
-                <div
-                  key={p.id}
-                  className={`glass relative flex flex-col rounded-2xl p-6 ${
-                    p.badge === "Best value" ? "border-[var(--violet)]/50" : ""
-                  }`}
-                >
-                  {p.badge && (
-                    <span className="grad-bg absolute -top-3 left-4 rounded-full px-3 py-0.5 text-xs font-semibold text-white">
-                      {p.badge}
-                    </span>
-                  )}
-                  <div className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{p.tier}</div>
-                  <div className="mt-2 text-3xl font-extrabold">
-                    {p.currency} {p.price.toLocaleString()}
-                  </div>
-                  <div className="mt-1 text-sm font-medium text-white">{p.amount.toLocaleString()} credits</div>
-                  {p.bonusCredits > 0 && (
-                    <div className="mt-1 text-xs font-medium text-[var(--emerald)]">
-                      +{p.bonusCredits.toLocaleString()} bonus credits ({Math.round(p.bonusPct)}% more)
-                    </div>
-                  )}
-
-                  <dl className="mb-6 mt-5 space-y-2 border-t border-[var(--border)] pt-4 text-sm">
-                    <div className="flex items-center justify-between">
-                      <dt className="text-[var(--muted)]">Songs</dt>
-                      <dd className="font-semibold text-white">≈ {p.songs.toLocaleString()}</dd>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <dt className="text-[var(--muted)]">Cost per song</dt>
-                      <dd className="font-semibold text-white">{usd(p.perSong)}</dd>
-                    </div>
-                    <div className="flex items-center justify-between">
-                      <dt className="text-[var(--muted)]">Credits per $1</dt>
-                      <dd className="font-semibold text-white">{Math.round(p.creditsPerUsd).toLocaleString()}</dd>
-                    </div>
-                  </dl>
-
-                  <Link
-                    href="/login"
-                    className="grad-bg mt-auto block w-full rounded-lg py-2.5 text-center text-sm font-semibold text-white"
+            {plans.length > 0 ? (
+              <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+                {plans.map((p) => (
+                  <div
+                    key={p.id}
+                    className={`glass relative flex flex-col rounded-2xl p-6 ${
+                      p.badge === "Best value" ? "border-[var(--violet)]/50" : ""
+                    }`}
                   >
-                    Buy credits
-                  </Link>
-                </div>
-              ))}
-            </div>
+                    {p.badge && (
+                      <span className="grad-bg absolute -top-3 left-4 rounded-full px-3 py-0.5 text-xs font-semibold text-white">
+                        {p.badge}
+                      </span>
+                    )}
+                    <div className="text-sm font-medium uppercase tracking-wide text-[var(--muted)]">{p.tier}</div>
+                    <div className="mt-2 text-3xl font-extrabold">
+                      {p.currency} {p.price.toLocaleString()}
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-white">{p.amount.toLocaleString()} credits</div>
+                    {p.bonusCredits > 0 && (
+                      <div className="mt-1 text-xs font-medium text-[var(--emerald)]">
+                        +{p.bonusCredits.toLocaleString()} bonus credits ({Math.round(p.bonusPct)}% more)
+                      </div>
+                    )}
+
+                    <dl className="mb-6 mt-5 space-y-2 border-t border-[var(--border)] pt-4 text-sm">
+                      <div className="flex items-center justify-between">
+                        <dt className="text-[var(--muted)]">Songs</dt>
+                        <dd className="font-semibold text-white">≈ {p.songs.toLocaleString()}</dd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <dt className="text-[var(--muted)]">Cost per song</dt>
+                        <dd className="font-semibold text-white">{usd(p.perSong)}</dd>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <dt className="text-[var(--muted)]">Credits per $1</dt>
+                        <dd className="font-semibold text-white">{Math.round(p.creditsPerUsd).toLocaleString()}</dd>
+                      </div>
+                    </dl>
+
+                    <Link
+                      href="/login"
+                      className="grad-bg mt-auto block w-full rounded-lg py-2.5 text-center text-sm font-semibold text-white"
+                    >
+                      Buy credits
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            ) : pricingError ? (
+              <div className="mt-12 rounded-2xl border border-[var(--border)] bg-white/[0.02] p-8 text-center text-sm text-[var(--muted)]">
+                Pricing is temporarily unavailable. Please refresh, or view current rates on your{" "}
+                <Link href="/login" className="grad-text font-medium">billing dashboard</Link>.
+              </div>
+            ) : pricingLoading ? (
+              <div className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4" aria-hidden="true">
+                {Array.from({ length: 4 }).map((_, i) => (
+                  <div key={i} className="glass rounded-2xl p-6">
+                    <div className="h-4 w-20 animate-pulse rounded bg-white/10" />
+                    <div className="mt-4 h-8 w-24 animate-pulse rounded bg-white/10" />
+                    <div className="mt-3 h-4 w-28 animate-pulse rounded bg-white/10" />
+                    <div className="mt-6 space-y-2 border-t border-[var(--border)] pt-4">
+                      <div className="h-4 w-full animate-pulse rounded bg-white/10" />
+                      <div className="h-4 w-full animate-pulse rounded bg-white/10" />
+                      <div className="h-4 w-full animate-pulse rounded bg-white/10" />
+                    </div>
+                    <div className="mt-6 h-10 w-full animate-pulse rounded-lg bg-white/10" />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-12 rounded-2xl border border-[var(--border)] bg-white/[0.02] p-8 text-center text-sm text-[var(--muted)]">
+                No credit packs are available right now. Please check back shortly or{" "}
+                <a href="mailto:support@camxora.com" className="grad-text font-medium">contact us</a>.
+              </div>
+            )}
 
             <div className="mx-auto mt-10 max-w-3xl">
               <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-[var(--muted)]">
