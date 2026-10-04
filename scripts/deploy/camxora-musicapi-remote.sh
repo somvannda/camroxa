@@ -165,6 +165,13 @@ MUSICAPI_ENV=${MUSICAPI_ENV}
 PORT=${MUSICAPI_PORT}
 BACKEND_URL=http://127.0.0.1:${MUSICAPI_PORT}
 DATABASE_URL=${DATABASE_URL}
+# Job transport. Default stays the in-memory driver; set
+# MUSICAPI_QUEUE_DRIVER=redis so descriptor-backed jobs are re-queued across a
+# restart instead of being failed out as "Interrupted by server restart."
+# (which the failure-rate alert now ignores). Use a Redis DB index not used by
+# platform_api.
+QUEUE_DRIVER=${MUSICAPI_QUEUE_DRIVER:-memory}
+REDIS_URL=${MUSICAPI_REDIS_URL:-redis://127.0.0.1:6379/2}
 JWT_SECRET=${MUSICAPI_JWT_SECRET}
 COOKIE_ENCRYPTION_KEY=${MUSICAPI_COOKIE_ENCRYPTION_KEY}
 TRUST_PROXY=127.0.0.1

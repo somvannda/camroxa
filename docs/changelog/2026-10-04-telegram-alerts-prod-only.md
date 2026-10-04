@@ -87,10 +87,11 @@ then counted. A deploy with a deep pending backlog produces exactly this burst.
 These rows are now excluded from the failure-rate alert (and from its
 top-causes), so a routine deploy stays quiet.
 
-Follow-up (not in this change, needs an explicit decision): set
-`QUEUE_DRIVER=redis` for musicapi so descriptor-backed jobs are re-queued on
-restart instead of failed out (Redis is already installed on the host), and/or
-drain in-flight jobs before restart.
+Follow-up (not enabled by default, needs an explicit decision): the remote
+installer now accepts `MUSICAPI_QUEUE_DRIVER=redis` (with `MUSICAPI_REDIS_URL`,
+default index `/2`) so descriptor-backed jobs are re-queued on restart instead
+of failed out. Redis is already installed on the host; flip it per environment
+when you're ready, or drain in-flight jobs before restart.
 
 ## Migration / deploy
 
