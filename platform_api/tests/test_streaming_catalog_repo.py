@@ -42,6 +42,17 @@ def test_genre_queries_present() -> None:
     assert "publish_status = 'published'" in tracks_by_genre
 
 
+def test_missing_wav_query_skips_permanently_failed_conversions() -> None:
+    """The B2 sweep must not retry (and therefore re-page on) WAV variants whose
+    Suno conversion is terminally failed. The asset-recovery pass already guards
+    with ``wav_status != 'failed'``; the sweep query must match it."""
+    source = STREAMING_REPO.read_text(encoding="utf-8")
+    sql = _extract_function_sql(source, "list_web_music_tasks_missing_wav")
+
+    assert "COALESCE(st.wav_status_ok, '') <> 'failed'" in sql
+    assert "COALESCE(st.wav_status_alt, '') <> 'failed'" in sql
+
+
 def _extract_function_sql(source: str, function_name: str) -> str:
     match = re.search(rf"async def {function_name}\(.*?\n\s+rows = await self\._pool\.fetch\(\s*\"\"\"(.*?)\"\"\"", source, re.S)
     assert match, f"Could not find SQL for {function_name}"

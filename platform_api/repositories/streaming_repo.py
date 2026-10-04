@@ -777,24 +777,35 @@ class StreamingRepository:
         window_hours: int = 336,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        """Web-music success tasks within the window whose WAV is not in B2."""
+        """Web-music success tasks within the window whose WAV is not in B2.
+
+        Variants already marked ``wav_status_* = 'failed'`` are excluded: their
+        Suno conversion is terminal (the recorded ``wav_task_id`` will never
+        succeed), so retrying them only re-counts a known failure and re-pages
+        ops on every sweep. This mirrors the asset-recovery eligibility check in
+        ``StreamingUploadService._asset_recovery_worker``.
+        """
         rows = await self._pool.fetch(
             """
             SELECT st.id,
                    (COALESCE(st.b2_wav_storage_key_ok, '') = ''
-                    AND COALESCE(st.audio_id_ok, '') <> '') AS missing_wav_ok,
+                    AND COALESCE(st.audio_id_ok, '') <> ''
+                    AND COALESCE(st.wav_status_ok, '') <> 'failed') AS missing_wav_ok,
                    (COALESCE(st.b2_wav_storage_key_alt, '') = ''
-                    AND COALESCE(st.audio_id_alt, '') <> '') AS missing_wav_alt
+                    AND COALESCE(st.audio_id_alt, '') <> ''
+                    AND COALESCE(st.wav_status_alt, '') <> 'failed') AS missing_wav_alt
             FROM suno_tasks st
             WHERE st.status = 'success'
               AND st.source = 'web_music'
               AND st.created_at > now() - make_interval(hours => $1)
               AND (
                 (COALESCE(st.b2_wav_storage_key_ok, '') = ''
-                 AND COALESCE(st.audio_id_ok, '') <> '')
+                 AND COALESCE(st.audio_id_ok, '') <> ''
+                 AND COALESCE(st.wav_status_ok, '') <> 'failed')
                 OR
                 (COALESCE(st.b2_wav_storage_key_alt, '') = ''
-                 AND COALESCE(st.audio_id_alt, '') <> '')
+                 AND COALESCE(st.audio_id_alt, '') <> ''
+                 AND COALESCE(st.wav_status_alt, '') <> 'failed')
               )
             ORDER BY st.created_at DESC
             LIMIT $2
