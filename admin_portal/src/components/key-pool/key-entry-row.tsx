@@ -114,6 +114,9 @@ export function KeyEntryRow({ entry, provider, onEdit, onDeleteConfirm }: KeyEnt
           <div className="min-w-0 space-y-0.5">
             <p className="truncate text-sm font-medium text-white">{entry.label}</p>
             <p className="truncate text-xs font-mono text-slate-400">{entry.masked_key}</p>
+            <p className="truncate text-xs text-slate-500">
+              {entry.base_url ?? 'Any host'}
+            </p>
           </div>
         </div>
 

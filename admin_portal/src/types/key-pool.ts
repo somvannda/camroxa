@@ -18,12 +18,16 @@ export interface ApiKeyEntry {
   last_failure_at: string | null;
   cooldown_remaining_seconds: number | null;
   created_at: string;
+  /** Upstream host this key belongs to; null = host-agnostic (legacy). */
+  base_url: string | null;
 }
 
 export interface ProviderConfig {
   provider: string;
   selection_strategy: SelectionStrategy;
   cooldown_seconds: number;
+  /** Active upstream host; null = use the environment default and every key. */
+  base_url: string | null;
 }
 
 export interface ProviderHealth {
@@ -50,18 +54,29 @@ export interface AddKeyRequest {
   key_value: string;
   label: string;
   priority?: number;
+  base_url?: string | null;
 }
 
 export interface UpdateKeyRequest {
   label?: string;
   priority?: number;
   key_value?: string;
+  base_url?: string | null;
+  clear_base_url?: boolean;
 }
 
 export interface ProviderConfigRequest {
   selection_strategy: SelectionStrategy;
   cooldown_seconds: number;
+  base_url?: string | null;
+  clear_base_url?: boolean;
 }
+
+/** Known Suno-compatible upstream hosts offered as presets in the admin UI. */
+export const UPSTREAM_HOST_PRESETS: { label: string; value: string }[] = [
+  { label: 'Camxora musicapi', value: 'https://musicapi.camxora.com' },
+  { label: 'sunoapi.org (apibox)', value: 'https://apibox.erweima.ai' },
+];
 
 export interface AllProvidersHealth {
   providers: ProviderHealth[];

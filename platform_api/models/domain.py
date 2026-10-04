@@ -416,6 +416,10 @@ class ApiKeyEntry:
     provider: str = ""
     label: str = ""
     encrypted_key_value: bytes = b""
+    # Upstream host this key belongs to (e.g. sunoapi.org vs musicapi.camxora.com).
+    # NULL = host-agnostic (legacy), eligible only when the provider has no
+    # active base_url configured.
+    base_url: str | None = None
     priority: int = 50
     status: KeyStatus = KeyStatus.ACTIVE
     total_requests: int = 0
@@ -438,6 +442,10 @@ class KeyPoolConfig:
     provider: str = ""
     selection_strategy: SelectionStrategy = SelectionStrategy.PRIORITY
     cooldown_seconds: int = 60
+    # Active upstream host for this provider. NULL = use the environment default
+    # and accept every active key (legacy). When set, only keys whose own
+    # base_url matches are selected, which makes provider switching reversible.
+    base_url: str | None = None
     created_at: datetime = field(default_factory=datetime.utcnow)
     updated_at: datetime = field(default_factory=datetime.utcnow)
 

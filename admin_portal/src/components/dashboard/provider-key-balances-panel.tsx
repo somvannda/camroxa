@@ -10,7 +10,7 @@ import { cn } from '@/lib/utils';
 
 const PROVIDER_LABELS: Record<string, string> = {
   slai: 'SLAI',
-  suno: 'Suno',
+  suno: 'Camxora Pool Key',
   deepseek: 'DeepSeek',
   openai: 'OpenAI',
   fal: 'Fal',

@@ -996,7 +996,10 @@ class StreamingUploadService:
                 extract_suno_wav_task_id,
                 parse_suno_wav_poll,
             )
-            from platform_api.services.suno_audio_resolver import _suno_client_with_pool_key
+            from platform_api.services.suno_audio_resolver import (
+                _suno_client_from_env,
+                call_with_owning_suno_key,
+            )
             
             wav_task_id_col = "wav_task_id_ok" if variant == "ok" else "wav_task_id_alt"
             wav_url_col = "wav_url_ok" if variant == "ok" else "wav_url_alt"
@@ -1019,15 +1022,18 @@ class StreamingUploadService:
             
             wav_task_id = row.get("wav_task_id") if row else None
             wav_url = row.get("wav_url") if row else None
-            suno, _wav_api_key = await _suno_client_with_pool_key(self._pool)
+            suno = _suno_client_from_env()
             
             # Submit WAV conversion if not started
             if not wav_task_id:
                 try:
-                    result = await suno.submit_wav_task(
-                        task_id=external_task_id,
-                        audio_id=audio_id,
-                        api_key=_wav_api_key,
+                    result, _wav_owner_key = await call_with_owning_suno_key(
+                        self._pool,
+                        lambda k: suno.submit_wav_task(
+                            task_id=external_task_id,
+                            audio_id=audio_id,
+                            api_key=k,
+                        ),
                     )
                     wav_task_id = extract_suno_wav_task_id(result)
                     
@@ -1058,7 +1064,10 @@ class StreamingUploadService:
                 max_retries = 90
                 for attempt in range(max_retries):
                     try:
-                        result = await suno.poll_wav_status(wav_task_id=wav_task_id, api_key=_wav_api_key)
+                        result, _ = await call_with_owning_suno_key(
+                            self._pool,
+                            lambda k: suno.poll_wav_status(wav_task_id=wav_task_id, api_key=k),
+                        )
                         status, url, error = parse_suno_wav_poll(result)
                         
                         if status == "success" and url:

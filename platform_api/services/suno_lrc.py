@@ -144,15 +144,35 @@ def aligned_words_to_lrc(aligned_words: list[dict[str, Any]] | None) -> str:
     return "\n".join(f"{format_lrc_time(start)}{text}" for start, text in lines)
 
 
+def _find_aligned_words(value: Any, depth: int = 0) -> list[dict[str, Any]] | None:
+    """Recursively locate an ``alignedWords``/``aligned_words`` list.
+
+    sunoapi.org returns it at the top of ``data``; Camxora's `musicapi` nests
+    its job result (e.g. ``data.result`` / ``data.response.sunoData[0]``), so a
+    fixed key lookup is not enough.
+    """
+    if depth > 6:
+        return None
+    if isinstance(value, dict):
+        for key in ("alignedWords", "aligned_words"):
+            words = value.get(key)
+            if isinstance(words, list):
+                return [item for item in words if isinstance(item, dict)]
+        for child in value.values():
+            found = _find_aligned_words(child, depth + 1)
+            if found is not None:
+                return found
+    elif isinstance(value, list):
+        for child in value:
+            found = _find_aligned_words(child, depth + 1)
+            if found is not None:
+                return found
+    return None
+
+
 def parse_aligned_words_payload(payload: dict[str, Any] | None) -> list[dict[str, Any]]:
     """Extract alignedWords list from get-timestamped-lyrics response body."""
     if not isinstance(payload, dict):
         return []
-    data = payload.get("data") if isinstance(payload.get("data"), dict) else payload
-    if not isinstance(data, dict):
-        return []
-    for key in ("alignedWords", "aligned_words"):
-        words = data.get(key)
-        if isinstance(words, list):
-            return [item for item in words if isinstance(item, dict)]
-    return []
+    found = _find_aligned_words(payload)
+    return found if found is not None else []

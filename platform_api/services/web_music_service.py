@@ -1413,8 +1413,20 @@ class WebMusicService:
             raise NotFoundError("Generation not found.")
         return await self.get_generation(user_id, task_id)
 
+    async def _poll_suno_task_status(self, external_task_id: str):
+        """Poll record-info across the pool's keys.
+
+        record-info is scoped to the account that created the task, so with a
+        multi-account pool a single round-robin key gets 403 for tasks it does
+        not own. `poll_suno_generate_with_pool` iterates every active key until
+        the owner answers, without disabling the non-owner keys.
+        """
+        from platform_api.services.suno_audio_resolver import poll_suno_generate_with_pool
+
+        return await poll_suno_generate_with_pool(self._pool, external_task_id)
+
     async def _refresh_pending_from_suno(self, row: Any) -> Any:
-        """If the callback has not landed yet, poll sunoapi.org record-info."""
+        """If the callback has not landed yet, poll the provider's record-info."""
         status = str(_row_value(row, "status") or "").strip().lower()
         if status not in {"pending", "running"}:
             return row
@@ -1422,7 +1434,7 @@ class WebMusicService:
         if not external_id:
             return row
         try:
-            polled = await self._generation.poll_suno_generate_status(external_id)
+            polled = await self._poll_suno_task_status(external_id)
         except Exception as exc:
             logger.warning("Web music Suno poll failed for %s: %s", row["id"], exc)
             return row
@@ -1509,7 +1521,7 @@ class WebMusicService:
         if not external_id:
             return row
         try:
-            polled = await self._generation.poll_suno_generate_status(external_id)
+            polled = await self._poll_suno_task_status(external_id)
         except Exception as exc:
             logger.warning("Web music Suno cover poll failed for %s: %s", row["id"], exc)
             return row
@@ -1564,7 +1576,7 @@ class WebMusicService:
         if not external_id:
             return row
         try:
-            polled = await self._generation.poll_suno_generate_status(external_id)
+            polled = await self._poll_suno_task_status(external_id)
         except Exception as exc:
             logger.warning("Web music duration poll failed for %s: %s", row["id"], exc)
             return row
@@ -2030,7 +2042,7 @@ class WebMusicService:
                 try:
                     refreshed = await refresh_suno_task_download_urls(
                         external_task_id,
-                        poll_status=self._generation.poll_suno_generate_status,
+                        poll_status=self._poll_suno_task_status,
                     )
                 except Exception as exc:
                     logger.warning("Web music URL refresh failed for %s: %s", task_id, exc)
@@ -2333,7 +2345,7 @@ class WebMusicService:
                 try:
                     refreshed = await refresh_suno_task_download_urls(
                         external_task_id,
-                        poll_status=self._generation.poll_suno_generate_status,
+                        poll_status=self._poll_suno_task_status,
                     )
                 except Exception as exc:
                     logger.warning(
@@ -2363,16 +2375,18 @@ class WebMusicService:
                 )
             
             from platform_api.clients.suno_client import extract_suno_wav_task_id
-            
-            wrapper = await self._generation._require_pool_wrapper(
-                self._generation._suno_pool_wrapper, "suno"
+            from platform_api.services.suno_audio_resolver import (
+                call_with_owning_suno_key,
             )
-            wav_response = await wrapper.execute(
+
+            # WAV conversion is account-scoped: pick the key that owns the task.
+            wav_response, _ = await call_with_owning_suno_key(
+                self._pool,
                 lambda api_key, ext=external_task_id, aid=audio_id: self._generation._suno_client.submit_wav_task(
                     task_id=ext,
                     audio_id=aid,
                     api_key=api_key,
-                )
+                ),
             )
             wav_task_id = extract_suno_wav_task_id(wav_response)
             
@@ -2392,15 +2406,13 @@ class WebMusicService:
             
             max_attempts = 30
             for attempt in range(max_attempts):
-                wrapper = await self._generation._require_pool_wrapper(
-                    self._generation._suno_pool_wrapper, "suno"
-                )
                 poll_id = wav_task_id
-                poll_response = await wrapper.execute(
+                poll_response, _ = await call_with_owning_suno_key(
+                    self._pool,
                     lambda api_key, tid=poll_id: self._generation._suno_client.poll_wav_status(
                         wav_task_id=tid,
                         api_key=api_key,
-                    )
+                    ),
                 )
                 poll_status, poll_wav_url, poll_error = parse_suno_wav_poll(poll_response)
                 
@@ -2564,7 +2576,7 @@ class WebMusicService:
         audio_id = str(row[f"audio_id_{variant_key}"] or "").strip()
         if external_task_id and not audio_id:
             try:
-                polled = await self._generation.poll_suno_generate_status(external_task_id)
+                polled = await self._poll_suno_task_status(external_task_id)
             except Exception as exc:
                 logger.warning("Web music audio_id poll failed for %s: %s", task_id, exc)
                 polled = None

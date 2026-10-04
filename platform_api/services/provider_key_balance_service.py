@@ -255,7 +255,7 @@ class ProviderKeyBalanceService:
                     previous_balance = _as_float(prev_cached.get("balance"))
 
             amount, currency, unit, raw, fetch_status, error = await self._fetch_provider_balance(
-                provider, api_key
+                provider, api_key, base_url=getattr(entry, "base_url", None)
             )
             base["balance"] = amount
             base["currency"] = currency
@@ -312,10 +312,10 @@ class ProviderKeyBalanceService:
         )
 
     async def _fetch_provider_balance(
-        self, provider: str, api_key: str
+        self, provider: str, api_key: str, base_url: str | None = None
     ) -> tuple[float | None, str | None, str, Any, str, str | None]:
         if provider == "suno":
-            return await self._fetch_suno(api_key)
+            return await self._fetch_suno(api_key, base_url=base_url)
         if provider == "deepseek":
             return await self._fetch_deepseek(api_key)
         if provider == "fal":
@@ -329,9 +329,12 @@ class ProviderKeyBalanceService:
         return None, None, "credits", None, "unsupported", f"Unknown provider: {provider}"
 
     async def _fetch_suno(
-        self, api_key: str
+        self, api_key: str, base_url: str | None = None
     ) -> tuple[float | None, str | None, str, Any, str, str | None]:
-        base = str(getattr(self._settings, "suno_api_base_url", "") or "").rstrip("/")
+        # Each key knows its own upstream host; fall back to the env default.
+        base = str(
+            base_url or getattr(self._settings, "suno_api_base_url", "") or ""
+        ).rstrip("/")
         url = f"{base}/api/v1/generate/credit"
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(

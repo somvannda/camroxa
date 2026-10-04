@@ -61,3 +61,25 @@ def test_parse_aligned_words_payload() -> None:
     words = parse_aligned_words_payload(payload)
     assert len(words) == 2
     assert words[0]["word"] == "Hello"
+
+
+def test_parse_aligned_words_payload_finds_deeply_nested_result() -> None:
+    # Mirrors a job envelope (musicapi): data.response.sunoData[0].result.
+    payload = {
+        "code": 200,
+        "data": {
+            "status": "SUCCESS",
+            "response": {
+                "sunoData": [
+                    {"id": "c1", "result": {"aligned_words": [{"word": "Hi", "startS": 0.5}]}}
+                ]
+            },
+        },
+    }
+    words = parse_aligned_words_payload(payload)
+    assert words == [{"word": "Hi", "startS": 0.5}]
+
+
+def test_parse_aligned_words_payload_empty_when_absent() -> None:
+    assert parse_aligned_words_payload({"code": 200, "data": {"taskId": "t1"}}) == []
+    assert parse_aligned_words_payload(None) == []

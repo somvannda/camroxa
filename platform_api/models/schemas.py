@@ -399,6 +399,8 @@ class AddKeyRequest(BaseModel):
     key_value: str = Field(min_length=1, max_length=500)
     label: str = Field(min_length=1, max_length=100)
     priority: int = Field(ge=1, le=100, default=50)
+    # Upstream host this key belongs to (provider switching). Optional.
+    base_url: str | None = Field(None, max_length=500)
 
 
 class UpdateKeyRequest(BaseModel):
@@ -407,6 +409,8 @@ class UpdateKeyRequest(BaseModel):
     label: str | None = Field(None, min_length=1, max_length=100)
     priority: int | None = Field(None, ge=1, le=100)
     key_value: str | None = Field(None, min_length=1, max_length=500)
+    base_url: str | None = Field(None, max_length=500)
+    clear_base_url: bool = False
 
 
 class KeyEntryResponse(BaseModel):
@@ -427,6 +431,7 @@ class KeyEntryResponse(BaseModel):
     last_failure_at: datetime | None
     cooldown_remaining_seconds: int | None = None
     created_at: datetime
+    base_url: str | None = None
 
 
 class ProviderConfigRequest(BaseModel):
@@ -434,6 +439,9 @@ class ProviderConfigRequest(BaseModel):
 
     selection_strategy: str = Field(pattern=r"^(round_robin|priority)$")
     cooldown_seconds: int = Field(ge=10, le=3600)
+    # Active upstream host. Set to switch provider; clear to use the default.
+    base_url: str | None = Field(None, max_length=500)
+    clear_base_url: bool = False
 
 
 class ProviderConfigResponse(BaseModel):
@@ -442,6 +450,7 @@ class ProviderConfigResponse(BaseModel):
     provider: str
     selection_strategy: str
     cooldown_seconds: int
+    base_url: str | None = None
 
 
 class ProviderHealthResponse(BaseModel):

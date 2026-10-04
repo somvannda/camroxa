@@ -53,7 +53,7 @@ const PROVIDER_LABELS: Record<string, string> = {
   fal: 'Fal',
   openai: 'OpenAI',
   deepseek: 'DeepSeek',
-  suno: 'Suno',
+  suno: 'Camxora Pool Key',
   cala: 'Cala',
   kie: 'kie.ai',
   local: 'Local',

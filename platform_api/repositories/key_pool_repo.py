@@ -68,7 +68,7 @@ class KeyPoolRepository:
             SELECT id, provider, label, encrypted_key_value, priority, status,
                    total_requests, daily_requests, success_count, failure_count,
                    rate_limit_hits, last_used_at, last_failure_at, rate_limited_at,
-                   created_at, updated_at
+                   created_at, updated_at, base_url
             FROM api_key_entries
             WHERE provider = $1
             ORDER BY priority ASC, created_at ASC
@@ -91,7 +91,7 @@ class KeyPoolRepository:
             SELECT id, provider, label, encrypted_key_value, priority, status,
                    total_requests, daily_requests, success_count, failure_count,
                    rate_limit_hits, last_used_at, last_failure_at, rate_limited_at,
-                   created_at, updated_at
+                   created_at, updated_at, base_url
             FROM api_key_entries
             WHERE provider = $1 AND status = 'active'
             ORDER BY priority ASC, created_at ASC
@@ -114,7 +114,7 @@ class KeyPoolRepository:
             SELECT id, provider, label, encrypted_key_value, priority, status,
                    total_requests, daily_requests, success_count, failure_count,
                    rate_limit_hits, last_used_at, last_failure_at, rate_limited_at,
-                   created_at, updated_at
+                   created_at, updated_at, base_url
             FROM api_key_entries
             WHERE id = $1
             """,
@@ -139,13 +139,13 @@ class KeyPoolRepository:
                 (id, provider, label, encrypted_key_value, priority, status,
                  total_requests, daily_requests, success_count, failure_count,
                  rate_limit_hits, last_used_at, last_failure_at, rate_limited_at,
-                 created_at, updated_at)
+                 created_at, updated_at, base_url)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14,
-                    COALESCE($15, NOW()), COALESCE($16, NOW()))
+                    COALESCE($15, NOW()), COALESCE($16, NOW()), $17)
             RETURNING id, provider, label, encrypted_key_value, priority, status,
                       total_requests, daily_requests, success_count, failure_count,
                       rate_limit_hits, last_used_at, last_failure_at, rate_limited_at,
-                      created_at, updated_at
+                      created_at, updated_at, base_url
             """,
             entry.id,
             entry.provider,
@@ -163,6 +163,7 @@ class KeyPoolRepository:
             entry.rate_limited_at,
             entry.created_at,
             entry.updated_at,
+            entry.base_url,
         )
         return self._row_to_entry(row)
 
@@ -189,6 +190,7 @@ class KeyPoolRepository:
                 last_used_at = $12,
                 last_failure_at = $13,
                 rate_limited_at = $14,
+                base_url = $15,
                 updated_at = NOW()
             WHERE id = $1
             """,
@@ -206,6 +208,7 @@ class KeyPoolRepository:
             entry.last_used_at,
             entry.last_failure_at,
             entry.rate_limited_at,
+            entry.base_url,
         )
         logger.debug("Updated key entry %s", entry.id)
 
@@ -236,7 +239,7 @@ class KeyPoolRepository:
         """
         row = await self._pool.fetchrow(
             """
-            SELECT id, provider, selection_strategy, cooldown_seconds,
+            SELECT id, provider, selection_strategy, cooldown_seconds, base_url,
                    created_at, updated_at
             FROM key_pool_configs
             WHERE provider = $1
@@ -250,6 +253,7 @@ class KeyPoolRepository:
             provider=row["provider"],
             selection_strategy=SelectionStrategy(row["selection_strategy"]),
             cooldown_seconds=row["cooldown_seconds"],
+            base_url=row["base_url"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
@@ -266,17 +270,20 @@ class KeyPoolRepository:
         await self._pool.execute(
             """
             INSERT INTO key_pool_configs
-                (id, provider, selection_strategy, cooldown_seconds, created_at, updated_at)
-            VALUES ($1, $2, $3, $4, COALESCE($5, NOW()), NOW())
+                (id, provider, selection_strategy, cooldown_seconds, base_url,
+                 created_at, updated_at)
+            VALUES ($1, $2, $3, $4, $5, COALESCE($6, NOW()), NOW())
             ON CONFLICT (provider) DO UPDATE
             SET selection_strategy = EXCLUDED.selection_strategy,
                 cooldown_seconds = EXCLUDED.cooldown_seconds,
+                base_url = EXCLUDED.base_url,
                 updated_at = NOW()
             """,
             config.id,
             config.provider,
             config.selection_strategy.value,
             config.cooldown_seconds,
+            config.base_url,
             config.created_at,
         )
         logger.debug(
@@ -504,6 +511,7 @@ class KeyPoolRepository:
             last_used_at=row["last_used_at"],
             last_failure_at=row["last_failure_at"],
             rate_limited_at=row["rate_limited_at"],
+            base_url=row["base_url"],
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
