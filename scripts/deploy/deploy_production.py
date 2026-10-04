@@ -5,7 +5,7 @@ import stat
 import sys
 import time
 from pathlib import Path
-from deploy import ensure_deploy_key, ensure_paramiko, load_secrets, ssh_connect, upload_source
+from deploy import ensure_deploy_key, ensure_paramiko, load_production_secrets, ssh_connect, upload_source
 
 REMOTE_SCRIPT = Path(__file__).resolve().parent / "camxora-production-remote.sh"
 NGINX_CONF = Path(__file__).resolve().parent / "nginx-camxora-production.conf"
@@ -45,7 +45,7 @@ def upload_and_run(client, secrets: dict[str, str]) -> int:
 
 def main() -> int:
     ensure_paramiko()
-    secrets = load_secrets()
+    secrets = load_production_secrets()
     host = secrets.get("PRODUCTION_VPS_HOST") or secrets.get("VPS_HOST", "")
     user = secrets.get("PRODUCTION_VPS_USER") or secrets.get("VPS_USER", "root")
     password = secrets.get("PRODUCTION_VPS_PASSWORD") or secrets.get("VPS_PASSWORD") or None
