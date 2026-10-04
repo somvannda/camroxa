@@ -1176,9 +1176,69 @@ export class SunoClient {
    * We surface the phrase-generation step here.
    */
   async voiceValidate(
-    _params: { uploadId?: string; audioUrl?: string; language?: string } = {},
-  ): Promise<{ phrase_id: string; phrase_text: string }> {
-    return this.voicePhrase();
+    params: { uploadId?: string; audioUrl?: string; voiceUrl?: string; language?: string } = {},
+  ): Promise<Record<string, unknown>> {
+    const phrase = await this.voicePhrase();
+    const out: Record<string, unknown> = { ...phrase };
+    // Best-effort: extract the source vocal stem so a later voice/generate can
+    // verify against it. This needs a Voice-entitled (Premier) account; when it
+    // is unavailable we still return the phrase and record the reason.
+    const sourceUrl = params.voiceUrl ?? params.audioUrl;
+    try {
+      let uploadId = params.uploadId;
+      if (!uploadId && sourceUrl) {
+        const resp = await fetch(sourceUrl, { signal: AbortSignal.timeout(60_000) });
+        if (!resp.ok) throw new Error(`Could not download the source recording (${resp.status}).`);
+        uploadId = await this.uploadAudio(Buffer.from(await resp.arrayBuffer()), "mp3", "voice_recording");
+      }
+      if (uploadId) {
+        const stem = await this.voiceVoxStem(uploadId);
+        const vr = stem.id ?? stem.voice_recording_id;
+        if (typeof vr === "string") out.voice_recording_id = vr;
+        else out.voice_recording_error = "voice-vox-stem returned no recording id (Voice entitlement required).";
+      }
+    } catch (e) {
+      out.voice_recording_error = e instanceof Error ? e.message : String(e);
+    }
+    return out;
+  }
+
+  /**
+   * Custom Voice step: extract the vocal stem from a source recording upload
+   * (`upload_id` from the audio upload flow) — the `voice_recording_id` used by
+   * voice verification. Requires a Voice-entitled (Premier) account.
+   */
+  async voiceVoxStem(uploadId: string): Promise<Record<string, unknown>> {
+    const res = await this.request("/api/processed_clip/voice-vox-stem", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ upload_id: uploadId }),
+    });
+    if (!res.ok) throw new Error(`voice-vox-stem failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /**
+   * Custom Voice step: verify the user's spoken recording of the validation
+   * phrase against the source voice. `POST /api/voice-verification/` takes the
+   * three ids FLAT (not nested under `spec`). Requires a Voice-entitled account.
+   */
+  async verifyVoice(params: {
+    phraseId: string;
+    voiceRecordingId: string;
+    verificationRecordingId: string;
+  }): Promise<Record<string, unknown>> {
+    const res = await this.request("/api/voice-verification/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        voice_recording_id: params.voiceRecordingId,
+        verification_recording_id: params.verificationRecordingId,
+        phrase_id: params.phraseId,
+      }),
+    });
+    if (!res.ok) throw new Error(`voice-verification failed (${res.status}): ${await res.text()}`);
+    return (await res.json()) as Record<string, unknown>;
   }
 
   /** Voice op 3: record — alias for createAudioUpload(uploadType: voice_recording), returns session same shape. */

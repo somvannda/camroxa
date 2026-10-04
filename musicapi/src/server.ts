@@ -1890,6 +1890,48 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
+   * Complete a custom-voice job: verify the user's recording of the validation
+   * phrase against the source voice, matching sunoapi.org's voice/generate. The
+   * `taskId` is the validation job (for its phrase_id + source voice_recording_id);
+   * `verifyUrl` is the user's spoken recording. Requires a Voice-entitled account.
+   */
+  async function runCustomVoiceJob(
+    job: Job,
+    params: { validationTaskId: string; verifyUrl: string; voiceName?: string },
+  ): Promise<void> {
+    try {
+      const src = await getJob(params.validationTaskId);
+      if (!src) throw new Error("Validation task not found.");
+      const sr = (src.result ?? {}) as Record<string, unknown>;
+      const phraseId = typeof sr.phrase_id === "string" ? sr.phrase_id : undefined;
+      const voiceRecordingId = typeof sr.voice_recording_id === "string" ? sr.voice_recording_id : undefined;
+      if (!phraseId) throw new Error("Validation phrase is not ready for this task.");
+      if (!voiceRecordingId) {
+        throw new Error(
+          "Source voice recording is unavailable — the source must be extracted on a Voice-entitled (Premier) account.",
+        );
+      }
+      const client = await pool.pick();
+      const resp = await fetch(params.verifyUrl, { signal: AbortSignal.timeout(60_000) });
+      if (!resp.ok) throw new Error(`Could not download verifyUrl (${resp.status}).`);
+      const verificationRecordingId = await client.uploadAudio(
+        Buffer.from(await resp.arrayBuffer()),
+        "mp3",
+        "voice_recording",
+      );
+      const verified = await client.verifyVoice({ phraseId, voiceRecordingId, verificationRecordingId });
+      const voiceId =
+        (verified.id as string) ?? (verified.voice_id as string) ?? (verified.voiceId as string) ?? null;
+      job.result = { voice_verification: verified, voice_id: voiceId, voice_name: params.voiceName ?? null };
+      job.status = "complete";
+    } catch (e) {
+      job.status = "error";
+      job.error = e instanceof Error ? e.message : String(e);
+    }
+    await finalizeJob(job);
+  }
+
+  /**
    * Index of a clip within its originating generation task (0 or 1), matching
    * sunoapi.org's `musicIndex`. Returns 0 when the task is unknown or the clip
    * isn't found, so the field is always present and sane.
@@ -2906,9 +2948,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const uploadId = (body.upload_id || body.uploadId || body.taskId) as string | undefined;
     const audioUrl = (body.audio_url || body.audioUrl || body.validationAudioUrl) as string | undefined;
-    if (!uploadId && !audioUrl) {
-      return reply.code(400).send({ error: "upload_id or audio_url is required." });
-    }
+    const voiceUrl = (body.voiceUrl || body.voice_url) as string | undefined;
+    const language = (body.language as string) || undefined;
     const cost = await costFor("voice_validate");
     const key = await chargeUserKey(u.id, cost);
     if (cost > 0 && !key) {
@@ -2919,7 +2960,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "voice_validate";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6088,6 +6129,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const uploadId = (body.upload_id as string) || (body.uploadId as string) || undefined;
     const audioUrl = (body.audio_url as string) || (body.audioUrl as string) || undefined;
+    const voiceUrl = (body.voiceUrl as string) || (body.voice_url as string) || undefined;
+    const language = (body.language as string) || undefined;
     const cost = await costFor("voice_validate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -6096,7 +6139,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "voice_validate";
     job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6122,9 +6165,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    const clipId = body.clip_id as string;
-    const name = body.name as string;
-    if (!clipId || !name) return reply.code(400).send({ error: "clip_id and name are required." });
+    const validationTaskId = (body.taskId as string) || (body.task_id as string) || undefined;
+    const verifyUrl = (body.verifyUrl as string) || (body.verify_url as string) || undefined;
+    const clipId = body.clip_id as string | undefined;
+    const name = (body.name as string) || (body.voiceName as string) || undefined;
+    const custom = Boolean(validationTaskId && verifyUrl);
+    if (!custom && (!clipId || !name)) {
+      return reply
+        .code(400)
+        .send({ error: "clip_id and name are required (or taskId + verifyUrl for a custom voice)." });
+    }
     const cost = await costFor("voice_generate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -6134,12 +6184,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.endpoint = "voice_generate";
     job.credits = cost;
     job.prompt = name;
-    const styles = body.styles as string | undefined;
-    void runResultJobWithRetry(
-      job,
-      (client) => client.voiceGenerate({ clipId, name, styles }),
-      { policy: "paid_only" },
-    );
+    if (custom) {
+      void trackJob(runCustomVoiceJob(job, { validationTaskId: validationTaskId!, verifyUrl: verifyUrl!, voiceName: name }));
+    } else {
+      const styles = body.styles as string | undefined;
+      void runResultJobWithRetry(
+        job,
+        (client) => client.voiceGenerate({ clipId: clipId!, name: name!, styles }),
+        { policy: "paid_only" },
+      );
+    }
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6778,6 +6832,32 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /** Custom-voice generation record-info: `{taskId, voiceId, status, ...}`. */
+  function voiceRecordInfo(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    const failed = job.status === "error";
+    const pending = job.status !== "complete" && !failed;
+    const voiceId = typeof res.voice_id === "string" ? res.voice_id : "";
+    const status = failed
+      ? "processing_validate_fail"
+      : pending
+        ? "processing_validate"
+        : voiceId
+          ? "success"
+          : "wait_validating";
+    return {
+      code: 200,
+      msg: failed ? job.error || "Voice generation failed" : "success",
+      data: {
+        taskId: job.id,
+        voiceId,
+        status,
+        errorCode: failed ? 500 : null,
+        errorMessage: failed ? job.error ?? null : null,
+      },
+    };
+  }
+
   /** Register a family-specific record-info route (same auth/ownership checks). */
   function shapedRecordInfoRoute(sunoPath: string, build: (job: Job) => unknown | Promise<unknown>) {
     app.get(`${PREFIX}${sunoPath}`, async (req, reply) => {
@@ -6865,10 +6945,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   recordInfoRoute("/generate/mashup/record-info");
   shapedRecordInfoRoute("/generate/midi/record-info", midiRecordInfo);
   shapedRecordInfoRoute("/voice/validate-info", voiceValidateInfo);
+  shapedRecordInfoRoute("/voice/record-info", voiceRecordInfo);
   recordInfoRoute("/generate/cover/record-info");
   recordInfoRoute("/generate/cover-image/record-info");
   shapedRecordInfoRoute("/generate/recovery/record-info", recoveryRecordInfo);
-  recordInfoRoute("/voice/record-info");
 
   // ============================================================
   // POST aliases for /api/v1/generate/* sub-paths
@@ -7444,12 +7524,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const in_ = (req.body ?? {}) as Record<string, unknown>;
     const uploadId = (in_.upload_id as string) || (in_.uploadId as string) || undefined;
     const audioUrl = (in_.audio_url as string) || (in_.audioUrl as string) || (in_.verifyUrl as string) || undefined;
+    const voiceUrl = (in_.voiceUrl as string) || (in_.voice_url as string) || undefined;
+    const language = (in_.language as string) || undefined;
     const cost = await costFor("voice_validate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
     const job = newJob("voice_validate", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "voice_validate"; job.credits = cost;
-    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl }));
+    void runResultJobWithRetry(job, (client) => client.voiceValidate({ uploadId, audioUrl, voiceUrl, language }));
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
@@ -7481,27 +7563,38 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.audioId as string) ||
       undefined;
     const name = (in_.name as string) || (in_.voiceName as string) || undefined;
-    if (!clipId || !name) return reply.code(400).send({ error: "clip_id (audioId) and name (voiceName) are required." });
+    const validationTaskId = (in_.taskId as string) || (in_.task_id as string) || undefined;
+    const verifyUrl = (in_.verifyUrl as string) || (in_.verify_url as string) || undefined;
+    const custom = Boolean(validationTaskId && verifyUrl);
+    if (!custom && (!clipId || !name)) {
+      return reply
+        .code(400)
+        .send({ error: "clip_id (audioId) and name (voiceName), or taskId + verifyUrl, are required." });
+    }
     const cost = await costFor("voice_generate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
     const job = newJob("voice_generate", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "voice_generate"; job.credits = cost; job.prompt = name;
-    const styles = (in_.style as string) || (in_.styles as string) || undefined;
-    const description = (in_.description as string) || undefined;
-    const vocalStartS = in_.vocalStartS != null
-      ? Number(in_.vocalStartS)
-      : in_.vocal_start_s != null
-        ? Number(in_.vocal_start_s)
-        : undefined;
-    const vocalEndS = in_.vocalEndS != null
-      ? Number(in_.vocalEndS)
-      : in_.vocal_end_s != null
-        ? Number(in_.vocal_end_s)
-        : undefined;
-    void runResultJobWithRetry(job, (client) =>
-      client.voiceGenerate({ clipId, name, styles, description, vocalStartS, vocalEndS }),
-    { policy: "paid_only" });
+    if (custom) {
+      void trackJob(runCustomVoiceJob(job, { validationTaskId: validationTaskId!, verifyUrl: verifyUrl!, voiceName: name }));
+    } else {
+      const styles = (in_.style as string) || (in_.styles as string) || undefined;
+      const description = (in_.description as string) || undefined;
+      const vocalStartS = in_.vocalStartS != null
+        ? Number(in_.vocalStartS)
+        : in_.vocal_start_s != null
+          ? Number(in_.vocal_start_s)
+          : undefined;
+      const vocalEndS = in_.vocalEndS != null
+        ? Number(in_.vocalEndS)
+        : in_.vocal_end_s != null
+          ? Number(in_.vocal_end_s)
+          : undefined;
+      void runResultJobWithRetry(job, (client) =>
+        client.voiceGenerate({ clipId: clipId!, name: name!, styles, description, vocalStartS, vocalEndS }),
+      { policy: "paid_only" });
+    }
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
