@@ -28,7 +28,7 @@ async function main() {
     "voice_phrase", "voice_generate", "voice_apply", "voice_extend",
   ];
   for (const ep of nineCredit) await upsertPrice(ep, null, 9);
-  await upsertPrice("music", null, 15);
+  await upsertPrice("music", null, 10);
   const oneCredit = [
     "upload_init", "upload_register", "voice_validate", "voice_record",
     "lyrics_detail", "stems_detail", "video_detail",
@@ -48,9 +48,9 @@ async function main() {
 
   await pool.query("DELETE FROM credit_packs");
   await pool.query(
-    "INSERT INTO credit_packs (amount, price, currency) VALUES (3500, 10, 'USD'), (11000, 30, 'USD'), (23000, 60, 'USD'), (40000, 100, 'USD')",
+    "INSERT INTO credit_packs (amount, price, currency) VALUES (1000, 5, 'USD'), (2300, 10, 'USD'), (5500, 20, 'USD'), (8800, 30, 'USD')",
   );
-  console.log(`Pricing upserted: ${nineCredit.length} endpoints @ 9 credits, music=15, ${oneCredit.length} @ 1 credit, lyrics=2, cover_image=5, mp4_generate=5, wav/wav_detail/mp3_download=0, wav_download=3. Packs $10/3.5k, $30/11k, $60/23k, $100/40k.`);
+  console.log(`Pricing upserted: ${nineCredit.length} endpoints @ 9 credits, music=10, ${oneCredit.length} @ 1 credit, lyrics=2, cover_image=5, mp4_generate=5, wav/wav_detail/mp3_download=0, wav_download=3. Packs $5/1k, $10/2.3k, $20/5.5k, $30/8.8k.`);
   await pool.end();
 }
 
