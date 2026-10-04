@@ -86,4 +86,4 @@ camxora_rust/
 scripts/deploy/.venv/
 
 # Credit cutover snapshots (every user email + wallet)
-scripts/deploy/out/
+scripts/deploy/out/platform_api/image_output_cache/
