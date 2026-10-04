@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Check, Sparkles, Zap, Crown, Loader2, Gift } from 'lucide-react';
+import { Check, Sparkles, Zap, Crown, Gem, Loader2, Gift } from 'lucide-react';
 import {
   fetchSubscriptionPlans,
   purchaseSubscription,
@@ -146,9 +146,9 @@ export default function PricingPageClient() {
 
       {/* Plans */}
       <div className="container mx-auto px-4 pb-20">
-        <div className={`grid max-w-6xl grid-cols-1 gap-6 mx-auto ${freePlan ? "md:grid-cols-2 xl:grid-cols-4" : "md:grid-cols-3"}`}>
+        <div className={`grid max-w-7xl grid-cols-1 gap-4 mx-auto md:grid-cols-2 lg:grid-cols-3 lg:gap-5 ${freePlan ? "xl:grid-cols-5" : "xl:grid-cols-4"}`}>
           {freePlan ? (
-          <div className="relative rounded-2xl border-2 border-purple-500/20 bg-[#0c1230] p-6 md:p-8">
+          <div className="relative rounded-2xl border-2 border-purple-500/20 bg-[#0c1230] p-5 md:p-6">
             <div className="mb-4 flex justify-center">
               <div className="rounded-full bg-purple-500/20 p-3">
                 <Gift className="h-6 w-6 text-purple-400" />
@@ -203,14 +203,14 @@ export default function PricingPageClient() {
                 ? plan.price_cents / 12
                 : plan.price_cents;
 
-            const Icon = index === 0 ? Sparkles : index === 1 ? Zap : Crown;
+            const Icon = index === 0 ? Sparkles : index === 1 ? Zap : index === 2 ? Crown : Gem;
             const isPopular = index === 1;
             const displayName = formatPlanDisplayName(plan.name);
 
             return (
               <div
                 key={plan.id}
-                className={`relative rounded-2xl border-2 p-6 transition-all md:p-8 ${
+                className={`relative rounded-2xl border-2 p-5 transition-all md:p-6 ${
                   isPopular
                     ? 'border-purple-500 bg-gradient-to-b from-purple-900/30 to-[#0c1230] shadow-xl shadow-purple-500/20'
                     : 'border-purple-500/20 bg-[#0c1230] hover:border-purple-500/40'

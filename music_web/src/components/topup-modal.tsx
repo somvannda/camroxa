@@ -8,6 +8,7 @@ import {
   fetchCreditPacks,
   purchaseTopup,
   formatPrice,
+  packBonusPercent,
   type CreditPack,
 } from '@/lib/subscription-api';
 
@@ -110,10 +111,12 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
               <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
               {packs.map((pack, index) => {
                 const isPurchasing = purchasingPackId === pack.id;
-                const isPopular = index === 1; // Medium pack is most popular
+                const isPopular = index === 1; // Balanced $10 pack is the recommended pick
+                const bonus = packBonusPercent(pack);
+                const baseCredits = Math.round((pack.price_cents / 100) * 350);
 
                 return (
                   <div
@@ -126,7 +129,14 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                   >
                     {isPopular && (
                       <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-medium">
-                        Popular
+                        Recommended
+                      </div>
+                    )}
+
+                    {/* Volume bonus */}
+                    {bonus > 0 && (
+                      <div className="absolute right-4 top-4 rounded-full bg-green-500/15 px-2.5 py-1 text-xs font-semibold text-green-400">
+                        +{bonus}% bonus
                       </div>
                     )}
 
@@ -164,7 +174,11 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                         </div>
                       </div>
                       <div className="text-xs text-slate-500">
-                        {pack.total_credits.toLocaleString()} credits • Never expire
+                        {pack.total_credits.toLocaleString()} credits
+                        {bonus > 0
+                          ? ` (${baseCredits.toLocaleString()} + ${(pack.total_credits - baseCredits).toLocaleString()} bonus)`
+                          : ''}{' '}
+                        • Never expire
                       </div>
                     </div>
 

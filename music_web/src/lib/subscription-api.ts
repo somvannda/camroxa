@@ -553,6 +553,23 @@ export function creditsToSongs(credits: number, creditsPerGenerate = 10): number
   return Math.floor(Math.max(0, Number(credits) || 0) / per) * 2;
 }
 
+/**
+ * Canonical credit value shared with musicapi.camxora.com: 350 credits per USD
+ * (the entry-tier rate). Top-up pack bonuses are measured against this base.
+ */
+export const CREDITS_PER_DOLLAR = 350;
+
+/**
+ * Volume bonus a top-up pack grants on top of the base 350 cr/$ value.
+ * Returns a rounded whole percentage, e.g. 30 for a +30% pack.
+ */
+export function packBonusPercent(pack: { price_cents: number; total_credits: number }): number {
+  const dollars = Number(pack.price_cents) / 100;
+  const base = dollars * CREDITS_PER_DOLLAR;
+  if (!(base > 0)) return 0;
+  return Math.round(((Number(pack.total_credits) - base) / base) * 100);
+}
+
 export function isHiddenLegacyPrice(plan: { price_cents: number }): boolean {
   return Number(plan.price_cents) === 7900;
 }
