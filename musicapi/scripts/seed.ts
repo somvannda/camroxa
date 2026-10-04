@@ -57,7 +57,7 @@ async function main() {
 
   // Seed pricing
   const pricing: Array<[string, string | null, number]> = [
-    ["music", null, 15],
+    ["music", null, 10],
     ["lyrics", null, 2],
     ["extend", null, 9],
     ["cover", null, 9],
@@ -109,10 +109,10 @@ async function main() {
   if (!packs.rows.length) {
     await pool.query(
       `INSERT INTO credit_packs (amount, price, currency) VALUES
-         (3500, 10, 'USD'),
-         (11000, 30, 'USD'),
-         (23000, 60, 'USD'),
-         (40000, 100, 'USD')`,
+         (2500, 10, 'USD'),
+         (10000, 30, 'USD'),
+         (20000, 60, 'USD'),
+         (33000, 100, 'USD')`,
     );
   }
 

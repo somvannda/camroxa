@@ -62,7 +62,7 @@ const USE_CASES = [
 
 const FAQS = [
   { q: "What is Camxora Music API?", a: "A REST API that generates watermark-free AI music on top of the latest models — vocals, instrumentals, extensions and covers." },
-  { q: "How do credits work?", a: "Every request consumes credits at the rates published on your billing page — a full music generation costs 15 credits and returns 2 songs. Bigger packs buy credits at a better rate, so your cost per song drops as you scale. Top up anytime from your dashboard; credits never expire." },
+  { q: "How do credits work?", a: "Every request consumes credits at the rates published on this page and your billing dashboard — a full music generation returns 2 songs. Bigger packs buy credits at a better rate, so your cost per song drops as you scale. Top up anytime; credits never expire." },
   { q: "Is the music safe for commercial use?", a: "Yes. Generated tracks are watermark-free and ready for commercial projects with no additional fees." },
   { q: "How fast are results?", a: "Streaming output typically delivers in around 20 seconds, with real-time task status polling." },
   { q: "How do I get started?", a: "Create an account, generate an API key, add credits, then call the REST endpoints with your bearer token." },
