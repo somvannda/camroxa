@@ -1002,7 +1002,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     if (effectiveTotalLimit != null) {
       const spent = await queryOne<{ sum: string }>(
-        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1",
+        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND status <> 'error'",
         [key.id],
       );
       if (Number(spent?.sum ?? 0) + amount > effectiveTotalLimit) return false;
@@ -1010,7 +1010,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     if (key.safe_spend_hourly != null) {
       const spent = await queryOne<{ sum: string }>(
-        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND created_at >= now() - interval '1 hour'",
+        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND status <> 'error' AND created_at >= now() - interval '1 hour'",
         [key.id],
       );
       if (Number(spent?.sum ?? 0) + amount > key.safe_spend_hourly) return false;
@@ -1018,7 +1018,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     if (key.safe_spend_daily != null) {
       const spent = await queryOne<{ sum: string }>(
-        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND created_at >= now() - interval '1 day'",
+        "SELECT COALESCE(sum(credits_consumed),0)::text AS sum FROM usage_logs WHERE api_key_id = $1 AND status <> 'error' AND created_at >= now() - interval '1 day'",
         [key.id],
       );
       if (Number(spent?.sum ?? 0) + amount > key.safe_spend_daily) return false;
@@ -1065,14 +1065,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
            AND credits >= $2
            AND (credits_expire_at IS NULL OR credits_expire_at > now())
            AND (COALESCE(safe_spend_total, safe_spend_limit) IS NULL
-                OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs WHERE api_key_id = api_keys.id) + $2
+                OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs WHERE api_key_id = api_keys.id AND status <> 'error') + $2
                    <= COALESCE(safe_spend_total, safe_spend_limit))
            AND (safe_spend_hourly IS NULL
                 OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs
-                    WHERE api_key_id = api_keys.id AND created_at >= now() - interval '1 hour') + $2 <= safe_spend_hourly)
+                    WHERE api_key_id = api_keys.id AND status <> 'error' AND created_at >= now() - interval '1 hour') + $2 <= safe_spend_hourly)
            AND (safe_spend_daily IS NULL
                 OR (SELECT COALESCE(sum(credits_consumed), 0) FROM usage_logs
-                    WHERE api_key_id = api_keys.id AND created_at >= now() - interval '1 day') + $2 <= safe_spend_daily)
+                    WHERE api_key_id = api_keys.id AND status <> 'error' AND created_at >= now() - interval '1 day') + $2 <= safe_spend_daily)
          ORDER BY created_at ASC
          LIMIT 1
        )
@@ -1346,6 +1346,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * longer knows about.
    */
   async function recoverJobs(): Promise<void> {
+    // A crash between saveJob() and settleCredits() leaves an `error` job with
+    // no refund. Settlement is idempotent, so re-settle any that are missing one.
+    try {
+      await reconcileMissingRefunds();
+    } catch (e) {
+      console.error("[jobs] refund reconcile sweep failed:", e instanceof Error ? e.message : e);
+    }
     const rows = await query<JobRow>(
       `SELECT ${JOB_COLUMNS} FROM jobs WHERE status IN ('pending','running','streaming')`,
     );
@@ -1378,6 +1385,48 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     console.warn(
       `[jobs] recovered ${rows.length} interrupted job(s): ${requeued} re-queued, ${interrupted} failed out.`,
     );
+  }
+
+  /**
+   * Refund failed jobs whose `refund` ledger row was never written.
+   *
+   * `finalizeJob` persists the job before `settleCredits` runs, so a crash in
+   * between leaves an `error` job unrefunded; `recoverJobs` only re-processes
+   * pending/running rows, so it would never be corrected. Re-settling is safe:
+   * the partial unique index on (job_id, type) makes both rows idempotent.
+   */
+  async function reconcileMissingRefunds(): Promise<number> {
+    const rows = await query<JobRow>(
+      `SELECT ${JOB_COLUMNS} FROM jobs j
+        WHERE j.status = 'error'
+          AND j.user_id IS NOT NULL
+          AND j.api_key_id IS NOT NULL
+          AND COALESCE(j.credits, 0) > 0
+          AND NOT EXISTS (
+            SELECT 1 FROM credit_transactions ct
+            WHERE ct.job_id = j.id AND ct.type = 'refund'
+          )
+        ORDER BY j.updated_at DESC
+        LIMIT 500`,
+    );
+    if (rows.length === 0) return 0;
+    let refunded = 0;
+    for (const row of rows) {
+      const job = rowToJob(row);
+      try {
+        await settleCredits(job);
+        refunded++;
+      } catch (e) {
+        console.error(
+          `[jobs] refund reconcile failed for ${job.id}:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
+    if (refunded > 0) {
+      console.warn(`[jobs] refunded ${refunded} previously unsettled failed job(s).`);
+    }
+    return refunded;
   }
 
   // Bring the queue up once the server is ready (after the DB is reachable) and
@@ -1623,7 +1672,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         model: job.model,
         prompt: job.prompt,
         status: job.status,
-        credits: job.credits ?? 0,
+        // Net credits: a failed job is refunded, so it must not count as spend
+        // (safe-spend limits sum usage_logs.credits_consumed) nor show as
+        // charged in the dashboard. The gross charge stays in credit_transactions.
+        credits: job.status === "error" ? 0 : (job.credits ?? 0),
         taskId: job.id,
         result: job.result,
       });
@@ -1734,7 +1786,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * master (or a fresh decrypt when the master is missing). Returns null when
    * storage is off or the decrypt/transcode fails.
    */
-  async function ensureAudio(clipId: string, format: "mp3" | "wav"): Promise<string | null> {
+  async function ensureAudio(
+    clipId: string,
+    format: "mp3" | "wav",
+    accountId?: string | null,
+  ): Promise<string | null> {
     if (!storageConfigured()) return null;
     const targetKey = objectKey(format === "wav" ? "wav" : "clips", `${clipId}.${format}`);
     if (await objectExists(targetKey)) return targetKey;
@@ -1746,7 +1802,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     if (!source) {
       try {
-        const client = await pool.pick();
+        // Prefer the account that generated the clip: its license authorizes
+        // the decrypt. Fall back to any healthy account.
+        const owning = accountId ? pool.get(accountId) : null;
+        const client = owning ?? (await pool.pick());
         source = await decryptSunoClip(client, clipId);
         await putObject(masterKey, source, "audio/mp4");
       } catch (e) {
@@ -2067,9 +2126,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const tracks: Array<Record<string, unknown>> = [];
     try {
       let clips: Array<Record<string, unknown>> = [];
+      let owningAccountId: string | null = null;
       if (params.sunoTaskId) {
         const src = await getJob(params.sunoTaskId);
-        if (src) collectClipObjects(src.result, clips);
+        if (src) {
+          if (typeof src.accountId === "string") owningAccountId = src.accountId;
+          collectClipObjects(src.result, clips);
+        }
       } else if (params.clipId) {
         clips = [{ id: params.clipId, title: "" }];
       }
@@ -2085,9 +2148,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         try {
           let url: string | null = null;
           const key = c.audio_storage_key;
-          if (typeof key === "string") url = await getReadUrl(key);
+          // Only reuse a stored object that actually exists: getReadUrl()
+          // synthesizes a URL without checking, so an absent object would be
+          // reported as a successful recovery and re-probed forever.
+          if (typeof key === "string" && (await objectExists(key))) {
+            url = await getReadUrl(key);
+          }
           if (!url) {
-            const ensured = await ensureAudio(id, "mp3");
+            const ensured = await ensureAudio(id, "mp3", owningAccountId);
             if (ensured) url = await getReadUrl(ensured);
           }
           tracks.push(
@@ -2411,6 +2479,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * ran here or on another node.
    */
   async function runDescribedJob(job: Job, descriptor: JobDescriptor): Promise<void> {
+    // Recovery re-signs an existing job's stored media and needs local helpers
+    // (getJob/ensureAudio), not a Suno client call.
+    if (descriptor.op === "recovery_audio") {
+      const args = descriptor.args ?? {};
+      await runRecoveryJob(job, {
+        sunoTaskId: typeof args.sunoTaskId === "string" ? args.sunoTaskId : undefined,
+        clipId: typeof args.clipId === "string" ? args.clipId : undefined,
+      });
+      return;
+    }
     // Timestamped lyrics have no upstream alignment source on Suno's direct
     // API; when the LRC microservice is enabled we produce the timing ourselves
     // instead of running the plain-lyrics `JOB_OPS` fallback.
@@ -3125,7 +3203,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    void submitDescribedJob(job, { op: "recovery_audio", args: { sunoTaskId, clipId } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -4566,7 +4644,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key?.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    void submitDescribedJob(job, { op: "recovery_audio", args: { sunoTaskId, clipId } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6501,7 +6579,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.apiKeyId = key.id;
     job.endpoint = "recovery_audio";
     job.credits = cost;
-    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    void submitDescribedJob(job, { op: "recovery_audio", args: { sunoTaskId, clipId } });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -7774,7 +7852,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const cb = callbackUrl(in_);
     const job = newJob("recovery_audio", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "recovery_audio"; job.credits = cost;
-    void trackJob(runRecoveryJob(job, { sunoTaskId, clipId }));
+    void submitDescribedJob(job, { op: "recovery_audio", args: { sunoTaskId, clipId } });
     return reply.code(202).send({ code: 200, msg: "success", data: { task_id: job.id } });
   });
 
