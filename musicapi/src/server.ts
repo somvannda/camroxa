@@ -20,6 +20,7 @@ import { normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
 import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
+import { renderMusicVideo } from "./video.js";
 import { decryptSunoClip, openDecryptedM4aStream } from "./sunoAudio.js";
 import { JOB_OPS, isRunnableDescriptor, type JobDescriptor } from "./jobOps.js";
 
@@ -1333,6 +1334,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         });
         return;
       }
+      // Music video has its own callback envelope: {code,msg,data:{task_id,video_url}}.
+      if (job.type === "mp4_generate" || job.endpoint === "mp4_generate") {
+        const ok = job.status === "complete";
+        const res = (job.result ?? {}) as Record<string, unknown>;
+        const videoUrl = ok ? ((res.video_url as string) ?? null) : null;
+        await fetch(job.callbackUrl, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+          body: JSON.stringify({
+            code: ok ? 200 : 400,
+            msg: ok ? "MP4 generated successfully." : (job.error || "MP4 generation failed"),
+            data: { task_id: job.id, video_url: videoUrl },
+          }),
+        });
+        return;
+      }
       // sunoapi.org's callback envelope: {code,msg,data:{callbackType,task_id,data[]}}.
       // Our jobs finalize atomically, so we emit one terminal callback ("complete"
       // or "error") rather than their intermediate text/first stages.
@@ -1603,6 +1622,62 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         url,
         ...(format === "wav" ? { wav_url: url } : {}),
       };
+      job.status = "complete";
+    } catch (e) {
+      job.status = "error";
+      job.error = e instanceof Error ? e.message : String(e);
+    }
+    await finalizeJob(job);
+  }
+
+  /**
+   * Complete a music-video job from our own renderer: the track's cover art plus
+   * a live waveform, encoded to MP4 and stored on B2. Suno exposes no video
+   * API, so — like sunoapi.org, which returns its own `videoUrl` — we produce
+   * the MP4 ourselves. 2-credit job; not queue-durable.
+   */
+  async function runMusicVideoJob(job: Job, clipId: string, aspect = "16:9"): Promise<void> {
+    try {
+      if (!storageConfigured()) throw new Error("Media storage is not configured.");
+      const audioKey = await ensureAudio(clipId, "mp3");
+      if (!audioKey) throw new Error("Could not prepare the audio for this video.");
+      const audio = await getObjectBytes(audioKey);
+
+      // Cover art: prefer our stored copy, else pull the live clip image.
+      let image: Buffer | null = null;
+      let imageExt: "jpg" | "png" | "webp" = "jpg";
+      for (const ext of ["jpg", "png", "webp"] as const) {
+        const key = objectKey("images", `${clipId}.${ext}`);
+        if (await objectExists(key)) {
+          image = await getObjectBytes(key);
+          imageExt = ext;
+          break;
+        }
+      }
+      if (!image) {
+        try {
+          const client = await pool.pick();
+          const clip = await client.getClipObject(clipId);
+          const url = (clip.image_url as string) || (clip.imageUrl as string);
+          if (typeof url === "string" && /^https?:\/\//.test(url)) {
+            const resp = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+            if (resp.ok) {
+              const ct = resp.headers.get("content-type") ?? "";
+              image = Buffer.from(await resp.arrayBuffer());
+              imageExt = ct.includes("png") ? "png" : ct.includes("webp") ? "webp" : "jpg";
+            }
+          }
+        } catch {
+          /* fall back to the solid background */
+        }
+      }
+
+      const mp4 = await renderMusicVideo({ audio, image, imageExt, audioExt: "mp3", aspect });
+      const key = objectKey("videos", `${clipId}.mp4`);
+      await putObject(key, mp4, "video/mp4");
+      const url = await getReadUrl(key);
+      if (!url) throw new Error("Could not sign the video URL.");
+      job.result = { clip_id: clipId, video_url: url, download_url: url, url };
       job.status = "complete";
     } catch (e) {
       job.status = "error";
@@ -3903,18 +3978,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
-  // POST /me/mp4/generate (result job)
-  meResultRoute(
-    "/me/mp4/generate",
-    "mp4_generate",
-    (body) => (client) =>
-      client.generateMP4(body.clip_id as string, {
-        prompt: body.prompt as string | undefined,
-        quantity: body.quantity ? Number(body.quantity) : undefined,
-        aspectRatio: body.aspect_ratio as string | undefined,
-      }),
-    (body) => (body.clip_id ? null : "clip_id is required."),
-  );
+  // POST /me/mp4/generate — self-hosted renderer (cover art + waveform).
+  app.post("/me/mp4/generate", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = body.clip_id as string;
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const cost = await costFor("mp4_generate");
+    const key = await chargeUserKey(u.id, cost);
+    if (cost > 0 && !key) {
+      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    }
+    const job = newJob("mp4_generate", (body.callback_url as string) || undefined);
+    job.userId = u.id;
+    job.apiKeyId = key?.id;
+    job.endpoint = "mp4_generate";
+    job.credits = cost;
+    job.prompt = (body.prompt as string) || undefined;
+    void trackJob(runMusicVideoJob(job, clipId, (body.aspect_ratio as string) || "16:9"));
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
 
   // POST /me/voice/apply
   meClipRoute(
@@ -5692,7 +5776,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const prompt = body.prompt as string | undefined;
     const quantity = body.quantity ? Number(body.quantity) : undefined;
     const aspectRatio = body.aspect_ratio as string | undefined;
-    void runResultJobWithRetry(job, (client) => client.generateMP4(clipId, { prompt, quantity, aspectRatio }));
+    void trackJob(runMusicVideoJob(job, clipId, aspectRatio));
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -6362,6 +6446,38 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
+  /** Music-video record-info in sunoapi.org's shape: `data.response.videoUrl`. */
+  function musicVideoRecordInfo(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    const successFlag =
+      job.status === "complete"
+        ? "SUCCESS"
+        : job.status === "error"
+          ? "GENERATE_MP4_FAILED"
+          : "PENDING";
+    const videoUrl =
+      job.status === "complete"
+        ? ((res.video_url as string) ?? (res.download_url as string) ?? null)
+        : null;
+    const terminal = job.status === "complete" || job.status === "error";
+    return {
+      code: 200,
+      msg: job.status === "error" ? job.error || "MP4 generation failed" : "success",
+      data: {
+        taskId: job.id,
+        musicId: (res.clip_id as string) ?? null,
+        musicIndex: 0,
+        callbackUrl: job.callbackUrl ?? "",
+        completeTime: terminal ? sunoTime(job.completedAt ?? job.createdAt) : null,
+        response: { videoUrl },
+        successFlag,
+        createTime: sunoTime(job.createdAt),
+        errorCode: job.status === "error" ? 500 : null,
+        errorMessage: job.status === "error" ? job.error ?? null : null,
+      },
+    };
+  }
+
   /** Register a family-specific record-info route (same auth/ownership checks). */
   function shapedRecordInfoRoute(sunoPath: string, build: (job: Job) => unknown | Promise<unknown>) {
     app.get(`${PREFIX}${sunoPath}`, async (req, reply) => {
@@ -6438,7 +6554,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   recordInfoRoute("/music-remaster/record-info");
   wavRecordInfoRoute();
   shapedRecordInfoRoute("/vocal-removal/record-info", vocalRemovalRecordInfo);
-  recordInfoRoute("/create-music-video/record-info");
+  shapedRecordInfoRoute("/create-music-video/record-info", musicVideoRecordInfo);
   shapedRecordInfoRoute("/lyrics/record-info", lyricsRecordInfo);
   recordInfoRoute("/generate-persona/record-info");
   recordInfoRoute("/generate/upload-cover/record-info");
@@ -6678,7 +6794,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const prompt = ((in_.style as string) || "") + ((in_.prompt as string) || "") || undefined;
     const quantity = in_.quantity != null ? Number(in_.quantity) : undefined;
     const aspectRatio = (in_.aspectRatio as string) || (in_.aspect_ratio as string) || undefined;
-    void runResultJobWithRetry(job, (client) => client.generateMP4(clip_id, { prompt, quantity, aspectRatio }));
+    void trackJob(runMusicVideoJob(job, clip_id, aspectRatio));
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
@@ -6913,7 +7029,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const prompt = ((in_.style as string) || "") + ((in_.prompt as string) || "") || undefined;
     const quantity = in_.quantity != null ? Number(in_.quantity) : undefined;
     const aspectRatio = (in_.aspectRatio as string) || (in_.aspect_ratio as string) || undefined;
-    void runResultJobWithRetry(job, (client) => client.generateMP4(clip_id, { prompt, quantity, aspectRatio }));
+    void trackJob(runMusicVideoJob(job, clip_id, aspectRatio));
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 
