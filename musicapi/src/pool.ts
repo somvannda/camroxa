@@ -39,6 +39,31 @@ export interface AccountStatus {
   captchaRequired: boolean;
 }
 
+/**
+ * Order eligible clients for fair dispatch: routing preference first (free
+ * before paid for `prefer_free`), then accounts still below `maxPerAccount`,
+ * then least in-flight. Least-loaded-first means a burst spreads across the
+ * pool instead of hammering whichever account happens to be first — with a
+ * global cap of `size × K`, no account ends up with more than `K` in flight.
+ * Pure and exported so it can be unit-tested without a live pool.
+ */
+export function orderByLoad<T extends { account: { id: string; type?: string } }>(
+  clients: T[],
+  load: (id: string) => number,
+  opts: { preferFree?: boolean; maxPerAccount?: number } = {},
+): T[] {
+  const rank = (c: T): [number, number, number] => [
+    opts.preferFree && c.account.type === "paid" ? 1 : 0,
+    opts.maxPerAccount != null && load(c.account.id) >= opts.maxPerAccount ? 1 : 0,
+    load(c.account.id),
+  ];
+  return [...clients].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    return ra[0] - rb[0] || ra[1] - rb[1] || ra[2] - rb[2];
+  });
+}
+
 export class AccountPool {
   private clients: SunoClient[] = [];
   private health: Map<string, { info: AccountHealth; updatedAt: number }> = new Map();
@@ -216,22 +241,23 @@ export class AccountPool {
    * Pick a healthy account that can use `model`, has credits, and matches the
    * routing `policy` (prefer_free / paid_only / any).
    */
-  async pick(model?: string, policy: RoutingPolicy = "any"): Promise<SunoClient> {
+  async pick(
+    model?: string,
+    policy: RoutingPolicy = "any",
+    opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
+  ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
     // Retired keys are folded onto the current model first, so an old client's
     // request still matches the account catalog instead of falling through.
     const want = normalizeModel(model);
-    const ordered = this.clients.filter((c) => {
+    const filtered = this.clients.filter((c) => {
       if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
       return true;
     });
-    if (policy === "prefer_free") {
-      ordered.sort((a, b) => {
-        const at = a.account.type === "paid" ? 1 : 0;
-        const bt = b.account.type === "paid" ? 1 : 0;
-        return at - bt;
-      });
-    }
+    const ordered = orderByLoad(filtered, opts.load ?? (() => 0), {
+      preferFree: policy === "prefer_free",
+      maxPerAccount: opts.maxPerAccount,
+    });
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
     for (const client of ordered) {
@@ -259,9 +285,18 @@ export class AccountPool {
    * generic pick when none does. Used for features only some plans have — e.g.
    * custom Voice needs a Premier account (`studio`).
    */
-  async pickFeature(feature: string, model?: string, policy: RoutingPolicy = "any"): Promise<SunoClient> {
+  async pickFeature(
+    feature: string,
+    model?: string,
+    policy: RoutingPolicy = "any",
+    opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
+  ): Promise<SunoClient> {
     const want = normalizeModel(model);
-    for (const client of this.clients) {
+    const ordered = orderByLoad(this.clients, opts.load ?? (() => 0), {
+      preferFree: policy === "prefer_free",
+      maxPerAccount: opts.maxPerAccount,
+    });
+    for (const client of ordered) {
       if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
       try {
         const health = await this.healthFor(client);
@@ -272,7 +307,7 @@ export class AccountPool {
         /* try the next account */
       }
     }
-    return this.pick(model, policy);
+    return this.pick(model, policy, opts);
   }
 
   /** Feature-aware `pickExcept` for retries across accounts. */
@@ -281,11 +316,16 @@ export class AccountPool {
     excludeIds: string[],
     model?: string,
     policy: RoutingPolicy = "any",
+    opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     const exclude = new Set(excludeIds);
     const want = normalizeModel(model);
-    for (const client of this.clients) {
-      if (exclude.has(client.account.id)) continue;
+    const ordered = orderByLoad(
+      this.clients.filter((c) => !exclude.has(c.account.id)),
+      opts.load ?? (() => 0),
+      { preferFree: policy === "prefer_free", maxPerAccount: opts.maxPerAccount },
+    );
+    for (const client of ordered) {
       if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
       try {
         const health = await this.healthFor(client);
@@ -296,7 +336,7 @@ export class AccountPool {
         /* try the next account */
       }
     }
-    return this.pickExcept(excludeIds, model, policy);
+    return this.pickExcept(excludeIds, model, policy, opts);
   }
 
   /** Return the client for a specific account id, or null when not pooled. */
@@ -308,23 +348,25 @@ export class AccountPool {
    * Like pick() but skips clients whose account id is in excludeIds.
    * Throws if no candidates remain after filtering.
    */
-  async pickExcept(excludeIds: string[], model?: string, policy: RoutingPolicy = "any"): Promise<SunoClient> {
+  async pickExcept(
+    excludeIds: string[],
+    model?: string,
+    policy: RoutingPolicy = "any",
+    opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
+  ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
     const want = normalizeModel(model);
     const exclude = new Set(excludeIds);
-    const ordered = this.clients.filter((c) => {
+    const filtered = this.clients.filter((c) => {
       if (exclude.has(c.account.id)) return false;
       if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
       return true;
     });
-    if (ordered.length === 0) throw new Error("No Suno accounts available after excluding attempted ones.");
-    if (policy === "prefer_free") {
-      ordered.sort((a, b) => {
-        const at = a.account.type === "paid" ? 1 : 0;
-        const bt = b.account.type === "paid" ? 1 : 0;
-        return at - bt;
-      });
-    }
+    if (filtered.length === 0) throw new Error("No Suno accounts available after excluding attempted ones.");
+    const ordered = orderByLoad(filtered, opts.load ?? (() => 0), {
+      preferFree: policy === "prefer_free",
+      maxPerAccount: opts.maxPerAccount,
+    });
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
     for (const client of ordered) {

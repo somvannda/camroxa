@@ -141,6 +141,13 @@ export const config = {
     /** Default per-user concurrent-job cap when `rate_limits` has no override. */
     maxConcurrentPerUser: Math.max(1, Number(process.env.SUNO_MAX_CONCURRENT_PER_USER ?? 2)),
     /**
+     * Per-account in-flight cap. Account selection is least-loaded-first, so a
+     * burst spreads across the pool; an account already at this cap is used only
+     * when no under-cap account is available. With a global cap of
+     * `pool.size × concurrentPerAccount`, per-account load stays at or below this.
+     */
+    maxConcurrentPerAccount: Math.max(1, Number(process.env.SUNO_MAX_CONCURRENT_PER_ACCOUNT ?? 4)),
+    /**
      * How many jobs may wait for a slot before new arrivals are rejected
      * (0 = unbounded). Bounds the detached-job backlog so a flood cannot grow
      * the in-memory promise queue without limit; a rejected job fails out with
