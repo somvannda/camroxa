@@ -16,6 +16,7 @@ import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { captchaRequired } from "./captcha.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
+import { ConcurrencyGate } from "./concurrency.js";
 import { normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
@@ -516,6 +517,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // `QUEUE_DRIVER=redis` hands descriptor-backed jobs to a BullMQ work list.
   const queue = await createJobQueue();
 
+  // Caps how many Suno-backed jobs run at once, so a burst queues instead of
+  // stampeding a small account pool (see `src/concurrency.ts`). The global
+  // ceiling is re-evaluated per admission, so adding an account raises capacity
+  // without a restart; `SUNO_MAX_CONCURRENT` pins it explicitly.
+  const sunoSlots = new ConcurrencyGate(
+    () => config.suno.maxConcurrent ?? Math.max(1, pool.size * config.suno.concurrentPerAccount),
+  );
+
   // Edge request counters for the admin `/metrics` snapshot. In-memory and reset
   // on restart, which is all a single-process deployment needs.
   const requestCounters = { total: 0, clientErrors: 0, serverErrors: 0 };
@@ -739,12 +748,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // time. Counters are in-memory fixed windows, matching the edge limiter
   // (a single-process deployment doesn't need a shared store).
   interface UserRateLimits {
+    /** Requests allowed per `config.rateLimit.userWindowMs` (sunoapi.org 20/10s shape). */
+    perWindow: number | null;
     perMinute: number | null;
     perDay: number | null;
+    /** Cap on this user's concurrently running Suno jobs; null = config default. */
+    maxConcurrentJobs: number | null;
   }
 
   const DAY_MS = 86_400_000;
   const rateLimitCache = new Map<string, { limits: UserRateLimits | null; at: number }>();
+  const windowWindows = new Map<string, { start: number; count: number }>();
   const minuteWindows = new Map<string, { start: number; count: number }>();
   const dayWindows = new Map<string, { start: number; count: number }>();
   const RATE_LIMIT_MAP_CAP = Number(process.env.RATE_LIMIT_MAP_CAP ?? 20_000);
@@ -753,13 +767,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const now = Date.now();
     const cached = rateLimitCache.get(userId);
     if (cached && now - cached.at < config.rateLimit.perUserCacheMs) return cached.limits;
-    const row = await queryOne<{ requests_per_minute: number | null; requests_per_day: number | null }>(
-      "SELECT requests_per_minute, requests_per_day FROM rate_limits WHERE user_id = $1 LIMIT 1",
+    const row = await queryOne<{
+      requests_per_window: number | null;
+      requests_per_minute: number | null;
+      requests_per_day: number | null;
+      max_concurrent_jobs: number | null;
+    }>(
+      "SELECT requests_per_window, requests_per_minute, requests_per_day, max_concurrent_jobs FROM rate_limits WHERE user_id = $1 LIMIT 1",
       [userId],
     );
     const limits =
-      row && (row.requests_per_minute != null || row.requests_per_day != null)
-        ? { perMinute: row.requests_per_minute, perDay: row.requests_per_day }
+      row &&
+      (row.requests_per_window != null ||
+        row.requests_per_minute != null ||
+        row.requests_per_day != null ||
+        row.max_concurrent_jobs != null)
+        ? {
+            perWindow: row.requests_per_window,
+            perMinute: row.requests_per_minute,
+            perDay: row.requests_per_day,
+            maxConcurrentJobs: row.max_concurrent_jobs,
+          }
         : null;
     // Bound the cache: drop entries that no longer match the current window.
     if (rateLimitCache.size > RATE_LIMIT_MAP_CAP) {
@@ -786,8 +814,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   interface UserRateResult {
     allowed: boolean;
-    exceeded: "minute" | "day" | null;
+    exceeded: "window" | "minute" | "day" | null;
     retryAfterSec: number;
+    windowRemaining: number | null;
     minuteRemaining: number | null;
     dayRemaining: number | null;
   }
@@ -795,12 +824,33 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   function checkUserRateLimit(userId: string, limits: UserRateLimits): UserRateResult {
     const now = Date.now();
     const windowMs = config.rateLimit.windowMs;
+    const userWindowMs = config.rateLimit.userWindowMs;
     const minuteStart = now - (now % windowMs);
+    const userWindowStart = now - (now % userWindowMs);
     const day = new Date(now);
     const dayStart = Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate());
+    let windowRemaining: number | null = null;
     let minuteRemaining: number | null = null;
     let dayRemaining: number | null = null;
 
+    // Short per-window budget first: it is the tightest and mirrors sunoapi.org.
+    if (limits.perWindow != null) {
+      if (windowWindows.size > RATE_LIMIT_MAP_CAP) {
+        for (const [id, w] of windowWindows) if (w.start !== userWindowStart) windowWindows.delete(id);
+      }
+      const count = bumpWindow(windowWindows, userId, userWindowStart);
+      windowRemaining = Math.max(0, limits.perWindow - count);
+      if (count > limits.perWindow) {
+        return {
+          allowed: false,
+          exceeded: "window",
+          retryAfterSec: Math.max(1, Math.ceil((userWindowStart + userWindowMs - now) / 1000)),
+          windowRemaining: 0,
+          minuteRemaining,
+          dayRemaining,
+        };
+      }
+    }
     if (limits.perMinute != null) {
       if (minuteWindows.size > RATE_LIMIT_MAP_CAP) {
         for (const [id, w] of minuteWindows) if (w.start !== minuteStart) minuteWindows.delete(id);
@@ -812,6 +862,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           allowed: false,
           exceeded: "minute",
           retryAfterSec: Math.max(1, Math.ceil((minuteStart + windowMs - now) / 1000)),
+          windowRemaining,
           minuteRemaining: 0,
           dayRemaining,
         };
@@ -828,12 +879,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           allowed: false,
           exceeded: "day",
           retryAfterSec: Math.max(1, Math.ceil((dayStart + DAY_MS - now) / 1000)),
+          windowRemaining,
           minuteRemaining,
           dayRemaining: 0,
         };
       }
     }
-    return { allowed: true, exceeded: null, retryAfterSec: 0, minuteRemaining, dayRemaining };
+    return {
+      allowed: true,
+      exceeded: null,
+      retryAfterSec: 0,
+      windowRemaining,
+      minuteRemaining,
+      dayRemaining,
+    };
   }
 
   /**
@@ -845,6 +904,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const limits = await loadUserRateLimits(userId);
     if (!limits) return true;
     const result = checkUserRateLimit(userId, limits);
+    if (limits.perWindow != null) {
+      reply.header("x-user-rate-limit-window", String(limits.perWindow));
+      reply.header("x-user-rate-remaining-window", String(result.windowRemaining ?? 0));
+    }
     if (limits.perMinute != null) {
       reply.header("x-user-rate-limit", String(limits.perMinute));
       reply.header("x-user-rate-remaining", String(result.minuteRemaining ?? 0));
@@ -855,12 +918,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     if (result.allowed) return true;
     reply.header("retry-after", String(result.retryAfterSec));
-    reply.code(429).send({
-      error:
-        result.exceeded === "day"
-          ? `Daily request limit exceeded (${limits.perDay}/day).`
-          : `Request rate limit exceeded (${limits.perMinute}/min).`,
-    });
+    const error =
+      result.exceeded === "day"
+        ? `Daily request limit exceeded (${limits.perDay}/day).`
+        : result.exceeded === "window"
+          ? `Request rate limit exceeded (${limits.perWindow} per ${Math.round(config.rateLimit.userWindowMs / 1000)}s).`
+          : `Request rate limit exceeded (${limits.perMinute}/min).`;
+    reply.code(429).send({ error });
     return false;
   }
 
@@ -1591,12 +1655,34 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     await queue.close();
   });
 
+  /**
+   * Per-user concurrent-job cap: the user's `rate_limits.max_concurrent_jobs`
+   * override, else the configured default. Jobs with no user share one
+   * `"system"` owner bounded only by the global ceiling.
+   */
+  async function sunoUserCap(userId: string | undefined): Promise<number> {
+    if (!userId) return Number.MAX_SAFE_INTEGER;
+    const limits = await loadUserRateLimits(userId);
+    return limits?.maxConcurrentJobs ?? config.suno.maxConcurrentPerUser;
+  }
+
+  /** Run `fn` while holding one global + one per-user Suno slot. */
+  async function withSunoSlot<T>(job: Job, fn: () => Promise<T>): Promise<T> {
+    const owner = job.userId ?? "system";
+    const release = await sunoSlots.acquire(owner, await sunoUserCap(job.userId));
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
   function runClipJobWithRetry(
     job: Job,
     submitFactory: (client: SunoClient) => Promise<import("./client.js").Clip[]>,
     options?: RetryOptions,
   ): Promise<void> {
-    return trackJob(runClipJobWithRetryImpl(job, submitFactory, options));
+    return trackJob(withSunoSlot(job, () => runClipJobWithRetryImpl(job, submitFactory, options)));
   }
 
   async function runClipJobWithRetryImpl(
@@ -1654,7 +1740,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     submitFactory: (client: SunoClient) => Promise<unknown>,
     options?: RetryOptions,
   ): Promise<void> {
-    return trackJob(runResultJobWithRetryImpl(job, submitFactory, options));
+    return trackJob(withSunoSlot(job, () => runResultJobWithRetryImpl(job, submitFactory, options)));
   }
 
   async function runResultJobWithRetryImpl(
@@ -2042,6 +2128,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       requests: { ...requestCounters },
       jobs: { total: jobs.size, byStatus },
       accounts: pool.size,
+      // Suno concurrency: `capacity` is the effective global ceiling, `active`
+      // jobs currently holding a slot, `waiting` jobs queued behind them.
+      suno: {
+        ...sunoSlots.stats(),
+        capacity:
+          config.suno.maxConcurrent ?? Math.max(1, pool.size * config.suno.concurrentPerAccount),
+        maxConcurrentPerUser: config.suno.maxConcurrentPerUser,
+      },
     };
   });
 
@@ -4548,14 +4642,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get("/admin/users/:id/rate-limits", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const { id } = req.params as { id: string };
-    const row = await queryOne<{ requests_per_minute: number | null; requests_per_day: number | null }>(
-      "SELECT requests_per_minute, requests_per_day FROM rate_limits WHERE user_id = $1 LIMIT 1",
+    const row = await queryOne<{
+      requests_per_window: number | null;
+      requests_per_minute: number | null;
+      requests_per_day: number | null;
+      max_concurrent_jobs: number | null;
+    }>(
+      "SELECT requests_per_window, requests_per_minute, requests_per_day, max_concurrent_jobs FROM rate_limits WHERE user_id = $1 LIMIT 1",
       [id],
     );
     return {
       user_id: id,
+      requests_per_window: row?.requests_per_window ?? null,
       requests_per_minute: row?.requests_per_minute ?? null,
       requests_per_day: row?.requests_per_day ?? null,
+      max_concurrent_jobs: row?.max_concurrent_jobs ?? null,
+      // Context so the admin UI can render the window/limit units.
+      window_ms: config.rateLimit.userWindowMs,
+      default_max_concurrent_jobs: config.suno.maxConcurrentPerUser,
     };
   });
 
@@ -4564,8 +4668,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!admin) return;
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as {
+      requests_per_window?: number | null;
       requests_per_minute?: number | null;
       requests_per_day?: number | null;
+      max_concurrent_jobs?: number | null;
     };
     // A limit is a positive integer, or null to clear it.
     const parseLimit = (value: unknown): { ok: true; value: number | null } | { ok: false } => {
@@ -4573,25 +4679,37 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) return { ok: false };
       return { ok: true, value };
     };
+    const perWindow = parseLimit(body.requests_per_window);
     const perMinute = parseLimit(body.requests_per_minute);
     const perDay = parseLimit(body.requests_per_day);
-    if (!perMinute.ok || !perDay.ok) {
-      return reply
-        .code(400)
-        .send({ error: "requests_per_minute/requests_per_day must be positive integers or null." });
+    const maxConcurrent = parseLimit(body.max_concurrent_jobs);
+    if (!perWindow.ok || !perMinute.ok || !perDay.ok || !maxConcurrent.ok) {
+      return reply.code(400).send({
+        error:
+          "requests_per_window/requests_per_minute/requests_per_day/max_concurrent_jobs " +
+          "must be positive integers or null.",
+      });
     }
     const user = await queryOne<{ id: string }>("SELECT id FROM users WHERE id = $1", [id]);
     if (!user) return reply.code(404).send({ error: "User not found." });
-    if (perMinute.value === null && perDay.value === null) {
+    if (
+      perWindow.value === null &&
+      perMinute.value === null &&
+      perDay.value === null &&
+      maxConcurrent.value === null
+    ) {
       await query("DELETE FROM rate_limits WHERE user_id = $1", [id]);
     } else {
       await query(
-        `INSERT INTO rate_limits (user_id, requests_per_minute, requests_per_day)
-         VALUES ($1, $2, $3)
+        `INSERT INTO rate_limits
+           (user_id, requests_per_window, requests_per_minute, requests_per_day, max_concurrent_jobs)
+         VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (user_id) DO UPDATE SET
+           requests_per_window = EXCLUDED.requests_per_window,
            requests_per_minute = EXCLUDED.requests_per_minute,
-           requests_per_day = EXCLUDED.requests_per_day`,
-        [id, perMinute.value, perDay.value],
+           requests_per_day = EXCLUDED.requests_per_day,
+           max_concurrent_jobs = EXCLUDED.max_concurrent_jobs`,
+        [id, perWindow.value, perMinute.value, perDay.value, maxConcurrent.value],
       );
     }
     // Drop the cached row so the new limits apply on the next request.
@@ -4601,14 +4719,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       action: "user.rate_limits",
       targetType: "user",
       targetId: id,
-      details: { requests_per_minute: perMinute.value, requests_per_day: perDay.value },
+      details: {
+        requests_per_window: perWindow.value,
+        requests_per_minute: perMinute.value,
+        requests_per_day: perDay.value,
+        max_concurrent_jobs: maxConcurrent.value,
+      },
       req,
     });
     return {
       ok: true,
       user_id: id,
+      requests_per_window: perWindow.value,
       requests_per_minute: perMinute.value,
       requests_per_day: perDay.value,
+      max_concurrent_jobs: maxConcurrent.value,
     };
   });
 
