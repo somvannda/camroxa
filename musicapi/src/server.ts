@@ -16,7 +16,7 @@ import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { captchaRequired } from "./captcha.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { createJobQueue } from "./jobQueue.js";
-import { ConcurrencyGate } from "./concurrency.js";
+import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
@@ -528,9 +528,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // Caps how many Suno-backed jobs run at once, so a burst queues instead of
   // stampeding a small account pool (see `src/concurrency.ts`). The global
   // ceiling is re-evaluated per admission, so adding an account raises capacity
-  // without a restart; `SUNO_MAX_CONCURRENT` pins it explicitly.
+  // without a restart; `SUNO_MAX_CONCURRENT` pins it explicitly. The waiting
+  // queue is bounded by `SUNO_MAX_QUEUE` so a flood cannot grow it without limit.
   const sunoSlots = new ConcurrencyGate(
     () => config.suno.maxConcurrent ?? Math.max(1, pool.size * config.suno.concurrentPerAccount),
+    config.suno.maxQueue,
   );
 
   // Edge request counters for the admin `/metrics` snapshot. In-memory and reset
@@ -2069,9 +2071,22 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /** Run `fn` while holding one global + one per-user Suno slot. */
-  async function withSunoSlot<T>(job: Job, fn: () => Promise<T>): Promise<T> {
+  async function withSunoSlot<T>(job: Job, fn: () => Promise<T>): Promise<T | undefined> {
     const owner = job.userId ?? "system";
-    const release = await sunoSlots.acquire(owner, await sunoUserCap(job.userId));
+    let release: () => void;
+    try {
+      release = await sunoSlots.acquire(owner, await sunoUserCap(job.userId));
+    } catch (e) {
+      if (e instanceof QueueFullError) {
+        // The backlog is at its bound: fail the job out (refund + callback)
+        // with a retryable error rather than queueing it indefinitely.
+        job.status = "error";
+        job.error = "Server busy: too many queued jobs. Please retry shortly.";
+        await finalizeJob(job);
+        return undefined;
+      }
+      throw e;
+    }
     try {
       return await fn();
     } finally {
