@@ -199,13 +199,13 @@ def load_model() -> Any:
     return MODEL
 
 
-def transcribe_words(audio_path: str, lyrics: str) -> tuple[list[dict[str, Any]], float]:
+def _run_transcribe(audio_path: str, lyrics: str, vad: bool) -> tuple[list[dict[str, Any]], float]:
     model = load_model()
     with MODEL_LOCK:
         segments, info = model.transcribe(
             audio_path,
             word_timestamps=True,
-            vad_filter=VAD,
+            vad_filter=vad,
             language=LANGUAGE,
             initial_prompt=(lyrics or "")[:1000] or None,
             beam_size=5,
@@ -218,6 +218,19 @@ def transcribe_words(audio_path: str, lyrics: str) -> tuple[list[dict[str, Any]]
                     continue
                 words.append({"word": text, "start": float(word.start), "end": float(word.end)})
     return words, float(getattr(info, "duration", 0.0) or 0.0)
+
+
+def transcribe_words(audio_path: str, lyrics: str) -> tuple[list[dict[str, Any]], float]:
+    """Transcribe with word timestamps.
+
+    Silero VAD occasionally filters an entire sung track (zero segments), which
+    yields no words and therefore no alignment. When that happens, retry once
+    with VAD disabled so singing is still aligned.
+    """
+    words, duration = _run_transcribe(audio_path, lyrics, VAD)
+    if not words and VAD:
+        words, duration = _run_transcribe(audio_path, lyrics, False)
+    return words, duration
 
 
 def align(audio: bytes, lyrics: str) -> dict[str, Any]:
