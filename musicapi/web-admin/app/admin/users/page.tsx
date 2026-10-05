@@ -181,9 +181,38 @@ export default function UsersPage() {
     setQ(qInput.trim());
   }
 
+  async function exportCsv() {
+    const p = new URLSearchParams({ format: "csv" });
+    if (q) p.set("q", q);
+    if (statusFilter) p.set("status", statusFilter);
+    try {
+      const res = await fetch(`/backend/admin/users?${p.toString()}`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "users.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    }
+  }
+
   return (
     <div className="space-y-6">
-      <PageHeader title="Users" description="Manage credits and account status" />
+      <PageHeader
+        title="Users"
+        description="Manage credits and account status"
+        actions={
+          <Button variant="secondary" onClick={exportCsv}>
+            Export CSV
+          </Button>
+        }
+      />
 
       <form onSubmit={applySearch} className="flex flex-wrap items-end gap-2">
         <Field label="Search" htmlFor="user-q" className="w-full sm:w-72">

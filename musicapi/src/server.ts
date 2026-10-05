@@ -5899,6 +5899,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   // Admin user list. Server-side pagination + search/status/role filters so the
   // console never pulls every account (previously an unbounded SELECT).
+  /** CSV cell: quote when needed and neutralize spreadsheet formula injection. */
+  function csvCell(value: unknown): string {
+    let s = value === null || value === undefined ? "" : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
   app.get("/admin/users", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const q = (req.query ?? {}) as {
@@ -5907,6 +5914,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       q?: string;
       status?: string;
       role?: string;
+      format?: string;
     };
     const page = Math.max(1, Math.floor(Number(q.page) || 1));
     const pageSize = Math.min(100, Math.max(1, Math.floor(Number(q.pageSize) || 25)));
@@ -5928,6 +5936,36 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       filters.push(`u.role = $${params.length}`);
     }
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    if (q.format === "csv") {
+      const all = await query<Record<string, unknown>>(
+        `SELECT u.created_at, u.email, u.name, u.role, u.status,
+                (SELECT COALESCE(sum(k.credits),0) FROM api_keys k WHERE k.user_id = u.id) AS credits,
+                (SELECT count(*) FROM api_keys k WHERE k.user_id = u.id) AS key_count,
+                (SELECT count(*) FROM usage_logs l WHERE l.user_id = u.id) AS request_count
+         FROM users u ${where} ORDER BY u.created_at DESC LIMIT 10000`,
+        params,
+      );
+      const lines = [
+        "created_at,email,name,role,status,credits,keys,requests",
+        ...all.map((r) =>
+          [
+            r.created_at,
+            r.email,
+            r.name,
+            r.role,
+            r.status,
+            r.credits,
+            r.key_count,
+            r.request_count,
+          ]
+            .map(csvCell)
+            .join(","),
+        ),
+      ];
+      reply.header("content-type", "text/csv; charset=utf-8");
+      reply.header("content-disposition", 'attachment; filename="users.csv"');
+      return reply.send(lines.join("\n"));
+    }
     const total = await queryOne<{ n: string }>(
       `SELECT count(*)::text AS n FROM users u ${where}`,
       params,
