@@ -3,7 +3,7 @@
 **Date:** 2026-10-05
 **Branch:** `fix/web-music-free-monthly-grant-stacking`
 **Surfaces:** platform_api
-**Status:** implemented (local tests green; sandbox/prod not deployed)
+**Status:** implemented + deployed (sandbox and production, 2026-10-05); stacked balances reconciled
 
 ## Summary
 
@@ -47,10 +47,24 @@ is configured **50 credits / month, daily 0** (admin-set, see
 - `platform_api/services/v3/period_grant_service.py`
 - `platform_api/tests/test_v3_period_grant.py`
 
+## Data reconciliation
+
+- `scripts/deploy/_clawback_stacked_period_grant.py` (dry-run by default,
+  `--apply` to write) reconciles already-stacked Free wallets. It keeps one
+  month's allowance (`plans.monthly_credits`, 50) and preserves non-grant
+  credits (`quota_conversion`, packs, admin) by capping the claw at the
+  spend-adjusted grant portion. It zeroes the stacked `grant` lots and leaves a
+  single current-month lot so later expiry cannot double-claw. Idempotent — a
+  rerun reports `affected_users 0`.
+- Applied to production: **7** license-less Free accounts reconciled (e.g. the
+  reported `iamduke1987@gmail.com` 235 → 50). Verified `ensure_period_grant`
+  is a no-op on repeat calls and the grant is anchored to the month start.
+
 ## Migration / deploy
 
 - No schema migration, no settings change. Deploy `platform_api` and restart
   `camxora-api` (and workers). Sandbox first; production only on explicit request.
+  Deployed to sandbox and production on 2026-10-05.
 
 ## Tests
 
@@ -59,9 +73,10 @@ is configured **50 credits / month, daily 0** (admin-set, see
   month, month-start anchor, next-month expiry, re-grant next month) and
   `test_period_grant_uses_license_cycle_when_subscribed` (licensed accounts keep
   the activation anchor). Suite: **23 passed**.
+- Deploy-time verification (`ensure_period_grant` called three times for a
+  license-less Free account): anchor `2026-10-01`, repeat calls `already_granted`,
+  no wallet drift, expiry at the next month start.
 
 ## Follow-ups
 
-- Existing stacked Free grants are already in `credit_wallet_lots`; they will be
-  clawed back by `expire_unused_grants()` as each lot hits its original expiry.
-  A one-off wallet reconciliation is optional and out of scope here.
+- Push the branch so the deployed code has a reproducible commit (not yet pushed).
