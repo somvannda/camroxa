@@ -1153,7 +1153,24 @@ class KeyPoolService:
         # Fall back to (or confirm with) PostgreSQL
         keys = await self._repo.get_active_by_provider(provider)
         if base_url:
-            keys = [k for k in keys if (k.base_url or "") == base_url]
+            tagged = [k for k in keys if (k.base_url or "") == base_url]
+            if tagged:
+                return tagged
+            # No key is tagged for the active host. An untagged key is
+            # host-agnostic, so keep a single-host provider pool usable instead
+            # of failing every request with NoAvailableKeysError.
+            untagged = [k for k in keys if not (k.base_url or "")]
+            if untagged:
+                logger.warning(
+                    "No keys tagged for host %s (provider=%s); using %d "
+                    "untagged host-agnostic key(s). Tag the key's upstream host "
+                    "in Key Pool → Provider Settings to silence this.",
+                    base_url,
+                    provider,
+                    len(untagged),
+                )
+                return untagged
+            return tagged
         return keys
 
     async def _get_provider_config(self, provider: str) -> KeyPoolConfig:
