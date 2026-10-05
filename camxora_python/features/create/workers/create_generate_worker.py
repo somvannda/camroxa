@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QThread, Signal
 
+from shared.services.app_logger import log_error
 from shared.lib.create_automation import (
     export_version_videos,
     generate_day_images,
@@ -438,8 +439,8 @@ class CreateGenerateWorker(QThread):
                 ref_id=str(charge.get("ref_id") or "") or None,
                 reason=reason or "Create automation failed",
             )
-        except Exception:
-            pass
+        except Exception as exc:  # noqa: BLE001
+            log_error("create.video_refund_failed", category="create", exc=exc)
 
     def _preflight_video_merge(self, plan: CreateGeneratePlan) -> str | None:
         """Best-effort upfront gate for Auto Video/Merge (quota first, then wallet)."""

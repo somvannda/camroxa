@@ -149,7 +149,7 @@ class CreateView(QWidget):
             return
         worker = MusicLanguagesWorker(self._api, self)
         worker.succeeded.connect(self._on_language_options_loaded)
-        worker.failed.connect(lambda _message: None)
+        worker.failed.connect(self._on_language_options_failed)
         worker.finished.connect(lambda: setattr(self, "_language_worker", None))
         self._language_worker = worker
         worker.start()
@@ -170,6 +170,9 @@ class CreateView(QWidget):
             self._cache.apply_warmup(language_options=options)
         self._apply_language_options(options)
 
+    def _on_language_options_failed(self, message: str) -> None:
+        log_error(message or "Failed to load language options", category="create")
+
     def _apply_language_options(self, options: list[tuple[str, str]]) -> None:
         self._language_options = list(options)
         self.planning.set_language_options(self._language_options)
@@ -177,7 +180,8 @@ class CreateView(QWidget):
     def _reload_video_templates(self) -> None:
         try:
             templates = VideoLocalStore().read_templates()
-        except Exception:
+        except Exception as exc:  # noqa: BLE001
+            log_error("create.video_templates_load_failed", category="create", exc=exc)
             templates = []
         options: list[tuple[str, str]] = []
         for item in templates:

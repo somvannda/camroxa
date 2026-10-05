@@ -434,7 +434,7 @@ class ExportQueuePanel(QWidget):
         try:
             w_s, h_s = raw.split("x", 1)
             return max(16, int(w_s)), max(16, int(h_s))
-        except Exception:
+        except (ValueError, AttributeError):
             return 1920, 1080
 
     def _refresh_speed_tooltip(self) -> None:
