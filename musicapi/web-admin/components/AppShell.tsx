@@ -21,6 +21,7 @@ const NAV = [
   { href: "/admin/transactions", label: "Credit Ledger" },
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/content", label: "API Updates" },
+  { href: "/admin/admins", label: "Administrators" },
   { href: "/admin/system", label: "System Health" },
   { href: "/admin/settings", label: "Settings" },
 ];
