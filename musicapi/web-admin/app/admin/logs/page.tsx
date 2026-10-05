@@ -1,11 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
-import { Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { dateTime, num } from "@/lib/format";
 
 interface UsageLog {
@@ -20,52 +22,99 @@ interface UsageLog {
   email: string | null;
 }
 
+interface LogPage {
+  rows: UsageLog[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
 function statusTone(status: string | null): BadgeTone {
   if (status === "complete") return "success";
   if (status === "error" || status === "failed") return "danger";
   return "neutral";
 }
 
-export default function LogsPage() {
-  const [q, setQ] = useState("");
-  const { data, loading, error, reload } = useResource<UsageLog[]>(() =>
-    apiFetch<UsageLog[]>("/admin/logs"),
-  );
-  const logs = data ?? [];
+const PAGE_SIZE = 50;
 
-  const needle = q.toLowerCase();
-  const filtered = logs.filter(
-    (l) =>
-      (l.email ?? "").toLowerCase().includes(needle) ||
-      (l.endpoint ?? "").toLowerCase().includes(needle) ||
-      (l.model ?? "").toLowerCase().includes(needle) ||
-      (l.status ?? "").toLowerCase().includes(needle),
+function LogsInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const [status, setStatus] = useState(params.get("status") ?? "");
+  const [emailInput, setEmailInput] = useState(params.get("email") ?? "");
+  const [email, setEmail] = useState(params.get("email") ?? "");
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
+
+  const { data, loading, error, reload } = useResource<LogPage>(
+    () => {
+      const p = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (status) p.set("status", status);
+      if (email) p.set("email", email);
+      return apiFetch<LogPage>(`/admin/logs?${p.toString()}`);
+    },
+    [page, status, email],
   );
+
+  // Reflect the filters in the URL so a view can be bookmarked/shared.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (status) p.set("status", status);
+    if (email) p.set("email", email);
+    if (page > 1) p.set("page", String(page));
+    const qs = p.toString();
+    router.replace(qs ? `/admin/logs?${qs}` : "/admin/logs", { scroll: false });
+  }, [status, email, page, router]);
+
+  const rows = data?.rows ?? [];
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  function applySearch(e: React.FormEvent) {
+    e.preventDefault();
+    setPage(1);
+    setEmail(emailInput.trim());
+  }
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Usage Logs"
-        description="Generation requests, newest first (up to 200)"
-        actions={
+      <PageHeader title="Usage Logs" description="Generation requests, newest first" />
+
+      <form onSubmit={applySearch} className="flex flex-wrap items-end gap-2">
+        <Field label="User email" htmlFor="log-email" className="w-full sm:w-64">
           <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by user, endpoint, model or status…"
-            aria-label="Search usage logs"
-            className="w-full sm:w-72"
+            id="log-email"
+            value={emailInput}
+            onChange={(e) => setEmailInput(e.target.value)}
+            placeholder="search by email…"
           />
-        }
-      />
+        </Field>
+        <Field label="Status" htmlFor="log-status">
+          <Select
+            id="log-status"
+            value={status}
+            onChange={(e) => {
+              setStatus(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All</option>
+            <option value="complete">complete</option>
+            <option value="error">error</option>
+          </Select>
+        </Field>
+        <Button type="submit" variant="secondary">
+          Search
+        </Button>
+      </form>
 
       {error && <ErrorState message={error} onRetry={reload} />}
 
       {loading ? (
         <LoadingState />
-      ) : filtered.length === 0 ? (
+      ) : rows.length === 0 ? (
         <EmptyState
           title="No usage logs found."
-          description={logs.length ? "No rows match your search." : undefined}
+          description={total ? "No rows match your filters." : undefined}
         />
       ) : (
         <div className="glass overflow-x-auto rounded-xl">
@@ -81,7 +130,7 @@ export default function LogsPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((l) => (
+              {rows.map((l) => (
                 <tr key={l.id} className="border-t border-[var(--border)]">
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-[var(--muted)]">
                     {dateTime(l.created_at)}
@@ -99,6 +148,41 @@ export default function LogsPage() {
           </table>
         </div>
       )}
+
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-[var(--muted)]">
+          <span>{num(total)} total</span>
+          <span className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {page} / {pages}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            >
+              Next
+            </Button>
+          </span>
+        </div>
+      )}
     </div>
+  );
+}
+
+export default function LogsPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <LogsInner />
+    </Suspense>
   );
 }
