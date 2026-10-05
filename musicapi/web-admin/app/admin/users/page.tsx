@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { num } from "@/lib/format";
@@ -24,21 +25,55 @@ interface User {
   request_count: number;
 }
 
-export default function UsersPage() {
+interface UserPage {
+  rows: User[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+const PAGE_SIZE = 25;
+
+function UsersInner() {
   const toast = useToast();
-  const { data, loading, error, reload } = useResource<User[]>(() =>
-    apiFetch<User[]>("/admin/users"),
+  const router = useRouter();
+  const params = useSearchParams();
+
+  const [qInput, setQInput] = useState(params.get("q") ?? "");
+  const [q, setQ] = useState(params.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState(params.get("status") ?? "");
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
+
+  const { data, loading, error, reload } = useResource<UserPage>(
+    () => {
+      const p = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (q) p.set("q", q);
+      if (statusFilter) p.set("status", statusFilter);
+      return apiFetch<UserPage>(`/admin/users?${p.toString()}`);
+    },
+    [page, q, statusFilter],
   );
-  const users = data ?? [];
 
-  const [q, setQ] = useState("");
+  // Reflect the filters in the URL so a view can be bookmarked/shared.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (statusFilter) p.set("status", statusFilter);
+    if (page > 1) p.set("page", String(page));
+    const qs = p.toString();
+    router.replace(qs ? `/admin/users?${qs}` : "/admin/users", { scroll: false });
+  }, [q, statusFilter, page, router]);
 
-  // Credit adjustment dialog (replaces window.prompt).
+  const users = data?.rows ?? [];
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Credit adjustment dialog.
   const [creditsFor, setCreditsFor] = useState<User | null>(null);
   const [creditAmount, setCreditAmount] = useState("");
   const [savingCredits, setSavingCredits] = useState(false);
 
-  // Suspend confirmation (replaces the bare status toggle).
+  // Suspend confirmation.
   const [pendingBan, setPendingBan] = useState<User | null>(null);
 
   // Rate-limit editor.
@@ -153,7 +188,32 @@ export default function UsersPage() {
     }
   }
 
-  const filtered = users.filter((u) => u.email.toLowerCase().includes(q.toLowerCase()));
+  function applySearch(e: React.FormEvent) {
+    e.preventDefault();
+    setPage(1);
+    setQ(qInput.trim());
+  }
+
+  async function exportCsv() {
+    const p = new URLSearchParams({ format: "csv" });
+    if (q) p.set("q", q);
+    if (statusFilter) p.set("status", statusFilter);
+    try {
+      const res = await fetch(`/backend/admin/users?${p.toString()}`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "users.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -161,24 +221,48 @@ export default function UsersPage() {
         title="Users"
         description="Manage credits and account status"
         actions={
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by email…"
-            aria-label="Search users"
-            className="w-full sm:w-72"
-          />
+          <Button variant="secondary" onClick={exportCsv}>
+            Export CSV
+          </Button>
         }
       />
+
+      <form onSubmit={applySearch} className="flex flex-wrap items-end gap-2">
+        <Field label="Search" htmlFor="user-q" className="w-full sm:w-72">
+          <Input
+            id="user-q"
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
+            placeholder="email or name…"
+          />
+        </Field>
+        <Field label="Status" htmlFor="user-status">
+          <Select
+            id="user-status"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All</option>
+            <option value="active">active</option>
+            <option value="suspended">suspended</option>
+          </Select>
+        </Field>
+        <Button type="submit" variant="secondary">
+          Search
+        </Button>
+      </form>
 
       {error && <ErrorState message={error} onRetry={reload} />}
 
       {loading ? (
         <LoadingState />
-      ) : filtered.length === 0 ? (
+      ) : users.length === 0 ? (
         <EmptyState
           title="No users found."
-          description={users.length ? "No rows match your search." : undefined}
+          description={total ? "No rows match your filters." : undefined}
         />
       ) : (
         <div className="glass overflow-x-auto rounded-xl">
@@ -194,7 +278,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
+              {users.map((u) => (
                 <tr key={u.id} className="border-t border-[var(--border)]">
                   <td className="px-4 py-3">
                     <div className="font-medium">{u.email}</div>
@@ -228,6 +312,33 @@ export default function UsersPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-[var(--muted)]">
+          <span>{num(total)} total</span>
+          <span className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {page} / {pages}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            >
+              Next
+            </Button>
+          </span>
         </div>
       )}
 
@@ -335,5 +446,13 @@ export default function UsersPage() {
         onClose={() => setPendingBan(null)}
       />
     </div>
+  );
+}
+
+export default function UsersPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <UsersInner />
+    </Suspense>
   );
 }
