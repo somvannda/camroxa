@@ -99,12 +99,20 @@ separately — see the credit-reconciliation report.)
 3. **Tests**: `platform_api/tests/test_plan_quota_hard_cap.py` (hard cap blocks by default,
    overage only when opted in, bank capped) + the 3 existing overage tests updated to opt in.
 
-### ⏳ Remaining
-4. **Fix monthly counting across overlapping periods** (`plan_usage` / `usage_tracking`
-   keyed by a single `period_start`): sum usage across all periods overlapping the month,
-   and prevent overlapping rows.
-   - Files: `repositories/license_repo.py` (`get_current_usage`, `get_or_create_usage`),
-     `repositories/usage_tracking_repo.py` (`get_monthly_count`), `billing_period_service.py`.
+### ⏳ Remaining (needs a design decision — do NOT naive-sum)
+4. **Monthly counter under-counts / fragments.** Investigated and deliberately *not*
+   shipped: summing every `usage_tracking` row whose `period_start_date` falls inside the
+   current period is **wrong** — it breaks the activation-aligned period rule (a
+   calendar-month row gets pulled into an activation-aligned period). Caught by
+   `test_quota_period_follows_license_activation_not_calendar_month`.
+   Two root causes instead:
+   - **(a) the period anchor changes on renewal** — `compute_billing_period(activated_at)`
+     re-anchors when `activated_at` moves, splitting the counter mid-month (mr.zhiwei had
+     `30` on Sep 1 + `392` on Sep 2);
+   - **(b) the counter under-records** — Sep `plan_usage = 422` vs **945** actual songs.
+   Proper fix: a **stable period anchor** (license's original activation, not a re-anchored
+   renewal) and/or reconcile `plan_usage`/`usage_tracking` against the authoritative
+   `songs` count. Product decision required first.
 5. **Charge overage (or legacy 0-credit songs) to the wallet** — pair with the billing fix.
 
 ### Rollout note
