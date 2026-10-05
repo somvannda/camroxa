@@ -418,3 +418,29 @@ Each feature branch touches shared files (`musicapi/src/server.ts`,
 `web-admin/components/AppShell.tsx`), so they must be merged sequentially with
 conflict resolution. Merge `admin/ui-foundation` first, then rebase the rest onto
 it (or onto `main` once the foundation lands).
+
+---
+
+## 11. Local DB / migration mismatch (diagnosed 2026-10-05)
+
+The local `sunoapi` database was built from a different schema lineage than this
+branch. `schema_migrations` lists differently-named `0025–0028` files
+(`0025_credit_pack_production_parity`, `0026_pricing_production_alignment`,
+`0027_credit_pack_relaunch`, `0028_credit_pack_reprice`), and
+`payment_transactions` carries an extra `external_id` column — so this branch's
+`migrations/0025–0028` are **not** applied.
+
+Concretely, the code expects columns the database is missing:
+
+- `rate_limits.requests_per_window` and `rate_limits.max_concurrent_jobs`
+  (branch migration `0025_rate_limits_window`) are **absent** locally. This
+  breaks the per-user rate-limit read (`loadUserRateLimits`), so every API-key
+  request (`/v1/*`, `/me/*`) and the admin rate-limits editor would fail at
+  runtime. The local `rate_limits` table has only
+  `id, user_id, requests_per_minute, requests_per_day`.
+
+**Do not** blindly run `scripts/migrate.ts` against the shared local DB: this
+branch's `0026`/`0027` pricing syncs would rewrite pricing, and `0028` backfills
+`usage_logs`. Reconcile deliberately — rebuild the local DB from this branch's
+migrations, or apply only `0025_rate_limits_window` as a targeted fix — before a
+local end-to-end run.
