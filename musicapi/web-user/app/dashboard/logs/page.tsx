@@ -295,8 +295,12 @@ export default function LogsPage() {
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
   const [showRetention, setShowRetention] = useState(false);
+  // Guards against an older page/tab response overwriting a newer one and
+  // against setState after unmount.
+  const loadSeq = useRef(0);
 
   const load = useCallback(async () => {
+    const seq = ++loadSeq.current;
     setLoading(true);
     setError("");
     try {
@@ -310,6 +314,7 @@ export default function LogsPage() {
       const res = await apiFetch<{ rows: DbLogRow[]; total: number; page: number; pages: number }>(
         `/me/logs/page?${params.toString()}`,
       );
+      if (seq !== loadSeq.current) return;
       const mapped: LogRow[] = res.rows.map((d) => {
         const result = safeParseResult(d.result_json);
         const fields = extractPromptFields(d.prompt, result);
@@ -336,9 +341,10 @@ export default function LogsPage() {
       setPages(res.pages);
       if (res.page !== page) setPage(res.page);
     } catch (e) {
+      if (seq !== loadSeq.current) return;
       setError(e instanceof Error ? e.message : "Failed to load logs");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }, [dateKey, activeTab, page, pageSize, taskIdSearch]);
 
@@ -346,6 +352,10 @@ export default function LogsPage() {
     queueMicrotask(() => {
       void load();
     });
+    return () => {
+      // Invalidate any in-flight response for this effect run.
+      loadSeq.current += 1;
+    };
   }, [load]);
 
   // Retention notice, dismissible for 24h (mirrors sunoapi.org's alert).
