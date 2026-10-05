@@ -417,13 +417,12 @@ async def login(
     _log = logging.getLogger("platform_api.routers.auth.login")
     
     try:
-        _log.info(f"Login attempt: email={request.email}, has_turnstile={bool(request.cf_turnstile_response)}")
-        
+        _log.info("Login attempt: has_turnstile=%s", bool(request.cf_turnstile_response))
+
         # Verify Cloudflare Turnstile token (if provided from web clients)
         if request.cf_turnstile_response:
             _log.info("Verifying Turnstile token...")
-            _log.info(f"Turnstile token (first 20 chars): {request.cf_turnstile_response[:20] if request.cf_turnstile_response else 'None'}")
-            _log.info(f"Client IP: {http_request.client.host if http_request.client else 'None'}")
+            _log.info("Client IP: %s", http_request.client.host if http_request.client else "None")
             
             # Get expected hostnames from settings
             settings = get_settings()
