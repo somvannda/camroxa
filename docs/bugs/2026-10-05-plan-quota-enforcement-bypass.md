@@ -108,20 +108,21 @@ separately — see the credit-reconciliation report.)
    overage only when opted in, bank capped, authoritative song count drives the cap) + the
    3 existing overage tests updated to opt in.
 
+5. **Stable quota-period anchor (fix A)** — same-plan renewals now **extend the license in
+   place** (active *and* lapsed) so `activated_at` — the quota period anchor — is never
+   reset. The lapsed path previously called `change_plan`, which reset `activated_at` and
+   shifted the period.
+   - **Dry-run (before fix):** `licenses WHERE activated_at::date <> created_at::date` →
+     **4 rows**, of which **3 active** subscriptions had drifted:
+     `mr.zhiwei` +61d, `sophay` +61d, `edmbass1` +63d.
+   - File: `platform_api/routers/billing.py` (plan fulfillment).
+
 ### ⏳ Remaining
-5. **Stable quota-period anchor (fix A).** The period still re-anchors when `activated_at`
-   moves on renewal (`compute_billing_period`), so the window can shift by a day. Pin it to
-   the license's **original** activation and run a **dry-run report** of how many periods
-   shift before applying.
-   - ⚠️ A naive "sum all overlapping `period_start_date` rows" is **wrong** — it breaks the
-     activation-aligned rule (caught by
-     `test_quota_period_follows_license_activation_not_calendar_month`). Do not ship it.
 6. **Charge overage / legacy 0-credit songs to the wallet** — pair with the billing fix.
 
 ### Rollout note
 Default is a hard cap and the song count is now authoritative. If a plan should keep wallet
-overage, set `PLATFORM_PLAN_MONTHLY_OVERAGE_ALLOWED=true`. The stable-anchor fix (#5) is the
-remaining follow-up.
+overage, set `PLATFORM_PLAN_MONTHLY_OVERAGE_ALLOWED=true`.
 
 ## Evidence (reproduce)
 ```sql

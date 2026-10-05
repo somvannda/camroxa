@@ -872,29 +872,34 @@ async def _fulfill_paid_payment(pool: Any, row: Any) -> Any:
                 plan_repo=PlanRepository(pool=conn),
             )
 
-            if same_plan and active_license is not None:
-                # Active same-plan renewal: stack the new period on the current expiry so
-                # renewing early never drops remaining days.
+            if same_plan and target_license is not None:
+                # Same-plan renewal (active OR lapsed): extend in place so add-on slots
+                # are kept AND the monthly quota period keeps its ORIGINAL anchor
+                # (``activated_at`` is left untouched). Re-anchoring a lapsed renewal
+                # moved the quota period and split the counters — see
+                # docs/bugs/2026-10-05-plan-quota-enforcement-bypass.md.
                 cycle_days = int(plan.billing_cycle_days or 30)
                 assigned_license = await license_repo.extend_license(
-                    active_license.id, cycle_days
+                    target_license.id, cycle_days
                 )
                 if assigned_license is None:
                     raise NotFoundError(
-                        "Active license not found during renewal.",
-                        details={"license_id": str(active_license.id)},
+                        "License not found during renewal.",
+                        details={"license_id": str(target_license.id)},
                     )
-                # Carry unused grant credits into the new period: leftover + allowance,
-                # expiring with the new period (no loss at renewal, still expires).
-                await grant_service.carryover_period_grant(
-                    user_id=user_id,
-                    monthly_credits=int(plan.monthly_credits or 0),
-                    billing_cycle_days=cycle_days,
-                    new_expires_at=assigned_license.expires_at or datetime.now(timezone.utc),
-                )
+                if active_license is not None:
+                    # Early renewal: carry unused grant credits into the new period:
+                    # leftover + allowance, expiring with the new period (no loss at
+                    # renewal, still expires).
+                    await grant_service.carryover_period_grant(
+                        user_id=user_id,
+                        monthly_credits=int(plan.monthly_credits or 0),
+                        billing_cycle_days=cycle_days,
+                        new_expires_at=assigned_license.expires_at or datetime.now(timezone.utc),
+                    )
             elif target_license is not None:
-                # Lapsed same-plan renewal or plan change: reactivate the existing
-                # license in place (keeps add-on slots; resets the period).
+                # Plan change: reactivate the existing license in place (keeps add-on
+                # slots; the new plan starts a fresh period).
                 assigned_license = await license_repo.change_plan(
                     target_license.id, plan_id, plan
                 )
