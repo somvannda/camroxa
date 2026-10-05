@@ -93,6 +93,7 @@ def test_create_planned_skips_existing_and_fills_gaps() -> None:
         create,
         planned,
         existing_batches=[_history("2026-08-28", drive, vortex, "9")],
+        skip_existing=True,
         sleep=lambda _seconds: None,
     )
     assert result.skipped == 1
@@ -172,6 +173,7 @@ def test_create_planned_reports_skipped_requests() -> None:
         lambda request: _ok_response(request.from_date),
         planned,
         existing_batches=[_history("2026-10-06", "ok-a", "alt-a", "existing-1")],
+        skip_existing=True,
         sleep=lambda _seconds: None,
     )
     assert result.skipped == 1
@@ -180,8 +182,8 @@ def test_create_planned_reports_skipped_requests() -> None:
     assert format_create_batches_summary(result) == "1 already existed."
 
 
-def test_create_planned_include_existing_recreates_slot() -> None:
-    """The explicit regenerate path creates even though the day/pair exists."""
+def test_create_planned_creates_by_default_even_when_slot_exists() -> None:
+    """Default Generate creates a new batch for a day/pair that already exists."""
     planned = [_request("2026-10-06", "ok-a", "alt-a")]
     calls: list[str] = []
 
@@ -193,7 +195,6 @@ def test_create_planned_include_existing_recreates_slot() -> None:
         create,
         planned,
         existing_batches=[_history("2026-10-06", "ok-a", "alt-a", "existing-1")],
-        include_existing=True,
         sleep=lambda _seconds: None,
     )
     assert calls == ["2026-10-06"]

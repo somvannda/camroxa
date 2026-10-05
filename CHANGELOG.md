@@ -7,6 +7,12 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.4.7] - 2026-10-05
+
+### Changed
+
+- Music Generate now always creates the batch(es) you ask for: a day/channel pair that already has a batch is no longer skipped by default. A visible, persisted **"Skip days with batches"** checkbox (off by default) opts into the old skip-existing behavior for re-filling a multi-day plan without creating duplicates. This replaces the 1.4.6 "Regenerate anyway" button.
+
 ## [1.4.6] - 2026-10-05
 
 ### Added

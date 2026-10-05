@@ -1390,12 +1390,12 @@ class CreateBatchesWorker(QThread):
         requests: list,
         parent=None,
         *,
-        include_existing: bool = False,
+        skip_existing: bool = False,
     ) -> None:
         super().__init__(parent)
         self._api = api
         self._requests = requests
-        self._include_existing = include_existing
+        self._skip_existing = skip_existing
 
     def run(self) -> None:
         from shared.lib.music_batch_plan import create_planned_batches
@@ -1406,18 +1406,21 @@ class CreateBatchesWorker(QThread):
             self.failed.emit("No batch runs to create.")
             return
         try:
-            from_date = min(str(item.from_date) for item in planned)
-            to_date = max(str(item.to_date or item.from_date) for item in planned)
-            history = self._api.list_music_history(
-                limit=100,
-                from_date=from_date,
-                to_date=to_date,
-            )
+            existing_batches: list = []
+            if self._skip_existing:
+                from_date = min(str(item.from_date) for item in planned)
+                to_date = max(str(item.to_date or item.from_date) for item in planned)
+                history = self._api.list_music_history(
+                    limit=100,
+                    from_date=from_date,
+                    to_date=to_date,
+                )
+                existing_batches = list(history.batches or [])
             result = create_planned_batches(
                 self._api.create_batch,
                 planned,
-                existing_batches=list(history.batches or []),
-                include_existing=self._include_existing,
+                existing_batches=existing_batches,
+                skip_existing=self._skip_existing,
             )
             if result.has_progress:
                 self.succeeded.emit(result)

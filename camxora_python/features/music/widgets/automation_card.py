@@ -76,7 +76,6 @@ def _v_rule() -> QFrame:
 
 class AutomationCard(StudioPanel):
     generate_requested = Signal()
-    regenerate_requested = Signal()
     automation_changed = Signal()
     description_changed = Signal(str)
     structure_changed = Signal(str)
@@ -160,8 +159,23 @@ class AutomationCard(StudioPanel):
         self._auto_upload = StudioCheckBox("Auto-Upload")
         self._auto_upload.setEnabled(False)
         self._auto_upload_enabled = False
+        self._skip_existing = StudioCheckBox("Skip days with batches")
+        self._skip_existing.setToolTip(
+            "When on, a day that already has a batch for the selected channel pair "
+            "is skipped instead of creating a duplicate — useful for re-filling a "
+            "multi-day plan. Off by default: Generate creates a new batch even if "
+            "one already exists for that day and pair."
+        )
         for index, checkbox in enumerate(
-            (self._auto_image, self._auto_gsuno, self._auto_video, self._auto_merge, self._auto_reel, self._auto_upload)
+            (
+                self._auto_image,
+                self._auto_gsuno,
+                self._auto_video,
+                self._auto_merge,
+                self._auto_reel,
+                self._auto_upload,
+                self._skip_existing,
+            )
         ):
             toggles.addWidget(checkbox, index // 2, index % 2)
         root.addLayout(toggles)
@@ -308,26 +322,20 @@ class AutomationCard(StudioPanel):
         self._warning.setWordWrap(True)
         root.addWidget(self._warning)
 
-        # Shown only when Generate was skipped because a batch already exists for
-        # the requested day + channel pair. Lets the user create a fresh batch
-        # anyway without deleting the completed one.
-        self._regenerate_btn = QPushButton("Regenerate anyway")
-        self._regenerate_btn.setObjectName("SecondaryButton")
-        apply_button_icon(self._regenerate_btn, "refresh-cw")
-        self._regenerate_btn.setToolTip(
-            "Create a new batch for this day and channel pair even though one "
-            "already exists. The existing batch is left untouched."
-        )
-        self._regenerate_btn.clicked.connect(self.regenerate_requested.emit)
-        self._regenerate_btn.hide()
-        root.addWidget(self._regenerate_btn)
-
         self._description.currentIndexChanged.connect(lambda *_: self._emit_description())
         self._structure.currentIndexChanged.connect(lambda *_: self._emit_structure())
         self._mood.currentIndexChanged.connect(lambda *_: self._emit_mood())
         self._shuffle_structure.stateChanged.connect(lambda *_: self.shuffle_changed.emit())
         self._shuffle_mood.stateChanged.connect(lambda *_: self.mood_shuffle_changed.emit())
-        for checkbox in (self._auto_image, self._auto_gsuno, self._auto_video, self._auto_merge, self._auto_reel, self._auto_upload):
+        for checkbox in (
+            self._auto_image,
+            self._auto_gsuno,
+            self._auto_video,
+            self._auto_merge,
+            self._auto_reel,
+            self._auto_upload,
+            self._skip_existing,
+        ):
             checkbox.stateChanged.connect(lambda *_: self.automation_changed.emit())
 
     def _emit_description(self) -> None:
@@ -500,6 +508,7 @@ class AutomationCard(StudioPanel):
             "auto_merge_after_video": self._auto_merge.isChecked(),
             "auto_reel_after_video": self._auto_reel.isChecked(),
             "auto_upload_youtube": self._auto_upload.isChecked() if self._auto_upload_enabled else False,
+            "skip_existing_batches": self._skip_existing.isChecked(),
         }
 
     def set_cost_lines(self, text: str) -> None:
@@ -568,11 +577,11 @@ class AutomationCard(StudioPanel):
         self._warning.setText(cleaned)
         self._warning.setVisible(bool(cleaned))
 
-    def set_regenerate_visible(self, visible: bool, *, label: str = "") -> None:
-        """Show the 'Regenerate anyway' action when a slot already exists."""
-        if label:
-            self._regenerate_btn.setText(label)
-        self._regenerate_btn.setVisible(bool(visible))
+    def set_skip_existing(self, enabled: bool) -> None:
+        """Restore the 'Skip days with batches' option without emitting changes."""
+        self._skip_existing.blockSignals(True)
+        self._skip_existing.setChecked(bool(enabled))
+        self._skip_existing.blockSignals(False)
 
     def set_generate_label(self, text: str) -> None:
         self._generate_label = text
