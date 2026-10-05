@@ -410,17 +410,29 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
   RBAC.
 - **Phase 5 (partial)** — dashboard alerts; analytics top-failure breakdown.
 - **Phase 6 (partial)** — baseline security headers + production CSP + HSTS;
-  `robots.txt` disallow.
+  `robots.txt` disallow; `node:test` formatter unit tests wired into CI
+  (`web-admin-tests` job). **Still open:** admin 2FA (TOTP) and CSRF
+  tokenization.
 - **Verification** — local end-to-end run passed (2026-10-05) against a separate
   scratch DB (`sunoapi_admin_dev`, all 28 migrations applied), which sidesteps the
   shared-DB migration mismatch: login, every page, pagination shapes, CSV export
   and the credit-adjustment + audit write path, with **zero console errors**. The
-  live production site was audited read-only (login page only — no credentials).
+  merged `main` was then re-verified over authenticated HTTP (all admin endpoints
+  `200`). The live production site was audited read-only (login page only — no
+  credentials).
+
+### Shipped (2026-10-05)
+
+Everything above is merged to `main` (see the branch map in §10, plus the
+`admin/perf-indexes`, `admin/tests`, `admin/ci-tests` branches and the
+`admin/rbac-dedupe` fix). One regression was caught and fixed during the final
+runtime check: `main` briefly carried **two identical `/admin/admins` route
+sets**, which made Fastify refuse to boot (`FST_ERR_DUPLICATED_ROUTE`); the
+duplicate was removed and the boot re-verified.
 
 ### Not done
 
-- Admin 2FA; CSRF tokenization.
-- Automated tests: formatter tests added (`admin/tests`, `npm test`); wiring them into CI is still pending.
+- Admin 2FA (TOTP); CSRF tokenization.
 
 ### Branch strategy note
 
