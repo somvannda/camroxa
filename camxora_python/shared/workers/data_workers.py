@@ -1384,10 +1384,18 @@ class CreateBatchesWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
 
-    def __init__(self, api: PlatformApi, requests: list, parent=None) -> None:
+    def __init__(
+        self,
+        api: PlatformApi,
+        requests: list,
+        parent=None,
+        *,
+        include_existing: bool = False,
+    ) -> None:
         super().__init__(parent)
         self._api = api
         self._requests = requests
+        self._include_existing = include_existing
 
     def run(self) -> None:
         from shared.lib.music_batch_plan import create_planned_batches
@@ -1409,6 +1417,7 @@ class CreateBatchesWorker(QThread):
                 self._api.create_batch,
                 planned,
                 existing_batches=list(history.batches or []),
+                include_existing=self._include_existing,
             )
             if result.has_progress:
                 self.succeeded.emit(result)

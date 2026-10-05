@@ -163,3 +163,40 @@ def test_timeout_is_retryable_and_quota_is_not() -> None:
     assert not is_retryable_create_error(PlatformApiError(401, "Session expired"))
     assert not is_retryable_create_error(PlatformApiError(402, "Insufficient credits"))
     assert not is_retryable_create_error(PlatformApiError(422, "Invalid plan"))
+
+
+def test_create_planned_reports_skipped_requests() -> None:
+    """A day/pair that already exists is reported (not silently dropped)."""
+    planned = [_request("2026-10-06", "ok-a", "alt-a")]
+    result = create_planned_batches(
+        lambda request: _ok_response(request.from_date),
+        planned,
+        existing_batches=[_history("2026-10-06", "ok-a", "alt-a", "existing-1")],
+        sleep=lambda _seconds: None,
+    )
+    assert result.skipped == 1
+    assert result.created_count == 0
+    assert [request.from_date for request in result.skipped_requests] == ["2026-10-06"]
+    assert format_create_batches_summary(result) == "1 already existed."
+
+
+def test_create_planned_include_existing_recreates_slot() -> None:
+    """The explicit regenerate path creates even though the day/pair exists."""
+    planned = [_request("2026-10-06", "ok-a", "alt-a")]
+    calls: list[str] = []
+
+    def create(request: BatchCreateRequest) -> BatchCreateResponse:
+        calls.append(request.from_date)
+        return _ok_response(request.from_date)
+
+    result = create_planned_batches(
+        create,
+        planned,
+        existing_batches=[_history("2026-10-06", "ok-a", "alt-a", "existing-1")],
+        include_existing=True,
+        sleep=lambda _seconds: None,
+    )
+    assert calls == ["2026-10-06"]
+    assert result.created_count == 1
+    assert result.skipped == 0
+    assert result.skipped_requests == []

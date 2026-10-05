@@ -76,6 +76,7 @@ def _v_rule() -> QFrame:
 
 class AutomationCard(StudioPanel):
     generate_requested = Signal()
+    regenerate_requested = Signal()
     automation_changed = Signal()
     description_changed = Signal(str)
     structure_changed = Signal(str)
@@ -306,6 +307,20 @@ class AutomationCard(StudioPanel):
         self._warning.setObjectName("music_warning_text")
         self._warning.setWordWrap(True)
         root.addWidget(self._warning)
+
+        # Shown only when Generate was skipped because a batch already exists for
+        # the requested day + channel pair. Lets the user create a fresh batch
+        # anyway without deleting the completed one.
+        self._regenerate_btn = QPushButton("Regenerate anyway")
+        self._regenerate_btn.setObjectName("SecondaryButton")
+        apply_button_icon(self._regenerate_btn, "refresh-cw")
+        self._regenerate_btn.setToolTip(
+            "Create a new batch for this day and channel pair even though one "
+            "already exists. The existing batch is left untouched."
+        )
+        self._regenerate_btn.clicked.connect(self.regenerate_requested.emit)
+        self._regenerate_btn.hide()
+        root.addWidget(self._regenerate_btn)
 
         self._description.currentIndexChanged.connect(lambda *_: self._emit_description())
         self._structure.currentIndexChanged.connect(lambda *_: self._emit_structure())
@@ -552,6 +567,12 @@ class AutomationCard(StudioPanel):
         cleaned = str(text or "").strip()
         self._warning.setText(cleaned)
         self._warning.setVisible(bool(cleaned))
+
+    def set_regenerate_visible(self, visible: bool, *, label: str = "") -> None:
+        """Show the 'Regenerate anyway' action when a slot already exists."""
+        if label:
+            self._regenerate_btn.setText(label)
+        self._regenerate_btn.setVisible(bool(visible))
 
     def set_generate_label(self, text: str) -> None:
         self._generate_label = text
