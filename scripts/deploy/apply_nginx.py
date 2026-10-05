@@ -10,7 +10,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deploy import ensure_deploy_key, load_secrets, ssh_connect  # noqa: E402
+from deploy import (  # noqa: E402
+    ensure_deploy_key,
+    resolve_production_ssh,
+    resolve_sandbox_ssh,
+    ssh_connect,
+)
 
 DEPLOY_DIR = Path(__file__).resolve().parent
 
@@ -68,14 +73,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    secrets = load_secrets()
-    host = secrets.get("PRODUCTION_VPS_HOST") if args.env == "production" else secrets["VPS_HOST"]
-    user = secrets.get("PRODUCTION_VPS_USER") or secrets["VPS_USER"]
-    if not host:
-        print(f"No VPS host configured for {args.env}. Set VPS_HOST or PRODUCTION_VPS_HOST in .deploy/secrets.env")
-        return 1
+    # Resolve through the canonical guards so a production run cannot be pointed
+    # at the sandbox host (or vice versa) by a misconfigured secrets file.
+    if args.env == "production":
+        host, user, password = resolve_production_ssh()
+    else:
+        host, user, password = resolve_sandbox_ssh()
 
-    client = ssh_connect(host, user, ensure_deploy_key(), secrets.get("VPS_PASSWORD") or None)
+    client = ssh_connect(host, user, ensure_deploy_key(), password)
     print(f"Uploading {ENV_CONFIG[args.env]['conf_file']} to {user}@{host}...")
     upload_conf(client, args.env)
     out, err = apply_remote(client, args.env)

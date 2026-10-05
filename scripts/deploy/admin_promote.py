@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deploy import ensure_deploy_key, load_secrets, ssh_connect  # noqa: E402
+from deploy import ensure_deploy_key, resolve_sandbox_ssh, ssh_connect  # noqa: E402
 
 
 def main() -> int:
@@ -18,13 +18,9 @@ def main() -> int:
         print("Usage: admin_promote.py user@example.com")
         return 1
 
-    secrets = load_secrets()
-    client = ssh_connect(
-        secrets["VPS_HOST"],
-        secrets["VPS_USER"],
-        ensure_deploy_key(),
-        None,
-    )
+    # Sandbox-only: the canonical guard refuses a host that looks like production.
+    host, user, password = resolve_sandbox_ssh()
+    client = ssh_connect(host, user, ensure_deploy_key(), password)
     safe_email = email.replace("'", "''")
     sql_list = f"SELECT email, role FROM users;"
     sql_update = f"UPDATE users SET role = 'admin' WHERE email = '{safe_email}';"
