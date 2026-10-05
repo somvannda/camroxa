@@ -306,6 +306,71 @@ async def test_quote_falls_back_to_credit_pricing(billing: CreditsOnlyBillingSer
     assert quote.amount_units == credits_to_units(7.5)
 
 
+class _RoutingResult:
+    def __init__(self, provider: str) -> None:
+        self.provider = provider
+
+
+class FakeRouting:
+    """Minimal AIRoutingService stand-in returning a fixed music provider."""
+
+    def __init__(self, provider: str | None) -> None:
+        self._provider = provider
+
+    async def resolve(self, operation: str) -> _RoutingResult:
+        if self._provider is None:
+            raise RuntimeError("no routing")
+        return _RoutingResult(self._provider)
+
+
+@pytest.mark.asyncio
+async def test_quote_uses_routed_music_provider_price(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """Selecting camxora_music_api in AI Routing charges its 10-credit row."""
+    pricing = FakePricing()
+    pricing.prices[("camxora_music_api", "music")] = credits_to_units(10)
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=pricing,
+        ai_routing_service=FakeRouting("camxora_music_api"),
+    )
+    quote = await billing.quote(op="music", user_id=USER_ID)
+    assert quote.amount_credits == 10
+    assert quote.amount_units == credits_to_units(10)
+
+
+@pytest.mark.asyncio
+async def test_quote_falls_back_to_suno_price_when_routing_misses(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """A routing miss keeps the static Suno chain instead of hard-failing."""
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=FakePricing(),
+        ai_routing_service=FakeRouting(None),
+    )
+    quote = await billing.quote(op="music", user_id=USER_ID)
+    assert quote.amount_credits == 7.5
+
+
+@pytest.mark.asyncio
+async def test_quote_falls_back_when_routed_provider_has_no_price(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """A routed provider without a row falls back to the static chain."""
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=FakePricing(),
+        ai_routing_service=FakeRouting("camxora_music_api"),
+    )
+    quote = await billing.quote(op="music", user_id=USER_ID)
+    assert quote.amount_credits == 7.5
+
+
 @pytest.mark.asyncio
 async def test_plan_override_ignored(billing: CreditsOnlyBillingService, store: FakeStore) -> None:
     plan_id = store.user_plan[str(USER_ID)]

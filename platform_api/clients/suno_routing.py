@@ -14,7 +14,26 @@ from __future__ import annotations
 
 from contextvars import ContextVar
 
+#: Providers that speak the Suno-compatible HTTP contract through the shared
+#: Suno client. ``suno`` targets sunoapi.org / apibox; ``camxora_music_api``
+#: targets Camxora's own ``musicapi.camxora.com``.
+SUNO_COMPATIBLE_PROVIDERS: frozenset[str] = frozenset({"suno", "camxora_music_api"})
+
+#: Music provider used when AI Routing has no explicit assignment.
+DEFAULT_MUSIC_PROVIDER = "suno"
+
 _active_suno_base_url: ContextVar[str] = ContextVar("active_suno_base_url", default="")
+
+
+def is_suno_compatible_provider(provider: str | None) -> bool:
+    """True when ``provider`` is served by the shared Suno-compatible client."""
+    return str(provider or "").strip().lower() in SUNO_COMPATIBLE_PROVIDERS
+
+
+def normalize_music_provider(provider: str | None) -> str:
+    """Return a valid music routing provider id, defaulting to ``suno``."""
+    value = str(provider or "").strip().lower()
+    return value if value in SUNO_COMPATIBLE_PROVIDERS else DEFAULT_MUSIC_PROVIDER
 
 
 def set_active_suno_base_url(url: str | None) -> None:
@@ -27,4 +46,11 @@ def get_active_suno_base_url(default: str = "") -> str:
     return _active_suno_base_url.get() or str(default or "").rstrip("/")
 
 
-__all__ = ["set_active_suno_base_url", "get_active_suno_base_url"]
+__all__ = [
+    "DEFAULT_MUSIC_PROVIDER",
+    "SUNO_COMPATIBLE_PROVIDERS",
+    "get_active_suno_base_url",
+    "is_suno_compatible_provider",
+    "normalize_music_provider",
+    "set_active_suno_base_url",
+]

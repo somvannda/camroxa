@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Settings → AI Routing → Music Generation** can select **Suno** or **Camxora Music API** (Suno-compatible); the provider drives both the generating host/key pool and the credit price (Suno 15, Camxora Music API 10). Provider names now use their display labels. See `docs/changelog/2026-10-05-music-provider-ai-routing.md`.
 - AI Routing image fallback chain and Credits SLAI sub-model option now show **`cx/gpt-image-2.5`** (SLAI retired `slai/gpt-image-2`). See `docs/changelog/2026-10-02-slai-image-model-cx-gpt-image-2-5.md`.
 - Plans editor grants only. Per-op charge fields removed; Generate costs live on Credits. ≈ Songs follows the Credits-page music list price. See `docs/changelog/2026-08-28-credit-pricing-single-source.md`.
 - ≈ Songs is floor(grant / 10) × 2. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.

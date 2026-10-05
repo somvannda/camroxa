@@ -647,7 +647,7 @@ async def test_poll_suno_generate_tries_next_key_on_owner_403(
     from platform_api.exceptions import ExternalServiceError
     from platform_api.services import suno_audio_resolver as resolver
 
-    async def fake_keys(_pool: object) -> list[str]:
+    async def fake_keys(_pool: object, provider: str | None = None) -> list[str]:
         return ["owner", "other"]
 
     calls: list[str] = []
@@ -685,7 +685,7 @@ async def test_call_with_owning_suno_key_skips_non_owner(
     from platform_api.exceptions import ExternalServiceError
     from platform_api.services import suno_audio_resolver as resolver
 
-    async def fake_keys(_pool: object) -> list[str]:
+    async def fake_keys(_pool: object, provider: str | None = None) -> list[str]:
         return ["a", "b", "c"]
 
     monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
@@ -712,7 +712,7 @@ async def test_call_with_owning_suno_key_reraises_real_error(
     from platform_api.exceptions import ExternalServiceError
     from platform_api.services import suno_audio_resolver as resolver
 
-    async def fake_keys(_pool: object) -> list[str]:
+    async def fake_keys(_pool: object, provider: str | None = None) -> list[str]:
         return ["a"]
 
     monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
@@ -777,7 +777,7 @@ async def test_recover_suno_task_download_urls_reads_data_task_id(
     """musicapi's recovery create returns data.task_id (snake) then a track list."""
     from platform_api.services import suno_audio_resolver as resolver
 
-    async def fake_keys(_pool: object) -> list[str]:
+    async def fake_keys(_pool: object, provider: str | None = None) -> list[str]:
         return ["k1"]
 
     monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
@@ -847,7 +847,7 @@ async def test_recover_suno_task_download_urls_stops_after_terminal_failure(
 
     set_active_suno_base_url("https://musicapi.camxora.com")
 
-    async def fake_keys(_pool: object) -> list[str]:
+    async def fake_keys(_pool: object, provider: str | None = None) -> list[str]:
         return ["k1", "k2", "k3"]
 
     monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
@@ -901,7 +901,7 @@ async def test_recover_suno_task_download_urls_disabled_by_env(
 
     monkeypatch.setenv("RECOVERY_AUDIO_ENABLED", "0")
 
-    async def fake_keys(_pool: object) -> list[str]:
+    async def fake_keys(_pool: object, provider: str | None = None) -> list[str]:
         return ["k1"]
 
     monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
@@ -939,7 +939,7 @@ async def test_active_suno_key_values_filters_by_active_host(
     captured: dict[str, object] = {}
 
     class FakePool:
-        async def fetchval(self, query: str) -> str:
+        async def fetchval(self, query: str, *args: object) -> str:
             return "https://musicapi.camxora.com"
 
         async def fetch(self, query: str, *args: object) -> list[object]:
@@ -948,12 +948,37 @@ async def test_active_suno_key_values_filters_by_active_host(
             return []
 
     monkeypatch.setenv("PLATFORM_ENCRYPTION_MASTER_KEY", "x")
-    keys = await resolver.active_suno_key_values(FakePool())
+    keys = await resolver.active_suno_key_values(FakePool(), provider="suno")
 
     assert keys == []
-    assert captured["args"] == ("https://musicapi.camxora.com",)
-    assert "base_url = $1" in str(captured["query"])
+    assert captured["args"] == ("suno", "https://musicapi.camxora.com")
+    assert "base_url = $2" in str(captured["query"])
     assert get_active_suno_base_url() == "https://musicapi.camxora.com"
+
+
+@pytest.mark.asyncio
+async def test_active_music_provider_reads_routing_assignment() -> None:
+    """The worker resolves the music provider from AI Routing, defaulting suno."""
+    from platform_api.services import suno_audio_resolver as resolver
+
+    class FakePool:
+        def __init__(self, value: str | None) -> None:
+            self._value = value
+
+        async def fetchval(self, query: str, *args: object) -> str | None:
+            return self._value
+
+    assert await resolver.active_music_provider(FakePool(None)) == "suno"
+    assert (
+        await resolver.active_music_provider(
+            FakePool('{"music": {"provider": "camxora_music_api"}}')
+        )
+        == "camxora_music_api"
+    )
+    assert (
+        await resolver.active_music_provider(FakePool('{"music": {"provider": "bogus"}}'))
+        == "suno"
+    )
 
 
 @pytest.mark.asyncio

@@ -7,6 +7,16 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-05] — Music provider is a real AI Routing switch
+
+### Added
+
+- `camxora_music_api` is selectable for the `music` operation in AI Routing (provider pattern updated); migration `131_camxora_music_api_music_default` seeds the provider-wide `camxora_music_api / music` price row (10 credits) the no-sub-model lookup needs.
+
+### Fixed
+
+- Web Create on `music.camxora.com` charged 15 credits even when the music pool was switched to musicapi. `music` pricing was hard-coded to `suno`; it now resolves the routed provider (`suno` = 15, `camxora_music_api` = 10) for quote, charge, refund, plan pages, and the create-button label. Generation submit/poll and the worker/callback resolver follow the same switch. See `docs/changelog/2026-10-05-music-provider-ai-routing.md`.
+
 ## [2026-10-02] — SLAI image model `cx/gpt-image-2.5`
 
 ### Changed

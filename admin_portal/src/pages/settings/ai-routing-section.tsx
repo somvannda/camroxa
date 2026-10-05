@@ -10,6 +10,7 @@ import {
 } from '@/hooks/use-ai-routing';
 import { useSyncRoutingPricing } from '@/hooks/use-credits';
 import { toast } from '@/hooks/use-toast';
+import { providerLabel } from '@/lib/provider-labels';
 import type {
   CapabilityIssue,
   OperationAssignment,
@@ -194,6 +195,8 @@ function formatModelLabel(model: string, costDisplay: string): string {
 }
 
 function capitalizeProvider(provider: string): string {
+  const label = providerLabel(provider);
+  if (label !== provider) return label;
   if (provider === 'fal') return 'FAL';
   if (provider === 'slai') return 'SLAI';
   return provider.charAt(0).toUpperCase() + provider.slice(1);
@@ -771,9 +774,13 @@ function ServiceTypeGroup({
       ) : null}
       {serviceType === 'music_generation' ? (
         <p className="mb-3 text-xs text-slate-400">
-          Suno is the only music provider. Users choose the Suno model version in
-          their app settings (v5 / v5.5). Add multiple Suno API keys in the Key
-          Pool to spread load across accounts when traffic grows.
+          Choose the music provider. <strong className="font-medium text-slate-300">Suno</strong>{' '}
+          (sunoapi.org) and{' '}
+          <strong className="font-medium text-slate-300">Camxora Music API</strong>{' '}
+          (musicapi) are Suno-compatible; the provider must have active keys in
+          the Key Pool. The Credit price follows this choice: Suno 15 credits,
+          Camxora Music API 10 credits. Users still pick the model version in
+          their app settings.
         </p>
       ) : null}
       <div className="space-y-3">

@@ -53,9 +53,29 @@ async def _scan_pricing_units(pricing: Any, op: str) -> int | None:
     return None
 
 
-async def resolve_op_list_units(pricing: Any, op: str) -> int:
+def _music_fallbacks(music_provider: str | None) -> tuple[tuple[str, str], ...]:
+    """Pricing lookup chain for ``music``.
+
+    The routed provider (``suno`` / ``camxora_music_api``) wins so its row is
+    charged; the static chain is the fallback for a provider that has no row
+    configured yet.
+    """
+    fallbacks = PRICING_FALLBACKS["music"]
+    provider = str(music_provider or "").strip().lower()
+    if provider:
+        return ((provider, "music"), (provider, "music_generation"), *fallbacks)
+    return fallbacks
+
+
+async def resolve_op_list_units(
+    pricing: Any,
+    op: str,
+    *,
+    music_provider: str | None = None,
+) -> int:
+    fallbacks = _music_fallbacks(music_provider) if op == "music" else PRICING_FALLBACKS[op]
     last_error: Exception | None = None
-    for ai_service, operation_type in PRICING_FALLBACKS[op]:
+    for ai_service, operation_type in fallbacks:
         try:
             units = await pricing.get_price(ai_service, operation_type)
             return max(0, int(units))
@@ -70,15 +90,28 @@ async def resolve_op_list_units(pricing: Any, op: str) -> int:
     return 0
 
 
-async def resolve_op_list_credits(pricing: Any, op: str) -> float:
-    return units_to_credits(await resolve_op_list_units(pricing, op))
+async def resolve_op_list_credits(
+    pricing: Any,
+    op: str,
+    *,
+    music_provider: str | None = None,
+) -> float:
+    return units_to_credits(
+        await resolve_op_list_units(pricing, op, music_provider=music_provider)
+    )
 
 
-async def resolve_all_op_list_credits(pricing: Any) -> dict[str, float]:
+async def resolve_all_op_list_credits(
+    pricing: Any,
+    *,
+    music_provider: str | None = None,
+) -> dict[str, float]:
     out: dict[str, float] = {}
     for op in SUPPORTED_OPS:
         try:
-            out[op] = await resolve_op_list_credits(pricing, op)
+            out[op] = await resolve_op_list_credits(
+                pricing, op, music_provider=music_provider
+            )
         except Exception:
             continue
     return out

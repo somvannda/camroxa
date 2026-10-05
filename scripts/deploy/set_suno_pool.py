@@ -1,18 +1,29 @@
 #!/usr/bin/env python3
-"""Set the Suno pool keys and active upstream host on sandbox/production.
+"""Set a Suno-compatible pool's keys and active upstream host on sandbox/production.
 
 Adds keys tagged with a host (idempotently, by label) and points the provider's
 active ``base_url`` at that host — the CLI equivalent of the admin Key Pool
-provider switch.
+provider switch. Works for either Suno-compatible provider:
+
+  * ``suno``               -> sunoapi.org / apibox (https://apibox.erweima.ai)
+  * ``camxora_music_api``  -> Camxora musicapi      (https://musicapi.camxora.com)
+
+Set the matching **Settings -> AI Routing -> Music Generation** provider too;
+the routed provider is what drives the credit price and the generating host.
 
 Examples:
-    # sandbox -> production musicapi, with two tagged keys
-    python scripts/deploy/set_suno_pool.py --env sandbox \
+    # Suno pool -> sunoapi.org, with two tagged keys
+    python scripts/deploy/set_suno_pool.py --env sandbox --provider suno \
+        --key "sunoapi account 1=sk_..." --key "sunoapi account 2=sk_..." \
+        --base-url https://apibox.erweima.ai
+
+    # Camxora Music API pool -> musicapi, with two tagged keys
+    python scripts/deploy/set_suno_pool.py --env sandbox --provider camxora_music_api \
         --key "camxora desktop app=sk_..." --key "musicweb camxora=sk_..." \
         --base-url https://musicapi.camxora.com
 
-    # roll back to the environment default
-    python scripts/deploy/set_suno_pool.py --env sandbox --clear
+    # roll back a provider to the environment default
+    python scripts/deploy/set_suno_pool.py --env sandbox --provider camxora_music_api --clear
 
 Keys are passed per invocation and never written to disk on the server beyond
 the encrypted ``api_key_entries`` row.
@@ -114,7 +125,9 @@ async def main() -> None:
 
     verify_task_id = payload.get("verify_task_id")
     if verify_task_id:
-        result = await poll_suno_generate_with_pool(pool, verify_task_id)
+        result = await poll_suno_generate_with_pool(
+            pool, verify_task_id, provider=provider
+        )
         print(
             "verify_poll state=",
             result.state,
@@ -134,6 +147,12 @@ asyncio.run(main())
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--env", choices=["sandbox", "production"], required=True)
+    parser.add_argument(
+        "--provider",
+        choices=["suno", "camxora_music_api"],
+        default="suno",
+        help="Suno-compatible provider pool to configure (default: suno).",
+    )
     parser.add_argument(
         "--key",
         action="append",
@@ -176,7 +195,7 @@ def main() -> int:
     payload = base64.b64encode(
         json.dumps(
             {
-                "provider": "suno",
+                "provider": args.provider,
                 "base_url": args.base_url,
                 "clear_base_url": args.clear,
                 "keys": keys,

@@ -27,6 +27,10 @@ from platform_api.ai.parsing.response_parser import extract_chat_content
 from platform_api.ai.purposes.channel_text import parse_title_album_lyrics
 from platform_api.ai.purposes.draft_routing import DraftRouting
 from platform_api.ai.types import is_suno_lyric_routing
+from platform_api.clients.suno_routing import (
+    DEFAULT_MUSIC_PROVIDER,
+    normalize_music_provider,
+)
 from platform_api.models.billing_context import DraftBillingContext
 from platform_api.exceptions import (
     ExternalServiceError,
@@ -1808,6 +1812,11 @@ class GenerationService:
             self._llm_pool_wrapper = None
             self._deepseek_pool_wrapper = None
 
+        # Extra Suno-compatible pools (currently ``camxora_music_api``) built
+        # lazily so the legacy single-``suno``-wrapper behaviour — and the tests
+        # that override ``_suno_pool_wrapper`` — keep working unchanged.
+        self._music_extra_wrappers: dict[str, Any] = {}
+
         self._text_gateway = None
         self._image_gateway = None
 
@@ -1876,6 +1885,45 @@ class GenerationService:
         if wrapper is None:
             raise NoAvailableKeysError(provider, {})
         return wrapper
+
+    async def _music_provider(self) -> str:
+        """Provider AI Routing has assigned to the ``music`` operation.
+
+        ``suno`` (sunoapi.org) is the default. ``camxora_music_api`` is the
+        other Suno-compatible provider. Falls back to the default on a routing
+        miss so a misconfigured switch cannot take music down entirely.
+        """
+        if self._ai_routing_service is not None:
+            try:
+                routing = await self._ai_routing_service.resolve("music")
+                return normalize_music_provider(getattr(routing, "provider", None))
+            except Exception:
+                logger.debug(
+                    "music routing lookup failed; using default provider",
+                    exc_info=True,
+                )
+        return DEFAULT_MUSIC_PROVIDER
+
+    def _music_pool_wrapper_for(self, provider: str) -> Any:
+        """Return the key-pool wrapper for a music provider (lazily built)."""
+        if provider == DEFAULT_MUSIC_PROVIDER:
+            return self._suno_pool_wrapper
+        cached = self._music_extra_wrappers.get(provider)
+        if cached is not None:
+            return cached
+        if self._key_pool_service is None:
+            return None
+        from platform_api.clients.key_pool_client_wrapper import KeyPoolClientWrapper
+
+        wrapper = KeyPoolClientWrapper(self._key_pool_service, provider=provider)
+        self._music_extra_wrappers[provider] = wrapper
+        return wrapper
+
+    async def _music_pool_wrapper(self) -> tuple[Any, str]:
+        """Resolve the routed music provider and its key-pool wrapper."""
+        provider = await self._music_provider()
+        wrapper = self._music_pool_wrapper_for(provider)
+        return await self._require_pool_wrapper(wrapper, provider), provider
 
     async def polish_lyrics_text(
         self,
@@ -3610,7 +3658,7 @@ class GenerationService:
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
     ) -> dict[str, Any]:
-        wrapper = await self._require_pool_wrapper(self._suno_pool_wrapper, "suno")
+        wrapper, _provider = await self._music_pool_wrapper()
         return await wrapper.execute(
             lambda api_key: self._suno_client.submit_task(
                 model=model,
@@ -3632,7 +3680,7 @@ class GenerationService:
         """Poll Suno generate record-info for one external task id."""
         from platform_api.clients.suno_client import parse_suno_generate_poll
 
-        wrapper = await self._require_pool_wrapper(self._suno_pool_wrapper, "suno")
+        wrapper, _provider = await self._music_pool_wrapper()
         response = await wrapper.execute(
             lambda api_key: self._suno_client.check_status(external_task_id, api_key=api_key)
         )
@@ -3640,7 +3688,7 @@ class GenerationService:
 
     async def generate_suno_lyrics(self, prompt: str) -> tuple[str, str]:
         """Generate lyrics (and optional title) via Suno for web Simple mode."""
-        wrapper = await self._require_pool_wrapper(self._suno_pool_wrapper, "suno")
+        wrapper, _provider = await self._music_pool_wrapper()
 
         async def _run_with_key(api_key: str) -> tuple[str, str]:
             return await self._suno_client.generate_lyrics_blocking(
@@ -3652,7 +3700,7 @@ class GenerationService:
 
     async def _call_suno_lyrics(self, *, prompt: str) -> str:
         """Generate lyrics via Suno API (submit + poll on the same pool key)."""
-        wrapper = await self._require_pool_wrapper(self._suno_pool_wrapper, "suno")
+        wrapper, _provider = await self._music_pool_wrapper()
 
         async def _run_with_key(api_key: str) -> str:
             text, _title = await self._suno_client.generate_lyrics_blocking(

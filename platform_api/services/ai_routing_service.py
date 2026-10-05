@@ -600,10 +600,12 @@ class AIRoutingService:
                     "Use deepseek, slai, openai, or suno (lyric only).",
                     details={"operation": operation_str, "provider": provider},
                 )
-            if provider == "suno":
-                if operation_str == Operation.MUSIC.value:
-                    assignment["sub_model"] = None
-                elif is_suno_lyric_routing(provider=provider, operation=operation_str):
+            # Music providers (suno / camxora_music_api) choose the model in the
+            # app, not per routing entry, so never persist a sub_model.
+            if operation_str == Operation.MUSIC.value:
+                assignment["sub_model"] = None
+            if provider == "suno" and operation_str != Operation.MUSIC.value:
+                if is_suno_lyric_routing(provider=provider, operation=operation_str):
                     from platform_api.ai.registry import get_text_model_spec
 
                     sub_model = assignment.get("sub_model")

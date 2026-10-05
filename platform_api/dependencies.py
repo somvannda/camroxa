@@ -838,6 +838,7 @@ def get_v3_billing_service():
         credit_repo=get_credit_repo(),
         pricing_service=get_credit_pricing_service(),
         enforcement=get_usage_enforcement_service(),
+        ai_routing_service=get_ai_routing_service(),
     )
 
 
