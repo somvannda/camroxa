@@ -57,7 +57,7 @@ MODEL_LOAD_LOCK = threading.Lock()
 # rejected with 503 so the caller falls back instead of piling up.
 MAX_INFLIGHT = int(os.environ.get("LRC_MAX_INFLIGHT", "8"))
 INFLIGHT = threading.BoundedSemaphore(MAX_INFLIGHT)
-QUEUE_WAIT_S = float(os.environ.get("LRC_QUEUE_WAIT_S", "30"))
+QUEUE_WAIT_S = float(os.environ.get("LRC_QUEUE_WAIT_S", "10"))
 
 _TOKEN_RE = re.compile(r"[^\W_]+(?:'[^\W_]+)*", re.UNICODE)
 _SECTION_RE = re.compile(r"^\[.*\]$")
@@ -347,6 +347,18 @@ class Handler(BaseHTTPRequestHandler):
         pass
 
 
+class Server(ThreadingHTTPServer):
+    """Threaded HTTP server with a wider accept backlog and daemon workers.
+
+    The default backlog (5) used to overflow under a client burst and make the
+    Node caller see `fetch failed` (connection refused). A larger backlog lets
+    the `INFLIGHT` semaphore reject over-cap work with a clean 503 instead.
+    """
+
+    daemon_threads = True
+    request_queue_size = 128
+
+
 if __name__ == "__main__":
     print(f"[lrc-service] listening on 127.0.0.1:{PORT} (model={MODEL_NAME})", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    Server(("127.0.0.1", PORT), Handler).serve_forever()

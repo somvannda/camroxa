@@ -2161,6 +2161,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    */
   async function alignLyrics(clipId: string, lyrics: string): Promise<LyricAlignment | null> {
     if (!LRC_ENABLED || !lyrics.trim() || !storageConfigured()) return null;
+    // Instrumentals and section-only prompts ("[Instrumental]", "[Verse]") carry
+    // no words to time. Transcribing them burns ~a minute of CPU on the sidecar
+    // and starves real vocal requests, so skip them (result: aligned:false).
+    const wordTokens = lyrics.replace(/\[[^\]]*\]/g, " ").match(/[\p{L}\p{N}]+/gu) ?? [];
+    if (wordTokens.length < 2) return null;
     const audioKey = await ensureAudio(clipId, "mp3");
     if (!audioKey) return null;
 

@@ -48,8 +48,14 @@ response and never polls a task, but musicapi answered with an async
   - `ThreadingHTTPServer` is no longer unbounded: a `BoundedSemaphore`
     (`LRC_MAX_INFLIGHT`, default 8) gates `/align` before the body is read, and
     over-cap requests get `503 {"ok":false,"error":"busy"}` after
-    `LRC_QUEUE_WAIT_S` (default 30s) so callers fall back instead of piling up.
+    `LRC_QUEUE_WAIT_S` (default 10s) so callers fall back instead of piling up.
+  - The accept backlog is widened (`request_queue_size=128`, daemon threads) so a
+    burst no longer overflows the default backlog and surfaces as Node
+    `fetch failed` (connection refused) instead of a clean 503.
 - `musicapi/src/server.ts`
+  - `alignLyrics()` skips clips whose lyric text has no real words
+    (`[Instrumental]`, section-only prompts). Transcribing them wasted ~a minute
+    of CPU each and starved genuine vocal requests.
   - New `reusableLyricsJob(clipId, userId)` collapses repeated
     `timestamped_lyrics_detail` submits onto one job per clip: a completed
     `aligned:true` result with a non-empty `lrc` is reused indefinitely (DB is the
