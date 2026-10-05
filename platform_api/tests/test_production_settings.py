@@ -105,3 +105,18 @@ def test_validate_production_settings_skips_non_production() -> None:
         suno_callback_hmac_secret="",
     )
     validate_production_settings(settings)
+
+
+def test_validate_production_settings_rejects_unknown_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A typo'd environment must not silently skip the production checks."""
+    monkeypatch.delenv("PLATFORM_JWT_SECRET", raising=False)
+    settings = Settings(
+        environment="produccion",
+        debug=False,
+        jwt_secret="change-me-in-production",
+        suno_callback_hmac_secret="callback-hmac-secret",
+    )
+    with pytest.raises(RuntimeError, match="PLATFORM_JWT_SECRET"):
+        validate_production_settings(settings)

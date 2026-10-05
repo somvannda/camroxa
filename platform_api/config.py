@@ -294,6 +294,31 @@ def is_sandbox_or_production(settings: Settings | None = None) -> bool:
     return raw in {"production", "prod", "staging", "sandbox"}
 
 
+def requires_production_validation(settings: Settings | None = None) -> bool:
+    """Whether production-grade safety checks must run for this environment.
+
+    True for production/prod, and also for any unrecognized non-empty value: a
+    typo'd or unexpected ``PLATFORM_ENVIRONMENT`` must not silently skip the
+    checks. Known local/dev/staging values stay exempt.
+    """
+    resolved = settings or get_settings()
+    raw = (resolved.environment or "").strip().lower()
+    if raw in {"production", "prod"}:
+        return True
+    if raw in {
+        "staging",
+        "sandbox",
+        "development",
+        "dev",
+        "local",
+        "localhost",
+        "test",
+        "testing",
+    }:
+        return False
+    return True
+
+
 def is_music_web_geo_enforced(settings: Settings | None = None) -> bool:
     """Whether music-web KH-only geo is on.
 
@@ -337,7 +362,7 @@ def validate_production_settings(settings: Settings | None = None) -> None:
         RuntimeError: When production config is unsafe. Do not swallow at startup.
     """
     resolved = settings or get_settings()
-    if not is_production(resolved):
+    if not requires_production_validation(resolved):
         return
 
     errors: list[str] = []
