@@ -5861,6 +5861,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
        WHERE created_at > now() - interval '${days} days'
        GROUP BY day ORDER BY day`,
     );
+    // Top terminal job errors in the window. Restart-interrupted jobs are
+    // excluded — they are operator-caused, not generation failures.
+    const byError = await query<{ reason: string; count: string }>(
+      `SELECT COALESCE(NULLIF(left(error, 160), ''), 'unknown') AS reason,
+              count(*)::text AS count
+       FROM jobs
+       WHERE status = 'error'
+         AND error <> $1
+         AND updated_at > now() - interval '${days} days'
+       GROUP BY 1 ORDER BY count(*) DESC LIMIT 10`,
+      [RESTART_INTERRUPT_ERROR],
+    );
 
     return {
       range: { days },
@@ -5871,6 +5883,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       by_model: byModel.map((r) => ({ model: r.model, ...shape(r) })),
       by_user: byUser.map((r) => ({ user_id: r.user_id, email: r.email, ...shape(r) })),
       series: series.map((r) => ({ day: r.day, ...shape(r) })),
+      by_error: byError.map((r) => ({ reason: r.reason, count: Number(r.count) })),
     };
   });
 
