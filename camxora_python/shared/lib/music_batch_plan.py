@@ -78,7 +78,7 @@ class CreateBatchesResult:
     created: list[BatchCreateResponse] = field(default_factory=list)
     skipped: int = 0
     failed: list[tuple[BatchCreateRequest, str]] = field(default_factory=list)
-    # Requests whose day/pair slot already existed (skipped unless include_existing).
+    # Requests skipped because their day/pair slot already existed (skip_existing on).
     skipped_requests: list[BatchCreateRequest] = field(default_factory=list)
 
     @property
@@ -102,23 +102,24 @@ def create_planned_batches(
     attempts: int = 3,
     retry_delay_sec: float = 1.5,
     sleep: Callable[[float], None] | None = None,
-    include_existing: bool = False,
+    skip_existing: bool = False,
 ) -> CreateBatchesResult:
-    """Create missing day/pair slots (or all, when ``include_existing``).
+    """Create the requested batches.
 
-    Default behavior skips a slot whose planned date + channel pair already
-    exists so retried multi-day runs stay idempotent. ``include_existing=True``
-    is the explicit "regenerate anyway" path: it creates every request even when
-    a batch already exists for that slot. Continue after a failure; retry leftovers.
+    By default every request is created: duplicates are legitimate (new takes,
+    A/B versions, retries). Set ``skip_existing=True`` to skip a slot whose
+    planned date + channel pair already exists — used to re-fill a multi-day plan
+    without re-creating slots that already succeeded. Continue after a failure;
+    retry leftovers.
     """
     planned = [request for request in requests if isinstance(request, BatchCreateRequest)]
-    if include_existing:
-        pending = list(planned)
-        skipped_requests: list[BatchCreateRequest] = []
-    else:
+    if skip_existing:
         pending = missing_create_requests(planned, existing_batches)
         pending_ids = {id(request) for request in pending}
         skipped_requests = [request for request in planned if id(request) not in pending_ids]
+    else:
+        pending = list(planned)
+        skipped_requests = []
     result = CreateBatchesResult(
         planned=len(planned),
         skipped=len(skipped_requests),

@@ -417,10 +417,10 @@ def test_create_batches_worker_reports_exact_error(qapp: QApplication) -> None:
     assert "Structure id is required." in failed[0]
 
 
-def test_batches_created_skipped_slot_names_pair_and_offers_regenerate(
+def test_batches_created_skipped_slot_names_pair_and_reveals(
     qapp: QApplication, monkeypatch
 ) -> None:
-    """A skipped day/pair is named, revealed in History, and offers regenerate."""
+    """When skip-existing is on, a skipped day/pair is named and revealed."""
     from shared.lib.music_batch_plan import CreateBatchesResult
     from shared.models.platform import BatchCreateRequest
 
@@ -449,7 +449,6 @@ def test_batches_created_skipped_slot_names_pair_and_offers_regenerate(
 
     view._on_batches_created(result)
 
-    assert not view._automation_card._regenerate_btn.isHidden()
     assert revealed == ["2026-10-06"]
     assert flashes
     message, tone = flashes[0]
@@ -458,14 +457,14 @@ def test_batches_created_skipped_slot_names_pair_and_offers_regenerate(
     assert "Primary Channel" in message and "Secondary Channel" in message
 
 
-def test_regenerate_anyway_forces_create(qapp: QApplication, monkeypatch) -> None:
+def test_skip_existing_toggle_updates_settings(qapp: QApplication) -> None:
     view = MusicView(PlatformApi())
-    captured: list[dict] = []
-    monkeypatch.setattr(view, "_create_batches", lambda **kwargs: captured.append(kwargs))
+    view._on_loaded(_payload())
 
-    view._regenerate_anyway()
+    view._automation_card._skip_existing.setChecked(True)
+    view._on_automation_changed()
 
-    assert captured == [{"force": True}]
+    assert view._music_settings.skip_existing_batches is True
 
 
 def test_history_reveal_date_sets_range(qapp: QApplication) -> None:

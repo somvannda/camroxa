@@ -37,6 +37,7 @@ class MusicSettingsState:
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
     auto_upload_youtube: bool = False
+    skip_existing_batches: bool = False
     polish_strength: int = 85
     learned_suno_terms: tuple[str, ...] = ()
 
@@ -162,6 +163,9 @@ def build_music_settings_state(
         auto_merge_after_video=read_boolean_setting(settings, "autoMergeAfterVideo", defaults.auto_merge_after_video),
         auto_reel_after_video=read_boolean_setting(settings, "autoReelAfterVideo", defaults.auto_reel_after_video),
         auto_upload_youtube=read_boolean_setting(settings, "autoUploadYouTube", defaults.auto_upload_youtube),
+        skip_existing_batches=read_boolean_setting(
+            settings, "skipExistingBatches", defaults.skip_existing_batches
+        ),
         polish_strength=_clamp(
             read_number_setting(settings, "lyricsPolishStrength", defaults.polish_strength),
             0,
@@ -206,6 +210,7 @@ def build_music_settings_patch(settings: MusicSettingsState) -> dict[str, object
         "autoMergeAfterVideo": settings.auto_merge_after_video,
         "autoReelAfterVideo": settings.auto_reel_after_video,
         "autoUploadYouTube": settings.auto_upload_youtube,
+        "skipExistingBatches": settings.skip_existing_batches,
         "lyricsPolishStrength": settings.polish_strength,
         "learnedSunoTerms": list(settings.learned_suno_terms),
     }
