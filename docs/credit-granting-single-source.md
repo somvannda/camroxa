@@ -108,11 +108,16 @@ unchanged by the consolidation.
 **Acceptance:** no plan can have both daily & monthly > 0 (DB + API); one cadence
 source; Free `daily=0/monthly=50` grants 50/month to Free + lapsed only.
 
-### Phase 2 — grant choke point
-- Introduce `CreditLedgerService.grant()/deduct()/refund()`; route all grant
-  callers through it; make `add_credits` private; add `(user, reason, ref_id)`
-  uniqueness for grants.
-- `redeem_code_service` / `onboarding_entitlement_service` stop writing raw SQL.
+### Phase 2 — grant choke point (partial ✅)
+- ✅ `(user, reason, ref_id)` grant idempotency via a non-destructive
+  `credit_grant_claims` table (migration `133`) + `add_credits(..., idempotent=)`
+  — a retried/duplicated grant with a stable ref credits at most once.
+- ✅ `redeem_code_service` routed through `CreditRepository.add_credits`
+  (it keeps its own per-user redemption guard, so it passes `idempotent=False`;
+  `add_credits` gained `metadata=` support).
+- Remaining: a typed `CreditLedgerService` facade over `grant/deduct/refund`,
+  making `add_credits` private, and moving the remaining direct `event` writers
+  (e.g. onboarding zero-amount events, which are telemetry, not grants).
 
 ### Phase 3 — mint on events, not reads
 - `/me/credits` becomes read‑only; period/daily grants run on the billing webhook
