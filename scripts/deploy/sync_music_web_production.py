@@ -11,6 +11,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deploy import build_source_tarball, ensure_deploy_key, load_production_secrets, resolve_production_ssh, ssh_connect
 
+# Remote output may contain non-ASCII; a Windows cp1252 console would otherwise
+# raise UnicodeEncodeError after the remote work already succeeded.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 PRODUCTION_HOST = "82.197.71.248"
 
 
@@ -20,9 +24,9 @@ def _run(client, cmd: str) -> int:
         time.sleep(0.2)
     out = stdout.read().decode("utf-8", errors="replace")
     err = stderr.read().decode("utf-8", errors="replace")
-    print(out.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+    print(out)
     if err.strip():
-        print(err.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+        print(err)
     return stdout.channel.recv_exit_status()
 
 

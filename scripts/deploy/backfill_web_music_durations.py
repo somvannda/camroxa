@@ -16,6 +16,10 @@ from deploy import (
     ssh_connect,
 )
 
+# Remote output may contain non-ASCII; a Windows cp1252 console would otherwise
+# raise UnicodeEncodeError after the remote work already succeeded.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 
 def main() -> int:
     import argparse
@@ -92,7 +96,7 @@ PY"
 """
     _, stdout, _ = client.exec_command(remote, get_pty=True)
     out = stdout.read().decode("utf-8", errors="replace")
-    print(out.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+    print(out)
     client.close()
     return 0
 

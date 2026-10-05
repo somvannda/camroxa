@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Login was blocked for everyone** at `music.camxora.com`: the production build shipped the sandbox Turnstile sitekey, so Cloudflare rejected the challenge, the widget showed *"Unable to connect to website"*, and the disabled **Sign in** button never enabled. Production was rebuilt with the correct sitekey and the component no longer falls back to the sandbox key outside local development — a missing key now renders a visible error instead of a broken widget. See `docs/changelog/2026-10-05-music-web-turnstile-login-lockout.md`.
 - The credit card no longer freezes at the plan's monthly pool. A free wallet holding more than its allowance (stacked grants / top-ups) stayed pinned at **50 / 50 credits** while songs (15 credits each) were really being debited. It now reports the authoritative wallet total and labels the top-up portion. See `docs/changelog/2026-10-04-web-music-credit-display-and-refund.md`.
 - Account credit card splits the **wallet balance** into daily / monthly / top-up pots instead of reading stale grant lots, so *Used* / *Remaining* and the top-up line reflect credits actually spent. See `docs/changelog/2026-09-27-web-music-credit-balance-split.md`.
 - Account credit card no longer says **Credit reset daily** when daily credits are 0. Monthly grants show **Credit reset monthly**. See `docs/changelog/2026-08-28-credit-reset-label-period.md`.

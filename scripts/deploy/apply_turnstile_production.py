@@ -28,6 +28,12 @@ def _b64(value: str) -> str:
 
 
 def main() -> int:
+    # Remote output can contain non-ASCII (e.g. progress glyphs). On Windows the
+    # default cp1252 console encoding would otherwise raise UnicodeEncodeError
+    # *after* the remote work already succeeded, making a good deploy look failed.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--rebuild-music-web",
@@ -58,7 +64,7 @@ echo PREFLIGHT_OK
     _, stdout, _ = client.exec_command(preflight, get_pty=True)
     pre_out = stdout.read().decode("utf-8", errors="replace")
     pre_code = stdout.channel.recv_exit_status()
-    print(pre_out.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+    print(pre_out)
     if pre_code != 0:
         client.close()
         return pre_code
@@ -97,9 +103,9 @@ echo API_TURNSTILE_APPLIED
     _, stdout, stderr = client.exec_command(remote, get_pty=True)
     out = stdout.read().decode("utf-8", errors="replace")
     err = stderr.read().decode("utf-8", errors="replace")
-    print(out.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+    print(out)
     if err.strip():
-        print(err.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+        print(err)
     code = stdout.channel.recv_exit_status()
     if code != 0:
         client.close()
@@ -138,9 +144,9 @@ echo MUSIC_WEB_REBUILD_DONE
         _, stdout, stderr = client.exec_command(rebuild, get_pty=True)
         out = stdout.read().decode("utf-8", errors="replace")
         err = stderr.read().decode("utf-8", errors="replace")
-        print(out.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+        print(out)
         if err.strip():
-            print(err.encode("utf-8", errors="replace").decode("utf-8", errors="replace"))
+            print(err)
         code = stdout.channel.recv_exit_status()
 
     client.close()

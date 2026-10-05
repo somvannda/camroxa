@@ -3,6 +3,13 @@
 import Script from 'next/script';
 import { useEffect, useRef, useState } from 'react';
 
+import { resolveTurnstileSiteKey } from '@/lib/turnstile-sitekey';
+
+const TURNSTILE_SITE_KEY = resolveTurnstileSiteKey(
+  process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY,
+  process.env.NODE_ENV,
+);
+
 declare global {
   interface Window {
     turnstile?: {
@@ -56,6 +63,9 @@ export default function TurnstileWidget({
   }, []);
 
   useEffect(() => {
+    if (!TURNSTILE_SITE_KEY) {
+      return;
+    }
     if (!scriptReady || !window.turnstile || !containerRef.current) {
       return;
     }
@@ -70,9 +80,7 @@ export default function TurnstileWidget({
     }
 
     widgetIdRef.current = window.turnstile.render(containerRef.current, {
-      sitekey:
-        process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY ||
-        '0x4AAAAAAERrvCRyn8xcIet3',
+      sitekey: TURNSTILE_SITE_KEY,
       action,
       theme: 'dark',
       callback: (token: string) => onTokenRef.current(token),
@@ -97,6 +105,17 @@ export default function TurnstileWidget({
       }
     };
   }, [action, scriptReady]);
+
+  if (!TURNSTILE_SITE_KEY) {
+    return (
+      <div
+        role="alert"
+        className="w-full rounded-xl border border-red-500/20 bg-red-500/10 p-3 text-center text-sm text-red-300"
+      >
+        Security check is unavailable. Please refresh the page or try again later.
+      </div>
+    );
+  }
 
   return (
     <>
