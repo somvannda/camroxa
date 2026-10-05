@@ -19,6 +19,14 @@ function formatUsd(cents: number) {
 }
 
 export default function MockCheckoutPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <MockCheckoutContent />
+    </React.Suspense>
+  );
+}
+
+function MockCheckoutContent() {
   const params = useParams<{ paymentId: string }>();
   const router = useRouter();
   const searchParams = useSearchParams();

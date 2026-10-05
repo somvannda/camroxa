@@ -10,6 +10,10 @@ export const metadata: Metadata = {
   description: "Contact Camxora for support, privacy, billing, and Google OAuth / YouTube questions.",
 };
 
+// Optional: set NEXT_PUBLIC_COMPANY_ADDRESS to publish a registered address.
+// Left unset, the public page simply omits the address block (no placeholder).
+const BUSINESS_ADDRESS = (process.env.NEXT_PUBLIC_COMPANY_ADDRESS ?? "").trim();
+
 export default function ContactPage() {
   const userPortalBaseUrl = getUserPortalBaseUrl();
 
@@ -117,12 +121,11 @@ export default function ContactPage() {
         </div>
       </section>
 
-      <section className="rounded-[28px] border border-amber-400/20 bg-amber-500/10 p-6 text-sm leading-7 text-slate-200/85 ring-1 ring-amber-400/10">
-        <strong className="text-white">Business address:</strong> Add your registered company
-        street address here before Google OAuth production verification if your Google Cloud project
-        requires a physical address on public pages. Until then, use the emails above for all
-        official requests.
-      </section>
+      {BUSINESS_ADDRESS ? (
+        <section className="rounded-[28px] border border-white/10 bg-white/[0.03] p-6 text-sm leading-7 text-slate-200/85 ring-1 ring-white/6">
+          <strong className="text-white">Business address:</strong> {BUSINESS_ADDRESS}
+        </section>
+      ) : null}
     </ContentPageShell>
   );
 }

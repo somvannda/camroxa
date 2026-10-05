@@ -32,6 +32,14 @@ import { AddonRenewalCard } from "@/components/dashboard/addon-renewal-card";
 import { RenewalReminderBanner } from "@/components/dashboard/renewal-reminder-banner";
 
 export default function DashboardBillingPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <DashboardBillingContent />
+    </React.Suspense>
+  );
+}
+
+function DashboardBillingContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { state, websiteBaseUrl } = useControlPanel();

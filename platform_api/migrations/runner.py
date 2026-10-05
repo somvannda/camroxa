@@ -188,6 +188,7 @@ async def run_pending_migrations() -> None:
     """
     dsn = get_settings().database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
     lock_conn = await asyncpg.connect(dsn)
+    timed_out = False
     try:
         logger.info("Waiting for migration advisory lock (coordinates multiple API workers)...")
         await lock_conn.execute("SELECT pg_advisory_lock($1)", _MIGRATION_ADVISORY_LOCK_KEY)
@@ -198,12 +199,18 @@ async def run_pending_migrations() -> None:
         )
         logger.info("Database migrations up to date.")
     except TimeoutError as exc:
+        timed_out = True
         raise RuntimeError(
             f"Alembic upgrade exceeded {_MIGRATION_TIMEOUT_SECONDS}s. "
             "A leftover or blocked migration is likely hanging startup."
         ) from exc
     finally:
-        try:
-            await lock_conn.execute("SELECT pg_advisory_unlock($1)", _MIGRATION_ADVISORY_LOCK_KEY)
-        finally:
-            await lock_conn.close()
+        # On timeout the Alembic thread is still running and `to_thread` cannot
+        # cancel it. Releasing the advisory lock (or closing the session) here
+        # would let another worker start a *concurrent* upgrade — the exact thing
+        # the lock prevents. Keep the lock held; the worker is aborting.
+        if not timed_out:
+            try:
+                await lock_conn.execute("SELECT pg_advisory_unlock($1)", _MIGRATION_ADVISORY_LOCK_KEY)
+            finally:
+                await lock_conn.close()

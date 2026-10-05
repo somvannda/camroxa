@@ -96,8 +96,6 @@ export function formatNowPlayingDetail(input: NowPlayingDiagInput): string {
   const comp = input.computedPlaying ? 1 : 0;
   const vis =
     typeof document !== 'undefined' ? (document.hidden ? 'hidden' : 'visible') : '-';
-  const tokenTail = input.token ? input.token.slice(-8) : '-';
-
   const flags: string[] = [];
   if (input.refPlaying && m.paused) flags.push('REF_ON_MEDIA_PAUSED');
   if (input.uiPlaying && m.paused) flags.push('UI_ON_MEDIA_PAUSED');
@@ -111,7 +109,6 @@ export function formatNowPlayingDetail(input: NowPlayingDiagInput): string {
 
   const parts = [
     `reason=${input.reason}`,
-    `tok=${tokenTail}`,
     `vis=${vis}`,
     `tag=${m.tag}`,
     `inDom=${m.inDom ? 1 : 0}`,
@@ -121,7 +118,7 @@ export function formatNowPlayingDetail(input: NowPlayingDiagInput): string {
     `ct=${m.currentTime.toFixed(1)}`,
     `dur=${m.duration.toFixed(1)}`,
     `pin=${pin.toFixed(1)}`,
-    `src=${m.srcTail}`,
+    `srcOk=${m.srcTail && m.srcTail !== '-' ? 1 : 0}`,
     `ui=${ui}`,
     `ref=${ref}`,
     `graph=${graph}`,
