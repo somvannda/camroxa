@@ -9,8 +9,10 @@ const BASE = "/backend";
 export async function logout(): Promise<void> {
   try {
     await fetch(`${BASE}/auth/logout`, { method: "POST", credentials: "same-origin" });
-  } catch {
-    // Ignore — clearing local state below is what matters.
+  } catch (e) {
+    // The httpOnly cookie can't be cleared from JS if this fails; log so the
+    // operator isn't left guessing. Local state is still dropped below.
+    console.warn("Logout request failed", e);
   }
   clearSession();
 }
