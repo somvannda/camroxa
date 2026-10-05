@@ -3,16 +3,12 @@
 import Script from 'next/script';
 import { useEffect, useRef, useState } from 'react';
 
-// The Turnstile site key is baked in at build time. Never silently fall back to
-// a key that is only valid for another environment: a production build once
-// shipped the sandbox sitekey, Cloudflare rejected the widget, and every user
-// was locked out of login. The sandbox key is allowed only in local dev.
-const CONFIGURED_TURNSTILE_SITE_KEY =
-  process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY?.trim() ?? '';
+import { resolveTurnstileSiteKey } from '@/lib/turnstile-sitekey';
 
-const TURNSTILE_SITE_KEY =
-  CONFIGURED_TURNSTILE_SITE_KEY ||
-  (process.env.NODE_ENV === 'development' ? '0x4AAAAAAERrvCRyn8xcIet3' : '');
+const TURNSTILE_SITE_KEY = resolveTurnstileSiteKey(
+  process.env.NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY,
+  process.env.NODE_ENV,
+);
 
 declare global {
   interface Window {

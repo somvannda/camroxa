@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3003",
+    "prebuild": "node scripts/check-turnstile-sitekey.mjs",
     "build": "next build",
     "start": "next start -p 3003",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "node --experimental-strip-types --test \"src/lib/*.test.ts\""
   },
   "dependencies": {
     "@fontsource/inter": "^5.3.0",

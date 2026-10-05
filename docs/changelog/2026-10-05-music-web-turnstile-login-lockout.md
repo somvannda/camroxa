@@ -40,6 +40,12 @@ login with bad credentials returned the expected `401`.
   module scope. The sandbox key is used **only** when
   `process.env.NODE_ENV === 'development'`; in production a missing key renders a
   visible `role="alert"` error and skips `turnstile.render`.
+- `music_web/src/lib/turnstile-sitekey.ts`: pure `resolveTurnstileSiteKey()` /
+  `isSandboxTurnstileSiteKey()` extracted so the no-fallback rule is unit tested
+  and reusable.
+- `music_web/scripts/check-turnstile-sitekey.mjs`: `prebuild` guard that refuses a
+  production build (`NEXT_PUBLIC_CAMXORA_ENV=production`) with a missing or sandbox
+  sitekey. Local builds are unaffected.
 - `scripts/deploy/apply_turnstile_production.py`: `sys.stdout.reconfigure(...)`
   to UTF-8 and print decoded remote output directly. The previous
   `print(out.encode("utf-8").decode("utf-8"))` raised `UnicodeEncodeError` on a
@@ -53,6 +59,10 @@ login with bad credentials returned the expected `401`.
 ## Files touched
 
 - `music_web/src/components/turnstile-widget.tsx`
+- `music_web/src/lib/turnstile-sitekey.ts`
+- `music_web/src/lib/turnstile-sitekey.test.ts`
+- `music_web/scripts/check-turnstile-sitekey.mjs`
+- `music_web/package.json`
 - `scripts/deploy/apply_turnstile_production.py`
 - `scripts/deploy/sync_music_web_production.py`
 - `scripts/deploy/restore_production_api_turnstile_env_rollback.py`
@@ -75,11 +85,14 @@ login with bad credentials returned the expected `401`.
   frame no longer shows the error and issues an 837-char token, enabling the
   button.
 - `python -m py_compile` on all four deploy scripts.
-- No automated frontend test covers the widget; a unit test asserting the
-  no-fallback behaviour is a follow-up.
+- `music_web`: `npm test`
+  (`node --experimental-strip-types --test "src/lib/*.test.ts"`) — **49 passed**,
+  including 7 new `turnstile-sitekey` cases covering the no-fallback regression.
+- `prebuild` guard exercised directly: no env → pass; production + missing key →
+  fail; production + sandbox key → fail; production + real key → pass.
 
 ## Follow-ups
 
-- Add an automated guard so a production build cannot ship a sandbox or missing
-  Turnstile sitekey (build-time assertion or post-build bundle check).
-- Consider a small unit test around sitekey resolution.
+- Optional post-build assertion that the compiled `.next` chunks contain the
+  expected sitekey, as defence against a build-cache or env-precedence surprise.
+
