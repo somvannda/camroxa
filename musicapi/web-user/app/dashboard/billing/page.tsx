@@ -130,7 +130,8 @@ export default function BillingPage() {
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
+    // Revoke on the next tick so the browser has started the download.
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 0);
   }
 
   async function buy(pack: Pack) {
