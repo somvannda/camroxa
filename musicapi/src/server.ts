@@ -6050,6 +6050,62 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
   });
 
+  // Operator drill-down for one user: profile, keys, usage roll-up and the
+  // latest ledger entries, so support can answer "what happened to this
+  // account?" without touching the database.
+  app.get("/admin/users/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const { id } = req.params as { id: string };
+    const user = await queryOne<Record<string, unknown>>(
+      `SELECT id, email, name, role, status, language, created_at,
+              email_subscription, credit_alert_thresholds,
+              (google_id IS NOT NULL) AS has_google,
+              (password_hash IS NOT NULL) AS has_password
+       FROM users WHERE id = $1`,
+      [id],
+    );
+    if (!user) return reply.code(404).send({ error: "User not found." });
+    const [keys, creditsRow, usage, transactions] = await Promise.all([
+      query<Record<string, unknown>>(
+        `SELECT id, name, key_prefix, credits, is_active, created_at, last_used_at, credits_expire_at
+         FROM api_keys WHERE user_id = $1 ORDER BY created_at ASC`,
+        [id],
+      ),
+      queryOne<{ credits: string }>(
+        "SELECT COALESCE(sum(credits),0)::text AS credits FROM api_keys WHERE user_id = $1",
+        [id],
+      ),
+      queryOne<{ total: string; complete: string; failed: string; credits: string; last: string | null }>(
+        `SELECT count(*)::text AS total,
+                count(*) FILTER (WHERE status = 'complete')::text AS complete,
+                count(*) FILTER (WHERE status <> 'complete')::text AS failed,
+                COALESCE(sum(credits_consumed),0)::text AS credits,
+                max(created_at) AS last
+         FROM usage_logs WHERE user_id = $1`,
+        [id],
+      ),
+      query<Record<string, unknown>>(
+        `SELECT id, amount, type, description, job_id, created_at
+         FROM credit_transactions WHERE user_id = $1
+         ORDER BY created_at DESC LIMIT 20`,
+        [id],
+      ),
+    ]);
+    return {
+      user,
+      credits: Number(creditsRow?.credits ?? 0),
+      keys,
+      usage: {
+        total: Number(usage?.total ?? 0),
+        complete: Number(usage?.complete ?? 0),
+        failed: Number(usage?.failed ?? 0),
+        credits_spent: Number(usage?.credits ?? 0),
+        last_activity: usage?.last ?? null,
+      },
+      transactions,
+    };
+  });
+
   app.patch("/admin/users/:id", async (req, reply) => {
     const admin = await requireAdmin(req, reply);
     if (!admin) return;
