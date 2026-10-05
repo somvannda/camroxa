@@ -73,7 +73,7 @@ systemctl enable --now "${TIMERS[@]}"
 log "Verifying the restart picked up the current build..."
 # `systemctl restart` returns before a Type=simple service is "active" (Next.js
 # has a short start-up), so poll briefly instead of failing on the first peek.
-for _ in $(seq 1 40); do
+for _ in $(seq 1 120); do
   all_active=1
   for svc in "${SERVICES[@]}"; do
     if [[ "$(systemctl is-active "${svc}" || true)" != "active" ]]; then
