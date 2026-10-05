@@ -380,8 +380,8 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
     single_attempt = "musicapi" in base.lower()
     if single_attempt and not _DASHED_UUID_RE.match(task_id):
         # musicapi job ids are dashed UUIDs. Legacy sunoapi.org-era ids (32-char
-        # hex, ~7.6k rows) can never be resolved, so skip instead of creating a
-        # recovery job that only fails `no_audio_id_mappings`.
+        # hex) can never be resolved, so skip instead of creating a recovery job
+        # that only fails `no_audio_id_mappings`.
         return {}
     callback = os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip().rstrip("/")
     callback_url = (
