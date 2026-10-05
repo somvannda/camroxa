@@ -1694,15 +1694,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   async function finalizeJob(job: Job): Promise<void> {
     // Durable delivery FIRST: copy finished media into B2 and rewrite the result
-    // to stable URLs. A terminal success now requires a real playable URL for
-    // audio jobs (see ensureDurableAudio); without storage configured the
-    // process degrades to live streaming, so the gate is skipped.
-    if (job.status === "complete" && storageConfigured()) {
-      // Gate the terminal state on durable media: while we decrypt + copy to B2,
-      // keep reporting the job as still-running so a poll never receives an empty
-      // audio_url; it flips to complete only once the B2 copy exists.
-      job.status = "running";
-      await ensureDurableAudio(job);
+    // to stable URLs. A terminal success always requires a real playable URL for
+    // audio jobs, so nothing can report success with an empty audio_url.
+    if (job.status === "complete") {
+      if (storageConfigured()) {
+        // Gate the terminal state on durable media: while we decrypt + copy to
+        // B2, keep reporting the job as still-running so a poll never receives
+        // an empty audio_url; it flips to complete only once the B2 copy exists.
+        job.status = "running";
+        await ensureDurableAudio(job);
+      } else if (AUDIO_CLIP_JOB_TYPES.has(job.type)) {
+        // No storage => we cannot produce a durable, playable URL. Fail
+        // (refundable) instead of a false success, matching sunoapi.org's
+        // "success means a playable URL" contract.
+        job.status = "error";
+        job.error = "media_storage_not_configured";
+        console.error(
+          `[storage] job ${job.id} (${job.type}) cannot complete: object storage is not configured.`,
+        );
+      }
     }
     if (job.status === "complete" || job.status === "error") job.completedAt ??= Date.now();
     await saveJob(job);
