@@ -1,20 +1,25 @@
-"""Claw back stacked Free *period* grants, keeping one month's allowance.
+"""Claw back stacked *period* grants, keeping one allowance.
 
 Companion to ``_clawback_stacked_daily_grant.py`` for the monthly-grant bug: a
-license-less Free account was minted a ``v3_period_grant`` every day, and each
-lot lived a full billing cycle, so grants stacked. This keeps the Free plan's
-``monthly_credits`` (one month's allowance) and claws back the rest, using the
+``v3_period_grant`` was minted every day (each lot lived a full billing cycle),
+so grants stacked. This keeps one allowance and claws back the rest, using the
 grant lots as the source of truth (top-ups / ``quota_conversion`` lots are left
 untouched).
+
+Two target classes:
+
+* **Free** (no active license or web subscription): keep the Free plan's
+  ``monthly_credits``.
+* **Paid web subscription** (active ``web_subscriptions``, no license): keep the
+  subscription's current-period allowance (``web_subscriptions.monthly_credits_granted``),
+  i.e. what the user actually paid for this period. A later plan edit only applies
+  from the next billing cycle, so it is not used here.
 
 Idempotent: after a run the grant lots total exactly the kept allowance, so a
 second run is a no-op.
 
 Dry-run by default. Pass ``--apply`` to write. Runs on the API host with the
-platform venv:
-
-    python /tmp/_clawback_stacked_period_grant.py            # dry run
-    python /tmp/_clawback_stacked_period_grant.py --apply    # write
+platform venv.
 """
 
 from __future__ import annotations
@@ -30,39 +35,48 @@ from platform_api.config import get_settings
 from platform_api.services.billing_calendar import billing_month_start, next_billing_month_start
 from platform_api.services.credit_units import CREDIT_SCALE, units_to_credits
 
-DEFAULT_KEEP_CREDITS = 50
+DEFAULT_FREE_KEEP_CREDITS = 50
 
-FREE_USERS_SQL = """
-SELECT u.id, u.email, w.balance,
-       COALESCE(SUM(lot.remaining_units), 0) AS grant_remaining
+# One row per account that can still be holding stacked period grants. Licenses
+# are excluded on purpose: their grant was always anchored to the license period.
+TARGETS_SQL = """
+SELECT u.id, u.email, w.balance, 'free' AS kind,
+       COALESCE((
+         SELECT monthly_credits FROM plans
+         WHERE lower(name) = 'free' AND is_active = true
+         ORDER BY updated_at DESC LIMIT 1
+       ), $1) AS keep_credits
 FROM users u
 JOIN credit_wallets w ON w.user_id = u.id
-LEFT JOIN credit_wallet_lots lot ON lot.user_id = u.id AND lot.tag = 'grant'
 WHERE NOT EXISTS (
         SELECT 1 FROM licenses l WHERE l.user_id = u.id AND l.status = 'active'
           AND (l.expires_at IS NULL OR l.expires_at > NOW()))
   AND NOT EXISTS (
         SELECT 1 FROM web_subscriptions ws WHERE ws.user_id = u.id AND ws.status = 'active'
           AND ws.current_period_end > NOW())
-GROUP BY u.id, u.email, w.balance
-HAVING COALESCE(SUM(lot.remaining_units), 0) > $1
-ORDER BY w.balance DESC
+  AND EXISTS (
+        SELECT 1 FROM credit_wallet_lots lot
+        WHERE lot.user_id = u.id AND lot.tag = 'grant' AND lot.remaining_units > 0)
+UNION ALL
+SELECT u.id, u.email, w.balance, 'web_sub' AS kind, ws.monthly_credits_granted AS keep_credits
+FROM users u
+JOIN web_subscriptions ws
+  ON ws.user_id = u.id AND ws.status = 'active' AND ws.current_period_end > NOW()
+JOIN credit_wallets w ON w.user_id = u.id
+WHERE NOT EXISTS (
+        SELECT 1 FROM licenses l WHERE l.user_id = u.id AND l.status = 'active'
+          AND (l.expires_at IS NULL OR l.expires_at > NOW()))
+  AND EXISTS (
+        SELECT 1 FROM credit_wallet_lots lot
+        WHERE lot.user_id = u.id AND lot.tag = 'grant' AND lot.remaining_units > 0)
 """
 
 
-async def _free_plan_keep_units(pool: asyncpg.Pool) -> int:
-    monthly = await pool.fetchval(
-        "SELECT monthly_credits FROM plans "
-        "WHERE lower(name) = 'free' AND is_active = true "
-        "ORDER BY updated_at DESC LIMIT 1"
-    )
-    keep_credits = int(monthly) if monthly is not None else DEFAULT_KEEP_CREDITS
+async def _reconcile_user(pool: asyncpg.Pool, row, apply: bool) -> bool:
+    keep_credits = int(row["keep_credits"] or 0)
     if keep_credits <= 0:
-        return 0
-    return keep_credits * CREDIT_SCALE
-
-
-async def _reconcile_user(pool: asyncpg.Pool, row, keep_units: int, apply: bool) -> bool:
+        return False
+    keep_units = keep_credits * CREDIT_SCALE
     uid = row["id"]
     async with pool.acquire() as conn:
         async with conn.transaction():
@@ -87,18 +101,20 @@ async def _reconcile_user(pool: asyncpg.Pool, row, keep_units: int, apply: bool)
                     uid,
                 )
             )
-            # Spend-adjusted grant still in the wallet, then keep one month of it.
-            grant_portion = max(0, balance - non_grant_remaining)
             excess = max(0, grant_remaining - keep_units)
+            if excess <= 0:
+                return False
+            # Spend-adjusted grant still in the wallet, then keep one allowance of it.
+            grant_portion = max(0, balance - non_grant_remaining)
             claw = min(excess, max(0, grant_portion - keep_units))
             month_start = billing_month_start()
             next_start = next_billing_month_start(from_date=month_start)
             if not apply:
                 print(
-                    f"DRY {row['email']} wallet={units_to_credits(balance)} "
+                    f"DRY [{row['kind']}] {row['email']} wallet={units_to_credits(balance)} "
                     f"grant_lots={units_to_credits(grant_remaining)} "
                     f"non_grant={units_to_credits(non_grant_remaining)} "
-                    f"claw={units_to_credits(claw)} "
+                    f"keep={keep_credits} claw={units_to_credits(claw)} "
                     f"new_wallet={units_to_credits(balance - claw)}"
                 )
                 return claw > 0
@@ -133,7 +149,8 @@ async def _reconcile_user(pool: asyncpg.Pool, row, keep_units: int, apply: bool)
                     json.dumps(
                         {
                             "source": "v3",
-                            "keep_credits": keep_units // CREDIT_SCALE,
+                            "kind": row["kind"],
+                            "keep_credits": keep_credits,
                             "stacked_period_grant": True,
                         }
                     ),
@@ -177,9 +194,8 @@ async def _reconcile_user(pool: asyncpg.Pool, row, keep_units: int, apply: bool)
                     month_start,
                 )
             print(
-                f"RECONCILED {row['email']} wallet={units_to_credits(balance)} -> "
-                f"{units_to_credits(new_balance)} (claw {units_to_credits(claw)}, "
-                f"keep {units_to_credits(keep_units)})"
+                f"RECONCILED [{row['kind']}] {row['email']} wallet={units_to_credits(balance)} -> "
+                f"{units_to_credits(new_balance)} (claw {units_to_credits(claw)}, keep {keep_credits})"
             )
             return True
 
@@ -193,16 +209,11 @@ async def main() -> None:
     dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
     pool = await asyncpg.create_pool(dsn, min_size=1, max_size=3)
     try:
-        keep_units = await _free_plan_keep_units(pool)
-        print(f"mode={'APPLY' if args.apply else 'DRY-RUN'} keep_credits={units_to_credits(keep_units)}")
-        if keep_units <= 0:
-            print("NO_FREE_MONTHLY_ALLOWANCE; nothing to do")
-            return
-        rows = await pool.fetch(FREE_USERS_SQL, keep_units)
-        print(f"affected_users {len(rows)}")
+        rows = await pool.fetch(TARGETS_SQL, DEFAULT_FREE_KEEP_CREDITS)
+        print(f"mode={'APPLY' if args.apply else 'DRY-RUN'} candidate_users={len(rows)}")
         changed = 0
         for row in rows:
-            if await _reconcile_user(pool, row, keep_units, args.apply):
+            if await _reconcile_user(pool, row, args.apply):
                 changed += 1
         print(f"CLAWBACK_DONE changed={changed} applied={args.apply}")
     finally:

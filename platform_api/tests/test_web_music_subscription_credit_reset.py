@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
@@ -130,3 +130,45 @@ async def test_get_user_subscription_survives_missing_plan_row() -> None:
     assert result is not None
     assert result["plan_name"] == "Pro"
     assert result["total_credits_available"] == 1377
+
+
+@pytest.mark.asyncio
+async def test_reset_quota_if_needed_monthly_adopts_current_plan_credits() -> None:
+    """A plan edit applies from the next billing cycle: the renewal adopts the
+    current plan allowance (and leaves the current period's credits untouched)."""
+    service = SubscriptionService.__new__(SubscriptionService)
+    service._db = AsyncMock()
+    service._log_monthly_credit_reset = AsyncMock()
+    service._sync_v3_period_grant = AsyncMock()
+    plan = MagicMock()
+    plan.monthly_credits = 2300
+    plan.billing_cycle_days = 30
+    service.get_plan_by_id = AsyncMock(return_value=plan)
+    now = datetime.now(timezone.utc)
+    subscription = Subscription(
+        id="sub-1",
+        user_id="user-1",
+        plan_id="plan-1",
+        status="active",
+        billing_cycle="monthly",
+        current_period_start=now - timedelta(days=30),
+        current_period_end=now - timedelta(hours=1),
+        cancel_at_period_end=False,
+        monthly_credits_granted=3500,
+        monthly_credits_used=3500,
+        topup_credits_balance=0,
+        external_subscription_id=None,
+        last_credit_reset=now - timedelta(days=30),
+    )
+
+    reset = await service.reset_quota_if_needed(subscription)
+
+    assert reset is True
+    sql, *args = service._db.execute.await_args.args
+    assert "monthly_credits_granted = $4" in " ".join(sql.split())
+    assert args[3] == 2300  # now follows the current plan value
+    service._log_monthly_credit_reset.assert_awaited_once_with(
+        user_id="user-1",
+        subscription_id="sub-1",
+        monthly_credits=2300,
+    )
