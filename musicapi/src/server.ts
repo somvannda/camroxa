@@ -6538,6 +6538,102 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return report;
   });
 
+  // --- admin: payments + credit ledger (Phase 4) --------------------------
+  // Read-only operator views over the money/ledger tables. Both paginate and
+  // filter server-side so the console never fetches the whole table.
+
+  /** Shared pagination parser: page >= 1, pageSize 1..100, default 25. */
+  function parsePage(q: { page?: string; pageSize?: string }): {
+    page: number;
+    pageSize: number;
+    offset: number;
+  } {
+    const page = Math.max(1, Math.floor(Number(q.page) || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(Number(q.pageSize) || 25)));
+    return { page, pageSize, offset: (page - 1) * pageSize };
+  }
+
+  app.get("/admin/payments", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      status?: string;
+      provider?: string;
+      email?: string;
+    };
+    const { page, pageSize, offset } = parsePage(q);
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.status) {
+      params.push(q.status);
+      filters.push(`pt.status = $${params.length}`);
+    }
+    if (q.provider) {
+      params.push(q.provider);
+      filters.push(`pt.provider = $${params.length}`);
+    }
+    if (q.email) {
+      params.push(`%${q.email.toLowerCase()}%`);
+      filters.push(`lower(u.email) LIKE $${params.length}`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM payment_transactions pt
+       JOIN users u ON u.id = pt.user_id ${where}`,
+      params,
+    );
+    const rows = await query<Record<string, unknown>>(
+      `SELECT pt.id, u.email, pt.provider, pt.credit_amount, pt.currency, pt.amount,
+              pt.payment_method, pt.status, pt.provider_payment_id, pt.gateway_payment_id,
+              pt.bill_number, pt.error_message, pt.paid_at, pt.expires_at, pt.created_at
+       FROM payment_transactions pt
+       JOIN users u ON u.id = pt.user_id
+       ${where}
+       ORDER BY pt.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
+    );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
+  });
+
+  app.get("/admin/transactions", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      type?: string;
+      email?: string;
+    };
+    const { page, pageSize, offset } = parsePage(q);
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.type) {
+      params.push(q.type);
+      filters.push(`ct.type = $${params.length}`);
+    }
+    if (q.email) {
+      params.push(`%${q.email.toLowerCase()}%`);
+      filters.push(`lower(u.email) LIKE $${params.length}`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM credit_transactions ct
+       JOIN users u ON u.id = ct.user_id ${where}`,
+      params,
+    );
+    const rows = await query<Record<string, unknown>>(
+      `SELECT ct.id, u.email, ct.amount, ct.type, ct.description, ct.job_id, ct.created_at
+       FROM credit_transactions ct
+       JOIN users u ON u.id = ct.user_id
+       ${where}
+       ORDER BY ct.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
+    );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
+  });
+
   // --- v1 API (DB-backed keys) --------------------------------------------
   app.get("/v1/credits", async (req, reply) => {
     const key = await requireKey(req, reply);

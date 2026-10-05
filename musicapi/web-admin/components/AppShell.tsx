@@ -16,6 +16,8 @@ const NAV = [
   { href: "/admin/audit", label: "Audit Trail" },
   { href: "/admin/pricing", label: "Pricing" },
   { href: "/admin/credit-packs", label: "Credit Packs" },
+  { href: "/admin/payments", label: "Payments" },
+  { href: "/admin/transactions", label: "Credit Ledger" },
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/content", label: "API Updates" },
   { href: "/admin/settings", label: "Settings" },
