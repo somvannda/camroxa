@@ -40,6 +40,10 @@ response and never polls a task, but musicapi answered with an async
 ## Technical impact
 
 - `musicapi/lrc-service/server.py`
+  - `condition_on_previous_text=False` + a wall-clock cap (`LRC_MAX_DECODE_S`,
+    default 300s) around the segment loop. Whisper fell into a repetition loop on
+    the Khmer catalogue and ran for many minutes without returning, holding the
+    model lock and the CPU; a bounded decode returns instead of running away.
   - **VAD is off by default** (`LRC_VAD` default `0`). Silero VAD is speech-tuned
     and dropped nearly all *sung* vocals — it transcribed only 7 words of a
     2-minute song, so `snap_to_lyrics` matched almost nothing and stamped every

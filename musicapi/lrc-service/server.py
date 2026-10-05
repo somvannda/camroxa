@@ -29,6 +29,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 import urllib.request
 from difflib import SequenceMatcher
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -39,6 +40,9 @@ MODEL_NAME = os.environ.get("LRC_MODEL", "small")
 DEVICE = os.environ.get("LRC_DEVICE", "cpu")
 COMPUTE_TYPE = os.environ.get("LRC_COMPUTE_TYPE", "int8")
 LANGUAGE = os.environ.get("LRC_LANGUAGE") or None
+# Hard cap on one transcription's wall clock, so a Whisper repetition loop cannot
+# hold the single model lock (and the CPU) indefinitely.
+MAX_DECODE_S = float(os.environ.get("LRC_MAX_DECODE_S", "300"))
 # Silero VAD is trained on speech and drops most *sung* vocals — it once left 7
 # words of a 2-minute song, collapsing every lyric line onto one timestamp. Off
 # for this service unless explicitly enabled.
@@ -234,9 +238,19 @@ def _run_transcribe(audio_path: str, lyrics: str, vad: bool) -> tuple[list[dict[
             language=LANGUAGE,
             initial_prompt=(lyrics or "")[:1000] or None,
             beam_size=5,
+            # Whisper can fall into a repetition loop (re-emitting the
+            # initial_prompt) on some inputs — Khmer sungs triggered multi-minute
+            # runs that never returned. Not conditioning on previous text is the
+            # standard mitigation.
+            condition_on_previous_text=False,
         )
         words: list[dict[str, Any]] = []
+        # Hard wall-clock cap: even with the guard above a pathological input
+        # must not hold the service (and the single model lock) forever.
+        deadline = time.monotonic() + MAX_DECODE_S
         for segment in segments:
+            if time.monotonic() > deadline:
+                break
             for word in segment.words or []:
                 text = (word.word or "").strip()
                 if not text:
