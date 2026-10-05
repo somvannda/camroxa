@@ -299,6 +299,9 @@ export function UserGeneratedSongs({ userId }: { userId: string }) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const blobUrlRef = useRef<string | null>(null);
   const queueRef = useRef<SelectedVersion[]>([]);
+  // The audio `ended` handler is registered once (empty deps), so it must read
+  // the live track id from a ref rather than a stale closure over `currentId`.
+  const currentIdRef = useRef<string | null>(null);
 
   const readyQueue = useMemo(() => {
     const next: SelectedVersion[] = [];
@@ -310,6 +313,7 @@ export function UserGeneratedSongs({ userId }: { userId: string }) {
     return next;
   }, [items]);
   queueRef.current = readyQueue;
+  currentIdRef.current = currentId;
 
   useEffect(() => {
     if (!activeWorkspaceId && defaultWorkspaceId) {
@@ -395,7 +399,7 @@ export function UserGeneratedSongs({ userId }: { userId: string }) {
   function playRelative(delta: number) {
     const queue = queueRef.current;
     if (!queue.length) return;
-    const index = queue.findIndex((item) => clipTrackId(item.song, item.clip) === currentId);
+    const index = queue.findIndex((item) => clipTrackId(item.song, item.clip) === currentIdRef.current);
     const nextIndex = index < 0 ? 0 : index + delta;
     if (nextIndex < 0 || nextIndex >= queue.length) return;
     const next = queue[nextIndex];
