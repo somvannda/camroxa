@@ -420,7 +420,9 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
   shared-DB migration mismatch: login, every page, pagination shapes, CSV export
   and the credit-adjustment + audit write path, with **zero console errors**. The
   merged `main` was then re-verified over authenticated HTTP (all admin endpoints
-  `200`). The live production site was audited read-only (login page only — no
+  `200`), 2FA and CSRF were exercised end-to-end at the API level, and a full
+  interactive browser audit then loaded all 16 admin pages with **zero console
+  errors**. The live production site was audited read-only (login page only — no
   credentials).
 
 ### Shipped (2026-10-05)
@@ -436,8 +438,6 @@ duplicate was removed and the boot re-verified.
 
 - Session revocation list (JWTs stay valid for 7 days; role/status are re-checked
   per request, so demotion/suspension take effect immediately).
-- A full interactive browser audit of the merged `main` (only HTTP-level checks
-  have run so far).
 
 ### Branch strategy note
 
