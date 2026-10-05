@@ -1,11 +1,13 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
-import { Input } from "@/components/ui/Field";
+import { Field, Input } from "@/components/ui/Field";
 import { num } from "@/lib/format";
 
 interface AdminKey {
@@ -27,31 +29,50 @@ interface KeyGroup {
   keys: AdminKey[];
 }
 
-export default function KeysPage() {
-  const [q, setQ] = useState("");
-  const { data, loading, error, reload } = useResource<AdminKey[]>(() =>
-    apiFetch<AdminKey[]>("/admin/keys"),
-  );
-  const keys = useMemo(() => data ?? [], [data]);
+interface KeyPage {
+  rows: AdminKey[];
+  total: number;
+  page: number;
+  page_size: number;
+}
 
-  const needle = q.trim().toLowerCase();
-  const filtered = useMemo(
-    () =>
-      keys.filter(
-        (k) =>
-          k.email.toLowerCase().includes(needle) ||
-          k.key_prefix.toLowerCase().includes(needle) ||
-          (k.name ?? "").toLowerCase().includes(needle),
-      ),
-    [keys, needle],
+const PAGE_SIZE = 50;
+
+function KeysInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const [qInput, setQInput] = useState(params.get("q") ?? "");
+  const [q, setQ] = useState(params.get("q") ?? "");
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
+
+  const { data, loading, error, reload } = useResource<KeyPage>(
+    () => {
+      const p = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (q) p.set("q", q);
+      return apiFetch<KeyPage>(`/admin/keys?${p.toString()}`);
+    },
+    [page, q],
   );
+
+  // Reflect the search in the URL so a view can be bookmarked/shared.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (page > 1) p.set("page", String(page));
+    const qs = p.toString();
+    router.replace(qs ? `/admin/keys?${qs}` : "/admin/keys", { scroll: false });
+  }, [q, page, router]);
+
+  const keys = useMemo(() => data?.rows ?? [], [data]);
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   // Group keys by owner so the account-level (pooled) balance is shown once per
   // user. The per-key balance is only where funds physically landed — a key
   // showing 0 can still spend the whole account balance.
   const groups = useMemo<KeyGroup[]>(() => {
     const byUser = new Map<string, KeyGroup>();
-    for (const k of filtered) {
+    for (const k of keys) {
       const existing = byUser.get(k.user_id);
       if (existing) {
         existing.keys.push(k);
@@ -65,32 +86,43 @@ export default function KeysPage() {
       }
     }
     return Array.from(byUser.values());
-  }, [filtered]);
+  }, [keys]);
+
+  function applySearch(e: React.FormEvent) {
+    e.preventDefault();
+    setPage(1);
+    setQ(qInput.trim());
+  }
 
   return (
     <div className="space-y-6">
       <PageHeader
         title="API Keys"
         description="Every key across all accounts. Credits are pooled per account — any key spends the owner's total."
-        actions={
-          <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by email, prefix or name…"
-            aria-label="Search API keys"
-            className="w-full sm:w-72"
-          />
-        }
       />
+
+      <form onSubmit={applySearch} className="flex flex-wrap items-end gap-2">
+        <Field label="Search" htmlFor="key-q" className="w-full sm:w-72">
+          <Input
+            id="key-q"
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
+            placeholder="email, prefix or name…"
+          />
+        </Field>
+        <Button type="submit" variant="secondary">
+          Search
+        </Button>
+      </form>
 
       {error && <ErrorState message={error} onRetry={reload} />}
 
       {loading ? (
         <LoadingState />
-      ) : filtered.length === 0 ? (
+      ) : keys.length === 0 ? (
         <EmptyState
           title="No keys found."
-          description={keys.length ? "No rows match your search." : undefined}
+          description={total ? "No rows match your search." : undefined}
         />
       ) : (
         <div className="glass overflow-x-auto rounded-xl">
@@ -143,6 +175,41 @@ export default function KeysPage() {
           </table>
         </div>
       )}
+
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-[var(--muted)]">
+          <span>{num(total)} total</span>
+          <span className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {page} / {pages}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            >
+              Next
+            </Button>
+          </span>
+        </div>
+      )}
     </div>
+  );
+}
+
+export default function KeysPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <KeysInner />
+    </Suspense>
   );
 }

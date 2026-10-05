@@ -5508,13 +5508,35 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // pooled across every active key a user owns (see `charge`/`chargeUserKey`).
     // Return both so the admin console can group by owner and show the true
     // account-level balance instead of reading 0-balance keys as empty wallets.
-    return query<Record<string, unknown>>(
+    const q = (req.query ?? {}) as { page?: string; pageSize?: string; q?: string };
+    const page = Math.max(1, Math.floor(Number(q.page) || 1));
+    const pageSize = Math.min(200, Math.max(1, Math.floor(Number(q.pageSize) || 50)));
+    const offset = (page - 1) * pageSize;
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.q) {
+      params.push(`%${q.q.toLowerCase()}%`);
+      const n = params.length;
+      filters.push(
+        `(lower(u.email) LIKE $${n} OR lower(k.key_prefix) LIKE $${n} OR lower(k.name) LIKE $${n})`,
+      );
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM api_keys k JOIN users u ON u.id = k.user_id ${where}`,
+      params,
+    );
+    const rows = await query<Record<string, unknown>>(
       `SELECT k.id, k.name, k.key_prefix, k.credits, k.is_active, u.id AS user_id, u.email,
               (SELECT COALESCE(sum(k2.credits), 0) FROM api_keys k2 WHERE k2.user_id = k.user_id) AS account_credits,
               (SELECT count(*) FROM api_keys k2 WHERE k2.user_id = k.user_id) AS key_count
        FROM api_keys k JOIN users u ON u.id = k.user_id
-       ORDER BY u.email, k.created_at DESC`,
+       ${where}
+       ORDER BY u.email, k.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
     );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
   });
 
   app.get("/admin/accounts", async (req, reply) => {
