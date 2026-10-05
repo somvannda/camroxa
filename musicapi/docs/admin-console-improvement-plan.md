@@ -399,25 +399,26 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
   `Input`/`Select`/`Textarea`, `Feedback`, `Modal`, `ConfirmDialog`, `Toast`),
   `useResource`, `format.ts`, responsive `AppShell`; every page migrated
   (Analytics keeps its bespoke charts by design).
-- **Phase 2 (partial)** — `window.prompt`/`window.confirm` replaced by dialogs;
-  toasts everywhere.
+- **Phase 2** — `window.prompt`/`window.confirm` replaced by dialogs; toasts
+  everywhere; URL-state persistence for every list page (payments, ledger, logs,
+  audit, users, keys, jobs); login label/input association.
 - **Phase 3** — server-side pagination + filters for logs, audit, users and API
-  keys; migration `0029` indexes.
+  keys; migration `0029` indexes; CSV export for payments, ledger and users;
+  manual ChmabaPay refund.
 - **Phase 4** — Payments, Credit Ledger, Jobs, System Health, User detail, Admin
   RBAC.
 - **Phase 5 (partial)** — dashboard alerts; analytics top-failure breakdown.
-- **Phase 6 (partial)** — baseline security headers + production CSP.
+- **Phase 6 (partial)** — baseline security headers + production CSP + HSTS;
+  `robots.txt` disallow.
+- **Verification** — local end-to-end run passed (2026-10-05) against a separate
+  scratch DB (`sunoapi_admin_dev`, all 28 migrations applied), which sidesteps the
+  shared-DB migration mismatch: login, every page, pagination shapes, CSV export
+  and the credit-adjustment + audit write path, with **zero console errors**. The
+  live production site was audited read-only (login page only — no credentials).
 
 ### Not done
 
-- URL-state persistence for filters.
-- Admin 2FA; CSRF token; automated tests + CI wiring.
-- Local end-to-end run — **done** (2026-10-05) against a separate scratch DB
-  (`sunoapi_admin_dev`, all 28 migrations applied), which sidesteps the shared-DB
-  migration mismatch: login, every page, server-side pagination shapes, CSV
-  export, and the credit-adjustment + audit write path all passed with **zero
-  console errors**. The live production site was audited read-only (login page
-  only — no credentials).
+- Admin 2FA; CSRF tokenization; automated tests + CI wiring.
 
 ### Branch strategy note
 
