@@ -7,7 +7,7 @@ need_root() { if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then log "Run as root (or via 
 need_root
 
 : "${GIT_REPO:?GIT_REPO required}"
-: "${GIT_BRANCH:=cursor/channel-pricing-and-plan-tiers}"
+: "${GIT_BRANCH:=main}"
 : "${ADMIN_EMAIL:?ADMIN_EMAIL required}"
 : "${CERTBOT_EMAIL:=${ADMIN_EMAIL}}"
 
@@ -100,7 +100,11 @@ fi
 
 if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   log "Extracting uploaded source tarball..."
-  rm -rf "${REPO_DIR}"
+  if [[ -d "${REPO_DIR}" ]]; then
+    REPO_BACKUP="${DEPLOY_ROOT}/repo.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    log "Backing up previous checkout to ${REPO_BACKUP}..."
+    mv "${REPO_DIR}" "${REPO_BACKUP}"
+  fi
   mkdir -p "${REPO_DIR}"
   tar -xzf /tmp/camxora-src.tar.gz -C "${REPO_DIR}"
   chown -R camxora:camxora "${REPO_DIR}"
