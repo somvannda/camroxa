@@ -1640,22 +1640,69 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   // --- background workers --------------------------------------------------
-  async function finalizeJob(job: Job): Promise<void> {
-    // Durable delivery FIRST: copy finished media into B2 and rewrite the result
-    // to stable URLs, so a job only becomes "complete" once playable audio is
-    // actually available. Best-effort: a storage failure must not lose the job
-    // (the response then exposes an empty audio_url rather than an unplayable one).
-    if (job.status === "complete" && storageConfigured()) {
-      // Gate the terminal state on durable media: while we decrypt + copy to B2,
-      // keep reporting the job as still-running so a poll never receives an empty
-      // audio_url; it flips to "complete" only once the B2 copy exists.
-      job.status = "running";
+  // Job types whose result must carry a playable, durable audio URL on success.
+  // Matching sunoapi.org's contract here is what lets clients treat musicapi as
+  // a drop-in: no fabricated URLs, no recovery loop.
+  const AUDIO_CLIP_JOB_TYPES = new Set<string>([
+    "music",
+    "extend",
+    "cover",
+    "remaster",
+    "mashup",
+    "add_vocals",
+    "add_instrumental",
+    "replace_section",
+    "upload_extend",
+    "upload_cover",
+  ]);
+
+  /**
+   * Copy a completed job's clips into durable storage, and for audio jobs never
+   * report `complete` with an empty audio_url. Best-effort ingest is retried a
+   * couple of times, then the job fails with a refundable error instead of a
+   * false success that clients would chase with recovery.
+   */
+  async function ensureDurableAudio(job: Job): Promise<void> {
+    let clips: Array<Record<string, unknown>> = [];
+    for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         await ingestMedia(job);
       } catch (e) {
         console.error("[storage] ingest failed:", e instanceof Error ? e.message : e);
       }
+      clips = [];
+      collectClipObjects(job.result, clips);
+      if (clips.length === 0) break;
+      if (clips.every((c) => typeof c.audio_storage_key === "string")) break;
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 1500 * attempt));
+    }
+    if (!AUDIO_CLIP_JOB_TYPES.has(job.type)) {
       job.status = "complete";
+      return;
+    }
+    const missing = clips.filter((c) => typeof c.audio_storage_key !== "string");
+    if (missing.length > 0) {
+      job.status = "error";
+      job.error = "audio_ingest_failed";
+      console.error(
+        `[storage] job ${job.id} (${job.type}) produced no durable audio for ${missing.length} clip(s); failing instead of reporting empty success.`,
+      );
+      return;
+    }
+    job.status = "complete";
+  }
+
+  async function finalizeJob(job: Job): Promise<void> {
+    // Durable delivery FIRST: copy finished media into B2 and rewrite the result
+    // to stable URLs. A terminal success now requires a real playable URL for
+    // audio jobs (see ensureDurableAudio); without storage configured the
+    // process degrades to live streaming, so the gate is skipped.
+    if (job.status === "complete" && storageConfigured()) {
+      // Gate the terminal state on durable media: while we decrypt + copy to B2,
+      // keep reporting the job as still-running so a poll never receives an empty
+      // audio_url; it flips to complete only once the B2 copy exists.
+      job.status = "running";
+      await ensureDurableAudio(job);
     }
     if (job.status === "complete" || job.status === "error") job.completedAt ??= Date.now();
     await saveJob(job);
