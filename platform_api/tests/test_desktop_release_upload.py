@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import io
+import os
+import time
 import zipfile
 from pathlib import Path
 
@@ -78,6 +80,11 @@ def test_list_installers_returns_newest_first(tmp_path: Path) -> None:
     )
     service.store_installer(b"one", original_filename="Camxora.zip", version="1.0.0")
     service.store_installer(b"two", original_filename="Camxora.zip", version="2.0.0")
+    # NTFS can assign both files the same mtime; make the intended order explicit
+    # so this asserts newest-first rather than filesystem timestamp resolution.
+    base = time.time()
+    os.utime(tmp_path / "Camxora-1.0.0.zip", (base, base))
+    os.utime(tmp_path / "Camxora-2.0.0.zip", (base + 5, base + 5))
     records = service.list_installers()
     assert len(records) == 2
     assert records[0].filename == "Camxora-2.0.0.zip"
