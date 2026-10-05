@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
-import { Field, Input } from "@/components/ui/Field";
+import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
 import { num } from "@/lib/format";
@@ -24,21 +24,43 @@ interface User {
   request_count: number;
 }
 
+interface UserPage {
+  rows: User[];
+  total: number;
+  page: number;
+  page_size: number;
+}
+
+const PAGE_SIZE = 25;
+
 export default function UsersPage() {
   const toast = useToast();
-  const { data, loading, error, reload } = useResource<User[]>(() =>
-    apiFetch<User[]>("/admin/users"),
-  );
-  const users = data ?? [];
 
+  const [qInput, setQInput] = useState("");
   const [q, setQ] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [page, setPage] = useState(1);
 
-  // Credit adjustment dialog (replaces window.prompt).
+  const { data, loading, error, reload } = useResource<UserPage>(
+    () => {
+      const p = new URLSearchParams({ page: String(page), pageSize: String(PAGE_SIZE) });
+      if (q) p.set("q", q);
+      if (statusFilter) p.set("status", statusFilter);
+      return apiFetch<UserPage>(`/admin/users?${p.toString()}`);
+    },
+    [page, q, statusFilter],
+  );
+
+  const users = data?.rows ?? [];
+  const total = data?.total ?? 0;
+  const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  // Credit adjustment dialog.
   const [creditsFor, setCreditsFor] = useState<User | null>(null);
   const [creditAmount, setCreditAmount] = useState("");
   const [savingCredits, setSavingCredits] = useState(false);
 
-  // Suspend confirmation (replaces the bare status toggle).
+  // Suspend confirmation.
   const [pendingBan, setPendingBan] = useState<User | null>(null);
 
   // Rate-limit editor.
@@ -153,32 +175,52 @@ export default function UsersPage() {
     }
   }
 
-  const filtered = users.filter((u) => u.email.toLowerCase().includes(q.toLowerCase()));
+  function applySearch(e: React.FormEvent) {
+    e.preventDefault();
+    setPage(1);
+    setQ(qInput.trim());
+  }
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Users"
-        description="Manage credits and account status"
-        actions={
+      <PageHeader title="Users" description="Manage credits and account status" />
+
+      <form onSubmit={applySearch} className="flex flex-wrap items-end gap-2">
+        <Field label="Search" htmlFor="user-q" className="w-full sm:w-72">
           <Input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search by email…"
-            aria-label="Search users"
-            className="w-full sm:w-72"
+            id="user-q"
+            value={qInput}
+            onChange={(e) => setQInput(e.target.value)}
+            placeholder="email or name…"
           />
-        }
-      />
+        </Field>
+        <Field label="Status" htmlFor="user-status">
+          <Select
+            id="user-status"
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
+          >
+            <option value="">All</option>
+            <option value="active">active</option>
+            <option value="suspended">suspended</option>
+          </Select>
+        </Field>
+        <Button type="submit" variant="secondary">
+          Search
+        </Button>
+      </form>
 
       {error && <ErrorState message={error} onRetry={reload} />}
 
       {loading ? (
         <LoadingState />
-      ) : filtered.length === 0 ? (
+      ) : users.length === 0 ? (
         <EmptyState
           title="No users found."
-          description={users.length ? "No rows match your search." : undefined}
+          description={total ? "No rows match your filters." : undefined}
         />
       ) : (
         <div className="glass overflow-x-auto rounded-xl">
@@ -194,7 +236,7 @@ export default function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((u) => (
+              {users.map((u) => (
                 <tr key={u.id} className="border-t border-[var(--border)]">
                   <td className="px-4 py-3">
                     <div className="font-medium">{u.email}</div>
@@ -228,6 +270,33 @@ export default function UsersPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-[var(--muted)]">
+          <span>{num(total)} total</span>
+          <span className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page <= 1}
+              onClick={() => setPage((p) => Math.max(1, p - 1))}
+            >
+              Previous
+            </Button>
+            <span>
+              Page {page} / {pages}
+            </span>
+            <Button
+              size="sm"
+              variant="secondary"
+              disabled={page >= pages}
+              onClick={() => setPage((p) => Math.min(pages, p + 1))}
+            >
+              Next
+            </Button>
+          </span>
         </div>
       )}
 

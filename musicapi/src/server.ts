@@ -5897,15 +5897,52 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   });
 
+  // Admin user list. Server-side pagination + search/status/role filters so the
+  // console never pulls every account (previously an unbounded SELECT).
   app.get("/admin/users", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
-    return query<Record<string, unknown>>(
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      q?: string;
+      status?: string;
+      role?: string;
+    };
+    const page = Math.max(1, Math.floor(Number(q.page) || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(Number(q.pageSize) || 25)));
+    const offset = (page - 1) * pageSize;
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.q) {
+      params.push(`%${q.q.toLowerCase()}%`);
+      filters.push(
+        `(lower(u.email) LIKE $${params.length} OR lower(COALESCE(u.name, '')) LIKE $${params.length})`,
+      );
+    }
+    if (q.status) {
+      params.push(q.status);
+      filters.push(`u.status = $${params.length}`);
+    }
+    if (q.role) {
+      params.push(q.role);
+      filters.push(`u.role = $${params.length}`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM users u ${where}`,
+      params,
+    );
+    const rows = await query<Record<string, unknown>>(
       `SELECT u.id, u.email, u.name, u.role, u.status, u.created_at,
               (SELECT COALESCE(sum(k.credits),0) FROM api_keys k WHERE k.user_id = u.id) AS credits,
               (SELECT count(*) FROM api_keys k WHERE k.user_id = u.id) AS key_count,
               (SELECT count(*) FROM usage_logs l WHERE l.user_id = u.id) AS request_count
-       FROM users u ORDER BY u.created_at DESC`,
+       FROM users u ${where}
+       ORDER BY u.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
     );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
   });
 
   app.patch("/admin/users/:id", async (req, reply) => {
