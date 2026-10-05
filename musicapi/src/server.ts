@@ -3,14 +3,17 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
-import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
-import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE_ADMIN, serializeSessionCookie, serializeClearedSessionCookie, readSessionCookie } from "./appAuth.js";
+import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE_ADMIN, serializeSessionCookie, serializeClearedSessionCookie, readSessionCookie, readCookie } from "./appAuth.js";
+
+/** Readable (non-httpOnly) admin CSRF cookie, double-submitted in `x-csrf-token`. */
+const SESSION_COOKIE_ADMIN_CSRF = "sunosession_admin_csrf";
 import { OAuth2Client } from "google-auth-library";
 import { config, isProduction } from "./config.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
@@ -1168,6 +1171,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!row || row.role !== "admin" || row.status !== "active") {
       reply.code(403).send({ error: "Admin only." });
       return null;
+    }
+    // CSRF defense-in-depth: a cookie-authenticated unsafe method must echo the
+    // readable admin CSRF cookie in `x-csrf-token` (SameSite=Lax + the Origin
+    // allowlist remain the primary guard).
+    if (!["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+      const header = req.headers["x-csrf-token"];
+      const csrf = readCookie(req.headers.cookie, SESSION_COOKIE_ADMIN_CSRF);
+      if (!csrf || header !== csrf) {
+        reply.code(403).send({ error: "CSRF token missing or invalid." });
+        return null;
+      }
     }
     return { id: user.id, email: user.email, role: "admin" };
   }
@@ -3222,7 +3236,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // Also set the httpOnly session cookie so browser clients never have to
     // store the JWT where scripts can read it. Admin uses a distinct cookie name
     // so it never collides with the user app's session on localhost.
-    reply.header("set-cookie", serializeSessionCookie(token, config.sessionCookieSecure, SESSION_COOKIE_ADMIN));
+    // A readable CSRF cookie accompanies the httpOnly session cookie; the browser
+    // echoes it in `x-csrf-token` for admin mutations.
+    const csrf = randomBytes(32).toString("hex");
+    const csrfCookie = [
+      `${SESSION_COOKIE_ADMIN_CSRF}=${csrf}`,
+      "Path=/",
+      "SameSite=Lax",
+      `Max-Age=${7 * 24 * 60 * 60}`,
+      ...(config.sessionCookieSecure ? ["Secure"] : []),
+    ].join("; ");
+    reply.header("set-cookie", [
+      serializeSessionCookie(token, config.sessionCookieSecure, SESSION_COOKIE_ADMIN),
+      csrfCookie,
+    ]);
     return {
       token,
       user: { id: user.id, email: user.email, role: user.role, name: user.name },
