@@ -125,8 +125,9 @@ def test_ip_allowlist_accepts_callbacks_despite_invalid_signature(
     get_settings.cache_clear()
     body = b'{"task_id":"x","status":"SUCCESS"}'
     try:
+        # Unsigned callbacks are authorized by the provider-IP allowlist only.
         assert _validate_callback_request("1.2.3.4", body, signature=None) is True
-        assert _validate_callback_request("9.9.9.9", body, signature=None) is True
+        assert _validate_callback_request("9.9.9.9", body, signature=None) is False
         assert _validate_callback_request("1.2.3.4", body, signature="deadbeef") is True
         assert _validate_callback_request("9.9.9.9", body, signature="deadbeef") is False
     finally:
@@ -145,12 +146,14 @@ def test_hmac_accepts_valid_signature(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_callback_accepts_unsigned_suno_provider(
+async def test_callback_rejects_unsigned_provider_without_allowlist(
     hmac_client: AsyncClient,
     ids: dict[str, str],
     mock_batch_service: AsyncMock,
     mock_task_repo: AsyncMock,
 ) -> None:
+    # With a secret configured and no provider-IP allowlist, an unsigned
+    # callback is unauthenticated and must be rejected.
     response = await hmac_client.post(
         "/api/v1/callbacks/suno",
         json={
@@ -159,9 +162,9 @@ async def test_callback_accepts_unsigned_suno_provider(
             "audio_url_ok": "https://cdn.example.com/ok.mp3",
         },
     )
-    assert response.status_code == 200
-    mock_task_repo.update_status.assert_awaited()
-    mock_batch_service.handle_suno_task_update.assert_awaited_once()
+    assert response.status_code == 403
+    mock_task_repo.update_status.assert_not_awaited()
+    mock_batch_service.handle_suno_task_update.assert_not_awaited()
 
 
 @pytest.mark.asyncio

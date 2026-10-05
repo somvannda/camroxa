@@ -304,9 +304,10 @@ def _validate_callback_request(
 
     Security rules:
     - When a signature header is present, it must validate against the configured
-      HMAC secret (fail closed on invalid/forged signatures).
-    - Suno provider callbacks typically omit signatures; those are accepted.
-    - Optional IP allowlist can additionally authorize callbacks behind nginx.
+      HMAC secret (fail closed on invalid/forged signatures). The provider IP
+      allowlist remains a fallback for the non-HMAC headers Suno sometimes sends.
+    - Suno provider callbacks typically omit signatures. Those are accepted only
+      from an address in the configured allowlist — never from an arbitrary IP.
     - Open accept (no HMAC, no IP) only when ``debug=true``.
     """
     settings = get_settings()
@@ -314,10 +315,17 @@ def _validate_callback_request(
     allowed_ips = _configured_allowed_ips()
     provided_sig = str(signature or "").strip()
 
-    if provided_sig and hmac_secret:
+    if provided_sig:
+        if not hmac_secret:
+            logger.warning(
+                "Suno callback rejected: signature provided but HMAC secret is not configured. IP=%s",
+                client_ip,
+            )
+            return False
         if _validate_hmac_signature(body, provided_sig, hmac_secret):
             return True
-        # Suno provider IPs may send non-HMAC headers; trust the IP allowlist when configured.
+        # Suno provider IPs may send non-HMAC headers; the IP allowlist is the
+        # only alternative, and only for a configured provider address.
         if allowed_ips and client_ip and client_ip in allowed_ips:
             logger.info(
                 "Suno callback accepted via IP allowlist despite invalid signature. IP=%s",
@@ -330,22 +338,10 @@ def _validate_callback_request(
         )
         return False
 
-    if provided_sig and not hmac_secret:
-        logger.warning(
-            "Suno callback rejected: signature provided but HMAC secret is not configured. IP=%s",
-            client_ip,
-        )
-        return False
-
+    # No signature: Suno's provider webhooks do not sign, so authorization rests
+    # on the configured provider-IP allowlist. An unsigned callback from any
+    # other address is rejected — otherwise anyone could forge status/refunds.
     if allowed_ips and client_ip and client_ip in allowed_ips:
-        return True
-
-    # Suno provider webhooks do not sign payloads; accept unsigned callbacks.
-    if hmac_secret and not provided_sig:
-        logger.info(
-            "Suno callback accepted without signature (provider does not sign). IP=%s",
-            client_ip,
-        )
         return True
 
     if settings.debug and not allowed_ips and not hmac_secret:
@@ -355,6 +351,10 @@ def _validate_callback_request(
         )
         return True
 
+    logger.warning(
+        "Suno callback rejected: unsigned request from a non-allowlisted IP. IP=%s",
+        client_ip,
+    )
     return False
 
 
