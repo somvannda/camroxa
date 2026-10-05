@@ -61,6 +61,9 @@ class FakeGrant:
         self.calls += 1
         return {"granted": False, "reason": "already_granted"}
 
+    async def ensure_period_grant(self, user_id: UUID) -> dict:
+        return {"granted": False, "reason": "already_granted"}
+
 
 class FakeStore:
     def __init__(self, plan: dict | None = None) -> None:
