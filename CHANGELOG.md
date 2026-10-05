@@ -7,6 +7,18 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.4.6] - 2026-10-05
+
+### Added
+
+- Music Generate no longer dead-ends on a day/channel-pair slot that already exists: when a batch is already planned for the requested date and Primary ↔ Secondary pair, the app names that slot, reveals it in History, and offers a one-click "Regenerate anyway" that creates a fresh batch without deleting the completed one.
+
+### Fixed
+
+- Music generate no longer fails silently: a bad merge had reverted the batch-create result handling, so clicking Generate showed "Creating 1 batch run…" and then nothing (no success toast, progress polling, or refresh) even though the batch was often created server-side. The client now reports created/already-existed counts, surfaces exact per-slot errors, and always shows an error instead of doing nothing.
+- History date filtering no longer hides the batch that is blocking Generate: the conflicting slot is revealed automatically.
+- This build also includes the desktop-hardening fixes from PR #303 (non-blocking startup/network work, secure-store quarantine, WebSocket token header auth, surfaced previously-silent failures, design-system fonts, and pool teardown).
+
 ## [1.4.5] - 2026-10-05
 
 ### Fixed

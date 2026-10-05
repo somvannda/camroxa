@@ -78,6 +78,8 @@ class CreateBatchesResult:
     created: list[BatchCreateResponse] = field(default_factory=list)
     skipped: int = 0
     failed: list[tuple[BatchCreateRequest, str]] = field(default_factory=list)
+    # Requests whose day/pair slot already existed (skipped unless include_existing).
+    skipped_requests: list[BatchCreateRequest] = field(default_factory=list)
 
     @property
     def created_count(self) -> int:
@@ -100,11 +102,28 @@ def create_planned_batches(
     attempts: int = 3,
     retry_delay_sec: float = 1.5,
     sleep: Callable[[float], None] | None = None,
+    include_existing: bool = False,
 ) -> CreateBatchesResult:
-    """Create only missing day/pair slots. Continue after a failure; retry leftovers."""
+    """Create missing day/pair slots (or all, when ``include_existing``).
+
+    Default behavior skips a slot whose planned date + channel pair already
+    exists so retried multi-day runs stay idempotent. ``include_existing=True``
+    is the explicit "regenerate anyway" path: it creates every request even when
+    a batch already exists for that slot. Continue after a failure; retry leftovers.
+    """
     planned = [request for request in requests if isinstance(request, BatchCreateRequest)]
-    pending = missing_create_requests(planned, existing_batches)
-    result = CreateBatchesResult(planned=len(planned), skipped=len(planned) - len(pending))
+    if include_existing:
+        pending = list(planned)
+        skipped_requests: list[BatchCreateRequest] = []
+    else:
+        pending = missing_create_requests(planned, existing_batches)
+        pending_ids = {id(request) for request in pending}
+        skipped_requests = [request for request in planned if id(request) not in pending_ids]
+    result = CreateBatchesResult(
+        planned=len(planned),
+        skipped=len(skipped_requests),
+        skipped_requests=skipped_requests,
+    )
     if not pending:
         return result
 

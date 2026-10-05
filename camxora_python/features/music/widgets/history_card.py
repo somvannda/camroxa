@@ -343,6 +343,28 @@ class HistoryCard(StudioPanel):
         self._update_filter_hint()
         self.filters_changed.emit()
 
+    def reveal_date(self, run_date: str) -> None:
+        """Point the date filter at one planned run date so its batch is visible.
+
+        Used when Generate is skipped because a batch already exists for a
+        day/pair slot: the blocking batch would otherwise stay hidden behind the
+        default today-only date filter.
+        """
+        text = str(run_date or "").strip()[:10]
+        qdate = QDate.fromString(text, "yyyy-MM-dd")
+        if not qdate.isValid():
+            return
+        self._date_filter_active = True
+        self._last_batch.setChecked(False)
+        self._from_date.blockSignals(True)
+        self._to_date.blockSignals(True)
+        self._from_date.setDate(qdate)
+        self._to_date.setDate(qdate)
+        self._from_date.blockSignals(False)
+        self._to_date.blockSignals(False)
+        self._update_filter_hint()
+        self.filters_changed.emit()
+
     def _empty_table_message(self) -> str:
         if not self._date_filter_active:
             return EMPTY_MESSAGE

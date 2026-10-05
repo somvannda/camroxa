@@ -258,6 +258,7 @@ class MusicView(QWidget):
         self._primary_card.toggled.connect(lambda profile_id: self._toggle_profile("primary", profile_id))
         self._secondary_card.toggled.connect(lambda profile_id: self._toggle_profile("secondary", profile_id))
         self._automation_card.generate_requested.connect(self._create_batches)
+        self._automation_card.regenerate_requested.connect(self._regenerate_anyway)
         self._automation_card.automation_changed.connect(self._on_automation_changed)
         self._automation_card.description_changed.connect(self._on_description_changed)
         self._automation_card.structure_changed.connect(self._on_structure_changed)
@@ -2032,7 +2033,8 @@ class MusicView(QWidget):
     def _finish_preflight_worker(self) -> None:
         self._preflight_worker = None
 
-    def _create_batches(self) -> None:
+    def _create_batches(self, *, force: bool = False) -> None:
+        self._automation_card.set_regenerate_visible(False)
         if self._generation_preflight is not None and not self._generation_preflight.can_generate:
             reason = self._generation_preflight.reason or "Generation is not available for the current plan."
             self._show_workspace_error(reason)
@@ -2097,6 +2099,7 @@ class MusicView(QWidget):
             self._api,
             requests,
             parent=self,
+            include_existing=force,
         )
         worker.succeeded.connect(self._on_batches_created)
         worker.failed.connect(self._on_batch_create_failed)
@@ -2114,6 +2117,33 @@ class MusicView(QWidget):
         self._batch_worker = None
         self._automation_card.set_generating(False)
 
+    def _regenerate_anyway(self) -> None:
+        """Force-create the current day/pair slot even though a batch exists."""
+        log_info("Regenerating existing music batch slot(s)…", category="music")
+        self._create_batches(force=True)
+
+    def _profile_name(self, profile_id: str) -> str:
+        key = str(profile_id or "").strip()
+        for profile in self._profiles:
+            if profile.id == key:
+                return str(profile.name or key[:8])
+        return key[:8] or "channel"
+
+    def _format_skipped_slots(self, requests: list[object]) -> tuple[str, str]:
+        """Return (label, first_run_date) for already-existing day/pair slots."""
+        labels: list[str] = []
+        first_date = ""
+        for request in requests:
+            run_date = str(
+                getattr(request, "from_date", "") or getattr(request, "to_date", "")
+            ).strip()[:10]
+            if run_date and not first_date:
+                first_date = run_date
+            ok_name = self._profile_name(str(getattr(request, "ok_profile_id", "")))
+            alt_name = self._profile_name(str(getattr(request, "alt_profile_id", "")))
+            labels.append(f"{run_date or 'unknown date'} · {ok_name} ↔ {alt_name}")
+        return "; ".join(labels), first_date
+
     def _on_batches_created(self, payload: object) -> None:
         result: CreateBatchesResult | None = None
         created: list[object] = []
@@ -2130,15 +2160,28 @@ class MusicView(QWidget):
             last = created[-1]
             self._latest_batch_id = getattr(last, "batch_id", "") or self._latest_batch_id
         summary = format_create_batches_summary(result)
+        # A day/pair slot that already exists must not dead-end: name it, reveal
+        # it in History, and offer a one-click "Regenerate anyway".
+        skipped_only = bool(result.skipped_requests) and not created
+        if result.skipped_requests:
+            skipped_label, first_date = self._format_skipped_slots(result.skipped_requests)
+            noun = "batch" if len(result.skipped_requests) == 1 else "batches"
+            skip_line = f"{len(result.skipped_requests)} {noun} already exist: {skipped_label}."
+            summary = f"{summary} {skip_line}" if created else skip_line
+            if first_date:
+                self._history_card.reveal_date(first_date)
+            if skipped_only:
+                summary += " Showing it in History — use 'Regenerate anyway' to create a new batch."
         if result.failed:
             failed_slots = format_failed_create_slots(result.failed)
-            summary = f"{summary} Click Generate again to fill: {failed_slots}"
+            summary = f"{summary} Still missing: {failed_slots}"
+        self._automation_card.set_regenerate_visible(skipped_only)
         self._latest_batch_summary = summary
         self._last_batch_status_key = None
         log_info(summary, category="music")
         if result.failed and not created:
             self._show_workspace_error(summary)
-        elif result.failed:
+        elif result.failed or skipped_only:
             self._flash_status(summary, tone="warning", duration_ms=10000)
         else:
             self._error_banner.hide()

@@ -415,3 +415,69 @@ def test_create_batches_worker_reports_exact_error(qapp: QApplication) -> None:
 
     assert failed
     assert "Structure id is required." in failed[0]
+
+
+def test_batches_created_skipped_slot_names_pair_and_offers_regenerate(
+    qapp: QApplication, monkeypatch
+) -> None:
+    """A skipped day/pair is named, revealed in History, and offers regenerate."""
+    from shared.lib.music_batch_plan import CreateBatchesResult
+    from shared.models.platform import BatchCreateRequest
+
+    view = MusicView(PlatformApi())
+    view._on_loaded(_payload())
+    monkeypatch.setattr(view, "refresh_history", lambda: None)
+    monkeypatch.setattr(view, "refresh_data", lambda: None)
+    flashes: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        view,
+        "_flash_status",
+        lambda message, **kwargs: flashes.append((message, kwargs.get("tone", ""))),
+    )
+    revealed: list[str] = []
+    monkeypatch.setattr(
+        view._history_card, "reveal_date", lambda run_date: revealed.append(run_date)
+    )
+
+    request = BatchCreateRequest(
+        ok_profile_id="profile-ok",
+        alt_profile_id="profile-alt",
+        from_date="2026-10-06",
+        to_date="2026-10-06",
+    )
+    result = CreateBatchesResult(planned=1, skipped=1, skipped_requests=[request])
+
+    view._on_batches_created(result)
+
+    assert not view._automation_card._regenerate_btn.isHidden()
+    assert revealed == ["2026-10-06"]
+    assert flashes
+    message, tone = flashes[0]
+    assert tone == "warning"
+    assert "2026-10-06" in message
+    assert "Primary Channel" in message and "Secondary Channel" in message
+
+
+def test_regenerate_anyway_forces_create(qapp: QApplication, monkeypatch) -> None:
+    view = MusicView(PlatformApi())
+    captured: list[dict] = []
+    monkeypatch.setattr(view, "_create_batches", lambda **kwargs: captured.append(kwargs))
+
+    view._regenerate_anyway()
+
+    assert captured == [{"force": True}]
+
+
+def test_history_reveal_date_sets_range(qapp: QApplication) -> None:
+    from features.music.widgets.history_card import HistoryCard
+
+    card = HistoryCard()
+    emitted: list[bool] = []
+    card.filters_changed.connect(lambda: emitted.append(True))
+
+    card.reveal_date("2026-10-06")
+
+    values = card.filter_values()
+    assert values["from_date"] == "2026-10-06"
+    assert values["to_date"] == "2026-10-06"
+    assert emitted
