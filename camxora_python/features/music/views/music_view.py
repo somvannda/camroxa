@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -97,6 +97,11 @@ class _FramedHeader(CreateHeader):
 
 
 class MusicView(QWidget):
+    # Emitted from the lyrics-check worker thread; Qt queues them to the GUI
+    # thread. `QTimer.singleShot` from that thread had no event loop to fire on.
+    _suno_hits_ready = Signal(object)
+    _suno_check_failed = Signal(str)
+
     def __init__(
         self,
         api: PlatformApi,
@@ -230,6 +235,8 @@ class MusicView(QWidget):
         content_layout.addWidget(self._settings_strip)
 
         self._song_card = SongEditorCard()
+        self._suno_hits_ready.connect(self._apply_suno_online_hits)
+        self._suno_check_failed.connect(self._on_suno_online_check_failed)
         self._primary_card = ChannelSelectionCard("Primary channels")
         self._secondary_card = ChannelSelectionCard("Secondary channels")
         self._automation_card = AutomationCard()
@@ -414,8 +421,9 @@ class MusicView(QWidget):
             self._cache.apply_warmup(language_options=options)
         self._apply_language_options(options)
 
-    def _on_language_options_failed(self, _message: str) -> None:
-        return
+    def _on_language_options_failed(self, message: str) -> None:
+        log_error(message or "Failed to load language options", category="music")
+        self._flash_status(message or "Could not load language options.", tone="warning")
 
     def _apply_language_options(self, options: list[tuple[str, str]]) -> None:
         self._language_options = list(options)
@@ -494,11 +502,18 @@ class MusicView(QWidget):
                     )
                     for hit in response.hits
                 ]
-                QTimer.singleShot(0, lambda: self._song_card.apply_online_suno_hits(hits))
-            except Exception:
-                return
+                self._suno_hits_ready.emit(hits)
+            except Exception as exc:  # noqa: BLE001
+                log_error("music.suno_online_check_failed", category="music", exc=exc)
+                self._suno_check_failed.emit(str(exc) or "Suno lyrics check failed.")
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _apply_suno_online_hits(self, hits: object) -> None:
+        self._song_card.apply_online_suno_hits(hits)
+
+    def _on_suno_online_check_failed(self, message: str) -> None:
+        self._flash_status(message, tone="warning")
 
     def refresh_data(self) -> None:
         if account_cache_mismatch(self._loaded_user_id, self._cache):
