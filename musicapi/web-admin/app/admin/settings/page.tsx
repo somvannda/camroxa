@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { apiFetch } from "@/lib/api";
+import { Button } from "@/components/ui/Button";
+import { Card, StatCard } from "@/components/ui/Card";
+import { ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
+import { Field, Input } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
+import { dateTime, usd } from "@/lib/format";
 
 interface BrandSettings {
   name: string;
@@ -59,7 +65,9 @@ interface IntegrationGroup {
   fields: IntegrationField[];
 }
 
-function initDraft(groups: IntegrationGroup[]): Record<string, Record<string, string | number | boolean>> {
+function initDraft(
+  groups: IntegrationGroup[],
+): Record<string, Record<string, string | number | boolean>> {
   const draft: Record<string, Record<string, string | number | boolean>> = {};
   for (const g of groups) {
     draft[g.key] = {};
@@ -67,10 +75,6 @@ function initDraft(groups: IntegrationGroup[]): Record<string, Record<string, st
   }
   return draft;
 }
-
-const inputClass =
-  "w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]";
-const labelClass = "text-xs text-[var(--muted)]";
 
 const TABS = [
   { key: "brand", label: "Brand" },
@@ -81,13 +85,13 @@ const TABS = [
 type TabKey = (typeof TABS)[number]["key"];
 
 export default function SettingsPage() {
+  const toast = useToast();
   const [tab, setTab] = useState<TabKey>("brand");
   const [brand, setBrand] = useState<BrandSettings | null>(null);
   const [alerts, setAlerts] = useState<AlertSettings | null>(null);
   const [languagesText, setLanguagesText] = useState("");
   const [report, setReport] = useState<AlertReport | null>(null);
   const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [checking, setChecking] = useState(false);
@@ -97,17 +101,18 @@ export default function SettingsPage() {
   const [draft, setDraft] = useState<Record<string, Record<string, string | number | boolean>>>({});
   const [dirty, setDirty] = useState<Record<string, boolean>>({});
   const [savingIntegrations, setSavingIntegrations] = useState(false);
-  const [integrationsNotice, setIntegrationsNotice] = useState("");
 
   const loadAlerts = useCallback(() => {
     apiFetch<AlertReport>("/admin/alerts")
       .then(setReport)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to evaluate alerts"))
+      .catch((e) => toast.error(e instanceof Error ? e.message : "Failed to evaluate alerts"))
       .finally(() => setChecking(false));
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
-    apiFetch<{ brand: BrandSettings; alerts: AlertSettings; integrations: IntegrationGroup[] }>("/admin/settings")
+    apiFetch<{ brand: BrandSettings; alerts: AlertSettings; integrations: IntegrationGroup[] }>(
+      "/admin/settings",
+    )
       .then((s) => {
         setBrand(s.brand);
         setLanguagesText(s.brand.languages.join(", "));
@@ -126,8 +131,6 @@ export default function SettingsPage() {
   async function saveBrand() {
     if (!brand) return;
     setSaving(true);
-    setError("");
-    setNotice("");
     try {
       const languages = languagesText.split(",").map((l) => l.trim()).filter(Boolean);
       const saved = await apiFetch<{ brand: BrandSettings }>("/admin/settings", {
@@ -136,9 +139,9 @@ export default function SettingsPage() {
       });
       setBrand(saved.brand);
       setLanguagesText(saved.brand.languages.join(", "));
-      setNotice("Brand saved.");
+      toast.success("Brand saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -147,17 +150,15 @@ export default function SettingsPage() {
   async function saveAlerts() {
     if (!alerts) return;
     setSaving(true);
-    setError("");
-    setNotice("");
     try {
       const saved = await apiFetch<{ alerts: AlertSettings }>("/admin/settings", {
         method: "PUT",
         body: JSON.stringify({ alerts }),
       });
       setAlerts(saved.alerts);
-      setNotice("Alert thresholds saved.");
+      toast.success("Alert thresholds saved.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
@@ -165,8 +166,6 @@ export default function SettingsPage() {
 
   async function saveIntegrations() {
     setSavingIntegrations(true);
-    setError("");
-    setIntegrationsNotice("");
     try {
       const values: Record<string, Record<string, string | number | boolean>> = {};
       for (const g of integrations) {
@@ -184,27 +183,27 @@ export default function SettingsPage() {
         }
         if (Object.keys(groupValues).length) values[g.key] = groupValues;
       }
-      const saved = await apiFetch<{ integrations: IntegrationGroup[] }>("/admin/settings/integrations", {
-        method: "PUT",
-        body: JSON.stringify({ values }),
-      });
+      const saved = await apiFetch<{ integrations: IntegrationGroup[] }>(
+        "/admin/settings/integrations",
+        { method: "PUT", body: JSON.stringify({ values }) },
+      );
       setIntegrations(saved.integrations);
       setDraft(initDraft(saved.integrations));
       setDirty({});
-      setIntegrationsNotice("Integrations saved and applied.");
+      toast.success("Integrations saved and applied.");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save integrations");
+      toast.error(err instanceof Error ? err.message : "Failed to save integrations");
     } finally {
       setSavingIntegrations(false);
     }
   }
 
-  if (loading) return <p className="text-[var(--muted)]">Loading…</p>;
+  if (loading) return <LoadingState />;
   if (!brand || !alerts) {
     return (
       <div className="space-y-6">
-        <h1 className="text-2xl font-bold">Settings</h1>
-        {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+        <PageHeader title="Settings" description="Branding, alerts and integration keys" />
+        {error && <ErrorState message={error} />}
       </div>
     );
   }
@@ -214,13 +213,9 @@ export default function SettingsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Settings</h1>
-        <p className="text-sm text-[var(--muted)]">Branding, alerts and integration keys</p>
-      </div>
+      <PageHeader title="Settings" description="Branding, alerts and integration keys" />
 
-      {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
-      {notice && <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">{notice}</p>}
+      {error && <ErrorState message={error} />}
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b border-[var(--border)]">
@@ -228,6 +223,7 @@ export default function SettingsPage() {
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
+            aria-current={tab === t.key ? "page" : undefined}
             className={`-mb-px rounded-t-lg border-b-2 px-4 py-2 text-sm font-medium transition ${
               tab === t.key
                 ? "border-[var(--violet)] text-white"
@@ -240,96 +236,167 @@ export default function SettingsPage() {
       </div>
 
       {tab === "brand" && (
-        <section className="glass space-y-4 rounded-xl p-5">
+        <Card className="space-y-4 p-5">
           <h2 className="text-sm font-semibold">Brand</h2>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <label className={labelClass}>Brand name</label>
-              <input value={brand.name} onChange={(e) => setBrand({ ...brand, name: e.target.value })} className={inputClass} placeholder="Camxora Music API" />
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Docs URL</label>
-              <input value={brand.docs_url} onChange={(e) => setBrand({ ...brand, docs_url: e.target.value })} className={inputClass} placeholder="https://docs.example.com" />
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Telegram support link</label>
-              <input value={brand.support_telegram_url} onChange={(e) => setBrand({ ...brand, support_telegram_url: e.target.value })} className={inputClass} placeholder="https://t.me/your_support" />
-              <p className="text-xs text-[var(--muted)]">Enter a full link or a bare handle — <code>@your_support</code> is saved as <code>https://t.me/your_support</code>.</p>
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Languages (comma-separated)</label>
-              <input value={languagesText} onChange={(e) => setLanguagesText(e.target.value)} className={inputClass} placeholder="en, km" />
-            </div>
+            <Field label="Brand name" htmlFor="brand-name">
+              <Input
+                id="brand-name"
+                value={brand.name}
+                onChange={(e) => setBrand({ ...brand, name: e.target.value })}
+                placeholder="Camxora Music API"
+              />
+            </Field>
+            <Field label="Docs URL" htmlFor="brand-docs">
+              <Input
+                id="brand-docs"
+                value={brand.docs_url}
+                onChange={(e) => setBrand({ ...brand, docs_url: e.target.value })}
+                placeholder="https://docs.example.com"
+              />
+            </Field>
+            <Field
+              label="Telegram support link"
+              htmlFor="brand-telegram"
+              hint="Enter a full link or a bare handle — @your_support is saved as https://t.me/your_support."
+            >
+              <Input
+                id="brand-telegram"
+                value={brand.support_telegram_url}
+                onChange={(e) => setBrand({ ...brand, support_telegram_url: e.target.value })}
+                placeholder="https://t.me/your_support"
+              />
+            </Field>
+            <Field label="Languages (comma-separated)" htmlFor="brand-languages">
+              <Input
+                id="brand-languages"
+                value={languagesText}
+                onChange={(e) => setLanguagesText(e.target.value)}
+                placeholder="en, km"
+              />
+            </Field>
           </div>
-          <button onClick={saveBrand} disabled={saving} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+          <Button onClick={saveBrand} disabled={saving}>
             {saving ? "Saving…" : "Save brand"}
-          </button>
-        </section>
+          </Button>
+        </Card>
       )}
 
       {tab === "alerts" && (
-        <section className="glass space-y-4 rounded-xl p-5">
+        <Card className="space-y-4 p-5">
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">Alerts</h2>
             <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
-              <input type="checkbox" checked={alerts.enabled} onChange={(e) => setAlerts({ ...alerts, enabled: e.target.checked })} />
+              <input
+                type="checkbox"
+                checked={alerts.enabled}
+                onChange={(e) => setAlerts({ ...alerts, enabled: e.target.checked })}
+              />
               Enabled
             </label>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <label className={labelClass}>Low-credits threshold</label>
-              <input type="number" min={0} value={alerts.low_credits_threshold} onChange={(e) => setAlerts({ ...alerts, low_credits_threshold: Number(e.target.value) })} className={inputClass} />
-              <p className="text-xs text-[var(--muted)]">Alert when a Suno account has this many credits or fewer.</p>
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>2Captcha balance threshold ($)</label>
-              <input type="number" min={0} step="0.5" value={alerts.captcha_balance_threshold} onChange={(e) => setAlerts({ ...alerts, captcha_balance_threshold: Number(e.target.value) })} className={inputClass} />
-              <p className="text-xs text-[var(--muted)]">Alert when the 2Captcha balance falls to this. 0 disables. Captcha accounts with no key are always flagged.</p>
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Failure-rate threshold (%)</label>
-              <input type="number" min={0} max={100} step={1} value={Math.round(alerts.failure_rate_threshold * 100)} onChange={(e) => setAlerts({ ...alerts, failure_rate_threshold: Number(e.target.value) / 100 })} className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Minimum requests before alerting</label>
-              <input type="number" min={1} value={alerts.failure_rate_min_requests} onChange={(e) => setAlerts({ ...alerts, failure_rate_min_requests: Number(e.target.value) })} className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Window (minutes)</label>
-              <input type="number" min={5} max={1440} value={alerts.window_minutes} onChange={(e) => setAlerts({ ...alerts, window_minutes: Number(e.target.value) })} className={inputClass} />
-            </div>
-            <div className="space-y-1">
-              <label className={labelClass}>Queue backlog depth</label>
-              <input type="number" min={0} value={alerts.queue_backlog_depth} onChange={(e) => setAlerts({ ...alerts, queue_backlog_depth: Number(e.target.value) })} className={inputClass} />
-              <p className="text-xs text-[var(--muted)]">Alert when this many jobs are waiting for a Suno slot. 0 disables.</p>
-            </div>
+            <Field
+              label="Low-credits threshold"
+              htmlFor="alert-low"
+              hint="Alert when a Suno account has this many credits or fewer."
+            >
+              <Input
+                id="alert-low"
+                type="number"
+                min={0}
+                value={alerts.low_credits_threshold}
+                onChange={(e) =>
+                  setAlerts({ ...alerts, low_credits_threshold: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Field
+              label="2Captcha balance threshold ($)"
+              htmlFor="alert-captcha"
+              hint="Alert when the 2Captcha balance falls to this. 0 disables. Captcha accounts with no key are always flagged."
+            >
+              <Input
+                id="alert-captcha"
+                type="number"
+                min={0}
+                step="0.5"
+                value={alerts.captcha_balance_threshold}
+                onChange={(e) =>
+                  setAlerts({ ...alerts, captcha_balance_threshold: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Field label="Failure-rate threshold (%)" htmlFor="alert-failrate">
+              <Input
+                id="alert-failrate"
+                type="number"
+                min={0}
+                max={100}
+                step={1}
+                value={Math.round(alerts.failure_rate_threshold * 100)}
+                onChange={(e) =>
+                  setAlerts({ ...alerts, failure_rate_threshold: Number(e.target.value) / 100 })
+                }
+              />
+            </Field>
+            <Field label="Minimum requests before alerting" htmlFor="alert-minreq">
+              <Input
+                id="alert-minreq"
+                type="number"
+                min={1}
+                value={alerts.failure_rate_min_requests}
+                onChange={(e) =>
+                  setAlerts({ ...alerts, failure_rate_min_requests: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Field label="Window (minutes)" htmlFor="alert-window">
+              <Input
+                id="alert-window"
+                type="number"
+                min={5}
+                max={1440}
+                value={alerts.window_minutes}
+                onChange={(e) => setAlerts({ ...alerts, window_minutes: Number(e.target.value) })}
+              />
+            </Field>
+            <Field
+              label="Queue backlog depth"
+              htmlFor="alert-queue"
+              hint="Alert when this many jobs are waiting for a Suno slot. 0 disables."
+            >
+              <Input
+                id="alert-queue"
+                type="number"
+                min={0}
+                value={alerts.queue_backlog_depth}
+                onChange={(e) =>
+                  setAlerts({ ...alerts, queue_backlog_depth: Number(e.target.value) })
+                }
+              />
+            </Field>
           </div>
-          <button onClick={saveAlerts} disabled={saving} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+          <Button onClick={saveAlerts} disabled={saving}>
             {saving ? "Saving…" : "Save alerts"}
-          </button>
-        </section>
+          </Button>
+        </Card>
       )}
 
       {tab === "integrations" && (
-        <section className="glass space-y-4 rounded-xl p-5">
+        <Card className="space-y-4 p-5">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold">Integrations</h2>
               <p className="text-xs text-[var(--muted)]">
-                Keys are encrypted at rest and applied immediately. Leave a secret blank to keep its current value.
+                Keys are encrypted at rest and applied immediately. Leave a secret blank to keep its
+                current value.
               </p>
             </div>
-            <button onClick={saveIntegrations} disabled={savingIntegrations} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+            <Button onClick={saveIntegrations} disabled={savingIntegrations}>
               {savingIntegrations ? "Saving…" : "Save integrations"}
-            </button>
+            </Button>
           </div>
-
-          {integrationsNotice && (
-            <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
-              {integrationsNotice}
-            </p>
-          )}
 
           {/* Group sub-tabs */}
           <div className="flex flex-wrap gap-1">
@@ -350,8 +417,8 @@ export default function SettingsPage() {
 
           {integrationTab === "suno" && (
             <p className="rounded-lg border border-[var(--border)] bg-white/[0.03] px-3 py-2 text-xs text-[var(--muted)]">
-              These values are only the boot-seed / fallback credential. To run <strong>multiple accounts</strong>{" "}
-              (free or paid), add and manage them on the{" "}
+              These values are only the boot-seed / fallback credential. To run{" "}
+              <strong>multiple accounts</strong> (free or paid), add and manage them on the{" "}
               <Link href="/admin/accounts" className="text-[var(--violet)] hover:underline">
                 Suno Accounts
               </Link>{" "}
@@ -360,21 +427,29 @@ export default function SettingsPage() {
           )}
 
           {activeGroups.map((g) => (
-            <div key={g.key} className="grid grid-cols-1 gap-4 rounded-lg border border-[var(--border)] p-4 md:grid-cols-2">
+            <div
+              key={g.key}
+              className="grid grid-cols-1 gap-4 rounded-lg border border-[var(--border)] p-4 md:grid-cols-2"
+            >
               {g.fields.map((f) => {
                 const value = draft[g.key]?.[f.key];
                 const setValue = (v: string | number | boolean) =>
                   setDraft((d) => ({ ...d, [g.key]: { ...d[g.key], [f.key]: v } }));
+                const id = `int-${g.key}-${f.key}`;
                 return (
-                  <div key={f.key} className="space-y-1">
-                    <label className={labelClass}>{f.label}</label>
+                  <Field key={f.key} label={f.label} htmlFor={id} hint={f.help}>
                     {f.type === "boolean" ? (
                       <label className="flex items-center gap-2 text-xs text-[var(--muted)]">
-                        <input type="checkbox" checked={Boolean(value)} onChange={(e) => setValue(e.target.checked)} />
+                        <input
+                          type="checkbox"
+                          checked={Boolean(value)}
+                          onChange={(e) => setValue(e.target.checked)}
+                        />
                         Enabled
                       </label>
                     ) : (
-                      <input
+                      <Input
+                        id={id}
                         type={f.type === "secret" ? "password" : f.type === "number" ? "number" : "text"}
                         value={String(value ?? "")}
                         placeholder={
@@ -388,32 +463,40 @@ export default function SettingsPage() {
                         onChange={(e) => {
                           const v = f.type === "number" ? Number(e.target.value) : e.target.value;
                           setValue(v);
-                          if (f.type === "secret") setDirty((d) => ({ ...d, [`${g.key}.${f.key}`]: true }));
+                          if (f.type === "secret") {
+                            setDirty((d) => ({ ...d, [`${g.key}.${f.key}`]: true }));
+                          }
                         }}
-                        className={inputClass}
                       />
                     )}
-                    {f.help && <p className="text-[11px] leading-snug text-[var(--muted)]">{f.help}</p>}
-                  </div>
+                  </Field>
                 );
               })}
             </div>
           ))}
-        </section>
+        </Card>
       )}
 
       {tab === "status" && (
-        <section className="glass space-y-4 rounded-xl p-5">
+        <Card className="space-y-4 p-5">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold">Live alerts</h2>
               <p className="text-xs text-[var(--muted)]">
-                {report ? `Checked ${new Date(report.checked_at).toLocaleString()}` : "Not checked yet"}
+                {report ? `Checked ${dateTime(report.checked_at)}` : "Not checked yet"}
               </p>
             </div>
-            <button onClick={() => { setChecking(true); void loadAlerts(); }} disabled={checking} className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-60">
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => {
+                setChecking(true);
+                void loadAlerts();
+              }}
+              disabled={checking}
+            >
               {checking ? "Checking…" : "Re-check now"}
-            </button>
+            </Button>
           </div>
 
           {report && !report.enabled && (
@@ -425,12 +508,21 @@ export default function SettingsPage() {
           {report?.enabled && (
             <>
               <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
-                <Stat label="Low-credit accounts" value={String(s?.low_credits ?? 0)} />
-                <Stat label="Captcha accounts" value={String(s?.captcha_required ?? 0)} />
-                <Stat label="2Captcha balance" value={s?.captcha_balance == null ? "—" : `$${s.captcha_balance.toFixed(2)}`} />
-                <Stat label="Failure rate" value={s?.failure_rate == null ? "—" : `${(s.failure_rate * 100).toFixed(1)}%`} />
-                <Stat label="Requests / failures" value={s ? `${s.requests} / ${s.failures}` : "—"} />
-                <Stat label="Queue backlog" value={String(s?.queue_backlog ?? 0)} />
+                <StatCard label="Low-credit accounts" value={String(s?.low_credits ?? 0)} />
+                <StatCard label="Captcha accounts" value={String(s?.captcha_required ?? 0)} />
+                <StatCard
+                  label="2Captcha balance"
+                  value={s?.captcha_balance == null ? "—" : usd(s.captcha_balance)}
+                />
+                <StatCard
+                  label="Failure rate"
+                  value={s?.failure_rate == null ? "—" : `${(s.failure_rate * 100).toFixed(1)}%`}
+                />
+                <StatCard
+                  label="Requests / failures"
+                  value={s ? `${s.requests} / ${s.failures}` : "—"}
+                />
+                <StatCard label="Queue backlog" value={String(s?.queue_backlog ?? 0)} />
               </div>
 
               {report.alerts.length === 0 ? (
@@ -448,7 +540,9 @@ export default function SettingsPage() {
                           : "border-amber-500/30 bg-amber-500/10 text-amber-300"
                       }`}
                     >
-                      <span className="mr-2 rounded bg-black/30 px-1.5 py-0.5 text-xs uppercase">{a.severity}</span>
+                      <span className="mr-2 rounded bg-black/30 px-1.5 py-0.5 text-xs uppercase">
+                        {a.severity}
+                      </span>
                       {a.message}
                     </li>
                   ))}
@@ -456,17 +550,8 @@ export default function SettingsPage() {
               )}
             </>
           )}
-        </section>
+        </Card>
       )}
-    </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-[var(--border)] px-4 py-3">
-      <p className="text-xs text-[var(--muted)]">{label}</p>
-      <p className="mt-1 text-lg font-semibold">{value}</p>
     </div>
   );
 }
