@@ -19,6 +19,7 @@ from deploy import (  # noqa: E402
     resolve_sandbox_ssh,
     ssh_connect,
 )
+from consistency import check_consistency  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYSTEMD_DIR = REPO_ROOT / "scripts" / "deploy" / "systemd"
@@ -34,6 +35,7 @@ def main() -> int:
     host, user, password = resolve_sandbox_ssh(secrets)
     print(f"Target sandbox host: {host}")
     client = ssh_connect(host, user, ensure_deploy_key(), password)
+    check_consistency(client)
 
     archive = build_source_tarball()
     units_archive = Path(tempfile.mkdtemp(prefix="camxora-units-")) / "units.tar.gz"
