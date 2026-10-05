@@ -986,6 +986,31 @@ export class SunoClient {
   }
 
   /**
+   * Suno's own word-level alignment for a generated clip —
+   * `GET /api/gen/{clip_id}/aligned_lyrics`, the karaoke data its player uses.
+   * This is exactly what sunoapi.org resells as `alignedWords` (their `palign`
+   * is Suno's `p_align`), so it is language-agnostic and needs no local ASR.
+   * Returns a flat word list in Suno's shape
+   * (`{word,success,start_s,end_s,p_align}`); `[]` when the clip has none
+   * (e.g. an instrumental).
+   */
+  async getAlignedLyrics(clipId: string): Promise<Array<Record<string, unknown>>> {
+    const res = await this.request(`/api/gen/${clipId}/aligned_lyrics`, { method: "GET" });
+    if (res.status === 404) return [];
+    if (!res.ok) throw new Error(`getAlignedLyrics failed (${res.status}): ${await res.text()}`);
+    const body = (await res.json()) as { data?: unknown };
+    const segments = Array.isArray(body.data) ? body.data : [];
+    const words: Array<Record<string, unknown>> = [];
+    for (const segment of segments) {
+      if (!Array.isArray(segment)) continue;
+      for (const item of segment) {
+        if (item && typeof item === "object") words.push(item as Record<string, unknown>);
+      }
+    }
+    return words;
+  }
+
+  /**
    * Lyrics detail, derived from the clip record's `metadata.prompt` (the
    * lyric/prompt text captured at generation). Suno exposes no standalone
    * lyrics route — `/api/clip/{id}/lyrics` is a plain 404 — so the clip record
