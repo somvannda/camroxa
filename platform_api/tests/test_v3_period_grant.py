@@ -7,6 +7,7 @@ from uuid import UUID, uuid4
 
 import pytest
 
+from platform_api.services.billing_calendar import next_billing_midnight
 from platform_api.services.credit_units import credits_to_units
 from platform_api.services.v3.period_grant_service import PeriodGrantService
 
@@ -292,7 +293,7 @@ async def test_period_grant_uses_license_cycle_when_subscribed() -> None:
     """Licensed accounts keep the activation-anchored period (not the month)."""
 
     class CtxPlan:
-        billing_cycle_days = 90
+        billing_cycle_days = 30
 
     class Ctx:
         plan = CtxPlan()
@@ -307,6 +308,10 @@ async def test_period_grant_uses_license_cycle_when_subscribed() -> None:
 
     result = await service.ensure_period_grant(USER_ID)
     assert result["granted"] is True
-    # 90-day cycle activated 2026-09-15 -> current period starts 2026-09-15,
+    # 30-day cycle activated 2026-09-15 -> current period starts 2026-09-15,
     # not the calendar-month fallback used for license-less accounts.
     assert result["period_start"] == "2026-09-15"
+    # The lot expires at the period boundary (2026-10-15 00:00 +07), so it cannot
+    # overlap the following period's grant.
+    expected_expiry = next_billing_midnight(from_date=date(2026, 10, 14)).isoformat()
+    assert result["expires_at"] == expected_expiry

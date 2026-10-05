@@ -52,6 +52,12 @@ subscription record disagreed with the plan/wallet (3,500 vs 2,300).
   (was `billing_today()`) and sets `monthly_allowance=False` only when an active
   subscription context supplies a real billing period. The calendar-month path
   expires the lot at `next_billing_month_start(from_date=period_start)`.
+- `platform_api/services/v3/period_grant_service.py` (licensed path): the grant
+  lot now expires at the **period boundary** (`next_billing_midnight` after the
+  period's last day) instead of `now + billing_cycle_days`. A previous period's
+  unused lot therefore expires exactly when the next period starts and is clawed
+  by `expire_unused_grants` before the new grant — no more two live lots across
+  a licence renewal (observed on 3 desktop accounts).
 - `platform_api/services/v2/subscription_service.py`: on monthly renewal
   (`reset_quota_if_needed`) the UPDATE now also writes
   `monthly_credits_granted = plan.monthly_credits`, so the subscription record

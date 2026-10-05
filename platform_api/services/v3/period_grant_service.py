@@ -94,8 +94,14 @@ class PeriodGrantService:
             # unused Free credits roll off instead of lingering past the period.
             expires_at = next_billing_month_start(from_date=period_start)
         else:
-            cycle_days = int(plan.get("billing_cycle_days") or 30)
-            expires_at = datetime.now(timezone.utc) + timedelta(days=max(1, cycle_days))
+            cycle_days = max(1, int(plan.get("billing_cycle_days") or 30))
+            # Expire at this period's boundary (start of the next period), not
+            # mint-time + cycle. Otherwise a previous period's unused lot stays
+            # live into the next period and overlaps the new grant — a licence
+            # renewal could hand out two periods' credits at once.
+            expires_at = next_billing_midnight(
+                from_date=period_start + timedelta(days=cycle_days - 1)
+            )
         lot = await self._store.insert_lot_if_absent(
             user_id=user_id,
             tag="grant",
