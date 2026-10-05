@@ -84,6 +84,7 @@ class FakeAsyncPGPool:
     def __init__(self) -> None:
         self._wallets: dict[UUID, int] = {}
         self._transactions: list[dict[str, Any]] = []
+        self._grant_claims: set[tuple[Any, str, str]] = set()
 
     def seed_wallet(self, user_id: UUID, balance: int) -> None:
         """Seed a wallet for testing."""
@@ -153,6 +154,36 @@ class FakeAsyncPGPool:
             new_balance = args[1]
             self._wallets[user_id] = new_balance
             return "UPDATE 1"
+
+        # INSERT INTO credit_grant_claims ... ON CONFLICT DO NOTHING RETURNING 1
+        if "insert into credit_grant_claims" in q:
+            key = (args[0], args[1], args[2])
+            if key in self._grant_claims:
+                return None
+            self._grant_claims.add(key)
+            return 1
+
+        # add_credits INSERT INTO credit_transactions (reason/ref_id/pack_id/.../metadata)
+        if (
+            "insert into credit_transactions" in q
+            and "pack_id" in q
+            and "'credit'" in q
+        ):
+            self._transactions.append(
+                {
+                    "id": args[0],
+                    "user_id": args[1],
+                    "amount": args[2],
+                    "direction": "credit",
+                    "reason": args[3],
+                    "ref_id": args[4],
+                    "pack_id": args[5],
+                    "payment_ref": args[6],
+                    "metadata": args[7] if len(args) > 7 else None,
+                    "created_at": datetime.now(timezone.utc),
+                }
+            )
+            return "INSERT 0 1"
 
         # INSERT INTO credit_transactions
         if "insert into credit_transactions" in q:
@@ -408,6 +439,38 @@ class TestAddCredits:
         assert len(pool._transactions) == 1
         txn = pool._transactions[0]
         assert txn["direction"] == "credit"
+
+    async def test_idempotent_grant_by_ref_id(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 0)
+        first = await repo.add_credits(user_id, 500, "v3_pack", ref_id="v3_pack:abc")
+        second = await repo.add_credits(user_id, 500, "v3_pack", ref_id="v3_pack:abc")
+        assert first == 500
+        assert second == 500  # no-op, not 1000
+        assert pool._wallets[user_id] == 500
+        assert len(pool._transactions) == 1
+
+    async def test_distinct_ref_ids_both_grant(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 0)
+        await repo.add_credits(user_id, 100, "v3_pack", ref_id="v3_pack:a")
+        await repo.add_credits(user_id, 100, "v3_pack", ref_id="v3_pack:b")
+        assert pool._wallets[user_id] == 200
+        assert len(pool._transactions) == 2
+
+    async def test_idempotent_false_allows_repeat_ref(
+        self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID
+    ) -> None:
+        pool.seed_wallet(user_id, 0)
+        await repo.add_credits(
+            user_id, 100, "redeem_code_credit", ref_id="code-1", idempotent=False
+        )
+        await repo.add_credits(
+            user_id, 100, "redeem_code_credit", ref_id="code-1", idempotent=False
+        )
+        assert pool._wallets[user_id] == 200
 
     async def test_zero_amount_raises_validation_error(
         self, repo: CreditRepository, pool: FakeAsyncPGPool, user_id: UUID

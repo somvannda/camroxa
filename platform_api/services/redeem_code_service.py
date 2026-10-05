@@ -9,6 +9,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
+from platform_api.repositories.credit_repo import CreditRepository
 from platform_api.services.credit_units import (
     MAX_CREDIT_UNITS,
     credits_to_units,
@@ -472,32 +473,23 @@ async def redeem_credit_code(pool: Any, *, code: str, user_id: UUID) -> dict[str
                     },
                 )
 
-            await conn.execute(
-                """
-                UPDATE credit_wallets
-                SET balance = $2, updated_at = NOW()
-                WHERE user_id = $1
-                """,
-                user_id,
-                new_balance,
-            )
             metadata = {
                 "source": "redeem_code",
                 "redeem_code_id": str(redeem_code_id),
                 "redeem_code": normalized_code,
                 "reward_type": str(row["reward_type"]),
             }
-            await conn.execute(
-                """
-                INSERT INTO credit_transactions
-                    (id, user_id, amount, direction, reason, ref_id, metadata, created_at)
-                VALUES ($1, $2, $3, 'credit', 'redeem_code_credit', $4, $5::jsonb, NOW())
-                """,
-                uuid4(),
+            # Route the grant through the single credit primitive. idempotent=False:
+            # the per-user redemption guard above already prevents double-redeem,
+            # and a code may legitimately be redeemed more than once (per_user_limit
+            # > 1), where ref_id (the code id) repeats.
+            await CreditRepository(conn).add_credits(
                 user_id,
                 amount_units,
-                str(redeem_code_id),
-                json.dumps(metadata),
+                reason="redeem_code_credit",
+                ref_id=str(redeem_code_id),
+                metadata=metadata,
+                idempotent=False,
             )
             redemption_id = uuid4()
             await conn.execute(

@@ -213,6 +213,9 @@ class CreditRepository:
         ref_id: str | None = None,
         pack_id: UUID | None = None,
         payment_ref: str | None = None,
+        *,
+        metadata: dict[str, Any] | None = None,
+        idempotent: bool = True,
     ) -> int:
         """Add credits to a user's wallet, enforcing the maximum balance.
 
@@ -240,6 +243,37 @@ class CreditRepository:
 
         async with self._connection() as conn:
             async with conn.transaction():
+                # Single-source idempotency: a grant with a stable ref_id is
+                # credited at most once per (user, reason, ref_id). The claim and
+                # the wallet update share this transaction, so a max-balance
+                # failure rolls the claim back too.
+                if idempotent and ref_id:
+                    claimed = await conn.fetchval(
+                        """
+                        INSERT INTO credit_grant_claims (user_id, reason, ref_id, created_at)
+                        VALUES ($1, $2, $3, NOW())
+                        ON CONFLICT (user_id, reason, ref_id) DO NOTHING
+                        RETURNING 1
+                        """,
+                        user_id,
+                        reason,
+                        ref_id,
+                    )
+                    if claimed is None:
+                        logger.debug(
+                            "add_credits no-op (already granted) user=%s reason=%s ref=%s",
+                            user_id,
+                            reason,
+                            ref_id,
+                        )
+                        return int(
+                            await conn.fetchval(
+                                "SELECT balance FROM credit_wallets WHERE user_id = $1",
+                                user_id,
+                            )
+                            or 0
+                        )
+
                 # Check current balance first
                 current_balance = await conn.fetchval(
                     "SELECT balance FROM credit_wallets WHERE user_id = $1 FOR UPDATE",
@@ -284,8 +318,8 @@ class CreditRepository:
                     """
                     INSERT INTO credit_transactions
                         (id, user_id, amount, direction, reason, ref_id, pack_id,
-                         payment_ref, created_at)
-                    VALUES ($1, $2, $3, 'credit', $4, $5, $6, $7, NOW())
+                         payment_ref, metadata, created_at)
+                    VALUES ($1, $2, $3, 'credit', $4, $5, $6, $7, $8::jsonb, NOW())
                     """,
                     uuid4(),
                     user_id,
@@ -294,6 +328,7 @@ class CreditRepository:
                     ref_id,
                     pack_id,
                     payment_ref,
+                    json.dumps(metadata) if metadata else None,
                 )
                 credit_log.log_added(
                     user_id=user_id,
