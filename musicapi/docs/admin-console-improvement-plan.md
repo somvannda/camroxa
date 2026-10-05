@@ -413,15 +413,16 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
   disallow; `node:test` formatter unit tests wired into CI (`web-admin-tests`
   job); admin 2FA (TOTP) end-to-end (utility + backend + UI, runtime-verified);
   admin CSRF double-submit token (runtime-verified: 403 without the header, 200
-  with). Session revocation (a JWT denylist) was not implemented — `requireAdmin`
-  re-reads role/status on every request, which covers demotion and suspension.
+  with); admin session revocation (`users.token_version` + a `tv` JWT claim and
+  `POST /admin/sessions/revoke`; runtime-verified: old token 403, new token 200).
 - **Verification** — local end-to-end run passed (2026-10-05) against a separate
-  scratch DB (`sunoapi_admin_dev`, all 30 migrations applied), which sidesteps the
+  scratch DB (`sunoapi_admin_dev`, all 31 migrations applied), which sidesteps the
   shared-DB migration mismatch: login, every page, pagination shapes, CSV export
   and the credit-adjustment + audit write path, with **zero console errors**. The
   merged `main` was then re-verified over authenticated HTTP (all admin endpoints
-  `200`), 2FA and CSRF were exercised end-to-end at the API level, and a full
-  interactive browser audit then loaded all 16 admin pages with **zero console
+  `200`), 2FA, CSRF and session revocation were exercised end-to-end at the API
+  level, and a full interactive browser audit then loaded all 16 admin pages with
+  **zero console
   errors**. The live production site was audited read-only (login page only — no
   credentials).
 
@@ -436,8 +437,9 @@ duplicate was removed and the boot re-verified.
 
 ### Not done
 
-- Session revocation list (JWTs stay valid for 7 days; role/status are re-checked
-  per request, so demotion/suspension take effect immediately).
+Nothing outstanding — the program is complete. (A possible future refinement is
+per-token revocation for a single device, which the per-user `token_version`
+deliberately does not cover.)
 
 ### Branch strategy note
 
