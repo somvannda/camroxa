@@ -60,7 +60,9 @@ export function PaymentSection() {
     () =>
       KHQR_PROVIDERS.map((provider) => ({
         ...provider,
-        enabled: parseEnabled(settingsMap.get(enabledKey(provider.id)), provider.id === 'mock'),
+        // Default disabled: the backend only allows Mock in debug, so the UI
+        // must not present it as enabled when no setting exists.
+        enabled: parseEnabled(settingsMap.get(enabledKey(provider.id)), false),
       })),
     [settingsMap],
   );
