@@ -43,7 +43,21 @@ VAD = os.environ.get("LRC_VAD", "1") != "0"
 
 # Loaded lazily so `test_align.py` can import the pure helpers without the model.
 MODEL: Any = None
+# One transcription at a time, and — separately — one model *construction* at a
+# time. A burst of `/align` calls arriving during a cold start used to each build
+# their own copy of the model, spiking RSS past the unit's MemoryMax and getting
+# the service OOM-killed on every restart (a crash loop). The load lock makes the
+# first caller build it while the rest wait for the shared instance.
 MODEL_LOCK = threading.Lock()
+MODEL_LOAD_LOCK = threading.Lock()
+
+# `ThreadingHTTPServer` spawns a thread per request and each one buffers the
+# whole track, so an unbounded flood (a client polling for lyrics) could grow
+# RSS without limit. Cap the in-flight `/align` work; over-cap requests are
+# rejected with 503 so the caller falls back instead of piling up.
+MAX_INFLIGHT = int(os.environ.get("LRC_MAX_INFLIGHT", "8"))
+INFLIGHT = threading.BoundedSemaphore(MAX_INFLIGHT)
+QUEUE_WAIT_S = float(os.environ.get("LRC_QUEUE_WAIT_S", "30"))
 
 _TOKEN_RE = re.compile(r"[^\W_]+(?:'[^\W_]+)*", re.UNICODE)
 _SECTION_RE = re.compile(r"^\[.*\]$")
@@ -192,10 +206,18 @@ def build_lrc(lines: list[dict[str, Any]]) -> str:
 # --------------------------------------------------------------------------- #
 def load_model() -> Any:
     global MODEL
-    if MODEL is None:
-        from faster_whisper import WhisperModel  # imported lazily (heavy)
+    if MODEL is not None:
+        return MODEL
+    with MODEL_LOAD_LOCK:
+        if MODEL is None:
+            from faster_whisper import WhisperModel  # imported lazily (heavy)
 
-        MODEL = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
+            MODEL = WhisperModel(
+                MODEL_NAME,
+                device=DEVICE,
+                compute_type=COMPUTE_TYPE,
+                num_workers=1,
+            )
     return MODEL
 
 
@@ -302,6 +324,11 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/align":
             self._reply({"ok": False, "error": "not found"}, 404)
             return
+        # Gate before reading the body so an over-cap request never buffers the
+        # track in memory. Reply 503 rather than queueing forever.
+        if not INFLIGHT.acquire(timeout=QUEUE_WAIT_S):
+            self._reply({"ok": False, "error": "busy"}, 503)
+            return
         try:
             audio, lyrics = _resolve_audio(self, _read_body(self))
             if not audio:
@@ -313,6 +340,8 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(align(audio, lyrics))
         except Exception as exc:  # noqa: BLE001
             self._reply({"ok": False, "error": str(exc)}, 500)
+        finally:
+            INFLIGHT.release()
 
     def log_message(self, *args: Any) -> None:  # silence per-request logs
         pass

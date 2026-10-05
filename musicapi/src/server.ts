@@ -1454,6 +1454,80 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return job;
   }
 
+  // Timestamped lyrics are a *read* of a clip's stored alignment — deterministic
+  // for a given clip. Every request used to mint a fresh job + `usage_logs` row,
+  // so a client that polls until it sees timings (the desktop app retries on an
+  // empty result) flooded the ledger and re-ran the expensive aligner for the
+  // same song hundreds of times. Collapse repeated calls onto one job:
+  //   - a usable (timed) result is reused for good — the alignment can't change;
+  //   - an in-flight job is reused so concurrent calls don't duplicate the work;
+  //   - an empty/failed result is reused only within a retry window, so a broken
+  //     aligner can recover without the client retrying every few seconds.
+  const LYRICS_REUSE_TTL_MS = Number(process.env.LYRICS_REUSE_TTL_MS ?? 15 * 60_000);
+
+  function isUsableLyricsResult(job: Job): boolean {
+    if (job.status !== "complete") return false;
+    const r = (job.result ?? {}) as Record<string, unknown>;
+    return r.aligned === true && typeof r.lrc === "string" && r.lrc.length > 0;
+  }
+
+  async function reusableLyricsJob(clipId: string, userId: string): Promise<Job | null> {
+    if (!clipId) return null;
+    const floor = Date.now() - LYRICS_REUSE_TTL_MS;
+    const isInflight = (job: Job) =>
+      job.status === "pending" || job.status === "running" || job.status === "streaming";
+
+    // In-memory map is authoritative while a job is live (inline jobs never hit
+    // `jobs` until they settle); keep the newest of each preference class.
+    let usable: Job | null = null;
+    let inflight: Job | null = null;
+    let recent: Job | null = null;
+    for (const job of jobs.values()) {
+      if (
+        job.endpoint !== "timestamped_lyrics_detail" ||
+        job.userId !== userId ||
+        job.payload?.op !== "timestamped_lyrics_detail" ||
+        (job.payload.args as Record<string, unknown> | undefined)?.id !== clipId
+      ) {
+        continue;
+      }
+      if (isUsableLyricsResult(job)) {
+        if (!usable || job.createdAt > usable.createdAt) usable = job;
+      } else if (isInflight(job)) {
+        if (!inflight || job.createdAt > inflight.createdAt) inflight = job;
+      } else if (job.createdAt >= floor) {
+        if (!recent || job.createdAt > recent.createdAt) recent = job;
+      }
+    }
+    if (usable) return usable;
+    if (inflight) return inflight;
+    if (recent) return recent;
+
+    // Cache evicted it (or another node owns the work): consult the durable row.
+    const base = `SELECT ${JOB_COLUMNS} FROM jobs
+       WHERE endpoint = 'timestamped_lyrics_detail'
+         AND user_id = $2
+         AND payload->'args'->>'id' = $1`;
+    const usableRow = await queryOne<JobRow>(
+      `${base}
+         AND status = 'complete'
+         AND coalesce((result_json->>'aligned')::boolean, false) = true
+         AND length(coalesce(result_json->>'lrc', '')) > 0
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [clipId, userId],
+    );
+    if (usableRow) return rowToJob(usableRow);
+    const fallbackRow = await queryOne<JobRow>(
+      `${base}
+         AND (status IN ('pending','running','streaming') OR created_at > to_timestamp($3 / 1000.0))
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [clipId, userId, floor],
+    );
+    return fallbackRow ? rowToJob(fallbackRow) : null;
+  }
+
   function slug(s: string): string {
     return s
       .toLowerCase()
@@ -4731,6 +4805,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
+    const existing = await reusableLyricsJob(id, u.id);
+    if (existing) {
+      return reply.code(202).send({ job_id: existing.id, status: existing.status });
+    }
     const cost = await costFor("timestamped_lyrics_detail");
     const key = await chargeUserKey(u.id, cost);
     if (cost > 0 && !key) {
@@ -6666,6 +6744,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
+    const existing = await reusableLyricsJob(id, key.user_id);
+    if (existing) {
+      return reply.code(202).send({ job_id: existing.id, status: existing.status });
+    }
     const cost = await costFor("timestamped_lyrics_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -8184,6 +8266,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
+    const existing = await reusableLyricsJob(id, key.user_id);
+    if (existing) {
+      return reply.code(202).send({ code: 200, msg: "success", data: { taskId: existing.id } });
+    }
     const cost = await costFor("timestamped_lyrics_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("timestamped_lyrics_detail");
@@ -8429,9 +8515,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.taskId as string) ||
       (in_.task_id as string);
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
+    const cb = callbackUrl(in_);
+    // Reuse only when the callback matches (or neither set): a webhook caller
+    // must not silently lose its delivery, while the polling clients that caused
+    // the flood (no callback) collapse onto one job per clip.
+    const existing = await reusableLyricsJob(id, key.user_id);
+    if (existing && (existing.callbackUrl ?? undefined) === cb) {
+      return reply.code(202).send({ code: 200, msg: "success", data: { taskId: existing.id } });
+    }
     const cost = await costFor("timestamped_lyrics_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
-    const job = newJob("timestamped_lyrics_detail", callbackUrl(in_));
+    const job = newJob("timestamped_lyrics_detail", cb);
     job.userId = key.user_id;
     job.apiKeyId = key.id;
     job.endpoint = "timestamped_lyrics_detail";
