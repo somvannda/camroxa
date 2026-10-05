@@ -27,14 +27,27 @@ function redirectToLogin(): void {
   }
 }
 
+/** Read the readable admin CSRF cookie for double-submit on mutations. */
+function csrfToken(): string | null {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(/(?:^|;\s*)sunosession_admin_csrf=([^;]+)/);
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const method = (init.method ?? "GET").toUpperCase();
   const headers: Record<string, string> = {
     "content-type": "application/json",
     ...(init.headers as Record<string, string> | undefined),
   };
+  // The session travels in an httpOnly cookie; mutations must also echo the
+  // readable CSRF cookie set at login (SameSite=Lax + the Origin allowlist
+  // remain the primary guard).
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const token = csrfToken();
+    if (token) headers["x-csrf-token"] = token;
+  }
 
-  // The session travels in an httpOnly cookie set by the API, so it is sent
-  // automatically on same-origin calls — no token to attach here.
   const res = await fetch(`${BASE}${path}`, { credentials: "same-origin", ...init, headers });
   if (res.status === 401) redirectToLogin();
   if (!res.ok) {
