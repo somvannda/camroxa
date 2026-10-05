@@ -267,17 +267,21 @@ sudo -u camxora -H bash -lc "
   ./node_modules/.bin/tsx scripts/migrate.ts
 "
 
-for app in web-user web-admin; do
-  log "Building ${app} (Next.js)..."
-  sudo -u camxora -H bash -lc "
-    set -e
-    cd '${MUSICAPI_DIR}/${app}'
-    npm ci --no-audit --no-fund || npm install --no-audit --no-fund
-    echo 'BACKEND_URL=http://127.0.0.1:${MUSICAPI_PORT}' > .env.production
-    echo 'GOOGLE_SITE_VERIFICATION=${MUSICAPI_GOOGLE_SITE_VERIFICATION:-}' >> .env.production
-    npm run build
-  "
-done
+if [[ "${MUSICAPI_SKIP_FRONTEND:-0}" == "1" ]]; then
+  log "Skipping web-user/web-admin builds (MUSICAPI_SKIP_FRONTEND=1)."
+else
+  for app in web-user web-admin; do
+    log "Building ${app} (Next.js)..."
+    sudo -u camxora -H bash -lc "
+      set -e
+      cd '${MUSICAPI_DIR}/${app}'
+      npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      echo 'BACKEND_URL=http://127.0.0.1:${MUSICAPI_PORT}' > .env.production
+      echo 'GOOGLE_SITE_VERIFICATION=${MUSICAPI_GOOGLE_SITE_VERIFICATION:-}' >> .env.production
+      npm run build
+    "
+  done
+fi
 
 log "Preparing backup directory..."
 mkdir -p "${BACKUP_DIR}"

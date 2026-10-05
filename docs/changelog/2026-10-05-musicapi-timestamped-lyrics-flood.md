@@ -76,6 +76,8 @@ No schema change.
 - `musicapi/lrc-service/server.py`
 - `musicapi/lrc-service/README.md`
 - `musicapi/src/server.ts`
+- `scripts/deploy/sync_musicapi_sandbox.py` (`--api-only` + sentinel return)
+- `scripts/deploy/camxora-musicapi-remote.sh` (`MUSICAPI_SKIP_FRONTEND`)
 - `docs/changelog/2026-10-05-musicapi-timestamped-lyrics-flood.md` (this file)
 
 ## Migration / deploy
@@ -84,6 +86,11 @@ No schema change.
   part of the `musicapi` deploy and restarts with the new unit.
 - Optional env knobs: `LRC_MAX_INFLIGHT`, `LRC_QUEUE_WAIT_S`, `LYRICS_REUSE_TTL_MS`,
   `LYRICS_SYNC_WAIT_MS`.
+- Backend-only changes can deploy fast with
+  `python scripts/deploy/sync_musicapi_sandbox.py --api-only` (skips both Next.js
+  builds via `MUSICAPI_SKIP_FRONTEND=1`). The deploy client also now returns as
+  soon as the installer prints its success sentinel, instead of blocking on a
+  lingering SSH channel.
 
 ## Tests
 
@@ -100,7 +107,3 @@ No schema change.
   a real alignment).
 - Consider applying the same reuse/sync rule to the other `*_detail` routes if
   their pollers show up in the ledger.
-- `sync_musicapi_sandbox.py` rebuilds the whole stack (API + both Next apps) for
-  a backend-only change; an `--api-only` fast path would cut deploy time.
-- The local deploy client can stay blocked on the SSH channel after the remote
-  installer finishes; the deploy completes but the caller never returns.
