@@ -12,6 +12,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deploy import (  # noqa: E402
     ensure_deploy_key,
+    load_production_secrets,
+    load_sandbox_secrets,
     resolve_production_ssh,
     resolve_sandbox_ssh,
     ssh_connect,
@@ -35,13 +37,25 @@ ENV_CONFIG = {
 }
 
 
+def edge_verify_secret(env: str) -> str:
+    """Shared secret the API expects in `X-Origin-Verify` (empty = gate off)."""
+    secrets = load_production_secrets() if env == "production" else load_sandbox_secrets()
+    return str(secrets.get("EDGE_VERIFY_SECRET", "") or "").strip()
+
+
 def upload_conf(client, env: str) -> None:
     cfg = ENV_CONFIG[env]
     local = DEPLOY_DIR / cfg["conf_file"]
     if not local.is_file():
         raise FileNotFoundError(f"Missing nginx config: {local}")
+    # Substitute the edge secret at deploy time so it is never committed. Empty
+    # when unset, which leaves the API geo gate in its legacy (disabled) mode.
+    rendered = local.read_text(encoding="utf-8").replace(
+        "__EDGE_VERIFY__", edge_verify_secret(env)
+    )
     sftp = client.open_sftp()
-    sftp.put(str(local), cfg["remote_tmp"])
+    with sftp.file(cfg["remote_tmp"], "w") as fh:
+        fh.write(rendered)
     sftp.close()
 
 
