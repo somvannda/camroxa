@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
@@ -281,7 +282,12 @@ function UsersInner() {
               {users.map((u) => (
                 <tr key={u.id} className="border-t border-[var(--border)]">
                   <td className="px-4 py-3">
-                    <div className="font-medium">{u.email}</div>
+                    <Link
+                      href={`/admin/users/${u.id}`}
+                      className="font-medium text-[var(--violet)] hover:underline"
+                    >
+                      {u.email}
+                    </Link>
                     {u.name && <div className="text-xs text-[var(--muted)]">{u.name}</div>}
                   </td>
                   <td className="px-4 py-3 capitalize">{u.role}</td>
