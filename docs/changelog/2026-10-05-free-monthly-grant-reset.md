@@ -91,6 +91,24 @@ subscription record disagreed with the plan/wallet (3,500 vs 2,300).
   `touchphinnarith90@gmail.com` 5,707.5 → 1,000). Verified `ensure_period_grant`
   is a no-op on repeat calls and grants are anchored to the month start.
 
+## Web-music paid audit + reconciliation (2026-10-05)
+
+- Scope: `web_subscriptions` (plan_type `web_music`). Desktop/license plans
+  (`desktop_pro`, incl. the $79 Monthly · 2-channel) are excluded.
+- `scripts/deploy/_reconcile_web_music_paid.py` computes, per paid web user:
+  `real = current-period allowance + non-grant credits (quota_conversion/pack/admin)
+  - net generations (v3 debits minus v3 refunds)` and sets the wallet to it
+  (recording a `v3_paid_web_reconcile` ledger row; idempotent). It skips accounts
+  with no credit activity.
+- Findings: web-music has **128 Free** users (303 credits held) and **5 active**
+  paid subs — starter_monthly ×4, creator_monthly ×1 — plus 1 expired and 22
+  pending (never paid). Signup credit is **0** (wallets are created at 0); the
+  only free credit is the Free plan's 50/month.
+- Applied: `sommakara84` 3500 → **2647.5**, `teangchunpanhavorn` 2001 → **1743**,
+  `touchphinnarith90` 1000 → **657.5** (each nets out their generations);
+  `pich.sou11` unchanged at **876** (lapsed period, back on Free);
+  `brosean22` skipped (no credit activity).
+
 ## Migration / deploy
 
 - No schema migration, no settings change. Deploy `platform_api` and restart
