@@ -223,11 +223,12 @@ def app(
     monkeypatch: pytest.MonkeyPatch,
 ):
     """Create a test app with all dependencies overridden."""
-    # Configure the Suno callback HMAC secret so unsigned provider callbacks are
-    # accepted (callbacks.py accepts unsigned payloads when a secret is set).
+    # Configure the Suno callback HMAC secret and allowlist the test client IP:
+    # unsigned provider callbacks are accepted only from an allowlisted address.
     from platform_api.config import get_settings
 
     monkeypatch.setenv("PLATFORM_SUNO_CALLBACK_HMAC_SECRET", "test-callback-secret")
+    monkeypatch.setenv("PLATFORM_SUNO_CALLBACK_ALLOWED_IPS", "127.0.0.1")
     get_settings.cache_clear()
     application = create_app()
     application.dependency_overrides[get_current_user] = lambda: USER_CONTEXT
