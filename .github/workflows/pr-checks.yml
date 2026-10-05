@@ -259,3 +259,34 @@ jobs:
           test "$CODE" = "405" || { echo "expected 405, got $CODE"; tail -n 50 /tmp/musicapi.log; exit 1; }
 
           echo "Smoke OK"
+
+  web-admin-tests:
+    name: web-admin unit tests (if changed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect web-admin changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- musicapi/web-admin/ | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The formatter tests rely on Node's native TypeScript support (Node >= 24).
+      # They need no dependencies, so no install step is required.
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: "24"
+
+      - name: npm test
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi/web-admin
+        run: npm test
