@@ -1154,13 +1154,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   async function requireAdmin(req: FastifyRequest, reply: FastifyReply): Promise<UserPayload | null> {
     const user = requireAuth(req, reply);
     if (!user) return null;
-    // Role is read from the DB, not the token: an account demoted from admin
-    // must lose admin access on its next request, not when its JWT expires.
-    const row = await queryOne<{ role: "user" | "admin" }>(
-      "SELECT role FROM users WHERE id = $1",
+    // Role and status are read from the DB, not the token: a demoted or
+    // suspended admin must lose admin access on their next request, not when
+    // their JWT expires.
+    const row = await queryOne<{ role: "user" | "admin"; status: string }>(
+      "SELECT role, status FROM users WHERE id = $1",
       [user.id],
     );
-    if (!row || row.role !== "admin") {
+    if (!row || row.role !== "admin" || row.status !== "active") {
       reply.code(403).send({ error: "Admin only." });
       return null;
     }
@@ -5892,6 +5893,28 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { status } = (req.body ?? {}) as { status?: string };
     if (status !== "active" && status !== "suspended") {
       return reply.code(400).send({ error: "status must be active or suspended." });
+    }
+    const target = await queryOne<{ role: "user" | "admin"; status: string }>(
+      "SELECT role, status FROM users WHERE id = $1",
+      [id],
+    );
+    if (!target) return reply.code(404).send({ error: "User not found." });
+    if (status === "suspended") {
+      // Don't let an operator lock themselves — or the platform — out.
+      if (id === admin.id) {
+        return reply.code(400).send({ error: "You cannot suspend your own account." });
+      }
+      if (target.role === "admin" && target.status === "active") {
+        const remaining = await queryOne<{ n: string }>(
+          "SELECT count(*)::text AS n FROM users WHERE role = 'admin' AND status = 'active' AND id <> $1",
+          [id],
+        );
+        if (remaining?.n === "0") {
+          return reply
+            .code(409)
+            .send({ error: "Cannot suspend the last active administrator. Promote another admin first." });
+        }
+      }
     }
     await query("UPDATE users SET status = $1 WHERE id = $2", [status, id]);
     await recordAudit({
