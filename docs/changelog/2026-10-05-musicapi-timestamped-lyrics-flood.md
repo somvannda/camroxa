@@ -95,6 +95,31 @@ response and never polls a task, but musicapi answered with an async
 
 No schema change.
 
+## Update — use Suno's own alignment endpoint (the real fix)
+
+**Suno already computes word-level alignment** for its karaoke player and
+exposes it per clip. Verified live against production:
+
+```
+GET https://studio-api-prod.suno.com/api/gen/{clipId}/aligned_lyrics  →  200
+{"data":[[{"word":"ផ្ល","success":true,"start_s":3.191,"end_s":3.271,"p_align":0.99}, …]]}
+```
+
+`sunoapi.org`'s `alignedWords` (its `palign`, plus `waveformData`/`hootCer`) is
+just this data proxied. We were never calling it — the project had concluded
+Suno exposed lyric *text* only, and built the CPU Whisper sidecar to approximate
+timing, which chokes on Khmer.
+
+- `musicapi/src/client.ts` — new `getAlignedLyrics(clipId)` →
+  `GET /api/gen/{clipId}/aligned_lyrics`, flattening the segment arrays.
+- `musicapi/src/server.ts` — `runTimestampedLyricsJob` now uses Suno's alignment
+  first (`normalizeSunoAlignedWords`, instant and language-agnostic) and only
+  falls back to the Whisper sidecar when Suno has none. `sunoAlignedWords()` and
+  the response now return these words (camelCase `startS`/`endS`, plus
+  `success`/`palign`), preserving the embedded `\n` line markers.
+- This makes the LRC sidecar unnecessary for supported clips and removes the CPU
+  burn / runaway decode on the Khmer catalogue.
+
 ## Files touched
 
 - `musicapi/lrc-service/server.py`

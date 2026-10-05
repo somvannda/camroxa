@@ -1531,13 +1531,38 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   // sunoapi.org's timestamped-lyrics getters answer *synchronously* with
-  // `data.alignedWords`, and their consumers (platform_api, the desktop LRC
-  // fetch) read that immediately instead of polling a task id — so an async-only
-  // reply can never deliver timings to them. Our aligner returns line-level
-  // timings, so rebuild the word list in their shape: one newline-terminated
-  // token per line, which their converter splits back into LRC lines.
+  // `data.alignedWords`. Suno provides those words directly (see
+  // `client.getAlignedLyrics`); we normalise them to camelCase timings and, for
+  // legacy results from the Whisper fallback, rebuild line tokens from
+  // `aligned_lines`. Both carry newline-terminated words so the caller's
+  // `aligned_words_to_lrc` reconstructs the lines.
+  function normalizeSunoAlignedWords(raw: Array<Record<string, unknown>>): AlignedWord[] {
+    const out: AlignedWord[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const word = typeof item.word === "string" ? item.word : "";
+      if (!word) continue;
+      const startS = Number(item.start_s ?? item.startS ?? 0) || 0;
+      const endS = Number(item.end_s ?? item.endS ?? startS) || startS;
+      out.push({ word, startS, endS, success: item.success ?? true, palign: item.p_align ?? 0 });
+    }
+    return out;
+  }
+
   function sunoAlignedWords(job: Job): Array<Record<string, unknown>> {
     const res = (job.result ?? {}) as Record<string, unknown>;
+    const stored = Array.isArray(res.aligned_words)
+      ? (res.aligned_words as Array<Record<string, unknown>>)
+      : [];
+    if (stored.length > 0) {
+      return stored.map((w) => ({
+        word: w.word,
+        startS: w.startS,
+        endS: w.endS,
+        success: w.success ?? true,
+        palign: w.palign ?? 0,
+      }));
+    }
     const lines = Array.isArray(res.aligned_lines)
       ? (res.aligned_lines as Array<Record<string, unknown>>)
       : [];
@@ -2270,13 +2295,30 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const clip = await client.getClipObject(clipId);
       const meta = (clip.metadata ?? {}) as Record<string, unknown>;
       const lyrics = typeof meta.prompt === "string" ? meta.prompt : "";
-      const alignment = lyrics.trim() ? await alignLyrics(clipId, lyrics) : null;
+
+      // Suno already computes word-level alignment for its karaoke player and
+      // exposes it per clip — the same data sunoapi.org resells as
+      // `alignedWords`. Use it first: instant and language-agnostic (works for
+      // Khmer, where the local Whisper ASR ran away). Fall back to the Whisper
+      // sidecar only when Suno has no alignment for this clip.
+      let words: AlignedWord[] = [];
+      try {
+        words = normalizeSunoAlignedWords(await client.getAlignedLyrics(clipId));
+      } catch (e) {
+        console.error(`[suno] aligned_lyrics failed for ${clipId}:`, e instanceof Error ? e.message : e);
+      }
+      let alignment: LyricAlignment | null = words.length
+        ? { lines: [], words, lrc: alignedWordsToLrc(words) }
+        : null;
+      if ((!alignment || !alignment.lrc) && lyrics.trim()) {
+        alignment = (await alignLyrics(clipId, lyrics)) ?? alignment;
+      }
       job.result = {
         ...clip,
         lyrics,
-        aligned: Boolean(alignment),
+        aligned: Boolean(alignment && (alignment.lrc || alignment.words.length > 0)),
         lrc: alignment?.lrc ?? "",
-        lrc_format: alignment ? "lrc" : null,
+        lrc_format: alignment?.lrc ? "lrc" : null,
         aligned_lines: alignment?.lines ?? [],
         aligned_words: alignment?.words ?? [],
       };
