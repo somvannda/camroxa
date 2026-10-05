@@ -65,7 +65,7 @@ model into `/opt/camxora/lrc-service/models` (set `LRC_MODEL` to change it).
 | `LRC_DEVICE` | `cpu` | `cpu` or `cuda` |
 | `LRC_COMPUTE_TYPE` | `int8` | CTranslate2 compute type |
 | `LRC_LANGUAGE` | auto | force a language (e.g. `en`) |
-| `LRC_VAD` | `1` | run voice-activity detection first |
+| `LRC_VAD` | `0` | run voice-activity detection first (off — it drops sung vocals) |
 | `LRC_MAX_INFLIGHT` | `8` | concurrent `/align` requests allowed before `503 busy` |
 | `LRC_QUEUE_WAIT_S` | `30` | seconds a request waits for a slot before `503` |
 | `HF_HOME` | (system) | set to the models dir by the unit |

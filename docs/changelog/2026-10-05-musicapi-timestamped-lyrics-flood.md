@@ -40,6 +40,11 @@ response and never polls a task, but musicapi answered with an async
 ## Technical impact
 
 - `musicapi/lrc-service/server.py`
+  - **VAD is off by default** (`LRC_VAD` default `0`). Silero VAD is speech-tuned
+    and dropped nearly all *sung* vocals — it transcribed only 7 words of a
+    2-minute song, so `snap_to_lyrics` matched almost nothing and stamped every
+    lyric line with one timestamp. `transcribe_words()` now also retries without
+    VAD when an enabled-VAD transcript is implausibly sparse for the audio length.
   - `load_model()` is now guarded by a dedicated `MODEL_LOAD_LOCK` (double
     checked). Previously a burst of `/align` calls during a cold start each built
     their own `WhisperModel`, which is what spiked RSS past `MemoryMax` and made

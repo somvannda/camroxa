@@ -39,7 +39,10 @@ MODEL_NAME = os.environ.get("LRC_MODEL", "small")
 DEVICE = os.environ.get("LRC_DEVICE", "cpu")
 COMPUTE_TYPE = os.environ.get("LRC_COMPUTE_TYPE", "int8")
 LANGUAGE = os.environ.get("LRC_LANGUAGE") or None
-VAD = os.environ.get("LRC_VAD", "1") != "0"
+# Silero VAD is trained on speech and drops most *sung* vocals — it once left 7
+# words of a 2-minute song, collapsing every lyric line onto one timestamp. Off
+# for this service unless explicitly enabled.
+VAD = os.environ.get("LRC_VAD", "0") != "0"
 
 # Loaded lazily so `test_align.py` can import the pure helpers without the model.
 MODEL: Any = None
@@ -245,13 +248,19 @@ def _run_transcribe(audio_path: str, lyrics: str, vad: bool) -> tuple[list[dict[
 def transcribe_words(audio_path: str, lyrics: str) -> tuple[list[dict[str, Any]], float]:
     """Transcribe with word timestamps.
 
-    Silero VAD occasionally filters an entire sung track (zero segments), which
-    yields no words and therefore no alignment. When that happens, retry once
-    with VAD disabled so singing is still aligned.
+    Silero VAD is speech-tuned and often filters an entire sung track down to a
+    few words, which leaves `snap_to_lyrics` with almost nothing to match and
+    collapses every lyric line onto one timestamp. When VAD is enabled, retry
+    without it if the transcript looks implausibly sparse for the audio length
+    and keep the richer result. (VAD is off by default — see `VAD`.)
     """
     words, duration = _run_transcribe(audio_path, lyrics, VAD)
-    if not words and VAD:
-        words, duration = _run_transcribe(audio_path, lyrics, False)
+    if VAD:
+        expected = max(1.0, duration * 0.5)  # a sung track yields ~>=0.5 words/sec
+        if len(words) < expected:
+            words_plain, duration_plain = _run_transcribe(audio_path, lyrics, False)
+            if len(words_plain) > len(words):
+                return words_plain, duration_plain
     return words, duration
 
 
