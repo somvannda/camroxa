@@ -6597,6 +6597,41 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
   });
 
+  // Manual refund of a settled ChmabaPay payment. Reuses `reverseChmabaPayment`,
+  // which is idempotent and guards provider='chmaba' AND status='paid' and
+  // clamps the clawback at zero; the pre-check only returns a clearer error.
+  app.post("/admin/payments/:id/refund", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const payment = await queryOne<{ status: string; provider: string }>(
+      "SELECT status, provider FROM payment_transactions WHERE id = $1",
+      [id],
+    );
+    if (!payment) return reply.code(404).send({ error: "Payment not found." });
+    if (payment.provider !== "chmaba") {
+      return reply.code(400).send({ error: "Only ChmabaPay payments can be refunded here." });
+    }
+    if (payment.status !== "paid") {
+      return reply.code(409).send({ error: "Only a paid payment can be refunded." });
+    }
+    const refunded = await reverseChmabaPayment(id);
+    if (!refunded) {
+      return reply
+        .code(409)
+        .send({ error: "The payment could not be refunded (it may already be reversed)." });
+    }
+    await recordAudit({
+      actor: admin,
+      action: "payment.refund",
+      targetType: "payment_transaction",
+      targetId: id,
+      details: { provider: payment.provider },
+      req,
+    });
+    return { ok: true };
+  });
+
   app.get("/admin/transactions", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const q = (req.query ?? {}) as {

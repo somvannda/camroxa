@@ -5,8 +5,10 @@ import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
 import { Field, Input, Select } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
 import { dateTime, num } from "@/lib/format";
 
 interface PaymentRow {
@@ -51,10 +53,12 @@ function money(amount: string | number, currency: string): string {
 }
 
 export default function PaymentsPage() {
+  const toast = useToast();
   const [status, setStatus] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [email, setEmail] = useState("");
   const [page, setPage] = useState(1);
+  const [pendingRefund, setPendingRefund] = useState<PaymentRow | null>(null);
 
   const { data, loading, error, reload } = useResource<PaymentPage>(
     () => {
@@ -74,6 +78,18 @@ export default function PaymentsPage() {
     e.preventDefault();
     setPage(1);
     setEmail(emailInput.trim());
+  }
+
+  async function refund(r: PaymentRow) {
+    try {
+      await apiFetch(`/admin/payments/${r.id}/refund`, { method: "POST" });
+      toast.success(
+        `Refunded ${money(r.amount, r.currency)} and clawed back ${num(r.credit_amount)} credits.`,
+      );
+      void reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to refund payment");
+    }
   }
 
   return (
@@ -136,6 +152,7 @@ export default function PaymentsPage() {
                 <th scope="col" className="px-4 py-3">Status</th>
                 <th scope="col" className="px-4 py-3">Paid</th>
                 <th scope="col" className="px-4 py-3">Reference</th>
+                <th scope="col" className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -170,6 +187,20 @@ export default function PaymentsPage() {
                   >
                     {r.provider_payment_id ?? r.gateway_payment_id ?? r.bill_number ?? "—"}
                   </td>
+                  <td className="px-4 py-3 text-right">
+                    {r.provider === "chmaba" && r.status === "paid" ? (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-red-300"
+                        onClick={() => setPendingRefund(r)}
+                      >
+                        Refund
+                      </Button>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -203,6 +234,22 @@ export default function PaymentsPage() {
           </span>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingRefund}
+        title="Refund payment"
+        danger
+        confirmLabel="Refund"
+        message={
+          pendingRefund
+            ? `Refund ${money(pendingRefund.amount, pendingRefund.currency)} and claw back ${num(
+                pendingRefund.credit_amount,
+              )} credits from ${pendingRefund.email}? This cannot be undone.`
+            : ""
+        }
+        onConfirm={() => (pendingRefund ? refund(pendingRefund) : Promise.resolve())}
+        onClose={() => setPendingRefund(null)}
+      />
     </div>
   );
 }
