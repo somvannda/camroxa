@@ -412,9 +412,12 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
 
 - URL-state persistence for filters.
 - Admin 2FA; CSRF token; automated tests + CI wiring.
-- Local end-to-end run — blocked by the local DB vs. repo **migration-filename
-  mismatch** (local `0025–0028` differ from this branch) — and the live browser
-  audit.
+- Local end-to-end run — **done** (2026-10-05) against a separate scratch DB
+  (`sunoapi_admin_dev`, all 28 migrations applied), which sidesteps the shared-DB
+  migration mismatch: login, every page, server-side pagination shapes, CSV
+  export, and the credit-adjustment + audit write path all passed with **zero
+  console errors**. The live production site was audited read-only (login page
+  only — no credentials).
 
 ### Branch strategy note
 
