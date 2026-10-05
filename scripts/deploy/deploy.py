@@ -428,6 +428,7 @@ def upload_and_run(client, secrets: dict[str, str]) -> int:
         "PLATFORM_JWT_SECRET",
         "PLATFORM_ENCRYPTION_MASTER_KEY",
         "PLATFORM_SUNO_CALLBACK_HMAC_SECRET",
+        "EDGE_VERIFY_SECRET",
         "PLATFORM_CUTLUY_SECRET_KEY",
         "PLATFORM_CUTLUY_PAYMENT_LINK_ID",
         "PLATFORM_CUTLUY_WEBHOOK_SECRET",
