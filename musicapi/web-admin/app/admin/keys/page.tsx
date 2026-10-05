@@ -6,8 +6,10 @@ import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
 import { Field, Input } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
 import { num } from "@/lib/format";
 
 interface AdminKey {
@@ -39,11 +41,14 @@ interface KeyPage {
 const PAGE_SIZE = 50;
 
 function KeysInner() {
+  const toast = useToast();
   const router = useRouter();
   const params = useSearchParams();
   const [qInput, setQInput] = useState(params.get("q") ?? "");
   const [q, setQ] = useState(params.get("q") ?? "");
   const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<AdminKey | null>(null);
 
   const { data, loading, error, reload } = useResource<KeyPage>(
     () => {
@@ -94,6 +99,32 @@ function KeysInner() {
     setQ(qInput.trim());
   }
 
+  async function toggleActive(k: AdminKey) {
+    setBusyId(k.id);
+    try {
+      await apiFetch(`/admin/keys/${k.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ is_active: !k.is_active }),
+      });
+      toast.success(k.is_active ? "Key disabled." : "Key enabled.");
+      void reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update key");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function remove(k: AdminKey) {
+    try {
+      await apiFetch(`/admin/keys/${k.id}`, { method: "DELETE" });
+      toast.success("Key deleted.");
+      void reload();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to delete key");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
@@ -133,6 +164,7 @@ function KeysInner() {
                 <th scope="col" className="px-4 py-3">Prefix</th>
                 <th scope="col" className="px-4 py-3 text-right">Key Balance</th>
                 <th scope="col" className="px-4 py-3">Status</th>
+                <th scope="col" className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -154,6 +186,7 @@ function KeysInner() {
                       </span>
                     </td>
                     <td className="px-4 py-2.5" />
+                    <td className="px-4 py-2.5" />
                   </tr>
                   {g.keys.map((k) => (
                     <tr key={k.id} className="border-t border-[var(--border)]">
@@ -166,6 +199,24 @@ function KeysInner() {
                         <Badge tone={k.is_active ? "success" : "danger"}>
                           {k.is_active ? "active" : "inactive"}
                         </Badge>
+                      </td>
+                      <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busyId === k.id}
+                          onClick={() => toggleActive(k)}
+                        >
+                          {k.is_active ? "Disable" : "Enable"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-300"
+                          onClick={() => setPendingDelete(k)}
+                        >
+                          Delete
+                        </Button>
                       </td>
                     </tr>
                   ))}
@@ -202,6 +253,20 @@ function KeysInner() {
           </span>
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="Delete API key"
+        danger
+        confirmLabel="Delete"
+        message={
+          pendingDelete
+            ? `Delete key “${pendingDelete.name}” (${pendingDelete.key_prefix}…)? Any app using it will stop working immediately.`
+            : ""
+        }
+        onConfirm={() => (pendingDelete ? remove(pendingDelete) : Promise.resolve())}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

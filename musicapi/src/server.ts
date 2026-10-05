@@ -5539,6 +5539,67 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
   });
 
+  app.patch("/admin/keys/:id", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { is_active?: unknown; name?: unknown };
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (body.is_active !== undefined) {
+      if (typeof body.is_active !== "boolean") {
+        return reply.code(400).send({ error: "is_active must be a boolean." });
+      }
+      params.push(body.is_active);
+      sets.push(`is_active = $${params.length}`);
+    }
+    if (body.name !== undefined) {
+      if (typeof body.name !== "string" || !body.name.trim()) {
+        return reply.code(400).send({ error: "name must be a non-empty string." });
+      }
+      params.push(body.name.trim());
+      sets.push(`name = $${params.length}`);
+    }
+    if (sets.length === 0) {
+      return reply.code(400).send({ error: "No editable fields supplied." });
+    }
+    params.push(id);
+    const rows = await query<{ id: string }>(
+      `UPDATE api_keys SET ${sets.join(", ")} WHERE id = $${params.length} RETURNING id`,
+      params,
+    );
+    if (rows.length === 0) return reply.code(404).send({ error: "Key not found." });
+    await recordAudit({
+      actor: admin,
+      action: "key.update",
+      targetType: "api_key",
+      targetId: id,
+      details: body as Record<string, unknown>,
+      req,
+    });
+    return { ok: true };
+  });
+
+  app.delete("/admin/keys/:id", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const rows = await query<{ id: string; key_prefix: string }>(
+      "DELETE FROM api_keys WHERE id = $1 RETURNING id, key_prefix",
+      [id],
+    );
+    if (rows.length === 0) return reply.code(404).send({ error: "Key not found." });
+    await recordAudit({
+      actor: admin,
+      action: "key.delete",
+      targetType: "api_key",
+      targetId: id,
+      details: { key_prefix: rows[0].key_prefix },
+      req,
+    });
+    return { ok: true };
+  });
+
   app.get("/admin/accounts", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const dbRows = await query<{
