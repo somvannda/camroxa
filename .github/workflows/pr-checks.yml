@@ -146,6 +146,7 @@ jobs:
           npm ci --no-audit --no-fund
           npm run typecheck
           npm run build
+          npm run test:unit
 
       - name: web-user — npm ci, typecheck, build
         if: steps.changes.outputs.run == 'true'

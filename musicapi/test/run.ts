@@ -1,0 +1,7 @@
+// Entry point for `npm run test:unit`: importing each test file registers and
+// runs its `node:test` cases in this process.
+import "./models.test.js";
+import "./lrc.test.js";
+import "./concurrency.test.js";
+import "./audio.test.js";
+import "./pool.test.js";
