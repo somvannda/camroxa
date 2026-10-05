@@ -88,3 +88,5 @@ scripts/deploy/.venv/
 
 # Credit cutover snapshots (every user email + wallet)
 scripts/deploy/out/
+# Generated image output cache (never commit)
+image_output_cache/
