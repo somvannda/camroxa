@@ -27,6 +27,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+from datetime import timezone
 from uuid import uuid4
 
 import asyncpg
@@ -101,23 +102,40 @@ async def _reconcile_user(pool: asyncpg.Pool, row, apply: bool) -> bool:
                     uid,
                 )
             )
-            excess = max(0, grant_remaining - keep_units)
-            if excess <= 0:
-                return False
-            # Spend-adjusted grant still in the wallet, then keep one allowance of it.
-            grant_portion = max(0, balance - non_grant_remaining)
-            claw = min(excess, max(0, grant_portion - keep_units))
+            # Zero every grant lot, then ensure exactly one current-month lot. This
+            # also re-anchors legacy lots (daily `period_start`s) to the month start
+            # **without adding credits**, so the new month anchor cannot mint a
+            # duplicate allowance for an account that already has one this month.
+            live_lots = await conn.fetch(
+                "SELECT period_start, expires_at FROM credit_wallet_lots "
+                "WHERE user_id = $1 AND tag = 'grant' AND remaining_units > 0",
+                uid,
+            )
             month_start = billing_month_start()
             next_start = next_billing_month_start(from_date=month_start)
+            normalized = (
+                len(live_lots) == 1
+                and live_lots[0]["period_start"] == month_start
+                and live_lots[0]["expires_at"].astimezone(timezone.utc)
+                == next_start.astimezone(timezone.utc)
+            )
+            # Spend-adjusted grant still in the wallet, then keep one allowance of it.
+            grant_portion = max(0, balance - non_grant_remaining)
+            excess = max(0, grant_remaining - keep_units)
+            claw = min(excess, max(0, grant_portion - keep_units))
+            if claw <= 0 and normalized:
+                return False
+            action = "CLAW" if claw > 0 else "RE-ANCHOR"
             if not apply:
                 print(
-                    f"DRY [{row['kind']}] {row['email']} wallet={units_to_credits(balance)} "
+                    f"DRY [{row['kind']}] {row['email']} {action} "
+                    f"wallet={units_to_credits(balance)} "
                     f"grant_lots={units_to_credits(grant_remaining)} "
                     f"non_grant={units_to_credits(non_grant_remaining)} "
                     f"keep={keep_credits} claw={units_to_credits(claw)} "
                     f"new_wallet={units_to_credits(balance - claw)}"
                 )
-                return claw > 0
+                return True
 
             new_balance = balance
             if claw > 0:
@@ -194,7 +212,7 @@ async def _reconcile_user(pool: asyncpg.Pool, row, apply: bool) -> bool:
                     month_start,
                 )
             print(
-                f"RECONCILED [{row['kind']}] {row['email']} wallet={units_to_credits(balance)} -> "
+                f"{action} [{row['kind']}] {row['email']} wallet={units_to_credits(balance)} -> "
                 f"{units_to_credits(new_balance)} (claw {units_to_credits(claw)}, keep {keep_credits})"
             )
             return True

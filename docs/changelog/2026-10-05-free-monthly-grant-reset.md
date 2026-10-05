@@ -79,6 +79,11 @@ subscription record disagreed with the plan/wallet (3,500 vs 2,300).
   the claw at the spend-adjusted grant portion. It zeroes the stacked `grant`
   lots and leaves a single current-month lot so later expiry cannot double-claw.
   Idempotent — a rerun reports `changed=0`.
+- It also **re-anchors** legacy (daily-dated) grant lots to the month start
+  **without adding credits** (`claw=0`), so switching the anchor cannot mint a
+  duplicate month allowance for an account that already holds one. Verified that
+  no non-licensed account retains an off-month anchor, and that every reconciled
+  balance was reduced or unchanged (never increased).
 - Applied to production: **7** license-less Free accounts (e.g.
   `iamduke1987@gmail.com` 235 → 50) and **3** paid web subscribers
   (`sommakara84@gmail.com` 16,647.5 → 3,500 keeping the current-period allowance,
