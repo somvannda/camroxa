@@ -1,7 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useResource } from "@/lib/useResource";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
+import { Field, Input, Select } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
 
 interface Account {
   id: string;
@@ -16,90 +24,97 @@ interface Account {
     disabled: boolean;
     low_credits: boolean;
     captcha_required: boolean;
-    /** A 2Captcha key is configured, so captchas are solved automatically. */
     captcha_solver: boolean;
   };
 }
 
-function healthBadges(a: Account) {
-  const badges: { label: string; cls: string }[] = [];
-  if (a.health.disabled) badges.push({ label: "Disabled", cls: "bg-red-500/15 text-red-300" });
-  if (a.health.low_credits) badges.push({ label: "Low credits", cls: "bg-amber-500/15 text-amber-300" });
+interface RoutingRule {
+  id: string;
+  model: string;
+  policy: string;
+}
+
+function healthBadges(a: Account): { label: string; tone: BadgeTone }[] {
+  const badges: { label: string; tone: BadgeTone }[] = [];
+  if (a.health.disabled) badges.push({ label: "Disabled", tone: "danger" });
+  if (a.health.low_credits) badges.push({ label: "Low credits", tone: "warning" });
   // An enabled, funded account stays healthy even when Suno challenges its
-  // captcha, because the worker solves it automatically at generation time. So
-  // health is shown first, and the captcha state is an informational note
-  // (amber only when there is no solver — i.e. generation would actually fail).
+  // captcha — the worker solves it automatically at generation time.
   const captchaBlocks = a.health.captcha_required && !a.health.captcha_solver;
   if (!a.health.disabled && !a.health.low_credits && !captchaBlocks) {
-    badges.push({ label: "Healthy", cls: "bg-emerald-500/15 text-emerald-300" });
+    badges.push({ label: "Healthy", tone: "success" });
   }
   if (a.health.captcha_required && a.health.captcha_solver) {
-    badges.push({ label: "Captcha auto-solved", cls: "bg-sky-500/15 text-sky-300" });
+    badges.push({ label: "Captcha auto-solved", tone: "info" });
   } else if (captchaBlocks) {
-    badges.push({ label: "Captcha required", cls: "bg-amber-500/15 text-amber-300" });
+    badges.push({ label: "Captcha required", tone: "warning" });
   }
   return badges;
 }
 
+const EMPTY_FORM = { label: "", type: "free", client_cookie: "", device_id: "" };
+
 export default function AccountsPage() {
-  const [accounts, setAccounts] = useState<Account[]>([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const toast = useToast();
+  const accountsRes = useResource<{ accounts: Account[] }>(() =>
+    apiFetch<{ accounts: Account[] }>("/admin/accounts"),
+  );
+  const rulesRes = useResource<RoutingRule[]>(() => apiFetch<RoutingRule[]>("/admin/routing"));
+  const accounts = accountsRes.data?.accounts ?? [];
+  const rules = rulesRes.data ?? [];
+  const error = accountsRes.error || rulesRes.error;
+
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ label: "", type: "free", client_cookie: "", device_id: "" });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
   const [editing, setEditing] = useState<Account | null>(null);
-  const [editForm, setEditForm] = useState({ label: "", type: "free", client_cookie: "", device_id: "", is_active: true });
+  const [editForm, setEditForm] = useState({
+    label: "",
+    type: "free",
+    client_cookie: "",
+    device_id: "",
+    is_active: true,
+  });
   const [savingEdit, setSavingEdit] = useState(false);
 
-  const [rules, setRules] = useState<{ id: string; model: string; policy: string }[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<Account | null>(null);
+
   const [ruleForm, setRuleForm] = useState({ model: "", policy: "prefer_free" });
   const [savingRule, setSavingRule] = useState(false);
-
-  function load() {
-    setLoading(true);
-    apiFetch<{ accounts: Account[] }>("/admin/accounts")
-      .then((r) => setAccounts(r.accounts))
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }
-
-  function loadRules() {
-    apiFetch<{ id: string; model: string; policy: string }[]>("/admin/routing")
-      .then(setRules)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load routing rules"));
-  }
-
-  useEffect(() => { load(); loadRules(); }, []);
+  const [pendingRule, setPendingRule] = useState<RoutingRule | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setError("");
     try {
       await apiFetch("/admin/accounts", { method: "POST", body: JSON.stringify(form) });
+      toast.success("Account added.");
       setShowForm(false);
-      setForm({ label: "", type: "free", client_cookie: "", device_id: "" });
-      load();
+      setForm(EMPTY_FORM);
+      void accountsRes.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to add");
+      toast.error(err instanceof Error ? err.message : "Failed to add");
     } finally {
       setSaving(false);
     }
   }
 
   function startEdit(a: Account) {
-    setError("");
     setEditing(a);
-    setEditForm({ label: a.label, type: a.type, client_cookie: "", device_id: "", is_active: a.is_active });
+    setEditForm({
+      label: a.label,
+      type: a.type,
+      client_cookie: "",
+      device_id: "",
+      is_active: a.is_active,
+    });
   }
 
   async function submitEdit(e: React.FormEvent) {
     e.preventDefault();
     if (!editing) return;
     setSavingEdit(true);
-    setError("");
     try {
       const body: Record<string, unknown> = {
         label: editForm.label,
@@ -110,199 +125,212 @@ export default function AccountsPage() {
       if (editForm.client_cookie.trim()) body.client_cookie = editForm.client_cookie;
       if (editForm.device_id.trim()) body.device_id = editForm.device_id;
       await apiFetch(`/admin/accounts/${editing.id}`, { method: "PATCH", body: JSON.stringify(body) });
+      toast.success("Account updated.");
       setEditing(null);
-      load();
+      void accountsRes.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update");
+      toast.error(err instanceof Error ? err.message : "Failed to update");
     } finally {
       setSavingEdit(false);
     }
   }
 
   async function removeAccount(a: Account) {
-    if (!window.confirm(`Remove account “${a.label}”? This cannot be undone.`)) return;
-    setError("");
     try {
       await apiFetch(`/admin/accounts/${a.id}`, { method: "DELETE" });
       if (editing?.id === a.id) setEditing(null);
-      load();
+      toast.success("Account removed.");
+      void accountsRes.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to remove");
+      toast.error(err instanceof Error ? err.message : "Failed to remove");
     }
   }
 
   async function saveRule(e: React.FormEvent) {
     e.preventDefault();
     setSavingRule(true);
-    setError("");
     try {
       await apiFetch("/admin/routing", { method: "POST", body: JSON.stringify(ruleForm) });
+      toast.success("Routing rule saved.");
       setRuleForm({ model: "", policy: "prefer_free" });
-      loadRules();
+      void rulesRes.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save rule");
+      toast.error(err instanceof Error ? err.message : "Failed to save rule");
     } finally {
       setSavingRule(false);
     }
   }
 
-  async function deleteRule(id: string) {
-    setError("");
+  async function deleteRule(r: RoutingRule) {
     try {
-      await apiFetch(`/admin/routing/${id}`, { method: "DELETE" });
-      loadRules();
+      await apiFetch(`/admin/routing/${r.id}`, { method: "DELETE" });
+      toast.success("Routing rule deleted.");
+      void rulesRes.reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete rule");
+      toast.error(err instanceof Error ? err.message : "Failed to delete rule");
     }
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Suno Accounts</h1>
-          <p className="text-sm text-[var(--muted)]">
-            Worker accounts used to serve generation requests. Each Suno login is one account with its own
-            <code className="mx-1 rounded bg-black/30 px-1">__client</code> cookie — add as many (free or paid) as you need.
-          </p>
-        </div>
-        <button onClick={() => setShowForm((v) => !v)} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white">
-          {showForm ? "Cancel" : "Add account"}
-        </button>
-      </div>
+      <PageHeader
+        title="Suno Accounts"
+        description={
+          <>
+            Worker accounts used to serve generation requests. Each Suno login is one account with
+            its own <code className="mx-1 rounded bg-black/30 px-1">__client</code> cookie — add as
+            many (free or paid) as you need.
+          </>
+        }
+        actions={
+          <Button onClick={() => setShowForm((v) => !v)}>
+            {showForm ? "Cancel" : "Add account"}
+          </Button>
+        }
+      />
 
-      {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && (
+        <ErrorState
+          message={error}
+          onRetry={() => {
+            void accountsRes.reload();
+            void rulesRes.reload();
+          }}
+        />
+      )}
 
       {showForm && (
-        <form onSubmit={submit} className="glass space-y-4 rounded-xl p-5">
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Label</label>
-              <input
-                value={form.label}
-                onChange={(e) => setForm({ ...form, label: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-                placeholder="account-1"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Type</label>
-              <select
-                value={form.type}
-                onChange={(e) => setForm({ ...form, type: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
+        <Card className="p-5">
+          <form onSubmit={submit} className="space-y-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Label" htmlFor="acct-label">
+                <Input
+                  id="acct-label"
+                  value={form.label}
+                  onChange={(e) => setForm({ ...form, label: e.target.value })}
+                  placeholder="account-1"
+                />
+              </Field>
+              <Field label="Type" htmlFor="acct-type">
+                <Select
+                  id="acct-type"
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value })}
+                >
+                  <option value="free">Free</option>
+                  <option value="paid">Paid</option>
+                </Select>
+              </Field>
+              <Field
+                label="Client cookie"
+                htmlFor="acct-cookie"
+                hint="Log in to suno.com, then copy the __client cookie value from auth.suno.com (DevTools → Application → Cookies). One cookie per account."
               >
-                <option value="free">Free</option>
-                <option value="paid">Paid</option>
-              </select>
+                <Input
+                  id="acct-cookie"
+                  value={form.client_cookie}
+                  onChange={(e) => setForm({ ...form, client_cookie: e.target.value })}
+                  placeholder="eyJ..."
+                />
+              </Field>
+              <Field
+                label="Device ID"
+                htmlFor="acct-device"
+                hint="Optional — a unique id is generated for you when left blank."
+              >
+                <Input
+                  id="acct-device"
+                  value={form.device_id}
+                  onChange={(e) => setForm({ ...form, device_id: e.target.value })}
+                  placeholder="leave blank to auto-generate"
+                />
+              </Field>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Client cookie</label>
-              <input
-                value={form.client_cookie}
-                onChange={(e) => setForm({ ...form, client_cookie: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-                placeholder="eyJ..."
-              />
-              <p className="text-[11px] leading-snug text-[var(--muted)]">
-                Log in to suno.com, then copy the <code className="rounded bg-black/30 px-1">__client</code> cookie value
-                from auth.suno.com (DevTools → Application → Cookies). One cookie per account.
-              </p>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Device ID</label>
-              <input
-                value={form.device_id}
-                onChange={(e) => setForm({ ...form, device_id: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-                placeholder="leave blank to auto-generate"
-              />
-              <p className="text-[11px] leading-snug text-[var(--muted)]">
-                Optional — a unique id is generated for you when left blank.
-              </p>
-            </div>
-          </div>
-          <button disabled={saving} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {saving ? "Saving…" : "Save account"}
-          </button>
-        </form>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save account"}
+            </Button>
+          </form>
+        </Card>
       )}
 
       {editing && (
-        <form onSubmit={submitEdit} className="glass space-y-4 rounded-xl p-5">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Edit “{editing.label}”</h2>
-            <button type="button" onClick={() => setEditing(null)} className="text-xs text-[var(--muted)] hover:underline">
-              Cancel
-            </button>
-          </div>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Label</label>
+        <Card className="p-5">
+          <form onSubmit={submitEdit} className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="text-sm font-semibold">Edit “{editing.label}”</h2>
+              <Button size="sm" variant="ghost" onClick={() => setEditing(null)}>
+                Cancel
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <Field label="Label" htmlFor="edit-label">
+                <Input
+                  id="edit-label"
+                  value={editForm.label}
+                  onChange={(e) => setEditForm({ ...editForm, label: e.target.value })}
+                />
+              </Field>
+              <Field label="Type" htmlFor="edit-type">
+                <Select
+                  id="edit-type"
+                  value={editForm.type}
+                  onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
+                >
+                  <option value="free">Free</option>
+                  <option value="paid">Paid</option>
+                </Select>
+              </Field>
+              <Field label="Client cookie" htmlFor="edit-cookie">
+                <Input
+                  id="edit-cookie"
+                  value={editForm.client_cookie}
+                  onChange={(e) => setEditForm({ ...editForm, client_cookie: e.target.value })}
+                  placeholder="Leave blank to keep current"
+                />
+              </Field>
+              <Field label="Device ID" htmlFor="edit-device">
+                <Input
+                  id="edit-device"
+                  value={editForm.device_id}
+                  onChange={(e) => setEditForm({ ...editForm, device_id: e.target.value })}
+                  placeholder="Leave blank to keep current"
+                />
+              </Field>
+            </div>
+            <label className="flex items-center gap-2 text-sm">
               <input
-                value={editForm.label}
-                onChange={(e) => setEditForm({ ...editForm, label: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
+                type="checkbox"
+                checked={editForm.is_active}
+                onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked })}
               />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Type</label>
-              <select
-                value={editForm.type}
-                onChange={(e) => setEditForm({ ...editForm, type: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-              >
-                <option value="free">Free</option>
-                <option value="paid">Paid</option>
-              </select>
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Client cookie</label>
-              <input
-                value={editForm.client_cookie}
-                onChange={(e) => setEditForm({ ...editForm, client_cookie: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-                placeholder="Leave blank to keep current"
-              />
-            </div>
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Device ID</label>
-              <input
-                value={editForm.device_id}
-                onChange={(e) => setEditForm({ ...editForm, device_id: e.target.value })}
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-                placeholder="Leave blank to keep current"
-              />
-            </div>
-          </div>
-          <label className="flex items-center gap-2 text-sm">
-            <input
-              type="checkbox"
-              checked={editForm.is_active}
-              onChange={(e) => setEditForm({ ...editForm, is_active: e.target.checked })}
-            />
-            Active
-          </label>
-          <button disabled={savingEdit} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {savingEdit ? "Saving…" : "Save changes"}
-          </button>
-        </form>
+              Active
+            </label>
+            <Button type="submit" disabled={savingEdit}>
+              {savingEdit ? "Saving…" : "Save changes"}
+            </Button>
+          </form>
+        </Card>
       )}
 
-      {loading ? (
-        <p className="text-[var(--muted)]">Loading…</p>
+      {accountsRes.loading ? (
+        <LoadingState />
+      ) : accounts.length === 0 ? (
+        <EmptyState
+          title="No Suno accounts configured."
+          description="Add at least one account so generation requests can be served."
+        />
       ) : (
-        <div className="glass overflow-hidden rounded-xl">
+        <div className="glass overflow-x-auto rounded-xl">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-left text-xs text-[var(--muted)]">
               <tr>
-                <th className="px-4 py-3">Label</th>
-                <th className="px-4 py-3">Type</th>
-                <th className="px-4 py-3">Plan</th>
-                <th className="px-4 py-3">Credits</th>
-                <th className="px-4 py-3">Models</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3"></th>
+                <th scope="col" className="px-4 py-3">Label</th>
+                <th scope="col" className="px-4 py-3">Type</th>
+                <th scope="col" className="px-4 py-3">Plan</th>
+                <th scope="col" className="px-4 py-3 text-right">Credits</th>
+                <th scope="col" className="px-4 py-3">Models</th>
+                <th scope="col" className="px-4 py-3">Status</th>
+                <th scope="col" className="px-4 py-3" />
               </tr>
             </thead>
             <tbody>
@@ -311,22 +339,31 @@ export default function AccountsPage() {
                   <td className="px-4 py-3 font-medium">{a.label}</td>
                   <td className="px-4 py-3 capitalize">{a.type}</td>
                   <td className="px-4 py-3 capitalize">{a.live_plan}</td>
-                  <td className="px-4 py-3">{a.live_credits}</td>
-                  <td className="px-4 py-3 text-[var(--muted)]">{a.live_models.join(", ") || "—"}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{a.live_credits}</td>
+                  <td className="px-4 py-3 text-xs text-[var(--muted)]">
+                    {a.live_models.join(", ") || "—"}
+                  </td>
                   <td className="px-4 py-3">
                     <span className="flex flex-wrap gap-1">
                       {healthBadges(a).map((b) => (
-                        <span key={b.label} className={`rounded-full px-2 py-0.5 text-xs ${b.cls}`}>
+                        <Badge key={b.label} tone={b.tone}>
                           {b.label}
-                        </span>
+                        </Badge>
                       ))}
                     </span>
                   </td>
-                  <td className="px-4 py-3">
-                    <span className="flex items-center gap-3">
-                      <button onClick={() => startEdit(a)} className="text-xs text-[var(--violet)] hover:underline">Edit</button>
-                      <button onClick={() => removeAccount(a)} className="text-xs text-red-300 hover:underline">Remove</button>
-                    </span>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <Button size="sm" variant="ghost" onClick={() => startEdit(a)}>
+                      Edit
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-red-300"
+                      onClick={() => setPendingDelete(a)}
+                    >
+                      Remove
+                    </Button>
                   </td>
                 </tr>
               ))}
@@ -335,44 +372,73 @@ export default function AccountsPage() {
         </div>
       )}
 
-      <div className="glass rounded-xl p-5">
+      <Card className="p-5">
         <h2 className="text-sm font-semibold">Routing rules</h2>
-        <p className="mt-1 text-xs text-[var(--muted)]">Map a model key (e.g. chirp-hawk) to an account policy.</p>
-
+        <p className="mt-1 text-xs text-[var(--muted)]">
+          Map a model key (e.g. chirp-hawk) to an account policy.
+        </p>
         <form onSubmit={saveRule} className="mt-3 flex flex-wrap gap-2">
-          <input
+          <Input
             value={ruleForm.model}
             onChange={(e) => setRuleForm({ ...ruleForm, model: e.target.value })}
             placeholder="Model key (e.g. chirp-hawk)"
-            className="rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
+            aria-label="Model key"
+            className="w-full sm:w-64"
           />
-          <select
+          <Select
             value={ruleForm.policy}
             onChange={(e) => setRuleForm({ ...ruleForm, policy: e.target.value })}
-            className="rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
+            aria-label="Routing policy"
           >
             <option value="prefer_free">prefer_free</option>
             <option value="paid_only">paid_only</option>
             <option value="any">any</option>
-          </select>
-          <button disabled={savingRule} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
+          </Select>
+          <Button type="submit" disabled={savingRule}>
             {savingRule ? "Saving…" : "Add rule"}
-          </button>
+          </Button>
         </form>
 
         <div className="mt-4 space-y-2">
           {rules.map((r) => (
-            <div key={r.id} className="flex items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-sm">
+            <div
+              key={r.id}
+              className="flex items-center justify-between rounded-lg border border-[var(--border)] px-3 py-2 text-sm"
+            >
               <span className="font-mono text-xs">{r.model}</span>
               <span className="flex items-center gap-3">
-                <span className="rounded-full bg-white/10 px-2 py-0.5 text-xs text-[var(--muted)]">{r.policy}</span>
-                <button onClick={() => deleteRule(r.id)} className="text-xs text-red-300 hover:underline">Delete</button>
+                <Badge tone="neutral">{r.policy}</Badge>
+                <Button size="sm" variant="ghost" className="text-red-300" onClick={() => setPendingRule(r)}>
+                  Delete
+                </Button>
               </span>
             </div>
           ))}
-          {rules.length === 0 && <p className="text-xs text-[var(--muted)]">No custom rules — using defaults.</p>}
+          {rules.length === 0 && (
+            <p className="text-xs text-[var(--muted)]">No custom rules — using defaults.</p>
+          )}
         </div>
-      </div>
+      </Card>
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="Remove Suno account"
+        danger
+        confirmLabel="Remove"
+        message={pendingDelete ? `Remove account “${pendingDelete.label}”? This cannot be undone.` : ""}
+        onConfirm={() => (pendingDelete ? removeAccount(pendingDelete) : Promise.resolve())}
+        onClose={() => setPendingDelete(null)}
+      />
+
+      <ConfirmDialog
+        open={!!pendingRule}
+        title="Delete routing rule"
+        danger
+        confirmLabel="Delete"
+        message={pendingRule ? `Delete the routing rule for “${pendingRule.model}”?` : ""}
+        onConfirm={() => (pendingRule ? deleteRule(pendingRule) : Promise.resolve())}
+        onClose={() => setPendingRule(null)}
+      />
     </div>
   );
 }

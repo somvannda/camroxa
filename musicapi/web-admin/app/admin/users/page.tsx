@@ -1,7 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useResource } from "@/lib/useResource";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
+import { Field, Input } from "@/components/ui/Field";
+import { Modal } from "@/components/ui/Modal";
+import { useToast } from "@/components/ui/Toast";
+import { num } from "@/lib/format";
 
 interface User {
   id: string;
@@ -16,75 +25,90 @@ interface User {
 }
 
 export default function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
+  const toast = useToast();
+  const { data, loading, error, reload } = useResource<User[]>(() =>
+    apiFetch<User[]>("/admin/users"),
+  );
+  const users = data ?? [];
+
   const [q, setQ] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+
+  // Credit adjustment dialog (replaces window.prompt).
+  const [creditsFor, setCreditsFor] = useState<User | null>(null);
+  const [creditAmount, setCreditAmount] = useState("");
+  const [savingCredits, setSavingCredits] = useState(false);
+
+  // Suspend confirmation (replaces the bare status toggle).
+  const [pendingBan, setPendingBan] = useState<User | null>(null);
+
+  // Rate-limit editor.
   const [limitsFor, setLimitsFor] = useState<User | null>(null);
   const [rpw, setRpw] = useState("");
   const [rpm, setRpm] = useState("");
   const [rpd, setRpd] = useState("");
   const [mcj, setMcj] = useState("");
   const [windowMs, setWindowMs] = useState(10_000);
-  const [saving, setSaving] = useState(false);
+  const [savingLimits, setSavingLimits] = useState(false);
 
-  const load = useCallback(() => {
-    setLoading(true);
-    apiFetch<User[]>("/admin/users")
-      .then(setUsers)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(load, [load]);
-
-  async function adjustCredits(u: User) {
-    const raw = window.prompt(`Add/remove credits for ${u.email} (e.g. 100 or -50):`);
-    if (!raw) return;
-    const amount = Number(raw);
-    if (Number.isNaN(amount) || amount === 0) return;
-    setError("");
+  async function submitCredits(e: React.FormEvent) {
+    e.preventDefault();
+    if (!creditsFor) return;
+    const amount = Number(creditAmount);
+    if (Number.isNaN(amount) || amount === 0) {
+      toast.error("Enter a non-zero credit amount (e.g. 100 or -50).");
+      return;
+    }
+    setSavingCredits(true);
     try {
-      await apiFetch(`/admin/users/${u.id}/credits`, { method: "POST", body: JSON.stringify({ amount }) });
-      load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to adjust credits");
+      await apiFetch(`/admin/users/${creditsFor.id}/credits`, {
+        method: "POST",
+        body: JSON.stringify({ amount }),
+      });
+      toast.success(`${amount > 0 ? "Added" : "Removed"} ${Math.abs(amount)} credits.`);
+      setCreditsFor(null);
+      setCreditAmount("");
+      void reload();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to adjust credits");
+    } finally {
+      setSavingCredits(false);
     }
   }
 
-  async function toggleStatus(u: User) {
-    const next = u.status === "active" ? "suspended" : "active";
-    setError("");
+  async function setStatus(u: User, next: "active" | "suspended") {
     try {
-      await apiFetch(`/admin/users/${u.id}`, { method: "PATCH", body: JSON.stringify({ status: next }) });
-      load();
+      await apiFetch(`/admin/users/${u.id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: next }),
+      });
+      toast.success(next === "active" ? "User reactivated." : "User suspended.");
+      void reload();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to update status");
+      toast.error(e instanceof Error ? e.message : "Failed to update status");
     }
   }
 
   async function openLimits(u: User) {
-    setError("");
     setLimitsFor(u);
     setRpw("");
     setRpm("");
     setRpd("");
     setMcj("");
     try {
-      const data = await apiFetch<{
+      const d = await apiFetch<{
         requests_per_window: number | null;
         requests_per_minute: number | null;
         requests_per_day: number | null;
         max_concurrent_jobs: number | null;
         window_ms?: number;
       }>(`/admin/users/${u.id}/rate-limits`);
-      setRpw(data.requests_per_window?.toString() ?? "");
-      setRpm(data.requests_per_minute?.toString() ?? "");
-      setRpd(data.requests_per_day?.toString() ?? "");
-      setMcj(data.max_concurrent_jobs?.toString() ?? "");
-      if (data.window_ms) setWindowMs(data.window_ms);
+      setRpw(d.requests_per_window?.toString() ?? "");
+      setRpm(d.requests_per_minute?.toString() ?? "");
+      setRpd(d.requests_per_day?.toString() ?? "");
+      setMcj(d.max_concurrent_jobs?.toString() ?? "");
+      if (d.window_ms) setWindowMs(d.window_ms);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to load rate limits");
+      toast.error(e instanceof Error ? e.message : "Failed to load rate limits");
     }
   }
 
@@ -106,11 +130,10 @@ export default function UsersPage() {
       perDay === undefined ||
       maxConcurrent === undefined
     ) {
-      setError("Limits must be positive whole numbers, or left empty to clear.");
+      toast.error("Limits must be positive whole numbers, or left empty to clear.");
       return;
     }
-    setSaving(true);
-    setError("");
+    setSavingLimits(true);
     try {
       await apiFetch(`/admin/users/${limitsFor.id}/rate-limits`, {
         method: "PUT",
@@ -121,11 +144,12 @@ export default function UsersPage() {
           max_concurrent_jobs: maxConcurrent,
         }),
       });
+      toast.success("Rate limits saved.");
       setLimitsFor(null);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to save rate limits");
+      toast.error(e instanceof Error ? e.message : "Failed to save rate limits");
     } finally {
-      setSaving(false);
+      setSavingLimits(false);
     }
   }
 
@@ -133,34 +157,40 @@ export default function UsersPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Users</h1>
-          <p className="text-sm text-[var(--muted)]">Manage credits and account status</p>
-        </div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by email…"
-          className="rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-        />
-      </div>
+      <PageHeader
+        title="Users"
+        description="Manage credits and account status"
+        actions={
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by email…"
+            aria-label="Search users"
+            className="w-full sm:w-72"
+          />
+        }
+      />
 
-      {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <ErrorState message={error} onRetry={reload} />}
 
       {loading ? (
-        <p className="text-[var(--muted)]">Loading…</p>
+        <LoadingState />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="No users found."
+          description={users.length ? "No rows match your search." : undefined}
+        />
       ) : (
-        <div className="glass overflow-hidden rounded-xl">
+        <div className="glass overflow-x-auto rounded-xl">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-left text-xs text-[var(--muted)]">
               <tr>
-                <th className="px-4 py-3">Email</th>
-                <th className="px-4 py-3">Role</th>
-                <th className="px-4 py-3">Credits</th>
-                <th className="px-4 py-3">Requests</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3 text-right">Actions</th>
+                <th scope="col" className="px-4 py-3">Email</th>
+                <th scope="col" className="px-4 py-3">Role</th>
+                <th scope="col" className="px-4 py-3 text-right">Credits</th>
+                <th scope="col" className="px-4 py-3 text-right">Requests</th>
+                <th scope="col" className="px-4 py-3">Status</th>
+                <th scope="col" className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -171,101 +201,139 @@ export default function UsersPage() {
                     {u.name && <div className="text-xs text-[var(--muted)]">{u.name}</div>}
                   </td>
                   <td className="px-4 py-3 capitalize">{u.role}</td>
-                  <td className="px-4 py-3">{u.credits}</td>
-                  <td className="px-4 py-3">{u.request_count}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{num(u.credits)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{num(u.request_count)}</td>
                   <td className="px-4 py-3">
-                    <span className={`rounded-full px-2 py-0.5 text-xs ${u.status === "active" ? "bg-[var(--emerald)]/15 text-[var(--emerald)]" : "bg-red-500/15 text-red-300"}`}>
-                      {u.status}
-                    </span>
+                    <Badge tone={u.status === "active" ? "success" : "danger"}>{u.status}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-right">
-                    <button onClick={() => adjustCredits(u)} className="mr-2 rounded px-2 py-1 text-xs text-[var(--violet)] hover:bg-white/5">Credits</button>
-                    <button onClick={() => openLimits(u)} className="mr-2 rounded px-2 py-1 text-xs text-[var(--violet)] hover:bg-white/5">Limits</button>
-                    <button onClick={() => toggleStatus(u)} className="rounded px-2 py-1 text-xs text-red-300 hover:bg-white/5">
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <Button size="sm" variant="ghost" onClick={() => setCreditsFor(u)}>
+                      Credits
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => openLimits(u)}>
+                      Limits
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className={u.status === "active" ? "text-red-300" : ""}
+                      onClick={() =>
+                        u.status === "active" ? setPendingBan(u) : void setStatus(u, "active")
+                      }
+                    >
                       {u.status === "active" ? "Ban" : "Unban"}
-                    </button>
+                    </Button>
                   </td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted)]">No users found.</td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
       )}
 
-      {limitsFor && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="glass w-full max-w-sm rounded-xl p-5">
-            <h2 className="text-lg font-semibold">Rate limits</h2>
-            <p className="mb-4 text-sm text-[var(--muted)]">{limitsFor.email}</p>
-            <label className="mb-3 block text-sm">
-              <span className="mb-1 block text-[var(--muted)]">
-                Requests per {Math.round(windowMs / 1000)}s window
-              </span>
-              <input
-                value={rpw}
-                onChange={(e) => setRpw(e.target.value)}
-                inputMode="numeric"
-                placeholder="Unlimited"
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-              />
-            </label>
-            <label className="mb-3 block text-sm">
-              <span className="mb-1 block text-[var(--muted)]">Requests per minute</span>
-              <input
-                value={rpm}
-                onChange={(e) => setRpm(e.target.value)}
-                inputMode="numeric"
-                placeholder="Unlimited"
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-              />
-            </label>
-            <label className="mb-3 block text-sm">
-              <span className="mb-1 block text-[var(--muted)]">Requests per day</span>
-              <input
-                value={rpd}
-                onChange={(e) => setRpd(e.target.value)}
-                inputMode="numeric"
-                placeholder="Unlimited"
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-              />
-            </label>
-            <label className="block text-sm">
-              <span className="mb-1 block text-[var(--muted)]">Max concurrent jobs</span>
-              <input
-                value={mcj}
-                onChange={(e) => setMcj(e.target.value)}
-                inputMode="numeric"
-                placeholder="Default"
-                className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-              />
-            </label>
-            <p className="mt-3 text-xs text-[var(--muted)]">
-              Leave a field empty for no limit (concurrent jobs falls back to the pool default).
-              The window budget mirrors sunoapi.org&apos;s 20 req/10s shape.
-            </p>
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                onClick={() => setLimitsFor(null)}
-                className="rounded-lg px-3 py-2 text-sm text-[var(--muted)] hover:bg-white/5"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={saveLimits}
-                disabled={saving}
-                className="rounded-lg bg-[var(--violet)] px-3 py-2 text-sm font-medium text-white disabled:opacity-50"
-              >
-                {saving ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Credit adjustment */}
+      <Modal
+        open={!!creditsFor}
+        onClose={() => setCreditsFor(null)}
+        title="Adjust credits"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCreditsFor(null)}>
+              Cancel
+            </Button>
+            <Button form="credit-form" type="submit" disabled={savingCredits}>
+              {savingCredits ? "Applying…" : "Apply"}
+            </Button>
+          </>
+        }
+      >
+        <form id="credit-form" onSubmit={submitCredits} className="space-y-3">
+          <p className="text-sm text-[var(--muted)]">{creditsFor?.email}</p>
+          <Field label="Amount (positive adds, negative removes)" htmlFor="credit-amount">
+            <Input
+              id="credit-amount"
+              inputMode="numeric"
+              value={creditAmount}
+              onChange={(e) => setCreditAmount(e.target.value)}
+              placeholder="100 or -50"
+            />
+          </Field>
+        </form>
+      </Modal>
+
+      {/* Rate limits */}
+      <Modal
+        open={!!limitsFor}
+        onClose={() => setLimitsFor(null)}
+        title="Rate limits"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setLimitsFor(null)}>
+              Cancel
+            </Button>
+            <Button onClick={saveLimits} disabled={savingLimits}>
+              {savingLimits ? "Saving…" : "Save"}
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-[var(--muted)]">{limitsFor?.email}</p>
+        <Field label={`Requests per ${Math.round(windowMs / 1000)}s window`} htmlFor="rl-window">
+          <Input
+            id="rl-window"
+            inputMode="numeric"
+            value={rpw}
+            onChange={(e) => setRpw(e.target.value)}
+            placeholder="Unlimited"
+          />
+        </Field>
+        <Field label="Requests per minute" htmlFor="rl-minute">
+          <Input
+            id="rl-minute"
+            inputMode="numeric"
+            value={rpm}
+            onChange={(e) => setRpm(e.target.value)}
+            placeholder="Unlimited"
+          />
+        </Field>
+        <Field label="Requests per day" htmlFor="rl-day">
+          <Input
+            id="rl-day"
+            inputMode="numeric"
+            value={rpd}
+            onChange={(e) => setRpd(e.target.value)}
+            placeholder="Unlimited"
+          />
+        </Field>
+        <Field
+          label="Max concurrent jobs"
+          htmlFor="rl-concurrent"
+          hint="Leave a field empty for no limit (concurrent jobs falls back to the pool default)."
+        >
+          <Input
+            id="rl-concurrent"
+            inputMode="numeric"
+            value={mcj}
+            onChange={(e) => setMcj(e.target.value)}
+            placeholder="Default"
+          />
+        </Field>
+      </Modal>
+
+      {/* Suspend confirmation */}
+      <ConfirmDialog
+        open={!!pendingBan}
+        title="Suspend user"
+        danger
+        confirmLabel="Suspend"
+        message={
+          pendingBan
+            ? `Suspend ${pendingBan.email}? They will lose API access until reactivated.`
+            : ""
+        }
+        onConfirm={() => (pendingBan ? setStatus(pendingBan, "suspended") : Promise.resolve())}
+        onClose={() => setPendingBan(null)}
+      />
     </div>
   );
 }
