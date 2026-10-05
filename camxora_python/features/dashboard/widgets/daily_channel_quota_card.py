@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, Qt
 from PySide6.QtGui import QColor, QFont
+
+from shared.lib.ui_font import studio_font
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QHeaderView,
@@ -88,10 +90,7 @@ class _StatusDelegate(QStyledItemDelegate):
             painter.fillRect(option.rect, QColor("#6335D9"))
         else:
             painter.fillRect(option.rect, option.palette.base())
-        font = QFont("Inter")
-        font.setPixelSize(10)
-        font.setWeight(QFont.Weight.DemiBold)
-        painter.setFont(font)
+        painter.setFont(studio_font(10, QFont.Weight.DemiBold))
         text_width = painter.fontMetrics().horizontalAdvance(status) + 14
         x = option.rect.x() + 8
         y = option.rect.y() + max((option.rect.height() - 16) // 2, 2)

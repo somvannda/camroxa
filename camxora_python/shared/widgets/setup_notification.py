@@ -64,7 +64,7 @@ class _NotificationBadge(QLabel):
         painter.drawEllipse(self.rect())
         painter.setPen(QColor("#ffffff"))
         font = QFont(self.font())
-        font.setPointSize(8)
+        font.setPixelSize(8)
         font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(font)
         painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self.text())

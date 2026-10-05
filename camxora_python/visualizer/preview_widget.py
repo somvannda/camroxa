@@ -12,6 +12,8 @@ from PySide6.QtOpenGLWidgets import QOpenGLWidget
 from PySide6.QtCore import Signal, QTimer, QByteArray, Qt, QRectF, QSize, QMetaObject, Slot, Q_ARG
 from PySide6.QtGui import QPainter, QColor, QPen, QFont, QPixmap
 
+from shared.lib.ui_font import studio_font
+
 import moderngl
 from visualizer.gpu_render import (
     _compile,
@@ -3243,18 +3245,18 @@ class ProgressRingStep(QWidget):
                 pass
 
         p.setPen(QColor(self._text if self._state != "inactive" else self._text_muted))
-        f = QFont("Segoe UI", 10, QFont.Weight.Bold)
+        f = studio_font(10, QFont.Weight.Bold)
         p.setFont(f)
         p.drawText(QRectF(float(cx - 40), float(cy + 6), 80.0, 24.0), int(Qt.AlignmentFlag.AlignCenter), f"{self._percent}%")
 
         y0 = top_pad + circle_d + 12
         p.setPen(QColor(self._text))
-        ft = QFont("Segoe UI", 10, QFont.Weight.Bold)
+        ft = studio_font(10, QFont.Weight.Bold)
         p.setFont(ft)
         p.drawText(QRectF(0.0, float(y0), float(w), 22.0), int(Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop), self._title)
 
         p.setPen(QColor(self._text_muted))
-        fd = QFont("Segoe UI", 9)
+        fd = studio_font(9)
         p.setFont(fd)
         yy = y0 + 22
         if self._duration_text:
