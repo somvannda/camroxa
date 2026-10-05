@@ -412,7 +412,11 @@ function BreakdownTable({
 }
 
 function csvCell(value: string | number): string {
-  const s = String(value);
+  let s = String(value);
+  // Neutralize spreadsheet formula injection: a user-controlled cell that starts
+  // with = + - @ (or a leading tab/CR) is prefixed with a quote so Excel/Sheets
+  // treats it as text.
+  if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
