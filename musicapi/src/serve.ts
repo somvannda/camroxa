@@ -4,10 +4,20 @@ import { AccountPool } from "./pool.js";
 import { buildServer } from "./server.js";
 import { pool as dbPool, query, queryOne } from "./db.js";
 import { encryptCookie } from "./cookieCrypto.js";
-import { config } from "./config.js";
+import { config, storageConfigured } from "./config.js";
 import { loadRuntimeSettings } from "./runtimeSettings.js";
 
 const port = Number(process.env.PORT ?? 4003);
+
+if (!storageConfigured()) {
+  // Drop-in contract: a reseller always returns a playable, hosted URL. Without
+  // durable storage musicapi cannot, so audio jobs are failed rather than
+  // served as empty/unplayable links. Surface it loudly at boot.
+  console.error(
+    "[storage] Object storage is NOT configured — audio generation will fail. " +
+      "Configure B2/S3 before serving audio (success must imply a durable URL).",
+  );
+}
 
 // Load admin-managed integration settings (env is the fallback) before the
 // account pool, so a DB-configured Suno cookie/device is available to seed.
