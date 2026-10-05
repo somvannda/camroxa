@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
@@ -52,12 +53,14 @@ function money(amount: string | number, currency: string): string {
   return `${n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
-export default function PaymentsPage() {
+function PaymentsInner() {
   const toast = useToast();
-  const [status, setStatus] = useState("");
-  const [emailInput, setEmailInput] = useState("");
-  const [email, setEmail] = useState("");
-  const [page, setPage] = useState(1);
+  const router = useRouter();
+  const params = useSearchParams();
+  const [status, setStatus] = useState(params.get("status") ?? "");
+  const [emailInput, setEmailInput] = useState(params.get("email") ?? "");
+  const [email, setEmail] = useState(params.get("email") ?? "");
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
   const [pendingRefund, setPendingRefund] = useState<PaymentRow | null>(null);
 
   const { data, loading, error, reload } = useResource<PaymentPage>(
@@ -69,6 +72,16 @@ export default function PaymentsPage() {
     },
     [page, status, email],
   );
+
+  // Reflect the filters in the URL so a view can be bookmarked/shared.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (status) p.set("status", status);
+    if (email) p.set("email", email);
+    if (page > 1) p.set("page", String(page));
+    const qs = p.toString();
+    router.replace(qs ? `/admin/payments?${qs}` : "/admin/payments", { scroll: false });
+  }, [status, email, page, router]);
 
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -277,5 +290,13 @@ export default function PaymentsPage() {
         onClose={() => setPendingRefund(null)}
       />
     </div>
+  );
+}
+
+export default function PaymentsPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <PaymentsInner />
+    </Suspense>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
@@ -36,12 +37,14 @@ const TYPE_TONES: Record<string, BadgeTone> = {
 
 const PAGE_SIZE = 25;
 
-export default function TransactionsPage() {
+function TransactionsInner() {
   const toast = useToast();
-  const [type, setType] = useState("");
-  const [emailInput, setEmailInput] = useState("");
-  const [email, setEmail] = useState("");
-  const [page, setPage] = useState(1);
+  const router = useRouter();
+  const params = useSearchParams();
+  const [type, setType] = useState(params.get("type") ?? "");
+  const [emailInput, setEmailInput] = useState(params.get("email") ?? "");
+  const [email, setEmail] = useState(params.get("email") ?? "");
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
 
   const { data, loading, error, reload } = useResource<LedgerPage>(
     () => {
@@ -52,6 +55,16 @@ export default function TransactionsPage() {
     },
     [page, type, email],
   );
+
+  // Reflect the filters in the URL so a view can be bookmarked/shared.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (type) p.set("type", type);
+    if (email) p.set("email", email);
+    if (page > 1) p.set("page", String(page));
+    const qs = p.toString();
+    router.replace(qs ? `/admin/transactions?${qs}` : "/admin/transactions", { scroll: false });
+  }, [type, email, page, router]);
 
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -204,5 +217,13 @@ export default function TransactionsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function TransactionsPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <TransactionsInner />
+    </Suspense>
   );
 }
