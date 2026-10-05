@@ -6561,6 +6561,196 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return report;
   });
 
+  // --- admin: payments + credit ledger (Phase 4) --------------------------
+  // Read-only operator views over the money/ledger tables. Both paginate and
+  // filter server-side so the console never fetches the whole table.
+
+  /** Shared pagination parser: page >= 1, pageSize 1..100, default 25. */
+  function parsePage(q: { page?: string; pageSize?: string }): {
+    page: number;
+    pageSize: number;
+    offset: number;
+  } {
+    const page = Math.max(1, Math.floor(Number(q.page) || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(Number(q.pageSize) || 25)));
+    return { page, pageSize, offset: (page - 1) * pageSize };
+  }
+
+  /** CSV cell: quote when needed and neutralize spreadsheet formula injection. */
+  function csvCell(value: unknown): string {
+    let s = value === null || value === undefined ? "" : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
+  app.get("/admin/payments", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      status?: string;
+      provider?: string;
+      email?: string;
+      format?: string;
+    };
+    const { page, pageSize, offset } = parsePage(q);
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.status) {
+      params.push(q.status);
+      filters.push(`pt.status = $${params.length}`);
+    }
+    if (q.provider) {
+      params.push(q.provider);
+      filters.push(`pt.provider = $${params.length}`);
+    }
+    if (q.email) {
+      params.push(`%${q.email.toLowerCase()}%`);
+      filters.push(`lower(u.email) LIKE $${params.length}`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    if (q.format === "csv") {
+      const all = await query<Record<string, unknown>>(
+        `SELECT pt.created_at, u.email, pt.provider, pt.credit_amount, pt.currency, pt.amount,
+                pt.status, pt.provider_payment_id, pt.gateway_payment_id, pt.paid_at
+         FROM payment_transactions pt JOIN users u ON u.id = pt.user_id
+         ${where} ORDER BY pt.created_at DESC LIMIT 10000`,
+        params,
+      );
+      const lines = [
+        "created_at,email,provider,credits,currency,amount,status,provider_payment_id,gateway_payment_id,paid_at",
+        ...all.map((r) =>
+          [
+            r.created_at,
+            r.email,
+            r.provider,
+            r.credit_amount,
+            r.currency,
+            r.amount,
+            r.status,
+            r.provider_payment_id,
+            r.gateway_payment_id,
+            r.paid_at,
+          ]
+            .map(csvCell)
+            .join(","),
+        ),
+      ];
+      reply.header("content-type", "text/csv; charset=utf-8");
+      reply.header("content-disposition", 'attachment; filename="payments.csv"');
+      return reply.send(lines.join("\n"));
+    }
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM payment_transactions pt
+       JOIN users u ON u.id = pt.user_id ${where}`,
+      params,
+    );
+    const rows = await query<Record<string, unknown>>(
+      `SELECT pt.id, u.email, pt.provider, pt.credit_amount, pt.currency, pt.amount,
+              pt.payment_method, pt.status, pt.provider_payment_id, pt.gateway_payment_id,
+              pt.bill_number, pt.error_message, pt.paid_at, pt.expires_at, pt.created_at
+       FROM payment_transactions pt
+       JOIN users u ON u.id = pt.user_id
+       ${where}
+       ORDER BY pt.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
+    );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
+  });
+
+  // Manual refund of a settled ChmabaPay payment. Reuses `reverseChmabaPayment`,
+  // which is idempotent and guards provider='chmaba' AND status='paid' and
+  // clamps the clawback at zero; the pre-check only returns a clearer error.
+  app.post("/admin/payments/:id/refund", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const payment = await queryOne<{ status: string; provider: string }>(
+      "SELECT status, provider FROM payment_transactions WHERE id = $1",
+      [id],
+    );
+    if (!payment) return reply.code(404).send({ error: "Payment not found." });
+    if (payment.provider !== "chmaba") {
+      return reply.code(400).send({ error: "Only ChmabaPay payments can be refunded here." });
+    }
+    if (payment.status !== "paid") {
+      return reply.code(409).send({ error: "Only a paid payment can be refunded." });
+    }
+    const refunded = await reverseChmabaPayment(id);
+    if (!refunded) {
+      return reply
+        .code(409)
+        .send({ error: "The payment could not be refunded (it may already be reversed)." });
+    }
+    await recordAudit({
+      actor: admin,
+      action: "payment.refund",
+      targetType: "payment_transaction",
+      targetId: id,
+      details: { provider: payment.provider },
+      req,
+    });
+    return { ok: true };
+  });
+
+  app.get("/admin/transactions", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      type?: string;
+      email?: string;
+      format?: string;
+    };
+    const { page, pageSize, offset } = parsePage(q);
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.type) {
+      params.push(q.type);
+      filters.push(`ct.type = $${params.length}`);
+    }
+    if (q.email) {
+      params.push(`%${q.email.toLowerCase()}%`);
+      filters.push(`lower(u.email) LIKE $${params.length}`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    if (q.format === "csv") {
+      const all = await query<Record<string, unknown>>(
+        `SELECT ct.created_at, u.email, ct.amount, ct.type, ct.description, ct.job_id
+         FROM credit_transactions ct JOIN users u ON u.id = ct.user_id
+         ${where} ORDER BY ct.created_at DESC LIMIT 10000`,
+        params,
+      );
+      const lines = [
+        "created_at,email,amount,type,description,job_id",
+        ...all.map((r) =>
+          [r.created_at, r.email, r.amount, r.type, r.description, r.job_id]
+            .map(csvCell)
+            .join(","),
+        ),
+      ];
+      reply.header("content-type", "text/csv; charset=utf-8");
+      reply.header("content-disposition", 'attachment; filename="credit-ledger.csv"');
+      return reply.send(lines.join("\n"));
+    }
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM credit_transactions ct
+       JOIN users u ON u.id = ct.user_id ${where}`,
+      params,
+    );
+    const rows = await query<Record<string, unknown>>(
+      `SELECT ct.id, u.email, ct.amount, ct.type, ct.description, ct.job_id, ct.created_at
+       FROM credit_transactions ct
+       JOIN users u ON u.id = ct.user_id
+       ${where}
+       ORDER BY ct.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
+    );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
+  });
+
   // --- v1 API (DB-backed keys) --------------------------------------------
   app.get("/v1/credits", async (req, reply) => {
     const key = await requireKey(req, reply);
