@@ -77,8 +77,29 @@ class SecureStorage:
             parsed = json.loads(raw)
             if isinstance(parsed, dict):
                 self._data = {str(k): str(v) for k, v in parsed.items()}
-        except (OSError, json.JSONDecodeError, ValueError):
-            self._data = {}
+            else:
+                self._quarantine("store is not a JSON object")
+        except (OSError, json.JSONDecodeError, ValueError) as exc:
+            # Never silently discard saved credentials: keep the unreadable file
+            # (renamed) so it can be recovered, and start empty in memory. A later
+            # save writes a fresh file instead of overwriting the original.
+            self._quarantine(str(exc))
+
+    def _quarantine(self, reason: str) -> None:
+        import time
+
+        try:
+            target = self._path.with_name(f"{self._path.name}.corrupt-{int(time.time())}")
+            self._path.replace(target)
+            print(
+                f"[secure_storage] unreadable store moved to {target}: {reason}",
+                flush=True,
+            )
+        except OSError:
+            # If we cannot move it, keep no data in memory but leave the file
+            # untouched so a manual recovery is still possible.
+            pass
+        self._data = {}
 
     def _save(self) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
