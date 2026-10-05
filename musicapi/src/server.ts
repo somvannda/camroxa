@@ -1528,6 +1528,57 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return fallbackRow ? rowToJob(fallbackRow) : null;
   }
 
+  // sunoapi.org's timestamped-lyrics getters answer *synchronously* with
+  // `data.alignedWords`, and their consumers (platform_api, the desktop LRC
+  // fetch) read that immediately instead of polling a task id — so an async-only
+  // reply can never deliver timings to them. Our aligner returns line-level
+  // timings, so rebuild the word list in their shape: one newline-terminated
+  // token per line, which their converter splits back into LRC lines.
+  function sunoAlignedWords(job: Job): Array<Record<string, unknown>> {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    const lines = Array.isArray(res.aligned_lines)
+      ? (res.aligned_lines as Array<Record<string, unknown>>)
+      : [];
+    const words: Array<Record<string, unknown>> = [];
+    for (const line of lines) {
+      if (!line || typeof line !== "object") continue;
+      const text = typeof line.text === "string" ? line.text.trim() : "";
+      if (!text) continue;
+      const start = Number(line.startS ?? 0) || 0;
+      words.push({ word: `${text}\n`, startS: start, endS: Number(line.endS ?? start) || start });
+    }
+    return words;
+  }
+
+  function timestampedLyricsBody(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    return {
+      code: 200,
+      msg: "success",
+      data: {
+        taskId: job.id,
+        aligned: res.aligned === true,
+        lrc: typeof res.lrc === "string" ? res.lrc : "",
+        alignedWords: sunoAlignedWords(job),
+      },
+    };
+  }
+
+  // The getters hold the request while a cold alignment runs so they can answer
+  // synchronously. Bound that below the caller's ~30s HTTP timeout: a slower
+  // track returns an empty list now, keeps running, and the caller's next
+  // attempt is served straight from the cache.
+  const LYRICS_SYNC_WAIT_MS = Number(process.env.LYRICS_SYNC_WAIT_MS ?? 25_000);
+
+  async function awaitJobTerminal(job: Job, ms: number): Promise<void> {
+    const running = () =>
+      job.status === "pending" || job.status === "running" || job.status === "streaming";
+    const deadline = Date.now() + ms;
+    while (running() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+
   function slug(s: string): string {
     return s
       .toLowerCase()
@@ -4805,22 +4856,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
-    const existing = await reusableLyricsJob(id, u.id);
-    if (existing) {
-      return reply.code(202).send({ job_id: existing.id, status: existing.status });
+    let job = await reusableLyricsJob(id, u.id);
+    if (job) {
+      await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
+    } else {
+      const cost = await costFor("timestamped_lyrics_detail");
+      const key = await chargeUserKey(u.id, cost);
+      if (cost > 0 && !key) {
+        return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+      }
+      job = newJob("timestamped_lyrics_detail");
+      job.userId = u.id;
+      job.apiKeyId = key?.id;
+      job.endpoint = "timestamped_lyrics_detail";
+      job.credits = cost;
+      job.payload = { op: "timestamped_lyrics_detail", args: { id } };
+      await Promise.race([
+        runTimestampedLyricsJob(job, id),
+        new Promise<void>((resolve) => setTimeout(resolve, LYRICS_SYNC_WAIT_MS)),
+      ]);
     }
-    const cost = await costFor("timestamped_lyrics_detail");
-    const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
-    }
-    const job = newJob("timestamped_lyrics_detail");
-    job.userId = u.id;
-    job.apiKeyId = key?.id;
-    job.endpoint = "timestamped_lyrics_detail";
-    job.credits = cost;
-    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
-    return reply.code(202).send({ job_id: job.id, status: job.status });
+    return reply.send(timestampedLyricsBody(job));
   });
 
   // Detail GET routes (T3 - meDetailRoute)
@@ -6744,20 +6800,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
-    const existing = await reusableLyricsJob(id, key.user_id);
-    if (existing) {
-      return reply.code(202).send({ job_id: existing.id, status: existing.status });
+    let job = await reusableLyricsJob(id, key.user_id);
+    if (job) {
+      await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
+    } else {
+      const cost = await costFor("timestamped_lyrics_detail");
+      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      job = newJob("timestamped_lyrics_detail");
+      job.userId = key.user_id;
+      job.apiKeyId = key.id;
+      job.endpoint = "timestamped_lyrics_detail";
+      job.credits = cost;
+      job.payload = { op: "timestamped_lyrics_detail", args: { id } };
+      await Promise.race([
+        runTimestampedLyricsJob(job, id),
+        new Promise<void>((resolve) => setTimeout(resolve, LYRICS_SYNC_WAIT_MS)),
+      ]);
     }
-    const cost = await costFor("timestamped_lyrics_detail");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
-
-    const job = newJob("timestamped_lyrics_detail");
-    job.userId = key.user_id;
-    job.apiKeyId = key.id;
-    job.endpoint = "timestamped_lyrics_detail";
-    job.credits = cost;
-    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
-    return reply.code(202).send({ job_id: job.id, status: job.status });
+    return reply.send(timestampedLyricsBody(job));
   });
 
   // -------- Detail GET routes for clip assets (all 1-credit details) --------
@@ -8266,16 +8326,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    const existing = await reusableLyricsJob(id, key.user_id);
-    if (existing) {
-      return reply.code(202).send({ code: 200, msg: "success", data: { taskId: existing.id } });
+    let job = await reusableLyricsJob(id, key.user_id);
+    if (job) {
+      await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
+    } else {
+      const cost = await costFor("timestamped_lyrics_detail");
+      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      job = newJob("timestamped_lyrics_detail");
+      job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "timestamped_lyrics_detail"; job.credits = cost;
+      job.payload = { op: "timestamped_lyrics_detail", args: { id } };
+      await Promise.race([
+        runTimestampedLyricsJob(job, id),
+        new Promise<void>((resolve) => setTimeout(resolve, LYRICS_SYNC_WAIT_MS)),
+      ]);
     }
-    const cost = await costFor("timestamped_lyrics_detail");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
-    const job = newJob("timestamped_lyrics_detail");
-    job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "timestamped_lyrics_detail"; job.credits = cost;
-    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
-    return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
+    return reply.send(timestampedLyricsBody(job));
   });
 
   // ============================================================
@@ -8516,22 +8581,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.task_id as string);
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
     const cb = callbackUrl(in_);
-    // Reuse only when the callback matches (or neither set): a webhook caller
-    // must not silently lose its delivery, while the polling clients that caused
-    // the flood (no callback) collapse onto one job per clip.
-    const existing = await reusableLyricsJob(id, key.user_id);
-    if (existing && (existing.callbackUrl ?? undefined) === cb) {
-      return reply.code(202).send({ code: 200, msg: "success", data: { taskId: existing.id } });
+    let job = await reusableLyricsJob(id, key.user_id);
+    if (job) {
+      await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
+    } else {
+      const cost = await costFor("timestamped_lyrics_detail");
+      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      job = newJob("timestamped_lyrics_detail", cb);
+      job.userId = key.user_id;
+      job.apiKeyId = key.id;
+      job.endpoint = "timestamped_lyrics_detail";
+      job.credits = cost;
+      job.payload = { op: "timestamped_lyrics_detail", args: { id } };
+      await Promise.race([
+        runTimestampedLyricsJob(job, id),
+        new Promise<void>((resolve) => setTimeout(resolve, LYRICS_SYNC_WAIT_MS)),
+      ]);
     }
-    const cost = await costFor("timestamped_lyrics_detail");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
-    const job = newJob("timestamped_lyrics_detail", cb);
-    job.userId = key.user_id;
-    job.apiKeyId = key.id;
-    job.endpoint = "timestamped_lyrics_detail";
-    job.credits = cost;
-    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
-    return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
+    return reply.send(timestampedLyricsBody(job));
   });
 
   // replace-section: map their field names onto our replaceSection op.

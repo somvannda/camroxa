@@ -1,4 +1,4 @@
-# musicapi: stop the `timestamped_lyrics_detail` flood + LRC aligner OOM loop
+# musicapi: stop the `timestamped_lyrics_detail` flood, fix the LRC aligner OOM loop, and deliver real timings
 
 ## Summary
 
@@ -14,17 +14,27 @@ crash loop (`failed with result 'oom-kill'`, restart counter had reached 40,
 RSS peaking 2.3–2.6 GB against `MemoryMax=3G`), logging
 `[lrc] align request failed …: fetch failed` on every restart.
 
+A second defect sat on top of it: `platform_api` (the real caller) reads
+`data.alignedWords` from the **immediate** `POST /api/v1/generate/get-timestamped-lyrics`
+response and never polls a task, but musicapi answered with an async
+`{data:{taskId}}`. So even a healthy aligner could never deliver timings to it.
+
 ## Product impact
 
 - Detail polling no longer floods the usage log: a **usable (timed) result is
   reused for good** — a clip's alignment can't change — so once a clip is aligned
   it costs one row ever, not one per poll. In-flight jobs are coalesced, and an
   empty/failed result is only re-attempted after a retry window (default 15 min).
-- The aligner stops OOM-restarting, so `/me/lyrics/:id`, `/v1/lyrics/:id`, and
-  `POST /api/v1/generate/get-timestamped-lyrics` can actually return timed LRC
-  again instead of silently falling back to plain lyrics.
-- Webhook callers that supply a `callBackUrl` are unaffected: reuse only applies
-  when the callback matches (or neither is set).
+- The aligner stops OOM-restarting, so the timestamped-lyrics getters can
+  actually return timed LRC instead of silently falling back to plain lyrics.
+- **Timings now actually reach the caller.** The getters answer synchronously in
+  sunoapi.org's shape — `{code,msg,data:{taskId,aligned,lrc,alignedWords}}` — so
+  `platform_api` (and the desktop LRC fetch) receive real `alignedWords` on the
+  first call instead of an unusable task id.
+- Response change: `/me/lyrics/:id` and `/v1/lyrics/:id` previously returned
+  `{job_id,status}` (create-a-task); they now return the synchronous envelope
+  above, matching their documented "Get Timestamped Lyrics" contract. No in-repo
+  consumer read the old shape.
 
 ## Technical impact
 
@@ -48,8 +58,16 @@ RSS peaking 2.3–2.6 GB against `MemoryMax=3G`), logging
     `/me/lyrics/:id`, `/v1/lyrics/:id`, `GET /api/v1/lyrics/:id`, and
     `POST /api/v1/generate/get-timestamped-lyrics`, before the credit charge so a
     reused request is never billed twice.
-  - The `POST …/get-timestamped-lyrics` route only reuses when the requested
-    callback matches the existing job's (or both are absent).
+  - The getters now answer synchronously: they reuse a cached/in-flight job or
+    create and run one inline, bounded by `LYRICS_SYNC_WAIT_MS` (default 25s,
+    under the caller's ~30s HTTP timeout). On timeout the job keeps running and
+    the next call is served from the cache. `sunoAlignedWords()` rebuilds the
+    aligner's line-level output into sunoapi.org's newline-terminated
+    `alignedWords` so the caller's `aligned_words_to_lrc` produces LRC.
+  - The four routes (`/me/lyrics/:id`, `/v1/lyrics/:id`, `GET /api/v1/lyrics/:id`,
+    `POST /api/v1/generate/get-timestamped-lyrics`) share the dedup + sync paths;
+    the charge only happens when no reusable job exists, so a reused request is
+    never billed twice.
 
 No schema change.
 
@@ -64,7 +82,8 @@ No schema change.
 
 - No migration. Deploy via the normal sandbox-first chain; the LRC sidecar is
   part of the `musicapi` deploy and restarts with the new unit.
-- Optional env knobs: `LRC_MAX_INFLIGHT`, `LRC_QUEUE_WAIT_S`, `LYRICS_REUSE_TTL_MS`.
+- Optional env knobs: `LRC_MAX_INFLIGHT`, `LRC_QUEUE_WAIT_S`, `LYRICS_REUSE_TTL_MS`,
+  `LYRICS_SYNC_WAIT_MS`.
 
 ## Tests
 
@@ -76,12 +95,12 @@ No schema change.
 
 ## Follow-ups
 
-- **Response-shape mismatch (root of the retries):** `platform_api`
-  (`suno_api_base_url=https://musicapi.camxora.com`) calls
-  `POST /api/v1/generate/get-timestamped-lyrics` and expects sunoapi.org's
-  synchronous `data.alignedWords`; musicapi returns an async `{data:{taskId}}`,
-  so the platform never sees timings even when alignment succeeds. Either make
-  musicapi's endpoint answer synchronously or teach the platform to poll our
-  task id.
-- Consider applying the same reuse rule to the other `*_detail` routes if their
-  pollers show up in the ledger.
+- Verify on a **vocal** clip that `data.alignedWords` is non-empty end-to-end
+  (the only sandbox clips to date are instrumental, so shape was verified but not
+  a real alignment).
+- Consider applying the same reuse/sync rule to the other `*_detail` routes if
+  their pollers show up in the ledger.
+- `sync_musicapi_sandbox.py` rebuilds the whole stack (API + both Next apps) for
+  a backend-only change; an `--api-only` fast path would cut deploy time.
+- The local deploy client can stay blocked on the SSH channel after the remote
+  installer finishes; the deploy completes but the caller never returns.
