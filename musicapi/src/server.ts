@@ -5899,13 +5899,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   // Admin user list. Server-side pagination + search/status/role filters so the
   // console never pulls every account (previously an unbounded SELECT).
-  /** CSV cell: quote when needed and neutralize spreadsheet formula injection. */
-  function csvCell(value: unknown): string {
-    let s = value === null || value === undefined ? "" : String(value);
-    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  }
-
   app.get("/admin/users", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const q = (req.query ?? {}) as {
