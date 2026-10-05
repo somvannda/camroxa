@@ -3705,7 +3705,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get("/me/logs/page", async (req, reply) => {
     const u = requireAuth(req, reply);
     if (!u) return;
-    const q = req.query as { task_id?: string; endpoint?: string; start?: string; end?: string; page?: string; page_size?: string };
+    const q = req.query as { task_id?: string; endpoint?: string; endpoints?: string; start?: string; end?: string; page?: string; page_size?: string };
     // Built twice — once per side of the UNION ALL — because the ledger
     // (`usage_logs`) and the job store (`jobs`) name some columns differently.
     // Both sides share the same positional params.
@@ -3731,6 +3731,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         }
         logClauses.push(`(${logOr.join(" OR ")})`);
         jobClauses.push(`(${jobOr.join(" OR ")})`);
+      }
+    }
+    // Exact endpoint names (comma-separated). The Logs tabs send this instead of
+    // the substring `endpoint` filter so overlapping names can't bleed across
+    // tabs — e.g. `recovery_audio` must not match the `audio` tab, and
+    // `mp4_generate`/`midi_generate`/`voice_generate` must not match an
+    // `audio` pattern that contains "generate".
+    if (q.endpoints && typeof q.endpoints === "string" && q.endpoints.trim()) {
+      const names = q.endpoints.split(",").map((p) => p.trim()).filter(Boolean);
+      if (names.length > 0) {
+        params.push(names);
+        const idx = params.length;
+        logClauses.push(`ul.endpoint = ANY($${idx}::text[])`);
+        jobClauses.push(`COALESCE(j.endpoint, j.type) = ANY($${idx}::text[])`);
       }
     }
     if (typeof q.start === "string" && /^\d{4}-\d{2}-\d{2}$/.test(q.start)) {
