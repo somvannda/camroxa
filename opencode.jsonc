@@ -1,0 +1,49 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  // Limit how many agentic iterations each agent can perform.
+  // On the final step OpenCode removes tools and forces a text summary, so a
+  // run can't loop forever and burn tokens. Tune these per agent as needed.
+  "agents": {
+    "build": {
+      "steps": 12
+    },
+    "general": {
+      "steps": 8
+    },
+    "explore": {
+      "steps": 6
+    }
+  },
+
+  // Automatically reduce old conversation context so long sessions
+  // don't accumulate a huge (expensive) context window.
+  "compaction": {
+    "auto": true,
+    "keep": {
+      "tokens": 12000
+    },
+    "buffer": 16000
+  },
+
+  // Don't watch noisy/generated folders. Keeps the file watcher quiet and
+  // avoids re-reading large build output.
+  "watcher": {
+    "ignore": [
+      "**/node_modules/**",
+      "**/.next/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/target/**",
+      "**/__pycache__/**",
+      "**/.mypy_cache/**",
+      "**/.pytest_cache/**",
+      "**/.ruff_cache/**",
+      ".git/**",
+      "logs/**",
+      "uploads/**",
+      "marketplace_storage/**",
+      "image_output_cache/**"
+    ]
+  }
+}

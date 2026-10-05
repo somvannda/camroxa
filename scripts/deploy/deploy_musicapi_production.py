@@ -33,13 +33,18 @@ def main() -> int:
         action="store_true",
         help="Bootstrap the Let's Encrypt cert on first deploy (DNS must resolve)",
     )
+    parser.add_argument(
+        "--api-only",
+        action="store_true",
+        help="Skip the Next.js frontend builds (core API + migrations + services only)",
+    )
     args = parser.parse_args()
 
     if not args.yes:
         print("Refusing to deploy to production without --yes.")
         print("Use scripts/deploy/sync_musicapi_sandbox.py for sandbox.")
         return 2
-    return deploy("production", issue_cert=args.issue_cert)
+    return deploy("production", issue_cert=args.issue_cert, skip_frontend=args.api_only)
 
 
 if __name__ == "__main__":

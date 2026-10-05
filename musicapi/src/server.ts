@@ -1454,6 +1454,160 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return job;
   }
 
+  // Timestamped lyrics are a *read* of a clip's stored alignment — deterministic
+  // for a given clip. Every request used to mint a fresh job + `usage_logs` row,
+  // so a client that polls until it sees timings (the desktop app retries on an
+  // empty result) flooded the ledger and re-ran the expensive aligner for the
+  // same song hundreds of times. Collapse repeated calls onto one job:
+  //   - a usable (timed) result is reused for good — the alignment can't change;
+  //   - an in-flight job is reused so concurrent calls don't duplicate the work;
+  //   - an empty/failed result is reused only within a retry window, so a broken
+  //     aligner can recover without the client retrying every few seconds.
+  // Failures are cached briefly so a saturated aligner retries soon instead of
+  // re-running on every poll; a usable result is cached for good (see below).
+  const LYRICS_REUSE_TTL_MS = Number(process.env.LYRICS_REUSE_TTL_MS ?? 2 * 60_000);
+
+  function isUsableLyricsResult(job: Job): boolean {
+    if (job.status !== "complete") return false;
+    const r = (job.result ?? {}) as Record<string, unknown>;
+    return r.aligned === true && typeof r.lrc === "string" && r.lrc.length > 0;
+  }
+
+  async function reusableLyricsJob(clipId: string, userId: string): Promise<Job | null> {
+    if (!clipId) return null;
+    const floor = Date.now() - LYRICS_REUSE_TTL_MS;
+    const isInflight = (job: Job) =>
+      job.status === "pending" || job.status === "running" || job.status === "streaming";
+
+    // In-memory map is authoritative while a job is live (inline jobs never hit
+    // `jobs` until they settle); keep the newest of each preference class.
+    let usable: Job | null = null;
+    let inflight: Job | null = null;
+    let recent: Job | null = null;
+    for (const job of jobs.values()) {
+      if (
+        job.endpoint !== "timestamped_lyrics_detail" ||
+        job.userId !== userId ||
+        job.payload?.op !== "timestamped_lyrics_detail" ||
+        (job.payload.args as Record<string, unknown> | undefined)?.id !== clipId
+      ) {
+        continue;
+      }
+      if (isUsableLyricsResult(job)) {
+        if (!usable || job.createdAt > usable.createdAt) usable = job;
+      } else if (isInflight(job)) {
+        if (!inflight || job.createdAt > inflight.createdAt) inflight = job;
+      } else if (job.createdAt >= floor) {
+        if (!recent || job.createdAt > recent.createdAt) recent = job;
+      }
+    }
+    if (usable) return usable;
+    if (inflight) return inflight;
+    if (recent) return recent;
+
+    // Cache evicted it (or another node owns the work): consult the durable row.
+    const base = `SELECT ${JOB_COLUMNS} FROM jobs
+       WHERE endpoint = 'timestamped_lyrics_detail'
+         AND user_id = $2
+         AND payload->'args'->>'id' = $1`;
+    const usableRow = await queryOne<JobRow>(
+      `${base}
+         AND status = 'complete'
+         AND coalesce((result_json->>'aligned')::boolean, false) = true
+         AND length(coalesce(result_json->>'lrc', '')) > 0
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [clipId, userId],
+    );
+    if (usableRow) return rowToJob(usableRow);
+    const fallbackRow = await queryOne<JobRow>(
+      `${base}
+         AND (status IN ('pending','running','streaming') OR created_at > to_timestamp($3 / 1000.0))
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [clipId, userId, floor],
+    );
+    return fallbackRow ? rowToJob(fallbackRow) : null;
+  }
+
+  // sunoapi.org's timestamped-lyrics getters answer *synchronously* with
+  // `data.alignedWords`. Suno provides those words directly (see
+  // `client.getAlignedLyrics`); we normalise them to camelCase timings and, for
+  // legacy results from the Whisper fallback, rebuild line tokens from
+  // `aligned_lines`. Both carry newline-terminated words so the caller's
+  // `aligned_words_to_lrc` reconstructs the lines.
+  function normalizeSunoAlignedWords(raw: Array<Record<string, unknown>>): AlignedWord[] {
+    const out: AlignedWord[] = [];
+    for (const item of raw) {
+      if (!item || typeof item !== "object") continue;
+      const word = typeof item.word === "string" ? item.word : "";
+      if (!word) continue;
+      const startS = Number(item.start_s ?? item.startS ?? 0) || 0;
+      const endS = Number(item.end_s ?? item.endS ?? startS) || startS;
+      out.push({ word, startS, endS, success: item.success ?? true, palign: item.p_align ?? 0 });
+    }
+    return out;
+  }
+
+  function sunoAlignedWords(job: Job): Array<Record<string, unknown>> {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    const stored = Array.isArray(res.aligned_words)
+      ? (res.aligned_words as Array<Record<string, unknown>>)
+      : [];
+    if (stored.length > 0) {
+      return stored.map((w) => ({
+        word: w.word,
+        startS: w.startS,
+        endS: w.endS,
+        success: w.success ?? true,
+        palign: w.palign ?? 0,
+      }));
+    }
+    const lines = Array.isArray(res.aligned_lines)
+      ? (res.aligned_lines as Array<Record<string, unknown>>)
+      : [];
+    const words: Array<Record<string, unknown>> = [];
+    for (const line of lines) {
+      if (!line || typeof line !== "object") continue;
+      const text = typeof line.text === "string" ? line.text.trim() : "";
+      if (!text) continue;
+      const start = Number(line.startS ?? 0) || 0;
+      words.push({ word: `${text}\n`, startS: start, endS: Number(line.endS ?? start) || start });
+    }
+    return words;
+  }
+
+  function timestampedLyricsBody(job: Job) {
+    const res = (job.result ?? {}) as Record<string, unknown>;
+    return {
+      code: 200,
+      msg: "success",
+      data: {
+        taskId: job.id,
+        aligned: res.aligned === true,
+        lrc: typeof res.lrc === "string" ? res.lrc : "",
+        alignedWords: sunoAlignedWords(job),
+      },
+    };
+  }
+
+  // The getters answer synchronously, but CPU faster-whisper alignment takes
+  // tens of seconds — far longer than the caller's ~30s HTTP timeout — so they
+  // must not hold the request for it. Start the job, wait only a short grace
+  // period (covers a warm cache / an already-nearly-done job), then answer with
+  // whatever is cached. Alignment finishes in the background and the caller's
+  // next attempt is served the real timings from the cache.
+  const LYRICS_SYNC_WAIT_MS = Number(process.env.LYRICS_SYNC_WAIT_MS ?? 3_000);
+
+  async function awaitJobTerminal(job: Job, ms: number): Promise<void> {
+    const running = () =>
+      job.status === "pending" || job.status === "running" || job.status === "streaming";
+    const deadline = Date.now() + ms;
+    while (running() && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 200));
+    }
+  }
+
   function slug(s: string): string {
     return s
       .toLowerCase()
@@ -1735,13 +1889,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // to stable URLs. A terminal success always requires a real playable URL for
     // audio jobs, so nothing can report success with an empty audio_url.
     if (job.status === "complete") {
-      if (storageConfigured()) {
+      // Lyrics detail reads a clip whose audio the originating music job already
+      // stored; re-ingesting it here was slow and consumed a Suno slot on every
+      // lookup. Skip durable-media handling for it (and fall through to the
+      // storage-configured gate only for jobs that produce media).
+      if (storageConfigured() && job.type !== "timestamped_lyrics_detail") {
         // Gate the terminal state on durable media: while we decrypt + copy to
         // B2, keep reporting the job as still-running so a poll never receives
         // an empty audio_url; it flips to complete only once the B2 copy exists.
         job.status = "running";
         await ensureDurableAudio(job);
-      } else if (AUDIO_CLIP_JOB_TYPES.has(job.type)) {
+      } else if (!storageConfigured() && AUDIO_CLIP_JOB_TYPES.has(job.type)) {
         // No storage => we cannot produce a durable, playable URL. Fail
         // (refundable) instead of a false success, matching sunoapi.org's
         // "success means a playable URL" contract.
@@ -2062,6 +2220,32 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   const LRC_SERVICE_URL = process.env.LRC_SERVICE_URL ?? "http://127.0.0.1:4011";
   const LRC_SERVICE_TOKEN = (process.env.LRC_SERVICE_TOKEN ?? "").trim();
   const LRC_ENABLED = process.env.LRC_SERVICE_ENABLED !== "0";
+  // Suno provides the alignment for generated clips (see `client.getAlignedLyrics`),
+  // so the local Whisper aligner is now only a fallback. It is opt-in: enabling it
+  // by default risks the runaway decode / CPU burn it caused on the Khmer corpus.
+  // Set `LRC_FALLBACK_ENABLED=1` to re-enable it for clips Suno has no alignment for.
+  const LRC_FALLBACK_ENABLED = process.env.LRC_FALLBACK_ENABLED === "1";
+
+  // The aligner serialises transcription on one CPU box, so only a couple of
+  // requests should be in flight from this side: firing the whole batch at once
+  // overflows it (503 / connection resets) and every failure re-queues, which is
+  // a retry storm. A small in-process gate keeps the sidecar fed without
+  // thrashing. Slots transfer directly to the next waiter on release.
+  const LRC_MAX_CONCURRENT = Number(process.env.LRC_MAX_CONCURRENT ?? 2);
+  let lrcActive = 0;
+  const lrcWaiters: Array<() => void> = [];
+  async function acquireLrcSlot(): Promise<void> {
+    if (lrcActive < LRC_MAX_CONCURRENT) {
+      lrcActive++;
+      return;
+    }
+    await new Promise<void>((resolve) => lrcWaiters.push(resolve));
+  }
+  function releaseLrcSlot(): void {
+    const next = lrcWaiters.shift();
+    if (next) next();
+    else lrcActive--;
+  }
 
   interface LyricAlignment {
     lines: AlignedLine[];
@@ -2076,6 +2260,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    */
   async function alignLyrics(clipId: string, lyrics: string): Promise<LyricAlignment | null> {
     if (!LRC_ENABLED || !lyrics.trim() || !storageConfigured()) return null;
+    // Instrumentals and section-only prompts ("[Instrumental]", "[Verse]") carry
+    // no words to time. Transcribing them burns ~a minute of CPU on the sidecar
+    // and starves real vocal requests, so skip them (result: aligned:false).
+    const wordTokens = lyrics.replace(/\[[^\]]*\]/g, " ").match(/[\p{L}\p{N}]+/gu) ?? [];
+    if (wordTokens.length < 2) return null;
     const audioKey = await ensureAudio(clipId, "mp3");
     if (!audioKey) return null;
 
@@ -2084,23 +2273,37 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (url) body.url = url;
     else body.audio_b64 = (await getObjectBytes(audioKey)).toString("base64");
 
-    let res: Response;
-    try {
-      res = await fetch(`${LRC_SERVICE_URL}/align`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          ...(LRC_SERVICE_TOKEN ? { "x-service-token": LRC_SERVICE_TOKEN } : {}),
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(600_000),
-      });
-    } catch (e) {
-      console.error(`[lrc] align request failed for ${clipId}:`, e instanceof Error ? e.message : e);
-      return null;
+    let res: Response | null = null;
+    let lastError = "";
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await acquireLrcSlot();
+        try {
+          res = await fetch(`${LRC_SERVICE_URL}/align`, {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              ...(LRC_SERVICE_TOKEN ? { "x-service-token": LRC_SERVICE_TOKEN } : {}),
+            },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(600_000),
+          });
+        } finally {
+          releaseLrcSlot();
+        }
+        if (res.ok) break;
+        lastError = `HTTP ${res.status}`;
+        res = null;
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e);
+        res = null;
+      }
+      // A busy/reset aligner is transient: wait and retry before giving up, so
+      // one 503 does not become a cached `aligned:false` + a fresh job.
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500));
     }
-    if (!res.ok) {
-      console.error(`[lrc] align HTTP ${res.status} for ${clipId}`);
+    if (!res) {
+      console.error(`[lrc] align failed for ${clipId}: ${lastError}`);
       return null;
     }
     const data = (await res.json()) as {
@@ -2144,13 +2347,30 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const clip = await client.getClipObject(clipId);
       const meta = (clip.metadata ?? {}) as Record<string, unknown>;
       const lyrics = typeof meta.prompt === "string" ? meta.prompt : "";
-      const alignment = lyrics.trim() ? await alignLyrics(clipId, lyrics) : null;
+
+      // Suno already computes word-level alignment for its karaoke player and
+      // exposes it per clip — the same data sunoapi.org resells as
+      // `alignedWords`. Use it first: instant and language-agnostic (works for
+      // Khmer, where the local Whisper ASR ran away). Fall back to the Whisper
+      // sidecar only when Suno has no alignment for this clip.
+      let words: AlignedWord[] = [];
+      try {
+        words = normalizeSunoAlignedWords(await client.getAlignedLyrics(clipId));
+      } catch (e) {
+        console.error(`[suno] aligned_lyrics failed for ${clipId}:`, e instanceof Error ? e.message : e);
+      }
+      let alignment: LyricAlignment | null = words.length
+        ? { lines: [], words, lrc: alignedWordsToLrc(words) }
+        : null;
+      if ((!alignment || !alignment.lrc) && LRC_FALLBACK_ENABLED && lyrics.trim()) {
+        alignment = (await alignLyrics(clipId, lyrics)) ?? alignment;
+      }
       job.result = {
         ...clip,
         lyrics,
-        aligned: Boolean(alignment),
+        aligned: Boolean(alignment && (alignment.lrc || alignment.words.length > 0)),
         lrc: alignment?.lrc ?? "",
-        lrc_format: alignment ? "lrc" : null,
+        lrc_format: alignment?.lrc ? "lrc" : null,
         aligned_lines: alignment?.lines ?? [],
         aligned_words: alignment?.words ?? [],
       };
@@ -4781,18 +5001,22 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!u) return;
     const { id } = req.params as { id: string };
     if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
-    const cost = await costFor("timestamped_lyrics_detail");
-    const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    let job = await reusableLyricsJob(id, u.id);
+    if (!job) {
+      const cost = await costFor("timestamped_lyrics_detail");
+      const key = await chargeUserKey(u.id, cost);
+      if (cost > 0 && !key) {
+        return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+      }
+      job = newJob("timestamped_lyrics_detail");
+      job.userId = u.id;
+      job.apiKeyId = key?.id;
+      job.endpoint = "timestamped_lyrics_detail";
+      job.credits = cost;
+      void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
     }
-    const job = newJob("timestamped_lyrics_detail");
-    job.userId = u.id;
-    job.apiKeyId = key?.id;
-    job.endpoint = "timestamped_lyrics_detail";
-    job.credits = cost;
-    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
-    return reply.code(202).send({ job_id: job.id, status: job.status });
+    await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
+    return reply.send(timestampedLyricsBody(job));
   });
 
   // Detail GET routes (T3 - meDetailRoute)
@@ -6719,16 +6943,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
     if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
-    const cost = await costFor("timestamped_lyrics_detail");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
-
-    const job = newJob("timestamped_lyrics_detail");
-    job.userId = key.user_id;
-    job.apiKeyId = key.id;
-    job.endpoint = "timestamped_lyrics_detail";
-    job.credits = cost;
-    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
-    return reply.code(202).send({ job_id: job.id, status: job.status });
+    let job = await reusableLyricsJob(id, key.user_id);
+    if (!job) {
+      const cost = await costFor("timestamped_lyrics_detail");
+      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      job = newJob("timestamped_lyrics_detail");
+      job.userId = key.user_id;
+      job.apiKeyId = key.id;
+      job.endpoint = "timestamped_lyrics_detail";
+      job.credits = cost;
+      void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
+    }
+    await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
+    return reply.send(timestampedLyricsBody(job));
   });
 
   // -------- Detail GET routes for clip assets (all 1-credit details) --------
@@ -8239,12 +8466,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    const cost = await costFor("timestamped_lyrics_detail");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
-    const job = newJob("timestamped_lyrics_detail");
-    job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "timestamped_lyrics_detail"; job.credits = cost;
-    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
-    return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
+    let job = await reusableLyricsJob(id, key.user_id);
+    if (!job) {
+      const cost = await costFor("timestamped_lyrics_detail");
+      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      job = newJob("timestamped_lyrics_detail");
+      job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "timestamped_lyrics_detail"; job.credits = cost;
+      void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
+    }
+    await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
+    return reply.send(timestampedLyricsBody(job));
   });
 
   // ============================================================
@@ -8485,15 +8716,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.task_id as string);
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
     if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
-    const cost = await costFor("timestamped_lyrics_detail");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
-    const job = newJob("timestamped_lyrics_detail", callbackUrl(in_));
-    job.userId = key.user_id;
-    job.apiKeyId = key.id;
-    job.endpoint = "timestamped_lyrics_detail";
-    job.credits = cost;
-    void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
-    return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
+    const cb = callbackUrl(in_);
+    let job = await reusableLyricsJob(id, key.user_id);
+    if (!job) {
+      const cost = await costFor("timestamped_lyrics_detail");
+      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      job = newJob("timestamped_lyrics_detail", cb);
+      job.userId = key.user_id;
+      job.apiKeyId = key.id;
+      job.endpoint = "timestamped_lyrics_detail";
+      job.credits = cost;
+      void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
+    }
+    await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
+    return reply.send(timestampedLyricsBody(job));
   });
 
   // replace-section: map their field names onto our replaceSection op.

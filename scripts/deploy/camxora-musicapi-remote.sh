@@ -181,11 +181,35 @@ fi
 
 log "Extracting uploaded source tarball..."
 mkdir -p "${REPO_DIR}"
-# Replace the app tree wholesale (tar overwrites but never removes stale files),
-# while scripts/deploy/ is extracted over the existing checkout in place so the
-# platform's own deploy scripts are not wiped.
+# Replace the app tree wholesale (tar overwrites but never removes stale files).
+# In `--api-only` mode the Next builds are skipped, so preserve each frontend's
+# installed deps and prior build output across the wipe — otherwise `rm -rf`
+# leaves `next: not found` and a crash-looping web-user.
+PRESERVE_DIR=""
+if [[ "${MUSICAPI_SKIP_FRONTEND:-0}" == "1" ]]; then
+  PRESERVE_DIR="$(mktemp -d)"
+  for app in web-user web-admin; do
+    for rel in node_modules .next .env.production; do
+      if [[ -e "${MUSICAPI_DIR}/${app}/${rel}" ]]; then
+        mkdir -p "${PRESERVE_DIR}/${app}"
+        mv "${MUSICAPI_DIR}/${app}/${rel}" "${PRESERVE_DIR}/${app}/${rel}"
+      fi
+    done
+  done
+fi
 rm -rf "${MUSICAPI_DIR}"
 tar -xzf "${TARBALL}" -C "${REPO_DIR}"
+if [[ -n "${PRESERVE_DIR}" ]]; then
+  for app in web-user web-admin; do
+    for rel in node_modules .next .env.production; do
+      if [[ -e "${PRESERVE_DIR}/${app}/${rel}" ]]; then
+        rm -rf "${MUSICAPI_DIR}/${app}/${rel}"
+        mv "${PRESERVE_DIR}/${app}/${rel}" "${MUSICAPI_DIR}/${app}/${rel}"
+      fi
+    done
+  done
+  rm -rf "${PRESERVE_DIR}"
+fi
 chown -R camxora:camxora "${REPO_DIR}"
 
 DATABASE_URL="postgres://${DB_USER}:${MUSICAPI_DB_PASSWORD}@127.0.0.1:5432/${DB_NAME}"
@@ -275,17 +299,21 @@ sudo -u camxora -H bash -lc "
   ./node_modules/.bin/tsx scripts/migrate.ts
 "
 
-for app in web-user web-admin; do
-  log "Building ${app} (Next.js)..."
-  sudo -u camxora -H bash -lc "
-    set -e
-    cd '${MUSICAPI_DIR}/${app}'
-    npm ci --no-audit --no-fund || npm install --no-audit --no-fund
-    echo 'BACKEND_URL=http://127.0.0.1:${MUSICAPI_PORT}' > .env.production
-    echo 'GOOGLE_SITE_VERIFICATION=${MUSICAPI_GOOGLE_SITE_VERIFICATION:-}' >> .env.production
-    npm run build
-  "
-done
+if [[ "${MUSICAPI_SKIP_FRONTEND:-0}" == "1" ]]; then
+  log "Skipping web-user/web-admin builds (MUSICAPI_SKIP_FRONTEND=1)."
+else
+  for app in web-user web-admin; do
+    log "Building ${app} (Next.js)..."
+    sudo -u camxora -H bash -lc "
+      set -e
+      cd '${MUSICAPI_DIR}/${app}'
+      npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+      echo 'BACKEND_URL=http://127.0.0.1:${MUSICAPI_PORT}' > .env.production
+      echo 'GOOGLE_SITE_VERIFICATION=${MUSICAPI_GOOGLE_SITE_VERIFICATION:-}' >> .env.production
+      npm run build
+    "
+  done
+fi
 
 log "Preparing backup directory..."
 mkdir -p "${BACKUP_DIR}"

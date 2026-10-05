@@ -8,6 +8,7 @@ remote side is scripts/deploy/camxora-musicapi-remote.sh.
 Usage:
     python scripts/deploy/sync_musicapi_sandbox.py
     python scripts/deploy/sync_musicapi_sandbox.py --issue-cert   # first deploy, DNS ready
+    python scripts/deploy/sync_musicapi_sandbox.py --api-only     # core API only (skip Next builds)
 
 Secrets come from .deploy/secrets.sandbox.env (see .deploy/secrets.env.example).
 Optional MUSICAPI_* keys:
@@ -102,7 +103,9 @@ def _shell_exports(env: dict[str, str]) -> str:
     return " && ".join(parts)
 
 
-def upload_and_run(client, env: DeployEnv, secrets: dict[str, str], issue_cert: bool) -> tuple[int, str]:
+def upload_and_run(
+    client, env: DeployEnv, secrets: dict[str, str], issue_cert: bool, skip_frontend: bool = False
+) -> tuple[int, str]:
     archive = build_musicapi_tarball()
     if not REMOTE_SCRIPT.is_file():
         raise FileNotFoundError(f"Missing {REMOTE_SCRIPT}")
@@ -129,6 +132,8 @@ def upload_and_run(client, env: DeployEnv, secrets: dict[str, str], issue_cert: 
         "SYNC_FROM_LOCAL": "1",
         "ISSUE_CERT": "1" if issue_cert else "0",
     }
+    if skip_frontend:
+        export_env["MUSICAPI_SKIP_FRONTEND"] = "1"
     if secrets.get("CERTBOT_EMAIL"):
         export_env["CERTBOT_EMAIL"] = secrets["CERTBOT_EMAIL"]
     # Forward every MUSICAPI_* deploy secret to the remote installer.
@@ -163,6 +168,7 @@ def upload_and_run(client, env: DeployEnv, secrets: dict[str, str], issue_cert: 
     channel.exec_command(cmd)
 
     captured: list[str] = []
+    sentinel = f"MUSICAPI_{env.upper()}_DEPLOYED"
     while True:
         if channel.recv_ready():
             chunk = channel.recv(4096).decode(errors="replace")
@@ -172,6 +178,13 @@ def upload_and_run(client, env: DeployEnv, secrets: dict[str, str], issue_cert: 
         if channel.recv_stderr_ready():
             sys.stderr.write(channel.recv_stderr(4096).decode(errors="replace"))
             sys.stderr.flush()
+        # The installer prints this sentinel as its final line. Return on it even
+        # if the SSH channel lingers open (a child holding the PTY), which used to
+        # leave this client blocked forever after the remote work had finished.
+        if sentinel in "".join(captured):
+            while channel.recv_ready():
+                captured.append(channel.recv(4096).decode(errors="replace"))
+            return 0, "".join(captured)
         if channel.exit_status_ready():
             while channel.recv_ready():
                 captured.append(channel.recv(4096).decode(errors="replace"))
@@ -181,7 +194,7 @@ def upload_and_run(client, env: DeployEnv, secrets: dict[str, str], issue_cert: 
         time.sleep(0.2)
 
 
-def deploy(env: DeployEnv, issue_cert: bool = False) -> int:
+def deploy(env: DeployEnv, issue_cert: bool = False, skip_frontend: bool = False) -> int:
     _force_utf8_stdio()
     ensure_paramiko()
     if not REMOTE_SCRIPT.is_file():
@@ -204,7 +217,7 @@ def deploy(env: DeployEnv, issue_cert: bool = False) -> int:
     print(f"Connecting to {user}@{host}...")
     client = ssh_connect(host, user, key_path, password)
     try:
-        code, output = upload_and_run(client, env, secrets, issue_cert)
+        code, output = upload_and_run(client, env, secrets, issue_cert, skip_frontend)
     finally:
         client.close()
 
@@ -223,8 +236,13 @@ def main() -> int:
         action="store_true",
         help="Bootstrap the Let's Encrypt cert on first deploy (DNS must resolve)",
     )
+    parser.add_argument(
+        "--api-only",
+        action="store_true",
+        help="Skip the Next.js frontend builds (core API + migrations + services only)",
+    )
     args = parser.parse_args()
-    return deploy("sandbox", issue_cert=args.issue_cert)
+    return deploy("sandbox", issue_cert=args.issue_cert, skip_frontend=args.api_only)
 
 
 if __name__ == "__main__":

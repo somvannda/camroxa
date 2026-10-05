@@ -31,6 +31,7 @@ import re
 import socket
 import tempfile
 import threading
+import time
 import traceback
 import urllib.request
 from difflib import SequenceMatcher
@@ -43,17 +44,35 @@ MODEL_NAME = os.environ.get("LRC_MODEL", "small")
 DEVICE = os.environ.get("LRC_DEVICE", "cpu")
 COMPUTE_TYPE = os.environ.get("LRC_COMPUTE_TYPE", "int8")
 LANGUAGE = os.environ.get("LRC_LANGUAGE") or None
-VAD = os.environ.get("LRC_VAD", "1") != "0"
+# Hard cap on one transcription's wall clock, so a Whisper repetition loop cannot
+# hold the single model lock (and the CPU) indefinitely.
+MAX_DECODE_S = float(os.environ.get("LRC_MAX_DECODE_S", "300"))
+# Silero VAD is trained on speech and drops most *sung* vocals — it once left 7
+# words of a 2-minute song, collapsing every lyric line onto one timestamp. Off
+# for this service unless explicitly enabled.
+VAD = os.environ.get("LRC_VAD", "0") != "0"
 
 MAX_BODY_BYTES = int(os.environ.get("LRC_MAX_BODY_BYTES", str(128 * 1024 * 1024)))
 MAX_DOWNLOAD_BYTES = int(os.environ.get("LRC_MAX_DOWNLOAD_BYTES", str(64 * 1024 * 1024)))
-MAX_CONCURRENT = max(1, int(os.environ.get("LRC_MAX_CONCURRENT", "2")))
 REQUIRED_TOKEN = (os.environ.get("LRC_SERVICE_TOKEN") or "").strip()
-SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT)
 
 # Loaded lazily so `test_align.py` can import the pure helpers without the model.
 MODEL: Any = None
+# One transcription at a time, and — separately — one model *construction* at a
+# time. A burst of `/align` calls arriving during a cold start used to each build
+# their own copy of the model, spiking RSS past the unit's MemoryMax and getting
+# the service OOM-killed on every restart (a crash loop). The load lock makes the
+# first caller build it while the rest wait for the shared instance.
 MODEL_LOCK = threading.Lock()
+MODEL_LOAD_LOCK = threading.Lock()
+
+# `ThreadingHTTPServer` spawns a thread per request and each one buffers the
+# whole track, so an unbounded flood (a client polling for lyrics) could grow
+# RSS without limit. Cap the in-flight `/align` work; over-cap requests are
+# rejected with 503 so the caller falls back instead of piling up.
+MAX_INFLIGHT = int(os.environ.get("LRC_MAX_INFLIGHT", "8"))
+INFLIGHT = threading.BoundedSemaphore(MAX_INFLIGHT)
+QUEUE_WAIT_S = float(os.environ.get("LRC_QUEUE_WAIT_S", "10"))
 
 _TOKEN_RE = re.compile(r"[^\W_]+(?:'[^\W_]+)*", re.UNICODE)
 _SECTION_RE = re.compile(r"^\[.*\]$")
@@ -202,10 +221,18 @@ def build_lrc(lines: list[dict[str, Any]]) -> str:
 # --------------------------------------------------------------------------- #
 def load_model() -> Any:
     global MODEL
-    if MODEL is None:
-        from faster_whisper import WhisperModel  # imported lazily (heavy)
+    if MODEL is not None:
+        return MODEL
+    with MODEL_LOAD_LOCK:
+        if MODEL is None:
+            from faster_whisper import WhisperModel  # imported lazily (heavy)
 
-        MODEL = WhisperModel(MODEL_NAME, device=DEVICE, compute_type=COMPUTE_TYPE)
+            MODEL = WhisperModel(
+                MODEL_NAME,
+                device=DEVICE,
+                compute_type=COMPUTE_TYPE,
+                num_workers=1,
+            )
     return MODEL
 
 
@@ -219,9 +246,19 @@ def _run_transcribe(audio_path: str, lyrics: str, vad: bool) -> tuple[list[dict[
             language=LANGUAGE,
             initial_prompt=(lyrics or "")[:1000] or None,
             beam_size=5,
+            # Whisper can fall into a repetition loop (re-emitting the
+            # initial_prompt) on some inputs — Khmer sungs triggered multi-minute
+            # runs that never returned. Not conditioning on previous text is the
+            # standard mitigation.
+            condition_on_previous_text=False,
         )
         words: list[dict[str, Any]] = []
+        # Hard wall-clock cap: even with the guard above a pathological input
+        # must not hold the service (and the single model lock) forever.
+        deadline = time.monotonic() + MAX_DECODE_S
         for segment in segments:
+            if time.monotonic() > deadline:
+                break
             for word in segment.words or []:
                 text = (word.word or "").strip()
                 if not text:
@@ -233,13 +270,19 @@ def _run_transcribe(audio_path: str, lyrics: str, vad: bool) -> tuple[list[dict[
 def transcribe_words(audio_path: str, lyrics: str) -> tuple[list[dict[str, Any]], float]:
     """Transcribe with word timestamps.
 
-    Silero VAD occasionally filters an entire sung track (zero segments), which
-    yields no words and therefore no alignment. When that happens, retry once
-    with VAD disabled so singing is still aligned.
+    Silero VAD is speech-tuned and often filters an entire sung track down to a
+    few words, which leaves `snap_to_lyrics` with almost nothing to match and
+    collapses every lyric line onto one timestamp. When VAD is enabled, retry
+    without it if the transcript looks implausibly sparse for the audio length
+    and keep the richer result. (VAD is off by default — see `VAD`.)
     """
     words, duration = _run_transcribe(audio_path, lyrics, VAD)
-    if not words and VAD:
-        words, duration = _run_transcribe(audio_path, lyrics, False)
+    if VAD:
+        expected = max(1.0, duration * 0.5)  # a sung track yields ~>=0.5 words/sec
+        if len(words) < expected:
+            words_plain, duration_plain = _run_transcribe(audio_path, lyrics, False)
+            if len(words_plain) > len(words):
+                return words_plain, duration_plain
     return words, duration
 
 
@@ -368,6 +411,11 @@ class Handler(BaseHTTPRequestHandler):
         if not self._authorized():
             self._reply({"ok": False, "error": "unauthorized"}, 401)
             return
+        # Gate before reading the body so an over-cap request never buffers the
+        # track in memory. Reply 503 rather than queueing forever.
+        if not INFLIGHT.acquire(timeout=QUEUE_WAIT_S):
+            self._reply({"ok": False, "error": "busy"}, 503)
+            return
         try:
             audio, lyrics = _resolve_audio(self, _read_body(self))
             if not audio:
@@ -376,20 +424,32 @@ class Handler(BaseHTTPRequestHandler):
             if not lyrics.strip():
                 self._reply({"ok": False, "error": "lyrics required"}, 400)
                 return
-            with SLOTS:
-                result = align(audio, lyrics)
-            self._reply(result)
+            self._reply(align(audio, lyrics))
         except ValueError as exc:
             self._reply({"ok": False, "error": str(exc)}, 400)
         except Exception:  # noqa: BLE001
             # Log internals server-side; never reflect them to the caller.
             print(f"[lrc-service] align failed:\n{traceback.format_exc()}", flush=True)
             self._reply({"ok": False, "error": "alignment failed"}, 500)
+        finally:
+            INFLIGHT.release()
 
     def log_message(self, *args: Any) -> None:  # silence per-request logs
         pass
 
 
+class Server(ThreadingHTTPServer):
+    """Threaded HTTP server with a wider accept backlog and daemon workers.
+
+    The default backlog (5) used to overflow under a client burst and make the
+    Node caller see `fetch failed` (connection refused). A larger backlog lets
+    the `INFLIGHT` semaphore reject over-cap work with a clean 503 instead.
+    """
+
+    daemon_threads = True
+    request_queue_size = 128
+
+
 if __name__ == "__main__":
     print(f"[lrc-service] listening on 127.0.0.1:{PORT} (model={MODEL_NAME})", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+    Server(("127.0.0.1", PORT), Handler).serve_forever()
