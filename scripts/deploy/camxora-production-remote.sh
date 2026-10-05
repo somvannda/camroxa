@@ -58,7 +58,15 @@ apt-get install -y -qq git curl build-essential nginx certbot python3-certbot-ng
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -d. -f1 | tr -d v)" -lt 20 ]]; then
   log "Installing Node.js 20..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  # Add the NodeSource repo via its signing key and verify packages against it,
+  # instead of piping a remote setup script straight into bash.
+  command -v gpg >/dev/null 2>&1 || apt-get install -y -qq gnupg
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --batch --yes --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
   apt-get install -y -qq nodejs
 fi
 
