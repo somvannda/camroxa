@@ -409,12 +409,14 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
 - **Phase 4** — Payments, Credit Ledger, Jobs, System Health, User detail, Admin
   RBAC.
 - **Phase 5 (partial)** — dashboard alerts; analytics top-failure breakdown.
-- **Phase 6 (partial)** — baseline security headers + production CSP + HSTS;
-  `robots.txt` disallow; `node:test` formatter unit tests wired into CI
-  (`web-admin-tests` job). **Still open:** admin 2FA (TOTP) and CSRF
-  tokenization.
+- **Phase 6** — baseline security headers + production CSP + HSTS; `robots.txt`
+  disallow; `node:test` formatter unit tests wired into CI (`web-admin-tests`
+  job); admin 2FA (TOTP) end-to-end (utility + backend + UI, runtime-verified);
+  admin CSRF double-submit token (runtime-verified: 403 without the header, 200
+  with). Session revocation (a JWT denylist) was not implemented — `requireAdmin`
+  re-reads role/status on every request, which covers demotion and suspension.
 - **Verification** — local end-to-end run passed (2026-10-05) against a separate
-  scratch DB (`sunoapi_admin_dev`, all 28 migrations applied), which sidesteps the
+  scratch DB (`sunoapi_admin_dev`, all 30 migrations applied), which sidesteps the
   shared-DB migration mismatch: login, every page, pagination shapes, CSV export
   and the credit-adjustment + audit write path, with **zero console errors**. The
   merged `main` was then re-verified over authenticated HTTP (all admin endpoints
@@ -432,7 +434,10 @@ duplicate was removed and the boot re-verified.
 
 ### Not done
 
-- Admin 2FA (TOTP); CSRF tokenization.
+- Session revocation list (JWTs stay valid for 7 days; role/status are re-checked
+  per request, so demotion/suspension take effect immediately).
+- A full interactive browser audit of the merged `main` (only HTTP-level checks
+  have run so far).
 
 ### Branch strategy note
 
