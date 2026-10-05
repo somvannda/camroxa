@@ -1826,13 +1826,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // to stable URLs. A terminal success always requires a real playable URL for
     // audio jobs, so nothing can report success with an empty audio_url.
     if (job.status === "complete") {
-      if (storageConfigured()) {
+      // Lyrics detail reads a clip whose audio the originating music job already
+      // stored; re-ingesting it here was slow and consumed a Suno slot on every
+      // lookup. Skip durable-media handling for it (and fall through to the
+      // storage-configured gate only for jobs that produce media).
+      if (storageConfigured() && job.type !== "timestamped_lyrics_detail") {
         // Gate the terminal state on durable media: while we decrypt + copy to
         // B2, keep reporting the job as still-running so a poll never receives
         // an empty audio_url; it flips to complete only once the B2 copy exists.
         job.status = "running";
         await ensureDurableAudio(job);
-      } else if (AUDIO_CLIP_JOB_TYPES.has(job.type)) {
+      } else if (!storageConfigured() && AUDIO_CLIP_JOB_TYPES.has(job.type)) {
         // No storage => we cannot produce a durable, playable URL. Fail
         // (refundable) instead of a false success, matching sunoapi.org's
         // "success means a playable URL" contract.
