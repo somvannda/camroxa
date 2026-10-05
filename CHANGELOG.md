@@ -7,6 +7,12 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.4.5] - 2026-10-05
+
+### Fixed
+
+- Music workspace now reliably uses the description/structure/mood you selected: the last valid selection is restored on load, the picker is the single source of truth for batch creation, and a missing description/structure blocks generation instead of silently falling back to a generic style. This is independent of the Suno provider (musicapi vs sunoapi.org).
+
 ## [1.4.4] - 2026-09-25
 
 ### Fixed
