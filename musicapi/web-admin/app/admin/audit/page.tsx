@@ -1,7 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useResource } from "@/lib/useResource";
+import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
+import { Input } from "@/components/ui/Field";
+import { dateTime } from "@/lib/format";
 
 interface AuditEntry {
   id: string;
@@ -16,19 +20,11 @@ interface AuditEntry {
 }
 
 export default function AuditPage() {
-  const [entries, setEntries] = useState<AuditEntry[]>([]);
   const [q, setQ] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(() => {
-    apiFetch<AuditEntry[]>("/admin/audit")
-      .then(setEntries)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(load, [load]);
+  const { data, loading, error, reload } = useResource<AuditEntry[]>(() =>
+    apiFetch<AuditEntry[]>("/admin/audit"),
+  );
+  const entries = data ?? [];
 
   const needle = q.toLowerCase();
   const filtered = entries.filter(
@@ -40,46 +36,54 @@ export default function AuditPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Audit Trail</h1>
-          <p className="text-sm text-[var(--muted)]">Privileged actions, newest first (up to 200)</p>
-        </div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by action, actor or target…"
-          className="rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-        />
-      </div>
+      <PageHeader
+        title="Audit Trail"
+        description="Privileged actions, newest first (up to 200)"
+        actions={
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by action, actor or target…"
+            aria-label="Search audit trail"
+            className="w-full sm:w-72"
+          />
+        }
+      />
 
-      {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <ErrorState message={error} onRetry={reload} />}
 
       {loading ? (
-        <p className="text-[var(--muted)]">Loading…</p>
+        <LoadingState />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="No audit entries found."
+          description={entries.length ? "No rows match your search." : undefined}
+        />
       ) : (
-        <div className="glass overflow-hidden rounded-xl">
+        <div className="glass overflow-x-auto rounded-xl">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-left text-xs text-[var(--muted)]">
               <tr>
-                <th className="px-4 py-3">Time</th>
-                <th className="px-4 py-3">Actor</th>
-                <th className="px-4 py-3">Action</th>
-                <th className="px-4 py-3">Target</th>
-                <th className="px-4 py-3">Details</th>
-                <th className="px-4 py-3">IP</th>
+                <th scope="col" className="px-4 py-3">Time</th>
+                <th scope="col" className="px-4 py-3">Actor</th>
+                <th scope="col" className="px-4 py-3">Action</th>
+                <th scope="col" className="px-4 py-3">Target</th>
+                <th scope="col" className="px-4 py-3">Details</th>
+                <th scope="col" className="px-4 py-3">IP</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((a) => (
                 <tr key={a.id} className="border-t border-[var(--border)]">
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-[var(--muted)]">
-                    {new Date(a.created_at).toLocaleString()}
+                    {dateTime(a.created_at)}
                   </td>
                   <td className="px-4 py-3">{a.actor_email ?? "—"}</td>
                   <td className="px-4 py-3 font-mono text-xs">{a.action}</td>
                   <td className="px-4 py-3 text-xs text-[var(--muted)]">
-                    {a.target_type ? `${a.target_type}${a.target_id ? `:${a.target_id.slice(0, 8)}` : ""}` : "—"}
+                    {a.target_type
+                      ? `${a.target_type}${a.target_id ? `:${a.target_id.slice(0, 8)}` : ""}`
+                      : "—"}
                   </td>
                   <td className="px-4 py-3">
                     {a.details ? (
@@ -96,13 +100,6 @@ export default function AuditPage() {
                   <td className="px-4 py-3 text-xs text-[var(--muted)]">{a.ip ?? "—"}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted)]">
-                    No audit entries found.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>

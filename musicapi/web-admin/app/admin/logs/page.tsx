@@ -1,7 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useResource } from "@/lib/useResource";
+import { Badge, type BadgeTone } from "@/components/ui/Badge";
+import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
+import { Input } from "@/components/ui/Field";
+import { dateTime, num } from "@/lib/format";
 
 interface UsageLog {
   id: string;
@@ -15,26 +20,18 @@ interface UsageLog {
   email: string | null;
 }
 
-function formatCredits(value: number | string | null): string {
-  if (value === null || value === undefined) return "—";
-  const n = typeof value === "string" ? Number(value) : value;
-  return Number.isFinite(n) ? n.toLocaleString() : "—";
+function statusTone(status: string | null): BadgeTone {
+  if (status === "complete") return "success";
+  if (status === "error" || status === "failed") return "danger";
+  return "neutral";
 }
 
 export default function LogsPage() {
-  const [logs, setLogs] = useState<UsageLog[]>([]);
   const [q, setQ] = useState("");
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(() => {
-    apiFetch<UsageLog[]>("/admin/logs")
-      .then(setLogs)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(load, [load]);
+  const { data, loading, error, reload } = useResource<UsageLog[]>(() =>
+    apiFetch<UsageLog[]>("/admin/logs"),
+  );
+  const logs = data ?? [];
 
   const needle = q.toLowerCase();
   const filtered = logs.filter(
@@ -47,68 +44,57 @@ export default function LogsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">Usage Logs</h1>
-          <p className="text-sm text-[var(--muted)]">Generation requests, newest first (up to 200)</p>
-        </div>
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by user, endpoint, model or status…"
-          className="rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]"
-        />
-      </div>
+      <PageHeader
+        title="Usage Logs"
+        description="Generation requests, newest first (up to 200)"
+        actions={
+          <Input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Search by user, endpoint, model or status…"
+            aria-label="Search usage logs"
+            className="w-full sm:w-72"
+          />
+        }
+      />
 
-      {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <ErrorState message={error} onRetry={reload} />}
 
       {loading ? (
-        <p className="text-[var(--muted)]">Loading…</p>
+        <LoadingState />
+      ) : filtered.length === 0 ? (
+        <EmptyState
+          title="No usage logs found."
+          description={logs.length ? "No rows match your search." : undefined}
+        />
       ) : (
-        <div className="glass overflow-hidden rounded-xl">
+        <div className="glass overflow-x-auto rounded-xl">
           <table className="w-full text-sm">
             <thead className="bg-white/5 text-left text-xs text-[var(--muted)]">
               <tr>
-                <th className="px-4 py-3">Time</th>
-                <th className="px-4 py-3">User</th>
-                <th className="px-4 py-3">Endpoint</th>
-                <th className="px-4 py-3">Model</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Credits</th>
+                <th scope="col" className="px-4 py-3">Time</th>
+                <th scope="col" className="px-4 py-3">User</th>
+                <th scope="col" className="px-4 py-3">Endpoint</th>
+                <th scope="col" className="px-4 py-3">Model</th>
+                <th scope="col" className="px-4 py-3">Status</th>
+                <th scope="col" className="px-4 py-3 text-right">Credits</th>
               </tr>
             </thead>
             <tbody>
               {filtered.map((l) => (
                 <tr key={l.id} className="border-t border-[var(--border)]">
                   <td className="whitespace-nowrap px-4 py-3 text-xs text-[var(--muted)]">
-                    {new Date(l.created_at).toLocaleString()}
+                    {dateTime(l.created_at)}
                   </td>
                   <td className="px-4 py-3">{l.email ?? "—"}</td>
                   <td className="px-4 py-3 font-mono text-xs">{l.endpoint ?? "—"}</td>
                   <td className="px-4 py-3 text-xs text-[var(--muted)]">{l.model ?? "—"}</td>
                   <td className="px-4 py-3">
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-xs ${
-                        l.status === "complete"
-                          ? "bg-emerald-500/15 text-emerald-300"
-                          : l.status === "error" || l.status === "failed"
-                            ? "bg-red-500/15 text-red-300"
-                            : "bg-white/10 text-[var(--muted)]"
-                      }`}
-                    >
-                      {l.status ?? "—"}
-                    </span>
+                    <Badge tone={statusTone(l.status)}>{l.status ?? "—"}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatCredits(l.credits_consumed)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">{num(l.credits_consumed)}</td>
                 </tr>
               ))}
-              {filtered.length === 0 && (
-                <tr>
-                  <td colSpan={6} className="px-4 py-6 text-center text-[var(--muted)]">
-                    No usage logs found.
-                  </td>
-                </tr>
-              )}
             </tbody>
           </table>
         </div>
