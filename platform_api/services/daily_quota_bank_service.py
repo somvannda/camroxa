@@ -8,6 +8,10 @@ from uuid import UUID
 
 from platform_api.services.billing_calendar import billing_today
 
+# Banked daily allowance is capped at N days so unused quota cannot be hoarded
+# into an unbounded one-day burst (docs/bugs/2026-10-05-plan-quota-enforcement-bypass.md).
+MAX_BANK_DAYS = 3
+
 
 class DailyQuotaBankRepoProtocol(Protocol):
     async def get_row(
@@ -100,6 +104,8 @@ class DailyQuotaBankService:
             last_accrual = yesterday - timedelta(days=1)
 
         cursor = last_accrual + timedelta(days=1)
+        max_banked = daily_limit * MAX_BANK_DAYS
+        accrued = False
         while cursor <= yesterday:
             usage_on_day = await self._daily_usage(
                 user_id=user_id,
@@ -109,9 +115,14 @@ class DailyQuotaBankService:
                 account_daily=account_daily,
             )
             banked += max(0, daily_limit - usage_on_day)
+            accrued = True
+            # Cap the bank so unused allowance cannot be hoarded into an unbounded burst.
+            if banked >= max_banked:
+                banked = max_banked
+                break
             cursor += timedelta(days=1)
 
-        if cursor > last_accrual + timedelta(days=1) or row is None:
+        if accrued or row is None:
             await self._bank_repo.upsert_accrual(
                 user_id,
                 channel_profile_id,

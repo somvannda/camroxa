@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Protocol
 from uuid import UUID
 
+from platform_api.config import get_settings
 from platform_api.exceptions import (
     ExternalServiceError,
     InsufficientCreditsError,
@@ -900,7 +901,22 @@ class UsageEnforcementService:
             period_start=period_start,
             subscription_context=ctx,
         )
-        allow_monthly_overage = is_subscription_plan(plan)
+        # Subscription monthly limits are HARD caps unless the deployment opts into
+        # wallet overage (see docs/bugs/2026-10-05-plan-quota-enforcement-bypass.md).
+        allow_monthly_overage = (
+            is_subscription_plan(plan) and get_settings().plan_monthly_overage_allowed
+        )
+        period_end = period_end_for_subscription(plan=plan, period_start=period_start)
+        # Authoritative monthly song count (real generations) overrides the fragile
+        # incremental counter in the atomic reserve.
+        song_monthly_override: int | None = None
+        songs_counter = getattr(
+            self._usage_repo, "count_generated_songs_for_period", None
+        )
+        if quota_op == "music" and songs_counter is not None:
+            song_monthly_override = await songs_counter(
+                user_id, period_start, period_end
+            )
         try_increment = getattr(self._usage_repo, "try_increment_usage", None)
         if try_increment is None:
             await self._enforce_plan_quotas(
@@ -929,6 +945,7 @@ class UsageEnforcementService:
                 allow_monthly_overage=allow_monthly_overage,
                 count=count,
                 account_daily=account_daily,
+                monthly_count_override=song_monthly_override,
             )
             if not reserved:
                 if (
@@ -2011,6 +2028,9 @@ class UsageEnforcementService:
 
         addon_slots = int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0
         period_start = self._period_start(ctx, today)
+        period_end_date = period_end_for_subscription(
+            plan=plan, period_start=period_start
+        )
         monthly_limit = await self._monthly_limit_with_topup(
             user_id=user_id,
             plan=plan,
@@ -2029,11 +2049,19 @@ class UsageEnforcementService:
                         "plan_name": plan.name,
                     },
                 )
+            songs_counter = getattr(
+                self._usage_repo, "count_generated_songs_for_period", None
+            )
             if counts_toward_video_quota(operation_type):
                 monthly_count = await self._sum_usage_counters(
                     user_id=user_id,
                     counter_types=video_usage_counter_types(),
                     period_start=period_start,
+                )
+            elif quota_op == "music" and songs_counter is not None:
+                # Authoritative: count real generations, not the fragile counter.
+                monthly_count = await songs_counter(
+                    user_id, period_start, period_end_date
                 )
             else:
                 monthly_count = await self._usage_repo.get_monthly_count(
@@ -2044,13 +2072,13 @@ class UsageEnforcementService:
                     user_id, "thumbnail_image", period_start
                 )
             if monthly_count + max(1, additional_count) > monthly_limit:
-                # Subscription plans allow wallet overage once included quota is consumed.
-                if is_subscription_plan(plan):
+                # Subscription plans may fall through to wallet overage ONLY when the
+                # deployment opts in; otherwise the monthly limit is a hard cap.
+                if (
+                    is_subscription_plan(plan)
+                    and get_settings().plan_monthly_overage_allowed
+                ):
                     return
-                period_end_date = period_end_for_subscription(
-                    plan=plan,
-                    period_start=period_start,
-                )
                 raise QuotaExceededError(
                     "Monthly generation quota exceeded.",
                     details={
