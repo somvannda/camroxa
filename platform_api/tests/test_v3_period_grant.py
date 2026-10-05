@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
 
+from platform_api.services.billing_calendar import next_billing_midnight
 from platform_api.services.credit_units import credits_to_units
 from platform_api.services.v3.period_grant_service import PeriodGrantService
 
@@ -102,6 +103,28 @@ def _paid_plan() -> dict:
         "daily_credits": 0,
         "billing_cycle_days": 30,
     }
+
+
+def _monthly_free_plan() -> dict:
+    """Production-shape Free plan: 50 credits/month, no daily allowance."""
+    return {
+        "id": str(FREE_PLAN_ID),
+        "name": "Free",
+        "price_cents": 0,
+        "monthly_credits": 50,
+        "daily_credits": 0,
+        "billing_cycle_days": 30,
+    }
+
+
+class FakePlanRepo:
+    """License lookup; `ctx=None` mirrors a license-less Free account."""
+
+    def __init__(self, ctx: object | None = None) -> None:
+        self.ctx = ctx
+
+    async def get_user_active_subscription_context(self, user_id: UUID) -> object | None:
+        return self.ctx
 
 
 @pytest.mark.asyncio
@@ -209,3 +232,86 @@ async def test_period_grant_does_not_credit_when_lot_insert_fails() -> None:
         await service.ensure_period_grant(USER_ID)
     assert wallet.balance == 0
     assert wallet.txs == []
+
+
+@pytest.mark.asyncio
+async def test_period_grant_anchors_license_less_free_to_calendar_month(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a monthly Free grant must not restack every day.
+
+    The monthly allowance was anchored to ``billing_today()`` for accounts with no
+    subscription/license (the Free plan, monthly 50 / daily 0), so it minted 50
+    credits every day and, because each lot lived a full billing cycle, the grants
+    stacked. It must be one grant per calendar month that expires at the next
+    month start.
+    """
+    wallet = FakeWallet()
+    store = FakeStore(_monthly_free_plan())
+    service = PeriodGrantService(
+        store=store, credit_repo=wallet, plan_repo=FakePlanRepo(ctx=None)
+    )
+
+    oct_start = date(2026, 10, 1)
+    nov_start = date(2026, 11, 1)
+    nov_midnight = datetime(2026, 11, 1, tzinfo=timezone.utc)
+    monkeypatch.setattr(
+        "platform_api.services.v3.period_grant_service.billing_month_start",
+        lambda *args, **kwargs: oct_start,
+    )
+    monkeypatch.setattr(
+        "platform_api.services.v3.period_grant_service.next_billing_month_start",
+        lambda **kwargs: nov_midnight,
+    )
+
+    first = await service.ensure_period_grant(USER_ID)
+    assert first["granted"] is True
+    assert store.lots[0]["tag"] == "grant"
+    assert store.lots[0]["period_start"] == oct_start
+    assert store.lots[0]["expires_at"] == nov_midnight
+    assert wallet.balance == credits_to_units(50)
+
+    # A later poll in the same month does not mint again.
+    second = await service.ensure_period_grant(USER_ID)
+    assert second["granted"] is False
+    assert second["reason"] == "already_granted"
+    assert wallet.balance == credits_to_units(50)
+
+    # The next calendar month mints exactly one more allowance.
+    monkeypatch.setattr(
+        "platform_api.services.v3.period_grant_service.billing_month_start",
+        lambda *args, **kwargs: nov_start,
+    )
+    third = await service.ensure_period_grant(USER_ID)
+    assert third["granted"] is True
+    assert wallet.balance == credits_to_units(100)
+    assert len(store.lots) == 2
+
+
+@pytest.mark.asyncio
+async def test_period_grant_uses_license_cycle_when_subscribed() -> None:
+    """Licensed accounts keep the activation-anchored period (not the month)."""
+
+    class CtxPlan:
+        billing_cycle_days = 30
+
+    class Ctx:
+        plan = CtxPlan()
+        activated_at = datetime(2026, 9, 15, tzinfo=timezone.utc)
+
+    wallet = FakeWallet()
+    store = FakeStore(_paid_plan())
+    store.license_plan = _paid_plan()
+    service = PeriodGrantService(
+        store=store, credit_repo=wallet, plan_repo=FakePlanRepo(ctx=Ctx())
+    )
+
+    result = await service.ensure_period_grant(USER_ID)
+    assert result["granted"] is True
+    # 30-day cycle activated 2026-09-15 -> current period starts 2026-09-15,
+    # not the calendar-month fallback used for license-less accounts.
+    assert result["period_start"] == "2026-09-15"
+    # The lot expires at the period boundary (2026-10-15 00:00 +07), so it cannot
+    # overlap the following period's grant.
+    expected_expiry = next_billing_midnight(from_date=date(2026, 10, 14)).isoformat()
+    assert result["expires_at"] == expected_expiry

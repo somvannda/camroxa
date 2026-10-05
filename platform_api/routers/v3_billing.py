@@ -19,6 +19,7 @@ from platform_api.dependencies import (
 )
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
+from platform_api.services.plan_credits import validate_credit_cadence
 from platform_api.services.pricing_display import normalize_pricing_features
 from platform_api.services.v3.ops import PATCHABLE_PLAN_FIELDS, SUPPORTED_OPS
 
@@ -121,10 +122,17 @@ async def patch_admin_plan(
     unknown = set(fields) - PATCHABLE_PLAN_FIELDS
     if unknown:
         raise ValidationError("Unsupported plan fields.", details={"fields": sorted(unknown)})
+    current = await store.get_plan(plan_id)
+    if current is None:
+        raise NotFoundError("Plan not found.", details={"plan_id": str(plan_id)})
     if "pricing_features" in fields:
         fields["pricing_features"] = normalize_pricing_features(fields.get("pricing_features"))
     if "pricing_credit_lines" in fields:
         fields["pricing_credit_lines"] = normalize_pricing_features(fields.get("pricing_credit_lines"))
+    validate_credit_cadence(
+        monthly_credits=fields.get("monthly_credits", current.get("monthly_credits")),
+        daily_credits=fields.get("daily_credits", current.get("daily_credits")),
+    )
     plan = await store.patch_plan(plan_id, fields)
     if plan is None:
         raise NotFoundError("Plan not found.", details={"plan_id": str(plan_id)})

@@ -6,7 +6,12 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from platform_api.services.billing_calendar import billing_today, next_billing_midnight
+from platform_api.services.billing_calendar import (
+    billing_month_start,
+    billing_today,
+    next_billing_midnight,
+    next_billing_month_start,
+)
 from platform_api.services.credit_units import credits_to_units, units_to_credits
 from platform_api.services.v3.store import V3BillingStore
 
@@ -54,7 +59,14 @@ class PeriodGrantService:
                 "plan_id": plan["id"],
             }
 
-        period_start = billing_today()
+        # The monthly allowance keys off the billing period. Licensed plans have an
+        # activation anchor; a license-less account (the Free plan) does not, so it
+        # must key off the calendar month. Keying off `billing_today()` minted a
+        # fresh "monthly" grant every day, and since each lot lived for the whole
+        # billing cycle the grants stacked — a Free wallet grew ~50/day instead of
+        # resetting each month.
+        period_start = billing_month_start()
+        monthly_allowance = True
         if self._plan_repo is not None:
             ctx = await self._plan_repo.get_user_active_subscription_context(user_id)
             if ctx is not None:
@@ -64,6 +76,7 @@ class PeriodGrantService:
                     plan=ctx.plan,
                     activated_at=ctx.activated_at,
                 )
+                monthly_allowance = False
 
         existing = await self._store.find_period_grant(user_id, period_start)
         if existing is not None:
@@ -76,8 +89,19 @@ class PeriodGrantService:
             }
 
         units = credits_to_units(monthly)
-        cycle_days = int(plan.get("billing_cycle_days") or 30)
-        expires_at = datetime.now(timezone.utc) + timedelta(days=max(1, cycle_days))
+        if monthly_allowance:
+            # Calendar-month allowance: expire at the next billing month start so
+            # unused Free credits roll off instead of lingering past the period.
+            expires_at = next_billing_month_start(from_date=period_start)
+        else:
+            cycle_days = max(1, int(plan.get("billing_cycle_days") or 30))
+            # Expire at this period's boundary (start of the next period), not
+            # mint-time + cycle. Otherwise a previous period's unused lot stays
+            # live into the next period and overlaps the new grant — a licence
+            # renewal could hand out two periods' credits at once.
+            expires_at = next_billing_midnight(
+                from_date=period_start + timedelta(days=cycle_days - 1)
+            )
         lot = await self._store.insert_lot_if_absent(
             user_id=user_id,
             tag="grant",

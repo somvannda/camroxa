@@ -835,6 +835,7 @@ class SubscriptionService:
                 """
                 UPDATE web_subscriptions
                 SET monthly_credits_used = 0,
+                    monthly_credits_granted = $4,
                     current_period_start = $1,
                     current_period_end = $2,
                     last_credit_reset = $1
@@ -843,6 +844,7 @@ class SubscriptionService:
                 next_period_start,
                 next_period_end,
                 subscription.id,
+                plan.monthly_credits,
             )
             await self._log_monthly_credit_reset(
                 user_id=subscription.user_id,

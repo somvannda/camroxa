@@ -14,6 +14,7 @@ from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.repositories.credit_repo import CreditRepository
 from platform_api.repositories.license_repo import PlanRepository
+from platform_api.services.plan_credits import validate_credit_cadence
 from platform_api.services.pricing_display import credits_to_songs
 
 router = APIRouter(prefix="/web-music", tags=["web-music-plans-admin"])
@@ -211,6 +212,7 @@ async def create_web_music_plan(
             message="A plan with this name already exists.",
             details={"name": request.name},
         )
+    validate_credit_cadence(monthly_credits=request.monthly_credits, daily_credits=0)
 
     plan = await plan_repo.create_web_music(
         name=request.name.strip(),
@@ -235,7 +237,7 @@ async def update_web_music_plan(
     ctx: AdminDep,
     plan_repo: PlanRepoDep,
 ) -> WebMusicPlanResponse:
-    await _get_web_music_plan(plan_repo, plan_id)
+    existing = await _get_web_music_plan(plan_repo, plan_id)
 
     fields: dict[str, Any] = {}
     if request.name is not None:
@@ -246,6 +248,14 @@ async def update_web_music_plan(
         fields["billing_cycle_days"] = request.billing_cycle_days
     if request.monthly_credits is not None:
         fields["monthly_credits"] = request.monthly_credits
+    validate_credit_cadence(
+        monthly_credits=(
+            request.monthly_credits
+            if request.monthly_credits is not None
+            else getattr(existing, "monthly_credits", 0)
+        ),
+        daily_credits=getattr(existing, "daily_credits", 0),
+    )
     if request.features is not None:
         fields["features"] = json.dumps(request.features.model_dump())
     if request.is_public is not None:

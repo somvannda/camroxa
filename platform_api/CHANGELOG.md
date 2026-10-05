@@ -17,6 +17,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Web Create on `music.camxora.com` charged 15 credits even when the music pool was switched to musicapi. `music` pricing was hard-coded to `suno`; it now resolves the routed provider (`suno` = 15, `camxora_music_api` = 10) for quote, charge, refund, plan pages, and the create-button label. Generation submit/poll and the worker/callback resolver follow the same switch. See `docs/changelog/2026-10-05-music-provider-ai-routing.md`.
 
+## [2026-10-05] — Free monthly grant reset (stop daily restacking)
+
+### Fixed
+
+- A license-less **Free** account was minted a `v3_period_grant` every day instead of once per month: `ensure_period_grant()` anchored the monthly allowance to `billing_today()` when no active subscription context existed, and each lot stayed valid for the full billing cycle (30 days), so grants stacked (~50 credits/day). It now anchors to `billing_month_start()` and expires the lot at the next month start. Licensed plans keep their activation anchor. See `docs/changelog/2026-10-05-free-monthly-grant-reset.md`.
+
 ## [2026-10-02] — SLAI image model `cx/gpt-image-2.5`
 
 ### Changed
