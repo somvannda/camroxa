@@ -4,8 +4,10 @@ AI Routing can now select ``camxora_music_api`` as the music provider (Suno
 compatible, ``musicapi.camxora.com``). The billing lookup for the ``music``
 operation has no sub-model, so it needs a provider-wide row; migration
 ``128_camxora_music_api_pricing`` only seeded per-model rows (v6 / v6-wild /
-v6-mini). This inserts the missing provider-wide row at the same 10-credit price
-and mirrors it into ``ai_model_costs`` for the admin cost view.
+v6-mini). This inserts the missing provider-wide row at the same 10-credit price,
+corrects an auto-created draft (saving routing syncs a 7.5-credit default row
+when none exists), and mirrors it into ``ai_model_costs`` for the admin cost
+view.
 
 Idempotent: re-running is a no-op.
 
@@ -29,6 +31,23 @@ _CREDIT_UNITS = 100_000  # 10 display credits (matches live musicapi pricing)
 
 
 def upgrade() -> None:
+    # If the routing save ran first it auto-created a provider-wide draft row at
+    # the generic 7.5-credit default. Correct that to the real 10-credit price;
+    # an admin's deliberate value is left alone (only drafts / the known default
+    # are touched).
+    op.execute(
+        f"""
+        UPDATE credit_pricing
+        SET credits_per_operation = {_CREDIT_UNITS},
+            external_cost_cents = {_CREDIT_UNITS},
+            needs_review = false,
+            updated_at = NOW()
+        WHERE ai_service = '{_AI_SERVICE}'
+          AND operation_type = 'music'
+          AND COALESCE(sub_model, '') = ''
+          AND (needs_review = true OR credits_per_operation = 75000)
+        """
+    )
     op.execute(
         f"""
         INSERT INTO credit_pricing (
