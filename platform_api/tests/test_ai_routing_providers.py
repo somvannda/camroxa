@@ -54,3 +54,46 @@ async def test_get_available_providers_uses_db_costs_and_operation_filter() -> N
     assert flash_detail["cost_usd_by_operation"]["title"] == 0.00012
     assert "title" in flash_detail["operations"]
     assert "deepseek-v4-pro" in deepseek["sub_models"]
+
+
+def test_routing_schema_accepts_camxora_music_provider() -> None:
+    from platform_api.models.ai_routing_schemas import OperationAssignment
+
+    assignment = OperationAssignment(
+        provider="camxora_music_api", sub_model=None, is_active=True
+    )
+    assert assignment.provider == "camxora_music_api"
+
+
+@pytest.mark.asyncio
+async def test_camxora_music_api_listed_when_pool_has_active_keys() -> None:
+    key_pool = AsyncMock()
+    key_pool.get_pool_status = AsyncMock(
+        side_effect=lambda provider: {
+            "active_keys": 1 if provider in {"suno", "camxora_music_api"} else 0
+        }
+    )
+    service = AIRoutingService(
+        settings_repo=AsyncMock(),
+        key_pool_service=key_pool,
+        model_cost_repo=_FakeModelCostRepo(),
+    )
+    providers = await service.get_available_providers()
+    music = {item["provider"] for item in providers["music_generation"]}
+    assert {"suno", "camxora_music_api"} <= music
+
+
+@pytest.mark.asyncio
+async def test_save_assignments_accepts_camxora_music_and_drops_sub_model() -> None:
+    repo = AsyncMock()
+    repo.get_system_setting = AsyncMock(return_value=None)
+    service = AIRoutingService(settings_repo=repo, key_pool_service=AsyncMock())
+
+    await service.save_assignments(
+        {"music": {"provider": "camxora_music_api", "sub_model": "V6", "is_active": True}}
+    )
+
+    saved = repo.upsert_system_settings.await_args.args[0]
+    entry = saved["ai_routing_assignments"]["music"]
+    assert entry["provider"] == "camxora_music_api"
+    assert entry["sub_model"] is None

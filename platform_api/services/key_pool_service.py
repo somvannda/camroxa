@@ -18,7 +18,10 @@ from uuid import UUID, uuid4
 import httpx
 from redis.asyncio import Redis
 
-from platform_api.clients.suno_routing import set_active_suno_base_url
+from platform_api.clients.suno_routing import (
+    is_suno_compatible_provider,
+    set_active_suno_base_url,
+)
 from platform_api.exceptions import DuplicateKeyLabelError, ExternalServiceError, NoAvailableKeysError
 from platform_api.models.domain import ApiKeyEntry, KeyPoolConfig, KeyStatusEvent
 from platform_api.models.enums import KeyStatus, SelectionStrategy
@@ -26,6 +29,25 @@ from platform_api.repositories.key_pool_repo import KeyPoolRepository
 from platform_api.services.key_encryption import KeyEncryption
 
 logger = logging.getLogger(__name__)
+
+
+def _effective_suno_base_url(configured: str | None) -> str:
+    """The host the Suno client will actually use for this request.
+
+    Key filtering still uses the *raw* configured base URL, but the routing
+    context must publish the effective host so downstream checks (e.g.
+    ``active_provider_is_musicapi``) agree with the client's fallback to the
+    environment default.
+    """
+    text = str(configured or "").strip().rstrip("/")
+    if text:
+        return text
+    try:
+        from platform_api.config import get_settings
+
+        return str(get_settings().suno_api_base_url or "").strip().rstrip("/")
+    except Exception:
+        return ""
 
 
 class KeyPoolService:
@@ -71,8 +93,8 @@ class KeyPoolService:
             NoAvailableKeysError: If no active keys exist for the provider.
         """
         config = await self._get_provider_config(provider)
-        if provider == "suno":
-            set_active_suno_base_url(config.base_url)
+        if is_suno_compatible_provider(provider):
+            set_active_suno_base_url(_effective_suno_base_url(config.base_url))
         active_keys = await self._get_active_keys(provider, base_url=config.base_url)
 
         if not active_keys:
@@ -532,8 +554,8 @@ class KeyPoolService:
         # Resolve the active host once per execution: only keys tagged with that
         # host are eligible, and the Suno client reads it to pick its base URL.
         config = await self._get_provider_config(provider)
-        if provider == "suno":
-            set_active_suno_base_url(config.base_url)
+        if is_suno_compatible_provider(provider):
+            set_active_suno_base_url(_effective_suno_base_url(config.base_url))
 
         for attempt in range(max_retries):
             # Get active keys excluding already-tried ones
@@ -1131,7 +1153,24 @@ class KeyPoolService:
         # Fall back to (or confirm with) PostgreSQL
         keys = await self._repo.get_active_by_provider(provider)
         if base_url:
-            keys = [k for k in keys if (k.base_url or "") == base_url]
+            tagged = [k for k in keys if (k.base_url or "") == base_url]
+            if tagged:
+                return tagged
+            # No key is tagged for the active host. An untagged key is
+            # host-agnostic, so keep a single-host provider pool usable instead
+            # of failing every request with NoAvailableKeysError.
+            untagged = [k for k in keys if not (k.base_url or "")]
+            if untagged:
+                logger.warning(
+                    "No keys tagged for host %s (provider=%s); using %d "
+                    "untagged host-agnostic key(s). Tag the key's upstream host "
+                    "in Key Pool → Provider Settings to silence this.",
+                    base_url,
+                    provider,
+                    len(untagged),
+                )
+                return untagged
+            return tagged
         return keys
 
     async def _get_provider_config(self, provider: str) -> KeyPoolConfig:

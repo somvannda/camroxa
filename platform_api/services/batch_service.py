@@ -3440,10 +3440,8 @@ class BatchService:
 
         if active_provider_is_musicapi():
             # musicapi job ids are dashed UUIDs. Legacy sunoapi.org-era ids are
-            # 32-char hex, and `uuid.UUID()` accepts those too — so match the
-            # dashed form explicitly. Let the caller mark the channel unavailable
-            # instead of spawning a recovery job that just fails
-            # `no_audio_id_mappings`.
+            # 32-char hex (and `uuid.UUID()` accepts those too), so match the
+            # dashed form explicitly and skip recovery for them.
             import re
 
             if not re.fullmatch(

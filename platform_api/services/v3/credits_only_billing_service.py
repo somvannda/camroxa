@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
@@ -17,6 +18,8 @@ from platform_api.services.v3.list_prices import (
 )
 from platform_api.services.v3.ops import SUPPORTED_OPS
 from platform_api.services.v3.store import V3BillingStore
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,11 +52,31 @@ class CreditsOnlyBillingService:
         credit_repo: Any,
         pricing_service: Any,
         enforcement: Any | None = None,
+        ai_routing_service: Any | None = None,
     ) -> None:
         self._store = store
         self._credit_repo = credit_repo
         self._pricing = pricing_service
         self._enforcement = enforcement
+        self._ai_routing = ai_routing_service
+
+    async def _music_pricing_provider(self) -> str | None:
+        """Routed provider for the ``music`` op, or None when unavailable.
+
+        AI Routing is the single admin switch: selecting ``camxora_music_api``
+        charges its (cheaper) row, selecting ``suno`` charges the Suno row. A
+        routing miss or a provider without active keys falls back to the static
+        chain so pricing/plan pages never hard-fail on a config gap.
+        """
+        if self._ai_routing is None:
+            return None
+        try:
+            routing = await self._ai_routing.resolve("music")
+        except Exception:
+            logger.debug("music routing lookup failed; using default price chain", exc_info=True)
+            return None
+        provider = str(getattr(routing, "provider", "") or "").strip().lower()
+        return provider or None
 
     async def list_pricing(self) -> list[dict[str, Any]]:
         return await self._pricing.get_all_pricing()
@@ -114,7 +137,12 @@ class CreditsOnlyBillingService:
         elif user_id is not None:
             plan = await self._store.get_plan_for_user(user_id)
 
-        units = await resolve_op_list_units(self._pricing, operation)
+        music_provider = (
+            await self._music_pricing_provider() if operation == "music" else None
+        )
+        units = await resolve_op_list_units(
+            self._pricing, operation, music_provider=music_provider
+        )
         return QuoteResult(
             op=operation,
             amount_credits=units_to_credits(units),
@@ -125,7 +153,10 @@ class CreditsOnlyBillingService:
         )
 
     async def op_list_credits(self) -> dict[str, float]:
-        return await resolve_all_op_list_credits(self._pricing)
+        music_provider = await self._music_pricing_provider()
+        return await resolve_all_op_list_credits(
+            self._pricing, music_provider=music_provider
+        )
 
     async def music_credits_per_generate(self) -> int | float:
         return music_credits_per_generate(await self.op_list_credits())

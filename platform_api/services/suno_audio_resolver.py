@@ -20,6 +20,11 @@ from platform_api.clients.suno_client import (
     payload_is_mpeg_audio,
     prefer_suno_mpeg_cdn_url,
 )
+from platform_api.clients.suno_routing import (
+    DEFAULT_MUSIC_PROVIDER,
+    normalize_music_provider,
+    set_active_suno_base_url,
+)
 from platform_api.services.storage_service import StorageServiceError
 
 logger = logging.getLogger(__name__)
@@ -225,7 +230,37 @@ def _envelope_is_terminal_success(payload: dict[str, Any]) -> bool:
     return False
 
 
-async def _active_suno_base_url(pool: Any) -> str | None:
+async def active_music_provider(pool: Any) -> str:
+    """Music provider AI Routing assigned (``suno`` / ``camxora_music_api``).
+
+    Read straight from ``system_settings`` so worker/callback contexts that do
+    not hold the routing service resolve the same switch the API used to
+    generate the task. Defaults to ``suno`` on any miss.
+    """
+    import json
+
+    try:
+        raw = await pool.fetchval(
+            "SELECT value FROM system_settings WHERE key = 'ai_routing_assignments'"
+        )
+    except Exception:
+        return DEFAULT_MUSIC_PROVIDER
+    if raw is None:
+        return DEFAULT_MUSIC_PROVIDER
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except (TypeError, ValueError):
+            return DEFAULT_MUSIC_PROVIDER
+    if not isinstance(raw, dict):
+        return DEFAULT_MUSIC_PROVIDER
+    assignment = raw.get("music")
+    if not isinstance(assignment, dict):
+        return DEFAULT_MUSIC_PROVIDER
+    return normalize_music_provider(assignment.get("provider"))
+
+
+async def _configured_suno_base_url(pool: Any, provider: str) -> str | None:
     """Return the provider's configured active upstream host, or None.
 
     ``key_pool_configs.base_url`` is set by the admin provider toggle; when it
@@ -233,7 +268,8 @@ async def _active_suno_base_url(pool: Any) -> str | None:
     """
     try:
         value = await pool.fetchval(
-            "SELECT base_url FROM key_pool_configs WHERE provider = 'suno'"
+            "SELECT base_url FROM key_pool_configs WHERE provider = $1",
+            provider,
         )
     except Exception:
         return None
@@ -241,44 +277,57 @@ async def _active_suno_base_url(pool: Any) -> str | None:
     return text or None
 
 
-async def active_suno_key_values(pool: Any) -> list[str]:
-    """Decrypt every active Suno key value, best-effort.
+def _effective_suno_base_url(configured: str | None) -> str:
+    """Host the Suno client will use: the configured host or the env default."""
+    import os
+
+    text = str(configured or "").strip().rstrip("/")
+    if text:
+        return text
+    return os.environ.get("PLATFORM_SUNO_API_BASE_URL", "").strip().rstrip("/")
+
+
+async def active_suno_key_values(pool: Any, provider: str | None = None) -> list[str]:
+    """Decrypt every active key for a Suno-compatible provider, best-effort.
 
     Read endpoints (record-info / recovery / details) are scoped to the account
     that created the task. With a multi-account pool we must try each key until
     one owns the task; a 401/403 there means "wrong owner", not "key exhausted",
     so these calls bypass the failover wrapper (which would mark keys dead).
 
-    Only keys tagged for the provider's active host are returned, so
-    sunoapi.org and musicapi keys can coexist while a single host is live. The
-    resolved host is also published for the HTTP client.
+    ``provider`` defaults to the routed music provider. Only keys tagged for
+    that provider's active host are returned, so sunoapi.org and musicapi keys
+    can coexist while a single provider is live. The resolved host is also
+    published for the HTTP client.
     """
     import os
 
-    from platform_api.clients.suno_routing import set_active_suno_base_url
     from platform_api.services.key_encryption import KeyEncryption
 
-    base_url = await _active_suno_base_url(pool)
-    set_active_suno_base_url(base_url)
+    target = normalize_music_provider(provider) if provider else await active_music_provider(pool)
+    configured = await _configured_suno_base_url(pool, target)
+    set_active_suno_base_url(_effective_suno_base_url(configured))
 
-    if base_url:
+    if configured:
         rows = await pool.fetch(
             """
             SELECT encrypted_key_value
             FROM api_key_entries
-            WHERE provider = 'suno' AND status = 'active' AND base_url = $1
+            WHERE provider = $1 AND status = 'active' AND base_url = $2
             ORDER BY priority DESC, created_at ASC
             """,
-            base_url,
+            target,
+            configured,
         )
     else:
         rows = await pool.fetch(
             """
             SELECT encrypted_key_value
             FROM api_key_entries
-            WHERE provider = 'suno' AND status = 'active'
+            WHERE provider = $1 AND status = 'active'
             ORDER BY priority DESC, created_at ASC
-            """
+            """,
+            target,
         )
     if not rows:
         return []
@@ -420,12 +469,16 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
     return {}
 
 
-async def poll_suno_generate_with_pool(pool: Any, external_task_id: str):
+async def poll_suno_generate_with_pool(
+    pool: Any, external_task_id: str, provider: str | None = None
+):
     """Poll Suno record-info using the DB pool (works outside FastAPI lifespan).
 
     Tries every active key until one owns the task: with a multi-account pool
     the record-info call is account-scoped, and a 401/403 from a non-owner key
     must not fail the poll (or disable that key).
+
+    ``provider`` defaults to the routed music provider.
     """
     import os
     from types import SimpleNamespace
@@ -437,7 +490,7 @@ async def poll_suno_generate_with_pool(pool: Any, external_task_id: str):
     if not task_id:
         return SunoGeneratePollResult(state="failed", error="Missing Suno task id.")
 
-    api_keys = await active_suno_key_values(pool)
+    api_keys = await active_suno_key_values(pool, provider=provider)
     if not api_keys:
         return SunoGeneratePollResult(state="failed", error="No active Suno API key configured.")
 

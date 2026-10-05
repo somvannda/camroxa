@@ -1730,6 +1730,33 @@ async def test_get_key_filters_by_active_provider_host(
 
 
 @pytest.mark.asyncio
+async def test_get_key_falls_back_to_untagged_key_for_active_host(
+    service: KeyPoolService,
+    fake_repo: FakeKeyPoolRepository,
+    encryption: KeyEncryption,
+) -> None:
+    """An untagged (host-agnostic) key keeps a provider pool usable.
+
+    Regression: a dedicated provider pool whose only key was added without an
+    upstream-host tag failed every request with NoAvailableKeysError once the
+    provider's active base_url was set.
+    """
+    untagged = _make_entry(
+        encryption,
+        provider="camxora_music_api",
+        label="camxora",
+        key_value="sk-camxora",
+    )
+    untagged.base_url = None
+    fake_repo._entries[untagged.id] = untagged
+    fake_repo._configs["camxora_music_api"] = KeyPoolConfig(
+        provider="camxora_music_api", base_url="https://musicapi.camxora.com"
+    )
+
+    assert await service.get_key("camxora_music_api") == "sk-camxora"
+
+
+@pytest.mark.asyncio
 async def test_configure_provider_base_url_toggle_and_clear(
     service: KeyPoolService,
     fake_repo: FakeKeyPoolRepository,
