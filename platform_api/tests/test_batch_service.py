@@ -3045,3 +3045,21 @@ async def test_create_batch_preflights_video_and_merge(
     # 4 songs x 2 channels = 8 exports; 1 batch x 2 channels = 2 merges.
     assert kwargs["video_ops"] == 8
     assert kwargs["merge_ops"] == 2
+
+
+def test_stream_url_for_audio_id_disabled_for_musicapi() -> None:
+    """The sunoapi.org reseller stream host must not be used for musicapi."""
+    from platform_api.clients.suno_routing import set_active_suno_base_url
+    from platform_api.services.batch_service import BatchService
+
+    set_active_suno_base_url("")
+    assert (
+        BatchService._stream_url_for_audio_id("abc")
+        == "https://audiostream.api.box/stream/abc.mp3"
+    )
+
+    set_active_suno_base_url("https://musicapi.camxora.com")
+    try:
+        assert BatchService._stream_url_for_audio_id("abc") == ""
+    finally:
+        set_active_suno_base_url("")

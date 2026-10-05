@@ -3415,7 +3415,16 @@ class BatchService:
 
     @staticmethod
     def _stream_url_for_audio_id(audio_id: Any) -> str:
-        """Durable reseller stream URL for a Suno clip id (outlives the tempfile host)."""
+        """Durable reseller stream URL for a Suno clip id (sunoapi.org only).
+
+        The ``audiostream.api.box`` host is sunoapi.org-specific and never has
+        Camxora's musicapi clips, so skip it when musicapi is the active
+        provider (it only produces a wasted probe / dead stored URL).
+        """
+        from platform_api.clients.suno_client import active_provider_is_musicapi
+
+        if active_provider_is_musicapi():
+            return ""
         value = str(audio_id or "").strip()
         if not value or value.startswith(("http://", "https://")):
             return ""
