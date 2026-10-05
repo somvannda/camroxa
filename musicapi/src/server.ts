@@ -1462,12 +1462,50 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       .slice(0, 60) || "clip";
   }
 
+  /**
+   * True when `clipId` is known to belong to a *different* user. Ownership is
+   * derived from the clip ids stored in a job/usage result, so a readable clip
+   * cannot be crossed between tenants. An id attributed to nobody (e.g. a legacy
+   * row with no stored result) is allowed through, so this never regresses
+   * legitimate access.
+   */
+  async function clipOwnedByOtherUser(userId: string, clipId: string): Promise<boolean> {
+    if (!userId || !clipId) return false;
+    const owns = await queryOne<{ one: number }>(
+      `SELECT 1 AS one FROM jobs
+         WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
+       UNION ALL
+       SELECT 1 FROM usage_logs
+         WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
+       LIMIT 1`,
+      [userId, clipId],
+    );
+    if (owns) return false;
+    const foreign = await queryOne<{ one: number }>(
+      `SELECT 1 AS one FROM jobs
+         WHERE user_id IS NOT NULL AND user_id <> $1
+           AND result_json::text LIKE '%' || $2 || '%'
+       UNION ALL
+       SELECT 1 FROM usage_logs
+         WHERE user_id IS NOT NULL AND user_id <> $1
+           AND result_json::text LIKE '%' || $2 || '%'
+       LIMIT 1`,
+      [userId, clipId],
+    );
+    return Boolean(foreign);
+  }
+
+  function denyForeignClip(reply: FastifyReply): void {
+    reply.code(403).send({ error: "This clip does not belong to your account." });
+  }
+
   function meDetailRoute(path: string, type: Job["type"]) {
     app.get(path, async (req, reply) => {
       const u = requireAuth(req, reply);
       if (!u) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
+      if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
       let cost = 0;
       try {
         cost = await costFor(type);
@@ -4072,6 +4110,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    if (await clipOwnedByOtherUser(u.id, clipId)) return denyForeignClip(reply);
     const format = q.format === "wav" ? "wav" : q.format === "m4a" ? "m4a" : "mp3";
 
     if (storageConfigured()) {
@@ -4118,6 +4157,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string; force_download?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    if (await clipOwnedByOtherUser(u.id, clipId)) return denyForeignClip(reply);
     const formatRaw = (q.format as string) || "mp3";
 
     // Music-video download. `runMusicVideoJob` stores the rendered render at
@@ -4731,6 +4771,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
+    if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
     const cost = await costFor("timestamped_lyrics_detail");
     const key = await chargeUserKey(u.id, cost);
     if (cost > 0 && !key) {
@@ -4762,6 +4803,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!u) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
+    if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
     let cost = 0;
     try {
       cost = await costFor("wav_detail");
@@ -6666,6 +6708,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
+    if (!id) return reply.code(400).send({ error: "id is required." });
+    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
     const cost = await costFor("timestamped_lyrics_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -6685,6 +6729,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!key) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
+      if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
       const cost = await costFor(type);
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -6714,6 +6759,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
+    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
     const cost = await costFor("wav_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("wav_detail");
@@ -8429,6 +8475,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.taskId as string) ||
       (in_.task_id as string);
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
+    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
     const cost = await costFor("timestamped_lyrics_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("timestamped_lyrics_detail", callbackUrl(in_));
