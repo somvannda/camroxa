@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Button } from "@/components/ui/Button";
@@ -29,12 +30,14 @@ interface AuditPage {
 
 const PAGE_SIZE = 50;
 
-export default function AuditPage() {
-  const [actionInput, setActionInput] = useState("");
-  const [action, setAction] = useState("");
-  const [qInput, setQInput] = useState("");
-  const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
+function AuditInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const [actionInput, setActionInput] = useState(params.get("action") ?? "");
+  const [action, setAction] = useState(params.get("action") ?? "");
+  const [qInput, setQInput] = useState(params.get("q") ?? "");
+  const [q, setQ] = useState(params.get("q") ?? "");
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
 
   const { data, loading, error, reload } = useResource<AuditPage>(
     () => {
@@ -45,6 +48,16 @@ export default function AuditPage() {
     },
     [page, action, q],
   );
+
+  // Reflect the filters in the URL so a view can be bookmarked/shared.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (action) p.set("action", action);
+    if (q) p.set("q", q);
+    if (page > 1) p.set("page", String(page));
+    const qs = p.toString();
+    router.replace(qs ? `/admin/audit?${qs}` : "/admin/audit", { scroll: false });
+  }, [action, q, page, router]);
 
   const rows = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -165,5 +178,13 @@ export default function AuditPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AuditPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <AuditInner />
+    </Suspense>
   );
 }
