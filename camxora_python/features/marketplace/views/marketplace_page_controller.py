@@ -56,6 +56,7 @@ class MarketplacePageController(QObject):
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mkt-catalog")
         self._install_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mkt-install")
         self._pending_reinstall: set[str] = set()
+        self._view.destroyed.connect(self._shutdown_executors)
 
         self._view.kind_filter_changed.connect(self._on_kind_changed)
         self._view.search_changed.connect(self._on_search_changed)
@@ -66,6 +67,14 @@ class MarketplacePageController(QObject):
         self._install_ready.connect(self._on_install_ready)
 
         self._refresh_catalog()
+
+    def _shutdown_executors(self, *_: object) -> None:
+        """Tear down the worker pools when the view goes away."""
+        for pool in (self._executor, self._install_executor):
+            try:
+                pool.shutdown(wait=False, cancel_futures=True)
+            except Exception:  # noqa: BLE001
+                pass
 
     # ─── Signal Handlers ──────────────────────────────────────────────────
 

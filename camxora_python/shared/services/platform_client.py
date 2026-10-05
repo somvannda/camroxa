@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import threading
 import time
 from typing import Any, Literal
 
@@ -78,7 +77,6 @@ class PlatformClient:
         self._refresh_callback: Any = None
         self._logout_callback: Any = None
         self._invalidated_token: str | None = None
-        self._refresh_lock = threading.Lock()
 
     def set_session_handlers(
         self,

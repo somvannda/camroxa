@@ -114,6 +114,7 @@ from shared.workers.data_workers import (
     ImageSamplePacksWorker,
     MyPromptMutationResult,
     MyPromptMutationWorker,
+    MyPromptsWorker,
     PatchSettingsWorker,
     ProfileMediaCacheResult,
     ProfileMediaCacheWorker,
@@ -199,6 +200,7 @@ class SettingsView(QWidget):
         self._sample_packs_worker: ImageSamplePacksWorker | None = None
         self._sample_pack_install_worker: SamplePackInstallWorker | None = None
         self._profile_media_cache_worker: ProfileMediaCacheWorker | None = None
+        self._my_prompts_worker: MyPromptsWorker | None = None
         self._diag_sync_worker: SyncLogsWorker | None = None
         self._profiles: list[ProfileResponse] = []
         self._settings_raw: dict[str, object] = {}
@@ -1663,36 +1665,43 @@ class SettingsView(QWidget):
         panel.set_actions_enabled(enabled)
 
     def _reload_my_prompt_panels(self, *, force_network: bool = False) -> None:
+        # Cache-first, and never block the GUI thread on the network: a cache
+        # miss starts a worker and the panels update when it returns.
         if not force_network and self._apply_my_prompts_cache():
             return
-        try:
-            description_items = [
-                self._normalize_my_prompt_item(item)
-                for item in self._api.list_my_descriptions()
-                if isinstance(item, dict)
-            ]
-            structure_items = [
-                self._normalize_my_prompt_item(item)
-                for item in self._api.list_my_structures()
-                if isinstance(item, dict)
-            ]
-            mood_items = [
-                self._normalize_my_prompt_item(item)
-                for item in self._api.list_my_moods()
-                if isinstance(item, dict)
-            ]
-        except Exception as exc:
-            log_error("settings.my_prompts.load_failed", category="settings", exc=exc)
-            description_items = []
-            structure_items = []
-            mood_items = []
-        self._apply_my_prompt_items(description_items, structure_items, mood_items)
+        if self._my_prompts_worker is not None and self._my_prompts_worker.isRunning():
+            return
+        worker = MyPromptsWorker(self._api, parent=self)
+        worker.succeeded.connect(self._on_my_prompts_loaded)
+        worker.failed.connect(self._on_my_prompts_failed)
+        self._my_prompts_worker = worker
+        worker.start()
+
+    def _on_my_prompts_loaded(self, payload: object) -> None:
+        if not (isinstance(payload, tuple) and len(payload) == 3):
+            self._on_my_prompts_failed("Malformed prompt payload.")
+            return
+        description_items, structure_items, mood_items = payload
+        self._apply_my_prompt_items(
+            list(description_items),
+            list(structure_items),
+            list(mood_items),
+        )
         if self._cache is not None:
             self._cache.apply_settings_workspace(
-                my_description_items=description_items,
-                my_structure_items=structure_items,
-                my_mood_items=mood_items,
+                my_description_items=list(description_items),
+                my_structure_items=list(structure_items),
+                my_mood_items=list(mood_items),
             )
+
+    def _on_my_prompts_failed(self, message: str) -> None:
+        # Keep whatever panels already show rather than blanking them on a
+        # transient error; just record it.
+        log_error(
+            "settings.my_prompts.load_failed",
+            category="settings",
+            exc=RuntimeError(message),
+        )
 
     def _start_my_prompt_mutation(
         self,

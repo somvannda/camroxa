@@ -10,14 +10,15 @@ def test_build_platform_ws_url_without_token() -> None:
     assert url == "wss://api.example.com/api/v3/ws"
 
 
-def test_build_platform_ws_url_legacy_token_query() -> None:
+def test_build_platform_ws_url_ignores_token_query() -> None:
     url = build_platform_ws_url("https://api.example.com", "token-123")
-    assert url == "wss://api.example.com/api/v3/ws?token=token-123"
+    assert url == "wss://api.example.com/api/v3/ws"
+    assert "token" not in url
 
 
 def test_build_platform_ws_url_from_v3_prefix() -> None:
     url = build_platform_ws_url("http://localhost:8000/api/v3", "abc def")
-    assert url == "ws://localhost:8000/api/v3/ws?token=abc%20def"
+    assert url == "ws://localhost:8000/api/v3/ws"
 
 
 def test_build_platform_ws_url_requires_base() -> None:

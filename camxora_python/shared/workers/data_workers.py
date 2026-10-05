@@ -1157,6 +1157,33 @@ class MusicLanguagesWorker(QThread):
             self.failed.emit(str(exc) or "Failed to load music languages.")
 
 
+class MyPromptsWorker(QThread):
+    """Fetch the user's own prompt descriptions/structures/moods off the GUI thread.
+
+    ``_reload_my_prompt_panels`` used to make these three calls synchronously on
+    the Qt main thread on every settings load, freezing the window on a slow
+    connection. Emits the three raw lists for the view to apply.
+    """
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+
+    def run(self) -> None:
+        try:
+            descriptions = self._api.list_my_descriptions()
+            structures = self._api.list_my_structures()
+            moods = self._api.list_my_moods()
+            self.succeeded.emit((descriptions, structures, moods))
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            self.failed.emit(str(exc) or "Failed to load your prompts.")
+
+
 class MusicHistoryRefreshWorker(QThread):
     """Fetch only music history — used for live batch progress updates."""
 
