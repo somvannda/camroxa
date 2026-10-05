@@ -418,6 +418,23 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 exc,
             )
 
+        # --- Credit-grant invariant check (Telegram, daily) ---
+        # Flags stacked grant lots / multiple period grants per day — the class of
+        # bug that minted a period grant every day. Silent unless a violation.
+        try:
+            from platform_api.services import credit_invariants as _credit_inv
+
+            if not getattr(_credit_inv, "_ENABLED", True):
+                logger.info("Credit invariant check is disabled by env.")
+            else:
+                asyncio.create_task(
+                    _credit_inv.run_credit_invariant_loop(db_pool),
+                    name="credit-invariant-check",
+                )
+                logger.info("Credit invariant check loop started.")
+        except Exception as exc:
+            logger.warning("Credit invariant check not started (non-fatal): %s", exc)
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",
