@@ -24,15 +24,19 @@ Endpoints
 from __future__ import annotations
 
 import base64
+import ipaddress
 import json
 import os
 import re
+import socket
 import tempfile
 import threading
+import traceback
 import urllib.request
 from difflib import SequenceMatcher
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
+from urllib.parse import urlparse
 
 PORT = int(os.environ.get("LRC_PORT", "4011"))
 MODEL_NAME = os.environ.get("LRC_MODEL", "small")
@@ -40,6 +44,12 @@ DEVICE = os.environ.get("LRC_DEVICE", "cpu")
 COMPUTE_TYPE = os.environ.get("LRC_COMPUTE_TYPE", "int8")
 LANGUAGE = os.environ.get("LRC_LANGUAGE") or None
 VAD = os.environ.get("LRC_VAD", "1") != "0"
+
+MAX_BODY_BYTES = int(os.environ.get("LRC_MAX_BODY_BYTES", str(128 * 1024 * 1024)))
+MAX_DOWNLOAD_BYTES = int(os.environ.get("LRC_MAX_DOWNLOAD_BYTES", str(64 * 1024 * 1024)))
+MAX_CONCURRENT = max(1, int(os.environ.get("LRC_MAX_CONCURRENT", "2")))
+REQUIRED_TOKEN = (os.environ.get("LRC_SERVICE_TOKEN") or "").strip()
+SLOTS = threading.BoundedSemaphore(MAX_CONCURRENT)
 
 # Loaded lazily so `test_align.py` can import the pure helpers without the model.
 MODEL: Any = None
@@ -260,8 +270,53 @@ def align(audio: bytes, lyrics: str) -> dict[str, Any]:
 # --------------------------------------------------------------------------- #
 # HTTP                                                                        #
 # --------------------------------------------------------------------------- #
+def _is_public_host(host: str) -> bool:
+    """True only when every address `host` resolves to is globally routable."""
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        return False
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            return False
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return False
+    return True
+
+
+def _assert_public_http_url(url: str) -> None:
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("url must use http or https")
+    if not parsed.hostname or not _is_public_host(parsed.hostname):
+        raise ValueError("url host is not allowed")
+
+
+def _download_audio(url: str, timeout: int = 180) -> bytes:
+    _assert_public_http_url(url)
+    with urllib.request.urlopen(url, timeout=timeout) as resp:
+        data = resp.read(MAX_DOWNLOAD_BYTES + 1)
+    if len(data) > MAX_DOWNLOAD_BYTES:
+        raise ValueError("downloaded audio is too large")
+    return data
+
+
 def _read_body(handler: BaseHTTPRequestHandler) -> bytes:
-    length = int(handler.headers.get("content-length", "0"))
+    try:
+        length = int(handler.headers.get("content-length", "0") or "0")
+    except ValueError:
+        raise ValueError("invalid content-length") from None
+    if length < 0 or length > MAX_BODY_BYTES:
+        raise ValueError("request body too large")
     return handler.rfile.read(length) if length else b""
 
 
@@ -272,8 +327,7 @@ def _resolve_audio(handler: BaseHTTPRequestHandler, body: bytes) -> tuple[bytes,
         lyrics = str(data.get("lyrics") or "")
         url = data.get("url")
         if url:
-            with urllib.request.urlopen(url, timeout=180) as resp:
-                return resp.read(), lyrics
+            return _download_audio(url), lyrics
         audio_b64 = data.get("audio_b64") or data.get("audioB64")
         if audio_b64:
             return base64.b64decode(audio_b64), lyrics
@@ -284,13 +338,22 @@ def _resolve_audio(handler: BaseHTTPRequestHandler, body: bytes) -> tuple[bytes,
 
 
 class Handler(BaseHTTPRequestHandler):
+    # Idle-socket timeout: a trickling client cannot pin a worker indefinitely.
+    timeout = 900
+
     def _reply(self, obj: dict[str, Any], code: int = 200) -> None:
         payload = json.dumps(obj).encode()
         self.send_response(code)
         self.send_header("content-type", "application/json")
         self.send_header("content-length", str(len(payload)))
+        self.send_header("connection", "close")
         self.end_headers()
         self.wfile.write(payload)
+
+    def _authorized(self) -> bool:
+        if not REQUIRED_TOKEN:
+            return True
+        return self.headers.get("x-service-token", "") == REQUIRED_TOKEN
 
     def do_GET(self) -> None:  # noqa: N802
         if self.path == "/health":
@@ -302,6 +365,9 @@ class Handler(BaseHTTPRequestHandler):
         if self.path != "/align":
             self._reply({"ok": False, "error": "not found"}, 404)
             return
+        if not self._authorized():
+            self._reply({"ok": False, "error": "unauthorized"}, 401)
+            return
         try:
             audio, lyrics = _resolve_audio(self, _read_body(self))
             if not audio:
@@ -310,9 +376,15 @@ class Handler(BaseHTTPRequestHandler):
             if not lyrics.strip():
                 self._reply({"ok": False, "error": "lyrics required"}, 400)
                 return
-            self._reply(align(audio, lyrics))
-        except Exception as exc:  # noqa: BLE001
-            self._reply({"ok": False, "error": str(exc)}, 500)
+            with SLOTS:
+                result = align(audio, lyrics)
+            self._reply(result)
+        except ValueError as exc:
+            self._reply({"ok": False, "error": str(exc)}, 400)
+        except Exception:  # noqa: BLE001
+            # Log internals server-side; never reflect them to the caller.
+            print(f"[lrc-service] align failed:\n{traceback.format_exc()}", flush=True)
+            self._reply({"ok": False, "error": "alignment failed"}, 500)
 
     def log_message(self, *args: Any) -> None:  # silence per-request logs
         pass

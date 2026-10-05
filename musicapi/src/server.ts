@@ -2011,6 +2011,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   /** Basic Pitch MIDI microservice (see `musicapi/midi-service`). */
   const MIDI_SERVICE_URL = process.env.MIDI_SERVICE_URL ?? "http://127.0.0.1:4010";
+  const MIDI_SERVICE_TOKEN = (process.env.MIDI_SERVICE_TOKEN ?? "").trim();
 
   /** POST one stem's audio to the Basic Pitch service; returns its note events. */
   async function transcribeStem(
@@ -2019,7 +2020,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   ): Promise<{ name: string; notes: Array<Record<string, unknown>> }> {
     const res = await fetch(`${MIDI_SERVICE_URL}/transcribe`, {
       method: "POST",
-      headers: { "content-type": "audio/mpeg", "x-stem-name": (name || "Instrument").slice(0, 80) },
+      headers: {
+        "content-type": "audio/mpeg",
+        "x-stem-name": (name || "Instrument").slice(0, 80),
+        ...(MIDI_SERVICE_TOKEN ? { "x-service-token": MIDI_SERVICE_TOKEN } : {}),
+      },
       body: new Uint8Array(audio),
       signal: AbortSignal.timeout(300_000),
     });
@@ -2055,6 +2060,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * Set `LRC_SERVICE_ENABLED=0` to force the plain-lyrics fallback.
    */
   const LRC_SERVICE_URL = process.env.LRC_SERVICE_URL ?? "http://127.0.0.1:4011";
+  const LRC_SERVICE_TOKEN = (process.env.LRC_SERVICE_TOKEN ?? "").trim();
   const LRC_ENABLED = process.env.LRC_SERVICE_ENABLED !== "0";
 
   interface LyricAlignment {
@@ -2082,7 +2088,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     try {
       res = await fetch(`${LRC_SERVICE_URL}/align`, {
         method: "POST",
-        headers: { "content-type": "application/json" },
+        headers: {
+          "content-type": "application/json",
+          ...(LRC_SERVICE_TOKEN ? { "x-service-token": LRC_SERVICE_TOKEN } : {}),
+        },
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(600_000),
       });
