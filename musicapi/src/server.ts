@@ -2646,10 +2646,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   function buildMusicGen(params: Record<string, unknown>) {
+    const tags = params.tags as string | undefined;
+    const prompt = params.prompt as string | undefined;
     return {
-      gptDescriptionPrompt: (params.gpt_description_prompt ?? params.prompt) as string | undefined,
-      prompt: params.prompt as string | undefined,
-      tags: params.tags as string | undefined,
+      // Custom mode carries the style in `tags` and the lyrics in `prompt`.
+      // Only use `prompt` as Suno's song-description field when there is no
+      // style (the non-custom "describe your song" case); otherwise the lyrics
+      // leak into gpt_description_prompt and can override/dilute the style —
+      // the sunoapi.org-compat alias sent the lyrics here.
+      gptDescriptionPrompt: (params.gpt_description_prompt ?? (tags ? undefined : prompt)) as string | undefined,
+      prompt,
+      tags,
       title: params.title as string | undefined,
       negativeTags: params.negative_tags as string | undefined,
       instrumental: Boolean(params.instrumental ?? params.make_instrumental),
