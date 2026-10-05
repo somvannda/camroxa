@@ -2152,6 +2152,27 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   const LRC_SERVICE_URL = process.env.LRC_SERVICE_URL ?? "http://127.0.0.1:4011";
   const LRC_ENABLED = process.env.LRC_SERVICE_ENABLED !== "0";
 
+  // The aligner serialises transcription on one CPU box, so only a couple of
+  // requests should be in flight from this side: firing the whole batch at once
+  // overflows it (503 / connection resets) and every failure re-queues, which is
+  // a retry storm. A small in-process gate keeps the sidecar fed without
+  // thrashing. Slots transfer directly to the next waiter on release.
+  const LRC_MAX_CONCURRENT = Number(process.env.LRC_MAX_CONCURRENT ?? 2);
+  let lrcActive = 0;
+  const lrcWaiters: Array<() => void> = [];
+  async function acquireLrcSlot(): Promise<void> {
+    if (lrcActive < LRC_MAX_CONCURRENT) {
+      lrcActive++;
+      return;
+    }
+    await new Promise<void>((resolve) => lrcWaiters.push(resolve));
+  }
+  function releaseLrcSlot(): void {
+    const next = lrcWaiters.shift();
+    if (next) next();
+    else lrcActive--;
+  }
+
   interface LyricAlignment {
     lines: AlignedLine[];
     words: AlignedWord[];
@@ -2178,20 +2199,34 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (url) body.url = url;
     else body.audio_b64 = (await getObjectBytes(audioKey)).toString("base64");
 
-    let res: Response;
-    try {
-      res = await fetch(`${LRC_SERVICE_URL}/align`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(600_000),
-      });
-    } catch (e) {
-      console.error(`[lrc] align request failed for ${clipId}:`, e instanceof Error ? e.message : e);
-      return null;
+    let res: Response | null = null;
+    let lastError = "";
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        await acquireLrcSlot();
+        try {
+          res = await fetch(`${LRC_SERVICE_URL}/align`, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify(body),
+            signal: AbortSignal.timeout(600_000),
+          });
+        } finally {
+          releaseLrcSlot();
+        }
+        if (res.ok) break;
+        lastError = `HTTP ${res.status}`;
+        res = null;
+      } catch (e) {
+        lastError = e instanceof Error ? e.message : String(e);
+        res = null;
+      }
+      // A busy/reset aligner is transient: wait and retry before giving up, so
+      // one 503 does not become a cached `aligned:false` + a fresh job.
+      if (attempt < 3) await new Promise((r) => setTimeout(r, attempt * 1500));
     }
-    if (!res.ok) {
-      console.error(`[lrc] align HTTP ${res.status} for ${clipId}`);
+    if (!res) {
+      console.error(`[lrc] align failed for ${clipId}: ${lastError}`);
       return null;
     }
     const data = (await res.json()) as {

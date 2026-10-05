@@ -61,6 +61,11 @@ response and never polls a task, but musicapi answered with an async
   - `alignLyrics()` skips clips whose lyric text has no real words
     (`[Instrumental]`, section-only prompts). Transcribing them wasted ~a minute
     of CPU each and starved genuine vocal requests.
+  - Alignments run through a small in-process gate (`LRC_MAX_CONCURRENT`, default
+    2) with up to 3 attempts. Firing the whole clip batch at the single-CPU
+    sidecar at once overflowed it (503 / connection resets), and every failure
+    was cached `aligned:false` and re-queued — a retry storm that kept the flood
+    alive even after dedup. The gate keeps the sidecar fed without thrashing.
   - `finalizeJob()` no longer re-ingests the clip's media for a
     `timestamped_lyrics_detail` job (the originating music job already stored
     it); the redundant download/decrypt/upload was slow and held a Suno slot.
