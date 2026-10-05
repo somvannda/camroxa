@@ -108,16 +108,15 @@ unchanged by the consolidation.
 **Acceptance:** no plan can have both daily & monthly > 0 (DB + API); one cadence
 source; Free `daily=0/monthly=50` grants 50/month to Free + lapsed only.
 
-### Phase 2 — grant choke point (partial ✅)
+### Phase 2 — grant choke point ✅
 - ✅ `(user, reason, ref_id)` grant idempotency via a non-destructive
-  `credit_grant_claims` table (migration `133`) + `add_credits(..., idempotent=)`
-  — a retried/duplicated grant with a stable ref credits at most once.
-- ✅ `redeem_code_service` routed through `CreditRepository.add_credits`
-  (it keeps its own per-user redemption guard, so it passes `idempotent=False`;
-  `add_credits` gained `metadata=` support).
-- Remaining: a typed `CreditLedgerService` facade over `grant/deduct/refund`,
-  making `add_credits` private, and moving the remaining direct `event` writers
-  (e.g. onboarding zero-amount events, which are telemetry, not grants).
+  `credit_grant_claims` table (migration `133`) + `add_credits(..., idempotent=)`.
+- ✅ Typed `services/credit_ledger.py` facade (`CreditLedger.grant/deduct/refund`
+  + `GrantType`) is the named entry point; the plan/pack/conversion/licence-bonus
+  grants and `redeem_code_service` now go through it.
+- `CreditRepository` remains the low-level writer. Remaining direct callers
+  (`billing.py` paid-plan fulfilment, `services/v2/credit_service.py`) still call
+  it and can migrate to the facade incrementally.
 
 ### Phase 3 — mint on events, not reads ✅
 - `/me/credits` is now **read-only**; period/daily grants run on billing events

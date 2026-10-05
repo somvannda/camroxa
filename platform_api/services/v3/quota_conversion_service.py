@@ -7,6 +7,7 @@ from uuid import UUID
 
 from platform_api.exceptions import ValidationError
 from platform_api.services.billing_period_service import period_start_for_subscription
+from platform_api.services.credit_ledger import CreditLedger, GrantType
 from platform_api.services.credit_units import credits_to_units, units_to_credits
 from platform_api.services.v3.store import V3BillingStore
 
@@ -119,10 +120,10 @@ class QuotaConversionService:
                 results.append({**preview, "status": "skipped"})
                 continue
             units = credits_to_units(int(preview["credits_to_mint"]))
-            await self._credit_repo.add_credits(
+            await CreditLedger(self._credit_repo).grant(
                 user_id,
                 units,
-                reason="v3_quota_conversion",
+                grant_type=GrantType.QUOTA_CONVERSION,
                 ref_id=f"quota_conversion:{user_id}",
             )
             await self._store.insert_lot(

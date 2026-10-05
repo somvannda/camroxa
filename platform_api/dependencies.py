@@ -115,6 +115,13 @@ def get_credit_repo():
     return CreditRepository(pool=get_db_pool())
 
 
+def get_credit_ledger():
+    """Dependency that returns the single typed CreditLedger entry point."""
+    from platform_api.services.credit_ledger import CreditLedger
+
+    return CreditLedger(get_credit_repo())
+
+
 def get_profile_repo():
     """Dependency that returns the ProfileRepository instance."""
     from platform_api.repositories.profile_repo import ProfileRepository
