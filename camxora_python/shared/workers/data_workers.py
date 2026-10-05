@@ -1414,7 +1414,13 @@ class CreateBatchesWorker(QThread):
                 self.succeeded.emit(result)
                 return
             if result.failed:
-                self.failed.emit(result.failed[0][1])
+                from shared.lib.music_batch_plan import format_failed_create_slots
+
+                suffix = "s" if result.failed_count != 1 else ""
+                detail = format_failed_create_slots(result.failed)
+                self.failed.emit(
+                    f"Could not create {result.failed_count} batch run{suffix}: {detail}"
+                )
                 return
             self.failed.emit("No batch runs to create.")
         except PlatformApiError as exc:

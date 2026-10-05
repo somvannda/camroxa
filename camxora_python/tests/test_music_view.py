@@ -267,3 +267,151 @@ def test_valid_local_prompt_selection_is_restored(
     assert view._automation_card.selected_description_id() == "desc-2"
     assert view._automation_card.selected_structure_id() == "struct-2"
     assert view._automation_card.selected_mood_id() == "mood-2"
+
+
+def test_batches_created_accepts_worker_result_dataclass(
+    qapp: QApplication, monkeypatch
+) -> None:
+    """Regression: CreateBatchesWorker emits a ``CreateBatchesResult`` dataclass.
+
+    A bad merge reverted ``_on_batches_created`` to a list-only guard, so every
+    generated batch was silently ignored — the UI showed "Creating 1 batch
+    run(s)…" and then nothing (no progress polling, no refresh).
+    """
+    from shared.lib.music_batch_plan import CreateBatchesResult
+    from shared.models.platform import BatchCreateResponse
+
+    view = MusicView(PlatformApi())
+    view._on_loaded(_payload())
+    monkeypatch.setattr(view, "refresh_history", lambda: None)
+    monkeypatch.setattr(view, "refresh_data", lambda: None)
+    flashes: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        view,
+        "_flash_status",
+        lambda message, **kwargs: flashes.append((message, kwargs.get("tone", ""))),
+    )
+
+    result = CreateBatchesResult(
+        planned=1,
+        created=[BatchCreateResponse(batch_id="batch-42")],
+    )
+    view._on_batches_created(result)
+
+    assert view._latest_batch_id == "batch-42"
+    assert any("Created 1 batch run" in message for message, _tone in flashes)
+
+
+def test_batches_created_failed_only_surfaces_error(
+    qapp: QApplication, monkeypatch
+) -> None:
+    from shared.lib.music_batch_plan import CreateBatchesResult
+    from shared.models.platform import BatchCreateRequest
+
+    view = MusicView(PlatformApi())
+    view._on_loaded(_payload())
+    monkeypatch.setattr(view, "refresh_history", lambda: None)
+    monkeypatch.setattr(view, "refresh_data", lambda: None)
+    errors: list[str] = []
+    monkeypatch.setattr(view, "_show_workspace_error", lambda message: errors.append(message))
+
+    request = BatchCreateRequest(
+        ok_profile_id="profile-ok",
+        alt_profile_id="profile-alt",
+        from_date="2026-06-27",
+        to_date="2026-06-27",
+    )
+    result = CreateBatchesResult(planned=1, failed=[(request, "boom")])
+    view._on_batches_created(result)
+
+    assert errors
+    assert "boom" in errors[0]
+
+
+def test_show_workspace_error_is_never_silent(qapp: QApplication, monkeypatch) -> None:
+    view = MusicView(PlatformApi())
+    flashes: list[tuple[str, str]] = []
+    monkeypatch.setattr(
+        view,
+        "_flash_status",
+        lambda message, **kwargs: flashes.append((message, kwargs.get("tone", ""))),
+    )
+
+    view._show_workspace_error("")
+
+    assert flashes
+    assert flashes[0][1] == "error"
+
+
+def test_create_batches_worker_surfaces_created_result(qapp: QApplication) -> None:
+    """End-to-end (no network): worker emits the dataclass the view now handles."""
+    from types import SimpleNamespace
+
+    from shared.lib.music_batch_plan import CreateBatchesResult
+    from shared.models.platform import BatchCreateRequest, BatchCreateResponse
+    from shared.workers.data_workers import CreateBatchesWorker
+
+    class FakeApi:
+        def list_music_history(self, **_kwargs):
+            return SimpleNamespace(batches=[])
+
+        def create_batch(self, _request):
+            return BatchCreateResponse(batch_id="batch-live")
+
+    worker = CreateBatchesWorker(
+        FakeApi(),
+        [
+            BatchCreateRequest(
+                ok_profile_id="profile-ok",
+                alt_profile_id="profile-alt",
+                from_date="2026-06-27",
+                to_date="2026-06-27",
+            )
+        ],
+    )
+    captured: list[object] = []
+    failed: list[str] = []
+    worker.succeeded.connect(captured.append)
+    worker.failed.connect(failed.append)
+
+    worker.run()
+    qapp.processEvents()
+
+    assert not failed
+    assert captured and isinstance(captured[0], CreateBatchesResult)
+    assert captured[0].created_count == 1
+
+
+def test_create_batches_worker_reports_exact_error(qapp: QApplication) -> None:
+    from types import SimpleNamespace
+
+    from shared.models.platform import BatchCreateRequest
+    from shared.services.platform_client import PlatformApiError
+    from shared.workers.data_workers import CreateBatchesWorker
+
+    class FakeApi:
+        def list_music_history(self, **_kwargs):
+            return SimpleNamespace(batches=[])
+
+        def create_batch(self, _request):
+            raise PlatformApiError(422, "Structure id is required.")
+
+    worker = CreateBatchesWorker(
+        FakeApi(),
+        [
+            BatchCreateRequest(
+                ok_profile_id="profile-ok",
+                alt_profile_id="profile-alt",
+                from_date="2026-06-27",
+                to_date="2026-06-27",
+            )
+        ],
+    )
+    failed: list[str] = []
+    worker.failed.connect(failed.append)
+
+    worker.run()
+    qapp.processEvents()
+
+    assert failed
+    assert "Structure id is required." in failed[0]

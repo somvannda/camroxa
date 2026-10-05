@@ -103,7 +103,7 @@ def main() -> int:
             print(f"Uploaded {rel}")
         sftp.close()
 
-        cmd = f"""
+        cmd = rf"""
 set -e
 REPO=/opt/camxora/repo
 chown camxora:camxora $REPO/platform_api/services/telegram_ops_alert_service.py
