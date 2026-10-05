@@ -39,137 +39,121 @@ type LogRow = {
   callback_url?: string;
 };
 
-const FILTER_TABS = [
+// Log tabs mirror sunoapi.org's grouping. Each tab sends an exact endpoint set
+// (not a substring) so names can't bleed across tabs — `recovery_audio` stays
+// out of `audio`, and `mp4_generate`/`midi_generate`/`voice_generate` stay out
+// of any `audio` pattern that would otherwise contain "generate".
+const TABS: Array<{ key: string; label: string; icon: React.ReactNode; endpoints: string[] }> = [
   {
     key: "audio",
     label: "audio",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
         <path d="M9 18V5l12-2v13"/>
         <circle cx="6" cy="18" r="3"/>
         <circle cx="18" cy="16" r="3"/>
       </svg>
     ),
-    match: (ep: string) => /^(generate|generate\/|gen_|music|audio)/i.test(ep) || /(generate|music|audio)$/i.test(ep),
+    endpoints: ["music", "generate", "extend", "cover", "cover_image", "cover_detail", "mashup", "add_vocals", "add_instrumental", "replace_section", "upload_extend", "upload_cover", "upload_init", "upload_register", "sounds", "remaster", "boost_style", "midi_generate", "midi_detail"],
   },
   {
     key: "recovery",
     label: "recovery audio",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
         <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
         <path d="M3 3v5h5"/>
       </svg>
     ),
-    match: (ep: string) => /recovery/i.test(ep),
+    endpoints: ["recovery_audio", "recovery_detail"],
   },
   {
     key: "lyrics",
     label: "lyrics",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
         <path d="M4 6h16M4 12h16M4 18h10"/>
       </svg>
     ),
-    match: (ep: string) => /lyric/i.test(ep),
+    endpoints: ["lyrics", "lyrics_detail", "timestamped_lyrics_detail"],
   },
   {
     key: "subtitle",
     label: "subtitle",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
         <rect width="20" height="16" x="2" y="4" rx="2"/>
         <path d="M6 16h4M14 16h4M6 12h12"/>
       </svg>
     ),
-    match: (ep: string) => /subtitle|caption|srt|vtt/i.test(ep),
+    endpoints: ["subtitle_detail"],
   },
   {
     key: "wav",
     label: "wav",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
         <path d="M4 12v3a3 3 0 0 0 3 3h0a3 3 0 0 0 3-3V9a3 3 0 0 1 3-3h0a3 3 0 0 1 3 3v6a3 3 0 0 0 3 3h0a3 3 0 0 0 3-3v-3"/>
       </svg>
     ),
-    match: (ep: string) => /wav|convert.*wav/i.test(ep),
+    endpoints: ["wav", "wav_detail"],
   },
   {
     key: "vocal-removal",
     label: "vocal-removal",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
         <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
         <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
         <line x1="12" y1="19" x2="12" y2="22"/>
         <line x1="2" y1="2" x2="22" y2="22"/>
       </svg>
     ),
-    match: (ep: string) => /vocal.*remov|separate|stems?|split/i.test(ep),
+    endpoints: ["stems", "stems_detail"],
   },
   {
     key: "video",
     label: "lyrics video generator",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
         <rect width="20" height="16" x="2" y="4" rx="2"/>
         <path d="m10 11 5 3-5 3z"/>
       </svg>
     ),
-    match: (ep: string) => /video/i.test(ep),
+    endpoints: ["mp4_generate", "mp4_detail", "video_detail"],
   },
   {
     key: "voice",
     label: "voice",
     icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4 shrink-0">
         <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
         <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
         <line x1="12" y1="19" x2="12" y2="22"/>
       </svg>
     ),
-    match: (ep: string) => /voice|clone.*persona|persona|check.*voice|generate.*voice/i.test(ep),
+    endpoints: ["voice_phrase", "voice_validate", "voice_record", "voice_generate", "voice_apply", "voice_extend", "persona"],
   },
 ];
 
-// Endpoint substrings sent to GET /me/logs/page for each tab.
-const TAB_PATTERNS: Record<string, string[]> = {
-  audio: ["music", "generate", "audio"],
-  recovery: ["recovery"],
-  lyrics: ["lyric"],
-  subtitle: ["subtitle", "caption", "srt", "vtt"],
-  wav: ["wav"],
-  "vocal-removal": ["vocal", "stem", "separate", "split"],
-  video: ["video"],
-  voice: ["voice", "persona"],
-};
-
+/** Status pill: colored dot + lowercase label on a neutral chip (sunoapi.org style). */
 function statusChip(status: string): React.ReactNode {
   const s = (status || "").toLowerCase();
-  if (s === "complete" || s === "success") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-[var(--emerald)]/30 bg-[var(--emerald)]/10 px-2.5 py-1 text-[11px] font-bold tracking-wider text-[var(--emerald)]">
-        SUCCESS
-      </span>
-    );
-  }
-  if (s === "error" || s === "failed") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-red-500/25 bg-red-500/10 px-2.5 py-1 text-[11px] font-bold tracking-wider text-red-300">
-        FAILED
-      </span>
-    );
-  }
-  if (s === "running" || s === "streaming" || s === "queued") {
-    return (
-      <span className="inline-flex items-center gap-1.5 rounded-md border border-indigo-500/25 bg-indigo-500/10 px-2.5 py-1 text-[11px] font-bold tracking-wider text-indigo-300">
-        RUNNING
-      </span>
-    );
-  }
+  const done = s === "complete" || s === "success";
+  const failed = s === "error" || s === "failed";
+  const running = s === "running" || s === "streaming" || s === "queued";
+  const dot = done
+    ? "bg-[var(--emerald)]"
+    : failed
+      ? "bg-red-400"
+      : running
+        ? "bg-indigo-400 animate-pulse"
+        : "bg-white/40";
+  const label = done ? "success" : failed ? "failed" : running ? "running" : s || "pending";
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-md border border-white/10 bg-white/[0.03] px-2.5 py-1 text-[11px] font-semibold tracking-wider text-white/60">
-      {s.toUpperCase() || "PENDING"}
+    <span className="inline-flex w-max items-center gap-2 rounded-lg bg-white/[0.06] px-2.5 py-1 text-xs font-medium text-white/80">
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot}`} />
+      {label}
     </span>
   );
 }
@@ -182,6 +166,19 @@ function formatDate(ms: number): string {
   } catch {
     return "";
   }
+}
+
+/** Compact numbered pagination: first, current ±1, last, with ellipses (sunoapi.org style). */
+function pageItems(current: number, total: number): Array<number | "gap"> {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const out: Array<number | "gap"> = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) out.push("gap");
+  for (let i = start; i <= end; i++) out.push(i);
+  if (end < total - 1) out.push("gap");
+  out.push(total);
+  return out;
 }
 
 function safeParseResult(r: unknown): unknown {
@@ -297,17 +294,18 @@ export default function LogsPage() {
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
   const [pages, setPages] = useState(1);
+  const [showRetention, setShowRetention] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
       const { start, end } = dateWindow(dateKey);
-      const patterns = TAB_PATTERNS[activeTab] ?? [];
+      const endpoints = TABS.find((t) => t.key === activeTab)?.endpoints ?? [];
       const params = new URLSearchParams({ page: String(page), page_size: String(pageSize) });
       if (start) params.set("start", start);
       if (end) params.set("end", end);
-      if (patterns.length) params.set("endpoint", patterns.join(","));
+      if (endpoints.length) params.set("endpoints", endpoints.join(","));
       if (taskIdSearch.trim()) params.set("task_id", taskIdSearch.trim());
       const res = await apiFetch<{ rows: DbLogRow[]; total: number; page: number; pages: number }>(
         `/me/logs/page?${params.toString()}`,
@@ -350,6 +348,27 @@ export default function LogsPage() {
     });
   }, [load]);
 
+  // Retention notice, dismissible for 24h (mirrors sunoapi.org's alert).
+  useEffect(() => {
+    queueMicrotask(() => {
+      try {
+        const dismissed = localStorage.getItem("logs_retention_dismissed");
+        if (!dismissed || Date.now() - Number(dismissed) > 24 * 60 * 60 * 1000) setShowRetention(true);
+      } catch {
+        setShowRetention(true);
+      }
+    });
+  }, []);
+
+  function dismissRetention() {
+    setShowRetention(false);
+    try {
+      localStorage.setItem("logs_retention_dismissed", String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+  }
+
   const showError = (msg: string) => {
     setError(msg);
     window.setTimeout(() => setError(""), 6000);
@@ -359,8 +378,8 @@ export default function LogsPage() {
     <div className="pb-20">
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white">Logs</h1>
-          <p className="mt-1 text-sm text-white/50">An overview of your latest requests</p>
+          <h1 className="text-3xl font-bold leading-9 text-white">Logs</h1>
+          <p className="mt-0.5 text-sm text-white/50">An overview of your latest requests</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <select
@@ -409,21 +428,50 @@ export default function LogsPage() {
         </div>
       </div>
 
-      <div className="mb-3 flex flex-wrap gap-1.5">
-        {FILTER_TABS.map((t) => {
+      {showRetention && (
+        <div className="mb-4 flex items-start gap-3 rounded-xl border border-amber-500/25 bg-amber-500/[0.06] p-4">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mt-0.5 h-5 w-5 shrink-0 text-amber-400">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="16" x2="12" y2="12"/>
+            <line x1="12" y1="8" x2="12.01" y2="8"/>
+          </svg>
+          <div className="min-w-0 flex-1">
+            <h4 className="mb-1 text-sm font-semibold text-amber-200">Log Retention Policy Alert</h4>
+            <p className="text-sm text-amber-100/80">
+              Generated media (images, videos, audio, etc.) is retained for as long as your account is active, and usage logs are retained for up to 12 months.
+            </p>
+            <p className="mt-1 text-xs text-amber-100/60">
+              Older log data is deleted or aggregated. Please back up any important files or logs in advance.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={dismissRetention}
+            aria-label="Dismiss notice"
+            className="shrink-0 rounded-lg p-1 text-amber-200/60 transition hover:bg-amber-500/10 hover:text-amber-100"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      <div className="mb-4 flex gap-1 overflow-x-auto rounded-xl border border-white/5 bg-white/[0.04] p-1">
+        {TABS.map((t) => {
           const active = activeTab === t.key;
           return (
             <button
               key={t.key}
               type="button"
               onClick={() => { setActiveTab(t.key); setPage(1); }}
-              className={`inline-flex items-center gap-1.5 rounded-md border px-2.5 py-1 text-[11px] font-medium transition ${
+              className={`inline-flex h-8 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-medium transition ${
                 active
-                  ? "border-white/15 bg-white/10 text-white shadow-sm"
-                  : "border-white/5 bg-white/[0.02] text-white/45 hover:border-white/10 hover:bg-white/[0.04] hover:text-white/70"
+                  ? "bg-white/10 text-white shadow-sm"
+                  : "text-white/50 hover:bg-white/[0.04] hover:text-white/80"
               }`}
             >
-              <span className={active ? "text-white/80" : "text-white/30"}>{t.icon}</span>
+              <span className={active ? "text-white/80" : "text-white/40"}>{t.icon}</span>
               {t.label}
             </button>
           );
@@ -443,7 +491,7 @@ export default function LogsPage() {
                 <th className="px-4 py-3 font-medium">Model</th>
                 <th className="px-4 py-3 font-medium">Prompt</th>
                 <th className="px-4 py-3 font-medium">Status</th>
-                <th className="px-4 py-3 font-medium">Credits</th>
+                <th className="px-4 py-3 font-medium">Credits Consumed</th>
                 <th className="px-4 py-3 font-medium">taskId</th>
                 <th className="px-4 py-3 font-medium">Actions</th>
                 <th className="px-4 py-3 font-medium text-right">Result</th>
@@ -511,23 +559,44 @@ export default function LogsPage() {
           </select>
           <span className="ml-2">{total} logs</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1">
           <button
             type="button"
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1 || loading}
-            className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-40"
+            aria-label="Previous page"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-white/70 transition hover:bg-white/10 disabled:opacity-40"
           >
-            Previous
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><polyline points="15 18 9 12 15 6"/></svg>
           </button>
-          <span className="tabular-nums">{page} / {pages}</span>
+          {pageItems(page, pages).map((it, i) =>
+            it === "gap" ? (
+              <span key={`gap-${i}`} className="px-1.5 text-xs text-white/35">…</span>
+            ) : (
+              <button
+                key={it}
+                type="button"
+                onClick={() => setPage(it)}
+                disabled={loading}
+                aria-current={it === page ? "page" : undefined}
+                className={`inline-flex h-8 min-w-8 items-center justify-center rounded-lg border px-2 text-xs tabular-nums transition disabled:opacity-60 ${
+                  it === page
+                    ? "border-white/15 bg-white/10 font-semibold text-white"
+                    : "border-white/10 bg-white/[0.03] text-white/70 hover:bg-white/10"
+                }`}
+              >
+                {it}
+              </button>
+            ),
+          )}
           <button
             type="button"
             onClick={() => setPage((p) => Math.min(pages, p + 1))}
             disabled={page >= pages || loading}
-            className="rounded-md border border-white/10 bg-white/[0.03] px-3 py-1.5 text-xs text-white/80 transition hover:bg-white/10 disabled:opacity-40"
+            aria-label="Next page"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] text-white/70 transition hover:bg-white/10 disabled:opacity-40"
           >
-            Next
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5"><polyline points="9 18 15 12 9 6"/></svg>
           </button>
           <span className="ml-2 inline-flex items-center gap-1">
             Go to
