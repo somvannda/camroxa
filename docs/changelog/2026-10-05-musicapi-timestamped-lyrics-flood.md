@@ -27,14 +27,15 @@ response and never polls a task, but musicapi answered with an async
   empty/failed result is only re-attempted after a retry window (default 15 min).
 - The aligner stops OOM-restarting, so the timestamped-lyrics getters can
   actually return timed LRC instead of silently falling back to plain lyrics.
-- **Timings now actually reach the caller.** The getters answer synchronously in
-  sunoapi.org's shape — `{code,msg,data:{taskId,aligned,lrc,alignedWords}}` — so
-  `platform_api` (and the desktop LRC fetch) receive real `alignedWords` on the
-  first call instead of an unusable task id.
+- **Timings now reach the caller.** The getters answer in sunoapi.org's shape —
+  `{code,msg,data:{taskId,aligned,lrc,alignedWords}}` — instead of an unusable
+  task id, so `platform_api`'s immediate read of `data.alignedWords` works.
+  Alignment runs in the background: CPU faster-whisper takes ~1 minute per track
+  (longer than any HTTP timeout), so the first call(s) return an empty list and a
+  later call is served the real timings from the cache. Each clip is aligned once.
 - Response change: `/me/lyrics/:id` and `/v1/lyrics/:id` previously returned
-  `{job_id,status}` (create-a-task); they now return the synchronous envelope
-  above, matching their documented "Get Timestamped Lyrics" contract. No in-repo
-  consumer read the old shape.
+  `{job_id,status}` (create-a-task); they now return the envelope above. No
+  in-repo consumer read the old shape.
 
 ## Technical impact
 
@@ -58,10 +59,10 @@ response and never polls a task, but musicapi answered with an async
     `/me/lyrics/:id`, `/v1/lyrics/:id`, `GET /api/v1/lyrics/:id`, and
     `POST /api/v1/generate/get-timestamped-lyrics`, before the credit charge so a
     reused request is never billed twice.
-  - The getters now answer synchronously: they reuse a cached/in-flight job or
-    create and run one inline, bounded by `LYRICS_SYNC_WAIT_MS` (default 25s,
-    under the caller's ~30s HTTP timeout). On timeout the job keeps running and
-    the next call is served from the cache. `sunoAlignedWords()` rebuilds the
+  - The getters answer in sunoapi.org's shape without holding the request for the
+    (slow) alignment: they reuse a cached/in-flight job or start one in the
+    background, wait only `LYRICS_SYNC_WAIT_MS` (default 3s grace, to catch a warm
+    cache), then return whatever is cached. `sunoAlignedWords()` rebuilds the
     aligner's line-level output into sunoapi.org's newline-terminated
     `alignedWords` so the caller's `aligned_words_to_lrc` produces LRC.
   - The four routes (`/me/lyrics/:id`, `/v1/lyrics/:id`, `GET /api/v1/lyrics/:id`,

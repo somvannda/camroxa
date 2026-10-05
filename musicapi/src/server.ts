@@ -1463,7 +1463,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   //   - an in-flight job is reused so concurrent calls don't duplicate the work;
   //   - an empty/failed result is reused only within a retry window, so a broken
   //     aligner can recover without the client retrying every few seconds.
-  const LYRICS_REUSE_TTL_MS = Number(process.env.LYRICS_REUSE_TTL_MS ?? 15 * 60_000);
+  // Failures are cached briefly so a saturated aligner retries soon instead of
+  // re-running on every poll; a usable result is cached for good (see below).
+  const LYRICS_REUSE_TTL_MS = Number(process.env.LYRICS_REUSE_TTL_MS ?? 2 * 60_000);
 
   function isUsableLyricsResult(job: Job): boolean {
     if (job.status !== "complete") return false;
@@ -1564,11 +1566,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   }
 
-  // The getters hold the request while a cold alignment runs so they can answer
-  // synchronously. Bound that below the caller's ~30s HTTP timeout: a slower
-  // track returns an empty list now, keeps running, and the caller's next
-  // attempt is served straight from the cache.
-  const LYRICS_SYNC_WAIT_MS = Number(process.env.LYRICS_SYNC_WAIT_MS ?? 25_000);
+  // The getters answer synchronously, but CPU faster-whisper alignment takes
+  // tens of seconds — far longer than the caller's ~30s HTTP timeout — so they
+  // must not hold the request for it. Start the job, wait only a short grace
+  // period (covers a warm cache / an already-nearly-done job), then answer with
+  // whatever is cached. Alignment finishes in the background and the caller's
+  // next attempt is served the real timings from the cache.
+  const LYRICS_SYNC_WAIT_MS = Number(process.env.LYRICS_SYNC_WAIT_MS ?? 3_000);
 
   async function awaitJobTerminal(job: Job, ms: number): Promise<void> {
     const running = () =>
@@ -4857,9 +4861,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!u) return;
     const { id } = req.params as { id: string };
     let job = await reusableLyricsJob(id, u.id);
-    if (job) {
-      await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
-    } else {
+    if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
       const key = await chargeUserKey(u.id, cost);
       if (cost > 0 && !key) {
@@ -4870,12 +4872,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.apiKeyId = key?.id;
       job.endpoint = "timestamped_lyrics_detail";
       job.credits = cost;
-      job.payload = { op: "timestamped_lyrics_detail", args: { id } };
-      await Promise.race([
-        runTimestampedLyricsJob(job, id),
-        new Promise<void>((resolve) => setTimeout(resolve, LYRICS_SYNC_WAIT_MS)),
-      ]);
+      void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
     }
+    await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
     return reply.send(timestampedLyricsBody(job));
   });
 
@@ -6801,9 +6800,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     let job = await reusableLyricsJob(id, key.user_id);
-    if (job) {
-      await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
-    } else {
+    if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
       job = newJob("timestamped_lyrics_detail");
@@ -6811,12 +6808,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.apiKeyId = key.id;
       job.endpoint = "timestamped_lyrics_detail";
       job.credits = cost;
-      job.payload = { op: "timestamped_lyrics_detail", args: { id } };
-      await Promise.race([
-        runTimestampedLyricsJob(job, id),
-        new Promise<void>((resolve) => setTimeout(resolve, LYRICS_SYNC_WAIT_MS)),
-      ]);
+      void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
     }
+    await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
     return reply.send(timestampedLyricsBody(job));
   });
 
@@ -8327,19 +8321,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
     let job = await reusableLyricsJob(id, key.user_id);
-    if (job) {
-      await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
-    } else {
+    if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
       job = newJob("timestamped_lyrics_detail");
       job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "timestamped_lyrics_detail"; job.credits = cost;
-      job.payload = { op: "timestamped_lyrics_detail", args: { id } };
-      await Promise.race([
-        runTimestampedLyricsJob(job, id),
-        new Promise<void>((resolve) => setTimeout(resolve, LYRICS_SYNC_WAIT_MS)),
-      ]);
+      void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
     }
+    await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
     return reply.send(timestampedLyricsBody(job));
   });
 
@@ -8582,9 +8571,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
     const cb = callbackUrl(in_);
     let job = await reusableLyricsJob(id, key.user_id);
-    if (job) {
-      await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
-    } else {
+    if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
       job = newJob("timestamped_lyrics_detail", cb);
@@ -8592,12 +8579,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.apiKeyId = key.id;
       job.endpoint = "timestamped_lyrics_detail";
       job.credits = cost;
-      job.payload = { op: "timestamped_lyrics_detail", args: { id } };
-      await Promise.race([
-        runTimestampedLyricsJob(job, id),
-        new Promise<void>((resolve) => setTimeout(resolve, LYRICS_SYNC_WAIT_MS)),
-      ]);
+      void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
     }
+    await awaitJobTerminal(job, LYRICS_SYNC_WAIT_MS);
     return reply.send(timestampedLyricsBody(job));
   });
 
