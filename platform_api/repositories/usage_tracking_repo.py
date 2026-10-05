@@ -146,6 +146,33 @@ class UsageTrackingRepository:
         )
         return int(row) if row is not None else 0
 
+    async def count_generated_songs_for_period(
+        self,
+        user_id: UUID,
+        period_start: date,
+        period_end: date,
+    ) -> int:
+        """Authoritative count of successfully generated songs in the period.
+
+        Source of truth for the song quota: the incremental ``usage_tracking`` counter
+        can under-record and fragment when a period is re-anchored (see
+        docs/bugs/2026-10-05-plan-quota-enforcement-bypass.md).
+        """
+        row = await self._pool.fetchval(
+            """
+            SELECT COUNT(*)
+            FROM songs
+            WHERE user_id = $1
+              AND status = 'suno_success'
+              AND created_at::date >= $2
+              AND created_at::date <= $3
+            """,
+            user_id,
+            period_start,
+            period_end,
+        )
+        return int(row or 0)
+
     async def increment_usage(
         self,
         user_id: UUID,
@@ -267,6 +294,7 @@ class UsageTrackingRepository:
         allow_monthly_overage: bool,
         count: int = 1,
         account_daily: bool = False,
+        monthly_count_override: int | None = None,
     ) -> bool:
         """Atomically increment usage only when daily/monthly limits allow it.
 
@@ -329,32 +357,36 @@ class UsageTrackingRepository:
                 if monthly_limit is not None:
                     if monthly_limit == 0:
                         return False
-                    monthly_sum = await conn.fetchval(
-                        """
-                        SELECT COALESCE(SUM(monthly_count), 0)
-                        FROM usage_tracking
-                        WHERE user_id = $1
-                          AND operation_type = $2
-                          AND period_start_date = $3
-                        """,
-                        user_id,
-                        operation_type,
-                        period_start,
-                    )
-                    monthly_sum = int(monthly_sum or 0)
-                    if operation_type == "background_image":
-                        thumb_sum = await conn.fetchval(
+                    if monthly_count_override is not None:
+                        # Authoritative count supplied by the caller (e.g. from `songs`).
+                        monthly_sum = int(monthly_count_override)
+                    else:
+                        monthly_sum = await conn.fetchval(
                             """
                             SELECT COALESCE(SUM(monthly_count), 0)
                             FROM usage_tracking
                             WHERE user_id = $1
-                              AND operation_type = 'thumbnail_image'
-                              AND period_start_date = $2
+                              AND operation_type = $2
+                              AND period_start_date = $3
                             """,
                             user_id,
+                            operation_type,
                             period_start,
                         )
-                        monthly_sum += int(thumb_sum or 0)
+                        monthly_sum = int(monthly_sum or 0)
+                        if operation_type == "background_image":
+                            thumb_sum = await conn.fetchval(
+                                """
+                                SELECT COALESCE(SUM(monthly_count), 0)
+                                FROM usage_tracking
+                                WHERE user_id = $1
+                                  AND operation_type = 'thumbnail_image'
+                                  AND period_start_date = $2
+                                """,
+                                user_id,
+                                period_start,
+                            )
+                            monthly_sum += int(thumb_sum or 0)
                     if monthly_sum + count > monthly_limit and not allow_monthly_overage:
                         return False
 

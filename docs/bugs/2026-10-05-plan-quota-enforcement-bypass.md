@@ -96,29 +96,32 @@ separately — see the credit-reconciliation report.)
    - `daily_quota_bank_service.accrue_and_get_banked_units` stops accruing once
      `banked_units >= daily_limit * MAX_BANK_DAYS`.
    - File: `platform_api/services/daily_quota_bank_service.py`.
-3. **Tests**: `platform_api/tests/test_plan_quota_hard_cap.py` (hard cap blocks by default,
-   overage only when opted in, bank capped) + the 3 existing overage tests updated to opt in.
+3. **Authoritative monthly song count (fix B)** — the song quota now counts **real
+   generations** (`songs` rows with `status='suno_success'` whose generation date is in the
+   period) instead of the fragile incremental `usage_tracking` counter, in both the
+   preflight (`_enforce_plan_quotas`) and the atomic reserve (`try_increment_usage`, via
+   `monthly_count_override`). This is the change that actually stops the `422 vs 945`
+   under-count.
+   - Files: `platform_api/repositories/usage_tracking_repo.py`
+     (`count_generated_songs_for_period`), `platform_api/services/usage_enforcement_service.py`.
+4. **Tests**: `platform_api/tests/test_plan_quota_hard_cap.py` (hard cap blocks by default,
+   overage only when opted in, bank capped, authoritative song count drives the cap) + the
+   3 existing overage tests updated to opt in.
 
-### ⏳ Remaining (needs a design decision — do NOT naive-sum)
-4. **Monthly counter under-counts / fragments.** Investigated and deliberately *not*
-   shipped: summing every `usage_tracking` row whose `period_start_date` falls inside the
-   current period is **wrong** — it breaks the activation-aligned period rule (a
-   calendar-month row gets pulled into an activation-aligned period). Caught by
-   `test_quota_period_follows_license_activation_not_calendar_month`.
-   Two root causes instead:
-   - **(a) the period anchor changes on renewal** — `compute_billing_period(activated_at)`
-     re-anchors when `activated_at` moves, splitting the counter mid-month (mr.zhiwei had
-     `30` on Sep 1 + `392` on Sep 2);
-   - **(b) the counter under-records** — Sep `plan_usage = 422` vs **945** actual songs.
-   Proper fix: a **stable period anchor** (license's original activation, not a re-anchored
-   renewal) and/or reconcile `plan_usage`/`usage_tracking` against the authoritative
-   `songs` count. Product decision required first.
-5. **Charge overage (or legacy 0-credit songs) to the wallet** — pair with the billing fix.
+### ⏳ Remaining
+5. **Stable quota-period anchor (fix A).** The period still re-anchors when `activated_at`
+   moves on renewal (`compute_billing_period`), so the window can shift by a day. Pin it to
+   the license's **original** activation and run a **dry-run report** of how many periods
+   shift before applying.
+   - ⚠️ A naive "sum all overlapping `period_start_date` rows" is **wrong** — it breaks the
+     activation-aligned rule (caught by
+     `test_quota_period_follows_license_activation_not_calendar_month`). Do not ship it.
+6. **Charge overage / legacy 0-credit songs to the wallet** — pair with the billing fix.
 
 ### Rollout note
-Default is a hard cap. If a plan should keep wallet overage, set
-`PLATFORM_PLAN_MONTHLY_OVERAGE_ALLOWED=true`. Overlapping-period counting (#4) should land
-next so the cap counts the whole month accurately.
+Default is a hard cap and the song count is now authoritative. If a plan should keep wallet
+overage, set `PLATFORM_PLAN_MONTHLY_OVERAGE_ALLOWED=true`. The stable-anchor fix (#5) is the
+remaining follow-up.
 
 ## Evidence (reproduce)
 ```sql

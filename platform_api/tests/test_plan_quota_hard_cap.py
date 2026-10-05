@@ -141,6 +141,56 @@ async def test_monthly_hard_cap_blocks_subscription_plan(monkeypatch) -> None:
     assert exc.value.details["error_code"] == "MONTHLY_QUOTA_EXCEEDED"
 
 
+class _AuthoritativeUsage(FakeUsageRepo):
+    """Fake that exposes the authoritative `songs` count (B fix)."""
+
+    def __init__(self, songs: int) -> None:
+        super().__init__()
+        self._songs = songs
+
+    async def count_generated_songs_for_period(
+        self, _user_id: Any, _period_start: date, _period_end: date
+    ) -> int:
+        return self._songs
+
+
+@pytest.mark.asyncio
+async def test_authoritative_song_count_drives_cap(monkeypatch) -> None:
+    """Real generations cap the month even when the incremental counter reads 0."""
+    from platform_api.services import usage_enforcement_service as ues
+
+    today = date(2026, 10, 5)
+    monkeypatch.setattr(ues, "billing_today", lambda: today)
+    monkeypatch.setattr(
+        ues, "get_settings", lambda: type("S", (), {"plan_monthly_overage_allowed": False})()
+    )
+
+    usage_repo = _AuthoritativeUsage(450)  # 450 real songs; counter stays 0
+    pricing = FakePricingRepo()
+    pricing.seed("suno", "music_generation", 10)
+    service = UsageEnforcementService(
+        credit_repo=FakeCreditRepo(balance=100000),
+        usage_repo=usage_repo,
+        plan_repo=FakePlanRepo(plan=_make_plan(monthly_song=450, daily_song=150)),
+        pricing_repo=pricing,
+        redis=FakeRedis(),
+    )
+    user_id = uuid4()
+    ctx = await service._plan_repo.get_user_active_subscription_context(user_id)
+
+    with pytest.raises(QuotaExceededError) as exc:
+        await service._enforce_plan_quotas(
+            user_id=user_id,
+            channel_profile_id=uuid4(),
+            operation_type="music",
+            subscription_context=ctx,
+            additional_count=1,
+        )
+    assert exc.value.details["error_code"] == "MONTHLY_QUOTA_EXCEEDED"
+    # Sanity: the legacy counter alone would have allowed it.
+    assert await usage_repo.get_monthly_count(user_id, "music", today.replace(day=1)) == 0
+
+
 @pytest.mark.asyncio
 async def test_monthly_overage_allowed_when_opted_in(monkeypatch) -> None:
     from platform_api.services import usage_enforcement_service as ues
