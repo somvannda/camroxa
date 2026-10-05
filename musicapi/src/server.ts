@@ -17,7 +17,7 @@ import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
-import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured } from "./storage.js";
+import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured, storageInfo } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
 import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
 import { renderMusicVideo } from "./video.js";
@@ -6951,6 +6951,93 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
        JOIN users u ON u.id = ct.user_id
        ${where}
        ORDER BY ct.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
+    );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
+  });
+
+  // --- admin: system health + jobs (Phase 4) ------------------------------
+  // Aggregated read-only ops snapshot. Deliberately avoids live Suno calls
+  // (that is what GET /admin/accounts is for) so the page stays fast.
+
+  app.get("/admin/system", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const started = Date.now();
+    let dbOk = true;
+    try {
+      await queryOne("SELECT 1 AS ok");
+    } catch {
+      dbOk = false;
+    }
+    const dbLatencyMs = Date.now() - started;
+    const byStatus: Record<string, number> = {};
+    for (const job of jobs.values()) byStatus[job.status] = (byStatus[job.status] ?? 0) + 1;
+    return {
+      ok: dbOk,
+      environment: config.environment,
+      uptime_seconds: Math.round(process.uptime()),
+      time: new Date().toISOString(),
+      db: { ok: dbOk, latency_ms: dbLatencyMs },
+      queue: { driver: config.queue.driver, in_memory_jobs: jobs.size },
+      accounts: pool.size,
+      jobs: { total: jobs.size, by_status: byStatus },
+      suno: {
+        ...sunoSlots.stats(),
+        capacity:
+          config.suno.maxConcurrent ?? Math.max(1, pool.size * config.suno.concurrentPerAccount),
+        max_concurrent_per_user: config.suno.maxConcurrentPerUser,
+        max_concurrent_per_account: config.suno.maxConcurrentPerAccount,
+        by_account: Object.fromEntries(accountInflight),
+      },
+      storage: storageInfo(),
+      storage_configured: storageConfigured(),
+      captcha_configured: Boolean(config.twoCaptchaKey),
+      alerts_telegram_configured: Boolean(
+        config.alerts.telegramBotToken && config.alerts.telegramChatId,
+      ),
+    };
+  });
+
+  app.get("/admin/jobs", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      status?: string;
+      type?: string;
+      email?: string;
+    };
+    const page = Math.max(1, Math.floor(Number(q.page) || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(Number(q.pageSize) || 25)));
+    const offset = (page - 1) * pageSize;
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.status) {
+      params.push(q.status);
+      filters.push(`j.status = $${params.length}`);
+    }
+    if (q.type) {
+      params.push(q.type);
+      filters.push(`j.type = $${params.length}`);
+    }
+    if (q.email) {
+      params.push(`%${q.email.toLowerCase()}%`);
+      filters.push(`lower(u.email) LIKE $${params.length}`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM jobs j
+       LEFT JOIN users u ON u.id = j.user_id ${where}`,
+      params,
+    );
+    const rows = await query<Record<string, unknown>>(
+      `SELECT j.id, j.type, j.status, j.account_id, j.endpoint, j.model, j.credits,
+              j.error, j.created_at, j.updated_at, u.email
+       FROM jobs j
+       LEFT JOIN users u ON u.id = j.user_id
+       ${where}
+       ORDER BY j.created_at DESC
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, pageSize, offset],
     );

@@ -13,6 +13,7 @@ const NAV = [
   { href: "/admin/users", label: "Users" },
   { href: "/admin/keys", label: "API Keys" },
   { href: "/admin/logs", label: "Usage Logs" },
+  { href: "/admin/jobs", label: "Jobs" },
   { href: "/admin/audit", label: "Audit Trail" },
   { href: "/admin/pricing", label: "Pricing" },
   { href: "/admin/credit-packs", label: "Credit Packs" },
@@ -20,6 +21,7 @@ const NAV = [
   { href: "/admin/transactions", label: "Credit Ledger" },
   { href: "/admin/analytics", label: "Analytics" },
   { href: "/admin/content", label: "API Updates" },
+  { href: "/admin/system", label: "System Health" },
   { href: "/admin/settings", label: "Settings" },
 ];
 
