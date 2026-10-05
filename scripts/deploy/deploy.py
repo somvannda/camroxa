@@ -10,6 +10,7 @@ Legacy .deploy/secrets.env is still read as a fallback for sandbox until migrate
 
 from __future__ import annotations
 
+import os
 import stat
 import subprocess
 import sys
@@ -30,6 +31,15 @@ EXAMPLE_PRODUCTION_PATH = DEPLOY_DIR / "secrets.production.env.example"
 EXAMPLE_PATH = DEPLOY_DIR / "secrets.env.example"
 REMOTE_SCRIPT = Path(__file__).resolve().parent / "camxora-sandbox-remote.sh"
 DEPLOY_KEY = DEPLOY_DIR / "camxora_deploy_ed25519"
+KNOWN_HOSTS_PATH = DEPLOY_DIR / "known_hosts"
+# Emergency escape hatch for a host whose key is not yet pinned. Never set this
+# for routine deploys.
+_INSECURE_HOST_KEY = os.environ.get("DEPLOY_INSECURE_IGNORE_HOST_KEY", "").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 VENV_DIR = Path(__file__).resolve().parent / ".venv"
 DEPLOY_DIRS = ("platform_api", "admin_portal", "website", "user_portal", "music_web", "shared")
 SKIP_NAMES = {
@@ -244,6 +254,28 @@ def ensure_deploy_key() -> Path:
     return DEPLOY_KEY
 
 
+def _prepare_host_keys(client, allow_unknown: bool = False) -> None:
+    """Verify the server host key against known_hosts.
+
+    System known_hosts is loaded first, then the repo-local
+    ``.deploy/known_hosts``. Unknown hosts are rejected unless ``allow_unknown``
+    (password bootstrap, trust-on-first-use) or the explicit
+    ``DEPLOY_INSECURE_IGNORE_HOST_KEY`` escape hatch is set.
+    """
+    import paramiko
+
+    client.load_system_host_keys()
+    if KNOWN_HOSTS_PATH.is_file():
+        try:
+            client.load_host_keys(str(KNOWN_HOSTS_PATH))
+        except OSError:
+            pass
+    if allow_unknown or _INSECURE_HOST_KEY:
+        client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    else:
+        client.set_missing_host_key_policy(paramiko.RejectPolicy())
+
+
 def bootstrap_pubkey(host: str, user: str, password: str, key_path: Path) -> None:
     import paramiko
 
@@ -251,8 +283,15 @@ def bootstrap_pubkey(host: str, user: str, password: str, key_path: Path) -> Non
     pub = pub_path.read_text(encoding="utf-8").strip()
     print(f"Bootstrapping SSH key for {user}@{host}...")
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    # Trust-on-first-use is acceptable here because we are about to install a key
+    # over password auth; the key is then pinned for every later connection.
+    _prepare_host_keys(client, allow_unknown=True)
     client.connect(hostname=host, username=user, password=password, timeout=30)
+    try:
+        KNOWN_HOSTS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        client.save_host_keys(str(KNOWN_HOSTS_PATH))
+    except OSError:
+        pass
     cmd = (
         "mkdir -p ~/.ssh && chmod 700 ~/.ssh && "
         f"grep -qxF '{pub}' ~/.ssh/authorized_keys 2>/dev/null || "
@@ -270,7 +309,7 @@ def ssh_connect(host: str, user: str, key_path: Path, password: str | None = Non
     import paramiko
 
     client = paramiko.SSHClient()
-    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+    _prepare_host_keys(client)
     pkey = paramiko.Ed25519Key.from_private_key_file(str(key_path))
     try:
         client.connect(hostname=host, username=user, pkey=pkey, timeout=30)
@@ -279,6 +318,7 @@ def ssh_connect(host: str, user: str, key_path: Path, password: str | None = Non
         if not password:
             raise
         bootstrap_pubkey(host, user, password, key_path)
+        _prepare_host_keys(client)
         client.connect(hostname=host, username=user, pkey=pkey, timeout=30)
         return client
 

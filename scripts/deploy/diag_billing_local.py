@@ -18,7 +18,7 @@ def main() -> int:
     secrets = load_secrets()
     client = ssh_connect(secrets["VPS_HOST"], secrets["VPS_USER"], ensure_deploy_key(), None)
     email = f"diag.{uuid.uuid4().hex[:8]}@example.com"
-    password = "DiagTest12345!!"
+    password = f"Diag!{uuid.uuid4().hex}"
     cmd = f"""
 set -e
 EMAIL={email!r}

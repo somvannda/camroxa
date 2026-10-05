@@ -1,10 +1,18 @@
 """Test CRUD operations for admin portal."""
+import os
+
 import requests
 
 BASE = "http://localhost:8000"
 
 # Login
-login = requests.post(f"{BASE}/api/v1/auth/login", json={"email": "admin@mgfaceless.com", "password": "112233aB!!@@"})
+login = requests.post(
+    f"{BASE}/api/v1/auth/login",
+    json={
+        "email": os.environ.get("PLATFORM_ADMIN_EMAIL", "admin@mgfaceless.com"),
+        "password": os.environ["PLATFORM_ADMIN_PASSWORD"],
+    },
+)
 token = login.json()["access_token"]
 h = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
 

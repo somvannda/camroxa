@@ -7,6 +7,7 @@ Requires: bcrypt, asyncpg (already installed as platform_api dependencies).
 """
 
 import asyncio
+import os
 import sys
 from uuid import uuid4
 
@@ -14,8 +15,8 @@ import asyncpg
 import bcrypt
 
 
-ADMIN_EMAIL = "admin@mgfaceless.com"
-ADMIN_PASSWORD = "112233aB!!@@"
+ADMIN_EMAIL = os.environ.get("PLATFORM_ADMIN_EMAIL", "admin@mgfaceless.com")
+ADMIN_PASSWORD = os.environ.get("PLATFORM_ADMIN_PASSWORD", "")
 ADMIN_DISPLAY_NAME = "Admin"
 ADMIN_ROLE = "admin"
 ADMIN_STATUS = "active"
@@ -32,7 +33,10 @@ def hash_password(password: str) -> str:
 
 
 async def main() -> None:
-    import os
+    if not ADMIN_PASSWORD:
+        raise SystemExit(
+            "PLATFORM_ADMIN_PASSWORD must be set; refusing to seed a default admin password."
+        )
 
     dsn = os.environ.get("PLATFORM_DATABASE_URL", DATABASE_URL)
     # Strip asyncpg driver prefix if present

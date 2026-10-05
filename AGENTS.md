@@ -46,6 +46,13 @@
 
 The rules below apply only to the legacy PyQt6 desktop app. Do not apply them to `musicapi/`.
 
+> **Obsolete paths (2026-10):** this section refers to `python_app/` and
+> `python_app/design_system/…`, neither of which exists in this checkout. The
+> PyQt6 tree that ships here is `camxora_python/`, and it has its own design
+> system (e.g. `camxora_python/shared/lib/ui_font.py`). Treat the section below
+> as historical reference only — do NOT create `python_app/`, and follow
+> `camxora_python/`'s existing conventions instead.
+
 ### Must use master template for ALL controls
 Every new UI element MUST use the master template factory methods from `python_app/design_system/layouts/master_template.py`. Never create raw `QLabel`, `QPushButton`, `QLineEdit` with inline styles.
 

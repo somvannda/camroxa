@@ -120,6 +120,7 @@ function startPositionHeartbeat(
   getPosition: () => number,
   session: { token: string; session_bind?: string },
   heartbeatRef: { current: number | null },
+  heartbeatTimeoutRef: { current: number | null },
 ) {
   let seq = 0;
   const ping = (event: string) => {
@@ -133,7 +134,11 @@ function startPositionHeartbeat(
       sessionBind: session.session_bind,
     });
   };
-  window.setTimeout(() => ping('heartbeat'), 12000 + Math.floor(Math.random() * 4000));
+  if (heartbeatTimeoutRef.current != null) window.clearTimeout(heartbeatTimeoutRef.current);
+  heartbeatTimeoutRef.current = window.setTimeout(
+    () => ping('heartbeat'),
+    12000 + Math.floor(Math.random() * 4000),
+  );
   heartbeatRef.current = window.setInterval(() => ping('heartbeat'), 12000 + Math.floor(Math.random() * 4000));
 }
 
@@ -152,6 +157,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
   const graphRef = useRef<ProtectedAudioGraph | null>(null);
   const objectUrlRef = useRef<string | null>(null);
   const heartbeatRef = useRef<number | null>(null);
+  const heartbeatTimeoutRef = useRef<number | null>(null);
   const queueRef = useRef<StreamTrack[]>([]);
   const indexRef = useRef(-1);
   const loadTokenRef = useRef(0);
@@ -610,6 +616,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         window.clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
+      if (heartbeatTimeoutRef.current != null) {
+        window.clearTimeout(heartbeatTimeoutRef.current);
+        heartbeatTimeoutRef.current = null;
+      }
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
@@ -758,6 +768,10 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         window.clearInterval(heartbeatRef.current);
         heartbeatRef.current = null;
       }
+      if (heartbeatTimeoutRef.current != null) {
+        window.clearTimeout(heartbeatTimeoutRef.current);
+        heartbeatTimeoutRef.current = null;
+      }
       if (objectUrlRef.current) {
         URL.revokeObjectURL(objectUrlRef.current);
         objectUrlRef.current = null;
@@ -844,7 +858,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
             heartbeatRef,
             ramCacheKey: ramCacheKey(parsePlaybackSubject(nextTrack)),
             startPositionHeartbeat: (getPosition) => {
-              startPositionHeartbeat(getPosition, session, heartbeatRef);
+              startPositionHeartbeat(getPosition, session, heartbeatRef, heartbeatTimeoutRef);
             },
             startMediaSessionTick,
             syncNowPlayingFromRefs,
@@ -897,7 +911,7 @@ export function PlayerProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       if (session) {
-        startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef);
+        startPositionHeartbeat(() => audio.currentTime || 0, session, heartbeatRef, heartbeatTimeoutRef);
       }
       if (audio instanceof HTMLVideoElement) prepareHtmlVideo(audio);
       else prepareHtmlAudio(audio);

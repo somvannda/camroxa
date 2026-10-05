@@ -176,13 +176,21 @@ async def health_check(
             "kie": bool(kie_pool.get("available", False)),
         },
         "service_pools": {
-            "suno": suno_pool,
-            "fal": fal_pool,
-            "slai": slai_pool,
-            "deepseek": deepseek_pool,
-            "openai": openai_pool,
-            "cala": cala_pool,
-            "kie": kie_pool,
+            # Public endpoint: expose reachability only, not per-provider key
+            # counts (total/active/exhausted), which are infrastructure detail.
+            name: {
+                "available": bool(pool.get("available", False)),
+                "health_indicator": pool.get("health_indicator", "unknown"),
+            }
+            for name, pool in (
+                ("suno", suno_pool),
+                ("fal", fal_pool),
+                ("slai", slai_pool),
+                ("deepseek", deepseek_pool),
+                ("openai", openai_pool),
+                ("cala", cala_pool),
+                ("kie", kie_pool),
+            )
         },
         "uptime_seconds": uptime_seconds,
         "timestamp": datetime.now(timezone.utc).isoformat(),

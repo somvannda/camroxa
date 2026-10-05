@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -72,7 +73,7 @@ PY'
     code, body = request(
         "/auth/login",
         method="POST",
-        body={"email": "somvannda@gmail.com", "password": "Iamduke168!!@@##$$"},
+        body={"email": os.environ.get("CAMXORA_ADMIN_EMAIL", "somvannda@gmail.com"), "password": os.environ["CAMXORA_ADMIN_PASSWORD"]},
         jar=jar,
     )
     print(f"\nlogin: {code}")

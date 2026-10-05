@@ -204,16 +204,46 @@ async def ensure_prompt_schema(conn) -> None:
         )
 
 
-async def main(export_dir: str) -> None:
+async def backup_tables(conn, tables: list[str]) -> str:
+    """Dump the tables about to be truncated to a timestamped /tmp dir.
+
+    A destructive import must never run without a rollback source; the path is
+    printed so an operator can restore from it.
+    """
+    import time
+
+    backup_dir = os.path.join("/tmp", f"camxora-config-backup-{int(time.time())}")
+    os.makedirs(backup_dir, exist_ok=True)
+    for table in tables:
+        if not await conn.fetchval("SELECT to_regclass($1)", f"public.{table}"):
+            continue
+        rows = await conn.fetch(f'SELECT row_to_json(t) AS r FROM "{table}" t')
+        with gzip.open(os.path.join(backup_dir, f"{table}.json.gz"), "wt", encoding="utf-8") as fh:
+            json.dump([row["r"] for row in rows], fh)
+    print(f"BACKUP_DIR {backup_dir}")
+    return backup_dir
+
+
+async def main(export_dir: str, apply: bool) -> None:
     dsn = os.environ["PLATFORM_DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://", 1)
     conn = await asyncpg.connect(dsn)
     try:
-        await ensure_prompt_schema(conn)
         has_config = any(
             os.path.isfile(os.path.join(export_dir, f"{t}.json.gz"))
             for t in CONFIG_TABLES_ORDER
         )
+        if not apply:
+            print(
+                "DRY RUN: pass --apply to replace config. "
+                f"Tables that would be truncated: {', '.join(TRUNCATE)}; "
+                "plans without a license would be deleted."
+            )
+            return
+
+        await ensure_prompt_schema(conn)
         if has_config:
+            # Backup first: the truncate below is permanent.
+            await backup_tables(conn, TRUNCATE + ["plans"])
             for table in TRUNCATE:
                 exists = await conn.fetchval("SELECT to_regclass($1)", f"public.{table}")
                 if exists:
@@ -236,4 +266,7 @@ async def main(export_dir: str) -> None:
 
 
 if __name__ == "__main__":
-    asyncio.run(main(sys.argv[1]))
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if not positional:
+        raise SystemExit("usage: migrate_import_config.py <export_dir> [--apply]")
+    asyncio.run(main(positional[0], apply="--apply" in sys.argv[1:]))

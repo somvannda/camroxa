@@ -217,10 +217,12 @@ function SelectAudioModal({
         });
         if (!created.job_id) throw new Error("No phrase task returned");
         for (let i = 0; i < 40; i++) {
+          if (cancelled) break;
           const t = await apiFetch<{ status: string; result?: { phrase?: string } }>(`/me/task/${created.job_id}`);
+          if (cancelled) break;
           if (t.status === "complete") {
             const p = t.result?.phrase;
-            if (!cancelled && p) setPhrase(p);
+            if (p) setPhrase(p);
             break;
           }
           if (t.status === "error") break;

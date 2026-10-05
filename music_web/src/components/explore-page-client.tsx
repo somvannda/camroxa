@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useEffect, useState } from 'react';
+import { FormEvent, Suspense, useEffect, useRef, useState } from 'react';
 import { Search } from 'lucide-react';
 
 import { ArtistCard, PlaylistCard } from '@/components/catalog-cards';
@@ -32,6 +32,8 @@ function ExploreBody({ recentTracks, publicPlaylists, artists, genres }: Props) 
   const [query, setQuery] = useState(initialQuery);
   const [results, setResults] = useState<StreamTrack[]>([]);
   const [liked, setLiked] = useState<StreamTrack[]>([]);
+  // Guards against an older debounced search resolving after a newer one.
+  const searchSeq = useRef(0);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -49,10 +51,15 @@ function ExploreBody({ recentTracks, publicPlaylists, artists, genres }: Props) 
       setResults([]);
       return;
     }
+    const seq = ++searchSeq.current;
     const handle = window.setTimeout(() => {
       void searchCatalog(value, 24, 0)
-        .then((page) => setResults(page.items ?? []))
-        .catch(() => setResults([]));
+        .then((page) => {
+          if (seq === searchSeq.current) setResults(page.items ?? []);
+        })
+        .catch(() => {
+          // Keep the previous results on a transient error instead of blanking.
+        });
     }, 250);
     return () => window.clearTimeout(handle);
   }, [query]);
@@ -64,7 +71,9 @@ function ExploreBody({ recentTracks, publicPlaylists, artists, genres }: Props) 
     }
     void fetchLikedTracks(12, 0)
       .then((page) => setLiked(page.items ?? []))
-      .catch(() => setLiked([]));
+      .catch(() => {
+        // Keep the previous list on a transient error instead of blanking.
+      });
   }, [user]);
 
   function onSearch(event: FormEvent) {

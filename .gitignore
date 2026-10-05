@@ -82,11 +82,17 @@ camxora_rust/
 
 # Local deploy secrets (never commit)
 .deploy/secrets.env
+.deploy/known_hosts
 .deploy/camxora_deploy_ed25519
 .deploy/camxora_deploy_ed25519.pub
 scripts/deploy/.venv/
 
 # Credit cutover snapshots (every user email + wallet)
 scripts/deploy/out/
+
+# Throwaway production/sandbox diagnostics (never commit)
+scripts/deploy/_diag_*.py
+scripts/deploy/_probe_*.py
+scripts/deploy/_upload_sample_packs_payload.json
 # Generated image output cache (never commit)
 image_output_cache/

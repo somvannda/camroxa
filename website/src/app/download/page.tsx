@@ -102,7 +102,7 @@ export default async function DownloadPage() {
               </div>
 
               <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                {release.download_url ? (
+                {release.download_url && /^https?:\/\//i.test(release.download_url) ? (
                   <a
                     className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-5 text-sm font-medium text-white shadow-[0_18px_44px_rgba(118,77,255,0.32)] transition hover:from-violet-400 hover:via-purple-400 hover:to-fuchsia-400"
                     href={release.download_url}

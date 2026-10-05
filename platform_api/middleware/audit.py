@@ -292,13 +292,16 @@ class AuditMiddleware(BaseHTTPMiddleware):
                 traceback.format_exc(),
             )
             from fastapi.responses import JSONResponse
+            from platform_api.config import get_settings
+
             return JSONResponse(
                 status_code=500,
                 content={
                     "error": {
                         "code": "INTERNAL_SERVER_ERROR",
                         "message": "An unexpected error occurred.",
-                        "details": str(exc),
+                        # Never leak DB/SQL/path internals unless debug is on.
+                        "details": str(exc) if get_settings().debug else None,
                     }
                 },
             )

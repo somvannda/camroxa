@@ -68,7 +68,7 @@ export default function AccountsPage() {
   function loadRules() {
     apiFetch<{ id: string; model: string; policy: string }[]>("/admin/routing")
       .then(setRules)
-      .catch(() => {});
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load routing rules"));
   }
 
   useEffect(() => { load(); loadRules(); }, []);

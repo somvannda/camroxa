@@ -7,7 +7,7 @@ need_root() { if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then log "Run as root (or via 
 need_root
 
 : "${GIT_REPO:?GIT_REPO required}"
-: "${GIT_BRANCH:=cursor/channel-pricing-and-plan-tiers}"
+: "${GIT_BRANCH:=main}"
 : "${ADMIN_EMAIL:?ADMIN_EMAIL required}"
 : "${CERTBOT_EMAIL:=${ADMIN_EMAIL}}"
 
@@ -54,7 +54,15 @@ apt-get install -y -qq git curl build-essential nginx certbot python3-certbot-ng
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -d. -f1 | tr -d v)" -lt 20 ]]; then
   log "Installing Node.js 20..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  # Add the NodeSource repo via its signing key and verify packages against it,
+  # instead of piping a remote setup script straight into bash.
+  command -v gpg >/dev/null 2>&1 || apt-get install -y -qq gnupg
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --batch --yes --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
   apt-get install -y -qq nodejs
 fi
 
@@ -96,7 +104,11 @@ fi
 
 if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   log "Extracting uploaded source tarball..."
-  rm -rf "${REPO_DIR}"
+  if [[ -d "${REPO_DIR}" ]]; then
+    REPO_BACKUP="${DEPLOY_ROOT}/repo.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    log "Backing up previous checkout to ${REPO_BACKUP}..."
+    mv "${REPO_DIR}" "${REPO_BACKUP}"
+  fi
   mkdir -p "${REPO_DIR}"
   tar -xzf /tmp/camxora-src.tar.gz -C "${REPO_DIR}"
   chown -R camxora:camxora "${REPO_DIR}"

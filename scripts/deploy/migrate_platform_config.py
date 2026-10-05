@@ -275,7 +275,7 @@ def import_on_sandbox(client, archive: Path) -> None:
 set -e
 rm -rf {remote_dir} && mkdir -p {remote_dir}
 /opt/camxora/repo/platform_api/.venv/bin/python -c "import tarfile; tarfile.open('{remote_archive}', 'r:gz').extractall('{remote_dir}')"
-sudo -u camxora bash -lc 'set -a && source /opt/camxora/repo/platform_api/.env && set +a && /opt/camxora/repo/platform_api/.venv/bin/python {remote_py} {remote_dir}'
+sudo -u camxora bash -lc 'set -a && source /opt/camxora/repo/platform_api/.env && set +a && /opt/camxora/repo/platform_api/.venv/bin/python {remote_py} {remote_dir} --apply'
 """
     _, stdout, stderr = client.exec_command(cmd, get_pty=True)
     out = stdout.read().decode("utf-8", errors="replace")

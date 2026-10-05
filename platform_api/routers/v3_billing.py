@@ -187,10 +187,11 @@ async def charge(body: ChargeRequest, ctx: UserDep, billing: BillingDep) -> dict
 
 
 @router.post("/billing/refund", summary="Refund the shared wallet; optional fail-absorb")
-async def refund(body: RefundRequest, ctx: UserDep, billing: BillingDep) -> dict[str, Any]:
-    target = body.user_id
-    if ctx.role != "admin" or target is None:
-        target = UUID(ctx.user_id)
+async def refund(body: RefundRequest, ctx: AdminDep, billing: BillingDep) -> dict[str, Any]:
+    # Refunding credits is an operator action: a non-admin could otherwise mint
+    # arbitrary amounts. User-facing failed-operation refunds go through the
+    # operation-specific endpoints, which derive the amount from the charge.
+    target = body.user_id or UUID(ctx.user_id)
     return await billing.refund(
         user_id=target,
         op=body.op,

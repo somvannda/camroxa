@@ -7,7 +7,7 @@ need_root() { if [[ "${EUID:-$(id -u)}" -ne 0 ]]; then log "Run as root (or via 
 need_root
 
 : "${GIT_REPO:?GIT_REPO required}"
-: "${GIT_BRANCH:=cursor/channel-pricing-and-plan-tiers}"
+: "${GIT_BRANCH:=main}"
 : "${ADMIN_EMAIL:?ADMIN_EMAIL required}"
 : "${CERTBOT_EMAIL:=${ADMIN_EMAIL}}"
 
@@ -31,6 +31,9 @@ DB_PASSWORD="${DB_PASSWORD:-$(gen_hex)}"
 PLATFORM_JWT_SECRET="${PLATFORM_JWT_SECRET:-$(gen_hex)}"
 PLATFORM_ENCRYPTION_MASTER_KEY="${PLATFORM_ENCRYPTION_MASTER_KEY:-$(gen_hex)}"
 PLATFORM_SUNO_CALLBACK_HMAC_SECRET="${PLATFORM_SUNO_CALLBACK_HMAC_SECRET:-$(gen_hex)}"
+# Suno's callback egress IPs. Unsigned provider callbacks are accepted only from
+# these addresses (see platform_api/routers/callbacks.py), so this must be set.
+PLATFORM_SUNO_CALLBACK_ALLOWED_IPS="${PLATFORM_SUNO_CALLBACK_ALLOWED_IPS:-47.89.217.55,47.77.231.163,47.251.163.235}"
 
 mkdir -p "${DEPLOY_ROOT}/backups"
 chmod 755 "${DEPLOY_ROOT}"
@@ -41,6 +44,7 @@ DB_PASSWORD=${DB_PASSWORD}
 PLATFORM_JWT_SECRET=${PLATFORM_JWT_SECRET}
 PLATFORM_ENCRYPTION_MASTER_KEY=${PLATFORM_ENCRYPTION_MASTER_KEY}
 PLATFORM_SUNO_CALLBACK_HMAC_SECRET=${PLATFORM_SUNO_CALLBACK_HMAC_SECRET}
+PLATFORM_SUNO_CALLBACK_ALLOWED_IPS=${PLATFORM_SUNO_CALLBACK_ALLOWED_IPS}
 ADMIN_EMAIL=${ADMIN_EMAIL}
 EOF
 chmod 600 "${SECRETS_FILE}"
@@ -54,7 +58,15 @@ apt-get install -y -qq git curl build-essential nginx certbot python3-certbot-ng
 
 if ! command -v node >/dev/null 2>&1 || [[ "$(node -v | cut -d. -f1 | tr -d v)" -lt 20 ]]; then
   log "Installing Node.js 20..."
-  curl -fsSL https://deb.nodesource.com/setup_20.x | bash -
+  # Add the NodeSource repo via its signing key and verify packages against it,
+  # instead of piping a remote setup script straight into bash.
+  command -v gpg >/dev/null 2>&1 || apt-get install -y -qq gnupg
+  install -d -m 0755 /etc/apt/keyrings
+  curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key \
+    | gpg --batch --yes --dearmor -o /etc/apt/keyrings/nodesource.gpg
+  echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_20.x nodistro main" \
+    > /etc/apt/sources.list.d/nodesource.list
+  apt-get update -qq
   apt-get install -y -qq nodejs
 fi
 
@@ -96,7 +108,11 @@ fi
 
 if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   log "Extracting uploaded source tarball..."
-  rm -rf "${REPO_DIR}"
+  if [[ -d "${REPO_DIR}" ]]; then
+    REPO_BACKUP="${DEPLOY_ROOT}/repo.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    log "Backing up previous checkout to ${REPO_BACKUP}..."
+    mv "${REPO_DIR}" "${REPO_BACKUP}"
+  fi
   mkdir -p "${REPO_DIR}"
   tar -xzf /tmp/camxora-src.tar.gz -C "${REPO_DIR}"
   chown -R camxora:camxora "${REPO_DIR}"
@@ -130,6 +146,7 @@ PLATFORM_CORS_ORIGINS=${CORS}
 PLATFORM_SUNO_CALLBACK_BASE_URL=https://api.camxora.com
 PLATFORM_SUNO_API_BASE_URL=https://musicapi.camxora.com
 PLATFORM_SUNO_CALLBACK_HMAC_SECRET=${PLATFORM_SUNO_CALLBACK_HMAC_SECRET}
+PLATFORM_SUNO_CALLBACK_ALLOWED_IPS=${PLATFORM_SUNO_CALLBACK_ALLOWED_IPS}
 PLATFORM_CUTLUY_API_BASE_URL=https://cutluy.com
 PLATFORM_CUTLUY_SECRET_KEY=${PLATFORM_CUTLUY_SECRET_KEY:-}
 PLATFORM_CUTLUY_PAYMENT_LINK_ID=${PLATFORM_CUTLUY_PAYMENT_LINK_ID:-}

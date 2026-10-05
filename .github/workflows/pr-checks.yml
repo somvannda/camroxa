@@ -64,6 +64,22 @@ jobs:
           done
           exit "$FAIL"
 
+  secret-scan:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   admin-portal-build:
     name: Admin portal build (if changed)
     runs-on: ubuntu-latest
@@ -133,6 +149,7 @@ jobs:
           npm ci --no-audit --no-fund
           npm run typecheck
           npm run build
+          npm run test:unit
 
       - name: web-user — npm ci, typecheck, build
         if: steps.changes.outputs.run == 'true'

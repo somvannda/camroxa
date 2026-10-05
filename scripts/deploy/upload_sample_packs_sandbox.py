@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -25,8 +26,8 @@ PAYLOAD_PATH = Path(__file__).resolve().parent / "_upload_sample_packs_payload.j
 
 def _write_payload() -> None:
     payload = {
-        "email": "duke@camxora.com",
-        "password": "Iamduke168!!@@##$$",
+        "email": os.environ.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com"),
+        "password": os.environ["CAMXORA_ADMIN_PASSWORD"],
     }
     PAYLOAD_PATH.write_text(json.dumps(payload), encoding="utf-8")
 

@@ -30,7 +30,12 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deploy import ensure_deploy_key, load_production_secrets, load_sandbox_secrets, ssh_connect  # noqa: E402
+from deploy import (  # noqa: E402
+    ensure_deploy_key,
+    resolve_production_ssh,
+    resolve_sandbox_ssh,
+    ssh_connect,
+)
 
 DEPLOY_DIR = Path(__file__).resolve().parent
 
@@ -141,14 +146,14 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    secrets = load_production_secrets() if args.env == "production" else load_sandbox_secrets()
-    host = secrets.get("PRODUCTION_VPS_HOST") or secrets.get("VPS_HOST")
-    user = secrets.get("PRODUCTION_VPS_USER") or secrets.get("VPS_USER")
-    if not host:
-        print(f"No VPS host configured for {args.env}. Set VPS_HOST or PRODUCTION_VPS_HOST in .deploy/secrets.env")
-        return 1
+    # Canonical guards: a production run cannot target the sandbox host (or the
+    # reverse) even if the secrets file is misconfigured.
+    if args.env == "production":
+        host, user, password = resolve_production_ssh()
+    else:
+        host, user, password = resolve_sandbox_ssh()
 
-    client = ssh_connect(host, user, ensure_deploy_key(), secrets.get("VPS_PASSWORD") or None)
+    client = ssh_connect(host, user, ensure_deploy_key(), password)
     if args.issue_cert:
         print(f"Issuing TLS cert for {' '.join(ENV_CONFIG[args.env]['names'])} on {user}@{host}...")
         out, err = issue_cert(client, args.env)

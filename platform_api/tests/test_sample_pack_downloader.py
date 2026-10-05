@@ -204,11 +204,29 @@ async def test_download_google_drive_html_permission_error(monkeypatch) -> None:
         await downloader._download_google_drive("abc123")
 
 
+def test_assert_public_http_url_rejects_private_and_bad_schemes() -> None:
+    for bad in (
+        "http://127.0.0.1/x",
+        "http://10.0.0.5/x",
+        "http://192.168.1.1/x",
+        "http://169.254.169.254/latest/meta-data",
+        "ftp://example.com/x",
+        "file:///etc/passwd",
+    ):
+        with pytest.raises(ValidationError):
+            downloader._assert_public_http_url(bad)
+
+
+def test_assert_public_http_url_accepts_public_ip() -> None:
+    downloader._assert_public_http_url("https://1.1.1.1/pack.zip")
+
+
 @pytest.mark.asyncio
 async def test_stream_download_rejects_html(monkeypatch) -> None:
     def handler(method: str, url: str, params: dict[str, str]) -> _FakeStreamResponse:
         return _FakeStreamResponse(content_type="text/html", body=b"<html>nope</html>")
 
+    monkeypatch.setattr(downloader, "_assert_public_http_url", lambda url: None)
     monkeypatch.setattr(downloader.httpx, "AsyncClient", lambda **kwargs: _FakeAsyncClient(handler))
 
     with pytest.raises(ValidationError, match="HTML instead of a ZIP"):

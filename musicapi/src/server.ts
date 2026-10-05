@@ -1616,12 +1616,50 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       .slice(0, 60) || "clip";
   }
 
+  /**
+   * True when `clipId` is known to belong to a *different* user. Ownership is
+   * derived from the clip ids stored in a job/usage result, so a readable clip
+   * cannot be crossed between tenants. An id attributed to nobody (e.g. a legacy
+   * row with no stored result) is allowed through, so this never regresses
+   * legitimate access.
+   */
+  async function clipOwnedByOtherUser(userId: string, clipId: string): Promise<boolean> {
+    if (!userId || !clipId) return false;
+    const owns = await queryOne<{ one: number }>(
+      `SELECT 1 AS one FROM jobs
+         WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
+       UNION ALL
+       SELECT 1 FROM usage_logs
+         WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
+       LIMIT 1`,
+      [userId, clipId],
+    );
+    if (owns) return false;
+    const foreign = await queryOne<{ one: number }>(
+      `SELECT 1 AS one FROM jobs
+         WHERE user_id IS NOT NULL AND user_id <> $1
+           AND result_json::text LIKE '%' || $2 || '%'
+       UNION ALL
+       SELECT 1 FROM usage_logs
+         WHERE user_id IS NOT NULL AND user_id <> $1
+           AND result_json::text LIKE '%' || $2 || '%'
+       LIMIT 1`,
+      [userId, clipId],
+    );
+    return Boolean(foreign);
+  }
+
+  function denyForeignClip(reply: FastifyReply): void {
+    reply.code(403).send({ error: "This clip does not belong to your account." });
+  }
+
   function meDetailRoute(path: string, type: Job["type"]) {
     app.get(path, async (req, reply) => {
       const u = requireAuth(req, reply);
       if (!u) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
+      if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
       let cost = 0;
       try {
         cost = await costFor(type);
@@ -2131,6 +2169,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   /** Basic Pitch MIDI microservice (see `musicapi/midi-service`). */
   const MIDI_SERVICE_URL = process.env.MIDI_SERVICE_URL ?? "http://127.0.0.1:4010";
+  const MIDI_SERVICE_TOKEN = (process.env.MIDI_SERVICE_TOKEN ?? "").trim();
 
   /** POST one stem's audio to the Basic Pitch service; returns its note events. */
   async function transcribeStem(
@@ -2139,7 +2178,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   ): Promise<{ name: string; notes: Array<Record<string, unknown>> }> {
     const res = await fetch(`${MIDI_SERVICE_URL}/transcribe`, {
       method: "POST",
-      headers: { "content-type": "audio/mpeg", "x-stem-name": (name || "Instrument").slice(0, 80) },
+      headers: {
+        "content-type": "audio/mpeg",
+        "x-stem-name": (name || "Instrument").slice(0, 80),
+        ...(MIDI_SERVICE_TOKEN ? { "x-service-token": MIDI_SERVICE_TOKEN } : {}),
+      },
       body: new Uint8Array(audio),
       signal: AbortSignal.timeout(300_000),
     });
@@ -2175,6 +2218,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * Set `LRC_SERVICE_ENABLED=0` to force the plain-lyrics fallback.
    */
   const LRC_SERVICE_URL = process.env.LRC_SERVICE_URL ?? "http://127.0.0.1:4011";
+  const LRC_SERVICE_TOKEN = (process.env.LRC_SERVICE_TOKEN ?? "").trim();
   const LRC_ENABLED = process.env.LRC_SERVICE_ENABLED !== "0";
   // Suno provides the alignment for generated clips (see `client.getAlignedLyrics`),
   // so the local Whisper aligner is now only a fallback. It is opt-in: enabling it
@@ -2237,7 +2281,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         try {
           res = await fetch(`${LRC_SERVICE_URL}/align`, {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: {
+              "content-type": "application/json",
+              ...(LRC_SERVICE_TOKEN ? { "x-service-token": LRC_SERVICE_TOKEN } : {}),
+            },
             body: JSON.stringify(body),
             signal: AbortSignal.timeout(600_000),
           });
@@ -4292,6 +4339,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    if (await clipOwnedByOtherUser(u.id, clipId)) return denyForeignClip(reply);
     const format = q.format === "wav" ? "wav" : q.format === "m4a" ? "m4a" : "mp3";
 
     if (storageConfigured()) {
@@ -4338,6 +4386,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string; force_download?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    if (await clipOwnedByOtherUser(u.id, clipId)) return denyForeignClip(reply);
     const formatRaw = (q.format as string) || "mp3";
 
     // Music-video download. `runMusicVideoJob` stores the rendered render at
@@ -4951,6 +5000,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
+    if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
     let job = await reusableLyricsJob(id, u.id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
@@ -4986,6 +5036,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!u) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
+    if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
     let cost = 0;
     try {
       cost = await costFor("wav_detail");
@@ -6890,6 +6941,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
+    if (!id) return reply.code(400).send({ error: "id is required." });
+    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
@@ -6912,6 +6965,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!key) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
+      if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
       const cost = await costFor(type);
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -6941,6 +6995,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
+    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
     const cost = await costFor("wav_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("wav_detail");
@@ -8660,6 +8715,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.taskId as string) ||
       (in_.task_id as string);
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
+    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
     const cb = callbackUrl(in_);
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
@@ -9077,6 +9133,51 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     });
   }
 
+  /**
+   * Reverse a settled ChmabaPay payment: claw back the granted credits and mark
+   * the transaction refunded. The guarded UPDATE makes it idempotent, and the
+   * debit is clamped at zero — if the user already spent the credits, the
+   * balance is recovered as far as it goes and the platform absorbs the rest.
+   */
+  async function reverseChmabaPayment(txId: string): Promise<boolean> {
+    return withTransaction(async (tq) => {
+      const claimed = await tq<{ user_id: string; credit_amount: number; api_key_target_id: string | null }>(
+        `UPDATE payment_transactions SET status = 'refunded'
+         WHERE id = $1 AND provider = 'chmaba' AND status = 'paid'
+         RETURNING user_id, credit_amount, api_key_target_id`,
+        [txId],
+      );
+      if (claimed.length === 0) return false;
+      const row = claimed[0];
+      const amount = Math.max(0, Number(row.credit_amount) || 0);
+      if (amount > 0) {
+        if (row.api_key_target_id) {
+          await tq(
+            "UPDATE api_keys SET credits = GREATEST(0, credits - $1) WHERE id = $2 AND user_id = $3",
+            [amount, row.api_key_target_id, row.user_id],
+          );
+        } else {
+          // Mirrors creditUser's default: the oldest active key received the grant.
+          const keys = await tq<{ id: string }>(
+            "SELECT id FROM api_keys WHERE user_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1",
+            [row.user_id],
+          );
+          if (keys.length > 0) {
+            await tq(
+              "UPDATE api_keys SET credits = GREATEST(0, credits - $1) WHERE id = $2",
+              [amount, keys[0].id],
+            );
+          }
+        }
+        await tq(
+          "INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, 'refund', $3)",
+          [row.user_id, -amount, `ChmabaPay reversal (ref: ${txId})`],
+        );
+      }
+      return true;
+    });
+  }
+
   // POST /payments/chmaba/create — mint a KHQR payment for a pack. The billing
   // modal renders the returned code inline via `qr_url`.
   app.post("/payments/chmaba/create", async (req, reply) => {
@@ -9095,6 +9196,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       [packId],
     );
     if (!pack) return reply.code(404).send({ error: "Pack not found or unavailable." });
+
+    // The optional target key must belong to the caller; otherwise the settled
+    // credits would no-op (creditUser guards user_id) and the top-up be lost.
+    if (targetKeyId) {
+      if (!UUID_RE.test(targetKeyId)) {
+        return reply.code(400).send({ error: "api_key_id is invalid." });
+      }
+      const ownedKey = await queryOne<{ id: string }>(
+        "SELECT id FROM api_keys WHERE id = $1 AND user_id = $2",
+        [targetKeyId, u.id],
+      );
+      if (!ownedKey) {
+        return reply.code(400).send({ error: "api_key_id does not belong to you." });
+      }
+    }
 
     const amount = Number(pack.price);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -9275,10 +9391,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     if (event === "payment.reversed") {
       if (referenceId && UUID_RE.test(referenceId)) {
-        await query(
-          "UPDATE payment_transactions SET status = 'refunded' WHERE id = $1 AND provider = 'chmaba' AND status = 'paid'",
-          [referenceId],
-        );
+        await reverseChmabaPayment(referenceId);
       }
       return { ok: true };
     }

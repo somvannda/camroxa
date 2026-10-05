@@ -42,9 +42,11 @@ def main() -> int:
         print("ERROR: PLATFORM_CUTLUY_SECRET_KEY missing in .deploy/secrets.env")
         return 1
 
-    admin_email = "duke@camxora.com"
-    # Duke password from sandbox setup (not stored in secrets.env)
-    admin_password = "Iamduke168!!@@##$$"
+    admin_email = env.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com").strip()
+    admin_password = env.get("CAMXORA_ADMIN_PASSWORD", "").strip()
+    if not admin_password:
+        print("ERROR: CAMXORA_ADMIN_PASSWORD missing in .deploy/secrets.env")
+        return 1
 
     try:
         tokens = request(

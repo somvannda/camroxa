@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 
 import TrackRow from '@/components/track-row';
@@ -17,6 +17,8 @@ export default function SearchPageClient() {
   const [total, setTotal] = useState(0);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  // Guards against an older debounced response resolving after a newer one.
+  const searchSeq = useRef(0);
 
   useEffect(() => {
     setQuery(initialQuery);
@@ -31,6 +33,7 @@ export default function SearchPageClient() {
       return;
     }
 
+    const seq = ++searchSeq.current;
     const handle = window.setTimeout(() => {
       void (async () => {
         setBusy(true);
@@ -41,12 +44,14 @@ export default function SearchPageClient() {
           );
           if (!response.ok) throw new Error('Search failed');
           const data = (await response.json()) as { items?: StreamTrack[]; total?: number };
+          if (seq !== searchSeq.current) return;
           setResults(data.items ?? []);
           setTotal(data.total ?? data.items?.length ?? 0);
         } catch (err) {
+          if (seq !== searchSeq.current) return;
           setError(err instanceof Error ? err.message : 'Search failed');
         } finally {
-          setBusy(false);
+          if (seq === searchSeq.current) setBusy(false);
         }
       })();
     }, 280);

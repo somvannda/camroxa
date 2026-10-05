@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -80,7 +81,7 @@ journalctl -u camxora-api -n 120 --no-pager | grep -iE 'cutluy|billing|draft|Ext
             base,
             "/auth/login",
             method="POST",
-            body={"email": "duke@camxora.com", "password": "Iamduke168!!@@##$$"},
+            body={"email": os.environ.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com"), "password": os.environ["CAMXORA_ADMIN_PASSWORD"]},
             jar=jar_ok if label == "app" else CookieJar(),
         )
         jar = jar_ok if label == "app" else CookieJar()
@@ -90,7 +91,7 @@ journalctl -u camxora-api -n 120 --no-pager | grep -iE 'cutluy|billing|draft|Ext
                 base,
                 "/auth/login",
                 method="POST",
-                body={"email": "duke@camxora.com", "password": "Iamduke168!!@@##$$"},
+                body={"email": os.environ.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com"), "password": os.environ["CAMXORA_ADMIN_PASSWORD"]},
                 jar=jar,
             )
         print(f"\nlogin {label}: {code}")
@@ -126,7 +127,7 @@ journalctl -u camxora-api -n 120 --no-pager | grep -iE 'cutluy|billing|draft|Ext
         DIRECT_API,
         "/auth/login",
         method="POST",
-        body={"email": "duke@camxora.com", "password": "Iamduke168!!@@##$$"},
+        body={"email": os.environ.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com"), "password": os.environ["CAMXORA_ADMIN_PASSWORD"]},
         jar=jar_api,
     )
     code_app_draft, body_app_draft, _ = cookie_request(APP_API, "/channel-setup/draft", jar=jar_api)

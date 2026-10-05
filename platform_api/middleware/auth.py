@@ -452,7 +452,7 @@ async def check_credit_balance(user_id: str, required_credits: int) -> None:
 
 
 async def require_generation_access(
-    authorization: str = Header(..., alias="Authorization"),
+    authorization: str | None = Header(default=None, alias="Authorization"),
     request: Request = None,
 ) -> AuthContext:
     """FastAPI dependency combining all 4 authorization chain steps for generation endpoints.

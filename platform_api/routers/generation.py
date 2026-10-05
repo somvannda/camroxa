@@ -1034,6 +1034,12 @@ async def consume_local_video_operation(
         entry = await lookup_pricing_entry(pricing_repo, _LOCAL_AI_SERVICE, "video", None)
     list_units = int(entry["credits_per_operation"]) if entry else total_charged
 
+    # Stash the amount actually charged so `refund_local_video_operation` can tie
+    # the refund to this debit instead of trusting a client-supplied amount.
+    stash_charge = getattr(enforcement_service, "stash_operation_charge", None)
+    if request.ref_id and stash_charge is not None:
+        await stash_charge(request.ref_id, total_charged)
+
     return LocalVideoConsumeResponse(
         operation_type=op,
         billing=billing,
@@ -1067,12 +1073,27 @@ async def refund_local_video_operation(
         user_id=ctx.user_id,
         channel_profile_id=request.channel_profile_id,
     )
+    if not request.ref_id:
+        raise ValidationError(
+            "ref_id is required to refund a local video operation.",
+            details={"ref_id": request.ref_id},
+        )
+    # The refund amount comes from the charge stashed at consume time, never from
+    # the request body: a client could otherwise refund more than it was charged,
+    # or refund an operation it never ran.
+    pop_charge = getattr(enforcement_service, "pop_operation_charge", None)
+    charged = await pop_charge(request.ref_id) if pop_charge is not None else None
+    if charged is None:
+        # Unknown or already-refunded reference: nothing was charged (or it was
+        # already reversed), so never credit again.
+        return {"status": "noop", "operation_type": op}
+
     await enforcement_service.refund_failed_operation(
         user_id=UUID(ctx.user_id),
         channel_profile_id=request.channel_profile_id,
         operation_type=op,
         ai_service=_LOCAL_AI_SERVICE,
-        charged_credit_units=int(request.charged_credit_units or 0),
+        charged_credit_units=int(charged),
         reason=request.reason,
         ref_id=request.ref_id,
         count=int(request.count),

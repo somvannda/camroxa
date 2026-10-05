@@ -253,6 +253,12 @@ export function useJob(options: UseJobOptions = {}): UseJobState {
   }
 
   async function submit(path: string, body: Record<string, unknown>) {
+    // A new submit supersedes any in-flight poll; drop the old timer so it can't
+    // race the new one or leave the UI busy.
+    if (pollRef.current) {
+      clearTimeout(pollRef.current);
+      pollRef.current = null;
+    }
     setLastSubmit({ path, body });
     setBusy(true);
     setError("");

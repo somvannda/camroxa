@@ -105,7 +105,7 @@ export function UserControlPanelProvider(props: { children: React.ReactNode }) {
       notifications,
       security,
     ] = await Promise.all([
-      getProfilesStatus(),
+      getProfilesStatus().catch(() => null),
       listProfiles().catch(() => []),
       getWalletBalance().catch(() => null),
       getQuotaStatus().catch(() => null),
@@ -118,7 +118,9 @@ export function UserControlPanelProvider(props: { children: React.ReactNode }) {
       getSecurityOverview().catch(() => null),
     ]);
 
-    if (status.profile_count < 2) {
+    // A transient failure loading profiles must not bounce a signed-in user to
+    // /login; only redirect to onboarding when the status is actually known.
+    if (status && status.profile_count < 2) {
       router.replace("/onboarding");
       return;
     }

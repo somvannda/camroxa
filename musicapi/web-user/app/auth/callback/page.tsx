@@ -33,17 +33,24 @@ function GoogleCallbackInner() {
         setErr(`Google denied access: ${error}. Please try again.`);
         return;
       }
-      if (!code || !state) {
+      const storedState =
+        typeof window !== "undefined" ? localStorage.getItem("google_auth_state") || "" : "";
+      const effectiveState = state || storedState;
+      if (!code || !effectiveState) {
         setBusy(false);
         setErr("Missing authorization details. Try signing in again.");
         return;
       }
       try {
-        await completeGoogleCallback(state, code);
+        await completeGoogleCallback(effectiveState, code);
         const redirectTo =
           (typeof window !== "undefined" &&
             (localStorage.getItem("google_auth_redirect") || "/dashboard")) ||
           "/dashboard";
+        if (typeof window !== "undefined") {
+          localStorage.removeItem("google_auth_redirect");
+          localStorage.removeItem("google_auth_state");
+        }
         router.replace(redirectTo);
       } catch (e) {
         setBusy(false);
