@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import ipaddress
 import re
+import socket
 from html import unescape
 from urllib.parse import parse_qs, urlparse
 
@@ -12,6 +14,7 @@ from platform_api.config import get_settings
 from platform_api.exceptions import ValidationError
 
 _CHUNK_SIZE = 8 * 1024
+_MAX_REDIRECTS = 5
 _GDRIVE_FILE_PATTERN = re.compile(r"drive\.google\.com/file/d/([^/]+)")
 _GDRIVE_FOLDER_PATTERN = re.compile(r"drive\.google\.com/(?:drive/)?folders/")
 _GDRIVE_ID_PATTERN = re.compile(r"[?&]id=([a-zA-Z0-9_-]+)")
@@ -148,6 +151,54 @@ def _ensure_zip_bytes(data: bytes, *, max_bytes: int) -> None:
         )
 
 
+def _assert_public_http_url(url: str) -> None:
+    """Refuse a direct-URL import that targets a non-public address.
+
+    A caller-supplied ``source_value`` must not be usable to reach the host's own
+    network (SSRF). Reject non-http(s) schemes and any host that resolves to a
+    private/loopback/link-local/reserved address.
+    """
+    parsed = urlparse(str(url or "").strip())
+    if parsed.scheme not in ("http", "https"):
+        raise ValidationError(
+            "source_value must be an http(s) URL.",
+            details={"field": "source_value", "reason": "bad_scheme"},
+        )
+    host = parsed.hostname
+    if not host:
+        raise ValidationError(
+            "source_value must include a host.",
+            details={"field": "source_value", "reason": "no_host"},
+        )
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except OSError:
+        raise ValidationError(
+            "source_value host could not be resolved.",
+            details={"field": "source_value", "reason": "unresolvable"},
+        ) from None
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            raise ValidationError(
+                "source_value host is not allowed.",
+                details={"field": "source_value", "reason": "bad_address"},
+            ) from None
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            raise ValidationError(
+                "source_value must not target a private address.",
+                details={"field": "source_value", "reason": "private_address"},
+            )
+
+
 async def _read_stream_with_limit(response: httpx.Response, *, max_bytes: int) -> bytes:
     chunks: list[bytes] = []
     total = 0
@@ -170,8 +221,25 @@ async def _stream_get(
     *,
     params: dict[str, str] | None = None,
     max_bytes: int,
+    redirects_left: int = 0,
 ) -> tuple[bytes | None, str | None]:
     async with client.stream("GET", url, params=params) as response:
+        if redirects_left > 0 and getattr(response, "is_redirect", False):
+            location = response.headers.get("location")
+            if not location:
+                raise ValidationError(
+                    "Import URL redirected without a Location header.",
+                    details={"field": "source_value", "reason": "bad_redirect"},
+                )
+            next_url = str(httpx.URL(url).join(location))
+            # Re-validate every hop so a public URL cannot bounce to an internal one.
+            _assert_public_http_url(next_url)
+            return await _stream_get(
+                client,
+                next_url,
+                max_bytes=max_bytes,
+                redirects_left=redirects_left - 1,
+            )
         response.raise_for_status()
         content_type = (response.headers.get("content-type") or "").lower()
         if "text/html" in content_type:
@@ -246,9 +314,15 @@ async def _download_google_drive(file_id: str, *, timeout: float = 300.0) -> byt
 
 
 async def _stream_download(url: str, *, timeout: float = 300.0) -> bytes:
+    _assert_public_http_url(url)
     max_bytes = get_url_import_max_bytes()
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        body, html = await _stream_get(client, url, max_bytes=max_bytes)
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
+        body, html = await _stream_get(
+            client,
+            url,
+            max_bytes=max_bytes,
+            redirects_left=_MAX_REDIRECTS,
+        )
         if html is not None:
             raise ValidationError(
                 "Download returned HTML instead of a ZIP. Check the URL or sharing permissions.",
