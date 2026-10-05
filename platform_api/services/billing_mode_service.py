@@ -9,6 +9,7 @@ from uuid import UUID
 
 from platform_api.models.domain import Plan
 from platform_api.models.enums import PlanType
+from platform_api.services.credit_ledger import CreditLedger, GrantType
 
 
 class UsageCountRepoProtocol(Protocol):
@@ -380,10 +381,10 @@ async def grant_included_wallet_credits(
     if units <= 0:
         return 0
 
-    await credit_repo.add_credits(
+    await CreditLedger(credit_repo).grant(
         user_id,
         units,
-        reason="plan_purchase",
+        grant_type=GrantType.PLAN_PURCHASE,
         ref_id=str(license_id),
     )
     return units

@@ -73,7 +73,7 @@ class FakeCreditRepo:
     def __init__(self) -> None:
         self.add_calls: list[tuple] = []
 
-    async def add_credits(self, user_id, amount: int, reason: str, ref_id: str | None = None) -> int:
+    async def add_credits(self, user_id, amount: int, reason: str, ref_id: str | None = None, **kwargs) -> int:
         self.add_calls.append((user_id, amount, reason, ref_id))
         return amount
 

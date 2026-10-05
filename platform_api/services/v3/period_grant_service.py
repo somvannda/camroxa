@@ -12,6 +12,7 @@ from platform_api.services.billing_calendar import (
     next_billing_midnight,
     next_billing_month_start,
 )
+from platform_api.services.credit_ledger import CreditLedger, GrantType
 from platform_api.services.credit_units import credits_to_units, units_to_credits
 from platform_api.services.v3.store import V3BillingStore
 
@@ -21,6 +22,7 @@ class PeriodGrantService:
         self._store = store
         self._credit_repo = credit_repo
         self._plan_repo = plan_repo
+        self._ledger = CreditLedger(credit_repo)
 
     async def expire_unused_grants(self, user_id: UUID | None = None) -> int:
         """Deduct leftover grant lots that passed expires_at. Returns users touched."""
@@ -117,10 +119,10 @@ class PeriodGrantService:
                 "plan_id": plan["id"],
                 "period_start": period_start.isoformat(),
             }
-        await self._credit_repo.add_credits(
+        await self._ledger.grant(
             user_id,
             units,
-            reason="v3_period_grant",
+            grant_type=GrantType.PERIOD,
             ref_id=f"grant:{user_id}:{period_start.isoformat()}",
         )
         return {
@@ -208,10 +210,10 @@ class PeriodGrantService:
 
         # The carried units are already in the wallet; only the new allowance is added.
         if allowance_units > 0:
-            await self._credit_repo.add_credits(
+            await self._ledger.grant(
                 user_id,
                 allowance_units,
-                reason="v3_period_grant",
+                grant_type=GrantType.PERIOD,
                 ref_id=f"grant:{user_id}:{next_start.isoformat()}",
             )
         return {
@@ -276,10 +278,10 @@ class PeriodGrantService:
                 "plan_id": plan["id"],
                 "period_start": period_start.isoformat(),
             }
-        await self._credit_repo.add_credits(
+        await self._ledger.grant(
             user_id,
             units,
-            reason="v3_daily_grant",
+            grant_type=GrantType.DAILY,
             ref_id=f"daily:{user_id}:{period_start.isoformat()}",
         )
         return {

@@ -6,6 +6,7 @@ import logging
 from typing import Any
 from uuid import UUID
 
+from platform_api.services.credit_ledger import CreditLedger, GrantType
 from platform_api.services.credit_units import credits_to_units, units_to_credits
 
 logger = logging.getLogger(__name__)
@@ -52,10 +53,10 @@ class WalletSyncService:
                 "ref_id": ref_id,
             }
         units = credits_to_units(amount)
-        await self._credit_repo.add_credits(
+        await CreditLedger(self._credit_repo).grant(
             user_id,
             units,
-            reason="v3_pack",
+            grant_type=GrantType.PACK,
             ref_id=ref_id,
         )
         lot = await self._store.insert_lot(

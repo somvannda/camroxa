@@ -134,7 +134,7 @@ class FakeCreditRepository:
         self.credits_added: list[tuple[UUID, int, str, str | None]] = []
 
     async def add_credits(
-        self, user_id: UUID, amount: int, reason: str, ref_id: str | None = None
+        self, user_id: UUID, amount: int, reason: str, ref_id: str | None = None, **kwargs
     ) -> int:
         self.credits_added.append((user_id, amount, reason, ref_id))
         return amount

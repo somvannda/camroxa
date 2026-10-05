@@ -10,6 +10,7 @@ from uuid import UUID, uuid4
 
 from platform_api.exceptions import DuplicateError, NotFoundError, ValidationError
 from platform_api.repositories.credit_repo import CreditRepository
+from platform_api.services.credit_ledger import CreditLedger, GrantType
 from platform_api.services.credit_units import (
     MAX_CREDIT_UNITS,
     credits_to_units,
@@ -483,10 +484,10 @@ async def redeem_credit_code(pool: Any, *, code: str, user_id: UUID) -> dict[str
             # the per-user redemption guard above already prevents double-redeem,
             # and a code may legitimately be redeemed more than once (per_user_limit
             # > 1), where ref_id (the code id) repeats.
-            await CreditRepository(conn).add_credits(
+            await CreditLedger(CreditRepository(conn)).grant(
                 user_id,
                 amount_units,
-                reason="redeem_code_credit",
+                grant_type=GrantType.REDEEM,
                 ref_id=str(redeem_code_id),
                 metadata=metadata,
                 idempotent=False,

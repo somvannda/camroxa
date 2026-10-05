@@ -70,7 +70,7 @@ class FakeWallet:
         self.txs.append({"kind": "debit", "amount": amount, "reason": reason, "ref_id": ref_id, "metadata": metadata})
         return True
 
-    async def add_credits(self, user_id, amount: int, reason: str, ref_id=None, pack_id=None, payment_ref=None) -> int:
+    async def add_credits(self, user_id, amount: int, reason: str, ref_id=None, pack_id=None, payment_ref=None, **kwargs) -> int:
         self.balance += amount
         self.txs.append({"kind": "credit", "amount": amount, "reason": reason, "ref_id": ref_id})
         return self.balance
