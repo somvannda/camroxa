@@ -1,6 +1,7 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, Suspense, useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge } from "@/components/ui/Badge";
@@ -37,10 +38,12 @@ interface KeyPage {
 
 const PAGE_SIZE = 50;
 
-export default function KeysPage() {
-  const [qInput, setQInput] = useState("");
-  const [q, setQ] = useState("");
-  const [page, setPage] = useState(1);
+function KeysInner() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const [qInput, setQInput] = useState(params.get("q") ?? "");
+  const [q, setQ] = useState(params.get("q") ?? "");
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
 
   const { data, loading, error, reload } = useResource<KeyPage>(
     () => {
@@ -50,6 +53,15 @@ export default function KeysPage() {
     },
     [page, q],
   );
+
+  // Reflect the search in the URL so a view can be bookmarked/shared.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (page > 1) p.set("page", String(page));
+    const qs = p.toString();
+    router.replace(qs ? `/admin/keys?${qs}` : "/admin/keys", { scroll: false });
+  }, [q, page, router]);
 
   const keys = useMemo(() => data?.rows ?? [], [data]);
   const total = data?.total ?? 0;
@@ -191,5 +203,13 @@ export default function KeysPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function KeysPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <KeysInner />
+    </Suspense>
   );
 }
