@@ -20,6 +20,7 @@ from deploy import (  # noqa: E402
     ssh_connect,
 )
 from consistency import check_consistency  # noqa: E402
+from deploy_guards import enforce_deploy_gate, post_deploy_record  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYSTEMD_DIR = REPO_ROOT / "scripts" / "deploy" / "systemd"
@@ -37,6 +38,7 @@ def main() -> int:
     if host != PRODUCTION_HOST:
         raise SystemExit(f"Refusing non-production host: {host}")
     print(f"Target production host: {host}")
+    gate = enforce_deploy_gate()
     client = ssh_connect(host, user, ensure_deploy_key(), password)
     check_consistency(client)
 
@@ -92,6 +94,10 @@ echo API_SYNC_DONE
     if err.strip():
         print(err)
     code = stdout.channel.recv_exit_status()
+    if code == 0:
+        post_deploy_record(
+            client, gate, target="production", script=Path(__file__).name
+        )
     client.close()
     return code
 
