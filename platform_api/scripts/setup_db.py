@@ -5,6 +5,7 @@ Usage:
 """
 
 import asyncio
+import os
 from uuid import uuid4
 
 import asyncpg
@@ -14,8 +15,8 @@ import bcrypt
 POSTGRES_DSN = "postgresql://postgres:postgres@localhost:5432/postgres"
 PLATFORM_DSN = "postgresql://postgres:postgres@localhost:5432/platform_db"
 
-ADMIN_EMAIL = "admin@mgfaceless.com"
-ADMIN_PASSWORD = "112233aB!!@@"
+ADMIN_EMAIL = os.environ.get("PLATFORM_ADMIN_EMAIL", "admin@mgfaceless.com")
+ADMIN_PASSWORD = os.environ.get("PLATFORM_ADMIN_PASSWORD", "")
 ADMIN_DISPLAY_NAME = "Admin"
 
 
@@ -93,6 +94,11 @@ async def create_tables():
 
 
 async def seed_admin():
+    if not ADMIN_PASSWORD:
+        raise SystemExit(
+            "PLATFORM_ADMIN_PASSWORD must be set; refusing to seed a default admin password."
+        )
+
     conn = await asyncpg.connect(PLATFORM_DSN)
     try:
         existing = await conn.fetchval(

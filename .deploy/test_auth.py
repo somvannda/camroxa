@@ -14,7 +14,7 @@ async def main():
     from platform_api.database.session import get_session_factory
     from platform_api.services.auth_service import AuthService
 
-    pw = "Iamduke168!!@@##$$"
+    pw = os.environ["CAMXORA_ADMIN_PASSWORD"]
     factory = get_session_factory()
     async with factory() as session:
         svc = AuthService(session)

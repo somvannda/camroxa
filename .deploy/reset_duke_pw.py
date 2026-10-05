@@ -1,7 +1,7 @@
 ﻿import asyncio, os, bcrypt, asyncpg
 
 async def main():
-    pw = "Iamduke168!!@@##$$"
+    pw = os.environ["CAMXORA_ADMIN_PASSWORD"]
     dsn = open("/opt/camxora/repo/platform_api/.env").read()
     for line in dsn.splitlines():
         if line.startswith("PLATFORM_DATABASE_URL="):

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.request
 from pathlib import Path
@@ -68,8 +69,9 @@ PY
 echo ---
 curl -s -o /dev/null -w 'login:%{http_code}\n' -X POST http://127.0.0.1:8100/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"email":"duke@camxora.com","password":"Iamduke168!!@@##$$"}'
+  -d '{"email":"duke@camxora.com","password":"__CAMXORA_ADMIN_PASSWORD__"}'
 """
+    cmd = cmd.replace("__CAMXORA_ADMIN_PASSWORD__", os.environ.get("CAMXORA_ADMIN_PASSWORD", ""))
     _, stdout, _ = client.exec_command(cmd)
     print("\n=== SSH checks ===")
     print(stdout.read().decode("utf-8", errors="replace"))

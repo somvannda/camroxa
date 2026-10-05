@@ -8,12 +8,17 @@ import os
 import asyncpg
 import bcrypt
 
-ADMIN_EMAIL = "admin@mgfaceless.com"
-ADMIN_PASSWORD = "112233aB!!@@"
+ADMIN_EMAIL = os.environ.get("PLATFORM_ADMIN_EMAIL", "admin@mgfaceless.com")
+ADMIN_PASSWORD = os.environ.get("PLATFORM_ADMIN_PASSWORD", "")
 DATABASE_URL = "postgresql://postgres:postgres@localhost:5432/platform_db"
 
 
 async def main() -> None:
+    if not ADMIN_PASSWORD:
+        raise SystemExit(
+            "PLATFORM_ADMIN_PASSWORD must be set; refusing to reset to a default password."
+        )
+
     dsn = os.environ.get("PLATFORM_DATABASE_URL", DATABASE_URL)
     if dsn.startswith("postgresql+asyncpg://"):
         dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)

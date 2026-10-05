@@ -88,5 +88,10 @@ scripts/deploy/.venv/
 
 # Credit cutover snapshots (every user email + wallet)
 scripts/deploy/out/
+
+# Throwaway production/sandbox diagnostics (never commit)
+scripts/deploy/_diag_*.py
+scripts/deploy/_probe_*.py
+scripts/deploy/_upload_sample_packs_payload.json
 # Generated image output cache (never commit)
 image_output_cache/

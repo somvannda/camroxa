@@ -1,6 +1,6 @@
-﻿import asyncio, bcrypt, asyncpg
+﻿import asyncio, bcrypt, asyncpg, os
 
-PW = "Iamduke168!!@@##$$"
+PW = os.environ["CAMXORA_ADMIN_PASSWORD"]
 
 async def main():
     import os

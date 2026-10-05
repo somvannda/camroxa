@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.request
@@ -73,7 +74,7 @@ def main() -> int:
     login_status, login_body = https_json(
         "POST",
         "https://api.sandbox.camxora.com/api/v1/auth/login",
-        {"email": "duke@camxora.com", "password": "Iamduke168!!@@##$$"},
+        {"email": os.environ.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com"), "password": os.environ["CAMXORA_ADMIN_PASSWORD"]},
     )
     print("login:", login_status, login_body[:200])
     token = json.loads(login_body).get("access_token") if login_status == 200 else None

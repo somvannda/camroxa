@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import textwrap
 from pathlib import Path
@@ -13,8 +14,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deploy import ensure_deploy_key, load_secrets, ssh_connect  # noqa: E402
 
-PASSWORD = "Iamduke168!!@@##$$"
-EMAIL = "duke@camxora.com"
+PASSWORD = os.environ["CAMXORA_ADMIN_PASSWORD"]
+EMAIL = os.environ.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com")
 
 REMOTE_PY = textwrap.dedent(
     '''

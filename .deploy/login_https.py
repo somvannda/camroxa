@@ -1,5 +1,8 @@
-﻿import json, urllib.request
-payload = {"email": "duke@camxora.com", "password": "Iamduke168!!@@##$$"}
+﻿import json, os, urllib.request
+payload = {
+    "email": os.environ.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com"),
+    "password": os.environ["CAMXORA_ADMIN_PASSWORD"],
+}
 data = json.dumps(payload).encode()
 req = urllib.request.Request(
     "https://api.sandbox.camxora.com/api/v1/auth/login",

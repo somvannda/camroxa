@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import urllib.error
 import urllib.parse
@@ -10,8 +11,8 @@ import urllib.request
 from typing import Any
 
 API = "https://api.sandbox.camxora.com"
-ADMIN_EMAIL = "duke@camxora.com"
-ADMIN_PASSWORD = "Iamduke168!!@@##$$"
+ADMIN_EMAIL = os.environ.get("CAMXORA_ADMIN_EMAIL", "duke@camxora.com")
+ADMIN_PASSWORD = os.environ["CAMXORA_ADMIN_PASSWORD"]
 
 WATCH = (
     "kongsomvannda1987@gmail.com",
