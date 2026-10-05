@@ -6,6 +6,12 @@ import sys
 import time
 from pathlib import Path
 from deploy import ensure_deploy_key, ensure_paramiko, load_production_secrets, ssh_connect, upload_source
+from deploy_guards import (
+    acquire_remote_lock,
+    enforce_deploy_gate,
+    post_deploy_record,
+    release_remote_lock,
+)
 
 REMOTE_SCRIPT = Path(__file__).resolve().parent / "camxora-production-remote.sh"
 NGINX_CONF = Path(__file__).resolve().parent / "nginx-camxora-production.conf"
@@ -54,9 +60,16 @@ def main() -> int:
         print("PRODUCTION_VPS_HOST or VPS_HOST is required in secrets.env"); return 1
     if not REMOTE_SCRIPT.is_file():
         print(f"Missing {REMOTE_SCRIPT}"); return 1
+    gate = enforce_deploy_gate()
     client = ssh_connect(host, user, Path(custom_key) if custom_key else ensure_deploy_key(), password)
-    try: code = upload_and_run(client, secrets)
-    finally: client.close()
+    lock = acquire_remote_lock(client)
+    try:
+        code = upload_and_run(client, secrets)
+        if code == 0:
+            post_deploy_record(client, gate, target="production", script=Path(__file__).name)
+    finally:
+        release_remote_lock(client, lock)
+        client.close()
     if code == 0:
         print("\nProduction deploy finished successfully.")
         print("  API:    https://api.camxora.com/health\n  Site:   https://camxora.com\n  Portal: https://app.camxora.com\n  Admin:  https://admin.camxora.com\n  Music:  https://music.camxora.com")
