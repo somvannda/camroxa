@@ -92,11 +92,37 @@ export default function PaymentsPage() {
     }
   }
 
+  async function exportCsv() {
+    const p = new URLSearchParams({ format: "csv" });
+    if (status) p.set("status", status);
+    if (email) p.set("email", email);
+    try {
+      const res = await fetch(`/backend/admin/payments?${p.toString()}`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "payments.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Payments"
         description="Credit-pack purchases and their provider status"
+        actions={
+          <Button variant="secondary" onClick={exportCsv}>
+            Export CSV
+          </Button>
+        }
       />
 
       <form onSubmit={applySearch} className="flex flex-wrap items-end gap-2">

@@ -6553,6 +6553,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { page, pageSize, offset: (page - 1) * pageSize };
   }
 
+  /** CSV cell: quote when needed and neutralize spreadsheet formula injection. */
+  function csvCell(value: unknown): string {
+    let s = value === null || value === undefined ? "" : String(value);
+    if (/^[=+\-@\t\r]/.test(s)) s = `'${s}`;
+    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  }
+
   app.get("/admin/payments", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
     const q = (req.query ?? {}) as {
@@ -6561,6 +6568,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       status?: string;
       provider?: string;
       email?: string;
+      format?: string;
     };
     const { page, pageSize, offset } = parsePage(q);
     const filters: string[] = [];
@@ -6578,6 +6586,37 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       filters.push(`lower(u.email) LIKE $${params.length}`);
     }
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    if (q.format === "csv") {
+      const all = await query<Record<string, unknown>>(
+        `SELECT pt.created_at, u.email, pt.provider, pt.credit_amount, pt.currency, pt.amount,
+                pt.status, pt.provider_payment_id, pt.gateway_payment_id, pt.paid_at
+         FROM payment_transactions pt JOIN users u ON u.id = pt.user_id
+         ${where} ORDER BY pt.created_at DESC LIMIT 10000`,
+        params,
+      );
+      const lines = [
+        "created_at,email,provider,credits,currency,amount,status,provider_payment_id,gateway_payment_id,paid_at",
+        ...all.map((r) =>
+          [
+            r.created_at,
+            r.email,
+            r.provider,
+            r.credit_amount,
+            r.currency,
+            r.amount,
+            r.status,
+            r.provider_payment_id,
+            r.gateway_payment_id,
+            r.paid_at,
+          ]
+            .map(csvCell)
+            .join(","),
+        ),
+      ];
+      reply.header("content-type", "text/csv; charset=utf-8");
+      reply.header("content-disposition", 'attachment; filename="payments.csv"');
+      return reply.send(lines.join("\n"));
+    }
     const total = await queryOne<{ n: string }>(
       `SELECT count(*)::text AS n FROM payment_transactions pt
        JOIN users u ON u.id = pt.user_id ${where}`,
@@ -6639,6 +6678,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       pageSize?: string;
       type?: string;
       email?: string;
+      format?: string;
     };
     const { page, pageSize, offset } = parsePage(q);
     const filters: string[] = [];
@@ -6652,6 +6692,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       filters.push(`lower(u.email) LIKE $${params.length}`);
     }
     const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    if (q.format === "csv") {
+      const all = await query<Record<string, unknown>>(
+        `SELECT ct.created_at, u.email, ct.amount, ct.type, ct.description, ct.job_id
+         FROM credit_transactions ct JOIN users u ON u.id = ct.user_id
+         ${where} ORDER BY ct.created_at DESC LIMIT 10000`,
+        params,
+      );
+      const lines = [
+        "created_at,email,amount,type,description,job_id",
+        ...all.map((r) =>
+          [r.created_at, r.email, r.amount, r.type, r.description, r.job_id]
+            .map(csvCell)
+            .join(","),
+        ),
+      ];
+      reply.header("content-type", "text/csv; charset=utf-8");
+      reply.header("content-disposition", 'attachment; filename="credit-ledger.csv"');
+      return reply.send(lines.join("\n"));
+    }
     const total = await queryOne<{ n: string }>(
       `SELECT count(*)::text AS n FROM credit_transactions ct
        JOIN users u ON u.id = ct.user_id ${where}`,

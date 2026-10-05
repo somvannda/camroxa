@@ -7,6 +7,7 @@ import { Badge, type BadgeTone } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
 import { Field, Input, Select } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
 import { dateTime, num } from "@/lib/format";
 
 interface LedgerRow {
@@ -36,6 +37,7 @@ const TYPE_TONES: Record<string, BadgeTone> = {
 const PAGE_SIZE = 25;
 
 export default function TransactionsPage() {
+  const toast = useToast();
   const [type, setType] = useState("");
   const [emailInput, setEmailInput] = useState("");
   const [email, setEmail] = useState("");
@@ -61,11 +63,37 @@ export default function TransactionsPage() {
     setEmail(emailInput.trim());
   }
 
+  async function exportCsv() {
+    const p = new URLSearchParams({ format: "csv" });
+    if (type) p.set("type", type);
+    if (email) p.set("email", email);
+    try {
+      const res = await fetch(`/backend/admin/transactions?${p.toString()}`, {
+        credentials: "same-origin",
+      });
+      if (!res.ok) throw new Error(`Export failed (${res.status})`);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "credit-ledger.csv";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Export failed");
+    }
+  }
+
   return (
     <div className="space-y-6">
       <PageHeader
         title="Credit Ledger"
         description="Every credit movement — purchases, adjustments, spend and refunds"
+        actions={
+          <Button variant="secondary" onClick={exportCsv}>
+            Export CSV
+          </Button>
+        }
       />
 
       <form onSubmit={applySearch} className="flex flex-wrap items-end gap-2">
