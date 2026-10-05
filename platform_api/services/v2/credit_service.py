@@ -10,7 +10,6 @@ from typing import Any, Optional
 
 from platform_api.models.products import (
     MUSIC_WEB_FREE_RESET_PERIOD_DEFAULT,
-    MUSIC_WEB_FREE_RESET_PERIOD_KEY,
 )
 from platform_api.services.billing_calendar import (
     billing_month_start,
@@ -103,18 +102,33 @@ class CreditService:
             return 0
 
     async def free_reset_period(self) -> str:
-        """Free music-web allowance refill cadence: 'daily' or 'monthly'.
+        """Free music-web allowance refill cadence, from the active Free plan row.
 
-        Reads system_settings ``music_web_free_reset_period`` (default 'daily').
-        When 'monthly', the free pool refills once per billing month instead of
-        every billing day, and unused credits expire at the month boundary.
+        Cadence is exclusive on the plan: ``daily_credits > 0`` -> ``'daily'``,
+        otherwise ``monthly_credits > 0`` -> ``'monthly'``. The retired
+        ``music_web_free_reset_period`` setting is no longer read — the plan row
+        is the single source of truth.
         """
-        row = await self._db.fetch_one(
-            "SELECT value FROM system_settings WHERE key = $1",
-            MUSIC_WEB_FREE_RESET_PERIOD_KEY,
+        plan_row = await self._db.fetch_one(
+            """
+            SELECT daily_credits, monthly_credits
+            FROM plans
+            WHERE lower(name) = 'free'
+              AND is_active = true
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """
         )
-        raw = str(_row_value(row, "value") or "").strip().lower()
-        return "monthly" if raw == "monthly" else MUSIC_WEB_FREE_RESET_PERIOD_DEFAULT
+        try:
+            daily = int(_row_value(plan_row, "daily_credits") or 0)
+            monthly = int(_row_value(plan_row, "monthly_credits") or 0)
+        except (TypeError, ValueError):
+            return MUSIC_WEB_FREE_RESET_PERIOD_DEFAULT
+        if daily > 0:
+            return "daily"
+        if monthly > 0:
+            return "monthly"
+        return MUSIC_WEB_FREE_RESET_PERIOD_DEFAULT
 
     async def _period_anchor_date(self) -> date:
         """Usage bucket key: billing day, or month start when cadence is monthly."""
