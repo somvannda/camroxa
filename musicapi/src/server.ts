@@ -8841,6 +8841,51 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     });
   }
 
+  /**
+   * Reverse a settled ChmabaPay payment: claw back the granted credits and mark
+   * the transaction refunded. The guarded UPDATE makes it idempotent, and the
+   * debit is clamped at zero — if the user already spent the credits, the
+   * balance is recovered as far as it goes and the platform absorbs the rest.
+   */
+  async function reverseChmabaPayment(txId: string): Promise<boolean> {
+    return withTransaction(async (tq) => {
+      const claimed = await tq<{ user_id: string; credit_amount: number; api_key_target_id: string | null }>(
+        `UPDATE payment_transactions SET status = 'refunded'
+         WHERE id = $1 AND provider = 'chmaba' AND status = 'paid'
+         RETURNING user_id, credit_amount, api_key_target_id`,
+        [txId],
+      );
+      if (claimed.length === 0) return false;
+      const row = claimed[0];
+      const amount = Math.max(0, Number(row.credit_amount) || 0);
+      if (amount > 0) {
+        if (row.api_key_target_id) {
+          await tq(
+            "UPDATE api_keys SET credits = GREATEST(0, credits - $1) WHERE id = $2 AND user_id = $3",
+            [amount, row.api_key_target_id, row.user_id],
+          );
+        } else {
+          // Mirrors creditUser's default: the oldest active key received the grant.
+          const keys = await tq<{ id: string }>(
+            "SELECT id FROM api_keys WHERE user_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1",
+            [row.user_id],
+          );
+          if (keys.length > 0) {
+            await tq(
+              "UPDATE api_keys SET credits = GREATEST(0, credits - $1) WHERE id = $2",
+              [amount, keys[0].id],
+            );
+          }
+        }
+        await tq(
+          "INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, 'refund', $3)",
+          [row.user_id, -amount, `ChmabaPay reversal (ref: ${txId})`],
+        );
+      }
+      return true;
+    });
+  }
+
   // POST /payments/chmaba/create — mint a KHQR payment for a pack. The billing
   // modal renders the returned code inline via `qr_url`.
   app.post("/payments/chmaba/create", async (req, reply) => {
@@ -8859,6 +8904,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       [packId],
     );
     if (!pack) return reply.code(404).send({ error: "Pack not found or unavailable." });
+
+    // The optional target key must belong to the caller; otherwise the settled
+    // credits would no-op (creditUser guards user_id) and the top-up be lost.
+    if (targetKeyId) {
+      if (!UUID_RE.test(targetKeyId)) {
+        return reply.code(400).send({ error: "api_key_id is invalid." });
+      }
+      const ownedKey = await queryOne<{ id: string }>(
+        "SELECT id FROM api_keys WHERE id = $1 AND user_id = $2",
+        [targetKeyId, u.id],
+      );
+      if (!ownedKey) {
+        return reply.code(400).send({ error: "api_key_id does not belong to you." });
+      }
+    }
 
     const amount = Number(pack.price);
     if (!Number.isFinite(amount) || amount <= 0) {
@@ -9039,10 +9099,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     if (event === "payment.reversed") {
       if (referenceId && UUID_RE.test(referenceId)) {
-        await query(
-          "UPDATE payment_transactions SET status = 'refunded' WHERE id = $1 AND provider = 'chmaba' AND status = 'paid'",
-          [referenceId],
-        );
+        await reverseChmabaPayment(referenceId);
       }
       return { ok: true };
     }
