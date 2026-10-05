@@ -20,7 +20,12 @@ from deploy import (  # noqa: E402
     ssh_connect,
 )
 from consistency import check_consistency  # noqa: E402
-from deploy_guards import enforce_deploy_gate, post_deploy_record  # noqa: E402
+from deploy_guards import (  # noqa: E402
+    acquire_remote_lock,
+    enforce_deploy_gate,
+    post_deploy_record,
+    release_remote_lock,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYSTEMD_DIR = REPO_ROOT / "scripts" / "deploy" / "systemd"
@@ -40,30 +45,32 @@ def main() -> int:
     print(f"Target production host: {host}")
     gate = enforce_deploy_gate()
     client = ssh_connect(host, user, ensure_deploy_key(), password)
-    check_consistency(client)
+    lock = acquire_remote_lock(client)
+    try:
+        check_consistency(client)
 
-    archive = build_source_tarball()
-    units_archive = Path(tempfile.mkdtemp(prefix="camxora-units-")) / "units.tar.gz"
-    with tarfile.open(units_archive, "w:gz") as tar:
-        for name in UNIT_NAMES:
-            path = SYSTEMD_DIR / name
-            tar.add(path, arcname=f"scripts/deploy/systemd/{name}")
+        archive = build_source_tarball()
+        units_archive = Path(tempfile.mkdtemp(prefix="camxora-units-")) / "units.tar.gz"
+        with tarfile.open(units_archive, "w:gz") as tar:
+            for name in UNIT_NAMES:
+                path = SYSTEMD_DIR / name
+                tar.add(path, arcname=f"scripts/deploy/systemd/{name}")
 
-    sftp = client.open_sftp()
-    with sftp.file("/tmp/camxora-src.tar.gz", "wb") as remote_file:
-        remote_file.write(archive.read_bytes())
-    with sftp.file("/tmp/camxora-worker-units.tar.gz", "wb") as remote_file:
-        remote_file.write(units_archive.read_bytes())
-    sftp.close()
+        sftp = client.open_sftp()
+        with sftp.file("/tmp/camxora-src.tar.gz", "wb") as remote_file:
+            remote_file.write(archive.read_bytes())
+        with sftp.file("/tmp/camxora-worker-units.tar.gz", "wb") as remote_file:
+            remote_file.write(units_archive.read_bytes())
+        sftp.close()
 
-    cmd = (
-        r"""
+        cmd = (
+            r"""
 set -e
 REPO=/opt/camxora/repo
 tar -xzf /tmp/camxora-src.tar.gz -C $REPO platform_api
 """
-        + PRUNE_LEFTOVER_ALEMBIC_REMOTE
-        + r"""
+            + PRUNE_LEFTOVER_ALEMBIC_REMOTE
+            + r"""
 mkdir -p $REPO/scripts/deploy/systemd
 tar -xzf /tmp/camxora-worker-units.tar.gz -C $REPO
 chown -R camxora:camxora $REPO/platform_api $REPO/scripts/deploy/systemd
@@ -86,19 +93,21 @@ systemctl list-units 'camxora-worker*' --type=service --state=running --no-pager
 grep -E 'CAMXORA_WORKER_NAME' /etc/systemd/system/camxora-worker-images@.service || true
 echo API_SYNC_DONE
 """
-    )
-    _, stdout, stderr = client.exec_command(cmd, get_pty=True)
-    out = stdout.read().decode("utf-8", errors="replace")
-    err = stderr.read().decode("utf-8", errors="replace")
-    print(out)
-    if err.strip():
-        print(err)
-    code = stdout.channel.recv_exit_status()
-    if code == 0:
-        post_deploy_record(
-            client, gate, target="production", script=Path(__file__).name
         )
-    client.close()
+        _, stdout, stderr = client.exec_command(cmd, get_pty=True)
+        out = stdout.read().decode("utf-8", errors="replace")
+        err = stderr.read().decode("utf-8", errors="replace")
+        print(out)
+        if err.strip():
+            print(err)
+        code = stdout.channel.recv_exit_status()
+        if code == 0:
+            post_deploy_record(
+                client, gate, target="production", script=Path(__file__).name
+            )
+    finally:
+        release_remote_lock(client, lock)
+        client.close()
     return code
 
 

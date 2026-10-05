@@ -20,6 +20,7 @@ from deploy import (  # noqa: E402
     ssh_connect,
 )
 from consistency import check_consistency  # noqa: E402
+from deploy_guards import build_gate, post_deploy_record  # noqa: E402
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SYSTEMD_DIR = REPO_ROOT / "scripts" / "deploy" / "systemd"
@@ -34,6 +35,9 @@ def main() -> int:
     secrets = load_sandbox_secrets()
     host, user, password = resolve_sandbox_ssh(secrets)
     print(f"Target sandbox host: {host}")
+    # Sandbox is for testing WIP branches, so we do not enforce the clean/merged
+    # gate here — but we still record what was deployed and warn on lost invariants.
+    gate = build_gate()
     client = ssh_connect(host, user, ensure_deploy_key(), password)
     check_consistency(client)
 
@@ -102,6 +106,14 @@ echo API_SYNC_DONE
     if err.strip():
         print(err)
     code = stdout.channel.recv_exit_status()
+    if code == 0:
+        post_deploy_record(
+            client,
+            gate,
+            target="sandbox",
+            script=Path(__file__).name,
+            invariants_fatal=False,
+        )
     client.close()
     return code
 

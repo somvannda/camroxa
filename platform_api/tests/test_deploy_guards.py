@@ -280,3 +280,107 @@ def test_post_deploy_record_writes_marker_after_verify() -> None:
     )
     assert marker["invariants"] == "ok"
     assert client.sftp.data is not None
+
+
+# ---------------------------------------------------------------------------
+# Deploy lock
+# ---------------------------------------------------------------------------
+
+
+def test_build_gate_does_not_enforce() -> None:
+    module = _load()
+    gate = module.build_gate(Path("."), runner=_fake_git(porcelain=" M x.py\n"))
+    assert gate.state.dirty is True  # recorded, not rejected
+
+
+def test_lock_scripts_contain_expected_guards() -> None:
+    module = _load()
+    acquire = module.build_acquire_lock_script("/opt/camxora/repo", "tok", "actor", 60)
+    assert "/opt/camxora/repo/.deploy.lock" in acquire
+    assert "noclobber" in acquire
+    assert "tok" in acquire and "actor" in acquire
+    assert "exit 3" in acquire
+
+    release = module.build_release_lock_script("/opt/camxora/repo", "tok")
+    assert "rm -f" in release and "tok" in release
+
+
+def test_deploy_lock_path() -> None:
+    module = _load()
+    assert module.deploy_lock_path("/opt/camxora/repo/") == "/opt/camxora/repo/.deploy.lock"
+
+
+def test_acquire_remote_lock_ok_and_refuse(monkeypatch) -> None:
+    module = _load()
+    monkeypatch.delenv(module.ALLOW_CONCURRENT_ENV, raising=False)
+
+    lock = module.acquire_remote_lock(
+        object(), check_runner=lambda _c, _s: (0, "DEPLOY_LOCK_ACQUIRED")
+    )
+    assert lock.acquired is True
+
+    try:
+        module.acquire_remote_lock(
+            object(), check_runner=lambda _c, _s: (3, "DEPLOY_LOCKED\nholder=x")
+        )
+    except SystemExit:
+        pass
+    else:  # pragma: no cover
+        raise AssertionError("expected SystemExit when the deploy lock is held")
+
+    monkeypatch.setenv(module.ALLOW_CONCURRENT_ENV, "1")
+    overridden = module.acquire_remote_lock(
+        object(), check_runner=lambda _c, _s: (3, "DEPLOY_LOCKED")
+    )
+    assert overridden.acquired is False
+
+
+def test_release_remote_lock_noop_when_not_owner() -> None:
+    module = _load()
+    calls: list[str] = []
+
+    def _runner(_client, script):
+        calls.append(script)
+        return (0, "DEPLOY_LOCK_RELEASED")
+
+    lock = module.DeployLock(token="t", acquired=False)
+    module.release_remote_lock(object(), lock, check_runner=_runner)
+    assert calls == []  # no-op when we do not own the lock
+
+    module.release_remote_lock(
+        object(), module.DeployLock(token="t", acquired=True), check_runner=_runner
+    )
+    assert len(calls) == 1
+
+
+# ---------------------------------------------------------------------------
+# Non-fatal invariants (sandbox)
+# ---------------------------------------------------------------------------
+
+
+def test_enforce_invariants_non_fatal_returns_failed() -> None:
+    module = _load()
+    assert (
+        module.enforce_invariants(
+            object(), check_runner=lambda _c, _s: (1, "INVARIANT FAIL"), fatal=False
+        )
+        == "failed"
+    )
+
+
+def test_post_deploy_record_sandbox_non_fatal() -> None:
+    module = _load()
+    state = module.RepoState(commit="e" * 40, short="eeeeeee", branch="wip")
+    gate = module.DeployGate(state=state, base_ref="origin/main", merged=False)
+    client = _FakeClient()
+    marker = module.post_deploy_record(
+        client,
+        gate,
+        target="sandbox",
+        script="sync_sandbox.py",
+        check_runner=lambda _c, _s: (1, "INVARIANT FAIL"),
+        invariants_fatal=False,
+    )
+    assert marker["invariants"] == "failed"
+    assert marker["target"] == "sandbox"
+    assert client.sftp.data is not None

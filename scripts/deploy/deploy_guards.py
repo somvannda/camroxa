@@ -25,7 +25,8 @@ import json
 import os
 import shlex
 import subprocess
-from dataclasses import dataclass, field
+import uuid
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Sequence
@@ -34,9 +35,12 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_BASE_REF = "origin/main"
 DEFAULT_REMOTE_REPO = "/opt/camxora/repo"
 MARKER_FILENAME = ".deployed.json"
+LOCK_FILENAME = ".deploy.lock"
+LOCK_TTL_SECONDS = 3600
 
 ALLOW_DIRTY_ENV = "CAMXORA_ALLOW_DIRTY_DEPLOY"
 ALLOW_UNMERGED_ENV = "CAMXORA_ALLOW_UNMERGED_DEPLOY"
+ALLOW_CONCURRENT_ENV = "CAMXORA_ALLOW_CONCURRENT_DEPLOY"
 BASE_REF_ENV = "CAMXORA_DEPLOY_BASE_REF"
 ACTOR_ENV = "CAMXORA_DEPLOY_ACTOR"
 
@@ -193,6 +197,23 @@ def _env_base_ref() -> str:
     return os.environ.get(BASE_REF_ENV, "").strip() or DEFAULT_BASE_REF
 
 
+def build_gate(
+    repo_root: Path = REPO_ROOT,
+    *,
+    base_ref: str | None = None,
+    runner: GitRunner | None = None,
+) -> DeployGate:
+    """Collect git state + merge status without enforcing any rule.
+
+    Used by environments that are allowed to deploy WIP branches (e.g. sandbox)
+    but still want the deployed marker recorded.
+    """
+    resolved_base = base_ref or _env_base_ref()
+    state = collect_repo_state(repo_root, runner=runner)
+    merged = is_ancestor(repo_root, state.commit, resolved_base, runner=runner)
+    return DeployGate(state=state, base_ref=resolved_base, merged=merged)
+
+
 def enforce_deploy_gate(
     repo_root: Path = REPO_ROOT,
     *,
@@ -202,16 +223,15 @@ def enforce_deploy_gate(
     runner: GitRunner | None = None,
 ) -> DeployGate:
     """Validate this worktree can be deployed. Raises ``SystemExit`` otherwise."""
-    base_ref = base_ref or _env_base_ref()
     allow_dirty = allow_dirty or _env_flag(ALLOW_DIRTY_ENV)
     allow_unmerged = allow_unmerged or _env_flag(ALLOW_UNMERGED_ENV)
 
-    state = collect_repo_state(repo_root, runner=runner)
-    merged = is_ancestor(repo_root, state.commit, base_ref, runner=runner)
+    gate = build_gate(repo_root, base_ref=base_ref, runner=runner)
+    state = gate.state
 
     violations = deploy_gate_violations(
         state,
-        is_merged=merged,
+        is_merged=gate.merged,
         allow_dirty=allow_dirty,
         allow_unmerged=allow_unmerged,
     )
@@ -227,12 +247,12 @@ def enforce_deploy_gate(
     print(
         f"[deploy-guard] worktree clean; HEAD {state.short}"
         f"{' (' + state.tags[0] + ')' if state.tagged else ''}"
-        f" merged to {base_ref}: {merged}"
+        f" merged to {gate.base_ref}: {gate.merged}"
     )
     return DeployGate(
         state=state,
-        base_ref=base_ref,
-        merged=merged,
+        base_ref=gate.base_ref,
+        merged=gate.merged,
         allow_dirty=allow_dirty,
         allow_unmerged=allow_unmerged,
     )
@@ -273,8 +293,7 @@ def build_marker(
         },
         "invariants": invariants,
         "deployed_at": datetime.now(timezone.utc).isoformat(),
-        "deployed_by": os.environ.get(ACTOR_ENV, "").strip()
-        or (getpass.getuser() or "unknown"),
+        "deployed_by": _deploy_actor(),
         "script": script,
     }
     if extra:
@@ -301,6 +320,130 @@ def write_remote_marker(
         sftp.close()
     client.exec_command(f"chown {shlex.quote(owner)} {shlex.quote(path)}")
     return path
+
+
+# ---------------------------------------------------------------------------
+# Concurrent-deploy lock (server-side, TTL so a crashed deploy cannot wedge it)
+# ---------------------------------------------------------------------------
+
+
+def _deploy_actor() -> str:
+    return os.environ.get(ACTOR_ENV, "").strip() or (getpass.getuser() or "unknown")
+
+
+@dataclass(frozen=True)
+class DeployLock:
+    token: str
+    acquired: bool
+    detail: str = ""
+
+
+def deploy_lock_path(remote_repo: str = DEFAULT_REMOTE_REPO) -> str:
+    return f"{str(remote_repo).rstrip('/')}/{LOCK_FILENAME}"
+
+
+def build_acquire_lock_script(
+    remote_repo: str = DEFAULT_REMOTE_REPO,
+    token: str = "",
+    actor: str = "",
+    ttl_seconds: int = LOCK_TTL_SECONDS,
+) -> str:
+    """Bash that atomically acquires the deploy lock, or exits non-zero if held."""
+    lock = shlex.quote(deploy_lock_path(remote_repo))
+    return (
+        "set -u\n"
+        f"LOCK={lock}\n"
+        f"TOKEN={shlex.quote(token)}\n"
+        f"ACTOR={shlex.quote(actor)}\n"
+        f"TTL={int(ttl_seconds)}\n"
+        'NOW=$(date +%s)\n'
+        'if [ -f "$LOCK" ]; then\n'
+        '  PREV=$(head -n 1 "$LOCK" 2>/dev/null | tr -cd "0-9")\n'
+        '  [ -n "$PREV" ] || PREV=0\n'
+        "  AGE=$(( NOW - PREV ))\n"
+        '  if [ "$AGE" -lt "$TTL" ]; then\n'
+        '    echo "DEPLOY_LOCKED"\n'
+        '    echo "holder=$(sed -n \'2p\' "$LOCK" 2>/dev/null) '
+        'actor=$(sed -n \'3p\' "$LOCK" 2>/dev/null) age=${AGE}s"\n'
+        "    exit 3\n"
+        "  fi\n"
+        '  echo "DEPLOY_LOCK_STALE age=${AGE}s (reclaiming)"\n'
+        "fi\n"
+        'if ( set -o noclobber; printf "%s\\n%s\\n%s\\n" "$NOW" "$TOKEN" "$ACTOR" > "$LOCK" ) 2>/dev/null; then\n'
+        '  echo "DEPLOY_LOCK_ACQUIRED"\n'
+        "  exit 0\n"
+        "fi\n"
+        'echo "DEPLOY_LOCKED (race)"\n'
+        "exit 3\n"
+    )
+
+
+def build_release_lock_script(
+    remote_repo: str = DEFAULT_REMOTE_REPO, token: str = ""
+) -> str:
+    """Bash that releases the deploy lock only if we still own it."""
+    lock = shlex.quote(deploy_lock_path(remote_repo))
+    return (
+        "set -u\n"
+        f"LOCK={lock}\n"
+        f"TOKEN={shlex.quote(token)}\n"
+        'if [ -f "$LOCK" ] && [ "$(sed -n \'2p\' "$LOCK" 2>/dev/null)" = "$TOKEN" ]; then\n'
+        '  rm -f "$LOCK"\n'
+        '  echo "DEPLOY_LOCK_RELEASED"\n'
+        "  exit 0\n"
+        "fi\n"
+        'echo "DEPLOY_LOCK_NOT_OWNER"\n'
+        "exit 0\n"
+    )
+
+
+def acquire_remote_lock(
+    client: Any,
+    *,
+    remote_repo: str = DEFAULT_REMOTE_REPO,
+    actor: str | None = None,
+    ttl_seconds: int = LOCK_TTL_SECONDS,
+    check_runner: CheckRunner | None = None,
+) -> DeployLock:
+    """Acquire the server deploy lock; raise unless overridden to allow concurrency."""
+    allow_concurrent = _env_flag(ALLOW_CONCURRENT_ENV)
+    token = uuid.uuid4().hex
+    actor = actor or _deploy_actor()
+    run = check_runner or _exec_script
+    code, out = run(
+        client, build_acquire_lock_script(remote_repo, token, actor, ttl_seconds)
+    )
+    text = out.strip()
+    if code == 0:
+        print(f"[deploy-guard] acquired deploy lock ({deploy_lock_path(remote_repo)})")
+        return DeployLock(token=token, acquired=True, detail=text)
+    if not allow_concurrent:
+        raise SystemExit(
+            "Refusing deploy — another deploy is in progress (lock "
+            f"{deploy_lock_path(remote_repo)}):\n  "
+            + text.replace("\n", "\n  ")
+            + f"\n\nWait for it to finish, or set {ALLOW_CONCURRENT_ENV}=1 to override."
+        )
+    print(
+        "[deploy-guard] WARNING: concurrent deploys allowed — lock is held:\n  "
+        + text.replace("\n", "\n  ")
+    )
+    return DeployLock(token=token, acquired=False, detail=text)
+
+
+def release_remote_lock(
+    client: Any,
+    lock: DeployLock,
+    *,
+    remote_repo: str = DEFAULT_REMOTE_REPO,
+    check_runner: CheckRunner | None = None,
+) -> None:
+    """Release the deploy lock (no-op when we do not own it)."""
+    if not lock.acquired:
+        return
+    run = check_runner or _exec_script
+    _code, out = run(client, build_release_lock_script(remote_repo, lock.token))
+    print(f"[deploy-guard] {out.strip() or 'deploy lock released'}")
 
 
 # ---------------------------------------------------------------------------
@@ -403,17 +546,26 @@ def enforce_invariants(
     *,
     invariants: Sequence[Invariant] = INVARIANTS,
     check_runner: CheckRunner | None = None,
+    fatal: bool = True,
 ) -> str:
-    """Run invariants and raise ``SystemExit`` when any critical path is missing."""
+    """Run invariants and raise ``SystemExit`` when any critical path is missing.
+
+    ``fatal=False`` (used by sandbox, where WIP branches are expected) prints the
+    failures but returns ``"failed"`` instead of aborting.
+    """
     ok, out = run_invariants(
         client, remote_repo, invariants=invariants, check_runner=check_runner
     )
     print(out.strip() or "[deploy-guard] no invariant output")
     if not ok:
-        raise SystemExit(
-            "Refusing to finish deploy: runtime invariants failed (a critical path was "
-            "removed or reverted). Inspect the INVARIANT FAIL lines above."
+        message = (
+            "runtime invariants failed (a critical path was removed or reverted) — "
+            "inspect the INVARIANT FAIL lines above"
         )
+        if fatal:
+            raise SystemExit("Refusing to finish deploy: " + message + ".")
+        print("[deploy-guard] WARNING: " + message)
+        return "failed"
     return "ok"
 
 
@@ -431,6 +583,7 @@ def post_deploy_record(
     remote_repo: str = DEFAULT_REMOTE_REPO,
     invariants: Sequence[Invariant] = INVARIANTS,
     verify_invariants: bool = True,
+    invariants_fatal: bool = True,
     check_runner: CheckRunner | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
@@ -438,7 +591,11 @@ def post_deploy_record(
     status = "skipped"
     if verify_invariants:
         status = enforce_invariants(
-            client, remote_repo, invariants=invariants, check_runner=check_runner
+            client,
+            remote_repo,
+            invariants=invariants,
+            check_runner=check_runner,
+            fatal=invariants_fatal,
         )
     marker = build_marker(
         gate, target=target, script=script, invariants=status, extra=extra
