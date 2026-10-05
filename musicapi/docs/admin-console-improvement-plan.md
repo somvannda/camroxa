@@ -386,6 +386,10 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
 | `admin/security-headers` | `admin/ui-foundation` | Phase 6 — security headers + CSP |
 | `admin/dashboard-alerts` | `admin/ui-foundation` | Phase 5 — dashboard alerts |
 | `admin/analytics-errors` | `admin/ui-foundation` | Phase 5 — analytics top failures |
+| `admin/login-a11y` | `admin/ui-foundation` | Login label/input association |
+| `admin/keys-pagination` | `admin/ui-foundation` | Phase 3 — paginated / searchable API keys |
+| `admin/robots` | `admin/ui-foundation` | `robots.txt` disallow |
+| `admin/readme` | `admin/ui-foundation` | Real `web-admin` README |
 
 ### Completed
 
@@ -397,8 +401,8 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
   (Analytics keeps its bespoke charts by design).
 - **Phase 2 (partial)** — `window.prompt`/`window.confirm` replaced by dialogs;
   toasts everywhere.
-- **Phase 3 (partial)** — server-side pagination + filters for logs, audit and
-  users; migration `0029` indexes.
+- **Phase 3** — server-side pagination + filters for logs, audit, users and API
+  keys; migration `0029` indexes.
 - **Phase 4** — Payments, Credit Ledger, Jobs, System Health, User detail, Admin
   RBAC.
 - **Phase 5 (partial)** — dashboard alerts; analytics top-failure breakdown.
@@ -406,7 +410,7 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
 
 ### Not done
 
-- Keys pagination; URL-state persistence for filters.
+- URL-state persistence for filters.
 - Admin 2FA; CSRF token; automated tests + CI wiring.
 - Local end-to-end run — blocked by the local DB vs. repo **migration-filename
   mismatch** (local `0025–0028` differ from this branch) — and the live browser
