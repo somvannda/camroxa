@@ -362,3 +362,59 @@ Pure refactor, no behavior change.
 - Pool/routing: `musicapi/src/pool.ts`
 - Schema: `musicapi/migrations/0001–0028`
 - Lint: `cd musicapi/web-admin; npm run lint`
+
+---
+
+## 10. Progress & branch map (2026-10-05)
+
+Implementation tracks this plan across several local branches. Suggested review /
+merge order (rebase the stacked branches onto `main` after the foundation lands):
+
+| Branch | Base | Scope |
+|---|---|---|
+| `docs/musicapi-admin-console-plan` | `main` | this document |
+| `admin/ui-foundation` | `main` | Phase 0 + Phase 1 |
+| `admin/auth-guards` | `main` | Phase 3 security fix (`requireAdmin` status; last-admin/self guards) |
+| `admin/perf-indexes` | `main` | Phase 3 — migration `0029_admin_perf_indexes.sql` |
+| `admin/payments-ledger` | `admin/ui-foundation` | Phase 4 — Payments + Credit Ledger |
+| `admin/keys-management` | `admin/payments-ledger` | Phase 3 — key enable/disable/delete |
+| `admin/system-health` | `admin/ui-foundation` | Phase 4 — System Health + Jobs |
+| `admin/user-detail` | `admin/ui-foundation` | Phase 4 — user drill-down |
+| `admin/pagination` | `admin/ui-foundation` | Phase 3 — paginated logs + audit |
+| `admin/users-pagination` | `admin/ui-foundation` | Phase 3 — paginated users |
+| `admin/rbac` | `admin/ui-foundation` | Phase 4 — administrator management |
+| `admin/security-headers` | `admin/ui-foundation` | Phase 6 — security headers + CSP |
+| `admin/dashboard-alerts` | `admin/ui-foundation` | Phase 5 — dashboard alerts |
+| `admin/analytics-errors` | `admin/ui-foundation` | Phase 5 — analytics top failures |
+
+### Completed
+
+- **Phase 0** — lint/build hygiene (all 9 errors + 4 warnings fixed), route
+  boundaries, `noindex`.
+- **Phase 1** — UI kit (`Button`, `Card`/`StatCard`, `Badge`, `Field` +
+  `Input`/`Select`/`Textarea`, `Feedback`, `Modal`, `ConfirmDialog`, `Toast`),
+  `useResource`, `format.ts`, responsive `AppShell`; every page migrated
+  (Analytics keeps its bespoke charts by design).
+- **Phase 2 (partial)** — `window.prompt`/`window.confirm` replaced by dialogs;
+  toasts everywhere.
+- **Phase 3 (partial)** — server-side pagination + filters for logs, audit and
+  users; migration `0029` indexes.
+- **Phase 4** — Payments, Credit Ledger, Jobs, System Health, User detail, Admin
+  RBAC.
+- **Phase 5 (partial)** — dashboard alerts; analytics top-failure breakdown.
+- **Phase 6 (partial)** — baseline security headers + production CSP.
+
+### Not done
+
+- Keys pagination; URL-state persistence for filters.
+- Admin 2FA; CSRF token; automated tests + CI wiring.
+- Local end-to-end run — blocked by the local DB vs. repo **migration-filename
+  mismatch** (local `0025–0028` differ from this branch) — and the live browser
+  audit.
+
+### Branch strategy note
+
+Each feature branch touches shared files (`musicapi/src/server.ts`,
+`web-admin/components/AppShell.tsx`), so they must be merged sequentially with
+conflict resolution. Merge `admin/ui-foundation` first, then rebase the rest onto
+it (or onto `main` once the foundation lands).
