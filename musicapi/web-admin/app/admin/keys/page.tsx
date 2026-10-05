@@ -29,7 +29,6 @@ export default function KeysPage() {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
-    setLoading(true);
     apiFetch<AdminKey[]>("/admin/keys")
       .then(setKeys)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))

@@ -58,7 +58,6 @@ export default function AccountsPage() {
   const [savingRule, setSavingRule] = useState(false);
 
   function load() {
-    setLoading(true);
     apiFetch<{ accounts: Account[] }>("/admin/accounts")
       .then((r) => setAccounts(r.accounts))
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))

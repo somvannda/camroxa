@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { getUser, type AuthUser } from "@/lib/auth";
@@ -28,6 +29,9 @@ export default function Sidebar() {
   // hydration mismatch (server rendered null, client rendered the email).
   const [user, setUser] = useState<AuthUser | null>(null);
   useEffect(() => {
+    // localStorage is unavailable during SSR, so the profile is read after
+    // mount to avoid a hydration mismatch (server null vs client email).
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setUser(getUser());
   }, []);
 
@@ -43,7 +47,7 @@ export default function Sidebar() {
   return (
     <aside className="flex h-screen w-60 shrink-0 flex-col border-r border-[var(--border)] bg-black/20 p-4">
       <Link href="/admin" className="mb-6 flex items-center gap-2 px-2">
-        <img src="/camxora-logo.svg" alt="Camxora" className="h-7 w-7 rounded-lg" />
+        <Image src="/camxora-logo.svg" alt="Camxora" width={28} height={28} unoptimized className="h-7 w-7 rounded-lg" />
         <span className="font-bold">Camxora Admin</span>
       </Link>
 

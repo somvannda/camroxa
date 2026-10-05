@@ -29,7 +29,6 @@ export default function UsersPage() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
-    setLoading(true);
     apiFetch<User[]>("/admin/users")
       .then(setUsers)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))

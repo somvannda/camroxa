@@ -22,7 +22,6 @@ export default function AuditPage() {
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(() => {
-    setLoading(true);
     apiFetch<AuditEntry[]>("/admin/audit")
       .then(setEntries)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))

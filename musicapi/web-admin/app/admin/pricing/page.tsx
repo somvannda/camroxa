@@ -26,7 +26,6 @@ export default function PricingPage() {
   }
 
   function load() {
-    setLoading(true);
     apiFetch<PricingRow[]>("/admin/pricing")
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))

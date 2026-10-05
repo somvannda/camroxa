@@ -100,7 +100,6 @@ export default function SettingsPage() {
   const [integrationsNotice, setIntegrationsNotice] = useState("");
 
   const loadAlerts = useCallback(() => {
-    setChecking(true);
     apiFetch<AlertReport>("/admin/alerts")
       .then(setReport)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to evaluate alerts"))
@@ -108,7 +107,6 @@ export default function SettingsPage() {
   }, []);
 
   useEffect(() => {
-    setLoading(true);
     apiFetch<{ brand: BrandSettings; alerts: AlertSettings; integrations: IntegrationGroup[] }>("/admin/settings")
       .then((s) => {
         setBrand(s.brand);
@@ -413,7 +411,7 @@ export default function SettingsPage() {
                 {report ? `Checked ${new Date(report.checked_at).toLocaleString()}` : "Not checked yet"}
               </p>
             </div>
-            <button onClick={loadAlerts} disabled={checking} className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-60">
+            <button onClick={() => { setChecking(true); void loadAlerts(); }} disabled={checking} className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs hover:bg-white/5 disabled:opacity-60">
               {checking ? "Checking…" : "Re-check now"}
             </button>
           </div>

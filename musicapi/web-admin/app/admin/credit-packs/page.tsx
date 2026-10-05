@@ -29,7 +29,6 @@ export default function CreditPacksPage() {
   }
 
   function load() {
-    setLoading(true);
     apiFetch<PackRow[]>("/admin/credit-packs")
       .then(setRows)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))

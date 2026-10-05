@@ -22,7 +22,6 @@ export default function ContentPage() {
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(() => {
-    setLoading(true);
     apiFetch<Post[]>("/admin/content")
       .then(setPosts)
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
@@ -81,7 +80,7 @@ export default function ContentPage() {
           <h1 className="text-2xl font-bold">API Updates</h1>
           <p className="text-sm text-[var(--muted)]">Blog posts shown in the user panel</p>
         </div>
-        <button onClick={() => { showForm ? setShowForm(false) : openNew(); }} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white">
+        <button onClick={() => (showForm ? setShowForm(false) : openNew())} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white">
           {showForm ? "Cancel" : "New post"}
         </button>
       </div>

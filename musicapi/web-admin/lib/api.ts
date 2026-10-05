@@ -20,6 +20,9 @@ export async function logout(): Promise<void> {
 function redirectToLogin(): void {
   clearSession();
   if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    // Full reload clears cached client state. This runs outside React
+    // (lib/api.ts), so useRouter is unavailable; the hard redirect is intended.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = "/login";
   }
 }
