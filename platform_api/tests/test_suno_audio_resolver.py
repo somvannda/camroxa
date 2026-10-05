@@ -827,7 +827,7 @@ async def test_recover_suno_task_download_urls_reads_data_task_id(
 
     monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeAsyncClient)
 
-    mapping = await resolver.recover_suno_task_download_urls(object(), "task-1")
+    mapping = await resolver.recover_suno_task_download_urls(object(), "00000000-0000-0000-0000-000000000001")
     assert mapping == {"c1": "https://b2.example.com/c1.wav"}
     assert state["polls"] == 2
 
@@ -886,7 +886,7 @@ async def test_recover_suno_task_download_urls_stops_after_terminal_failure(
 
     monkeypatch.setattr(resolver.httpx, "AsyncClient", FakeAsyncClient)
 
-    mapping = await resolver.recover_suno_task_download_urls(object(), "task-missing")
+    mapping = await resolver.recover_suno_task_download_urls(object(), "00000000-0000-0000-0000-000000000002")
 
     assert mapping == {}
     assert state["posts"] == 1, "must not replay a terminal task under every active key"
@@ -1005,3 +1005,32 @@ async def test_suno_client_uses_active_base_url() -> None:
     fallback = client._build_client("k")
     assert str(fallback.base_url).rstrip("/") == "https://default.example.com"
     await fallback.aclose()
+
+
+@pytest.mark.asyncio
+async def test_recover_suno_task_download_urls_skips_musicapi_for_legacy_hex_ids(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-UUID (legacy sunoapi.org) id must not create a musicapi recovery job."""
+    from platform_api.clients.suno_routing import set_active_suno_base_url
+    from platform_api.services import suno_audio_resolver as resolver
+
+    async def fake_keys(_pool: object) -> list[str]:
+        return ["k1"]
+
+    monkeypatch.setattr(resolver, "active_suno_key_values", fake_keys)
+
+    class NoHttpClient:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            raise AssertionError("HTTP client must not be built for a legacy id")
+
+    monkeypatch.setattr(resolver.httpx, "AsyncClient", NoHttpClient)
+
+    set_active_suno_base_url("https://musicapi.camxora.com")
+    try:
+        mapping = await resolver.recover_suno_task_download_urls(
+            object(), "fb8aacd28539af5726443eaedc2785d2"
+        )
+        assert mapping == {}
+    finally:
+        set_active_suno_base_url("")

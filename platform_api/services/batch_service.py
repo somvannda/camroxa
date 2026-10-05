@@ -3436,6 +3436,19 @@ class BatchService:
         clip_id = str(audio_id or "").strip()
         if not task_id or not clip_id:
             return ""
+        from platform_api.clients.suno_client import active_provider_is_musicapi
+
+        if active_provider_is_musicapi():
+            # musicapi job ids are dashed UUIDs. Legacy sunoapi.org-era ids are
+            # 32-char hex (and `uuid.UUID()` accepts those too), so match the
+            # dashed form explicitly and skip recovery for them.
+            import re
+
+            if not re.fullmatch(
+                r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}",
+                task_id,
+            ):
+                return ""
         try:
             from platform_api.dependencies import get_db_pool
             from platform_api.services.suno_audio_resolver import recover_suno_task_download_urls
