@@ -79,6 +79,7 @@ class WebMusicChargeBridge:
         ref_id: str | None = None,
     ) -> WebMusicCharge:
         await self._grant.ensure_daily_grant(user_id)
+        await self._grant.ensure_period_grant(user_id)
         op, amount, quote = await self.quote_credits(user_id, operation)
         if amount <= 0 or bool(getattr(quote, "included", False)):
             return WebMusicCharge(path="included", op=op, amount_credits=0, ref_id=ref_id)
@@ -108,6 +109,7 @@ class WebMusicChargeBridge:
     async def spendable_credits(self, user_id: UUID) -> tuple[int, int, bool]:
         """Return (spendable, music_credits, has_paid_web)."""
         await self._grant.ensure_daily_grant(user_id)
+        await self._grant.ensure_period_grant(user_id)
         _op, music_credits, _quote = await self.quote_credits(user_id, "music")
         v3_balance = int(units_to_credits(int(await self._credit_repo.get_balance(user_id))))
         paid_web = await self._has_paid_web_subscription(user_id)

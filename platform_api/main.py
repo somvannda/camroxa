@@ -435,6 +435,23 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Credit invariant check not started (non-fatal): %s", exc)
 
+        # --- Proactive credit grant maintenance (period/daily minting off GET) ---
+        # Runs at startup + hourly so wallet balances are correct without a read
+        # mutating them (GET /me/credits is read-only). Idempotent per period.
+        try:
+            from platform_api.services import grant_maintenance as _grant_maint
+
+            if not getattr(_grant_maint, "_ENABLED", True):
+                logger.info("Credit grant maintenance is disabled by env.")
+            else:
+                asyncio.create_task(
+                    _grant_maint.run_grant_maintenance_loop(db_pool),
+                    name="credit-grant-maintenance",
+                )
+                logger.info("Credit grant maintenance loop started.")
+        except Exception as exc:
+            logger.warning("Credit grant maintenance not started (non-fatal): %s", exc)
+
         # --- Warm Key Pool Redis cache ---
         logger.info(
             "Key pool encryption key configured: %s",

@@ -145,11 +145,10 @@ async def list_pricing(ctx: AdminDep, billing: BillingDep) -> list[dict[str, Any
 
 
 @router.get("/me/credits", summary="Current user wallet (same credit_wallets as v1)")
-async def me_credits(ctx: UserDep, billing: BillingDep, grants: GrantDep) -> dict[str, Any]:
+async def me_credits(ctx: UserDep, billing: BillingDep) -> dict[str, Any]:
+    # Read-only: grant minting runs on billing events + the grant-maintenance
+    # scheduler, never on a GET.
     user_id = UUID(ctx.user_id)
-    await grants.expire_unused_grants(user_id)
-    await grants.ensure_daily_grant(user_id)
-    await grants.ensure_period_grant(user_id)
     return await billing.wallet_view(user_id)
 
 

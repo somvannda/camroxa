@@ -119,9 +119,13 @@ source; Free `daily=0/monthly=50` grants 50/month to Free + lapsed only.
   making `add_credits` private, and moving the remaining direct `event` writers
   (e.g. onboarding zero-amount events, which are telemetry, not grants).
 
-### Phase 3 — mint on events, not reads
-- `/me/credits` becomes read‑only; period/daily grants run on the billing webhook
-  + a scheduler. Fixes "Free monthly minted only when the wallet page is opened".
+### Phase 3 — mint on events, not reads ✅
+- `/me/credits` is now **read-only**; period/daily grants run on billing events
+  (webhook/renewal) + a new single-winner **grant-maintenance scheduler**
+  (startup + hourly), so balances are correct without a GET mutating them. This
+  also fixes "Free monthly credits only appear when the wallet page is opened".
+- The web-music charge path still mints (idempotently) so a user can generate
+  immediately after granting; new accounts are covered by the scheduler tick.
 
 ### Phase 4 — detection + backstop
 - Daily invariant job ("≤1 live grant lot per user per period") + anomaly alert
