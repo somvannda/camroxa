@@ -5760,8 +5760,8 @@ def run_live_preview(opts: GpuOptions) -> int:
                     tex_logo = ctx.texture((nlw, nlh), 4, logo_rgba2.tobytes())
                     tex_logo.filter = (moderngl.LINEAR, moderngl.LINEAR)
                     logo_size_px = (float(nlw), float(nlh))
-                except:
-                    pass
+                except Exception as exc:  # noqa: BLE001 - a bad logo must not fail the render
+                    print(f"[visualizer] logo texture load failed: {exc}", file=sys.stderr, flush=True)
             current_logo_path = logo_path
 
         if audio_path != current_audio_path:
