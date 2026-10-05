@@ -389,17 +389,25 @@ export default function DashboardPage() {
   const [error, setError] = useState("");
 
   useEffect(() => {
+    let cancelled = false;
     Promise.all([
       apiFetch<Usage>("/me/usage"),
       apiFetch<Billing>("/me/billing"),
       apiFetch<Profile>("/me/profile").catch(() => null),
     ])
       .then(([u, b, p]) => {
+        if (cancelled) return;
         setUsage(u);
         setCredits(b.credits);
         if (p) setAlerts(p.credit_alert_thresholds ?? []);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
+      .catch((e) => {
+        if (cancelled) return;
+        setError(e instanceof Error ? e.message : "Failed to load");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function saveAlerts(next: number[]) {
