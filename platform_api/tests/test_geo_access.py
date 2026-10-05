@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
@@ -191,6 +193,49 @@ async def test_geo_off_allows_foreign(monkeypatch: pytest.MonkeyPatch) -> None:
             headers={"Host": "music.camxora.com", "CF-IPCountry": "US"},
         )
     assert resp.status_code == 200
+
+
+@pytest.mark.asyncio
+async def test_trusted_edge_secret_required_when_configured(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        "platform_api.middleware.geo_access.is_music_web_geo_enforced",
+        lambda: True,
+    )
+    monkeypatch.setattr(
+        "platform_api.middleware.geo_access.get_settings",
+        lambda: SimpleNamespace(
+            music_web_trusted_edge_secret="s3cret",
+            music_web_geo_allowed_country="KH",
+        ),
+    )
+    transport = ASGITransport(app=_app())
+    async with AsyncClient(transport=transport, base_url="http://test") as session:
+        # Missing / wrong edge secret -> fail closed, even with KH.
+        missing = await session.get(
+            "/api/v3/web-music/quota",
+            headers={"Host": "music.camxora.com", "CF-IPCountry": "KH"},
+        )
+        assert missing.status_code == 403
+        wrong = await session.get(
+            "/api/v3/web-music/quota",
+            headers={
+                "Host": "music.camxora.com",
+                "CF-IPCountry": "KH",
+                "X-Origin-Verify": "nope",
+            },
+        )
+        assert wrong.status_code == 403
+        ok = await session.get(
+            "/api/v3/web-music/quota",
+            headers={
+                "Host": "music.camxora.com",
+                "CF-IPCountry": "KH",
+                "X-Origin-Verify": "s3cret",
+            },
+        )
+        assert ok.status_code == 200
 
 
 @pytest.mark.asyncio

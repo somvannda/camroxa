@@ -14,6 +14,7 @@ Not applied to /health or /callbacks. Desktop /generation and admin stay open.
 
 from __future__ import annotations
 
+import hmac
 import logging
 
 from fastapi import Request
@@ -96,6 +97,25 @@ def country_from_request(request: Request) -> str:
     return (request.headers.get("cf-ipcountry") or "").strip().upper()
 
 
+def trusted_edge_secret() -> str:
+    return (get_settings().music_web_trusted_edge_secret or "").strip()
+
+
+def trusted_edge(request: Request) -> bool:
+    """True when the request carries the edge's shared secret (or none is set).
+
+    The CF-* headers are only trustworthy when the edge proxy set them; a direct
+    request to the origin can spoof them. When `PLATFORM_MUSIC_WEB_TRUSTED_EDGE_SECRET`
+    is configured, in-scope requests must present the matching `X-Origin-Verify`
+    header (set by nginx), or the gate fails closed. Unset = legacy behavior.
+    """
+    secret = trusted_edge_secret()
+    if not secret:
+        return True
+    provided = (request.headers.get("x-origin-verify") or "").strip()
+    return bool(provided) and hmac.compare_digest(provided, secret)
+
+
 def allowed_country_code() -> str:
     settings = get_settings()
     return (settings.music_web_geo_allowed_country or "KH").strip().upper() or "KH"
@@ -141,6 +161,18 @@ class MusicWebGeoMiddleware:
         request = Request(scope)
         if not music_web_geo_in_scope(request):
             await self.app(scope, receive, send)
+            return
+
+        # Enforced but not from the trusted edge: on a direct-to-origin request
+        # the CF-* headers are client-spoofable, so fail closed.
+        if not trusted_edge(request):
+            logger.warning(
+                "Music web geo blocked (untrusted edge) host=%s path=%s ip=%s",
+                request_host(request),
+                request_path(request),
+                client_ip(request),
+            )
+            await geo_blocked_response(country=country_from_request(request))(scope, receive, send)
             return
 
         # Sandbox (and any origin not behind Cloudflare) has no CF-IPCountry.

@@ -223,6 +223,11 @@ class Settings(BaseSettings):
     # Empty = auto (on for sandbox/production, off for local). "true"/"false" override.
     music_web_geo_enforce: str = ""
     music_web_geo_allowed_country: str = "KH"
+    # Shared secret the edge proxy (nginx) sets as `X-Origin-Verify`. When set,
+    # music-web geo enforcement requires it and fails closed without it, so a
+    # direct-to-origin request cannot spoof CF-IPCountry. Unset = legacy behavior
+    # (trust CF headers by presence; fine for sandbox/dev).
+    music_web_trusted_edge_secret: str = ""
     music_web_gen_freeze_hours: int = 6
 
     # --- Pipeline stuck-batch housekeeping alert (PLATFORM_WORKERS_REQUIREMENTS.md §8) ---
