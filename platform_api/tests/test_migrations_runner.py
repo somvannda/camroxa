@@ -103,7 +103,10 @@ async def test_run_pending_migrations_times_out_stuck_upgrade() -> None:
     unlock_calls = [
         c for c in lock_conn.execute.call_args_list if "pg_advisory_unlock" in c.args[0]
     ]
-    assert len(unlock_calls) == 1
+    # On timeout the lock must stay held (the stuck upgrade thread is still
+    # running); releasing it here could allow a concurrent upgrade.
+    assert len(unlock_calls) == 0
+    lock_conn.close.assert_not_awaited()
 
 
 def test_leftover_sibling_084_is_skipped_when_current_is_on_other_branch() -> None:
