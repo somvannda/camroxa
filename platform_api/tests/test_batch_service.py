@@ -3063,3 +3063,36 @@ def test_stream_url_for_audio_id_disabled_for_musicapi() -> None:
         assert BatchService._stream_url_for_audio_id("abc") == ""
     finally:
         set_active_suno_base_url("")
+
+
+@pytest.mark.asyncio
+async def test_recover_download_url_skips_musicapi_for_legacy_hex_ids(monkeypatch) -> None:
+    """musicapi recovery must not be attempted for legacy non-UUID (sunoapi.org) ids."""
+    from platform_api.clients.suno_routing import set_active_suno_base_url
+    from platform_api.services import suno_audio_resolver as resolver
+    from platform_api.services.batch_service import BatchService
+
+    called = {"n": 0}
+
+    async def fake_recover(_pool: object, _task_id: str) -> dict[str, str]:
+        called["n"] += 1
+        return {}
+
+    monkeypatch.setattr(resolver, "recover_suno_task_download_urls", fake_recover)
+    monkeypatch.setattr("platform_api.dependencies.get_db_pool", lambda: object())
+    svc = object.__new__(BatchService)
+    set_active_suno_base_url("https://musicapi.camxora.com")
+    try:
+        legacy = await BatchService._recover_download_url(
+            svc, "fb8aacd28539af5726443eaedc2785d2", "clip-1"
+        )
+        assert legacy == ""
+        assert called["n"] == 0, "legacy hex id must not trigger musicapi recovery"
+
+        uuid_task = await BatchService._recover_download_url(
+            svc, "00000000-0000-0000-0000-0000000000aa", "clip-1"
+        )
+        assert uuid_task == ""
+        assert called["n"] == 1, "a UUID task id should still attempt recovery"
+    finally:
+        set_active_suno_base_url("")
