@@ -81,6 +81,7 @@ const TABS = [
   { key: "alerts", label: "Alerts" },
   { key: "integrations", label: "Integrations" },
   { key: "status", label: "Status" },
+  { key: "security", label: "Security" },
 ] as const;
 type TabKey = (typeof TABS)[number]["key"];
 
@@ -101,6 +102,75 @@ export default function SettingsPage() {
   const [draft, setDraft] = useState<Record<string, Record<string, string | number | boolean>>>({});
   const [dirty, setDirty] = useState<Record<string, boolean>>({});
   const [savingIntegrations, setSavingIntegrations] = useState(false);
+
+  // Two-factor authentication (optional, per-admin).
+  const [twoFa, setTwoFa] = useState<{ enabled: boolean; pending: boolean } | null>(null);
+  const [twoFaSecret, setTwoFaSecret] = useState("");
+  const [twoFaUrl, setTwoFaUrl] = useState("");
+  const [twoFaCode, setTwoFaCode] = useState("");
+  const [twoFaBusy, setTwoFaBusy] = useState(false);
+
+  const loadTwoFa = useCallback(() => {
+    apiFetch<{ enabled: boolean; pending: boolean }>("/admin/2fa/status")
+      .then(setTwoFa)
+      .catch(() => setTwoFa(null));
+  }, []);
+
+  useEffect(() => {
+    if (tab === "security") loadTwoFa();
+  }, [tab, loadTwoFa]);
+
+  async function startTwoFa() {
+    setTwoFaBusy(true);
+    try {
+      const r = await apiFetch<{ secret: string; otpauth_url: string }>("/admin/2fa/setup", {
+        method: "POST",
+      });
+      setTwoFaSecret(r.secret);
+      setTwoFaUrl(r.otpauth_url);
+      setTwoFaCode("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to start two-factor setup");
+    } finally {
+      setTwoFaBusy(false);
+    }
+  }
+
+  async function enableTwoFa() {
+    setTwoFaBusy(true);
+    try {
+      await apiFetch("/admin/2fa/enable", {
+        method: "POST",
+        body: JSON.stringify({ code: twoFaCode }),
+      });
+      toast.success("Two-factor enabled.");
+      setTwoFaSecret("");
+      setTwoFaUrl("");
+      setTwoFaCode("");
+      loadTwoFa();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to enable two-factor");
+    } finally {
+      setTwoFaBusy(false);
+    }
+  }
+
+  async function disableTwoFa() {
+    setTwoFaBusy(true);
+    try {
+      await apiFetch("/admin/2fa/disable", {
+        method: "POST",
+        body: JSON.stringify({ code: twoFaCode }),
+      });
+      toast.success("Two-factor disabled.");
+      setTwoFaCode("");
+      loadTwoFa();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to disable two-factor");
+    } finally {
+      setTwoFaBusy(false);
+    }
+  }
 
   const loadAlerts = useCallback(() => {
     apiFetch<AlertReport>("/admin/alerts")
@@ -549,6 +619,89 @@ export default function SettingsPage() {
                 </ul>
               )}
             </>
+          )}
+        </Card>
+      )}
+
+      {tab === "security" && (
+        <Card className="space-y-4 p-5">
+          <div>
+            <h2 className="text-sm font-semibold">Two-factor authentication</h2>
+            <p className="text-xs text-[var(--muted)]">
+              Optional. When enabled, signing in requires a 6-digit code from your authenticator app.
+            </p>
+          </div>
+
+          {twoFa?.enabled ? (
+            <div className="space-y-3">
+              <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+                Two-factor is enabled for your account.
+              </p>
+              <Field label="Enter a code to disable" htmlFor="2fa-disable-code">
+                <Input
+                  id="2fa-disable-code"
+                  inputMode="numeric"
+                  value={twoFaCode}
+                  onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                />
+              </Field>
+              <Button
+                variant="danger"
+                onClick={disableTwoFa}
+                disabled={twoFaBusy || twoFaCode.length !== 6}
+              >
+                {twoFaBusy ? "Working…" : "Disable two-factor"}
+              </Button>
+            </div>
+          ) : twoFaUrl ? (
+            <div className="space-y-3">
+              <p className="text-sm text-[var(--muted)]">
+                Add this secret to your authenticator app, then enter a generated code to finish.
+              </p>
+              <p className="break-all rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 font-mono text-xs">
+                {twoFaSecret}
+              </p>
+              <p className="break-all text-xs text-[var(--muted)]">{twoFaUrl}</p>
+              <Field label="Verification code" htmlFor="2fa-enable-code">
+                <Input
+                  id="2fa-enable-code"
+                  inputMode="numeric"
+                  value={twoFaCode}
+                  onChange={(e) => setTwoFaCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                />
+              </Field>
+              <div className="flex gap-2">
+                <Button
+                  onClick={enableTwoFa}
+                  disabled={twoFaBusy || twoFaCode.length !== 6}
+                >
+                  {twoFaBusy ? "Working…" : "Enable two-factor"}
+                </Button>
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setTwoFaSecret("");
+                    setTwoFaUrl("");
+                    setTwoFaCode("");
+                  }}
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {twoFa?.pending && (
+                <p className="text-xs text-amber-300">
+                  A setup is in progress — start again to get a fresh secret.
+                </p>
+              )}
+              <Button onClick={startTwoFa} disabled={twoFaBusy}>
+                {twoFaBusy ? "Working…" : "Set up two-factor"}
+              </Button>
+            </div>
           )}
         </Card>
       )}
