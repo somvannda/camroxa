@@ -172,6 +172,20 @@ export default function SettingsPage() {
     }
   }
 
+  const [revokeBusy, setRevokeBusy] = useState(false);
+
+  async function revokeSessions() {
+    setRevokeBusy(true);
+    try {
+      await apiFetch("/admin/sessions/revoke", { method: "POST" });
+      toast.success("Other sessions signed out.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to revoke sessions");
+    } finally {
+      setRevokeBusy(false);
+    }
+  }
+
   const loadAlerts = useCallback(() => {
     apiFetch<AlertReport>("/admin/alerts")
       .then(setReport)
@@ -703,6 +717,18 @@ export default function SettingsPage() {
               </Button>
             </div>
           )}
+
+          <div className="space-y-3 border-t border-[var(--border)] pt-4">
+            <div>
+              <h3 className="text-sm font-semibold">Sessions</h3>
+              <p className="text-xs text-[var(--muted)]">
+                Signs out every other device. This session stays active.
+              </p>
+            </div>
+            <Button variant="secondary" onClick={revokeSessions} disabled={revokeBusy}>
+              {revokeBusy ? "Working…" : "Log out other sessions"}
+            </Button>
+          </div>
         </Card>
       )}
     </div>

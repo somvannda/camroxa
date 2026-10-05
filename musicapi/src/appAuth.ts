@@ -7,6 +7,8 @@ export interface UserPayload {
   id: string;
   email: string;
   role: "user" | "admin";
+  /** Session-revocation version; a bump invalidates previously issued tokens. */
+  tv?: number;
 }
 
 export interface OAuthStatePayload {

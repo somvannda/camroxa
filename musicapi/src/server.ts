@@ -324,6 +324,8 @@ interface DbUser {
   /** AES-256-GCM encrypted TOTP secret; null until 2FA setup starts. */
   totp_secret: string | null;
   totp_enabled: boolean;
+  /** Bumped to invalidate previously issued session tokens. */
+  token_version: number;
 }
 
 interface Job {
@@ -1164,12 +1166,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // Role and status are read from the DB, not the token: a demoted or
     // suspended admin must lose admin access on their next request, not when
     // their JWT expires.
-    const row = await queryOne<{ role: "user" | "admin"; status: string }>(
-      "SELECT role, status FROM users WHERE id = $1",
+    const row = await queryOne<{ role: "user" | "admin"; status: string; token_version: number }>(
+      "SELECT role, status, token_version FROM users WHERE id = $1",
       [user.id],
     );
     if (!row || row.role !== "admin" || row.status !== "active") {
       reply.code(403).send({ error: "Admin only." });
+      return null;
+    }
+    // Session revocation: a token minted before `token_version` was bumped is
+    // rejected (a missing claim counts as version 0).
+    if ((user.tv ?? 0) !== row.token_version) {
+      reply.code(403).send({ error: "Session expired. Please sign in again." });
       return null;
     }
     // CSRF defense-in-depth: a cookie-authenticated unsafe method must echo the
@@ -3232,7 +3240,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         return reply.code(401).send({ error: "Two-factor code required.", totp_required: true });
       }
     }
-    const token = signToken({ id: user.id, email: user.email, role: user.role });
+    const token = signToken({
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      tv: user.token_version,
+    });
     // Also set the httpOnly session cookie so browser clients never have to
     // store the JWT where scripts can read it. Admin uses a distinct cookie name
     // so it never collides with the user app's session on localhost.
@@ -7182,6 +7195,46 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       [...params, pageSize, offset],
     );
     return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
+  });
+
+  // --- admin: session revocation (Phase 6) --------------------------------
+  // Bumps the caller's token version, invalidating every token minted earlier
+  // ("log out everywhere"), then re-issues a fresh token so this session stays
+  // signed in.
+  app.post("/admin/sessions/revoke", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const updated = await queryOne<{ token_version: number }>(
+      "UPDATE users SET token_version = token_version + 1 WHERE id = $1 RETURNING token_version",
+      [admin.id],
+    );
+    if (!updated) return reply.code(500).send({ error: "Could not revoke sessions." });
+    const token = signToken({
+      id: admin.id,
+      email: admin.email,
+      role: "admin",
+      tv: updated.token_version,
+    });
+    const csrf = randomBytes(32).toString("hex");
+    const csrfCookie = [
+      `${SESSION_COOKIE_ADMIN_CSRF}=${csrf}`,
+      "Path=/",
+      "SameSite=Lax",
+      `Max-Age=${7 * 24 * 60 * 60}`,
+      ...(config.sessionCookieSecure ? ["Secure"] : []),
+    ].join("; ");
+    reply.header("set-cookie", [
+      serializeSessionCookie(token, config.sessionCookieSecure, SESSION_COOKIE_ADMIN),
+      csrfCookie,
+    ]);
+    await recordAudit({
+      actor: admin,
+      action: "admin.sessions_revoke",
+      targetType: "user",
+      targetId: admin.id,
+      req,
+    });
+    return { ok: true };
   });
 
   // --- admin: two-factor authentication (Phase 6) -------------------------
