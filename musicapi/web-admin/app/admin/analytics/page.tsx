@@ -20,6 +20,7 @@ interface Analytics {
   by_model: (Agg & { model: string })[];
   by_user: (Agg & { user_id: string; email: string })[];
   series: (Agg & { day: string })[];
+  by_error: { reason: string; count: number }[];
 }
 
 const RANGES = [7, 30, 90];
@@ -628,6 +629,37 @@ export default function AnalyticsPage() {
             Revenue is credits spent converted at {data.credits_per_usd} credits/USD (cheapest active pack), consistent
             with the user-facing usage view.
           </p>
+
+          {data.by_error.length > 0 && (
+            <div className="glass overflow-hidden rounded-xl">
+              <div className="border-b border-[var(--border)] px-4 py-3">
+                <h2 className="text-sm font-semibold text-[var(--muted)]">
+                  Top failures
+                  <span className="ml-2 font-normal opacity-70">
+                    {data.by_error.length} reason{data.by_error.length === 1 ? "" : "s"}
+                  </span>
+                </h2>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-white/5 text-left text-xs text-[var(--muted)]">
+                    <tr>
+                      <th scope="col" className="px-4 py-3">Error</th>
+                      <th scope="col" className="px-4 py-3 text-right">Count</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.by_error.map((e, i) => (
+                      <tr key={i} className="border-t border-[var(--border)]">
+                        <td className="px-4 py-3 font-mono text-xs">{e.reason}</td>
+                        <td className="px-4 py-3 text-right tabular-nums">{e.count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           {tables.map((tbl) => (
             <BreakdownTable key={tbl.title} {...tbl} />
