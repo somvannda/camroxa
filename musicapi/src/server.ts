@@ -2176,6 +2176,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    */
   const LRC_SERVICE_URL = process.env.LRC_SERVICE_URL ?? "http://127.0.0.1:4011";
   const LRC_ENABLED = process.env.LRC_SERVICE_ENABLED !== "0";
+  // Suno provides the alignment for generated clips (see `client.getAlignedLyrics`),
+  // so the local Whisper aligner is now only a fallback. It is opt-in: enabling it
+  // by default risks the runaway decode / CPU burn it caused on the Khmer corpus.
+  // Set `LRC_FALLBACK_ENABLED=1` to re-enable it for clips Suno has no alignment for.
+  const LRC_FALLBACK_ENABLED = process.env.LRC_FALLBACK_ENABLED === "1";
 
   // The aligner serialises transcription on one CPU box, so only a couple of
   // requests should be in flight from this side: firing the whole batch at once
@@ -2310,7 +2315,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       let alignment: LyricAlignment | null = words.length
         ? { lines: [], words, lrc: alignedWordsToLrc(words) }
         : null;
-      if ((!alignment || !alignment.lrc) && lyrics.trim()) {
+      if ((!alignment || !alignment.lrc) && LRC_FALLBACK_ENABLED && lyrics.trim()) {
         alignment = (await alignLyrics(clipId, lyrics)) ?? alignment;
       }
       job.result = {

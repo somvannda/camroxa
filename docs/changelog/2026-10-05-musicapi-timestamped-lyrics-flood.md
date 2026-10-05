@@ -118,7 +118,9 @@ timing, which chokes on Khmer.
   the response now return these words (camelCase `startS`/`endS`, plus
   `success`/`palign`), preserving the embedded `\n` line markers.
 - This makes the LRC sidecar unnecessary for supported clips and removes the CPU
-  burn / runaway decode on the Khmer catalogue.
+  burn / runaway decode on the Khmer catalogue. The Whisper fallback is now
+  **opt-in** (`LRC_FALLBACK_ENABLED=1`, default off) so its runaway-decode class
+  cannot recur; the sidecar stays installed but idle.
 
 ## Files touched
 
