@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge, type BadgeTone } from "@/components/ui/Badge";
@@ -31,10 +32,17 @@ interface Stats {
   series: { day: string; count: number }[];
 }
 
+interface AlertReport {
+  enabled: boolean;
+  checked_at: string;
+  alerts: { id: string; type: string; severity: "warning" | "critical"; message: string }[];
+}
+
 export default function AdminDashboard() {
   const { data: stats, loading, error, reload } = useResource<Stats>(() =>
     apiFetch<Stats>("/admin/stats"),
   );
+  const alerts = useResource<AlertReport>(() => apiFetch<AlertReport>("/admin/alerts"));
 
   if (loading) return <LoadingState />;
   if (error || !stats) {
@@ -77,6 +85,44 @@ export default function AdminDashboard() {
           <StatCard key={c.label} label={c.label} value={c.value} />
         ))}
       </div>
+
+      <Card className="p-5">
+        <div className="mb-3 flex items-center justify-between">
+          <h2 className="text-sm font-semibold text-[var(--muted)]">Active alerts</h2>
+          <Link href="/admin/settings" className="text-xs text-[var(--violet)] hover:underline">
+            Alert settings
+          </Link>
+        </div>
+        {alerts.loading ? (
+          <p className="text-sm text-[var(--muted)]">Checking…</p>
+        ) : !alerts.data ? (
+          <p className="text-sm text-[var(--muted)]">Could not evaluate alerts.</p>
+        ) : !alerts.data.enabled ? (
+          <p className="text-sm text-[var(--muted)]">Alerts are disabled.</p>
+        ) : alerts.data.alerts.length === 0 ? (
+          <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+            All clear — no active alerts.
+          </p>
+        ) : (
+          <ul className="space-y-2">
+            {alerts.data.alerts.map((a) => (
+              <li
+                key={a.id}
+                className={`rounded-lg border px-3 py-2 text-sm ${
+                  a.severity === "critical"
+                    ? "border-red-500/30 bg-red-500/10 text-red-300"
+                    : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                }`}
+              >
+                <Badge tone={a.severity === "critical" ? "danger" : "warning"} className="mr-2">
+                  {a.severity}
+                </Badge>
+                {a.message}
+              </li>
+            ))}
+          </ul>
+        )}
+      </Card>
 
       <Card className="p-5">
         <h2 className="text-sm font-semibold text-[var(--muted)]">
