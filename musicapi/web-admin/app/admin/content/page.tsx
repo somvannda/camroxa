@@ -1,7 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { apiFetch } from "@/lib/api";
+import { useResource } from "@/lib/useResource";
+import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
+import { Field, Input, Textarea } from "@/components/ui/Field";
+import { useToast } from "@/components/ui/Toast";
+import { dateOnly } from "@/lib/format";
 
 interface Post {
   id: string;
@@ -12,27 +21,24 @@ interface Post {
   created_at: string;
 }
 
+const EMPTY_FORM = { title: "", slug: "", content: "", published: false };
+
 export default function ContentPage() {
-  const [posts, setPosts] = useState<Post[]>([]);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(true);
+  const toast = useToast();
+  const { data, loading, error, reload } = useResource<Post[]>(() =>
+    apiFetch<Post[]>("/admin/content"),
+  );
+  const posts = data ?? [];
+
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<Post | null>(null);
-  const [form, setForm] = useState({ title: "", slug: "", content: "", published: false });
+  const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
-
-  const load = useCallback(() => {
-    apiFetch<Post[]>("/admin/content")
-      .then(setPosts)
-      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"))
-      .finally(() => setLoading(false));
-  }, []);
-
-  useEffect(load, [load]);
+  const [pendingDelete, setPendingDelete] = useState<Post | null>(null);
 
   function openNew() {
     setEditing(null);
-    setForm({ title: "", slug: "", content: "", published: false });
+    setForm(EMPTY_FORM);
     setShowForm(true);
   }
 
@@ -45,100 +51,132 @@ export default function ContentPage() {
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
-    setError("");
     try {
       const body = JSON.stringify({ ...form, slug: form.slug || undefined });
-      if (editing) {
-        await apiFetch(`/admin/content/${editing.id}`, { method: "PUT", body });
-      } else {
-        await apiFetch("/admin/content", { method: "POST", body });
-      }
+      if (editing) await apiFetch(`/admin/content/${editing.id}`, { method: "PUT", body });
+      else await apiFetch("/admin/content", { method: "POST", body });
+      toast.success(editing ? "Post updated." : "Post created.");
       setShowForm(false);
-      load();
+      void reload();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to save");
+      toast.error(err instanceof Error ? err.message : "Failed to save");
     } finally {
       setSaving(false);
     }
   }
 
-  async function remove(id: string) {
-    if (!window.confirm("Delete this post?")) return;
-    setError("");
-    try {
-      await apiFetch(`/admin/content/${id}`, { method: "DELETE" });
-      load();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete");
-    }
+  async function remove(p: Post) {
+    await apiFetch(`/admin/content/${p.id}`, { method: "DELETE" });
+    toast.success("Post deleted.");
+    void reload();
   }
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold">API Updates</h1>
-          <p className="text-sm text-[var(--muted)]">Blog posts shown in the user panel</p>
-        </div>
-        <button onClick={() => (showForm ? setShowForm(false) : openNew())} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white">
-          {showForm ? "Cancel" : "New post"}
-        </button>
-      </div>
+      <PageHeader
+        title="API Updates"
+        description="Blog posts shown in the user panel"
+        actions={
+          <Button onClick={() => (showForm ? setShowForm(false) : openNew())}>
+            {showForm ? "Cancel" : "New post"}
+          </Button>
+        }
+      />
 
-      {error && <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{error}</p>}
+      {error && <ErrorState message={error} onRetry={reload} />}
 
       {showForm && (
-        <form onSubmit={submit} className="glass space-y-4 rounded-xl p-5">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Title</label>
-              <input value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]" placeholder="API update title" />
+        <Card className="p-5">
+          <form onSubmit={submit} className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
+              <Field label="Title" htmlFor="post-title">
+                <Input
+                  id="post-title"
+                  value={form.title}
+                  onChange={(e) => setForm({ ...form, title: e.target.value })}
+                  placeholder="API update title"
+                />
+              </Field>
+              <Field label="Slug (optional)" htmlFor="post-slug">
+                <Input
+                  id="post-slug"
+                  value={form.slug}
+                  onChange={(e) => setForm({ ...form, slug: e.target.value })}
+                  placeholder="my-update"
+                />
+              </Field>
             </div>
-            <div className="space-y-1">
-              <label className="text-xs text-[var(--muted)]">Slug (optional)</label>
-              <input value={form.slug} onChange={(e) => setForm({ ...form, slug: e.target.value })} className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]" placeholder="my-update" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-[var(--muted)]">Content</label>
-            <textarea value={form.content} onChange={(e) => setForm({ ...form, content: e.target.value })} rows={5} className="w-full rounded-lg border border-[var(--border)] bg-black/30 px-3 py-2 text-sm outline-none focus:border-[var(--violet)]" placeholder="Update details…" />
-          </div>
-          <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
-            <input type="checkbox" checked={form.published} onChange={(e) => setForm({ ...form, published: e.target.checked })} className="accent-[var(--violet)]" /> Published
-          </label>
-          <button disabled={saving} className="grad-bg rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60">
-            {saving ? "Saving…" : "Save"}
-          </button>
-        </form>
+            <Field label="Content" htmlFor="post-content">
+              <Textarea
+                id="post-content"
+                rows={5}
+                value={form.content}
+                onChange={(e) => setForm({ ...form, content: e.target.value })}
+                placeholder="Update details…"
+              />
+            </Field>
+            <label className="flex items-center gap-2 text-sm text-[var(--muted)]">
+              <input
+                type="checkbox"
+                checked={form.published}
+                onChange={(e) => setForm({ ...form, published: e.target.checked })}
+              />{" "}
+              Published
+            </label>
+            <Button type="submit" disabled={saving}>
+              {saving ? "Saving…" : "Save"}
+            </Button>
+          </form>
+        </Card>
       )}
 
       {loading ? (
-        <p className="text-[var(--muted)]">Loading…</p>
+        <LoadingState />
+      ) : posts.length === 0 ? (
+        <EmptyState title="No posts yet." description="Publish an API update for your users." />
       ) : (
         <div className="space-y-3">
           {posts.map((p) => (
-            <div key={p.id} className="glass rounded-xl p-5">
-              <div className="flex items-center justify-between">
+            <Card key={p.id} className="p-5">
+              <div className="flex flex-wrap items-start justify-between gap-4">
                 <div>
                   <div className="font-semibold">{p.title}</div>
-                  <div className="mt-1 text-xs text-[var(--muted)]">{new Date(p.created_at).toLocaleDateString()} · {p.slug}</div>
+                  <div className="mt-1 text-xs text-[var(--muted)]">
+                    {dateOnly(p.created_at)} · {p.slug}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-xs ${p.published ? "bg-[var(--emerald)]/15 text-[var(--emerald)]" : "bg-white/10 text-[var(--muted)]"}`}>
+                  <Badge tone={p.published ? "success" : "neutral"}>
                     {p.published ? "published" : "draft"}
-                  </span>
-                  <button onClick={() => openEdit(p)} className="rounded px-2 py-1 text-xs text-[var(--violet)] hover:bg-white/5">Edit</button>
-                  <button onClick={() => remove(p.id)} className="rounded px-2 py-1 text-xs text-red-300 hover:bg-white/5">Delete</button>
+                  </Badge>
+                  <Button size="sm" variant="ghost" onClick={() => openEdit(p)}>
+                    Edit
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="text-red-300"
+                    onClick={() => setPendingDelete(p)}
+                  >
+                    Delete
+                  </Button>
                 </div>
               </div>
               <p className="mt-2 whitespace-pre-wrap text-sm text-[var(--muted)]">{p.content}</p>
-            </div>
+            </Card>
           ))}
-          {posts.length === 0 && (
-            <div className="glass rounded-xl p-8 text-center text-sm text-[var(--muted)]">No posts yet.</div>
-          )}
         </div>
       )}
+
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title="Delete post"
+        danger
+        confirmLabel="Delete"
+        message={pendingDelete ? `Delete “${pendingDelete.title}”?` : ""}
+        onConfirm={() => (pendingDelete ? remove(pendingDelete) : Promise.resolve())}
+        onClose={() => setPendingDelete(null)}
+      />
     </div>
   );
 }
