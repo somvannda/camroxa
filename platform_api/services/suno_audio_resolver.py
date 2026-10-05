@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from dataclasses import dataclass
 from typing import Any
 
@@ -42,6 +43,11 @@ _DOWNLOAD_HEADERS = {
     "Accept": "audio/mpeg,application/octet-stream,*/*;q=0.8",
 }
 _INVALID_URL_LITERALS = frozenset({"none", "null", "undefined", "n/a", "nil"})
+# musicapi job ids are dashed UUIDs; legacy sunoapi.org-era ids are 32-char hex
+# (and `uuid.UUID()` accepts those too, so match the dashed form explicitly).
+_DASHED_UUID_RE = re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
 
 
 def normalize_http_download_url(url: str | None) -> str:
@@ -323,6 +329,11 @@ async def recover_suno_task_download_urls(pool: Any, external_task_id: str) -> d
     # remaining key only multiplies work (incident 2026-10-04: one
     # un-recoverable task fanned out to ~6 recovery jobs).
     single_attempt = "musicapi" in base.lower()
+    if single_attempt and not _DASHED_UUID_RE.match(task_id):
+        # musicapi job ids are dashed UUIDs. Legacy sunoapi.org-era ids (32-char
+        # hex) can never be resolved, so skip instead of creating a recovery job
+        # that only fails `no_audio_id_mappings`.
+        return {}
     callback = os.environ.get("PLATFORM_SUNO_CALLBACK_BASE_URL", "").strip().rstrip("/")
     callback_url = (
         f"{callback}/api/v3/callbacks/suno" if callback else "https://api.camxora.com/health"
