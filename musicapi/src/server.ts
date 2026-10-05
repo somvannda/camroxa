@@ -6345,13 +6345,49 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { ok: true };
   });
 
+  // Admin-wide usage logs. Server-side pagination + optional filters so the
+  // console never pulls the whole table (previously a hard LIMIT 200).
   app.get("/admin/logs", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
-    return query<Record<string, unknown>>(
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      status?: string;
+      email?: string;
+      endpoint?: string;
+    };
+    const page = Math.max(1, Math.floor(Number(q.page) || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(Number(q.pageSize) || 50)));
+    const offset = (page - 1) * pageSize;
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.status) {
+      params.push(q.status);
+      filters.push(`l.status = $${params.length}`);
+    }
+    if (q.email) {
+      params.push(`%${q.email.toLowerCase()}%`);
+      filters.push(`lower(u.email) LIKE $${params.length}`);
+    }
+    if (q.endpoint) {
+      params.push(`%${q.endpoint.toLowerCase()}%`);
+      filters.push(`lower(l.endpoint) LIKE $${params.length}`);
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM usage_logs l
+       JOIN users u ON u.id = l.user_id ${where}`,
+      params,
+    );
+    const rows = await query<Record<string, unknown>>(
       `SELECT l.id, l.endpoint, l.model, l.prompt, l.status, l.credits_consumed, l.task_id, l.created_at, u.email
        FROM usage_logs l JOIN users u ON u.id = l.user_id
-       ORDER BY l.created_at DESC LIMIT 200`,
+       ${where}
+       ORDER BY l.created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
     );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
   });
 
   app.get("/admin/content", async (req, reply) => {
@@ -6430,31 +6466,50 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   });
 
   // Read side of the audit trail (task 5.2, REQUIREMENTS §4.11). Newest first,
-  // with optional `action` / `actor_id` filters and a bounded page size.
+  // server-side paginated with optional `action` / `actor_id` filters.
   app.get("/admin/audit", async (req, reply) => {
     if (!(await requireAdmin(req, reply))) return;
-    const q = (req.query ?? {}) as { limit?: string; action?: string; actor_id?: string };
-    const parsed = Number(q.limit ?? 200);
-    const limit = Number.isInteger(parsed) && parsed > 0 ? Math.min(parsed, 500) : 200;
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      action?: string;
+      actor_id?: string;
+      q?: string;
+    };
+    const page = Math.max(1, Math.floor(Number(q.page) || 1));
+    const pageSize = Math.min(200, Math.max(1, Math.floor(Number(q.pageSize) || 50)));
+    const offset = (page - 1) * pageSize;
     const filters: string[] = [];
     const params: unknown[] = [];
     if (q.action) {
-      params.push(q.action);
-      filters.push(`action = $${params.length}`);
+      params.push(`%${q.action.toLowerCase()}%`);
+      filters.push(`lower(action) LIKE $${params.length}`);
     }
     if (q.actor_id) {
       params.push(q.actor_id);
       filters.push(`actor_id = $${params.length}`);
     }
-    params.push(limit);
-    return query<Record<string, unknown>>(
-      `SELECT id, actor_id, actor_email, action, target_type, target_id, details, ip, created_at
-       FROM audit_logs
-       ${filters.length ? `WHERE ${filters.join(" AND ")}` : ""}
-       ORDER BY created_at DESC
-       LIMIT $${params.length}`,
+    if (q.q) {
+      params.push(`%${q.q.toLowerCase()}%`);
+      const n = params.length;
+      filters.push(
+        `(lower(actor_email) LIKE $${n} OR lower(target_id) LIKE $${n} OR ip LIKE $${n})`,
+      );
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const total = await queryOne<{ n: string }>(
+      `SELECT count(*)::text AS n FROM audit_logs ${where}`,
       params,
     );
+    const rows = await query<Record<string, unknown>>(
+      `SELECT id, actor_id, actor_email, action, target_type, target_id, details, ip, created_at
+       FROM audit_logs
+       ${where}
+       ORDER BY created_at DESC
+       LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+      [...params, pageSize, offset],
+    );
+    return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
   });
 
   // Operator-managed branding + alert thresholds (task 5.5, REQUIREMENTS §4.10).
