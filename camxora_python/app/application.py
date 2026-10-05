@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import QThread, QTimer, Signal
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QStackedWidget,
@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
 
 from app.router import AppRouter
 from shared.constants.navigation import ShellRouteKey
+from shared.models.auth import UserMeResponse
 from shared.services.build_config import footer_environment_badge, footer_version_badge
 from shared.services.image_output_sync_coordinator import ImageOutputSyncCoordinator
 from shared.services.progress_local_sync_coordinator import (
@@ -30,10 +31,29 @@ from shared.widgets.page_header import PageHeader
 from shared.widgets.sidebar_nav import SidebarNav
 
 
+class AccountSummaryWorker(QThread):
+    """Fetch the current user off the GUI thread (GET /me can be slow)."""
+
+    succeeded = Signal(object)
+    failed = Signal()
+
+    def __init__(self, session: SessionService, parent=None) -> None:
+        super().__init__(parent)
+        self._session = session
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._session.fetch_current_user())
+        except Exception:  # noqa: BLE001
+            self.failed.emit()
+
+
 class AppShellWidget(QWidget):
     """Workspace shell with sidebar navigation and stacked pages."""
 
     logout_requested = Signal()
+    _account_summary_ready = Signal(object)
+    _account_summary_failed = Signal()
 
     # Heavy lazy pages built while the startup screen is still visible, so the
     # shell never stutters after it appears and every first visit is instant.
@@ -45,8 +65,11 @@ class AppShellWidget(QWidget):
         self._session.hydrate()
         self._api = self._session.api
         self._prewarm_queue: list[ShellRouteKey] = list(self._PREWARM_ROUTE_KEYS)
+        self._account_summary_worker: AccountSummaryWorker | None = None
         self._build_ui()
         self._connect_signals()
+        self._account_summary_ready.connect(self._on_account_summary_ready)
+        self._account_summary_failed.connect(self._on_account_summary_failed)
 
     def show_home(self) -> None:
         """Navigate to dashboard and load data — call when shell becomes visible."""
@@ -155,14 +178,33 @@ class AppShellWidget(QWidget):
 
     def refresh_account_summary(self) -> None:
         user = self._session.current_user
-        if user is None:
-            try:
-                user = self._session.fetch_current_user()
-            except Exception:
-                self._sidebar.set_account_summary("Guest User", None, "Credits: --")
-                self._status_bar.set_summary(credits="Credits: --", allowance="Profiles: --")
-                return
+        if user is not None:
+            self._render_account_summary(user)
+            return
+        if self._account_summary_worker is not None and self._account_summary_worker.isRunning():
+            return
+        # Never block the GUI thread on GET /me: show a placeholder now and let
+        # the worker update the sidebar when the user record arrives.
+        self._render_account_summary(None)
+        worker = AccountSummaryWorker(self._session, parent=self)
+        worker.succeeded.connect(self._account_summary_ready)
+        worker.failed.connect(self._account_summary_failed)
+        worker.finished.connect(lambda: setattr(self, "_account_summary_worker", None))
+        self._account_summary_worker = worker
+        worker.start()
 
+    def _on_account_summary_ready(self, user: object) -> None:
+        if isinstance(user, UserMeResponse):
+            self._render_account_summary(user)
+
+    def _on_account_summary_failed(self) -> None:
+        self._render_account_summary(None)
+
+    def _render_account_summary(self, user: UserMeResponse | None) -> None:
+        if user is None:
+            self._sidebar.set_account_summary("Guest User", None, "Credits: --")
+            self._status_bar.set_summary(credits="Credits: --", allowance="Profiles: --")
+            return
         display_name = user.display_name.strip() or user.email.strip() or "User"
         credits = f"{user.credit_balance:,} credits"
         self._sidebar.set_account_summary(display_name, user.plan_name, credits)
