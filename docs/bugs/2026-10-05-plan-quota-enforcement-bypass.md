@@ -80,26 +80,37 @@ separately — see the credit-reconciliation report.)
 - Wallet credits do not burn → large balances / reconciliation work.
 - Real **Suno provider cost** is incurred and **not billed** to the user.
 
-## Proposed fix
+## Fix — status
 
-1. **Make the monthly limit a hard cap for subscription plans** (or, if overage is
-   intended, gate it on `wallet_balance > cost` and *actually deduct*). Suggested: add a
-   `monthly_overage_allowed` plan flag; default **off** so `450` blocks.
-   - File: `usage_enforcement_service.py::_enforce_plan_quotas`.
-2. **Cap the daily bank** so it can't be hoarded:
-   - `banked_units = min(banked_units, daily_limit * MAX_BANK_DAYS)` (e.g. 3).
-   - Or disable banking for paid plans / only bank up to 1 day.
-   - Files: `daily_quota_bank_service.py`, `daily_quota_bank_repo.py`.
-3. **Fix monthly counting across overlapping periods**:
-   - Sum usage over **all** `plan_usage` periods that overlap the current period (or over
-     `usage_tracking` by month), instead of the latest row only.
-   - Prevent overlap: keep a single row per license per *billing month*, and clean up
-     existing overlapping rows.
-   - Files: `license_repo.py` (`get_current_usage`, `get_or_create_usage`),
-     `billing_period_service.py` (`period_start_for_subscription`).
-4. **Charge overage to the wallet** (pair with the 0-credit billing fix) so overage is paid.
-5. **Tests**: at exactly `monthly_song_limit`, an extra batch is refused (subscription);
-   a single day cannot exceed `daily_limit × MAX_BANK_DAYS`.
+### ✅ Implemented (this PR)
+1. **Monthly limit is now a HARD cap for subscription plans** unless the deployment
+   opts into wallet overage:
+   - New setting `PLATFORM_PLAN_MONTHLY_OVERAGE_ALLOWED` (default **false**).
+   - `usage_enforcement_service._enforce_plan_quotas` and the
+     `allow_monthly_overage` flag now read it (`is_subscription_plan(plan) and
+     get_settings().plan_monthly_overage_allowed`). At/over the limit the request is
+     refused with `MONTHLY_QUOTA_EXCEEDED` instead of silently running wallet overage.
+   - Files: `platform_api/config.py`, `platform_api/services/usage_enforcement_service.py`.
+2. **Daily bank is capped** at `MAX_BANK_DAYS` (3) days of unused allowance, so it can no
+   longer be hoarded into a burst:
+   - `daily_quota_bank_service.accrue_and_get_banked_units` stops accruing once
+     `banked_units >= daily_limit * MAX_BANK_DAYS`.
+   - File: `platform_api/services/daily_quota_bank_service.py`.
+3. **Tests**: `platform_api/tests/test_plan_quota_hard_cap.py` (hard cap blocks by default,
+   overage only when opted in, bank capped) + the 3 existing overage tests updated to opt in.
+
+### ⏳ Remaining
+4. **Fix monthly counting across overlapping periods** (`plan_usage` / `usage_tracking`
+   keyed by a single `period_start`): sum usage across all periods overlapping the month,
+   and prevent overlapping rows.
+   - Files: `repositories/license_repo.py` (`get_current_usage`, `get_or_create_usage`),
+     `repositories/usage_tracking_repo.py` (`get_monthly_count`), `billing_period_service.py`.
+5. **Charge overage (or legacy 0-credit songs) to the wallet** — pair with the billing fix.
+
+### Rollout note
+Default is a hard cap. If a plan should keep wallet overage, set
+`PLATFORM_PLAN_MONTHLY_OVERAGE_ALLOWED=true`. Overlapping-period counting (#4) should land
+next so the cap counts the whole month accurately.
 
 ## Evidence (reproduce)
 ```sql

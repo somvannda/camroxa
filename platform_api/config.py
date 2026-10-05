@@ -206,6 +206,13 @@ class Settings(BaseSettings):
     # Set >0 (e.g. 1000) when multiple admins should co-approve large wallets.
     admin_adjust_dual_control_credits: float = 0.0
 
+    # --- Plan monthly quota enforcement ---
+    # When True, a subscription plan may exceed ``monthly_song_limit`` and pay the
+    # overage from its wallet (legacy behavior). Default False = the monthly limit
+    # is a HARD cap for subscription plans too (see
+    # docs/bugs/2026-10-05-plan-quota-enforcement-bypass.md).
+    plan_monthly_overage_allowed: bool = False
+
     # --- Abuse alert thresholds (Phase 3) ---
     abuse_absorb_alert_threshold: int = 20
     abuse_polish_probe_threshold: int = 10

@@ -566,8 +566,16 @@ async def test_monthly_quota_exceeded_uses_wallet_for_subscription(
     service: UsageEnforcementService,
     credit_repo: FakeCreditRepo,
     usage_repo: FakeUsageRepo,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Subscription users at monthly limit can continue via wallet credits."""
+    """Subscription users at monthly limit continue via wallet when overage is opted in."""
+    from platform_api.services import usage_enforcement_service as ues
+
+    monkeypatch.setattr(
+        ues,
+        "get_settings",
+        lambda: type("S", (), {"plan_monthly_overage_allowed": True})(),
+    )
     user_id = uuid4()
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 5000)
@@ -650,8 +658,16 @@ async def test_subscription_monthly_exhausted_without_wallet_raises_402(
     service: UsageEnforcementService,
     credit_repo: FakeCreditRepo,
     usage_repo: FakeUsageRepo,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When monthly quota is exhausted and wallet is empty, raise InsufficientCreditsError."""
+    """With overage opted in and wallet empty, raise InsufficientCreditsError."""
+    from platform_api.services import usage_enforcement_service as ues
+
+    monkeypatch.setattr(
+        ues,
+        "get_settings",
+        lambda: type("S", (), {"plan_monthly_overage_allowed": True})(),
+    )
     user_id = uuid4()
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 0)
@@ -670,8 +686,16 @@ async def test_subscription_monthly_exhausted_uses_wallet(
     service: UsageEnforcementService,
     credit_repo: FakeCreditRepo,
     usage_repo: FakeUsageRepo,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """When monthly quota is exhausted, subscription users pay from wallet."""
+    """When monthly quota is exhausted and overage is opted in, pay from wallet."""
+    from platform_api.services import usage_enforcement_service as ues
+
+    monkeypatch.setattr(
+        ues,
+        "get_settings",
+        lambda: type("S", (), {"plan_monthly_overage_allowed": True})(),
+    )
     user_id = uuid4()
     channel_id = uuid4()
     credit_repo.set_balance(user_id, 500)

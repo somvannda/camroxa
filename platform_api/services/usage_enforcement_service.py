@@ -20,6 +20,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Protocol
 from uuid import UUID
 
+from platform_api.config import get_settings
 from platform_api.exceptions import (
     ExternalServiceError,
     InsufficientCreditsError,
@@ -900,7 +901,11 @@ class UsageEnforcementService:
             period_start=period_start,
             subscription_context=ctx,
         )
-        allow_monthly_overage = is_subscription_plan(plan)
+        # Subscription monthly limits are HARD caps unless the deployment opts into
+        # wallet overage (see docs/bugs/2026-10-05-plan-quota-enforcement-bypass.md).
+        allow_monthly_overage = (
+            is_subscription_plan(plan) and get_settings().plan_monthly_overage_allowed
+        )
         try_increment = getattr(self._usage_repo, "try_increment_usage", None)
         if try_increment is None:
             await self._enforce_plan_quotas(
@@ -2044,8 +2049,12 @@ class UsageEnforcementService:
                     user_id, "thumbnail_image", period_start
                 )
             if monthly_count + max(1, additional_count) > monthly_limit:
-                # Subscription plans allow wallet overage once included quota is consumed.
-                if is_subscription_plan(plan):
+                # Subscription plans may fall through to wallet overage ONLY when the
+                # deployment opts in; otherwise the monthly limit is a hard cap.
+                if (
+                    is_subscription_plan(plan)
+                    and get_settings().plan_monthly_overage_allowed
+                ):
                     return
                 period_end_date = period_end_for_subscription(
                     plan=plan,
