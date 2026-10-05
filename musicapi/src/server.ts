@@ -7,7 +7,8 @@ import { createHash, createHmac, randomUUID, timingSafeEqual } from "node:crypto
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
-import { encryptCookie } from "./cookieCrypto.js";
+import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
+import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE_ADMIN, serializeSessionCookie, serializeClearedSessionCookie, readSessionCookie } from "./appAuth.js";
 import { OAuth2Client } from "google-auth-library";
@@ -317,6 +318,9 @@ interface DbUser {
   role: "user" | "admin";
   name: string | null;
   status: string;
+  /** AES-256-GCM encrypted TOTP secret; null until 2FA setup starts. */
+  totp_secret: string | null;
+  totp_enabled: boolean;
 }
 
 interface Job {
@@ -3199,6 +3203,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return reply.code(403).send({ error: "This login method is restricted to administrators." });
     }
     if (user.status !== "active") return reply.code(403).send({ error: "Account suspended." });
+    // Second factor: when enabled, a valid TOTP code is required before a session is issued.
+    if (user.totp_enabled) {
+      const { code } = (req.body ?? {}) as { code?: string };
+      let secret: string | null = null;
+      if (user.totp_secret) {
+        try {
+          secret = decryptCookie(user.totp_secret);
+        } catch {
+          secret = null;
+        }
+      }
+      if (!secret || !code || !verifyTotp(secret, code)) {
+        return reply.code(401).send({ error: "Two-factor code required.", totp_required: true });
+      }
+    }
     const token = signToken({ id: user.id, email: user.email, role: user.role });
     // Also set the httpOnly session cookie so browser clients never have to
     // store the JWT where scripts can read it. Admin uses a distinct cookie name
@@ -7136,6 +7155,106 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       [...params, pageSize, offset],
     );
     return { rows, total: Number(total?.n ?? 0), page, page_size: pageSize };
+  });
+
+  // --- admin: two-factor authentication (Phase 6) -------------------------
+  // Optional per-admin TOTP. Enforced only when `totp_enabled` is true, so an
+  // unfinished enrollment can never lock an admin out.
+
+  app.get("/admin/2fa/status", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const row = await queryOne<{ totp_enabled: boolean; totp_secret: string | null }>(
+      "SELECT totp_enabled, totp_secret FROM users WHERE id = $1",
+      [admin.id],
+    );
+    return {
+      enabled: Boolean(row?.totp_enabled),
+      pending: Boolean(row?.totp_secret) && !row?.totp_enabled,
+    };
+  });
+
+  app.post("/admin/2fa/setup", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const row = await queryOne<{ totp_enabled: boolean }>(
+      "SELECT totp_enabled FROM users WHERE id = $1",
+      [admin.id],
+    );
+    if (row?.totp_enabled) return reply.code(409).send({ error: "Two-factor is already enabled." });
+    const secret = generateTotpSecret();
+    await query("UPDATE users SET totp_secret = $1 WHERE id = $2", [encryptCookie(secret), admin.id]);
+    await recordAudit({
+      actor: admin,
+      action: "admin.2fa_setup",
+      targetType: "user",
+      targetId: admin.id,
+      req,
+    });
+    return { secret, otpauth_url: otpauthUrl({ secret, label: admin.email }) };
+  });
+
+  app.post("/admin/2fa/enable", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { code } = (req.body ?? {}) as { code?: string };
+    const row = await queryOne<{ totp_secret: string | null; totp_enabled: boolean }>(
+      "SELECT totp_secret, totp_enabled FROM users WHERE id = $1",
+      [admin.id],
+    );
+    if (row?.totp_enabled) return reply.code(409).send({ error: "Two-factor is already enabled." });
+    let secret: string | null = null;
+    if (row?.totp_secret) {
+      try {
+        secret = decryptCookie(row.totp_secret);
+      } catch {
+        secret = null;
+      }
+    }
+    if (!secret) return reply.code(400).send({ error: "Start setup before enabling two-factor." });
+    if (!code || !verifyTotp(secret, code)) return reply.code(400).send({ error: "Invalid code." });
+    await query("UPDATE users SET totp_enabled = true WHERE id = $1", [admin.id]);
+    await recordAudit({
+      actor: admin,
+      action: "admin.2fa_enable",
+      targetType: "user",
+      targetId: admin.id,
+      req,
+    });
+    return { ok: true };
+  });
+
+  app.post("/admin/2fa/disable", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { code } = (req.body ?? {}) as { code?: string };
+    const row = await queryOne<{ totp_secret: string | null; totp_enabled: boolean }>(
+      "SELECT totp_secret, totp_enabled FROM users WHERE id = $1",
+      [admin.id],
+    );
+    if (!row?.totp_enabled) return reply.code(400).send({ error: "Two-factor is not enabled." });
+    let secret: string | null = null;
+    if (row.totp_secret) {
+      try {
+        secret = decryptCookie(row.totp_secret);
+      } catch {
+        secret = null;
+      }
+    }
+    if (!secret || !code || !verifyTotp(secret, code)) {
+      return reply.code(400).send({ error: "Invalid code." });
+    }
+    await query("UPDATE users SET totp_secret = NULL, totp_enabled = false WHERE id = $1", [
+      admin.id,
+    ]);
+    await recordAudit({
+      actor: admin,
+      action: "admin.2fa_disable",
+      targetType: "user",
+      targetId: admin.id,
+      req,
+    });
+    return { ok: true };
   });
 
   // --- admin: system health + jobs (Phase 4) ------------------------------
