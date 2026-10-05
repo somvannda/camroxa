@@ -390,6 +390,7 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
 | `admin/keys-pagination` | `admin/ui-foundation` | Phase 3 — paginated / searchable API keys |
 | `admin/robots` | `admin/ui-foundation` | `robots.txt` disallow |
 | `admin/readme` | `admin/ui-foundation` | Real `web-admin` README |
+| `admin/tests` | `admin/ui-foundation` | `node:test` unit tests for the shared formatters (`npm test`) |
 
 ### Completed
 
@@ -418,7 +419,8 @@ merge order (rebase the stacked branches onto `main` after the foundation lands)
 
 ### Not done
 
-- Admin 2FA; CSRF tokenization; automated tests + CI wiring.
+- Admin 2FA; CSRF tokenization.
+- Automated tests: formatter tests added (`admin/tests`, `npm test`); wiring them into CI is still pending.
 
 ### Branch strategy note
 
