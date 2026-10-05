@@ -21,6 +21,14 @@ import { toast } from "@/hooks/use-toast";
 import { updateCurrentUser } from "@/lib/channel-setup";
 
 export default function DashboardSecurityPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <DashboardSecurityContent />
+    </React.Suspense>
+  );
+}
+
+function DashboardSecurityContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { state, setState, refreshSecurity } = useControlPanel();
