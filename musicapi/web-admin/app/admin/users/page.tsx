@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { apiFetch } from "@/lib/api";
 import { useResource } from "@/lib/useResource";
 import { Badge } from "@/components/ui/Badge";
@@ -33,13 +34,15 @@ interface UserPage {
 
 const PAGE_SIZE = 25;
 
-export default function UsersPage() {
+function UsersInner() {
   const toast = useToast();
+  const router = useRouter();
+  const params = useSearchParams();
 
-  const [qInput, setQInput] = useState("");
-  const [q, setQ] = useState("");
-  const [statusFilter, setStatusFilter] = useState("");
-  const [page, setPage] = useState(1);
+  const [qInput, setQInput] = useState(params.get("q") ?? "");
+  const [q, setQ] = useState(params.get("q") ?? "");
+  const [statusFilter, setStatusFilter] = useState(params.get("status") ?? "");
+  const [page, setPage] = useState(() => Math.max(1, Number(params.get("page")) || 1));
 
   const { data, loading, error, reload } = useResource<UserPage>(
     () => {
@@ -50,6 +53,16 @@ export default function UsersPage() {
     },
     [page, q, statusFilter],
   );
+
+  // Reflect the filters in the URL so a view can be bookmarked/shared.
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (q) p.set("q", q);
+    if (statusFilter) p.set("status", statusFilter);
+    if (page > 1) p.set("page", String(page));
+    const qs = p.toString();
+    router.replace(qs ? `/admin/users?${qs}` : "/admin/users", { scroll: false });
+  }, [q, statusFilter, page, router]);
 
   const users = data?.rows ?? [];
   const total = data?.total ?? 0;
@@ -433,5 +446,13 @@ export default function UsersPage() {
         onClose={() => setPendingBan(null)}
       />
     </div>
+  );
+}
+
+export default function UsersPage() {
+  return (
+    <Suspense fallback={<LoadingState />}>
+      <UsersInner />
+    </Suspense>
   );
 }
