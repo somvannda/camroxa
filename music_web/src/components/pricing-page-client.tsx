@@ -46,7 +46,7 @@ export default function PricingPageClient() {
 
   async function handleSelectPlan(plan: SubscriptionPlan) {
     if (!user) {
-      router.push(`/login?redirect=/pricing`);
+      router.push(`/login?next=/pricing`);
       return;
     }
 
