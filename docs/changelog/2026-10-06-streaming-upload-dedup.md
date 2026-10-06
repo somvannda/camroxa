@@ -34,23 +34,31 @@ Two compounding problems:
 - Added `_ARCHIVED_TRACK_EXCLUDED` and applied it to the auto-retry / backfill
   job selectors and to the health-report counts (`missing_b2_only=True`), so
   workers stop churning on and ops stops paging about already-archived audio.
-- No schema change.
+- **DB backstop** `platform_api/migrations/versions/134_streaming_upload_job_dedup.py`:
+  partial unique index on `(suno_task_id, kind)` for `pending` `mp3_*` jobs;
+  duplicate pending rows are failed first so the index can be created.
+  `create_upload_job` catches the unique violation and reuses the existing
+  pending job, so a race cannot error (and the code is correct whether or not the
+  index has been applied yet).
 
 ## Tests
 `platform_api/tests/test_streaming_upload_dedup.py` (new), plus expanded
 `test_streaming_upload_service.py` and `test_streaming_health_report.py`.
-Focused streaming suite: 27 passed.
+Focused streaming suite: 27 passed. Migration head is now
+`134_streaming_upload_job_dedup`.
 
 ## Follow-ups
-- Optional DB backstop: partial unique index on
-  `stream_upload_jobs (suno_task_id, kind) WHERE status = 'pending'`.
-- Production backlog cleanup: mark already-archived failed jobs
-  `permanent_failed` and decide whether to prune the redundant rows.
+- Run `scripts/deploy/cleanup_stream_upload_backlog_production.py --apply`
+  (dry-run by default) to mark the historical already-archived failed jobs
+  `permanent_failed`.
+- Decide whether to prune the tens of thousands of redundant historical rows.
 
 ## Files touched
 - `platform_api/repositories/streaming_repo.py`
 - `platform_api/services/streaming_upload_service.py`
 - `platform_api/services/streaming_health_report.py`
+- `platform_api/migrations/versions/134_streaming_upload_job_dedup.py`
+- `scripts/deploy/cleanup_stream_upload_backlog_production.py`
 - `platform_api/tests/test_streaming_upload_service.py`
 - `platform_api/tests/test_streaming_health_report.py`
 - `platform_api/tests/test_streaming_upload_dedup.py`

@@ -60,3 +60,59 @@ async def test_count_failed_mp3_jobs_without_filter_counts_all() -> None:
 
     query, _ = pool.calls[0]
     assert "NOT EXISTS" not in query
+
+
+class _InsertPool:
+    """Minimal pool double for create_upload_job."""
+
+    def __init__(self, *, raise_on_insert: bool, existing_id=None) -> None:
+        self._raise = raise_on_insert
+        self._existing = {"id": existing_id} if existing_id is not None else None
+        self.inserted_id = None
+
+    async def execute(self, query, *args):
+        self.inserted_id = args[0]
+        if self._raise:
+            raise RuntimeError("duplicate key value violates unique constraint")
+
+    async def fetchrow(self, query, *args):
+        return self._existing
+
+
+async def test_create_upload_job_returns_new_id_on_success() -> None:
+    pool = _InsertPool(raise_on_insert=False)
+    repo = StreamingRepository(pool)
+    task_id = uuid4()
+
+    job_id = await repo.create_upload_job(
+        user_id=uuid4(), kind="mp3_ok", suno_task_id=task_id
+    )
+
+    assert job_id == pool.inserted_id
+
+
+async def test_create_upload_job_reuses_pending_on_unique_violation() -> None:
+    existing = uuid4()
+    pool = _InsertPool(raise_on_insert=True, existing_id=existing)
+    repo = StreamingRepository(pool)
+
+    job_id = await repo.create_upload_job(
+        user_id=uuid4(), kind="mp3_ok", suno_task_id=uuid4()
+    )
+
+    assert job_id == existing
+
+
+async def test_create_upload_job_reraises_when_no_pending_winner() -> None:
+    pool = _InsertPool(raise_on_insert=True, existing_id=None)
+    repo = StreamingRepository(pool)
+
+    try:
+        await repo.create_upload_job(
+            user_id=uuid4(), kind="mp3_ok", suno_task_id=uuid4()
+        )
+    except RuntimeError:
+        pass
+    else:  # pragma: no cover - defensive
+        raise AssertionError("expected the insert failure to propagate")
+

@@ -115,24 +115,43 @@ class StreamingRepository:
         storage_key: str | None = None,
     ) -> UUID:
         job_id = uuid4()
-        await self._pool.execute(
-            """
-            INSERT INTO stream_upload_jobs (
-                id, user_id, song_id, batch_id, suno_task_id, album_id,
-                kind, source_url, storage_key, status, attempt_count
+        try:
+            await self._pool.execute(
+                """
+                INSERT INTO stream_upload_jobs (
+                    id, user_id, song_id, batch_id, suno_task_id, album_id,
+                    kind, source_url, storage_key, status, attempt_count
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 0)
+                """,
+                job_id,
+                user_id,
+                song_id,
+                batch_id,
+                suno_task_id,
+                album_id,
+                kind,
+                source_url,
+                storage_key,
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending', 0)
-            """,
-            job_id,
-            user_id,
-            song_id,
-            batch_id,
-            suno_task_id,
-            album_id,
-            kind,
-            source_url,
-            storage_key,
-        )
+        except Exception:
+            # A partial unique index (migration 134) rejects a second pending
+            # capture for the same task+variant. Reuse the winner so callers do
+            # not process a job id that was never inserted. Kept as a try/except
+            # (not ON CONFLICT) so the code is correct whether or not the index
+            # has been applied yet.
+            existing = await self._pool.fetchrow(
+                """
+                SELECT id FROM stream_upload_jobs
+                WHERE suno_task_id = $1 AND kind = $2 AND status = 'pending'
+                LIMIT 1
+                """,
+                suno_task_id,
+                kind,
+            )
+            if existing is not None:
+                return UUID(str(existing["id"]))
+            raise
         return job_id
 
     async def mark_upload_job(
