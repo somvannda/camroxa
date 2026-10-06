@@ -7770,8 +7770,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const job = await getJob(id);
     if (!job) return reply.code(404).send({ error: "Task not found." });
     // A job created through a user session/API key belongs to that user; other
-    // keys (including other tenants) must not be able to read its result.
-    if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+    // keys (including other tenants) must not be able to read its result. A job
+    // with no owner is denied too, so an unattributed row is never readable.
+    if (!job.userId || job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
     return {
       job_id: job.id,
       type: job.type,
@@ -8774,7 +8775,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!id) return reply.code(400).send({ error: "taskId is required." });
       const job = await getJob(id);
       if (!job) return reply.code(404).send({ error: "task not found." });
-      if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+      if (!job.userId || job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
       return await build(job);
     });
   }
@@ -8788,7 +8789,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!id) return reply.code(400).send({ error: "taskId is required." });
       const job = await getJob(id);
       if (!job) return reply.code(404).send({ error: "task not found." });
-      if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+      if (!job.userId || job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
       return await wavRecordInfo(job);
     });
   }
@@ -8826,7 +8827,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!id) return reply.code(400).send({ error: "taskId is required." });
       const job = await getJob(id);
       if (!job) return reply.code(404).send({ error: "task not found." });
-      if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+      if (!job.userId || job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
       return await sunoRecordInfo(job);
     });
   }
@@ -9732,7 +9733,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const id = (in_.taskId as string) || (in_.task_id as string);
     if (!id) return { code: 400, msg: "taskId is required", data: null };
     const job = await getJob(id);
-    if (!job || (job.userId && job.userId !== key.user_id)) {
+    if (!job || !job.userId || job.userId !== key.user_id) {
       return { code: 400, msg: "Voice record not found", data: null };
     }
     const blob = JSON.stringify(job.result ?? {});
