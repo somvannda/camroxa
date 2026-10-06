@@ -106,6 +106,7 @@ fi
 
 if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   log "Extracting uploaded source tarball..."
+  REPO_BACKUP=""
   if [[ -d "${REPO_DIR}" ]]; then
     REPO_BACKUP="${DEPLOY_ROOT}/repo.bak.$(date -u +%Y%m%dT%H%M%SZ)"
     log "Backing up previous checkout to ${REPO_BACKUP}..."
@@ -113,6 +114,16 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   fi
   mkdir -p "${REPO_DIR}"
   tar -xzf /tmp/camxora-src.tar.gz -C "${REPO_DIR}"
+  # The musicapi core shares this checkout directory but is deployed by its own
+  # script (scripts/deploy/camxora-musicapi-remote.sh); the platform tarball does
+  # NOT contain it. Restore it from the backup so this deploy never removes it
+  # out from under the running camxora-musicapi service — that breaks its
+  # absolute node_modules paths (e.g. ffmpeg-static) and every generation fails
+  # with audio_ingest_failed.
+  if [[ -n "${REPO_BACKUP}" && -e "${REPO_BACKUP}/musicapi" && ! -e "${REPO_DIR}/musicapi" ]]; then
+    log "Restoring musicapi checkout from ${REPO_BACKUP}..."
+    mv "${REPO_BACKUP}/musicapi" "${REPO_DIR}/musicapi"
+  fi
   chown -R camxora:camxora "${REPO_DIR}"
 elif [[ ! -d "${REPO_DIR}/.git" ]]; then
   log "Cloning repository..."

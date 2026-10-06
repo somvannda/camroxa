@@ -292,6 +292,17 @@ sudo -u camxora -H bash -lc "
   npm run build
 "
 
+# ffmpeg-static downloads its binary in a postinstall script; if that silently
+# fails (or the binary is lost) audio ingest breaks at runtime and every
+# generation fails with ``audio_ingest_failed``. Fail the deploy here instead.
+FFMPEG_BIN="${MUSICAPI_DIR}/node_modules/ffmpeg-static/ffmpeg"
+if [[ ! -x "${FFMPEG_BIN}" ]]; then
+  log "ERROR: ${FFMPEG_BIN} is missing or not executable; audio ingest would fail."
+  log "Fix: cd '${MUSICAPI_DIR}' && node node_modules/ffmpeg-static/install.js && chmod +x node_modules/ffmpeg-static/ffmpeg"
+  exit 1
+fi
+log "ffmpeg present: $("${FFMPEG_BIN}" -version 2>/dev/null | head -1)"
+
 log "Applying database migrations..."
 sudo -u camxora -H bash -lc "
   set -e
