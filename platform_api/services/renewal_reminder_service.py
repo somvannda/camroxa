@@ -14,12 +14,30 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
+# Single-winner across uvicorn workers (distinct from grant maintenance's lock).
+_LOCK_ID = 774319003
+
 
 def _format_price(cents: int) -> str:
     return f"${cents / 100:.2f}"
 
 
 async def run_renewal_reminders(pool: Any) -> int:
+    """Single-winner wrapper so multiple workers don't send duplicate reminders."""
+    async with pool.acquire() as conn:
+        acquired = await conn.fetchval("SELECT pg_try_advisory_lock($1)", _LOCK_ID)
+        if not acquired:
+            return 0
+        try:
+            return await _run_renewal_reminders(pool)
+        finally:
+            try:
+                await conn.fetchval("SELECT pg_advisory_unlock($1)", _LOCK_ID)
+            except Exception:
+                pass
+
+
+async def _run_renewal_reminders(pool: Any) -> int:
     """Email owners of active subs entering the renewal window. Returns count sent."""
     from platform_api.config import get_settings
     from platform_api.db.asyncpg_adapter import wrap_pool
