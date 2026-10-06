@@ -694,6 +694,17 @@ class StreamingUploadService:
         if _already_archived:
             return
 
+        # Idempotency (in flight): a pending job, or one that failed moments ago,
+        # means this task+variant is already being captured. Re-delivered Suno
+        # callbacks and desktop reconcile polling used to stack duplicate jobs
+        # here (observed: dozens per task), which then re-downloaded expired Suno
+        # URLs and surfaced as recurring 404s.
+        if await self._repo.has_active_upload_job(
+            suno_task_id=suno_task_id,
+            kind=f"mp3_{variant}",
+        ):
+            return
+
         job_id = await self._repo.create_upload_job(
             user_id=user_id,
             kind=f"mp3_{variant}",
