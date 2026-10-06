@@ -76,13 +76,13 @@ class FakeStore:
             return None
         return await self.insert_lot(**kwargs)
 
-    async def top_up_period_lot(
-        self, lot_id: UUID, extra_units: int, *, max_units: int
+    async def grow_period_lot(
+        self, lot_id: UUID, extra_units: int, *, below_units: int
     ) -> bool:
         for lot in self.lots:
             if str(lot["id"]) != str(lot_id):
                 continue
-            if int(lot["amount_units"]) + extra_units > max_units:
+            if int(lot["amount_units"]) >= below_units:
                 return False
             lot["amount_units"] = int(lot["amount_units"]) + extra_units
             lot["remaining_units"] = int(lot.get("remaining_units") or 0) + extra_units
@@ -191,13 +191,14 @@ async def test_period_grant_uses_paid_web_plan() -> None:
 
 
 @pytest.mark.asyncio
-async def test_period_grant_tops_up_free_lot_on_paid_upgrade() -> None:
-    """A paid upgrade in a period whose Free lot already exists must still grant.
+async def test_period_grant_grants_full_allowance_on_paid_upgrade() -> None:
+    """A paid upgrade must grant the full allowance, not net off free usage.
 
-    Regression: the Free monthly ``grant`` lot occupies the unique
+    Regression (part 1): the Free monthly ``grant`` lot occupies the unique
     ``(user_id, period_start)`` slot, so the paid allowance used to be silently
-    skipped and a just-paid user kept only their leftover Free credits. The lot
-    must grow to the paid allowance (allowance - already granted).
+    skipped and a just-paid user kept only their leftover Free credits.
+    Regression (part 2): the grant must not be reduced by credits the user
+    already spent on the Free plan — a top-up adds the full plan allowance.
     """
     wallet = FakeWallet()
     store = FakeStore(_monthly_free_plan())
@@ -214,15 +215,17 @@ async def test_period_grant_tops_up_free_lot_on_paid_upgrade() -> None:
     upgraded = await service.ensure_period_grant(USER_ID)
     assert upgraded["granted"] is True
     assert upgraded["credits"] == 1000
-    assert wallet.balance == credits_to_units(1000)
+    # Full paid allowance added on top of the untouched Free balance (50).
+    assert wallet.balance == credits_to_units(1050)
     assert len(store.lots) == 1
-    assert store.lots[0]["amount_units"] == credits_to_units(1000)
+    assert store.lots[0]["amount_units"] == credits_to_units(1050)
 
-    # Idempotent: the lot now holds the allowance, so re-runs do not re-credit.
+    # Idempotent: the lot now holds at least the allowance, so re-runs do not
+    # re-credit.
     again = await service.ensure_period_grant(USER_ID)
     assert again["granted"] is False
     assert again["reason"] == "already_granted"
-    assert wallet.balance == credits_to_units(1000)
+    assert wallet.balance == credits_to_units(1050)
 
 
 @pytest.mark.asyncio
