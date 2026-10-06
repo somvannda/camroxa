@@ -88,19 +88,17 @@ class PeriodGrantService:
             if existing_units < units:
                 # Plan upgrade inside a period whose lot was minted for a smaller
                 # allowance (e.g. the Free monthly lot holding the unique
-                # (user_id, period_start) slot). Without this the paid allowance
-                # was silently skipped and a just-paid user kept only their
-                # leftover Free credits. Grow the lot to the new allowance and
-                # credit the difference; equivalent to "allowance - already
-                # granted" and idempotent once the lot holds the allowance.
-                added_units = units - existing_units
-                applied = await self._store.top_up_period_lot(
-                    existing["id"], added_units, max_units=units
+                # (user_id, period_start) slot). Grant the FULL new-plan
+                # allowance: credits the user already spent on the smaller plan
+                # were theirs, so a top-up must not be reduced by that prior
+                # usage. The lot guard keeps repeated sweeps from double-crediting.
+                applied = await self._store.grow_period_lot(
+                    existing["id"], units, below_units=units
                 )
                 if applied:
                     await self._ledger.grant(
                         user_id,
-                        added_units,
+                        units,
                         grant_type=GrantType.PERIOD,
                         ref_id=f"grant-upgrade:{user_id}:{period_start.isoformat()}",
                     )

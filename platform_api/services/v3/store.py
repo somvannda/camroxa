@@ -302,17 +302,17 @@ class V3BillingStore:
         )
         return dict(row) if row is not None else None
 
-    async def top_up_period_lot(
-        self, lot_id: UUID, extra_units: int, *, max_units: int
+    async def grow_period_lot(
+        self, lot_id: UUID, extra_units: int, *, below_units: int
     ) -> bool:
-        """Raise a period lot toward ``max_units``; returns True when units moved.
+        """Add ``extra_units`` to a period lot once it sits below ``below_units``.
 
         A plan upgrade can land in a period whose lot was minted for a smaller
-        allowance (e.g. the Free 50-credit lot occupying the unique
-        ``(user_id, period_start)`` slot). This grows that lot to the new
-        allowance instead of letting the paid grant be skipped. The guarded
-        UPDATE keeps concurrent sweeps from over-crediting; callers must only
-        credit the wallet when this returns True.
+        allowance (e.g. the Free 50-credit lot). Grant the full new-plan
+        allowance on top rather than netting off credits the user already spent
+        on the smaller plan. The ``amount_units < below_units`` guard makes the
+        move idempotent, so repeated grant sweeps cannot double-credit; callers
+        must only credit the ledger when this returns True.
         """
         if extra_units <= 0:
             return False
@@ -322,12 +322,12 @@ class V3BillingStore:
             SET amount_units = amount_units + $1,
                 remaining_units = remaining_units + $1
             WHERE id = $2
-              AND amount_units + $1 <= $3
+              AND amount_units < $3
             RETURNING id
             """,
             extra_units,
             lot_id,
-            max_units,
+            below_units,
         )
         return row is not None
 
