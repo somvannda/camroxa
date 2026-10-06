@@ -435,6 +435,52 @@ export async function fetchSubscriptionCheckoutStatus(paymentId: string): Promis
   return apiFetch(`${API_V3}/subscriptions/payments/${encodeURIComponent(paymentId)}`);
 }
 
+// ============================================================================
+// Renewal API (CutLuy is one-time; renewal is a fresh KHQR charge)
+// ============================================================================
+
+export type RenewalOffer = {
+  eligible: boolean;
+  subscription_id: string;
+  plan_id: string;
+  plan_name: string;
+  price_cents: number;
+  billing_cycle: string;
+  current_period_end: string;
+  days_left: number | null;
+  expired: boolean;
+  renewable: boolean;
+  renewal_opens_in_days: number | null;
+  renewal_window_days: number;
+};
+
+export async function fetchRenewalOffer(): Promise<RenewalOffer> {
+  return apiFetch<RenewalOffer>(`${API_V3}/subscriptions/renewal`);
+}
+
+export async function purchaseRenewal(input: {
+  success_url: string;
+  cancel_url: string;
+}): Promise<{
+  checkout_url: string;
+  payment_id: string;
+  expires_at: string;
+  qr_string?: string;
+  plan_name: string;
+  credits: number;
+  amount_cents: number;
+}> {
+  return apiFetch(`${API_V3}/subscriptions/renewal`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function fetchRenewalCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
+  return apiFetch(`${API_V3}/subscriptions/renewals/${encodeURIComponent(paymentId)}`);
+}
+
 export async function fetchTopupCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
   return apiFetch(`${API_V3}/topups/payments/${encodeURIComponent(paymentId)}`);
 }

@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import { Check, ExternalLink, Loader2, QrCode, X } from 'lucide-react';
 import {
+  fetchRenewalCheckoutStatus,
   fetchSubscriptionCheckoutStatus,
   fetchTopupCheckoutStatus,
   formatPlanDisplayName,
@@ -18,7 +19,7 @@ type CutluyCheckoutModalProps = {
   checkoutUrl: string | null;
   qrString?: string | null;
   paymentId?: string | null;
-  kind?: 'subscription' | 'topup';
+  kind?: 'subscription' | 'topup' | 'renewal';
   title?: string;
   planName?: string;
   planPrice?: string;
@@ -58,7 +59,9 @@ export default function CutluyCheckoutModal({
         const next =
           kind === 'topup'
             ? await fetchTopupCheckoutStatus(paymentId)
-            : await fetchSubscriptionCheckoutStatus(paymentId);
+            : kind === 'renewal'
+              ? await fetchRenewalCheckoutStatus(paymentId)
+              : await fetchSubscriptionCheckoutStatus(paymentId);
         if (cancelled) return;
         setStatus(next);
         setPollError(null);
