@@ -846,6 +846,7 @@ class SubscriptionService:
                 last_payment_at = NOW(),
                 cancel_at_period_end = false,
                 cancelled_at = NULL,
+                renewal_reminder_sent_at = NULL,
                 pending_renewal_payment_id = NULL
             WHERE id = $4 AND pending_renewal_payment_id = $5
             RETURNING id
@@ -867,6 +868,40 @@ class SubscriptionService:
             new_end,
         )
         return True
+
+    async def list_renewal_reminders_due(
+        self, *, within_days: int = RENEWAL_WINDOW_DAYS
+    ) -> list[dict]:
+        """Active subscriptions entering the renewal window, not yet reminded."""
+        return await self._db.fetch_all(
+            """
+            SELECT ws.id, ws.current_period_end,
+                   u.email, u.display_name,
+                   p.name AS plan_name, p.price_cents
+            FROM web_subscriptions ws
+            JOIN users u ON u.id = ws.user_id
+            JOIN plans p ON p.id = ws.plan_id
+            WHERE ws.status = 'active'
+              AND ws.cancel_at_period_end = false
+              AND ws.renewal_reminder_sent_at IS NULL
+              AND ws.current_period_end > NOW()
+              AND ws.current_period_end <= NOW() + ($1 * INTERVAL '1 day')
+              AND COALESCE(p.price_cents, 0) > 0
+              AND u.status = 'active'
+            ORDER BY ws.current_period_end
+            """,
+            within_days,
+        )
+
+    async def mark_renewal_reminder_sent(self, subscription_id: str) -> None:
+        await self._db.execute(
+            """
+            UPDATE web_subscriptions
+            SET renewal_reminder_sent_at = NOW()
+            WHERE id = $1
+            """,
+            subscription_id,
+        )
 
     async def cancel_subscription(
         self,

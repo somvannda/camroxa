@@ -50,7 +50,8 @@ async def test_renewal_offer_renewable_within_window() -> None:
     assert offer["eligible"] is True
     assert offer["renewable"] is True
     assert offer["renewal_window_days"] == RENEWAL_WINDOW_DAYS
-    assert offer["days_left"] == 5
+    # `.days` truncates, so a "5 days out" timestamp can read 4 at the boundary.
+    assert offer["days_left"] in (4, 5)
 
 
 @pytest.mark.asyncio
@@ -62,7 +63,7 @@ async def test_renewal_offer_closed_far_out() -> None:
 
     assert offer is not None
     assert offer["renewable"] is False
-    assert offer["renewal_opens_in_days"] == 13
+    assert offer["renewal_opens_in_days"] in (12, 13)
 
 
 @pytest.mark.asyncio
