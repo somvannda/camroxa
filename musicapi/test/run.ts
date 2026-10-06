@@ -6,3 +6,8 @@ import "./lrc.test.js";
 import "./concurrency.test.js";
 import "./audio.test.js";
 import "./pool.test.js";
+import "./auth-guards.test.js";
+import "./route-auth.test.js";
+import "./trust-proxy.test.js";
+import "./webhook-signature.test.js";
+import "./clips.test.js";

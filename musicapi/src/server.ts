@@ -3,7 +3,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
-import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
@@ -18,6 +18,10 @@ import { OAuth2Client } from "google-auth-library";
 import { config, isProduction } from "./config.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
+import { trustProxyOption } from "./trustProxy.js";
+import { isProtectedPath, isPublicProtectedRoute } from "./routeAuth.js";
+import { verifyChmabaSignature, findReferenceId } from "./webhookSignature.js";
+import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
@@ -360,24 +364,6 @@ export interface ServerDeps {
 
 export function loadApiKeys(path: string): ApiKey[] {
   return JSON.parse(readFileSync(path, "utf8")) as ApiKey[];
-}
-
-/**
- * Resolve Fastify's `trustProxy` from `TRUST_PROXY` so `req.ip` is the real
- * client address behind a reverse proxy (the socket address would otherwise be
- * the proxy). Defaults to off: if the server is directly reachable, blindly
- * trusting `X-Forwarded-For` lets a caller spoof its IP and defeat an API key's
- * whitelist. Accepts "true"/"false", a hop count, or a comma-separated list of
- * trusted addresses/CIDRs.
- */
-function trustProxyOption(): FastifyServerOptions["trustProxy"] {
-  const raw = (process.env.TRUST_PROXY ?? "").trim();
-  if (!raw || raw === "false" || raw === "0") return false;
-  if (raw === "true") return true;
-  // A bare number is the proxy hop count. proxy-addr honors it at runtime, but
-  // Fastify's option type omits it, so it needs a cast.
-  if (/^\d+$/.test(raw)) return Number(raw) as unknown as FastifyServerOptions["trustProxy"];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 /**
@@ -796,14 +782,55 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { credits: Number(row?.credits ?? 0), credits_expire_at: row?.expires ?? null };
   }
 
-  async function requireKey(req: FastifyRequest, reply: FastifyReply): Promise<DbApiKey | null> {
+  // --- deny-by-default auth backstop ---------------------------------------
+  // Every generation/billing surface lives under a protected prefix. The
+  // per-handler `requireAuth`/`requireKey` calls remain the authority (they also
+  // enforce IP allowlists, rate limits and roles), but a future route that
+  // forgets its guard must not silently become public. This hook authenticates
+  // the request once, before the handler runs, and rejects anything under a
+  // protected prefix that carries no valid session JWT or API key. `requireKey`
+  // reuses the resolved key so the DB is still queried at most once per request.
+  // The protected-prefix policy lives in `./routeAuth.ts` (protected prefixes +
+  // the explicit public allowlist) so it can be unit-tested in isolation.
+  const requestKeyCache = new WeakMap<FastifyRequest, DbApiKey | null>();
+
+  /** The bearer token from the `Authorization: Bearer …` header, or "". */
+  function bearerToken(req: FastifyRequest): string {
     const auth = req.headers.authorization ?? "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    return auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  }
+
+  app.addHook("onRequest", async (req, reply) => {
+    // Preflights and HEAD carry no credentials by design.
+    if (req.method === "OPTIONS" || req.method === "HEAD") return;
+    const path = (req.raw.url ?? req.url ?? "").split("?")[0];
+    if (!isProtectedPath(path)) return;
+    if (isPublicProtectedRoute(req.method, path)) return;
+
+    // A session JWT (session cookie or bearer) authenticates synchronously.
+    const token = readSessionCookie(req.headers.cookie) ?? bearerToken(req);
+    if (token && verifyToken(token)) return;
+
+    // Otherwise the bearer must be a live API key. Resolve it once and cache so
+    // the route's `requireKey` does not repeat the lookup.
+    const bearer = bearerToken(req);
+    if (bearer) {
+      const key = requestKeyCache.has(req) ? (requestKeyCache.get(req) ?? null) : await findKey(bearer);
+      requestKeyCache.set(req, key);
+      if (key) return;
+    }
+
+    reply.code(401).send({ error: "Unauthorized." });
+  });
+
+  async function requireKey(req: FastifyRequest, reply: FastifyReply): Promise<DbApiKey | null> {
+    const token = bearerToken(req);
     if (!token) {
       reply.code(401).send({ error: "Invalid or missing API key." });
       return null;
     }
-    const key = await findKey(token);
+    const key = requestKeyCache.has(req) ? (requestKeyCache.get(req) ?? null) : await findKey(token);
+    requestKeyCache.set(req, key);
     if (!key) {
       reply.code(401).send({ error: "Invalid or missing API key." });
       return null;
@@ -1644,14 +1671,26 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
-   * True when `clipId` is known to belong to a *different* user. Ownership is
-   * derived from the clip ids stored in a job/usage result, so a readable clip
-   * cannot be crossed between tenants. An id attributed to nobody (e.g. a legacy
-   * row with no stored result) is allowed through, so this never regresses
-   * legitimate access.
+   * True when `assetId` (a clip id or an upload-session id) is known to belong to
+   * a *different* user. The exact `asset_owners` mapping is checked first;
+   * assets recorded before that table existed (or direct-upload ids that never
+   * became a job) fall back to scanning the stored job/usage results. An id
+   * attributed to nobody is allowed through, so this never regresses access.
    */
-  async function clipOwnedByOtherUser(userId: string, clipId: string): Promise<boolean> {
-    if (!userId || !clipId) return false;
+  async function assetOwnedByOtherUser(userId: string, assetId: string): Promise<boolean> {
+    if (!userId || !assetId) return false;
+    // Exact, indexed path. If the table has not been migrated yet, fall through
+    // to the result scan so a code-ahead-of-migration deploy never breaks access.
+    let owner: { user_id: string } | null = null;
+    try {
+      owner = await queryOne<{ user_id: string }>(
+        "SELECT user_id FROM asset_owners WHERE asset_id = $1",
+        [assetId],
+      );
+    } catch {
+      owner = null;
+    }
+    if (owner) return owner.user_id !== userId;
     const owns = await queryOne<{ one: number }>(
       `SELECT 1 AS one FROM jobs
          WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
@@ -1659,7 +1698,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
        SELECT 1 FROM usage_logs
          WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
        LIMIT 1`,
-      [userId, clipId],
+      [userId, assetId],
     );
     if (owns) return false;
     const foreign = await queryOne<{ one: number }>(
@@ -1671,13 +1710,38 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
          WHERE user_id IS NOT NULL AND user_id <> $1
            AND result_json::text LIKE '%' || $2 || '%'
        LIMIT 1`,
-      [userId, clipId],
+      [userId, assetId],
     );
     return Boolean(foreign);
   }
 
-  function denyForeignClip(reply: FastifyReply): void {
-    reply.code(403).send({ error: "This clip does not belong to your account." });
+  function denyForeignAsset(reply: FastifyReply): void {
+    reply.code(403).send({ error: "This asset does not belong to your account." });
+  }
+
+  /**
+   * Persist the caller → asset mapping for a finished job so ownership checks are
+   * an indexed lookup instead of a result-JSON scan. Best-effort: an ownership
+   * write must never fail the job it describes.
+   */
+  async function recordOwnedAssets(job: Job): Promise<void> {
+    if (!job.userId || job.result == null) return;
+    const ids = extractOwnedAssetIds(job.result);
+    for (const assetId of ids) {
+      try {
+        await query(
+          `INSERT INTO asset_owners (asset_id, user_id, job_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (asset_id) DO NOTHING`,
+          [assetId, job.userId, job.id],
+        );
+      } catch (e) {
+        console.error(
+          `[clips] failed to record owner for ${assetId}:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
   }
 
   function meDetailRoute(path: string, type: Job["type"]) {
@@ -1686,7 +1750,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!u) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
-      if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
+      if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
       let cost = 0;
       try {
         cost = await costFor(type);
@@ -1959,6 +2023,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         taskId: job.id,
         result: job.result,
       });
+      await recordOwnedAssets(job);
     }
     await notify(job);
   }
@@ -4399,7 +4464,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
-    if (await clipOwnedByOtherUser(u.id, clipId)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(u.id, clipId)) return denyForeignAsset(reply);
     const format = q.format === "wav" ? "wav" : q.format === "m4a" ? "m4a" : "mp3";
 
     if (storageConfigured()) {
@@ -4446,7 +4511,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string; force_download?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
-    if (await clipOwnedByOtherUser(u.id, clipId)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(u.id, clipId)) return denyForeignAsset(reply);
     const formatRaw = (q.format as string) || "mp3";
 
     // Music-video download. `runMusicVideoJob` stores the rendered render at
@@ -4992,6 +5057,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
+    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -5060,7 +5126,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
-    if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
     let job = await reusableLyricsJob(id, u.id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
@@ -5096,7 +5162,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!u) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
     let cost = 0;
     try {
       cost = await costFor("wav_detail");
@@ -7726,8 +7792,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const job = await getJob(id);
     if (!job) return reply.code(404).send({ error: "Task not found." });
     // A job created through a user session/API key belongs to that user; other
-    // keys (including other tenants) must not be able to read its result.
-    if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+    // keys (including other tenants) must not be able to read its result. A job
+    // with no owner is denied too, so an unattributed row is never readable.
+    if (!job.userId || job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
     return {
       job_id: job.id,
       type: job.type,
@@ -7790,6 +7857,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -7828,7 +7896,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
@@ -7851,7 +7919,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!key) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
-      if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
+      if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
       const cost = await costFor(type);
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7881,7 +7949,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const cost = await costFor("wav_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("wav_detail");
@@ -8302,25 +8370,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // `errorCode`/`errorMessage`, and a `response.sunoData[]` array whose tracks
   // carry BOTH snake_case and camelCase field names. `response.data[]` is kept
   // for back-compat with our own callers.
-  // Flatten a job result into individual clip-like objects. Our music/sounds
-  // jobs store `[{ clips: [...] }]`, stems store `{...}`, etc.; sunoapi.org's
-  // `sunoData[]` is a flat track list, so both ingest and record-info use this.
-  function collectClipObjects(value: unknown, out: Array<Record<string, unknown>>): void {
-    if (Array.isArray(value)) {
-      for (const v of value) collectClipObjects(v, out);
-      return;
-    }
-    if (!value || typeof value !== "object") return;
-    const o = value as Record<string, unknown>;
-    const id = typeof o.id === "string" ? o.id : undefined;
-    const clipLike = Boolean(
-      id && (o.media_urls || o.audio_url || o.audioUrl || o.image_url || o.imageUrl || o.video_url),
-    );
-    if (clipLike) out.push(o);
-    if (Array.isArray(o.clips)) collectClipObjects(o.clips, out);
-    if (Array.isArray(o.data)) collectClipObjects(o.data, out);
-    if (Array.isArray(o.sunoData)) collectClipObjects(o.sunoData, out);
-  }
+  // Flatten a job result into individual clip-like objects; shared with the
+  // ownership recorder and the backfill script (see `./clips.ts`).
 
   async function sunoRecordInfo(job: Job) {
     let status: string;
@@ -8730,7 +8781,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!id) return reply.code(400).send({ error: "taskId is required." });
       const job = await getJob(id);
       if (!job) return reply.code(404).send({ error: "task not found." });
-      if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+      if (!job.userId || job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
       return await build(job);
     });
   }
@@ -8744,7 +8795,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!id) return reply.code(400).send({ error: "taskId is required." });
       const job = await getJob(id);
       if (!job) return reply.code(404).send({ error: "task not found." });
-      if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+      if (!job.userId || job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
       return await wavRecordInfo(job);
     });
   }
@@ -8782,7 +8833,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!id) return reply.code(400).send({ error: "taskId is required." });
       const job = await getJob(id);
       if (!job) return reply.code(404).send({ error: "task not found." });
-      if (job.userId && job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
+      if (!job.userId || job.userId !== key.user_id) return reply.code(403).send({ error: "forbidden." });
       return await sunoRecordInfo(job);
     });
   }
@@ -9337,6 +9388,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -9601,7 +9653,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.taskId as string) ||
       (in_.task_id as string);
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
-    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const cb = callbackUrl(in_);
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
@@ -9688,7 +9740,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const id = (in_.taskId as string) || (in_.task_id as string);
     if (!id) return { code: 400, msg: "taskId is required", data: null };
     const job = await getJob(id);
-    if (!job || (job.userId && job.userId !== key.user_id)) {
+    if (!job || !job.userId || job.userId !== key.user_id) {
       return { code: 400, msg: "Voice record not found", data: null };
     }
     const blob = JSON.stringify(job.result ?? {});
@@ -9958,48 +10010,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
-   * Verify a ChmabaPay webhook. The `X-ChmabaPay-Signature` header is
-   * `t=<unix>,v1=<hex>` and the signed payload is `${t}.${rawBody}` (HMAC-SHA256
-   * with the endpoint's `whsec_…` secret); a ±5 minute window rejects replays.
-   */
-  function verifyChmabaSignature(rawBody: string, header: string | undefined): boolean {
-    const secret = config.chmaba.webhookSecret;
-    if (!secret || !header) return false;
-    const parts = header.split(",");
-    const t = parts.find((p) => p.startsWith("t="))?.slice(2);
-    const v1 = parts.find((p) => p.startsWith("v1="))?.slice(3);
-    if (!t || !v1 || !Number.isFinite(Number(t))) return false;
-    if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
-    const expected = createHmac("sha256", secret).update(`${t}.${rawBody}`, "utf8").digest("hex");
-    const a = Buffer.from(v1, "hex");
-    const b = Buffer.from(expected, "hex");
-    return a.length === b.length && timingSafeEqual(a, b);
-  }
-
-  /**
-   * Return the first string under `reference_id`, anywhere in the event. The
-   * delivery envelope is not documented field-by-field, so scanning for the id
-   * we set at checkout is what maps a webhook back to one of our transactions.
-   */
-  function findReferenceId(node: unknown, depth = 0): string | null {
-    if (depth > 8 || node === null || typeof node !== "object") return null;
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const found = findReferenceId(item, depth + 1);
-        if (found) return found;
-      }
-      return null;
-    }
-    const rec = node as Record<string, unknown>;
-    if (typeof rec.reference_id === "string" && rec.reference_id.trim()) return rec.reference_id.trim();
-    for (const value of Object.values(rec)) {
-      const found = findReferenceId(value, depth + 1);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  /**
    * Claim a pending ChmabaPay transaction and grant its credits. The guarded
    * UPDATE lets only the first caller win, so a webhook retry or a status poll
    * racing the webhook credits exactly once.
@@ -10256,7 +10266,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!config.chmaba.webhookSecret) {
       return reply.code(503).send({ error: "Webhook secret is not configured." });
     }
-    if (!verifyChmabaSignature(raw, signature)) {
+    if (!verifyChmabaSignature(raw, signature, config.chmaba.webhookSecret)) {
       req.log.warn("chmaba webhook signature rejected");
       return reply.code(400).send({ error: "Invalid signature." });
     }
