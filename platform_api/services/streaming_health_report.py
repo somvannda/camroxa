@@ -46,8 +46,12 @@ async def collect_streaming_health(pool: Any) -> dict[str, Any]:
     repo = StreamingRepository(pool)
     window = _HEALTH_REPORT_WINDOW_HOURS
     return {
-        "failed_total": await repo.count_failed_mp3_jobs(),
-        "failed_window": await repo.count_failed_mp3_jobs_since(hours=window),
+        # Only jobs whose audio is not already archived count/alert. A failed
+        # duplicate capture whose track is safely on B2 is not missing audio.
+        "failed_total": await repo.count_failed_mp3_jobs(missing_b2_only=True),
+        "failed_window": await repo.count_failed_mp3_jobs_since(
+            hours=window, missing_b2_only=True
+        ),
         "web_missing_mp3": await repo.count_web_music_missing_mp3(
             max_age_hours=window
         ),
@@ -55,7 +59,7 @@ async def collect_streaming_health(pool: Any) -> dict[str, Any]:
             max_age_hours=window
         ),
         "errors": await repo.list_recent_failed_mp3_errors(
-            limit=_HEALTH_REPORT_MAX_ERRORS
+            limit=_HEALTH_REPORT_MAX_ERRORS, missing_b2_only=True
         ),
         "window_hours": window,
     }

@@ -27,6 +27,44 @@ def test_has_failures_false_when_all_zero() -> None:
     assert has_failures(_health()) is False
 
 
+async def test_collect_health_filters_to_missing_b2(monkeypatch) -> None:
+    from platform_api.services import streaming_health_report as hr
+
+    calls: dict[str, bool] = {}
+
+    class _Repo:
+        def __init__(self, pool) -> None:
+            self._pool = pool
+
+        async def count_failed_mp3_jobs(self, *, missing_b2_only: bool = False) -> int:
+            calls["total"] = missing_b2_only
+            return 0
+
+        async def count_failed_mp3_jobs_since(
+            self, *, hours: int, missing_b2_only: bool = False
+        ) -> int:
+            calls["window"] = missing_b2_only
+            return 0
+
+        async def count_web_music_missing_mp3(self, *, max_age_hours: int) -> int:
+            return 0
+
+        async def count_web_music_missing_assets(self, *, max_age_hours: int) -> int:
+            return 0
+
+        async def list_recent_failed_mp3_errors(
+            self, *, limit: int, missing_b2_only: bool = False
+        ) -> list:
+            calls["errors"] = missing_b2_only
+            return []
+
+    monkeypatch.setattr(hr, "StreamingRepository", _Repo)
+
+    await hr.collect_streaming_health(object())
+
+    assert calls == {"total": True, "window": True, "errors": True}
+
+
 def test_has_failures_true_for_each_category() -> None:
     assert has_failures(_health(failed_total=1)) is True
     assert has_failures(_health(web_missing_mp3=2)) is True

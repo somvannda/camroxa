@@ -56,6 +56,20 @@ _WEB_MUSIC_MISSING_ASSETS_PREDICATE = """
 )
 """
 
+# A failed capture for a task+variant that already has a durable B2 copy is a
+# redundant duplicate job, not missing audio (2026-10-05 probe: 1405/1406 failed
+# mp3 jobs were already archived). Exclude these from the health report and the
+# retry/auto-retry passes so ops is only paged for, and workers only churn on,
+# audio that is genuinely absent. Requires the job table aliased as ``j`` and a
+# ``kind`` of ``mp3_ok`` / ``mp3_alt``.
+_ARCHIVED_TRACK_EXCLUDED = """
+              AND NOT EXISTS (
+                SELECT 1 FROM stream_tracks t
+                WHERE t.suno_task_id = j.suno_task_id
+                  AND lower(t.variant) = replace(j.kind, 'mp3_', '')
+                  AND COALESCE(t.storage_key, '') <> ''
+              )"""
+
 
 class StreamingRepository:
     def __init__(self, pool: Any) -> None:
@@ -148,6 +162,44 @@ class StreamingRepository:
             storage_key,
             album_id,
         )
+
+    async def has_active_upload_job(
+        self,
+        *,
+        suno_task_id: UUID,
+        kind: str,
+        recent_failure_minutes: int = 30,
+    ) -> bool:
+        """True when a capture for ``(suno_task_id, kind)`` is in flight or freshly failed.
+
+        Callbacks (often re-delivered) and desktop reconcile both call the
+        streaming uploader for the same track. Without this guard each delivery
+        created another job — observed as dozens per task, and thousands
+        historically. A pending job, or one that failed inside the cooldown,
+        means a capture is already being handled, so callers must not create a
+        duplicate.
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT 1
+            FROM stream_upload_jobs
+            WHERE suno_task_id = $1
+              AND kind = $2
+              AND (
+                status = 'pending'
+                OR (
+                  status = 'failed'
+                  AND COALESCE(permanent_failed, false) = false
+                  AND updated_at > NOW() - make_interval(mins => $3)
+                )
+              )
+            LIMIT 1
+            """,
+            suno_task_id,
+            kind,
+            max(0, int(recent_failure_minutes)),
+        )
+        return row is not None
 
     async def get_upload_job(self, job_id: UUID) -> dict[str, Any] | None:
         row = await self._pool.fetchrow("SELECT * FROM stream_upload_jobs WHERE id = $1", job_id)
@@ -316,14 +368,16 @@ class StreamingRepository:
         and were created inside the retry window, oldest first, capped per pass.
         """
         rows = await self._pool.fetch(
-            """
-            SELECT id
-            FROM stream_upload_jobs
-            WHERE status = 'failed'
-              AND kind IN ('mp3_ok', 'mp3_alt')
-              AND attempt_count < $1
-              AND created_at >= NOW() - make_interval(hours => $2)
-            ORDER BY created_at ASC
+            f"""
+            SELECT j.id
+            FROM stream_upload_jobs j
+            WHERE j.status = 'failed'
+              AND j.kind IN ('mp3_ok', 'mp3_alt')
+              AND COALESCE(j.permanent_failed, false) = false
+              AND j.attempt_count < $1
+              AND j.created_at >= NOW() - make_interval(hours => $2)
+              {_ARCHIVED_TRACK_EXCLUDED}
+            ORDER BY j.created_at ASC
             LIMIT $3
             """,
             max_attempt_count,
@@ -332,14 +386,21 @@ class StreamingRepository:
         )
         return [UUID(str(row["id"])) for row in rows]
 
-    async def count_failed_mp3_jobs(self) -> int:
-        """Failed mp3_ok/mp3_alt upload jobs right now (live count)."""
+    async def count_failed_mp3_jobs(self, *, missing_b2_only: bool = False) -> int:
+        """Failed mp3_ok/mp3_alt upload jobs right now (live count).
+
+        ``missing_b2_only`` excludes jobs whose task+variant is already archived
+        to B2 (redundant duplicate captures) — used by the health report so ops
+        is only paged for genuinely missing audio.
+        """
+        exclusion = _ARCHIVED_TRACK_EXCLUDED if missing_b2_only else ""
         row = await self._pool.fetchrow(
-            """
+            f"""
             SELECT count(*) AS n
-            FROM stream_upload_jobs
-            WHERE status = 'failed'
-              AND kind IN ('mp3_ok', 'mp3_alt')
+            FROM stream_upload_jobs j
+            WHERE j.status = 'failed'
+              AND j.kind IN ('mp3_ok', 'mp3_alt')
+              {exclusion}
             """
         )
         return int(row["n"] or 0) if row else 0
@@ -361,29 +422,37 @@ class StreamingRepository:
         )
         return int(row["n"] or 0) if row else 0
 
-    async def count_failed_mp3_jobs_since(self, *, hours: int) -> int:
+    async def count_failed_mp3_jobs_since(
+        self, *, hours: int, missing_b2_only: bool = False
+    ) -> int:
         """Failed mp3_ok/mp3_alt upload jobs created within the last N hours."""
+        exclusion = _ARCHIVED_TRACK_EXCLUDED if missing_b2_only else ""
         row = await self._pool.fetchrow(
-            """
+            f"""
             SELECT count(*) AS n
-            FROM stream_upload_jobs
-            WHERE status = 'failed'
-              AND kind IN ('mp3_ok', 'mp3_alt')
-              AND created_at >= NOW() - make_interval(hours => $1)
+            FROM stream_upload_jobs j
+            WHERE j.status = 'failed'
+              AND j.kind IN ('mp3_ok', 'mp3_alt')
+              AND j.created_at >= NOW() - make_interval(hours => $1)
+              {exclusion}
             """,
             hours,
         )
         return int(row["n"] or 0) if row else 0
 
-    async def list_recent_failed_mp3_errors(self, *, limit: int) -> list[dict[str, Any]]:
+    async def list_recent_failed_mp3_errors(
+        self, *, limit: int, missing_b2_only: bool = False
+    ) -> list[dict[str, Any]]:
         """Newest failed mp3 upload jobs (id + truncated error) for the report."""
+        exclusion = _ARCHIVED_TRACK_EXCLUDED if missing_b2_only else ""
         rows = await self._pool.fetch(
-            """
-            SELECT id, kind, LEFT(COALESCE(error, ''), 180) AS error, created_at
-            FROM stream_upload_jobs
-            WHERE status = 'failed'
-              AND kind IN ('mp3_ok', 'mp3_alt')
-            ORDER BY created_at DESC
+            f"""
+            SELECT j.id, j.kind, LEFT(COALESCE(j.error, ''), 180) AS error, j.created_at
+            FROM stream_upload_jobs j
+            WHERE j.status = 'failed'
+              AND j.kind IN ('mp3_ok', 'mp3_alt')
+              {exclusion}
+            ORDER BY j.created_at DESC
             LIMIT $1
             """,
             limit,
@@ -678,18 +747,19 @@ class StreamingRepository:
         API restart) and ``failed`` jobs that are not permanently failed.
         """
         rows = await self._pool.fetch(
-            """
-            SELECT id, kind, status, attempt_count
-            FROM stream_upload_jobs
-            WHERE kind IN ('mp3_ok', 'mp3_alt')
-              AND COALESCE(permanent_failed, false) = false
-              AND attempt_count < $1
-              AND created_at > now() - make_interval(hours => $2)
+            f"""
+            SELECT j.id, j.kind, j.status, j.attempt_count
+            FROM stream_upload_jobs j
+            WHERE j.kind IN ('mp3_ok', 'mp3_alt')
+              AND COALESCE(j.permanent_failed, false) = false
+              AND j.attempt_count < $1
+              AND j.created_at > now() - make_interval(hours => $2)
               AND (
-                status = 'failed'
-                OR (status = 'pending' AND updated_at < now() - interval '2 minutes')
+                j.status = 'failed'
+                OR (j.status = 'pending' AND j.updated_at < now() - interval '2 minutes')
               )
-            ORDER BY created_at DESC
+              {_ARCHIVED_TRACK_EXCLUDED}
+            ORDER BY j.created_at DESC
             LIMIT $3
             """,
             max(1, min(int(max_attempts or 6), 50)),
