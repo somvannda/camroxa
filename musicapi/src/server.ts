@@ -21,7 +21,7 @@ import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "
 import { trustProxyOption } from "./trustProxy.js";
 import { isProtectedPath, isPublicProtectedRoute } from "./routeAuth.js";
 import { verifyChmabaSignature, findReferenceId } from "./webhookSignature.js";
-import { collectClipObjects, extractClipIds } from "./clips.js";
+import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
@@ -1671,21 +1671,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
-   * True when `clipId` is known to belong to a *different* user. The exact
-   * `clip_owners` mapping is checked first; clips recorded before that table
-   * existed (or direct-upload ids that never became a job) fall back to scanning
-   * the stored job/usage results. An id attributed to nobody is allowed through,
-   * so this never regresses legitimate access.
+   * True when `assetId` (a clip id or an upload-session id) is known to belong to
+   * a *different* user. The exact `asset_owners` mapping is checked first;
+   * assets recorded before that table existed (or direct-upload ids that never
+   * became a job) fall back to scanning the stored job/usage results. An id
+   * attributed to nobody is allowed through, so this never regresses access.
    */
-  async function clipOwnedByOtherUser(userId: string, clipId: string): Promise<boolean> {
-    if (!userId || !clipId) return false;
+  async function assetOwnedByOtherUser(userId: string, assetId: string): Promise<boolean> {
+    if (!userId || !assetId) return false;
     // Exact, indexed path. If the table has not been migrated yet, fall through
     // to the result scan so a code-ahead-of-migration deploy never breaks access.
     let owner: { user_id: string } | null = null;
     try {
       owner = await queryOne<{ user_id: string }>(
-        "SELECT user_id FROM clip_owners WHERE clip_id = $1",
-        [clipId],
+        "SELECT user_id FROM asset_owners WHERE asset_id = $1",
+        [assetId],
       );
     } catch {
       owner = null;
@@ -1698,7 +1698,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
        SELECT 1 FROM usage_logs
          WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
        LIMIT 1`,
-      [userId, clipId],
+      [userId, assetId],
     );
     if (owns) return false;
     const foreign = await queryOne<{ one: number }>(
@@ -1710,34 +1710,34 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
          WHERE user_id IS NOT NULL AND user_id <> $1
            AND result_json::text LIKE '%' || $2 || '%'
        LIMIT 1`,
-      [userId, clipId],
+      [userId, assetId],
     );
     return Boolean(foreign);
   }
 
-  function denyForeignClip(reply: FastifyReply): void {
-    reply.code(403).send({ error: "This clip does not belong to your account." });
+  function denyForeignAsset(reply: FastifyReply): void {
+    reply.code(403).send({ error: "This asset does not belong to your account." });
   }
 
   /**
-   * Persist the caller → clip mapping for a finished job so ownership checks are
+   * Persist the caller → asset mapping for a finished job so ownership checks are
    * an indexed lookup instead of a result-JSON scan. Best-effort: an ownership
    * write must never fail the job it describes.
    */
-  async function recordClipOwners(job: Job): Promise<void> {
+  async function recordOwnedAssets(job: Job): Promise<void> {
     if (!job.userId || job.result == null) return;
-    const ids = extractClipIds(job.result);
-    for (const clipId of ids) {
+    const ids = extractOwnedAssetIds(job.result);
+    for (const assetId of ids) {
       try {
         await query(
-          `INSERT INTO clip_owners (clip_id, user_id, job_id)
+          `INSERT INTO asset_owners (asset_id, user_id, job_id)
            VALUES ($1, $2, $3)
-           ON CONFLICT (clip_id) DO NOTHING`,
-          [clipId, job.userId, job.id],
+           ON CONFLICT (asset_id) DO NOTHING`,
+          [assetId, job.userId, job.id],
         );
       } catch (e) {
         console.error(
-          `[clips] failed to record owner for ${clipId}:`,
+          `[clips] failed to record owner for ${assetId}:`,
           e instanceof Error ? e.message : e,
         );
       }
@@ -1750,7 +1750,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!u) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
-      if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
+      if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
       let cost = 0;
       try {
         cost = await costFor(type);
@@ -2023,7 +2023,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         taskId: job.id,
         result: job.result,
       });
-      await recordClipOwners(job);
+      await recordOwnedAssets(job);
     }
     await notify(job);
   }
@@ -4464,7 +4464,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
-    if (await clipOwnedByOtherUser(u.id, clipId)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(u.id, clipId)) return denyForeignAsset(reply);
     const format = q.format === "wav" ? "wav" : q.format === "m4a" ? "m4a" : "mp3";
 
     if (storageConfigured()) {
@@ -4511,7 +4511,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string; force_download?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
-    if (await clipOwnedByOtherUser(u.id, clipId)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(u.id, clipId)) return denyForeignAsset(reply);
     const formatRaw = (q.format as string) || "mp3";
 
     // Music-video download. `runMusicVideoJob` stores the rendered render at
@@ -5057,6 +5057,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
+    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -5125,7 +5126,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
-    if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
     let job = await reusableLyricsJob(id, u.id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
@@ -5161,7 +5162,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!u) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await clipOwnedByOtherUser(u.id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
     let cost = 0;
     try {
       cost = await costFor("wav_detail");
@@ -7856,6 +7857,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -7894,7 +7896,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
@@ -7917,7 +7919,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!key) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
-      if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
+      if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
       const cost = await costFor(type);
       if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7947,7 +7949,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const cost = await costFor("wav_detail");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("wav_detail");
@@ -9386,6 +9388,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -9650,7 +9653,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.taskId as string) ||
       (in_.task_id as string);
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
-    if (await clipOwnedByOtherUser(key.user_id, id)) return denyForeignClip(reply);
+    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const cb = callbackUrl(in_);
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {

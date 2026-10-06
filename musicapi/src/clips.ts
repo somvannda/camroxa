@@ -1,11 +1,13 @@
 /**
- * Clip extraction, shared by job finalization, ownership recording and the
+ * Asset extraction, shared by job finalization, ownership recording and the
  * sunoapi.org-shaped record-info responses.
  *
- * A "clip" is any object carrying a string `id` plus at least one media URL.
- * Results nest clips differently across job types (`[{ clips: [...] }]`, a bare
- * object, `sunoData[]`), so a single recursive collector keeps every caller in
- * agreement.
+ * Two id namespaces are owned the same way:
+ *   - clip ids — any object carrying a string `id` plus at least one media URL;
+ *   - upload-session ids — the `{ id, url, fields }` shape returned by
+ *     `upload/init`.
+ * Results nest differently across job types (`[{ clips: [...] }]`, a bare
+ * object, `sunoData[]`), so one recursive collector keeps every caller in step.
  */
 
 /** Flatten a job/usage result into its individual clip-like objects. */
@@ -34,5 +36,29 @@ export function extractClipIds(value: unknown): string[] {
   for (const clip of out) {
     if (typeof clip.id === "string" && clip.id) ids.add(clip.id);
   }
+  return [...ids];
+}
+
+/** The upload-session id from an `upload/init`-shaped result, or null. */
+export function extractUploadSessionId(value: unknown): string | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const o = value as Record<string, unknown>;
+  if (
+    typeof o.id === "string" &&
+    o.id &&
+    typeof o.url === "string" &&
+    o.fields != null &&
+    typeof o.fields === "object"
+  ) {
+    return o.id;
+  }
+  return null;
+}
+
+/** Distinct owned asset ids (clips plus any upload-session id) in a job result. */
+export function extractOwnedAssetIds(value: unknown): string[] {
+  const ids = new Set<string>(extractClipIds(value));
+  const uploadId = extractUploadSessionId(value);
+  if (uploadId) ids.add(uploadId);
   return [...ids];
 }

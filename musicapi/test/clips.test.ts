@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { collectClipObjects, extractClipIds } from "../src/clips.js";
+import { collectClipObjects, extractClipIds, extractOwnedAssetIds, extractUploadSessionId } from "../src/clips.js";
 
 test("extractClipIds flattens nested clips and dedups", () => {
   const result = [
@@ -32,4 +32,23 @@ test("extractClipIds returns [] for non-clip payloads", () => {
   assert.deepEqual(extractClipIds(null), []);
   assert.deepEqual(extractClipIds({ status: "ok" }), []);
   assert.deepEqual(extractClipIds("nope"), []);
+});
+
+test("extractUploadSessionId recognizes an upload/init session", () => {
+  const session = { id: "up-1", url: "https://s3.example/", fields: { key: "x" } };
+  assert.equal(extractUploadSessionId(session), "up-1");
+  assert.equal(extractUploadSessionId({ id: "x", audio_url: "u" }), null);
+  assert.equal(extractUploadSessionId({ url: "u", fields: {} }), null);
+  assert.equal(extractUploadSessionId([session]), null);
+});
+
+test("extractOwnedAssetIds includes clips and the upload session id", () => {
+  assert.deepEqual(
+    extractOwnedAssetIds({ clips: [{ id: "c1", audio_url: "u" }] }),
+    ["c1"],
+  );
+  assert.deepEqual(
+    extractOwnedAssetIds({ id: "up-1", url: "https://s3/", fields: {} }),
+    ["up-1"],
+  );
 });
