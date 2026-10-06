@@ -140,6 +140,27 @@ class CheckoutStatusResponse(BaseModel):
     credits: int
 
 
+class RenewalOfferResponse(BaseModel):
+    eligible: bool = False
+    subscription_id: str = ""
+    plan_id: str = ""
+    plan_name: str = ""
+    price_cents: int = 0
+    billing_cycle: str = ""
+    current_period_end: str = ""
+    days_left: int | None = None
+    expired: bool = False
+    renewable: bool = False
+    renewal_opens_in_days: int | None = None
+    renewal_window_days: int = 7
+
+
+class RenewalCheckoutResponse(PurchaseSubscriptionResponse):
+    plan_name: str = ""
+    credits: int = 0
+    amount_cents: int = 0
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -254,6 +275,56 @@ async def get_subscription_payment_status(
     await enforce_rate_limit(http_request, ctx.user_id)
     try:
         result = await service.get_checkout_status(str(ctx.user_id), payment_id)
+    except LookupError as exc:
+        raise NotFoundError(str(exc)) from exc
+    return CheckoutStatusResponse(**result)
+
+
+@router.get("/renewal", response_model=RenewalOfferResponse)
+async def get_renewal(
+    ctx: CurrentUserDep,
+    service: SubscriptionServiceDep,
+) -> RenewalOfferResponse:
+    """Return the user's renewable plan and whether the renewal window is open."""
+    offer = await service.get_renewal_offer(str(ctx.user_id))
+    if offer is None:
+        return RenewalOfferResponse(eligible=False)
+    data = dict(offer)
+    data["current_period_end"] = _iso(offer.get("current_period_end"))
+    return RenewalOfferResponse(**data)
+
+
+@router.post("/renewal", response_model=RenewalCheckoutResponse, status_code=200)
+async def create_renewal(
+    body: PurchaseSubscriptionRequest,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    service: SubscriptionServiceDep,
+) -> RenewalCheckoutResponse:
+    """Start a CutLuy KHQR checkout for the next period of the user's own plan."""
+    await enforce_rate_limit(http_request, ctx.user_id)
+    try:
+        result = await service.create_renewal_checkout(
+            user_id=str(ctx.user_id),
+            success_url=sanitize_music_web_return_url(body.success_url),
+            cancel_url=sanitize_music_web_return_url(body.cancel_url),
+        )
+    except ValueError as exc:
+        raise ValidationError(str(exc)) from exc
+    return RenewalCheckoutResponse(**result)
+
+
+@router.get("/renewals/{payment_id}", response_model=CheckoutStatusResponse)
+async def get_renewal_status(
+    payment_id: str,
+    http_request: Request,
+    ctx: CurrentUserDep,
+    service: SubscriptionServiceDep,
+) -> CheckoutStatusResponse:
+    """Poll CutLuy and extend the period once the renewal payment is verified."""
+    await enforce_rate_limit(http_request, ctx.user_id)
+    try:
+        result = await service.get_renewal_status(str(ctx.user_id), payment_id)
     except LookupError as exc:
         raise NotFoundError(str(exc)) from exc
     return CheckoutStatusResponse(**result)

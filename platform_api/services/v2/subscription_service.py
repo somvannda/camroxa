@@ -25,6 +25,10 @@ logger = logging.getLogger(__name__)
 # Monthly credit allowance refreshes every 30 days even on yearly billing plans.
 MONTHLY_CREDIT_RESET_DAYS = 30
 
+# Self-serve renewal opens this many days before the paid period ends. CutLuy is
+# a one-time gateway, so renewal is a fresh charge.
+RENEWAL_WINDOW_DAYS = 7
+
 
 def next_credit_reset_at(
     *,
@@ -677,6 +681,193 @@ class SubscriptionService:
             status,
         )
 
+    # ─── Renewal (CutLuy is one-time; renewal is a fresh charge) ────────
+
+    async def get_renewal_offer(self, user_id: str) -> dict | None:
+        """Return the user's renewable plan and window, or None to renew nothing."""
+        row = await self._db.fetch_one(
+            """
+            SELECT ws.id, ws.plan_id, ws.status, ws.billing_cycle,
+                   ws.current_period_start, ws.current_period_end,
+                   ws.cancel_at_period_end, ws.monthly_credits_granted,
+                   p.name AS plan_name, p.price_cents, p.monthly_credits,
+                   p.billing_cycle_days
+            FROM web_subscriptions ws
+            JOIN plans p ON p.id = ws.plan_id
+            WHERE ws.user_id = $1
+            ORDER BY ws.created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        if not row:
+            return None
+        price_cents = int(row["price_cents"] or 0)
+        if price_cents <= 0:
+            return None
+        now = datetime.now(timezone.utc)
+        end = row["current_period_end"]
+        expired = end is None or end <= now
+        days_left = 0 if expired else max(0, (end - now).days)
+        renewable = expired or days_left <= RENEWAL_WINDOW_DAYS
+        opens_in_days = None if renewable else days_left - RENEWAL_WINDOW_DAYS
+        return {
+            "eligible": True,
+            "subscription_id": str(row["id"]),
+            "plan_id": str(row["plan_id"]),
+            "plan_name": row["plan_name"],
+            "price_cents": price_cents,
+            "billing_cycle": row["billing_cycle"],
+            "current_period_end": end,
+            "days_left": days_left,
+            "expired": expired,
+            "renewable": renewable,
+            "renewal_opens_in_days": opens_in_days,
+            "renewal_window_days": RENEWAL_WINDOW_DAYS,
+        }
+
+    async def create_renewal_checkout(
+        self, *, user_id: str, success_url: str, cancel_url: str
+    ) -> dict:
+        """Start a CutLuy checkout for the next period of the user's own plan."""
+        offer = await self.get_renewal_offer(user_id)
+        if offer is None:
+            raise ValueError("No renewable plan was found for this account.")
+        if not offer["renewable"]:
+            raise ValueError(
+                f"Renewal opens {RENEWAL_WINDOW_DAYS} days before your plan ends."
+            )
+        plan = await self.get_plan_by_id(offer["plan_id"])
+        if plan is None:
+            raise ValueError("Plan not found")
+        payment = await self._cutluy.create_subscription_payment(
+            user_id=user_id,
+            plan_name=plan.name,
+            amount_cents=plan.price_cents,
+            billing_cycle=offer["billing_cycle"],
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata={
+                "type": "subscription",
+                "renewal": True,
+                "subscription_id": offer["subscription_id"],
+                "plan_id": str(plan.id),
+                "monthly_credits": plan.monthly_credits,
+            },
+            db=self._db,
+        )
+        payment_id = payment.get("payment_id")
+        if not payment_id:
+            raise ValueError("CutLuy did not return a payment id")
+        await self._db.execute(
+            """
+            UPDATE web_subscriptions
+            SET pending_renewal_payment_id = $1
+            WHERE id = $2 AND user_id = $3
+            """,
+            payment_id,
+            offer["subscription_id"],
+            user_id,
+        )
+        return {
+            "checkout_url": payment["checkout_url"],
+            "payment_id": str(payment_id),
+            "expires_at": payment.get("expires_at") or "",
+            "qr_string": payment.get("qr_string") or "",
+            "plan_name": plan.name,
+            "credits": plan.monthly_credits,
+            "amount_cents": plan.price_cents,
+        }
+
+    async def get_renewal_status(self, user_id: str, payment_id: str) -> dict:
+        """Poll CutLuy and extend the period on a verified renewal payment."""
+        try:
+            payment_id = validate_payment_id(payment_id)
+        except ValueError as exc:
+            raise LookupError("Payment not found") from exc
+        row = await self._db.fetch_one(
+            """
+            SELECT ws.id, ws.plan_id, ws.status, ws.current_period_start,
+                   ws.current_period_end, ws.billing_cycle,
+                   p.name AS plan_name, p.price_cents, p.monthly_credits,
+                   p.billing_cycle_days
+            FROM web_subscriptions ws
+            JOIN plans p ON p.id = ws.plan_id
+            WHERE ws.user_id = $1 AND ws.pending_renewal_payment_id = $2
+            LIMIT 1
+            """,
+            user_id,
+            payment_id,
+        )
+        if not row:
+            raise LookupError("Payment not found")
+        plan_name = row["plan_name"]
+        credits = int(row["monthly_credits"] or 0)
+        try:
+            payload = await self._cutluy.get_payment_status(payment_id, db=self._db)
+        except ValueError:
+            return {"status": "pending", "fulfilled": False, "plan_name": plan_name, "credits": credits}
+        remote = normalize_cutluy_payment_status(payload.get("status"))
+        if remote == "paid":
+            if not paid_amount_matches(int(row["price_cents"] or 0), payload):
+                logger.error("Refusing renewal fulfill: amount mismatch for %s", payment_id)
+                return {"status": "pending", "fulfilled": False, "plan_name": plan_name, "credits": credits}
+            fulfilled = await self._fulfill_renewal(row, payment_id)
+            return {"status": "paid", "fulfilled": fulfilled, "plan_name": plan_name, "credits": credits}
+        if remote == "expired":
+            await self._db.execute(
+                "UPDATE web_subscriptions SET pending_renewal_payment_id = NULL WHERE id = $1",
+                row["id"],
+            )
+            return {"status": "expired", "fulfilled": False, "plan_name": plan_name, "credits": credits}
+        if remote == "failed":
+            return {"status": "failed", "fulfilled": False, "plan_name": plan_name, "credits": credits}
+        return {"status": "pending", "fulfilled": False, "plan_name": plan_name, "credits": credits}
+
+    async def _fulfill_renewal(self, row: dict, payment_id: str) -> bool:
+        """Extend the subscription by one paid cycle; idempotent per payment id."""
+        plan = await self.get_plan_by_id(row["plan_id"])
+        if plan is None:
+            raise ValueError("Plan not found")
+        now = datetime.now(timezone.utc)
+        end = row["current_period_end"]
+        # Stack early renewals from the current period end; expired starts now.
+        base = end if end is not None and end > now else now
+        new_end = base + timedelta(days=int(plan.billing_cycle_days or 30))
+        updated = await self._db.fetch_one(
+            """
+            UPDATE web_subscriptions
+            SET status = 'active',
+                current_period_start = $1,
+                current_period_end = $2,
+                monthly_credits_used = 0,
+                monthly_credits_granted = $3,
+                last_credit_reset = $1,
+                last_payment_at = NOW(),
+                cancel_at_period_end = false,
+                cancelled_at = NULL,
+                pending_renewal_payment_id = NULL
+            WHERE id = $4 AND pending_renewal_payment_id = $5
+            RETURNING id
+            """,
+            base,
+            new_end,
+            plan.monthly_credits,
+            row["id"],
+            payment_id,
+        )
+        if updated is None:
+            return False
+        await self._sync_v3_period_grant(str(row["id"]))
+        logger.info(
+            "Renewed web subscription %s: %s credits, period %s..%s",
+            row["id"],
+            plan.monthly_credits,
+            base,
+            new_end,
+        )
+        return True
+
     async def cancel_subscription(
         self,
         user_id: str,
@@ -995,7 +1186,27 @@ class SubscriptionService:
             payment_id,
         )
         if not row:
-            logger.warning("No subscription bound to CutLuy payment %s", payment_id)
+            # Renewal checkout: bound by pending_renewal_payment_id, not external.
+            renewal = await self._db.fetch_one(
+                """
+                SELECT ws.id, ws.user_id, ws.plan_id, ws.billing_cycle,
+                       ws.current_period_end, p.price_cents
+                FROM web_subscriptions ws
+                JOIN plans p ON ws.plan_id = p.id
+                WHERE ws.pending_renewal_payment_id = $1
+                """,
+                payment_id,
+            )
+            if not renewal:
+                logger.warning("No subscription bound to CutLuy payment %s", payment_id)
+                return
+            if not webhook_user_matches(str(renewal["user_id"]), data):
+                logger.error("CutLuy renewal webhook user mismatch for payment %s", payment_id)
+                return
+            if not paid_amount_matches(int(renewal["price_cents"] or 0), data):
+                logger.error("CutLuy renewal webhook amount mismatch for payment %s", payment_id)
+                return
+            await self._fulfill_renewal(renewal, payment_id)
             return
         if not webhook_user_matches(str(row["user_id"]), data):
             logger.error("CutLuy webhook user mismatch for payment %s", payment_id)
