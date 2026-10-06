@@ -1127,18 +1127,33 @@ class SubscriptionService:
             MONTHLY_CREDIT_RESET_DAYS,
         )
 
+        expired = 0
         handled = 0
         seen: set[str] = set()
-        for row in (period_rows or []) + (yearly_rows or []):
+        # Ended periods now expire (CutLuy is one-time — no silent renewal), so
+        # count them for observability rather than reporting 0.
+        for row in period_rows or []:
+            subscription_id = str(row["id"])
+            if subscription_id in seen:
+                continue
+            seen.add(subscription_id)
+            await self.reset_quota_if_needed(self._subscription_from_row(row))
+            expired += 1
+        # Yearly mid-term monthly-credit refreshes.
+        for row in yearly_rows or []:
             subscription_id = str(row["id"])
             if subscription_id in seen:
                 continue
             seen.add(subscription_id)
             if await self.reset_quota_if_needed(self._subscription_from_row(row)):
                 handled += 1
-        if handled:
-            logger.info("Processed %s due web music subscription(s)", handled)
-        return handled
+        if expired or handled:
+            logger.info(
+                "Web music subscription maintenance: expired=%s refreshed=%s",
+                expired,
+                handled,
+            )
+        return expired + handled
 
     # ─── Webhook Handling ───────────────────────────────────────────────
     
