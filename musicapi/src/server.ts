@@ -796,14 +796,58 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return { credits: Number(row?.credits ?? 0), credits_expire_at: row?.expires ?? null };
   }
 
-  async function requireKey(req: FastifyRequest, reply: FastifyReply): Promise<DbApiKey | null> {
+  // --- deny-by-default auth backstop ---------------------------------------
+  // Every generation/billing surface lives under a protected prefix. The
+  // per-handler `requireAuth`/`requireKey` calls remain the authority (they also
+  // enforce IP allowlists, rate limits and roles), but a future route that
+  // forgets its guard must not silently become public. This hook authenticates
+  // the request once, before the handler runs, and rejects anything under a
+  // protected prefix that carries no valid session JWT or API key. `requireKey`
+  // reuses the resolved key so the DB is still queried at most once per request.
+  const PROTECTED_PREFIXES = ["/me/", "/v1/", "/api/", "/admin/", "/payments/"] as const;
+  // Protected-prefix routes that authenticate by another means. Provider
+  // webhooks carry an HMAC signature, not a session, so they are exempt. Keep
+  // this list minimal — anything else added here is intentionally public.
+  const PUBLIC_PROTECTED_ROUTES = new Set<string>(["POST /payments/chmaba/webhook"]);
+  const requestKeyCache = new WeakMap<FastifyRequest, DbApiKey | null>();
+
+  /** The bearer token from the `Authorization: Bearer …` header, or "". */
+  function bearerToken(req: FastifyRequest): string {
     const auth = req.headers.authorization ?? "";
-    const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+    return auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  }
+
+  app.addHook("onRequest", async (req, reply) => {
+    // Preflights and HEAD carry no credentials by design.
+    if (req.method === "OPTIONS" || req.method === "HEAD") return;
+    const path = (req.raw.url ?? req.url ?? "").split("?")[0];
+    if (!PROTECTED_PREFIXES.some((prefix) => path.startsWith(prefix))) return;
+    if (PUBLIC_PROTECTED_ROUTES.has(`${req.method} ${path}`)) return;
+
+    // A session JWT (session cookie or bearer) authenticates synchronously.
+    const token = readSessionCookie(req.headers.cookie) ?? bearerToken(req);
+    if (token && verifyToken(token)) return;
+
+    // Otherwise the bearer must be a live API key. Resolve it once and cache so
+    // the route's `requireKey` does not repeat the lookup.
+    const bearer = bearerToken(req);
+    if (bearer) {
+      const key = requestKeyCache.has(req) ? (requestKeyCache.get(req) ?? null) : await findKey(bearer);
+      requestKeyCache.set(req, key);
+      if (key) return;
+    }
+
+    reply.code(401).send({ error: "Unauthorized." });
+  });
+
+  async function requireKey(req: FastifyRequest, reply: FastifyReply): Promise<DbApiKey | null> {
+    const token = bearerToken(req);
     if (!token) {
       reply.code(401).send({ error: "Invalid or missing API key." });
       return null;
     }
-    const key = await findKey(token);
+    const key = requestKeyCache.has(req) ? (requestKeyCache.get(req) ?? null) : await findKey(token);
+    requestKeyCache.set(req, key);
     if (!key) {
       reply.code(401).send({ error: "Invalid or missing API key." });
       return null;

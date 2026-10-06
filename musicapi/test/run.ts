@@ -6,3 +6,4 @@ import "./lrc.test.js";
 import "./concurrency.test.js";
 import "./audio.test.js";
 import "./pool.test.js";
+import "./auth-guards.test.js";
