@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { SESSION_COOKIE, probeAdminSession } from "./lib/adminGuard";
 
-const SESSION_COOKIE = "sunosession_admin";
-// Same backend the /backend/* rewrite targets (next.config.ts).
-const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:4003";
+// Same backend the /backend/* rewrite targets (next.config.ts). Prefer the
+// literal loopback address over "localhost" so the guard can't fail on a host
+// where localhost resolves to IPv6 (::1) while the API binds 127.0.0.1 only.
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://127.0.0.1:4003";
 
 /**
  * Server-side guard for the admin console (Next.js 16 `proxy` convention,
@@ -17,21 +19,20 @@ export async function proxy(req: NextRequest) {
   const token = req.cookies.get(SESSION_COOKIE)?.value;
   if (!token) return bounce(req);
 
-  let user: { role?: string; status?: string };
-  try {
-    const res = await fetch(`${BACKEND_URL}/auth/me`, {
-      headers: { cookie: `${SESSION_COOKIE}=${token}` },
-      cache: "no-store",
-    });
-    // Invalid/expired session: drop the dead cookie so the login page starts clean.
-    if (!res.ok) return bounce(req, true);
-    user = (await res.json()) as { role?: string; status?: string };
-  } catch {
-    // Backend unreachable — fail closed rather than serving the admin shell.
+  const probe = await probeAdminSession(token, BACKEND_URL);
+
+  // Invalid session, or a valid session that is no longer an active admin:
+  // drop the stale cookie so the login page starts clean.
+  if (probe.kind === "dead" || probe.kind === "inactive") return bounce(req, true);
+
+  // API unreachable or unhealthy: fail closed (don't serve the shell) but keep
+  // the session cookie. Deleting it here was turning a transient backend fault
+  // into a permanent logout on the operator's next menu click.
+  if (probe.kind === "unavailable") {
+    console.warn("[admin-proxy] /auth/me probe unavailable; keeping session cookie.");
     return bounce(req);
   }
 
-  if (user.role !== "admin" || user.status !== "active") return bounce(req, true);
   return NextResponse.next();
 }
 
