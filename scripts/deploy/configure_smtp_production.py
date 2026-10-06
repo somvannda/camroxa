@@ -1,77 +1,75 @@
 #!/usr/bin/env python3
-"""Configure production SMTP in platform_api/.env from .deploy/secrets.env."""
+"""Configure production SMTP in platform_api/.env from production secrets.
+
+The keys are uploaded as a JSON file (not shell args): a NUL-separated payload
+passed through ``repr()``/argv is misinterpreted by the shell, which previously
+corrupted ``.env`` and leaked the password into the command line.
+"""
 
 from __future__ import annotations
 
+import json
 import sys
-import textwrap
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deploy import ensure_deploy_key, load_production_secrets, resolve_production_ssh, ssh_connect  # noqa: E402
+from deploy import (  # noqa: E402
+    ensure_deploy_key,
+    load_production_secrets,
+    resolve_production_ssh,
+    ssh_connect,
+)
 
 PRODUCTION_HOST = "82.197.71.248"
-
-REMOTE_PY = textwrap.dedent(
-    '''
-import sys
+KEYS = (
+    "PLATFORM_SMTP_HOST",
+    "PLATFORM_SMTP_PORT",
+    "PLATFORM_SMTP_USER",
+    "PLATFORM_SMTP_PASSWORD",
+    "PLATFORM_SMTP_USE_TLS",
+    "PLATFORM_EMAIL_FROM_NAME",
+    "PLATFORM_EMAIL_FROM_ADDRESS",
+)
+REMOTE_PY = r'''
+import json, sys
 from pathlib import Path
-
 env_path = Path("/opt/camxora/repo/platform_api/.env")
-pairs = sys.argv[1].split("\\0")
-updates = {}
-for pair in pairs:
-    if not pair or "=" not in pair:
-        continue
-    key, _, value = pair.partition("=")
-    updates[key] = value
-
+updates = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 lines = env_path.read_text(encoding="utf-8").splitlines() if env_path.exists() else []
-seen = set()
-out = []
+seen, out = set(), []
 for line in lines:
     if not line.strip() or line.strip().startswith("#") or "=" not in line:
-        out.append(line)
-        continue
+        out.append(line); continue
     key, _, _ = line.partition("=")
     if key in updates:
-        out.append(f"{key}={updates[key]}")
-        seen.add(key)
+        out.append(f"{key}={updates[key]}"); seen.add(key)
     else:
         out.append(line)
 for key, value in updates.items():
     if key not in seen:
         out.append(f"{key}={value}")
-env_path.write_text("\\n".join(out) + "\\n", encoding="utf-8")
+env_path.write_text("\n".join(out) + "\n", encoding="utf-8")
 print("SMTP_CONFIGURED")
 for key in sorted(updates):
-    if "PASSWORD" in key:
-        print(f"{key}=***")
-    else:
-        print(f"{key}={updates[key]}")
+    print(f"{key}=" + ("***" if "PASSWORD" in key else str(updates[key])))
 '''
-)
 
 
 def main() -> int:
     secrets = load_production_secrets()
-    keys = (
-        "PLATFORM_SMTP_HOST",
-        "PLATFORM_SMTP_PORT",
-        "PLATFORM_SMTP_USER",
-        "PLATFORM_SMTP_PASSWORD",
-        "PLATFORM_SMTP_USE_TLS",
-        "PLATFORM_EMAIL_FROM_NAME",
-        "PLATFORM_EMAIL_FROM_ADDRESS",
-    )
-    updates = {key: secrets.get(key, "").strip() for key in keys}
+    host, user, password = resolve_production_ssh(secrets)
+    if host != PRODUCTION_HOST:
+        print(f"ERROR: refusing non-production host: {host}")
+        return 1
+
+    updates = {key: str(secrets.get(key, "")).strip() for key in KEYS}
     if not updates["PLATFORM_SMTP_HOST"]:
-        print("ERROR: Set PLATFORM_SMTP_HOST in .deploy/secrets.env first.")
+        print("ERROR: Set PLATFORM_SMTP_HOST in the production secrets first.")
         return 1
     if not updates["PLATFORM_SMTP_USER"] or not updates["PLATFORM_SMTP_PASSWORD"]:
-        print("ERROR: Set PLATFORM_SMTP_USER and PLATFORM_SMTP_PASSWORD in .deploy/secrets.env.")
+        print("ERROR: Set PLATFORM_SMTP_USER and PLATFORM_SMTP_PASSWORD in the production secrets.")
         return 1
     if not updates["PLATFORM_SMTP_PORT"]:
         updates["PLATFORM_SMTP_PORT"] = "587"
@@ -82,32 +80,28 @@ def main() -> int:
     if not updates["PLATFORM_EMAIL_FROM_ADDRESS"]:
         updates["PLATFORM_EMAIL_FROM_ADDRESS"] = updates["PLATFORM_SMTP_USER"]
 
-    host, user, password = resolve_production_ssh(secrets)
-    if host != PRODUCTION_HOST:
-        print(f"ERROR: refusing non-production host: {host}")
-        return 1
-
-    payload = "\0".join(f"{k}={v}" for k, v in updates.items())
     client = ssh_connect(host, user, ensure_deploy_key(), password)
-    remote_py = "/tmp/configure_smtp_prod.py"
-    sftp = client.open_sftp()
-    with sftp.file(remote_py, "w") as fh:
-        fh.write(REMOTE_PY)
-    sftp.close()
-
-    cmd = (
-        f"sudo -u camxora bash -lc '/opt/camxora/repo/platform_api/.venv/bin/python {remote_py} {payload!r}' "
-        "&& chown camxora:camxora /opt/camxora/repo/platform_api/.env "
-        "&& systemctl restart camxora-api"
-    )
-    _, stdout, stderr = client.exec_command(cmd)
-    print(stdout.read().decode().strip())
-    err = stderr.read().decode().strip()
-    if err:
-        print(err, file=sys.stderr)
-    code = stdout.channel.recv_exit_status()
-    client.close()
-    return code
+    try:
+        sftp = client.open_sftp()
+        with sftp.file("/tmp/smtp_updates.json", "wb") as fh:
+            fh.write(json.dumps(updates).encode("utf-8"))
+        with sftp.file("/tmp/configure_smtp_prod.py", "wb") as fh:
+            fh.write(REMOTE_PY.encode("utf-8"))
+        sftp.close()
+        cmd = (
+            "sudo -u camxora bash -lc '/opt/camxora/repo/platform_api/.venv/bin/python "
+            "/tmp/configure_smtp_prod.py /tmp/smtp_updates.json' "
+            "&& chown camxora:camxora /opt/camxora/repo/platform_api/.env "
+            "&& systemctl restart camxora-api"
+        )
+        _, stdout, stderr = client.exec_command(cmd, get_pty=True, timeout=180)
+        print(stdout.read().decode("utf-8", errors="replace").strip())
+        err = stderr.read().decode("utf-8", errors="replace").strip()
+        if err:
+            print(err, file=sys.stderr)
+        return stdout.channel.recv_exit_status()
+    finally:
+        client.close()
 
 
 if __name__ == "__main__":
