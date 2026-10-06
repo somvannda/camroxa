@@ -6,8 +6,10 @@ plans are ``desktop_pro`` and excluded), compute:
     real = current paid-period allowance + non-grant credits - net generations
 
 where "non-grant" = quota_conversion / pack / admin lots (never touched), and
-"net generations" = all v3 debits minus v3 refunds. This charges the user for the
-songs/ops they actually ran, so the wallet reflects what they may really use now.
+"net generations" = this billing period's v3 debits minus v3 refunds. Scoping to
+the current period is deliberate: charging all-time spend would over-deduct a
+monthly plan. This charges the user for the songs/ops they actually ran this
+period, so the wallet reflects what they may really use now.
 
 Free users and desktop/license users are not touched. Dry-run by default.
 """
@@ -54,7 +56,7 @@ async def _free_monthly(pool: asyncpg.Pool) -> int:
 async def _target_units(conn, uid, free_units: int) -> tuple[int, dict]:
     sub = await conn.fetchrow(
         """
-        SELECT ws.monthly_credits_granted, ws.current_period_end, p.name AS plan, p.monthly_credits
+        SELECT ws.monthly_credits_granted, ws.current_period_start, ws.current_period_end, p.name AS plan, p.monthly_credits
         FROM web_subscriptions ws JOIN plans p ON p.id = ws.plan_id
         WHERE ws.user_id = $1 AND ws.status = 'active'
         ORDER BY ws.current_period_end DESC LIMIT 1
@@ -65,9 +67,11 @@ async def _target_units(conn, uid, free_units: int) -> tuple[int, dict]:
     if sub is not None and sub["current_period_end"] > now:
         allowance = max(int(sub["monthly_credits_granted"] or 0), int(sub["monthly_credits"] or 0))
         plan = sub["plan"]
+        period_start = sub["current_period_start"]
     else:
         allowance = free_units // CREDIT_SCALE  # lapsed -> back on Free
         plan = "Free (lapsed)"
+        period_start = billing_month_start()
     non_grant = int(
         await conn.fetchval(
             "SELECT COALESCE(SUM(remaining_units),0) FROM credit_wallet_lots "
@@ -83,9 +87,11 @@ async def _target_units(conn, uid, free_units: int) -> tuple[int, dict]:
                        AND reason NOT IN ('v3_period_grant_clawback','v3_paid_web_reconcile')), 0)
                  - COALESCE(SUM(amount) FILTER (
                      WHERE direction='refund' AND reason LIKE 'v3_%'), 0)
-            FROM credit_transactions WHERE user_id = $1
+            FROM credit_transactions
+            WHERE user_id = $1 AND created_at >= $2
             """,
             uid,
+            period_start,
         )
     )
     target = max(0, allowance * CREDIT_SCALE + non_grant - net_spend)
