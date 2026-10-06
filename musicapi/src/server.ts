@@ -21,6 +21,7 @@ import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "
 import { trustProxyOption } from "./trustProxy.js";
 import { isProtectedPath, isPublicProtectedRoute } from "./routeAuth.js";
 import { verifyChmabaSignature, findReferenceId } from "./webhookSignature.js";
+import { collectClipObjects, extractClipIds } from "./clips.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
@@ -1670,14 +1671,26 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
-   * True when `clipId` is known to belong to a *different* user. Ownership is
-   * derived from the clip ids stored in a job/usage result, so a readable clip
-   * cannot be crossed between tenants. An id attributed to nobody (e.g. a legacy
-   * row with no stored result) is allowed through, so this never regresses
-   * legitimate access.
+   * True when `clipId` is known to belong to a *different* user. The exact
+   * `clip_owners` mapping is checked first; clips recorded before that table
+   * existed (or direct-upload ids that never became a job) fall back to scanning
+   * the stored job/usage results. An id attributed to nobody is allowed through,
+   * so this never regresses legitimate access.
    */
   async function clipOwnedByOtherUser(userId: string, clipId: string): Promise<boolean> {
     if (!userId || !clipId) return false;
+    // Exact, indexed path. If the table has not been migrated yet, fall through
+    // to the result scan so a code-ahead-of-migration deploy never breaks access.
+    let owner: { user_id: string } | null = null;
+    try {
+      owner = await queryOne<{ user_id: string }>(
+        "SELECT user_id FROM clip_owners WHERE clip_id = $1",
+        [clipId],
+      );
+    } catch {
+      owner = null;
+    }
+    if (owner) return owner.user_id !== userId;
     const owns = await queryOne<{ one: number }>(
       `SELECT 1 AS one FROM jobs
          WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
@@ -1704,6 +1717,31 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   function denyForeignClip(reply: FastifyReply): void {
     reply.code(403).send({ error: "This clip does not belong to your account." });
+  }
+
+  /**
+   * Persist the caller → clip mapping for a finished job so ownership checks are
+   * an indexed lookup instead of a result-JSON scan. Best-effort: an ownership
+   * write must never fail the job it describes.
+   */
+  async function recordClipOwners(job: Job): Promise<void> {
+    if (!job.userId || job.result == null) return;
+    const ids = extractClipIds(job.result);
+    for (const clipId of ids) {
+      try {
+        await query(
+          `INSERT INTO clip_owners (clip_id, user_id, job_id)
+           VALUES ($1, $2, $3)
+           ON CONFLICT (clip_id) DO NOTHING`,
+          [clipId, job.userId, job.id],
+        );
+      } catch (e) {
+        console.error(
+          `[clips] failed to record owner for ${clipId}:`,
+          e instanceof Error ? e.message : e,
+        );
+      }
+    }
   }
 
   function meDetailRoute(path: string, type: Job["type"]) {
@@ -1985,6 +2023,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         taskId: job.id,
         result: job.result,
       });
+      await recordClipOwners(job);
     }
     await notify(job);
   }
@@ -8329,25 +8368,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // `errorCode`/`errorMessage`, and a `response.sunoData[]` array whose tracks
   // carry BOTH snake_case and camelCase field names. `response.data[]` is kept
   // for back-compat with our own callers.
-  // Flatten a job result into individual clip-like objects. Our music/sounds
-  // jobs store `[{ clips: [...] }]`, stems store `{...}`, etc.; sunoapi.org's
-  // `sunoData[]` is a flat track list, so both ingest and record-info use this.
-  function collectClipObjects(value: unknown, out: Array<Record<string, unknown>>): void {
-    if (Array.isArray(value)) {
-      for (const v of value) collectClipObjects(v, out);
-      return;
-    }
-    if (!value || typeof value !== "object") return;
-    const o = value as Record<string, unknown>;
-    const id = typeof o.id === "string" ? o.id : undefined;
-    const clipLike = Boolean(
-      id && (o.media_urls || o.audio_url || o.audioUrl || o.image_url || o.imageUrl || o.video_url),
-    );
-    if (clipLike) out.push(o);
-    if (Array.isArray(o.clips)) collectClipObjects(o.clips, out);
-    if (Array.isArray(o.data)) collectClipObjects(o.data, out);
-    if (Array.isArray(o.sunoData)) collectClipObjects(o.sunoData, out);
-  }
+  // Flatten a job result into individual clip-like objects; shared with the
+  // ownership recorder and the backfill script (see `./clips.ts`).
 
   async function sunoRecordInfo(job: Job) {
     let status: string;
