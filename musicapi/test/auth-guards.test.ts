@@ -89,6 +89,21 @@ test("deny-by-default auth backstop is registered", () => {
   );
 });
 
+test("job ownership checks deny unowned jobs", () => {
+  // Regression guard for P5: the permissive `job.userId && job.userId !== …`
+  // form lets a job with no owner be read by any authenticated caller.
+  assert.doesNotMatch(
+    source,
+    /job\.userId\s*&&\s*job\.userId\s*!==/,
+    "permissive `job.userId && job.userId !== …` ownership check is present",
+  );
+  assert.match(
+    source,
+    /!job\.userId\s*\|\|\s*job\.userId\s*!==/,
+    "expected the deny-unowned ownership form",
+  );
+});
+
 test("every direct protected-prefix route carries an auth guard", () => {
   const offenders = routeRegistrations()
     .filter((r) => {
