@@ -104,6 +104,30 @@ test("job ownership checks deny unowned jobs", () => {
   );
 });
 
+test("upload-status routes enforce asset ownership", () => {
+  // Regression guard for P6: every upload-status proxy must check the caller
+  // owns the id before forwarding it upstream.
+  const statusRoutes = routeRegistrations().filter((r) =>
+    r.path.endsWith("/upload/status/:id"),
+  );
+  assert.ok(statusRoutes.length >= 3, `expected the 3 upload-status routes, found ${statusRoutes.length}`);
+  for (const r of statusRoutes) {
+    assert.match(
+      r.body,
+      /assetOwnedByOtherUser\(/,
+      `${r.method} ${r.path} does not enforce asset ownership`,
+    );
+  }
+});
+
+test("finished jobs record owned assets", () => {
+  assert.match(
+    source,
+    /await recordOwnedAssets\(job\)/,
+    "finalizeJob must record asset ownership for the caller's clips/uploads",
+  );
+});
+
 test("every direct protected-prefix route carries an auth guard", () => {
   const offenders = routeRegistrations()
     .filter((r) => {
