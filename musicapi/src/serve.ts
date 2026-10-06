@@ -8,6 +8,10 @@ import { config, storageConfigured } from "./config.js";
 import { loadRuntimeSettings } from "./runtimeSettings.js";
 
 const port = Number(process.env.PORT ?? 4003);
+// Bind address. Defaults to all interfaces (current behaviour). Behind a
+// reverse proxy, set HOST=127.0.0.1 so the core API is only reachable through
+// the proxy — combine with a firewall rule blocking the port from the internet.
+const host = (process.env.HOST ?? "0.0.0.0").trim() || "0.0.0.0";
 
 if (!storageConfigured()) {
   // Drop-in contract: a reseller always returns a playable, hosted URL. Without
@@ -124,7 +128,7 @@ process.on("SIGTERM", () => void shutdown("SIGTERM"));
 process.on("SIGINT", () => void shutdown("SIGINT"));
 
 app
-  .listen({ port, host: "0.0.0.0" })
+  .listen({ port, host })
   .then((addr) => {
     console.log(`Suno API listening on ${addr}`);
     console.log(`accounts=${pool.size}`);
