@@ -70,6 +70,15 @@ _ARCHIVED_TRACK_EXCLUDED = """
                   AND COALESCE(t.storage_key, '') <> ''
               )"""
 
+# A job that already exhausted its retry budget and was marked terminal
+# (``permanent_failed``) is no longer actionable: the retry/auto-retry selectors
+# ignore it. The health report must not keep paging on it forever either — a
+# single unrecoverable capture (e.g. an expired Suno temp URL whose variant was
+# never archived) otherwise re-fires the hourly "capture failures" alert
+# indefinitely. Requires the job table aliased as ``j``.
+_PERMANENT_FAILED_EXCLUDED = """
+              AND COALESCE(j.permanent_failed, false) = false"""
+
 
 class StreamingRepository:
     def __init__(self, pool: Any) -> None:
@@ -408,11 +417,17 @@ class StreamingRepository:
     async def count_failed_mp3_jobs(self, *, missing_b2_only: bool = False) -> int:
         """Failed mp3_ok/mp3_alt upload jobs right now (live count).
 
-        ``missing_b2_only`` excludes jobs whose task+variant is already archived
-        to B2 (redundant duplicate captures) — used by the health report so ops
-        is only paged for genuinely missing audio.
+        ``missing_b2_only`` restricts to actionable failures — it excludes jobs
+        whose task+variant is already archived to B2 (redundant duplicate
+        captures) and jobs already marked ``permanent_failed`` (terminal), used
+        by the health report so ops is only paged for genuinely missing,
+        still-actionable audio.
         """
-        exclusion = _ARCHIVED_TRACK_EXCLUDED if missing_b2_only else ""
+        exclusion = (
+            _ARCHIVED_TRACK_EXCLUDED + _PERMANENT_FAILED_EXCLUDED
+            if missing_b2_only
+            else ""
+        )
         row = await self._pool.fetchrow(
             f"""
             SELECT count(*) AS n
@@ -445,7 +460,11 @@ class StreamingRepository:
         self, *, hours: int, missing_b2_only: bool = False
     ) -> int:
         """Failed mp3_ok/mp3_alt upload jobs created within the last N hours."""
-        exclusion = _ARCHIVED_TRACK_EXCLUDED if missing_b2_only else ""
+        exclusion = (
+            _ARCHIVED_TRACK_EXCLUDED + _PERMANENT_FAILED_EXCLUDED
+            if missing_b2_only
+            else ""
+        )
         row = await self._pool.fetchrow(
             f"""
             SELECT count(*) AS n
@@ -463,7 +482,11 @@ class StreamingRepository:
         self, *, limit: int, missing_b2_only: bool = False
     ) -> list[dict[str, Any]]:
         """Newest failed mp3 upload jobs (id + truncated error) for the report."""
-        exclusion = _ARCHIVED_TRACK_EXCLUDED if missing_b2_only else ""
+        exclusion = (
+            _ARCHIVED_TRACK_EXCLUDED + _PERMANENT_FAILED_EXCLUDED
+            if missing_b2_only
+            else ""
+        )
         rows = await self._pool.fetch(
             f"""
             SELECT j.id, j.kind, LEFT(COALESCE(j.error, ''), 180) AS error, j.created_at
