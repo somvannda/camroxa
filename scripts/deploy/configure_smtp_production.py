@@ -10,7 +10,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site-packages"))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from deploy import ensure_deploy_key, load_secrets, ssh_connect  # noqa: E402
+from deploy import ensure_deploy_key, load_production_secrets, resolve_production_ssh, ssh_connect  # noqa: E402
+
+PRODUCTION_HOST = "82.197.71.248"
 
 REMOTE_PY = textwrap.dedent(
     '''
@@ -54,7 +56,7 @@ for key in sorted(updates):
 
 
 def main() -> int:
-    secrets = load_secrets()
+    secrets = load_production_secrets()
     keys = (
         "PLATFORM_SMTP_HOST",
         "PLATFORM_SMTP_PORT",
@@ -80,11 +82,9 @@ def main() -> int:
     if not updates["PLATFORM_EMAIL_FROM_ADDRESS"]:
         updates["PLATFORM_EMAIL_FROM_ADDRESS"] = updates["PLATFORM_SMTP_USER"]
 
-    host = secrets.get("PRODUCTION_VPS_HOST") or secrets.get("VPS_HOST", "")
-    user = secrets.get("PRODUCTION_VPS_USER") or secrets.get("VPS_USER", "root")
-    password = secrets.get("PRODUCTION_VPS_PASSWORD") or secrets.get("VPS_PASSWORD") or None
-    if not host:
-        print("ERROR: PRODUCTION_VPS_HOST or VPS_HOST required.")
+    host, user, password = resolve_production_ssh(secrets)
+    if host != PRODUCTION_HOST:
+        print(f"ERROR: refusing non-production host: {host}")
         return 1
 
     payload = "\0".join(f"{k}={v}" for k, v in updates.items())
@@ -96,9 +96,9 @@ def main() -> int:
     sftp.close()
 
     cmd = (
-        f"sudo -u camxora bash -lc '/opt/camxora/repo/platform_api/.venv/bin/python {remote_py} {payload!r} "
+        f"sudo -u camxora bash -lc '/opt/camxora/repo/platform_api/.venv/bin/python {remote_py} {payload!r}' "
         "&& chown camxora:camxora /opt/camxora/repo/platform_api/.env "
-        "&& systemctl restart camxora-api'"
+        "&& systemctl restart camxora-api"
     )
     _, stdout, stderr = client.exec_command(cmd)
     print(stdout.read().decode().strip())
