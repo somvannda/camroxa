@@ -345,6 +345,27 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Web music subscription maintenance not configured (non-fatal): %s", exc)
 
+        # --- Web music renewal reminder emails ---
+        try:
+            from platform_api.services.renewal_reminder_service import run_renewal_reminders
+
+            async def _renewal_reminder_loop() -> None:
+                while True:
+                    try:
+                        sent = await run_renewal_reminders(db_pool)
+                        if sent:
+                            logger.info("Web music renewal reminders sent: %s", sent)
+                    except Exception as exc:
+                        logger.warning("Web music renewal reminder sweep failed: %s", exc)
+                    await asyncio.sleep(21600)  # every 6 hours
+
+            asyncio.create_task(
+                _renewal_reminder_loop(), name="web-music-renewal-reminders"
+            )
+            logger.info("Web music renewal reminder loop started (every 6 hours).")
+        except Exception as exc:
+            logger.warning("Web music renewal reminders not configured (non-fatal): %s", exc)
+
         # --- Durable B2 backfill sweep ---
         # Every 15 minutes: reprocess stuck/failed upload jobs (with provider
         # Recovery Audio), backfill studio MP3s missing from B2, and mark jobs

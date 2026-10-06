@@ -229,6 +229,8 @@ class Settings(BaseSettings):
     # (trust CF headers by presence; fine for sandbox/dev).
     music_web_trusted_edge_secret: str = ""
     music_web_gen_freeze_hours: int = 6
+    # Public music-web origin, used to build renewal-reminder links.
+    music_web_base_url: str = "https://music.camxora.com"
 
     # --- Pipeline stuck-batch housekeeping alert (PLATFORM_WORKERS_REQUIREMENTS.md §8) ---
     # A batch/channel with no draft/Suno/image/asset activity for this long, and not
