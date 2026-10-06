@@ -228,6 +228,9 @@ NODE_ENV=production
 # bot/chat as production. Do not remove; see musicapi/src/config.ts.
 MUSICAPI_ENV=${MUSICAPI_ENV}
 PORT=${MUSICAPI_PORT}
+# Bind loopback only: nginx (on this host) is the sole edge, so the core API
+# must not be reachable directly on the public interface. See src/serve.ts.
+HOST=127.0.0.1
 BACKEND_URL=http://127.0.0.1:${MUSICAPI_PORT}
 DATABASE_URL=${DATABASE_URL}
 # Job transport. Default stays the in-memory driver; set
