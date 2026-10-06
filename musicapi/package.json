@@ -12,6 +12,7 @@
     "suno:login": "tsx scripts/suno-login.ts",
     "test:contract": "tsx scripts/smoke-test-sunoapi-contract.ts",
     "test:lrc": "tsx scripts/test-lrc.ts",
+    "test:routes": "tsx scripts/smoke-test-all-routes.ts",
     "test:unit": "tsx test/run.ts",
     "build": "tsc",
     "start": "node dist/serve.js",

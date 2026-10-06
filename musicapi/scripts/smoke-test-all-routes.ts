@@ -53,6 +53,31 @@ const ALL_ROUTES: Array<{
   { method: "POST", path: "/v1/voice/extend", tier2: {}, tier3: { persona_id: "a" } },
 ];
 
+// Anonymous-access checks for the other protected surface families. The
+// deny-by-default backstop and each handler's guard must reject these with 401
+// before any work happens.
+const PROTECTED_ANON_ROUTES: Array<{ method: "GET" | "POST"; path: string }> = [
+  { method: "GET", path: "/me/profile" },
+  { method: "GET", path: "/me/download" },
+  { method: "GET", path: "/me/stream" },
+  { method: "POST", path: "/me/generate" },
+  { method: "POST", path: "/me/voice-source" },
+  { method: "GET", path: "/admin/users" },
+  { method: "POST", path: "/admin/pricing" },
+  { method: "POST", path: "/admin/users/00000000-0000-0000-0000-000000000000/credits" },
+  { method: "GET", path: "/v1/credits" },
+  { method: "GET", path: "/v1/get-credits" },
+  { method: "POST", path: "/api/v1/generate" },
+  { method: "GET", path: "/api/v1/get-credits" },
+  { method: "POST", path: "/api/v1/upload/init" },
+  { method: "POST", path: "/payments/chmaba/create" },
+  { method: "GET", path: "/payments/chmaba/status/00000000-0000-0000-0000-000000000000" },
+];
+
+// Public routes must stay reachable (the backstop must not over-block).
+const PUBLIC_REACHABLE_ROUTES: string[] = ["/health", "/pricing", "/models", "/settings"];
+
+
 type Tier = "T1 (no-auth -> 401)" | "T2 (auth+empty -> 400)" | "T3 (auth+valid -> 202)";
 
 interface Fail {
@@ -125,6 +150,30 @@ async function main() {
       } else { passed++; }
     }
   }
+
+  // Protected surfaces: an anonymous caller must get 401 (backstop + guards).
+  for (const r of PROTECTED_ANON_ROUTES) {
+    const res = await fetch(base + r.path, {
+      method: r.method,
+      headers: { "content-type": "application/json" },
+      body: r.method === "GET" ? undefined : "{}",
+    });
+    const body = (await res.text()).slice(0, 120);
+    if (res.status !== 401) {
+      fails.push({ route: r.path, method: r.method, tier: "T1 (no-auth -> 401)", got: res.status, want: 401, body });
+      console.log(`FAIL  ${r.method} ${r.path}  T1(protected)  got=${res.status} want=401  ${body}`);
+    } else { passed++; }
+  }
+
+  // Public surfaces: the backstop must not over-block these.
+  for (const path of PUBLIC_REACHABLE_ROUTES) {
+    const res = await fetch(base + path, { method: "GET" });
+    if (res.status === 401) {
+      fails.push({ route: path, method: "GET", tier: "T1 (no-auth -> 401)", got: 401, want: 200, body: "public route unexpectedly blocked" });
+      console.log(`FAIL  GET ${path}  public  got=401 (should be reachable)`);
+    } else { passed++; }
+  }
+
   const total = ALL_ROUTES.length * 2 + ALL_ROUTES.filter(r => r.method === "POST" && r.tier2 !== undefined).length;
   console.log(`\nSmoke: passed=${passed}  total_tests=~${passed + fails.length}  routes=${ALL_ROUTES.length}`);
   if (fails.length) {
