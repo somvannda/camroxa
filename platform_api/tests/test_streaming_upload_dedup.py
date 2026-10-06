@@ -62,6 +62,49 @@ async def test_count_failed_mp3_jobs_without_filter_counts_all() -> None:
     assert "NOT EXISTS" not in query
 
 
+async def test_count_failed_mp3_jobs_missing_b2_excludes_permanent_failed() -> None:
+    pool = _FakePool({"n": 0})
+    repo = StreamingRepository(pool)
+
+    assert await repo.count_failed_mp3_jobs(missing_b2_only=True) == 0
+
+    query, _ = pool.calls[0]
+    assert "NOT EXISTS" in query
+    assert "permanent_failed" in query
+
+
+async def test_count_failed_mp3_jobs_without_filter_keeps_permanent_failed() -> None:
+    pool = _FakePool({"n": 5})
+    repo = StreamingRepository(pool)
+
+    assert await repo.count_failed_mp3_jobs() == 5
+
+    query, _ = pool.calls[0]
+    assert "permanent_failed" not in query
+
+
+async def test_count_failed_mp3_jobs_since_missing_b2_excludes_permanent_failed() -> None:
+    pool = _FakePool({"n": 0})
+    repo = StreamingRepository(pool)
+
+    assert await repo.count_failed_mp3_jobs_since(hours=24, missing_b2_only=True) == 0
+
+    query, _ = pool.calls[0]
+    assert "NOT EXISTS" in query
+    assert "permanent_failed" in query
+
+
+async def test_list_recent_failed_mp3_errors_missing_b2_excludes_permanent_failed() -> None:
+    pool = _FakePool({"n": 0})
+    repo = StreamingRepository(pool)
+
+    assert await repo.list_recent_failed_mp3_errors(limit=5, missing_b2_only=True) == []
+
+    query, _ = pool.calls[0]
+    assert "NOT EXISTS" in query
+    assert "permanent_failed" in query
+
+
 class _InsertPool:
     """Minimal pool double for create_upload_job."""
 
