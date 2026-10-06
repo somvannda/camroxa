@@ -176,7 +176,7 @@ log "Building admin portal..."
 sudo -u camxora -H bash -lc "
   set -e
   cd '${REPO_DIR}/admin_portal'
-  npm ci || npm install --no-audit --no-fund
+  npm ci --no-audit --no-fund
   echo 'VITE_API_BASE_URL=' > .env.production
   npm run build
   chmod -R 755 dist
@@ -186,7 +186,7 @@ log "Building website..."
 sudo -u camxora -H bash -lc "
   set -e
   cd '${REPO_DIR}/website'
-  npm ci || npm install --no-audit --no-fund
+  npm ci --no-audit --no-fund
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_PLATFORM_API_BASE_URL=https://api.camxora.com/api/v1
 NEXT_PUBLIC_CAMXORA_ENV=production
@@ -200,7 +200,7 @@ log "Building user portal..."
 sudo -u camxora -H bash -lc "
   set -e
   cd '${REPO_DIR}/user_portal'
-  npm ci || npm install --no-audit --no-fund
+  npm ci --no-audit --no-fund
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_PLATFORM_API_BASE_URL=https://api.camxora.com/api/v1
 NEXT_PUBLIC_CAMXORA_ENV=production
@@ -214,7 +214,7 @@ log "Building music web (public streaming)..."
 sudo -u camxora -H bash -lc "
   set -e
   cd '${REPO_DIR}/music_web'
-  npm ci || npm install --no-audit --no-fund
+  npm ci --no-audit --no-fund
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_API_BASE_URL=https://api.camxora.com
 ENVEOF
