@@ -80,8 +80,42 @@ class PeriodGrantService:
                 )
                 monthly_allowance = False
 
+        units = credits_to_units(monthly)
+
         existing = await self._store.find_period_grant(user_id, period_start)
         if existing is not None:
+            existing_units = int(existing.get("amount_units") or 0)
+            if existing_units < units:
+                # Plan upgrade inside a period whose lot was minted for a smaller
+                # allowance (e.g. the Free monthly lot holding the unique
+                # (user_id, period_start) slot). Without this the paid allowance
+                # was silently skipped and a just-paid user kept only their
+                # leftover Free credits. Grow the lot to the new allowance and
+                # credit the difference; equivalent to "allowance - already
+                # granted" and idempotent once the lot holds the allowance.
+                added_units = units - existing_units
+                applied = await self._store.top_up_period_lot(
+                    existing["id"], added_units, max_units=units
+                )
+                if applied:
+                    await self._ledger.grant(
+                        user_id,
+                        added_units,
+                        grant_type=GrantType.PERIOD,
+                        ref_id=f"grant-upgrade:{user_id}:{period_start.isoformat()}",
+                    )
+                    return {
+                        "granted": True,
+                        "user_id": str(user_id),
+                        "plan_id": plan["id"],
+                        "credits": monthly,
+                        "amount_units": units,
+                        "period_start": period_start.isoformat(),
+                        "lot_id": str(existing["id"]),
+                        "balance_credits": units_to_credits(
+                            int(await self._credit_repo.get_balance(user_id))
+                        ),
+                    }
             return {
                 "granted": False,
                 "reason": "already_granted",
@@ -90,7 +124,6 @@ class PeriodGrantService:
                 "period_start": period_start.isoformat(),
             }
 
-        units = credits_to_units(monthly)
         if monthly_allowance:
             # Calendar-month allowance: expire at the next billing month start so
             # unused Free credits roll off instead of lingering past the period.

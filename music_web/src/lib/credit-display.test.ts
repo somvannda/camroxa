@@ -134,7 +134,25 @@ describe('computeCreditDisplay', () => {
       }),
     );
     assert.equal(display.remaining, 700);
+    assert.equal(display.limit, 1000);
     assert.equal(display.hasSubscription, true);
+  });
+
+  it('does not double-count the monthly pool in the paid capacity', () => {
+    // Regression: `monthly_credits_used` is already (pool - remaining), so adding
+    // it to the pool again reported a 1,999 capacity for a 1,000-credit plan with
+    // 1 credit left.
+    const display = computeCreditDisplay(
+      freeBalance({
+        has_subscription: true,
+        total_credits: 1,
+        monthly_credits: 1000,
+        monthly_credits_used: 999,
+        topup_credits: 0,
+      }),
+    );
+    assert.equal(display.remaining, 1);
+    assert.equal(display.limit, 1000);
   });
 
   it('returns safe defaults when the balance is unavailable', () => {
