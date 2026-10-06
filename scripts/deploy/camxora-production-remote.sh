@@ -109,6 +109,20 @@ usermod -aG www-data camxora 2>/dev/null || true
 mkdir -p "${DEPLOY_ROOT}"
 chown camxora:camxora "${DEPLOY_ROOT}"
 
+# Desktop installer uploads are mutable data and must live OUTSIDE the repo
+# checkout, which is replaced wholesale on every deploy (see the SYNC_FROM_LOCAL
+# branch below). If the storage root stays repo-relative, the next deploy leaves
+# the published release pointing at a deleted file and both the website download
+# and the in-app updater 404 on every installer.
+DESKTOP_RELEASE_STORAGE_DIR="${DEPLOY_ROOT}/shared/desktop_release_storage"
+mkdir -p "${DESKTOP_RELEASE_STORAGE_DIR}"
+chown -R camxora:camxora "${DEPLOY_ROOT}/shared"
+if [[ -d "${REPO_DIR}/desktop_release_storage" ]]; then
+  log "Migrating desktop installers out of the repo checkout..."
+  cp -an "${REPO_DIR}/desktop_release_storage/." "${DESKTOP_RELEASE_STORAGE_DIR}/" 2>/dev/null || true
+  chown -R camxora:camxora "${DESKTOP_RELEASE_STORAGE_DIR}"
+fi
+
 CLONE_URL="${GIT_REPO}"
 if [[ -n "${GITHUB_TOKEN:-}" ]]; then
   CLONE_URL="${GIT_REPO/https:\/\//https://${GITHUB_TOKEN}@}"
@@ -160,6 +174,8 @@ PLATFORM_HOST=127.0.0.1
 PLATFORM_PORT=${API_PORT}
 PLATFORM_DATABASE_URL=postgresql+asyncpg://camxora:${DB_PASSWORD}@127.0.0.1:5432/camxora_platform
 PLATFORM_REDIS_URL=redis://127.0.0.1:6379/1
+# Persistent (non-repo) desktop installer storage so deploys never wipe uploads.
+PLATFORM_DESKTOP_RELEASE_STORAGE_PATH=${DESKTOP_RELEASE_STORAGE_DIR}
 PLATFORM_JWT_SECRET=${PLATFORM_JWT_SECRET}
 PLATFORM_CORS_ORIGINS=${CORS}
 PLATFORM_SUNO_CALLBACK_BASE_URL=https://api.camxora.com
