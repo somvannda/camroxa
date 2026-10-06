@@ -8,13 +8,16 @@ import {
   creditsToSongs,
   fetchCreditBalance,
   fetchMySubscription,
+  fetchRenewalOffer,
   fetchSubscriptionPlans,
   formatPlanDisplayName,
   formatPrice,
   matchCurrentPlan,
   parseBillingDate,
+  purchaseRenewal,
   purchaseSubscription,
   type CreditBalance,
+  type RenewalOffer,
   type SubscriptionPlan,
   type UserSubscription,
 } from '@/lib/subscription-api';
@@ -36,6 +39,9 @@ export default function SubscriptionSection() {
   const [checkoutQrString, setCheckoutQrString] = useState<string | null>(null);
   const [checkoutPaymentId, setCheckoutPaymentId] = useState<string | null>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<{ name: string; price: string } | null>(null);
+  const [checkoutKind, setCheckoutKind] = useState<'subscription' | 'renewal'>('subscription');
+  const [renewalOffer, setRenewalOffer] = useState<RenewalOffer | null>(null);
+  const [renewing, setRenewing] = useState(false);
 
   useEffect(() => {
     void loadSubscription();
@@ -43,14 +49,16 @@ export default function SubscriptionSection() {
 
   async function loadSubscription() {
     try {
-      const [sub, credits, planData] = await Promise.all([
+      const [sub, credits, planData, offer] = await Promise.all([
         fetchMySubscription().catch(() => null),
         fetchCreditBalance().catch(() => null),
         fetchSubscriptionPlans().catch(() => ({ plans: [] as SubscriptionPlan[] })),
+        fetchRenewalOffer().catch(() => null),
       ]);
       setSubscription(sub);
       setBalance(credits);
       setPlans(planData.plans.filter((plan) => plan.is_public));
+      setRenewalOffer(offer);
       if (sub?.billing_cycle === 'yearly' || sub?.billing_cycle === 'monthly') {
         setBillingCycle(sub.billing_cycle);
       }
@@ -98,6 +106,7 @@ export default function SubscriptionSection() {
         success_url: `${currentUrl}/profile?payment=success`,
         cancel_url: `${currentUrl}/profile`,
       });
+      setCheckoutKind('subscription');
       setCheckoutPlan({
         name: formatPlanDisplayName(plan.name),
         price: formatPrice(plan.price_cents),
@@ -109,6 +118,31 @@ export default function SubscriptionSection() {
       console.error('Purchase failed:', err);
       alert(err instanceof Error ? err.message : 'Failed to start checkout process');
       setPurchasingPlanId(null);
+    }
+  }
+
+  async function handleRenew() {
+    if (!renewalOffer?.eligible) return;
+    setRenewing(true);
+    try {
+      const currentUrl = window.location.origin;
+      const { checkout_url, payment_id, qr_string } = await purchaseRenewal({
+        success_url: `${currentUrl}/profile?payment=success`,
+        cancel_url: `${currentUrl}/profile`,
+      });
+      setCheckoutKind('renewal');
+      setCheckoutPlan({
+        name: formatPlanDisplayName(renewalOffer.plan_name || 'your plan'),
+        price: formatPrice(renewalOffer.price_cents),
+      });
+      setCheckoutPaymentId(payment_id);
+      setCheckoutQrString(qr_string || null);
+      setCheckoutUrl(checkout_url);
+    } catch (err: unknown) {
+      console.error('Renewal failed:', err);
+      alert(err instanceof Error ? err.message : 'Failed to start renewal');
+    } finally {
+      setRenewing(false);
     }
   }
 
@@ -127,9 +161,43 @@ export default function SubscriptionSection() {
     (balance ? balance.monthly_credits + balance.monthly_credits_used : 0);
   const currentPlan = matchCurrentPlan(plans, subscription, grantedCredits);
 
+  const renewalBanner =
+    renewalOffer?.eligible && renewalOffer.renewable ? (
+      <div
+        className={`rounded-2xl border p-5 ${
+          renewalOffer.expired
+            ? 'border-red-500/30 bg-red-500/10'
+            : 'border-amber-500/30 bg-amber-500/10'
+        }`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <p className="font-medium text-white">
+              {renewalOffer.expired ? 'Your subscription has ended' : 'Your plan renews soon'}
+            </p>
+            <p className="mt-1 text-sm text-slate-300">
+              {renewalOffer.expired
+                ? `Renew ${formatPlanDisplayName(renewalOffer.plan_name)} for ${formatPrice(renewalOffer.price_cents)} to keep creating.`
+                : `${renewalOffer.days_left ?? 0} day(s) left. Renew ${formatPlanDisplayName(renewalOffer.plan_name)} for ${formatPrice(renewalOffer.price_cents)} to avoid losing access.`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => void handleRenew()}
+            disabled={renewing}
+            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-5 text-sm font-medium text-white transition-all hover:from-purple-600 hover:to-pink-600 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {renewing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            Renew now
+          </button>
+        </div>
+      </div>
+    ) : null;
+
   if (!isSubscribed) {
     return (
       <div className="rounded-3xl border border-purple-500/20 bg-gradient-to-br from-purple-900/20 via-[rgba(8,10,20,0.55)] to-transparent p-8 text-center">
+        {renewalBanner ? <div className="mb-6 text-left">{renewalBanner}</div> : null}
         <div className="mb-4 inline-flex rounded-full bg-purple-500/20 p-3">
           <Crown className="h-8 w-8 text-purple-400" />
         </div>
@@ -258,6 +326,8 @@ export default function SubscriptionSection() {
           ) : null}
         </div>
 
+        {renewalBanner}
+
         {plans.length ? (
           <AvailablePlansGrid
             plans={plans}
@@ -326,7 +396,7 @@ export default function SubscriptionSection() {
         checkoutUrl={checkoutUrl}
         qrString={checkoutQrString}
         paymentId={checkoutPaymentId}
-        kind="subscription"
+        kind={checkoutKind}
         planName={checkoutPlan?.name}
         planPrice={checkoutPlan?.price}
         onClose={() => {
@@ -334,6 +404,7 @@ export default function SubscriptionSection() {
           setCheckoutQrString(null);
           setCheckoutPaymentId(null);
           setCheckoutPlan(null);
+          setCheckoutKind('subscription');
           setPurchasingPlanId(null);
         }}
       />
