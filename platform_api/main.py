@@ -316,10 +316,13 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         # --- Web music subscription period maintenance ---
         try:
+            from platform_api.db.asyncpg_adapter import wrap_pool
             from platform_api.services.v2.subscription_service import SubscriptionService
 
             async def _run_subscription_maintenance() -> None:
-                handled = await SubscriptionService(db_pool).process_due_subscriptions()
+                # SubscriptionService speaks fetch_one/fetch_all, so hand it the
+                # adapter (routers use wrap_pool too) instead of the raw pool.
+                handled = await SubscriptionService(wrap_pool(db_pool)).process_due_subscriptions()
                 if handled:
                     logger.info(
                         "Web music subscription maintenance handled %s row(s)",

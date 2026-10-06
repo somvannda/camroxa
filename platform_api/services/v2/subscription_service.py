@@ -129,6 +129,14 @@ class SubscriptionService:
         db,  # Database connection
         cutluy: Optional[CutLuyService] = None
     ):
+        # Accept either the asyncpg adapter (fetch_one/fetch_all) or a raw asyncpg
+        # pool. The startup maintenance loop passed the raw pool, so
+        # process_due_subscriptions() raised AttributeError every 15 minutes and
+        # silently skipped all renewals/expiry.
+        if not hasattr(db, "fetch_all"):
+            from platform_api.db.asyncpg_adapter import wrap_pool
+
+            db = wrap_pool(db)
         self._db = db
         self._cutluy = cutluy or get_cutluy_service()
     
