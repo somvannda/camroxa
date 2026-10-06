@@ -15,6 +15,29 @@ from platform_api.services.v2.subscription_service import (
 )
 
 
+def test_subscription_service_wraps_raw_pool() -> None:
+    """Regression: the startup loop passed a raw asyncpg pool, so fetch_all /
+    fetch_one were missing and process_due_subscriptions crashed every 15 min."""
+
+    class RawPool:
+        pass
+
+    service = SubscriptionService(db=RawPool(), cutluy=object())
+    assert hasattr(service._db, "fetch_all")
+    assert hasattr(service._db, "fetch_one")
+
+
+def test_subscription_service_keeps_existing_adapter() -> None:
+    from platform_api.db.asyncpg_adapter import AsyncpgPoolAdapter
+
+    class RawPool:
+        pass
+
+    adapter = AsyncpgPoolAdapter(RawPool())
+    service = SubscriptionService(db=adapter, cutluy=object())
+    assert service._db is adapter
+
+
 def test_next_credit_reset_at_monthly_uses_billing_period_end() -> None:
     period_end = datetime(2026, 9, 1, 0, 0, 0)
     last_reset = datetime(2026, 8, 1, 0, 0, 0)
