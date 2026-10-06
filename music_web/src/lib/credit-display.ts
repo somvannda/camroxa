@@ -110,9 +110,13 @@ export function computeCreditDisplay(balance: CreditDisplayInput | null): Credit
 
   if (balance.has_subscription) {
     const remaining = Math.max(0, balance.total_credits);
+    // `monthly_credits` is the granted pool, not the remainder. Adding
+    // `monthly_credits_used` (already pool - remaining) double-counted the pool,
+    // so a 1,000-credit plan with 1 credit left showed a 1,999 capacity. The
+    // pool plus top-ups is the real capacity.
     const capacity = Math.max(
       remaining,
-      balance.monthly_credits + balance.monthly_credits_used + balance.topup_credits,
+      balance.monthly_credits + balance.topup_credits,
       1,
     );
     return {

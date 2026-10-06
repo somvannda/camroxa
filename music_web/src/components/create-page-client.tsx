@@ -545,6 +545,18 @@ export default function CreatePageClient() {
   }, [user]);
 
   useEffect(() => {
+    if (!user) return undefined;
+    // The checkout modal dispatches this once CutLuy confirms and credits land.
+    // Without listening, "Upgrade to Pro" stayed on screen until a manual reload.
+    const onCreditsUpdated = () => {
+      void refreshList().catch(() => undefined);
+    };
+    window.addEventListener('camxora:credits-updated', onCreditsUpdated);
+    return () => window.removeEventListener('camxora:credits-updated', onCreditsUpdated);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, activeWorkspaceId]);
+
+  useEffect(() => {
     if (!user || !activeWorkspaceId) return;
     void listWebMusicGenerations(40, 0, activeWorkspaceId)
       .then((list) => setItems(list.items))

@@ -302,6 +302,35 @@ class V3BillingStore:
         )
         return dict(row) if row is not None else None
 
+    async def top_up_period_lot(
+        self, lot_id: UUID, extra_units: int, *, max_units: int
+    ) -> bool:
+        """Raise a period lot toward ``max_units``; returns True when units moved.
+
+        A plan upgrade can land in a period whose lot was minted for a smaller
+        allowance (e.g. the Free 50-credit lot occupying the unique
+        ``(user_id, period_start)`` slot). This grows that lot to the new
+        allowance instead of letting the paid grant be skipped. The guarded
+        UPDATE keeps concurrent sweeps from over-crediting; callers must only
+        credit the wallet when this returns True.
+        """
+        if extra_units <= 0:
+            return False
+        row = await self._pool.fetchrow(
+            """
+            UPDATE credit_wallet_lots
+            SET amount_units = amount_units + $1,
+                remaining_units = remaining_units + $1
+            WHERE id = $2
+              AND amount_units + $1 <= $3
+            RETURNING id
+            """,
+            extra_units,
+            lot_id,
+            max_units,
+        )
+        return row is not None
+
     async def find_daily_grant(self, user_id: UUID, period_start: date) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
             """
