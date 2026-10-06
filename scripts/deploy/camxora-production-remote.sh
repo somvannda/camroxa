@@ -47,6 +47,12 @@ PLATFORM_SUNO_CALLBACK_HMAC_SECRET=${PLATFORM_SUNO_CALLBACK_HMAC_SECRET}
 PLATFORM_SUNO_CALLBACK_ALLOWED_IPS=${PLATFORM_SUNO_CALLBACK_ALLOWED_IPS}
 # Shared secret for the music-web geo gate (X-Origin-Verify). Empty = gate off.
 EDGE_VERIFY_SECRET=${EDGE_VERIFY_SECRET:-}
+# Cloudflare Turnstile (music_web login/sign-up security check). Without these
+# the music_web build ships no sitekey and every user is locked out of login,
+# and platform_api cannot verify the tokens. Preserved across deploys.
+CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
+CLOUDFLARE_TURNSTILE_SECRET_KEY=${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
+CLOUDFLARE_TURNSTILE_HOSTNAMES=${CLOUDFLARE_TURNSTILE_HOSTNAMES:-music.camxora.com,app.camxora.com,camxora.com,www.camxora.com}
 ADMIN_EMAIL=${ADMIN_EMAIL}
 EOF
 chmod 600 "${SECRETS_FILE}"
@@ -159,6 +165,10 @@ PLATFORM_SLAI_API_BASE_URL=https://api.slai.shop
 PLATFORM_TELEGRAM_BOT_TOKEN=${PLATFORM_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}
 PLATFORM_TELEGRAM_CHAT_ID=${PLATFORM_TELEGRAM_CHAT_ID:-${TELEGRAM_CHAT_ID:-}}
 PLATFORM_TELEGRAM_OPS_ENABLED=${PLATFORM_TELEGRAM_OPS_ENABLED:-true}
+# Cloudflare Turnstile — verifies the music_web login/sign-up tokens server-side.
+CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
+CLOUDFLARE_TURNSTILE_SECRET_KEY=${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
+CLOUDFLARE_TURNSTILE_HOSTNAMES=${CLOUDFLARE_TURNSTILE_HOSTNAMES:-music.camxora.com,app.camxora.com,camxora.com,www.camxora.com}
 EOF
 chmod 600 "${REPO_DIR}/platform_api/.env"
 chown camxora:camxora "${REPO_DIR}/platform_api/.env"
@@ -217,6 +227,10 @@ sudo -u camxora -H bash -lc "
   npm ci --no-audit --no-fund
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_API_BASE_URL=https://api.camxora.com
+NEXT_PUBLIC_USER_PORTAL_URL=https://app.camxora.com
+NEXT_PUBLIC_WEBSITE_URL=https://camxora.com
+NEXT_PUBLIC_CAMXORA_ENV=production
+NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
 ENVEOF
   npm run build
 "
