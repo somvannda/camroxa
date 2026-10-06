@@ -3,7 +3,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
-import { createHash, createHmac, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
@@ -20,6 +20,7 @@ import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { trustProxyOption } from "./trustProxy.js";
 import { isProtectedPath, isPublicProtectedRoute } from "./routeAuth.js";
+import { verifyChmabaSignature, findReferenceId } from "./webhookSignature.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
@@ -9984,48 +9985,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
-   * Verify a ChmabaPay webhook. The `X-ChmabaPay-Signature` header is
-   * `t=<unix>,v1=<hex>` and the signed payload is `${t}.${rawBody}` (HMAC-SHA256
-   * with the endpoint's `whsec_…` secret); a ±5 minute window rejects replays.
-   */
-  function verifyChmabaSignature(rawBody: string, header: string | undefined): boolean {
-    const secret = config.chmaba.webhookSecret;
-    if (!secret || !header) return false;
-    const parts = header.split(",");
-    const t = parts.find((p) => p.startsWith("t="))?.slice(2);
-    const v1 = parts.find((p) => p.startsWith("v1="))?.slice(3);
-    if (!t || !v1 || !Number.isFinite(Number(t))) return false;
-    if (Math.abs(Date.now() / 1000 - Number(t)) > 300) return false;
-    const expected = createHmac("sha256", secret).update(`${t}.${rawBody}`, "utf8").digest("hex");
-    const a = Buffer.from(v1, "hex");
-    const b = Buffer.from(expected, "hex");
-    return a.length === b.length && timingSafeEqual(a, b);
-  }
-
-  /**
-   * Return the first string under `reference_id`, anywhere in the event. The
-   * delivery envelope is not documented field-by-field, so scanning for the id
-   * we set at checkout is what maps a webhook back to one of our transactions.
-   */
-  function findReferenceId(node: unknown, depth = 0): string | null {
-    if (depth > 8 || node === null || typeof node !== "object") return null;
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        const found = findReferenceId(item, depth + 1);
-        if (found) return found;
-      }
-      return null;
-    }
-    const rec = node as Record<string, unknown>;
-    if (typeof rec.reference_id === "string" && rec.reference_id.trim()) return rec.reference_id.trim();
-    for (const value of Object.values(rec)) {
-      const found = findReferenceId(value, depth + 1);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  /**
    * Claim a pending ChmabaPay transaction and grant its credits. The guarded
    * UPDATE lets only the first caller win, so a webhook retry or a status poll
    * racing the webhook credits exactly once.
@@ -10282,7 +10241,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!config.chmaba.webhookSecret) {
       return reply.code(503).send({ error: "Webhook secret is not configured." });
     }
-    if (!verifyChmabaSignature(raw, signature)) {
+    if (!verifyChmabaSignature(raw, signature, config.chmaba.webhookSecret)) {
       req.log.warn("chmaba webhook signature rejected");
       return reply.code(400).send({ error: "Invalid signature." });
     }

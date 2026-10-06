@@ -9,3 +9,4 @@ import "./pool.test.js";
 import "./auth-guards.test.js";
 import "./route-auth.test.js";
 import "./trust-proxy.test.js";
+import "./webhook-signature.test.js";
