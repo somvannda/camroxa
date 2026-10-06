@@ -13,6 +13,7 @@ import { readFileSync } from "node:fs";
 // instead; the factories' own inner `app.get(...)` guards are still scanned here.
 
 const source = readFileSync(new URL("../src/server.ts", import.meta.url), "utf8");
+const routeAuthSource = readFileSync(new URL("../src/routeAuth.ts", import.meta.url), "utf8");
 
 /** Prefixes that must never be reachable without a valid session or API key. */
 const PROTECTED_PREFIXES = ["/me/", "/v1/", "/api/", "/admin/", "/payments/"];
@@ -78,10 +79,11 @@ function routeRegistrations(): Route[] {
 }
 
 test("deny-by-default auth backstop is registered", () => {
-  assert.match(source, /PROTECTED_PREFIXES/, "PROTECTED_PREFIXES list is missing");
   assert.match(source, /app\.addHook\(\s*"onRequest"/, "onRequest backstop hook is missing");
+  assert.match(source, /from "\.\/routeAuth\.js"/, "server must use the shared route-auth policy");
+  assert.match(routeAuthSource, /PROTECTED_PREFIXES/, "PROTECTED_PREFIXES list is missing");
   assert.match(
-    source,
+    routeAuthSource,
     /PUBLIC_PROTECTED_ROUTES[\s\S]{0,200}?\/payments\/chmaba\/webhook/,
     "the only public protected-prefix route (the webhook) must be declared",
   );

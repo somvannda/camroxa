@@ -18,6 +18,8 @@ import { OAuth2Client } from "google-auth-library";
 import { config, isProduction } from "./config.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
+import { trustProxyOption } from "./trustProxy.js";
+import { isProtectedPath, isPublicProtectedRoute } from "./routeAuth.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
@@ -360,24 +362,6 @@ export interface ServerDeps {
 
 export function loadApiKeys(path: string): ApiKey[] {
   return JSON.parse(readFileSync(path, "utf8")) as ApiKey[];
-}
-
-/**
- * Resolve Fastify's `trustProxy` from `TRUST_PROXY` so `req.ip` is the real
- * client address behind a reverse proxy (the socket address would otherwise be
- * the proxy). Defaults to off: if the server is directly reachable, blindly
- * trusting `X-Forwarded-For` lets a caller spoof its IP and defeat an API key's
- * whitelist. Accepts "true"/"false", a hop count, or a comma-separated list of
- * trusted addresses/CIDRs.
- */
-function trustProxyOption(): FastifyServerOptions["trustProxy"] {
-  const raw = (process.env.TRUST_PROXY ?? "").trim();
-  if (!raw || raw === "false" || raw === "0") return false;
-  if (raw === "true") return true;
-  // A bare number is the proxy hop count. proxy-addr honors it at runtime, but
-  // Fastify's option type omits it, so it needs a cast.
-  if (/^\d+$/.test(raw)) return Number(raw) as unknown as FastifyServerOptions["trustProxy"];
-  return raw.split(",").map((s) => s.trim()).filter(Boolean);
 }
 
 /**
@@ -804,11 +788,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // the request once, before the handler runs, and rejects anything under a
   // protected prefix that carries no valid session JWT or API key. `requireKey`
   // reuses the resolved key so the DB is still queried at most once per request.
-  const PROTECTED_PREFIXES = ["/me/", "/v1/", "/api/", "/admin/", "/payments/"] as const;
-  // Protected-prefix routes that authenticate by another means. Provider
-  // webhooks carry an HMAC signature, not a session, so they are exempt. Keep
-  // this list minimal — anything else added here is intentionally public.
-  const PUBLIC_PROTECTED_ROUTES = new Set<string>(["POST /payments/chmaba/webhook"]);
+  // The protected-prefix policy lives in `./routeAuth.ts` (protected prefixes +
+  // the explicit public allowlist) so it can be unit-tested in isolation.
   const requestKeyCache = new WeakMap<FastifyRequest, DbApiKey | null>();
 
   /** The bearer token from the `Authorization: Bearer …` header, or "". */
@@ -821,8 +802,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // Preflights and HEAD carry no credentials by design.
     if (req.method === "OPTIONS" || req.method === "HEAD") return;
     const path = (req.raw.url ?? req.url ?? "").split("?")[0];
-    if (!PROTECTED_PREFIXES.some((prefix) => path.startsWith(prefix))) return;
-    if (PUBLIC_PROTECTED_ROUTES.has(`${req.method} ${path}`)) return;
+    if (!isProtectedPath(path)) return;
+    if (isPublicProtectedRoute(req.method, path)) return;
 
     // A session JWT (session cookie or bearer) authenticates synchronously.
     const token = readSessionCookie(req.headers.cookie) ?? bearerToken(req);
