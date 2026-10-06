@@ -133,17 +133,17 @@ async def test_get_user_subscription_survives_missing_plan_row() -> None:
 
 
 @pytest.mark.asyncio
-async def test_reset_quota_if_needed_monthly_adopts_current_plan_credits() -> None:
-    """A plan edit applies from the next billing cycle: the renewal adopts the
-    current plan allowance (and leaves the current period's credits untouched)."""
+async def test_reset_quota_if_needed_expires_at_period_end() -> None:
+    """CutLuy is one-time: an ended period must expire, never silently renew.
+
+    Regression: the maintenance loop used to advance current_period_end and
+    re-grant the monthly credits with no payment, so every web subscriber renewed
+    for free forever.
+    """
     service = SubscriptionService.__new__(SubscriptionService)
     service._db = AsyncMock()
     service._log_monthly_credit_reset = AsyncMock()
     service._sync_v3_period_grant = AsyncMock()
-    plan = MagicMock()
-    plan.monthly_credits = 2300
-    plan.billing_cycle_days = 30
-    service.get_plan_by_id = AsyncMock(return_value=plan)
     now = datetime.now(timezone.utc)
     subscription = Subscription(
         id="sub-1",
@@ -154,8 +154,8 @@ async def test_reset_quota_if_needed_monthly_adopts_current_plan_credits() -> No
         current_period_start=now - timedelta(days=30),
         current_period_end=now - timedelta(hours=1),
         cancel_at_period_end=False,
-        monthly_credits_granted=3500,
-        monthly_credits_used=3500,
+        monthly_credits_granted=1000,
+        monthly_credits_used=1000,
         topup_credits_balance=0,
         external_subscription_id=None,
         last_credit_reset=now - timedelta(days=30),
@@ -163,12 +163,37 @@ async def test_reset_quota_if_needed_monthly_adopts_current_plan_credits() -> No
 
     reset = await service.reset_quota_if_needed(subscription)
 
-    assert reset is True
+    assert reset is False
     sql, *args = service._db.execute.await_args.args
-    assert "monthly_credits_granted = $4" in " ".join(sql.split())
-    assert args[3] == 2300  # now follows the current plan value
-    service._log_monthly_credit_reset.assert_awaited_once_with(
+    assert "status = 'expired'" in sql
+    assert args == ["sub-1"]
+    # No new period, no re-grant.
+    service._sync_v3_period_grant.assert_not_awaited()
+    service._log_monthly_credit_reset.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_reset_quota_if_needed_monthly_before_period_end_does_nothing() -> None:
+    service = SubscriptionService.__new__(SubscriptionService)
+    service._db = AsyncMock()
+    now = datetime.now(timezone.utc)
+    subscription = Subscription(
+        id="sub-1",
         user_id="user-1",
-        subscription_id="sub-1",
-        monthly_credits=2300,
+        plan_id="plan-1",
+        status="active",
+        billing_cycle="monthly",
+        current_period_start=now - timedelta(days=5),
+        current_period_end=now + timedelta(days=25),
+        cancel_at_period_end=False,
+        monthly_credits_granted=1000,
+        monthly_credits_used=10,
+        topup_credits_balance=0,
+        external_subscription_id=None,
+        last_credit_reset=now - timedelta(days=5),
     )
+
+    reset = await service.reset_quota_if_needed(subscription)
+
+    assert reset is False
+    service._db.execute.assert_not_awaited()

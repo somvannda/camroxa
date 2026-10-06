@@ -803,7 +803,13 @@ class SubscriptionService:
         return True
 
     async def reset_quota_if_needed(self, subscription: Subscription) -> bool:
-        """Reset monthly credits when billing period or monthly allowance is due."""
+        """Reset monthly credits when the monthly allowance is due.
+
+        CutLuy is a one-time (KHQR) gateway with no recurring charge, so a paid
+        term is never extended here. When the period has ended the subscription
+        expires and the user must start a new checkout; silently granting another
+        period would renew every subscriber for free.
+        """
         if subscription.status != "active":
             return False
 
@@ -811,53 +817,21 @@ class SubscriptionService:
         last_reset = subscription.last_credit_reset or subscription.current_period_start
 
         if subscription.current_period_end <= now:
-            if subscription.cancel_at_period_end:
-                await self._db.execute(
-                    """
-                    UPDATE web_subscriptions
-                    SET status = 'expired'
-                    WHERE id = $1
-                    """,
-                    subscription.id,
-                )
-                logger.info("Subscription %s expired", subscription.id)
-                return False
-
-            plan = await self.get_plan_by_id(subscription.plan_id)
-            if not plan:
-                logger.error("Plan not found for subscription %s", subscription.id)
-                return False
-
-            next_period_start = subscription.current_period_end
-            next_period_end = next_period_start + timedelta(days=plan.billing_cycle_days)
-
             await self._db.execute(
                 """
                 UPDATE web_subscriptions
-                SET monthly_credits_used = 0,
-                    monthly_credits_granted = $4,
-                    current_period_start = $1,
-                    current_period_end = $2,
-                    last_credit_reset = $1
-                WHERE id = $3
+                SET status = 'expired'
+                WHERE id = $1 AND status = 'active'
                 """,
-                next_period_start,
-                next_period_end,
                 subscription.id,
-                plan.monthly_credits,
             )
-            await self._log_monthly_credit_reset(
-                user_id=subscription.user_id,
-                subscription_id=subscription.id,
-                monthly_credits=plan.monthly_credits,
-            )
-            await self._sync_v3_period_grant(subscription.id)
             logger.info(
-                "Renewed billing period for subscription %s: %s credits",
+                "Subscription %s expired at %s (CutLuy is not recurring; a new "
+                "checkout is required to continue)",
                 subscription.id,
-                plan.monthly_credits,
+                subscription.current_period_end,
             )
-            return True
+            return False
 
         if (
             subscription.billing_cycle == "yearly"
