@@ -240,6 +240,17 @@ DATABASE_URL=${DATABASE_URL}
 # platform_api.
 QUEUE_DRIVER=${MUSICAPI_QUEUE_DRIVER:-memory}
 REDIS_URL=${MUSICAPI_REDIS_URL:-redis://127.0.0.1:6379/2}
+# Suno-backed job concurrency (see src/concurrency.ts and the `suno` block in
+# src/config.ts). Emitted explicitly because this file rewrites .env wholesale:
+# the numeric caps treat an empty value as 0, so they carry their code defaults
+# here. The global ceiling is SUNO_MAX_CONCURRENT when set, else
+# pool.size × SUNO_CONCURRENT_PER_ACCOUNT; SUNO_MAX_CONCURRENT_PER_USER caps one
+# user across all of their API keys. Override via the MUSICAPI_SUNO_* secrets.
+SUNO_CONCURRENT_PER_ACCOUNT=${MUSICAPI_SUNO_CONCURRENT_PER_ACCOUNT:-4}
+SUNO_MAX_CONCURRENT=${MUSICAPI_SUNO_MAX_CONCURRENT:-}
+SUNO_MAX_CONCURRENT_PER_USER=${MUSICAPI_SUNO_MAX_CONCURRENT_PER_USER:-2}
+SUNO_MAX_CONCURRENT_PER_ACCOUNT=${MUSICAPI_SUNO_MAX_CONCURRENT_PER_ACCOUNT:-4}
+SUNO_MAX_QUEUE=${MUSICAPI_SUNO_MAX_QUEUE:-1000}
 JWT_SECRET=${MUSICAPI_JWT_SECRET}
 COOKIE_ENCRYPTION_KEY=${MUSICAPI_COOKIE_ENCRYPTION_KEY}
 TRUST_PROXY=127.0.0.1
