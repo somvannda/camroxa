@@ -13,12 +13,28 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import subprocess
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+from deploy_guards import enforce_deploy_gate  # noqa: E402
 from sync_musicapi_sandbox import deploy  # noqa: E402
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _best_effort_fetch() -> None:
+    """Refresh origin/main so the gate's ancestry check is not fooled by a stale ref."""
+    try:
+        subprocess.run(
+            ["git", "-C", str(REPO_ROOT), "fetch", "--quiet", "origin", "main"],
+            check=False,
+            timeout=90,
+        )
+    except Exception as exc:  # pragma: no cover - network/optional
+        print(f"[deploy-guard] WARN: git fetch failed ({exc}); using existing origin/main")
 
 
 def main() -> int:
@@ -44,6 +60,15 @@ def main() -> int:
         print("Refusing to deploy to production without --yes.")
         print("Use scripts/deploy/sync_musicapi_sandbox.py for sandbox.")
         return 2
+
+    # Production must ship a committed, merged revision. A deploy from a dirty
+    # worktree or an unmerged branch silently rewrote the server's .env from an
+    # arbitrary tree — this wiped the SUNO_* concurrency caps twice on
+    # 2026-10-07. Override a deliberate hotfix with CAMXORA_ALLOW_DIRTY_DEPLOY=1
+    # / CAMXORA_ALLOW_UNMERGED_DEPLOY=1.
+    _best_effort_fetch()
+    enforce_deploy_gate()
+
     return deploy("production", issue_cert=args.issue_cert, skip_frontend=args.api_only)
 
 
