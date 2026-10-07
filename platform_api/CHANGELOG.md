@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-07] — Partial generation no longer reported as success
+
+### Fixed
+
+- `parse_suno_generate_poll` returned `success` as soon as any clip had an audio URL, before checking the upstream status. A music generation that failed after storing only one of its two clips (`GENERATE_AUDIO_FAILED`) was reported as success with `audio_url_alt` empty — Version 1 played while Version 2 stayed stuck. The failure status is now checked first. Part of the both-versions fix; see `docs/changelog/2026-10-07-musicapi-both-versions-complete.md`.
+
 ## [2026-10-05] — Music provider is a real AI Routing switch
 
 ### Added
