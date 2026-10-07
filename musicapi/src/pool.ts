@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { SunoClient, AccountCreds, BillingInfo } from "./client.js";
+import { config } from "./config.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { query } from "./db.js";
 import { normalizeModel } from "./models.js";
@@ -62,6 +63,22 @@ export function orderByLoad<T extends { account: { id: string; type?: string } }
     const rb = rank(b);
     return ra[0] - rb[0] || ra[1] - rb[1] || ra[2] - rb[2];
   });
+}
+
+/**
+ * Whether an account's credit balance is too low to accept new work. Suno
+ * reports a positive balance right up until zero, so an account with a couple of
+ * credits looks "healthy" and gets picked — then the submission is rejected with
+ * 402 "not enough credits". `floor` defaults to `config.suno.minCredits`
+ * (`SUNO_MIN_CREDITS`, default 10); clamping it to at least 1 keeps the historic
+ * rule that an exactly-empty account is never selected. Pure and exported so it
+ * can be unit-tested without a live pool.
+ */
+export function belowCreditFloor(
+  credits: number,
+  floor: number = config.suno.minCredits,
+): boolean {
+  return credits < Math.max(1, floor);
 }
 
 export class AccountPool {
@@ -265,12 +282,12 @@ export class AccountPool {
     });
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
-    let sawZeroCredits = false;
+    let sawLowCredits = false;
     for (const client of ordered) {
       try {
         const health = await this.healthFor(client);
-        if (health.credits <= 0) {
-          sawZeroCredits = true;
+        if (belowCreditFloor(health.credits)) {
+          sawLowCredits = true;
           continue;
         }
         if (want && health.models.length && !health.models.includes(want)) {
@@ -286,7 +303,7 @@ export class AccountPool {
       }
     }
     if (fallback) return fallback;
-    if (sawZeroCredits) {
+    if (sawLowCredits) {
       throw new Error("No Suno account with available credits for this model.");
     }
     throw new Error(lastError);
@@ -312,7 +329,7 @@ export class AccountPool {
       if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
       try {
         const health = await this.healthFor(client);
-        if (health.credits <= 0 || !health.features.includes(feature)) continue;
+        if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
         if (want && health.models.length && !health.models.includes(want)) continue;
         return client;
       } catch {
@@ -341,7 +358,7 @@ export class AccountPool {
       if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
       try {
         const health = await this.healthFor(client);
-        if (health.credits <= 0 || !health.features.includes(feature)) continue;
+        if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
         if (want && health.models.length && !health.models.includes(want)) continue;
         return client;
       } catch {
@@ -389,12 +406,12 @@ export class AccountPool {
     });
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
-    let sawZeroCredits = false;
+    let sawLowCredits = false;
     for (const client of ordered) {
       try {
         const health = await this.healthFor(client);
-        if (health.credits <= 0) {
-          sawZeroCredits = true;
+        if (belowCreditFloor(health.credits)) {
+          sawLowCredits = true;
           continue;
         }
         if (want && health.models.length && !health.models.includes(want)) {
@@ -410,7 +427,7 @@ export class AccountPool {
       }
     }
     if (fallback) return fallback;
-    if (sawZeroCredits) {
+    if (sawLowCredits) {
       throw new Error("No Suno account with available credits for this model.");
     }
     throw new Error(lastError);

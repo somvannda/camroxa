@@ -141,6 +141,15 @@ export const config = {
     /** Default per-user concurrent-job cap when `rate_limits` has no override. */
     maxConcurrentPerUser: Math.max(1, Number(process.env.SUNO_MAX_CONCURRENT_PER_USER ?? 2)),
     /**
+     * Minimum live credit balance an account must keep to be eligible for new
+     * work. Selection skips any account below this, so a nearly-drained account
+     * cannot be handed a job it will fail to submit (`generate/v2` -> 402 "not
+     * enough credits"). Accounts report a positive balance until they hit zero,
+     * so a floor above one generation's cost is what actually prevents the 402s.
+     * 0 restores the old "only skip exactly-empty accounts" behaviour.
+     */
+    minCredits: Math.max(0, Number(process.env.SUNO_MIN_CREDITS ?? 10)),
+    /**
      * Per-account in-flight cap. Account selection is least-loaded-first, so a
      * burst spreads across the pool; an account already at this cap is used only
      * when no under-cap account is available. With a global cap of
