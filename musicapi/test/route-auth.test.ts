@@ -44,6 +44,17 @@ test("the only public protected-prefix route is the HMAC webhook", () => {
   assert.equal(isPublicProtectedRoute("POST", "/payments/chmaba/create"), false);
 });
 
+test("webhook exemption tolerates a trailing slash and method case", () => {
+  // A provider that registers the endpoint as `…/webhook/` must not be
+  // rejected by the deny-by-default backstop (which fails closed with a 401).
+  assert.equal(isPublicProtectedRoute("POST", "/payments/chmaba/webhook/"), true);
+  assert.equal(isPublicProtectedRoute("post", "/payments/chmaba/webhook"), true);
+  assert.equal(isPublicProtectedRoute("POST", "/payments/chmaba/webhook//"), true);
+  // Normalization must not widen the exemption to sibling protected routes.
+  assert.equal(isPublicProtectedRoute("POST", "/payments/chmaba/create/"), false);
+  assert.equal(isPublicProtectedRoute("GET", "/payments/chmaba/webhook/"), false);
+});
+
 test("the protected-prefix list is non-empty and stable", () => {
   assert.deepEqual([...PROTECTED_PREFIXES], ["/me/", "/v1/", "/api/", "/admin/", "/payments/"]);
 });

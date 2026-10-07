@@ -489,6 +489,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       },
     },
     trustProxy: trustProxyOption(),
+    // Provider webhook endpoints are commonly registered with a trailing slash
+    // (e.g. `…/webhook/`). Treat `/a/b/` as `/a/b` so such a delivery reaches
+    // the route instead of 404ing — the auth backstop normalizes the path too.
+    // Set via `routerOptions` (the top-level form is deprecated in Fastify 5.12).
+    routerOptions: { ignoreTrailingSlash: true },
     requestTimeout: 600_000,
     connectionTimeout: 600_000,
     keepAliveTimeout: 600_000,
