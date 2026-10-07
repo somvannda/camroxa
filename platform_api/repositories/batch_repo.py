@@ -928,7 +928,13 @@ class BatchRepository:
         return await self.create_suno_task(task)
 
     async def find_by_hash(self, user_id: UUID, request_hash: str) -> SunoTask | None:
-        """Find an existing Suno task by request hash for deduplication."""
+        """Find an existing, still-live Suno task by request hash for deduplication.
+
+        A task in the ``failed`` state is deliberately excluded: a failed task is
+        not a duplicate, so re-running a song whose only task failed must create a
+        fresh task instead of returning the dead one (issue #372 — the retry used
+        to be charged while handing the caller the previous failed task).
+        """
         row = await self._pool.fetchrow(
             """
             SELECT id, song_id, user_id, batch_id, request_hash, model,
@@ -937,7 +943,9 @@ class BatchRepository:
                    output_dir_alt, downloaded_ok, downloaded_alt,
                    created_at, updated_at
             FROM suno_tasks
-            WHERE user_id = $1 AND request_hash = $2
+            WHERE user_id = $1 AND request_hash = $2 AND status <> 'failed'
+            ORDER BY created_at DESC
+            LIMIT 1
             """,
             user_id,
             request_hash,

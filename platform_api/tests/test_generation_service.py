@@ -1276,6 +1276,45 @@ class TestSubmitSuno:
         assert len(credit_service.deductions) == 0
 
     @pytest.mark.asyncio
+    async def test_failed_task_is_not_treated_as_duplicate(
+        self, credit_service, pricing_repo, task_repo
+    ):
+        """A *failed* task must not be returned as a duplicate (issue #372).
+
+        Re-running a song whose only task failed has to create a fresh task and
+        charge normally, instead of returning the dead task (which used to leave
+        the caller charged with no regeneration).
+        """
+        user_uuid = UUID("00000000-0000-0000-0000-000000000000")
+        user_id = str(user_uuid)
+        request = SunoRequest(model="V5", title="Song", lyrics="La la la", style="Pop")
+        request_hash = compute_suno_request_hash("V5", "Song", "La la la", "Pop", False)
+
+        existing = SunoTask(
+            id=uuid4(),
+            user_id=user_uuid,
+            request_hash=request_hash,
+            model="V5",
+            title="Song",
+            status=TaskStatus.FAILED,
+        )
+        task_repo.tasks.append(existing)
+
+        service = _make_service(
+            credit_service=credit_service,
+            pricing_repo=pricing_repo,
+            task_repo=task_repo,
+            llm_client=FakeLlmClient(),
+            suno_client=FakeSunoClient(task_id="ext-task-retry"),
+        )
+
+        result = await service.submit_suno(user_id, request)
+
+        assert result != str(existing.id)  # not the dead task
+        assert len(task_repo.tasks) == 2  # a fresh task was created
+        assert len(credit_service.deductions) == 1  # the (legit) charge happened
+
+    @pytest.mark.asyncio
     async def test_v5_5_uses_model_specific_pricing(self, credit_service, task_repo):
         pricing_repo = FakePricingRepo(
             prices={
