@@ -26,9 +26,10 @@ export interface TaskResult {
 export function clipAudio(clip: unknown): string | null {
   if (!clip || typeof clip !== "object") return null;
   const c = clip as { audio_url?: string; media_urls?: Array<{ url?: string; content_type?: string }> };
-  const media = c.media_urls?.[0]?.url;
-  if (media) return media;
-  return c.audio_url || null;
+  // Prefer the durable (B2) URL; `media_urls[0].url` is Suno's DRM-encrypted
+  // progressive stream, which `AuthorizedAudio` proxies via /me/stream instead
+  // of playing directly.
+  return c.audio_url || c.media_urls?.[0]?.url || null;
 }
 
 export async function authorizedFetch(path: string, init: RequestInit = {}): Promise<Response> {
