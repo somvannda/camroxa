@@ -117,6 +117,29 @@ def test_parse_suno_generate_poll_pending_stays_pending() -> None:
         assert parsed.state == "pending", status
 
 
+def test_parse_suno_generate_poll_failure_wins_over_partial_audio() -> None:
+    # Regression: a job that failed after storing only one of its two clips must
+    # not be reported as success, or Version 1 plays while Version 2 is stuck.
+    parsed = parse_suno_generate_poll(
+        {
+            "code": 200,
+            "data": {
+                "status": "GENERATE_AUDIO_FAILED",
+                "errorMessage": "audio_ingest_failed",
+                "response": {
+                    "data": [
+                        {"id": "clip-ok", "audio_url": "https://b2.example/clip-ok.mp3"},
+                        {"id": "clip-alt", "audio_url": ""},
+                    ]
+                },
+            },
+        }
+    )
+    assert parsed.state == "failed"
+    assert parsed.audio_url_ok == ""
+    assert parsed.audio_url_alt == ""
+
+
 def test_parse_suno_lyrics_poll_rejected_fails() -> None:
     parsed = parse_suno_lyrics_poll({"code": 200, "data": {"status": "REJECTED"}})
     assert parsed.state == "failed"

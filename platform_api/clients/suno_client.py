@@ -510,6 +510,15 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
         tags.append(clip_tags)
         audio_ids.append(audio_id)
 
+    # An explicit upstream failure wins over any partial audio it returned: a
+    # job that failed after storing only the first of two clips must not be
+    # reported as a success — that left Version 1 playable and Version 2 stuck.
+    if is_suno_failure_status(status):
+        return SunoGeneratePollResult(
+            state="failed",
+            error=suno_task_failure_message(status=status, error_message=error_message),
+        )
+
     if audio_urls:
         return SunoGeneratePollResult(
             state="success",
@@ -523,12 +532,6 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
             tags_alt=tags[1] if len(tags) > 1 else "",
             audio_id_ok=audio_ids[0] if audio_ids else "",
             audio_id_alt=audio_ids[1] if len(audio_ids) > 1 else "",
-        )
-
-    if is_suno_failure_status(status):
-        return SunoGeneratePollResult(
-            state="failed",
-            error=suno_task_failure_message(status=status, error_message=error_message),
         )
 
     if is_suno_pending_status(status):
