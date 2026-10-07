@@ -89,6 +89,22 @@ test("deny-by-default auth backstop is registered", () => {
   );
 });
 
+test("the router ignores a trailing slash so webhook variants resolve", () => {
+  // The backstop normalizes `/webhook/` before allowing it, but the request
+  // would still 404 unless the router treats `/a/b/` as `/a/b`. Both halves of
+  // the fix must stay in place together.
+  assert.match(
+    source,
+    /ignoreTrailingSlash:\s*true/,
+    "Fastify must ignore trailing slashes for a slash-suffixed webhook delivery to reach its handler",
+  );
+  assert.match(
+    routeAuthSource,
+    /normalizeRoutePath/,
+    "the public-route allowlist must normalize paths before matching",
+  );
+});
+
 test("job ownership checks deny unowned jobs", () => {
   // Regression guard for P5: the permissive `job.userId && job.userId !== …`
   // form lets a job with no owner be read by any authenticated caller.
