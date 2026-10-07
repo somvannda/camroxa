@@ -783,14 +783,26 @@ export class SunoClient {
     return this.submitClips("/api/generate/v2-web/", payload);
   }
 
-  /** Poll clips until complete/error. */
+  /**
+   * Poll clips until complete/error.
+   *
+   * A music generation returns two clips. `/api/feed/?ids=…` can transiently
+   * omit one of them (the other is not indexed yet), so returning on the first
+   * non-empty all-terminal subset silently drops the missing clip — the job
+   * then finalizes with one track and the second version never becomes
+   * playable. Wait until every requested id reports back before returning.
+   */
   async pollClips(ids: string[], timeoutMs = 300_000, intervalMs = 5_000): Promise<Clip[]> {
+    const wanted = ids.filter(Boolean);
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      const clips = await this.getClips(ids);
-      if (clips.length > 0 && clips.every((c) => c.status === "complete" || c.status === "error")) {
-        return clips;
-      }
+      const clips = await this.getClips(wanted);
+      const byId = new Map(clips.map((c) => [c.id, c]));
+      const done = wanted.length > 0 && wanted.every((id) => {
+        const clip = byId.get(id);
+        return clip != null && (clip.status === "complete" || clip.status === "error");
+      });
+      if (done) return wanted.map((id) => byId.get(id)!);
       await new Promise((r) => setTimeout(r, intervalMs));
     }
     throw new Error("Timed out waiting for clip completion.");

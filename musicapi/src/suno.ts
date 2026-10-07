@@ -123,21 +123,32 @@ export async function getClipsRaw(ids: string[]): Promise<{ status: number; body
   return { status: res.status, body: text.slice(0, 2000) };
 }
 
-/** Poll clips by id until complete/error, or timeout. */
+/**
+ * Poll clips by id until complete/error, or timeout.
+ *
+ * A music generation returns two clips. `/api/feed/?ids=…` can transiently
+ * omit one of them, so returning on the first non-empty all-terminal subset
+ * silently drops the missing clip and the second version never becomes
+ * playable. Wait until every requested id reports back before returning.
+ */
 export async function pollClips(ids: string[],
   timeoutMs = 300_000,
   intervalMs = 5_000,
 ): Promise<Clip[]> {
+  const wanted = ids.filter(Boolean);
+  const query = wanted.join(",");
   const deadline = Date.now() + timeoutMs;
-  const query = ids.join(",");
   while (Date.now() < deadline) {
     const res = await sunoRequest(`/api/feed/?ids=${query}`);
     if (!res.ok) throw new Error(`feed failed (${res.status}): ${await res.text()}`);
     const data = (await res.json()) as Clip[];
     const clips = Array.isArray(data) ? data : [];
-    if (clips.length > 0 && clips.every((c) => c.status === "complete" || c.status === "error")) {
-      return clips;
-    }
+    const byId = new Map(clips.map((c) => [c.id, c]));
+    const done = wanted.length > 0 && wanted.every((id) => {
+      const clip = byId.get(id);
+      return clip != null && (clip.status === "complete" || clip.status === "error");
+    });
+    if (done) return wanted.map((id) => byId.get(id)!);
     await new Promise((r) => setTimeout(r, intervalMs));
   }
   throw new Error("Timed out waiting for clip completion.");
