@@ -54,7 +54,7 @@ No schema change.
 
 ## Follow-ups
 
-- Adopt `sunoHttpError(...)` at the remaining `res.ok` throw sites in
-  `client.ts` (only the submit paths that feed the retry loop are typed today;
-  the regex fallback still covers the rest).
+- `sunoHttpError(...)` is now used at the Suno-API HTTP-error sites in
+  `client.ts` (19 sites); a handful that use a different condition/status
+  variable are left to the message fallback.
 - #368: idempotency key for ambiguous timeout/5xx submits.

@@ -145,7 +145,7 @@ export class SunoClient {
     const url = `${config.clerkUrl}/v1/client?__clerk_api_version=${CLERK_API_VERSION}&_clerk_js_version=${CLERK_VERSION}`;
     const res = await fetch(url, { headers: this.clerkHeaders(), signal: AbortSignal.timeout(15_000) });
     this.captureSetCookie(res);
-    if (!res.ok) throw new Error(`Clerk /client failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`Clerk /client`, res);
     const data = (await res.json()) as { response?: { last_active_session_id?: string } };
     const sid = data.response?.last_active_session_id;
     if (!sid) throw new Error(`Account ${this.account.id}: no active Clerk session.`);
@@ -160,7 +160,7 @@ export class SunoClient {
       signal: AbortSignal.timeout(15_000),
     });
     this.captureSetCookie(res);
-    if (!res.ok) throw new Error(`Clerk token mint failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`Clerk token mint`, res);
     const data = (await res.json()) as { jwt?: string };
     if (!data.jwt) throw new Error("Clerk returned no jwt.");
     this.jwtExpiresAt = this.decodeExpiry(data.jwt);
@@ -219,7 +219,7 @@ export class SunoClient {
 
   async billingInfo(): Promise<BillingInfo> {
     const res = await this.request("/api/billing/info/");
-    if (!res.ok) throw new Error(`billing/info failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`billing/info`, res);
     return (await res.json()) as BillingInfo;
   }
 
@@ -240,7 +240,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ prompt }),
     });
-    if (!res.ok) throw new Error(`generate/lyrics failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`generate/lyrics`, res);
     const data = (await res.json()) as { id?: string };
     if (!data.id) throw new Error("No lyrics id returned.");
     return data.id;
@@ -248,7 +248,7 @@ export class SunoClient {
 
   async getLyrics(id: string): Promise<Record<string, unknown>> {
     const res = await this.request(`/api/generate/lyrics/${id}`);
-    if (!res.ok) throw new Error(`lyrics/${id} failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`lyrics/${id}`, res);
     return (await res.json()) as Record<string, unknown>;
   }
 
@@ -326,7 +326,7 @@ export class SunoClient {
 
   async getClips(ids: string[]): Promise<Clip[]> {
     const res = await this.request(`/api/feed/?ids=${ids.join(",")}`);
-    if (!res.ok) throw new Error(`feed failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`feed`, res);
     const data = (await res.json()) as Clip[];
     return Array.isArray(data) ? data : [];
   }
@@ -606,7 +606,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ vocal_start_s: vocalStartS, vocal_end_s: vocalEndS, token }),
     });
-    if (!stemRes.ok) throw new Error(`vox-stem failed (${stemRes.status}): ${await stemRes.text()}`);
+    if (!stemRes.ok) throw await sunoHttpError(`vox-stem`, stemRes);
     const stem = (await stemRes.json()) as { id?: string };
     // /api/clip/{id}/vox-stem returns {status:"submitted"} and processes
     // asynchronously; persona/create answers "Vocal audio is still processing"
@@ -647,7 +647,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ prompt, clip_id: clipId, quantity: 2, image_gen_category: "basic", aspect_ratio: "1:1", token }),
     });
-    if (!res.ok) throw new Error(`cover image failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`cover image`, res);
     return res.json();
   }
 
@@ -750,7 +750,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ content_params: { content_id: contentId, content_type: contentType } }),
     });
-    if (!res.ok) throw new Error(`mango/rights failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`mango/rights`, res);
     return (await res.json()) as { key: string; iv: string; glt?: string };
   }
 
@@ -834,7 +834,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`createAudioUpload failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`createAudioUpload`, res);
     return (await res.json()) as { id: string; url: string; fields: Record<string, string>; is_file_uploaded?: boolean };
   }
 
@@ -857,7 +857,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`registerAudioUpload failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`registerAudioUpload`, res);
     return res.json();
   }
 
@@ -898,7 +898,7 @@ export class SunoClient {
     uploadId: string,
   ): Promise<{ id: string; status: string; title?: string; copyright_muted?: boolean; clip_id?: string }> {
     const res = await this.request(`/api/uploads/audio/${uploadId}/`, { method: "GET" });
-    if (!res.ok) throw new Error(`getAudioUploadStatus failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`getAudioUploadStatus`, res);
     return (await res.json()) as {
       id: string;
       status: string;
@@ -945,7 +945,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ extension: extension.replace(/^\./, "") }),
     });
-    if (!res.ok) throw new Error(`createImageUpload failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`createImageUpload`, res);
     return (await res.json()) as { id: string; url: string; fields: Record<string, string> };
   }
 
@@ -988,7 +988,7 @@ export class SunoClient {
    */
   async getClipObject(clipId: string): Promise<Record<string, unknown>> {
     const res = await this.request(`/api/clip/${clipId}`, { method: "GET" });
-    if (!res.ok) throw new Error(`getClipObject failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`getClipObject`, res);
     const data = await res.json();
     return data && typeof data === "object" ? (data as Record<string, unknown>) : {};
   }
@@ -1010,7 +1010,7 @@ export class SunoClient {
   async getAlignedLyrics(clipId: string): Promise<Array<Record<string, unknown>>> {
     const res = await this.request(`/api/gen/${clipId}/aligned_lyrics`, { method: "GET" });
     if (res.status === 404) return [];
-    if (!res.ok) throw new Error(`getAlignedLyrics failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`getAlignedLyrics`, res);
     const body = (await res.json()) as { data?: unknown };
     const segments = Array.isArray(body.data) ? body.data : [];
     const words: Array<Record<string, unknown>> = [];
@@ -1214,7 +1214,7 @@ export class SunoClient {
   /** Voice op 1: phrase — fetch the validation phrase the user must record. */
   async voicePhrase(_prompt?: string): Promise<{ phrase_id: string; phrase_text: string }> {
     const res = await this.request("/api/voice-verification/phrase", { method: "GET" });
-    if (!res.ok) throw new Error(`voice phrase failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`voice phrase`, res);
     return (await res.json()) as { phrase_id: string; phrase_text: string };
   }
 
@@ -1289,14 +1289,14 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(body),
     });
-    if (!res.ok) throw new Error(`voice-vox-stem failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`voice-vox-stem`, res);
     return (await res.json()) as Record<string, unknown>;
   }
 
   /** Poll a voice verification by id (`GET /api/voice-verification/{id}`). */
   async getVoiceVerification(verificationId: string): Promise<Record<string, unknown>> {
     const res = await this.request(`/api/voice-verification/${verificationId}`);
-    if (!res.ok) throw new Error(`voice-verification get failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`voice-verification get`, res);
     return (await res.json()) as Record<string, unknown>;
   }
 
@@ -1319,7 +1319,7 @@ export class SunoClient {
         phrase_id: params.phraseId,
       }),
     });
-    if (!res.ok) throw new Error(`voice-verification failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(`voice-verification`, res);
     return (await res.json()) as Record<string, unknown>;
   }
 
