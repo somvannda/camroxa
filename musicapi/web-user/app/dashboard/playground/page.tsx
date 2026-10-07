@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
-import { downloadClip } from "@/components/playground";
+import { AuthorizedAudio, downloadClip } from "@/components/playground";
 
 type ModelOption = { label: string; key: string };
 
@@ -90,10 +90,14 @@ interface ClipLike {
   model?: string;
 }
 
+/**
+ * Prefer the durable (B2) `audio_url`; only fall back to `media_urls[0].url`,
+ * which since Suno v5.5 is a DRM-encrypted CloudFront m4a that cannot play
+ * directly. `AuthorizedAudio` proxies the encrypted URL via `/me/stream`, so
+ * playback still works when only the progressive link exists.
+ */
 function clipAudio(clip: ClipLike): string | null {
-  const media = clip?.media_urls?.[0]?.url;
-  if (media) return media;
-  return clip?.audio_url ?? clip?.video_url ?? null;
+  return clip?.audio_url ?? clip?.media_urls?.[0]?.url ?? clip?.video_url ?? null;
 }
 
 // Downloads go through the shared authenticated blob helper (httpOnly session
@@ -1055,7 +1059,9 @@ export default function PlaygroundPage() {
                         <div className="truncate text-xs text-white/40">{c.tags ?? c.model ?? ""}</div>
                       </div>
                     </div>
-                    {audio ? (
+                    {id ? (
+                      <AuthorizedAudio clipId={String(id)} src={audio} />
+                    ) : audio ? (
                       <audio controls src={audio} className="w-full [color-scheme:dark]" />
                     ) : (
                       <div className="text-sm text-white/50">Audio URL not available yet.</div>

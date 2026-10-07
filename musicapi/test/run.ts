@@ -11,3 +11,4 @@ import "./route-auth.test.js";
 import "./trust-proxy.test.js";
 import "./webhook-signature.test.js";
 import "./clips.test.js";
+import "./poll-clips.test.js";
