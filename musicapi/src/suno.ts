@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { apiHeaders, refreshJwt, resolveJwt } from "./auth.js";
 import { captchaRequired, solveCaptcha } from "./captcha.js";
+import { sunoHttpError } from "./sunoError.js";
 
 export interface BillingInfo {
   credits?: number;
@@ -111,7 +112,7 @@ export async function generateMusic(params: GenerateMusicParams): Promise<Clip[]
     headers: { "content-type": "application/json" },
     body: JSON.stringify(payload),
   });
-  if (!res.ok) throw new Error(`generate/v2 failed (${res.status}): ${await res.text()}`);
+  if (!res.ok) throw await sunoHttpError("generate/v2", res);
   const data = (await res.json()) as { clips?: Clip[] };
   return data.clips ?? [];
 }
