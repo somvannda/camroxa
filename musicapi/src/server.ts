@@ -7,6 +7,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
+import { isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
@@ -2688,15 +2689,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
   }
 
-  // Errors worth retrying on a *different* pooled account. Beyond transient
-  // transport failures, this treats Suno's "insufficient credits" (402) and
-  // "too many requests" (429) as retryable: one drained or throttled account
-  // must not fail the whole job when other accounts are healthy — the retry
-  // loops below exclude the attempted account and pick the next one. The
-  // `\((?:402|429)\)` alternative matches the rendered `failed (NNN)` wrapper;
-  // the body phrases cover the JSON `detail`/`error_type` text.
-  const RETRYABLE_ERROR =
-    /captcha|timeout|timed out|rate[_ ]limits?|too many requests|not enough credits|insufficient credits|\((?:402|429)\)|5\d{2}|no healthy/i;
+  // Retryability is classified structurally (status/error_type) in
+  // `sunoError.ts::isRetryableSunoError`, with the message regex kept there as
+  // a fallback for plain Errors (issue #369).
 
   interface RetryOptions {
     model?: string;
@@ -2823,7 +2818,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         errors.push(msg);
-        if (!RETRYABLE_ERROR.test(msg)) {
+        if (!isRetryableSunoError(e)) {
           job.status = "error";
           job.error = msg;
           await finalizeJob(job);
@@ -2883,7 +2878,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         errors.push(msg);
-        if (!RETRYABLE_ERROR.test(msg)) {
+        if (!isRetryableSunoError(e)) {
           job.status = "error";
           job.error = msg;
           await finalizeJob(job);

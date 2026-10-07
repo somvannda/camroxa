@@ -3,6 +3,7 @@ import { apiHeaders, baseHeaders, makeBrowserTokenHeader } from "./auth.js";
 import { solveCaptchaForAccount } from "./captcha.js";
 import { normalizeModel } from "./models.js";
 import { randomUUID } from "node:crypto";
+import { sunoHttpError } from "./sunoError.js";
 
 const CLERK_VERSION = "5.117.0";
 const CLERK_API_VERSION = "2025-11-10";
@@ -318,7 +319,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`generate/v2 failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError("generate/v2", res);
     const data = (await res.json()) as { clips?: Clip[] };
     return data.clips ?? [];
   }
@@ -339,7 +340,7 @@ export class SunoClient {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(`${path} failed (${res.status}): ${await res.text()}`);
+    if (!res.ok) throw await sunoHttpError(path, res);
     const data = (await res.json()) as Clip[] | { clips?: Clip[] };
     return Array.isArray(data) ? data : data.clips ?? [];
   }
