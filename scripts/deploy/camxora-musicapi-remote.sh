@@ -187,14 +187,21 @@ if ! gzip -t "${TARBALL}" 2>/dev/null; then
   log "Uploaded tarball ${TARBALL} is corrupt (gzip -t failed). Aborting before touching the live tree."
   exit 1
 fi
-if ! tar -tzf "${TARBALL}" >/dev/null 2>&1; then
+# List once into a file rather than piping `tar` into `grep -q`: under
+# `set -o pipefail` an early grep exit sends SIGPIPE to tar and fails the
+# pipeline even on a perfectly valid archive.
+TAR_LIST="$(mktemp)"
+if ! tar -tzf "${TARBALL}" > "${TAR_LIST}" 2>/dev/null; then
+  rm -f "${TAR_LIST}"
   log "Uploaded tarball ${TARBALL} is unreadable/truncated. Aborting before touching the live tree."
   exit 1
 fi
-if ! tar -tzf "${TARBALL}" | grep -q '^musicapi/'; then
+if ! grep -q '^musicapi/' "${TAR_LIST}"; then
+  rm -f "${TAR_LIST}"
   log "Uploaded tarball ${TARBALL} does not contain musicapi/. Aborting before touching the live tree."
   exit 1
 fi
+rm -f "${TAR_LIST}"
 log "Uploaded source tarball verified ($(du -h "${TARBALL}" | cut -f1))."
 
 log "Extracting uploaded source tarball..."
