@@ -3,6 +3,9 @@
 import { apiFetch, redirectToLogin } from "@/lib/api";
 import { useEffect, useRef, useState } from "react";
 
+/** How long an <audio> may stay in "Loading audio…" before we fall back. */
+const AUDIO_LOAD_TIMEOUT_MS = 20_000;
+
 export type JobStatus = "queued" | "running" | "streaming" | "complete" | "error";
 
 export interface TaskResult {
@@ -116,6 +119,19 @@ export function AuthorizedAudio({
   const downloadUrl = `/backend/me/download?clip_id=${encodeURIComponent(clipId)}&format=mp3`;
   const [stage, setStage] = useState<"durable" | "stream" | "download">(durable ? "durable" : "stream");
   const audioSrc = stage === "durable" && durable ? durable : stage === "download" ? downloadUrl : streamUrl;
+
+  // A stalled stream never fires <audio>'s onError, which would leave
+  // "Loading audio…" up forever. If metadata hasn't arrived in time, advance
+  // the fallback chain (durable -> stream -> download), then give up.
+  useEffect(() => {
+    if (!loading) return;
+    const timer = setTimeout(() => {
+      if (stage === "durable") setStage("stream");
+      else if (stage === "stream") setStage("download");
+      else setErr("Audio not available. The clip may have expired, or credits are insufficient.");
+    }, AUDIO_LOAD_TIMEOUT_MS);
+    return () => clearTimeout(timer);
+  }, [loading, stage]);
 
   if (err) return <div className={`text-[11px] text-red-300 ${className ?? ""}`}>{err}</div>;
   return (
