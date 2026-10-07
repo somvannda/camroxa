@@ -15,6 +15,7 @@ export const PROTECTED_PREFIXES = ["/me/", "/v1/", "/api/", "/admin/", "/payment
  */
 export const PUBLIC_PROTECTED_ROUTES: ReadonlySet<string> = new Set([
   "POST /payments/chmaba/webhook",
+  "POST /payments/chmabapay/webhook",
 ]);
 
 /**

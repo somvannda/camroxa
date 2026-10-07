@@ -10260,10 +10260,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     };
   });
 
-  // POST /payments/chmaba/webhook — PUBLIC, server-to-server. ChmabaPay has no
-  // session cookie or API key, so authenticity rests entirely on the HMAC
-  // signature; credits are granted only for a verified payment.completed.
-  app.post("/payments/chmaba/webhook", async (req, reply) => {
+  // POST /payments/chmaba/webhook and its `chmabapay` alias — PUBLIC,
+  // server-to-server. ChmabaPay has no session cookie or API key, so
+  // authenticity rests entirely on the HMAC signature; credits are granted only
+  // for a verified payment.completed. Both spellings map to the same handler
+  // because the provider dashboard may be registered with either.
+  async function handleChmabaWebhook(req: FastifyRequest, reply: FastifyReply) {
     const raw = (req as FastifyRequest & { rawBody?: string }).rawBody ?? "";
     const signature = req.headers["x-chmabapay-signature"] as string | undefined;
     const event = (req.headers["x-chmabapay-event"] as string | undefined) ?? "";
@@ -10298,7 +10300,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
 
     return { ok: true, ignored: event || "unknown event" };
-  });
+  }
+
+  app.post("/payments/chmaba/webhook", handleChmabaWebhook);
+  app.post("/payments/chmabapay/webhook", handleChmabaWebhook);
 
   return app;
 }

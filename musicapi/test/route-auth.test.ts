@@ -37,9 +37,13 @@ test("public routes are not treated as protected", () => {
   }
 });
 
-test("the only public protected-prefix route is the HMAC webhook", () => {
-  assert.deepEqual([...PUBLIC_PROTECTED_ROUTES], ["POST /payments/chmaba/webhook"]);
+test("the only public protected-prefix routes are the HMAC webhook spellings", () => {
+  assert.deepEqual([...PUBLIC_PROTECTED_ROUTES], [
+    "POST /payments/chmaba/webhook",
+    "POST /payments/chmabapay/webhook",
+  ]);
   assert.equal(isPublicProtectedRoute("POST", "/payments/chmaba/webhook"), true);
+  assert.equal(isPublicProtectedRoute("POST", "/payments/chmabapay/webhook"), true);
   assert.equal(isPublicProtectedRoute("GET", "/payments/chmaba/webhook"), false);
   assert.equal(isPublicProtectedRoute("POST", "/payments/chmaba/create"), false);
 });
@@ -48,6 +52,7 @@ test("webhook exemption tolerates a trailing slash and method case", () => {
   // A provider that registers the endpoint as `…/webhook/` must not be
   // rejected by the deny-by-default backstop (which fails closed with a 401).
   assert.equal(isPublicProtectedRoute("POST", "/payments/chmaba/webhook/"), true);
+  assert.equal(isPublicProtectedRoute("POST", "/payments/chmabapay/webhook/"), true);
   assert.equal(isPublicProtectedRoute("post", "/payments/chmaba/webhook"), true);
   assert.equal(isPublicProtectedRoute("POST", "/payments/chmaba/webhook//"), true);
   // Normalization must not widen the exemption to sibling protected routes.
