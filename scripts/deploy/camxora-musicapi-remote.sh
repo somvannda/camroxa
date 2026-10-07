@@ -240,7 +240,7 @@ DATABASE_URL=${DATABASE_URL}
 # platform_api.
 QUEUE_DRIVER=${MUSICAPI_QUEUE_DRIVER:-memory}
 REDIS_URL=${MUSICAPI_REDIS_URL:-redis://127.0.0.1:6379/2}
-# Suno-backed job concurrency (see src/concurrency.ts and the `suno` block in
+# Suno-backed job concurrency (see src/concurrency.ts and the 'suno' block in
 # src/config.ts). Emitted explicitly because this file rewrites .env wholesale:
 # the numeric caps treat an empty value as 0, so they carry their code defaults
 # here. The global ceiling is SUNO_MAX_CONCURRENT when set, else
