@@ -143,7 +143,7 @@ async def run(args: argparse.Namespace) -> int:
                         await conn.execute(
                             """
                             UPDATE suno_tasks
-                            SET request_hash = request_hash || ':retry:' || substr(md5(random()::text), 1, 8),
+                            SET request_hash = left('retry:' || md5(random()::text || id::text), 64),
                                 updated_at = now()
                             WHERE id = $1
                             """,
@@ -154,7 +154,7 @@ async def run(args: argparse.Namespace) -> int:
                         INSERT INTO job_queue
                             (user_id, batch_id, song_id, job_type, status, priority, payload)
                         VALUES
-                            ($1, $2, $3, 'retry_song_suno', 'queued', 20,
+                            ($1::uuid, $2::uuid, $3::uuid, 'retry_song_suno', 'queued', 20,
                              jsonb_build_object(
                                  'song_id', $3::text,
                                  'user_id', $1::text,
