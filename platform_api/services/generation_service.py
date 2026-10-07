@@ -2841,9 +2841,13 @@ class GenerationService:
             instrumental=request.instrumental,
         )
 
-        # Check for existing task with same hash (studio only — web Create is a new request each time)
+        # Check for existing task with same hash (studio only — web Create is a
+        # new request each time). A *failed* task is NOT a duplicate: re-running a
+        # failed song must submit a fresh task, otherwise a retry charges credits
+        # and hands the caller the previous dead task (issue #372).
         existing_task = await self._task_repo.find_by_hash(user_uuid, request_hash)
-        if existing_task is not None and str(source or "studio").strip().lower() != "web_music":
+        existing_status = str(getattr(existing_task, "status", "") or "").strip().lower()
+        if existing_task is not None and existing_status != "failed" and str(source or "studio").strip().lower() != "web_music":
             logger.info(
                 "Duplicate Suno request detected for user %s (hash=%s). "
                 "Returning existing task %s",
@@ -2852,6 +2856,13 @@ class GenerationService:
                 existing_task.id,
             )
             return str(existing_task.id)
+        if existing_task is not None and existing_status == "failed":
+            logger.info(
+                "Ignoring failed Suno task %s for user %s (hash=%s); re-submitting.",
+                existing_task.id,
+                user_id,
+                request_hash[:12],
+            )
 
         price = 0
         usage_metadata: dict[str, Any] | None = None
