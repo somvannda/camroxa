@@ -18,7 +18,10 @@ const routeAuthSource = readFileSync(new URL("../src/routeAuth.ts", import.meta.
 /** Prefixes that must never be reachable without a valid session or API key. */
 const PROTECTED_PREFIXES = ["/me/", "/v1/", "/api/", "/admin/", "/payments/"];
 /** Protected-prefix routes that authenticate by another means (HMAC webhook). */
-const PUBLIC_PROTECTED = new Set<string>(["POST /payments/chmaba/webhook"]);
+const PUBLIC_PROTECTED = new Set<string>([
+  "POST /payments/chmaba/webhook",
+  "POST /payments/chmabapay/webhook",
+]);
 const GUARDS = ["requireKey(", "requireAuth(", "requireAdmin("];
 
 interface Route {
