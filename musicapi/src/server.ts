@@ -2688,7 +2688,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
   }
 
-  const RETRYABLE_ERROR = /captcha|timeout|timed out|rate limit|5\d{2}|no healthy|No healthy/i;
+  // Errors worth retrying on a *different* pooled account. Beyond transient
+  // transport failures, this treats Suno's "insufficient credits" (402) and
+  // "too many requests" (429) as retryable: one drained or throttled account
+  // must not fail the whole job when other accounts are healthy — the retry
+  // loops below exclude the attempted account and pick the next one. The
+  // `\((?:402|429)\)` alternative matches the rendered `failed (NNN)` wrapper;
+  // the body phrases cover the JSON `detail`/`error_type` text.
+  const RETRYABLE_ERROR =
+    /captcha|timeout|timed out|rate[_ ]limits?|too many requests|not enough credits|insufficient credits|\((?:402|429)\)|5\d{2}|no healthy/i;
 
   interface RetryOptions {
     model?: string;
