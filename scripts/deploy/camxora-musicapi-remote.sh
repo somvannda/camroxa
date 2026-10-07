@@ -179,6 +179,24 @@ if [[ "${COOKIE_KEY_GENERATED}" == "1" ]] && command -v psql >/dev/null 2>&1; th
   fi
 fi
 
+# Validate the uploaded tarball BEFORE touching the live tree. A dropped SFTP
+# upload can leave a truncated (or corrupt) gzip; extracting it after the
+# destructive `rm -rf` below has previously wiped a live app's dist/ and
+# node_modules/, leaving a running process with no rebuildable tree behind it.
+if ! gzip -t "${TARBALL}" 2>/dev/null; then
+  log "Uploaded tarball ${TARBALL} is corrupt (gzip -t failed). Aborting before touching the live tree."
+  exit 1
+fi
+if ! tar -tzf "${TARBALL}" >/dev/null 2>&1; then
+  log "Uploaded tarball ${TARBALL} is unreadable/truncated. Aborting before touching the live tree."
+  exit 1
+fi
+if ! tar -tzf "${TARBALL}" | grep -q '^musicapi/'; then
+  log "Uploaded tarball ${TARBALL} does not contain musicapi/. Aborting before touching the live tree."
+  exit 1
+fi
+log "Uploaded source tarball verified ($(du -h "${TARBALL}" | cut -f1))."
+
 log "Extracting uploaded source tarball..."
 mkdir -p "${REPO_DIR}"
 # Replace the app tree wholesale (tar overwrites but never removes stale files).

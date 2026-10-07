@@ -118,8 +118,32 @@ def upload_and_run(
         if total:
             print(f"\rUploading source... {min(100, int(sent * 100 / total))}%", end="", flush=True)
 
-    sftp.put(str(archive), REMOTE_TARBALL, callback=progress)
-    print()
+    # A dropped connection can truncate an SFTP upload WITHOUT raising, and the
+    # remote side extracts the tarball over the live tree after a destructive
+    # `rm -rf`. Verify the remote size matches the local archive and retry, so a
+    # bad upload can never reach the install step.
+    last_error = ""
+    for attempt in range(1, 4):
+        try:
+            sftp.put(str(archive), REMOTE_TARBALL, callback=progress)
+            print()
+            remote_size = sftp.stat(REMOTE_TARBALL).st_size
+            if remote_size == total:
+                break
+            last_error = f"remote size {remote_size} != local {total}"
+        except OSError as e:  # includes paramiko's IOError
+            last_error = str(e)
+        print(f"\nUpload attempt {attempt} failed ({last_error}); retrying...")
+        try:
+            sftp.close()
+        except Exception:
+            pass
+        sftp = client.open_sftp()
+    else:
+        sftp.close()
+        raise RuntimeError(
+            f"Failed to upload {REMOTE_TARBALL} intact after 3 attempts: {last_error}"
+        )
 
     script_bytes = REMOTE_SCRIPT.read_bytes().replace(b"\r\n", b"\n")
     with sftp.file(REMOTE_PATH, "wb") as remote_file:
