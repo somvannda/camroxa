@@ -89,9 +89,52 @@ export interface BillingInfo {
  * A single Suno account session: mints/refreshes its own JWT and exposes the
  * same operations as the CLI core, but scoped to one account.
  */
+/**
+ * Per-account token bucket that paces Suno API calls. Suno rate-limits an
+ * account at ~20 requests / 10s and answers 429 past that; suspending here (the
+ * caller awaits) spreads a burst so no call is rejected. Capacity and window are
+ * read live, so an admin change applies without a restart; a capacity <= 0
+ * disables pacing.
+ */
+class RateLimiter {
+  private tokens: number;
+  private last: number;
+
+  constructor(
+    private readonly capacity: () => number,
+    private readonly windowMs: () => number,
+  ) {
+    this.tokens = Math.max(1, capacity());
+    this.last = Date.now();
+  }
+
+  async take(): Promise<void> {
+    for (;;) {
+      const cap = this.capacity();
+      if (cap <= 0) return; // pacing disabled
+      const win = Math.max(100, this.windowMs());
+      const rate = cap / win; // tokens per ms
+      const now = Date.now();
+      this.tokens = Math.min(cap, this.tokens + (now - this.last) * rate);
+      this.last = now;
+      if (this.tokens >= 1) {
+        this.tokens -= 1;
+        return;
+      }
+      const waitMs = Math.ceil((1 - this.tokens) / rate);
+      await new Promise((r) => setTimeout(r, Math.max(5, waitMs)));
+    }
+  }
+}
+
 export class SunoClient {
   private cachedJwt?: string;
   private jwtExpiresAt = 0;
+
+  private readonly limiter = new RateLimiter(
+    () => config.suno.requestsPerAccount,
+    () => config.suno.rateWindowMs,
+  );
 
   constructor(public readonly account: AccountCreds) {}
 
@@ -200,6 +243,7 @@ export class SunoClient {
 
   private async request(path: string, init: RequestInit = {}, retryAuth = true): Promise<Response> {
     const jwt = await this.resolveJwt();
+    await this.limiter.take();
     const res = await fetch(`${config.apiUrl}${path}`, {
       ...init,
       headers: apiHeaders(jwt, this.account.deviceId, (init.headers as Record<string, string>) ?? {}),

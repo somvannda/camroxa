@@ -120,6 +120,22 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         help: "Jobs beyond the ceiling wait for a slot; past this depth new jobs fail fast with a retryable error.",
       },
       {
+        key: "requestsPerAccount",
+        label: "Requests per account per window (0 = unlimited)",
+        type: "number",
+        env: "SUNO_REQUESTS_PER_ACCOUNT",
+        def: SUNO_CONCURRENCY_DEFAULTS.requestsPerAccount,
+        help: "Paces calls to each Suno account to stay under its rate limit (Suno allows ~20 per 10s). Prevents 429s; extra calls wait instead of failing.",
+      },
+      {
+        key: "rateWindowMs",
+        label: "Rate-limit window (ms)",
+        type: "number",
+        env: "SUNO_RATE_WINDOW_MS",
+        def: SUNO_CONCURRENCY_DEFAULTS.rateWindowMs,
+        help: "Window for the per-account request budget above. Default 10000 (10 seconds).",
+      },
+      {
         key: "minCredits",
         label: "Min credits per account",
         type: "number",
@@ -296,6 +312,14 @@ function applyToConfig(): void {
   config.suno.maxQueue = Math.max(
     0,
     num("sunoConcurrency", "maxQueue", SUNO_CONCURRENCY_DEFAULTS.maxQueue),
+  );
+  config.suno.requestsPerAccount = Math.max(
+    0,
+    num("sunoConcurrency", "requestsPerAccount", SUNO_CONCURRENCY_DEFAULTS.requestsPerAccount),
+  );
+  config.suno.rateWindowMs = Math.max(
+    100,
+    num("sunoConcurrency", "rateWindowMs", SUNO_CONCURRENCY_DEFAULTS.rateWindowMs),
   );
   config.suno.minCredits = Math.max(
     0,

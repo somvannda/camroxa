@@ -163,6 +163,14 @@ export const config = {
      * a retryable error and its charge refunded.
      */
     maxQueue: Math.max(0, Number(process.env.SUNO_MAX_QUEUE ?? 1000)),
+    /**
+     * Per-account request pacing: at most `requestsPerAccount` calls within
+     * `rateWindowMs`. Suno rate-limits an account at ~20 requests / 10s and
+     * answers 429 past that, so the client suspends instead of bursting. 0
+     * disables pacing.
+     */
+    requestsPerAccount: Math.max(0, Number(process.env.SUNO_REQUESTS_PER_ACCOUNT ?? 20)),
+    rateWindowMs: Math.max(100, Number(process.env.SUNO_RATE_WINDOW_MS ?? 10_000)),
   },
   /**
    * Customer-account credit floor. "Free" generation endpoints cost 0 credits
