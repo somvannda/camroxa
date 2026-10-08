@@ -136,6 +136,14 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         help: "Window for the per-account request budget above. Default 10000 (10 seconds).",
       },
       {
+        key: "rateLimitCooldownMs",
+        label: "429 cooldown (ms)",
+        type: "number",
+        env: "SUNO_RATE_LIMIT_COOLDOWN_MS",
+        def: SUNO_CONCURRENCY_DEFAULTS.rateLimitCooldownMs,
+        help: "How long an account sits out after a 429 so it isn't re-hit immediately. 0 disables.",
+      },
+      {
         key: "minCredits",
         label: "Min credits per account",
         type: "number",
@@ -320,6 +328,10 @@ function applyToConfig(): void {
   config.suno.rateWindowMs = Math.max(
     100,
     num("sunoConcurrency", "rateWindowMs", SUNO_CONCURRENCY_DEFAULTS.rateWindowMs),
+  );
+  config.suno.rateLimitCooldownMs = Math.max(
+    0,
+    num("sunoConcurrency", "rateLimitCooldownMs", SUNO_CONCURRENCY_DEFAULTS.rateLimitCooldownMs),
   );
   config.suno.minCredits = Math.max(
     0,

@@ -171,6 +171,11 @@ export const config = {
      */
     requestsPerAccount: Math.max(0, Number(process.env.SUNO_REQUESTS_PER_ACCOUNT ?? 20)),
     rateWindowMs: Math.max(100, Number(process.env.SUNO_RATE_WINDOW_MS ?? 10_000)),
+    /**
+     * How long a Suno account sits out after answering 429, so retries and other
+     * jobs don't immediately re-hit the throttled account. 0 disables.
+     */
+    rateLimitCooldownMs: Math.max(0, Number(process.env.SUNO_RATE_LIMIT_COOLDOWN_MS ?? 5_000)),
   },
   /**
    * Customer-account credit floor. "Free" generation endpoints cost 0 credits

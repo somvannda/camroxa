@@ -204,6 +204,7 @@ export class AccountPool {
     this.clients = accounts.map((a) => this.makeClient(a));
     this.health.clear();
     this.captcha.clear();
+    this.rateLimitedUntil.clear();
   }
 
   /**
@@ -254,6 +255,35 @@ export class AccountPool {
     this.health.set(id, { info, updatedAt: Date.now() });
   }
 
+  /** Accounts a 429 put on a short cooldown (epoch ms until they may be picked). */
+  private readonly rateLimitedUntil = new Map<string, number>();
+
+  /** Put an account on a short cooldown after a 429 so it isn't re-picked immediately. */
+  markRateLimited(id: string, cooldownMs: number): void {
+    if (cooldownMs <= 0) return;
+    this.rateLimitedUntil.set(id, Date.now() + cooldownMs);
+  }
+
+  /**
+   * Move accounts currently in a 429 cooldown to the end so a warm account is
+   * preferred; when every candidate is cooling they are still tried (a brief
+   * pause beats failing outright).
+   */
+  private prioritizeCooling(clients: SunoClient[]): SunoClient[] {
+    const now = Date.now();
+    const warm: SunoClient[] = [];
+    const cooling: SunoClient[] = [];
+    for (const c of clients) {
+      const until = this.rateLimitedUntil.get(c.account.id);
+      if (until && until > now) cooling.push(c);
+      else {
+        if (until) this.rateLimitedUntil.delete(c.account.id);
+        warm.push(c);
+      }
+    }
+    return cooling.length ? [...warm, ...cooling] : clients;
+  }
+
   /**
    * Best-effort per-account captcha status, cached for a minute. Never throws:
    * a probe failure falls back to the last known value (or `false`).
@@ -299,7 +329,7 @@ export class AccountPool {
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
     let sawLowCredits = false;
-    for (const client of ordered) {
+    for (const client of this.prioritizeCooling(ordered)) {
       try {
         const health = await this.healthFor(client);
         if (belowCreditFloor(health.credits)) {
@@ -341,7 +371,7 @@ export class AccountPool {
       preferFree: policy === "prefer_free",
       maxPerAccount: opts.maxPerAccount,
     });
-    for (const client of ordered) {
+    for (const client of this.prioritizeCooling(ordered)) {
       if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
       try {
         const health = await this.healthFor(client);
@@ -370,7 +400,7 @@ export class AccountPool {
       opts.load ?? (() => 0),
       { preferFree: policy === "prefer_free", maxPerAccount: opts.maxPerAccount },
     );
-    for (const client of ordered) {
+    for (const client of this.prioritizeCooling(ordered)) {
       if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
       try {
         const health = await this.healthFor(client);
@@ -423,7 +453,7 @@ export class AccountPool {
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
     let sawLowCredits = false;
-    for (const client of ordered) {
+    for (const client of this.prioritizeCooling(ordered)) {
       try {
         const health = await this.healthFor(client);
         if (belowCreditFloor(health.credits)) {

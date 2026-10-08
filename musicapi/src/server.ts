@@ -7,7 +7,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
-import { isInsufficientCreditsError, isRetryableSunoError } from "./sunoError.js";
+import { isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
@@ -2865,6 +2865,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         // A 402 means this account has no credits left: drop it from selection
         // immediately so the next job skips it instead of repeating the 402.
         if (isInsufficientCreditsError(e)) pool.markCreditExhausted(client.account.id);
+        if (isRateLimitedSunoError(e)) {
+          pool.markRateLimited(client.account.id, config.suno.rateLimitCooldownMs);
+        }
         if (!isRetryableSunoError(e)) {
           job.status = "error";
           job.error = msg;
@@ -2928,6 +2931,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         // A 402 means this account has no credits left: drop it from selection
         // immediately so the next job skips it instead of repeating the 402.
         if (isInsufficientCreditsError(e)) pool.markCreditExhausted(client.account.id);
+        if (isRateLimitedSunoError(e)) {
+          pool.markRateLimited(client.account.id, config.suno.rateLimitCooldownMs);
+        }
         if (!isRetryableSunoError(e)) {
           job.status = "error";
           job.error = msg;

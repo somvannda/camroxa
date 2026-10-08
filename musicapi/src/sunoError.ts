@@ -83,3 +83,19 @@ export function isInsufficientCreditsError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return /not enough credits|insufficient credits|\(402\)/i.test(msg);
 }
+
+/**
+ * Whether a failed submit was rate-limited by Suno (429). Callers use this to
+ * put the account on a short cooldown so retries and other jobs don't re-hit the
+ * throttled account immediately.
+ */
+export function isRateLimitedSunoError(err: unknown): boolean {
+  if (err instanceof SunoHttpError) {
+    if (err.status === 429) return true;
+    if (err.errorType && /rate[_ ]limit|too[_ ]many[_ ]requests/i.test(err.errorType)) {
+      return true;
+    }
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /too many requests|rate[_ ]limits?|\(429\)/i.test(msg);
+}
