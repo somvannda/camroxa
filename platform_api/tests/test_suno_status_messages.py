@@ -140,6 +140,70 @@ def test_parse_suno_generate_poll_failure_wins_over_partial_audio() -> None:
     assert parsed.audio_url_alt == ""
 
 
+def test_parse_suno_generate_poll_pending_status_wins_over_partial_audio() -> None:
+    # Regression: FIRST_SUCCESS means only the first of a generation's two clips
+    # is playable yet. Returning success on that lone URL marked the task
+    # SUCCESS with audio_url_alt empty, so Version 2 stayed on "Waiting" forever.
+    for status in ("FIRST_SUCCESS", "TEXT_SUCCESS", "PENDING", "RUNNING"):
+        parsed = parse_suno_generate_poll(
+            {
+                "code": 200,
+                "data": {
+                    "status": status,
+                    "response": {
+                        "sunoData": [
+                            {"id": "clip-ok", "audio_url": "https://b2.example/clip-ok.mp3"},
+                            {"id": "clip-alt", "audio_url": ""},
+                        ]
+                    },
+                },
+            }
+        )
+        assert parsed.state == "pending", status
+        assert parsed.audio_url_ok == ""
+        assert parsed.audio_url_alt == ""
+
+
+def test_parse_suno_generate_poll_success_still_wins() -> None:
+    # A terminal SUCCESS with both URLs is unaffected by the pending guard.
+    parsed = parse_suno_generate_poll(
+        {
+            "code": 200,
+            "data": {
+                "status": "SUCCESS",
+                "response": {
+                    "sunoData": [
+                        {"id": "clip-ok", "audio_url": "https://b2.example/clip-ok.mp3"},
+                        {"id": "clip-alt", "audio_url": "https://b2.example/clip-alt.mp3"},
+                    ]
+                },
+            },
+        }
+    )
+    assert parsed.state == "success"
+    assert parsed.audio_url_ok == "https://b2.example/clip-ok.mp3"
+    assert parsed.audio_url_alt == "https://b2.example/clip-alt.mp3"
+
+
+def test_parse_suno_generate_poll_empty_status_with_audio_is_success() -> None:
+    # Providers that omit the status but return audio must not regress to
+    # pending (the empty string is itself a known "pending" status token).
+    parsed = parse_suno_generate_poll(
+        {
+            "code": 200,
+            "data": {
+                "response": {
+                    "sunoData": [
+                        {"id": "clip-ok", "audio_url": "https://b2.example/clip-ok.mp3"},
+                    ]
+                },
+            },
+        }
+    )
+    assert parsed.state == "success"
+    assert parsed.audio_url_ok == "https://b2.example/clip-ok.mp3"
+
+
 def test_parse_suno_lyrics_poll_rejected_fails() -> None:
     parsed = parse_suno_lyrics_poll({"code": 200, "data": {"status": "REJECTED"}})
     assert parsed.state == "failed"

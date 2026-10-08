@@ -519,6 +519,17 @@ def parse_suno_generate_poll(response: dict[str, Any]) -> SunoGeneratePollResult
             error=suno_task_failure_message(status=status, error_message=error_message),
         )
 
+    # A non-terminal upstream status also wins over partial audio. Suno reports
+    # FIRST_SUCCESS once the first of a generation's two clips is playable, and
+    # musicapi holds that status while it finishes B2-ingesting the second clip.
+    # Returning success on that lone URL marked the task SUCCESS with
+    # audio_url_alt empty, and since the task was no longer pending it was never
+    # polled again — Version 1 played while Version 2 stayed on "Waiting"
+    # forever. Wait for the terminal SUCCESS status. An empty status is left to
+    # the audio-URL branch below for providers that omit it.
+    if status and is_suno_pending_status(status):
+        return SunoGeneratePollResult(state="pending")
+
     if audio_urls:
         return SunoGeneratePollResult(
             state="success",
