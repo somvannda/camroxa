@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-08] — Version 2 no longer stranded by a first-clip success
+
+### Fixed
+
+- `parse_suno_generate_poll` still returned `success` when the upstream status was non-terminal (`FIRST_SUCCESS` / `TEXT_SUCCESS` / `PENDING` / `RUNNING`) but one of the generation's two clips already had an audio URL. `musicapi` holds `FIRST_SUCCESS` while it finishes B2-ingesting the second clip, so a poll during that window marked the task `SUCCESS` with `audio_url_alt` empty; because the task was no longer pending it was never polled again, and Version 2 stayed on "Waiting"/"Loading…" forever (Version 1 played and downloaded). A non-terminal status now wins over partial audio and the poll keeps waiting for the terminal `SUCCESS`. See `docs/changelog/2026-10-08-version2-first-success-still-pending.md`.
+
 ## [2026-10-07] — Partial generation no longer reported as success
 
 ### Fixed
