@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-08] — Batch status counts songs, not Suno task rows
+
+### Fixed
+
+- `get_batch_status_counters` counted `suno_tasks` **rows** by status, so a batch whose songs all completed stayed `partial`: a superseded `failed` row made `suno_failed > 0`, and duplicate `success` rows made `suno_completed != drafts_completed`. 19 production batches (all songs `suno_success`) were stuck `partial`. The counters are now **per song**: `suno_submitted = COUNT(DISTINCT song_id)`, `suno_completed`/`suno_failed` from `songs.status`. Finished batches self-heal on the next `refresh_batch_status`. See `docs/changelog/2026-10-08-platform-batch-status-per-song.md`.
+
 ## [2026-10-08] — Stuck Suno tasks no longer hang `pending` when the provider returns 404
 
 ### Fixed
