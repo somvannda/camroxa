@@ -13,7 +13,7 @@
  */
 import { execFile, spawn } from "node:child_process";
 import { promises as fs } from "node:fs";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
@@ -21,8 +21,7 @@ import ffmpegPath from "ffmpeg-static";
 
 /** Extract one JPEG frame from a video buffer (default 1s in). */
 export async function extractVideoFrame(bytes: Buffer, atSeconds = 1): Promise<Buffer> {
-  const bin = ffmpegPath as unknown as string | null;
-  if (!bin) throw new Error("ffmpeg binary is unavailable (ffmpeg-static not installed).");
+  const bin = ffmpegBin();
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), "camxora-video-"));
   const inPath = path.join(dir, `${randomUUID()}.mp4`);
   const outPath = path.join(dir, "frame.jpg");
@@ -44,8 +43,11 @@ export async function extractVideoFrame(bytes: Buffer, atSeconds = 1): Promise<B
 
 function ffmpegBin(): string {
   const bin = ffmpegPath as unknown as string | null;
-  if (!bin) throw new Error("ffmpeg binary is unavailable (ffmpeg-static not installed).");
-  return bin;
+  // Prefer the bundled binary but fall back to a system ffmpeg on PATH (see the
+  // same helper in audio.ts: ffmpeg-static's binary can be missing after a
+  // partial install, which otherwise fails every media ingest with ENOENT).
+  if (bin && existsSync(bin)) return bin;
+  return "ffmpeg";
 }
 
 export interface RenderVideoOptions {

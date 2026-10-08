@@ -11,14 +11,19 @@
  * files are ever written to the VPS disk.
  */
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import ffmpegPath from "ffmpeg-static";
 
 export type AudioFormat = "mp3" | "wav";
 
 function ffmpegBin(): string {
   const bin = ffmpegPath as unknown as string | null;
-  if (!bin) throw new Error("ffmpeg binary is unavailable (ffmpeg-static not installed).");
-  return bin;
+  // Prefer the bundled binary but fall back to a system ffmpeg on PATH. The
+  // ffmpeg-static postinstall intermittently failed to fetch its binary on the
+  // deploy host; the missing binary made every media ingest fail
+  // ("spawn .../ffmpeg-static/ffmpeg ENOENT") until node_modules was reinstalled.
+  if (bin && existsSync(bin)) return bin;
+  return "ffmpeg";
 }
 
 /**
