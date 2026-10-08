@@ -891,21 +891,53 @@ class BatchRepository:
     # ------------------------------------------------------------------
 
     async def create_suno_task(self, task: SunoTask) -> SunoTask:
-        """Insert a Suno task record linked to a song and batch.
+        """Persist a Suno task, reviving a prior *failed* row for the same hash.
+
+        ``suno_tasks`` has ``UNIQUE(user_id, request_hash)`` and
+        :meth:`find_by_hash` deliberately treats a ``failed`` row as
+        non-duplicate (issue #372) so a retry regenerates. A plain INSERT would
+        then collide with that still-present failed row and raise
+        ``duplicate key value violates unique constraint``, which the retry path
+        surfaced as a charge + ``suno_generation_failed`` refund — the retry
+        could never succeed.
+
+        So this is an upsert that **reuses the failed row** (same
+        ``user_id``/``request_hash``) and resets it to a fresh ``pending``
+        attempt, returning the *existing* id. ``song_id``/``batch_id`` are left
+        untouched on conflict (the caller re-links them via
+        :meth:`link_suno_task`). A conflict with a live/successful row is left
+        alone and its id returned, so an in-flight task is never clobbered.
 
         Args:
             task: The SunoTask domain object to persist.
 
         Returns:
-            The persisted SunoTask.
+            The persisted SunoTask, with ``id`` set to the persisted row id.
         """
-        await self._pool.execute(
+        persisted_id = await self._pool.fetchval(
             """
             INSERT INTO suno_tasks
                 (id, song_id, user_id, batch_id, request_hash, model,
                  title, lyrics, style, instrumental, external_task_id,
                  status, source, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, NOW(), NOW())
+            ON CONFLICT (user_id, request_hash) DO UPDATE SET
+                external_task_id = EXCLUDED.external_task_id,
+                model = EXCLUDED.model,
+                title = EXCLUDED.title,
+                lyrics = EXCLUDED.lyrics,
+                style = EXCLUDED.style,
+                instrumental = EXCLUDED.instrumental,
+                status = EXCLUDED.status,
+                source = EXCLUDED.source,
+                error_message = NULL,
+                audio_url_ok = NULL,
+                audio_url_alt = NULL,
+                downloaded_ok = false,
+                downloaded_alt = false,
+                updated_at = NOW()
+            WHERE suno_tasks.status = 'failed'
+            RETURNING id
             """,
             task.id,
             task.song_id,
@@ -921,6 +953,20 @@ class BatchRepository:
             task.status.value,
             getattr(task, "source", None) or "studio",
         )
+        if persisted_id is None:
+            # Conflict with a live/successful row: keep it and return its id.
+            persisted_id = await self._pool.fetchval(
+                """
+                SELECT id FROM suno_tasks
+                WHERE user_id = $1 AND request_hash = $2
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                task.user_id,
+                task.request_hash,
+            )
+        if persisted_id is not None:
+            task.id = persisted_id
         return task
 
     async def create(self, task: SunoTask) -> SunoTask:
