@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-08] — Retrying a failed Suno song no longer charge-refunds forever
+
+### Fixed
+
+- `suno_tasks` is `UNIQUE(user_id, request_hash)`, and after the #372 change `find_by_hash` skips `failed` rows so a retry regenerates — but `create_suno_task` still did a plain `INSERT`, so it collided with the still-present failed row (`duplicate key value violates unique constraint "suno_tasks_user_id_request_hash_key"`). The batch retry path caught that as a failure and refunded, producing a `v3_music` charge → `suno_generation_failed` refund on every retry, so a failed song could never regenerate. `create_suno_task` is now an upsert that revives the failed row in place (`WHERE suno_tasks.status = 'failed'`) and reuses its id; a live/successful row is never clobbered. See `docs/changelog/2026-10-08-platform-suno-retry-unique-constraint.md`.
+
 ## [2026-10-08] — Version 2 no longer stranded by a first-clip success
 
 ### Fixed
