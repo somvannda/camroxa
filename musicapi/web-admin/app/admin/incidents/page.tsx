@@ -48,6 +48,16 @@ interface Analytics {
 }
 
 interface SystemInfo {
+  suno: {
+    active: number;
+    waiting: number;
+    capacity: number;
+    max_concurrent_per_user: number;
+    max_concurrent_per_account: number;
+  };
+}
+
+interface StatsInfo {
   accounts: number;
   account_health: {
     total: number;
@@ -58,13 +68,6 @@ interface SystemInfo {
     captcha_solver: boolean;
   };
   suno_credits: { total: number; active: number };
-  suno: {
-    active: number;
-    waiting: number;
-    capacity: number;
-    max_concurrent_per_user: number;
-    max_concurrent_per_account: number;
-  };
 }
 
 const SEVERITY_TONE: Record<string, BadgeTone> = { critical: "danger", warning: "warning" };
@@ -73,6 +76,7 @@ export default function IncidentsPage() {
   const [report, setReport] = useState<AlertReport | null>(null);
   const [analytics, setAnalytics] = useState<Analytics | null>(null);
   const [system, setSystem] = useState<SystemInfo | null>(null);
+  const [stats, setStats] = useState<StatsInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -80,14 +84,16 @@ export default function IncidentsPage() {
     setLoading(true);
     setError("");
     try {
-      const [a, n, s] = await Promise.all([
+      const [a, n, s, st] = await Promise.all([
         apiFetch<AlertReport>("/admin/alerts"),
         apiFetch<Analytics>("/admin/analytics?days=7"),
         apiFetch<SystemInfo>("/admin/system"),
+        apiFetch<StatsInfo>("/admin/stats"),
       ]);
       setReport(a);
       setAnalytics(n);
       setSystem(s);
+      setStats(st);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load incidents");
     } finally {
@@ -103,7 +109,7 @@ export default function IncidentsPage() {
   if (error && !report) return <ErrorState message={error} onRetry={load} />;
 
   const s = report?.summary;
-  const health = system?.account_health;
+  const health = stats?.account_health;
   const topErrors = (analytics?.by_error ?? []).slice(0, 12);
   const alerts = report?.alerts ?? [];
 
@@ -173,8 +179,8 @@ export default function IncidentsPage() {
         <StatCard label="Low-credit accounts" value={String(s?.low_credits ?? 0)} hint="Suno accounts at/below floor" />
         <StatCard
           label="Suno credits (live)"
-          value={num(system?.suno_credits.active ?? 0)}
-          hint={`of ${num(system?.suno_credits.total ?? 0)} across pool`}
+          value={num(stats?.suno_credits?.active ?? 0)}
+          hint={`of ${num(stats?.suno_credits?.total ?? 0)} across pool`}
         />
       </div>
 
@@ -221,7 +227,7 @@ export default function IncidentsPage() {
               <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
                 <div>
                   <div className="text-xs text-[var(--muted)]">Pool</div>
-                  <div className="text-xl font-bold">{num(system?.accounts ?? 0)}</div>
+                  <div className="text-xl font-bold">{num(stats?.accounts ?? 0)}</div>
                 </div>
                 <div>
                   <div className="text-xs text-[var(--muted)]">Healthy</div>
@@ -248,12 +254,12 @@ export default function IncidentsPage() {
             <div className="flex items-center justify-between text-sm">
               <span className="text-[var(--muted)]">Concurrency (active / waiting / capacity)</span>
               <span className="tabular-nums">
-                {num(system?.suno.active ?? 0)} / {num(system?.suno.waiting ?? 0)} / {num(system?.suno.capacity ?? 0)}
+                {num(system?.suno?.active ?? 0)} / {num(system?.suno?.waiting ?? 0)} / {num(system?.suno?.capacity ?? 0)}
               </span>
             </div>
             <p className="mt-1 text-xs text-[var(--muted)]">
-              per user {num(system?.suno.max_concurrent_per_user ?? 0)} · per account{" "}
-              {num(system?.suno.max_concurrent_per_account ?? 0)} — tune on{" "}
+              per user {num(system?.suno?.max_concurrent_per_user ?? 0)} · per account{" "}
+              {num(system?.suno?.max_concurrent_per_account ?? 0)} — tune on{" "}
               <Link href="/admin/settings" className="text-[var(--violet)] hover:underline">
                 Settings → Integrations
               </Link>
