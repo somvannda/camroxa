@@ -57,6 +57,9 @@ const SUNO_CONCURRENCY_DEFAULTS = { ...config.suno };
  */
 const CREDIT_GATE_DEFAULTS = { ...config.creditGate };
 
+/** Boot-time flow-guard default, captured before any stored override. */
+const FLOW_GUARD_DEFAULTS = { ...config.flowGuard };
+
 /** Every key that can be managed from the admin console. */
 export const INTEGRATION_GROUPS: GroupDef[] = [
   {
@@ -140,6 +143,20 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         env: "USER_MIN_CREDITS",
         def: CREDIT_GATE_DEFAULTS.minCredits,
         help: "A customer must hold at least this many credits to run free (0-cost) generation endpoints. The credits are not spent — free stays free for paying customers — but a drained account cannot use them. Paid endpoints are unaffected; 0 disables the gate.",
+      },
+    ],
+  },
+  {
+    key: "flowGuard",
+    label: "Generation flow guard",
+    fields: [
+      {
+        key: "enforced",
+        label: "Require a prior owned generation for derivative endpoints",
+        type: "boolean",
+        env: "FLOW_GUARD_ENFORCED",
+        def: FLOW_GUARD_DEFAULTS.enforced,
+        help: "When on, extend/cover/remaster/stems/cover-image/wav/midi/video/recovery, timestamped lyrics and the *_detail reads require the caller to own the referenced clip and for the job that produced it to have completed. Prevents requesting a derivative without a prior generation. Off by default.",
       },
     ],
   },
@@ -309,6 +326,10 @@ function applyToConfig(): void {
     0,
     num("creditGate", "minCredits", CREDIT_GATE_DEFAULTS.minCredits),
   );
+
+  // Generation flow guard (see the `flowGuard` block in src/config.ts). Applied
+  // on every save; the derivative-route guard reads it live.
+  config.flowGuard.enforced = bool("flowGuard", "enforced", FLOW_GUARD_DEFAULTS.enforced);
 
   config.twoCaptchaKey = str("captcha", "twoCaptchaKey", config.twoCaptchaKey);
 

@@ -176,6 +176,17 @@ export const config = {
     minCredits: Math.max(0, Number(process.env.USER_MIN_CREDITS ?? 10)),
   },
   /**
+   * Generation-flow guard. When enabled, a derivative endpoint (extend, cover,
+   * remaster, stems, cover-image, wav, midi, video, recovery, timestamped
+   * lyrics, and the `*_detail` reads) requires the caller to own the referenced
+   * asset AND for the job that produced it to have completed — so a clip can no
+   * longer be requested without a prior generation. Off by default; turning it
+   * on is a deliberate operator action.
+   */
+  flowGuard: {
+    enforced: (process.env.FLOW_GUARD_ENFORCED ?? "false") === "true",
+  },
+  /**
    * Outbound alert delivery (task 5.5, REQUIREMENTS §4.10). Reuses the same
    * Telegram bot the ops health probe uses; leaving either value unset keeps the
    * evaluator running but silently skips delivery (alerts still surface in the
