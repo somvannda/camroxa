@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-08] — Stuck Suno tasks no longer hang `pending` when the provider returns 404
+
+### Fixed
+
+- `reconcile_pending_suno_tasks` caught every poll error with `except Exception: … continue`, so a task the provider no longer knows (`check_status` → HTTP 404) stayed `pending` forever — the song never finished and the wallet debit was never refunded (23 stale rows in production, 17 of them one user's). An aged (>30 min) 404 is now treated as terminal: it is reconciled as a failure via the existing `update_status` + `handle_suno_task_update` path, which refunds (`suno_generation_failed`) and refreshes the batch. A fresh 404 (propagation lag) and transient errors keep the old skip. See `docs/changelog/2026-10-08-platform-reconcile-suno-404-terminal.md`.
+
 ## [2026-10-08] — Retrying a failed Suno song no longer charge-refunds forever
 
 ### Fixed

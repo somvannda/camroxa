@@ -26,6 +26,7 @@ from platform_api.exceptions import (
     QuotaExceededError,
     ValidationError,
 )
+from platform_api.exceptions import ExternalServiceError
 from platform_api.models.billing_context import DraftBillingContext
 from platform_api.models.domain import Batch, BatchChannelAssets, ImageJob, Song, SunoTask
 from platform_api.models.enums import ChannelRole, ImageKind, TaskStatus
@@ -3507,6 +3508,27 @@ class BatchService:
         except Exception:
             logger.warning("Could not schedule Suno backup for task %s", task_id, exc_info=True)
 
+    # A provider 404 ("task not found") immediately after submit is usually
+    # propagation lag; for a task older than this the provider has lost it, which
+    # is terminal. Resolve it as a failure so the song stops hanging in `pending`
+    # and the wallet debit is refunded.
+    _SUNO_NOT_FOUND_TERMINAL_AFTER = timedelta(minutes=30)
+
+    @staticmethod
+    def _suno_poll_is_terminal_not_found(exc: Exception) -> bool:
+        details = getattr(exc, "details", None) or {}
+        return isinstance(details, dict) and details.get("status_code") == 404
+
+    @classmethod
+    def _suno_task_aged_for_terminal_not_found(
+        cls, created_at: Any, *, now: datetime | None = None
+    ) -> bool:
+        if not isinstance(created_at, datetime):
+            return False
+        if created_at.tzinfo is None:
+            created_at = created_at.replace(tzinfo=timezone.utc)
+        return (now or datetime.now(timezone.utc)) - created_at > cls._SUNO_NOT_FOUND_TERMINAL_AFTER
+
     async def reconcile_pending_suno_tasks(
         self,
         *,
@@ -3543,6 +3565,28 @@ class BatchService:
                 poll_result = await poll_suno_generate_with_pool(
                     get_db_pool(), external_task_id
                 )
+            except ExternalServiceError as exc:
+                if self._suno_poll_is_terminal_not_found(
+                    exc
+                ) and self._suno_task_aged_for_terminal_not_found(row.get("created_at")):
+                    logger.warning(
+                        "Suno task %s not found upstream (404) and aged; "
+                        "reconciling as failed.",
+                        row.get("id"),
+                    )
+                    from platform_api.clients.suno_client import SunoGeneratePollResult
+
+                    poll_result = SunoGeneratePollResult(
+                        state="failed",
+                        error="Suno task no longer exists upstream (404).",
+                    )
+                else:
+                    logger.warning(
+                        "Suno reconcile poll failed for task %s: %s",
+                        row.get("id"),
+                        str(exc)[:200],
+                    )
+                    continue
             except Exception as exc:
                 logger.warning(
                     "Suno reconcile poll failed for task %s: %s",
