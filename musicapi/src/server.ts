@@ -7,7 +7,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy } from "./pool.js";
 import { SunoClient } from "./client.js";
-import { isRetryableSunoError } from "./sunoError.js";
+import { isInsufficientCreditsError, isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
@@ -2818,6 +2818,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         errors.push(msg);
+        // A 402 means this account has no credits left: drop it from selection
+        // immediately so the next job skips it instead of repeating the 402.
+        if (isInsufficientCreditsError(e)) pool.markCreditExhausted(client.account.id);
         if (!isRetryableSunoError(e)) {
           job.status = "error";
           job.error = msg;
@@ -2878,6 +2881,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         errors.push(msg);
+        // A 402 means this account has no credits left: drop it from selection
+        // immediately so the next job skips it instead of repeating the 402.
+        if (isInsufficientCreditsError(e)) pool.markCreditExhausted(client.account.id);
         if (!isRetryableSunoError(e)) {
           job.status = "error";
           job.error = msg;
@@ -6141,12 +6147,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         `SELECT u.created_at, u.email, u.name, u.role, u.status,
                 (SELECT COALESCE(sum(k.credits),0) FROM api_keys k WHERE k.user_id = u.id) AS credits,
                 (SELECT count(*) FROM api_keys k WHERE k.user_id = u.id) AS key_count,
-                (SELECT count(*) FROM usage_logs l WHERE l.user_id = u.id) AS request_count
-         FROM users u ${where} ORDER BY u.created_at DESC LIMIT 10000`,
+                l.request_count, l.billed_count, l.free_count, l.failed_count, l.last_activity
+         FROM users u
+         LEFT JOIN LATERAL (
+           SELECT count(*) AS request_count,
+                  count(*) FILTER (WHERE credits_consumed > 0) AS billed_count,
+                  count(*) FILTER (WHERE credits_consumed = 0) AS free_count,
+                  count(*) FILTER (WHERE status <> 'complete') AS failed_count,
+                  max(created_at) AS last_activity
+           FROM usage_logs ul WHERE ul.user_id = u.id
+         ) l ON true
+         ${where} ORDER BY u.created_at DESC LIMIT 10000`,
         params,
       );
       const lines = [
-        "created_at,email,name,role,status,credits,keys,requests",
+        "created_at,email,name,role,status,credits,keys,requests,billed,free,failed,last_activity",
         ...all.map((r) =>
           [
             r.created_at,
@@ -6157,6 +6172,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
             r.credits,
             r.key_count,
             r.request_count,
+            r.billed_count,
+            r.free_count,
+            r.failed_count,
+            r.last_activity,
           ]
             .map(csvCell)
             .join(","),
@@ -6174,8 +6193,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       `SELECT u.id, u.email, u.name, u.role, u.status, u.created_at,
               (SELECT COALESCE(sum(k.credits),0) FROM api_keys k WHERE k.user_id = u.id) AS credits,
               (SELECT count(*) FROM api_keys k WHERE k.user_id = u.id) AS key_count,
-              (SELECT count(*) FROM usage_logs l WHERE l.user_id = u.id) AS request_count
-       FROM users u ${where}
+              l.request_count, l.billed_count, l.free_count, l.failed_count, l.last_activity
+       FROM users u
+       LEFT JOIN LATERAL (
+         SELECT count(*) AS request_count,
+                count(*) FILTER (WHERE credits_consumed > 0) AS billed_count,
+                count(*) FILTER (WHERE credits_consumed = 0) AS free_count,
+                count(*) FILTER (WHERE status <> 'complete') AS failed_count,
+                max(created_at) AS last_activity
+         FROM usage_logs ul WHERE ul.user_id = u.id
+       ) l ON true
+       ${where}
        ORDER BY u.created_at DESC
        LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
       [...params, pageSize, offset],

@@ -66,3 +66,20 @@ export function isRetryableSunoError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   return RETRYABLE_MESSAGE.test(msg);
 }
+
+/**
+ * Whether a failed submit was rejected because the account is out of credits
+ * (Suno 402). Distinct from "retryable on another account": callers use this to
+ * also mark the account drained so it stops being selected until its credit
+ * reading refreshes.
+ */
+export function isInsufficientCreditsError(err: unknown): boolean {
+  if (err instanceof SunoHttpError) {
+    if (err.status === 402) return true;
+    if (err.errorType && /not[_ ]enough[_ ]credits|insufficient[_ ]credits/i.test(err.errorType)) {
+      return true;
+    }
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /not enough credits|insufficient credits|\(402\)/i.test(msg);
+}

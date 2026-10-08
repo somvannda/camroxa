@@ -239,6 +239,22 @@ export class AccountPool {
   }
 
   /**
+   * Mark an account as just-out-of-credits after a 402. Sets its cached health
+   * to zero so `belowCreditFloor` skips it until the cache expires and the next
+   * `billing/info` refresh runs. Without this a drained account keeps looking
+   * funded for up to the health TTL and every job in that window fails with 402.
+   */
+  markCreditExhausted(id: string): void {
+    const client = this.clients.find((c) => c.account.id === id);
+    if (!client) return;
+    const existing = this.health.get(id)?.info;
+    const info: AccountHealth = existing
+      ? { ...existing, credits: 0 }
+      : { credits: 0, models: [], plan: "unknown", features: [], catalog: [] };
+    this.health.set(id, { info, updatedAt: Date.now() });
+  }
+
+  /**
    * Best-effort per-account captcha status, cached for a minute. Never throws:
    * a probe failure falls back to the last known value (or `false`).
    */

@@ -12,7 +12,7 @@ import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/u
 import { Field, Input, Select } from "@/components/ui/Field";
 import { Modal } from "@/components/ui/Modal";
 import { useToast } from "@/components/ui/Toast";
-import { num } from "@/lib/format";
+import { dateTime, num } from "@/lib/format";
 
 interface User {
   id: string;
@@ -24,6 +24,10 @@ interface User {
   credits: number;
   key_count: number;
   request_count: number;
+  billed_count: number;
+  free_count: number;
+  failed_count: number;
+  last_activity: string | null;
 }
 
 interface UserPage {
@@ -220,7 +224,7 @@ function UsersInner() {
     <div className="space-y-6">
       <PageHeader
         title="Users"
-        description="Manage credits and account status"
+        description="Manage credits and account status · Requests counts every API call, including free and failed"
         actions={
           <Button variant="secondary" onClick={exportCsv}>
             Export CSV
@@ -274,17 +278,23 @@ function UsersInner() {
                 <th scope="col" className="px-4 py-3">Role</th>
                 <th scope="col" className="px-4 py-3 text-right">Credits</th>
                 <th scope="col" className="px-4 py-3 text-right">Requests</th>
+                <th scope="col" className="px-4 py-3">Last active</th>
                 <th scope="col" className="px-4 py-3">Status</th>
                 <th scope="col" className="px-4 py-3 text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
               {users.map((u) => (
-                <tr key={u.id} className="border-t border-[var(--border)]">
+                <tr
+                  key={u.id}
+                  className="cursor-pointer border-t border-[var(--border)] hover:bg-white/[0.03]"
+                  onClick={() => router.push(`/admin/users/${u.id}`)}
+                >
                   <td className="px-4 py-3">
                     <Link
                       href={`/admin/users/${u.id}`}
                       className="font-medium text-[var(--violet)] hover:underline"
+                      onClick={(e) => e.stopPropagation()}
                     >
                       {u.email}
                     </Link>
@@ -292,11 +302,26 @@ function UsersInner() {
                   </td>
                   <td className="px-4 py-3 capitalize">{u.role}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{num(u.credits)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{num(u.request_count)}</td>
+                  <td
+                    className="px-4 py-3 text-right tabular-nums"
+                    title="All API calls, including free and failed"
+                  >
+                    {num(u.request_count)}
+                    <div className="text-xs font-normal text-[var(--muted)]">
+                      {num(u.free_count)} free
+                      {u.failed_count > 0 ? ` · ${num(u.failed_count)} failed` : ""}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap text-xs text-[var(--muted)]">
+                    {u.last_activity ? dateTime(u.last_activity) : "—"}
+                  </td>
                   <td className="px-4 py-3">
                     <Badge tone={u.status === "active" ? "success" : "danger"}>{u.status}</Badge>
                   </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                  <td
+                    className="px-4 py-3 text-right whitespace-nowrap"
+                    onClick={(e) => e.stopPropagation()}
+                  >
                     <Button size="sm" variant="ghost" onClick={() => setCreditsFor(u)}>
                       Credits
                     </Button>
