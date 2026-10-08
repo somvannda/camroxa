@@ -246,6 +246,14 @@ BACKUP_DIR="${MUSICAPI_BACKUP_DIR:-/opt/camxora/backups/musicapi}"
 BACKUP_RETENTION_DAYS="${MUSICAPI_BACKUP_RETENTION_DAYS:-14}"
 
 log "Writing ${MUSICAPI_DIR}/.env..."
+# Snapshot the current file so keys this script does not manage (operator
+# overrides, or values emitted by a different revision) are not silently
+# dropped when the heredoc below truncates it. A stale-branch deploy previously
+# wiped the SUNO_* concurrency caps this way.
+PREV_ENV="$(mktemp)"
+if [[ -f "${MUSICAPI_DIR}/.env" ]]; then
+  cp "${MUSICAPI_DIR}/.env" "${PREV_ENV}"
+fi
 sudo -u camxora tee "${MUSICAPI_DIR}/.env" >/dev/null <<EOF
 NODE_ENV=production
 # Deployment target (sandbox|production). The runtime reads this to keep
@@ -320,6 +328,20 @@ ALERT_TELEGRAM_CHAT_ID=${MUSICAPI_ALERT_TELEGRAM_CHAT_ID}
 BACKUP_DIR=${BACKUP_DIR}
 BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS}
 EOF
+# Re-append unmanaged keys from the snapshot: any KEY= the canonical set above
+# does not define is preserved. Keys this script owns are always emitted, so
+# this only carries forward out-of-band settings.
+if [[ -s "${PREV_ENV}" ]]; then
+  while IFS= read -r prev_line; do
+    [[ "${prev_line}" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]] || continue
+    prev_key="${prev_line%%=*}"
+    if ! grep -q "^${prev_key}=" "${MUSICAPI_DIR}/.env"; then
+      printf '%s\n' "${prev_line}" >> "${MUSICAPI_DIR}/.env"
+      log "Preserved unmanaged .env key: ${prev_key}"
+    fi
+  done < "${PREV_ENV}"
+fi
+rm -f "${PREV_ENV}"
 chmod 600 "${MUSICAPI_DIR}/.env"
 chown camxora:camxora "${MUSICAPI_DIR}/.env"
 
