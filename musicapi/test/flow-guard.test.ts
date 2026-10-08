@@ -45,6 +45,14 @@ test("the shared route factories enforce the prerequisite asset", () => {
   }
 });
 
+test("the sunoapi.org alias handlers run the guard", () => {
+  assert.match(
+    source,
+    /assetIdsInBody\(in_\)/,
+    "the /api/v1 compatibility handlers must run the flow check on their body",
+  );
+});
+
 test("no deny-foreign-only check remains (all upgraded to the positive guard)", () => {
   assert.doesNotMatch(
     source,

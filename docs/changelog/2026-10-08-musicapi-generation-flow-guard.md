@@ -53,6 +53,8 @@ operator action.
   - All previous `assetOwnedByOtherUser` call sites upgraded to `enforceFlow`
     (deny-foreign-only → positive ownership + completion); the old helper is
     removed.
+  - Every `/api/v1/*` compatibility handler runs `assetIdsInBody(in_)` through
+    the guard centrally, so the alias surface cannot bypass it.
 
 ## Files touched
 
@@ -77,10 +79,10 @@ operator action.
 
 ## Follow-ups
 
-- **Alias routes not yet guarded:** the `/api/v1/generate/*` and
-  `/api/v1/convert-to-wav/*` compatibility handlers take a `clip_id` and call
-  Suno directly; they still need the `enforceFlow` guard so the feature cannot
-  be bypassed through the alias surface.
+- **Alias routes are guarded:** every `/api/v1/*` compatibility handler that
+  reads a request body (`const in_ = …`) runs `assetIdsInBody(in_)` through
+  `requireOwnedAsset`, so the feature cannot be bypassed via the sunoapi.org
+  alias surface. (Handlers with no clip fields — e.g. payments — are excluded.)
 - Upload-session (`upload_extend`/`upload_cover`) and persona+clip
   (`voice_apply`/`voice_extend`) prerequisites are not yet modelled explicitly.
 - A classification table (endpoint → required parent kind) plus a full coverage
