@@ -23,6 +23,7 @@ import { trustProxyOption } from "./trustProxy.js";
 import { isProtectedPath, isPublicProtectedRoute } from "./routeAuth.js";
 import { verifyChmabaSignature, findReferenceId } from "./webhookSignature.js";
 import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
+import { flowVerdict, type AssetCheck } from "./flowGuard.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
@@ -1781,13 +1782,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return row.status === "complete";
   }
 
-  type AssetCheck = "ok" | "foreign" | "unowned" | "incomplete";
-
   /**
    * Generation-flow guard: a derivative endpoint's prerequisite asset must
    * belong to the caller and (when known) have been produced by a completed job.
    * Returns "ok" when the guard is disabled, so route wiring is inert until
-   * `config.flowGuard.enforced` is turned on.
+   * `config.flowGuard.enforced` is turned on. The verdict table lives in
+   * `./flowGuard.ts` (unit-tested without a DB).
    */
   async function requireOwnedAsset(
     userId: string,
@@ -1797,12 +1797,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!config.flowGuard.enforced) return "ok";
     if (!assetId) return "ok"; // required-field validation is the route's job
     const owner = await findAssetOwner(userId, assetId);
-    if (owner === "other") return "foreign";
-    if (owner === "none") return "unowned";
-    if (opts.mustBeComplete !== false && !(await assetProducedByCompletedJob(assetId))) {
-      return "incomplete";
-    }
-    return "ok";
+    if (owner !== "caller") return flowVerdict({ enforced: true, owner });
+    const producedByCompletedJob = await assetProducedByCompletedJob(assetId);
+    return flowVerdict({
+      enforced: true,
+      owner,
+      mustBeComplete: opts.mustBeComplete,
+      producedByCompletedJob,
+    });
   }
 
   /**
