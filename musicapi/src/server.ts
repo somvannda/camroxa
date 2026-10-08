@@ -7849,6 +7849,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipId || !lyrics || !Number.isFinite(startS) || !Number.isFinite(endS) || endS <= startS) {
       return reply.code(400).send({ error: "clip_id, lyrics, start_s, end_s are required (end_s > start_s)." });
     }
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("replace_section");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7871,6 +7873,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string;
     const prompt = body.prompt as string;
     if (!clipId || !prompt) return reply.code(400).send({ error: "clip_id and prompt are required." });
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("cover_image");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7891,6 +7895,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string;
     const name = body.name as string;
     if (!clipId || !name) return reply.code(400).send({ error: "clip_id and name are required." });
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("persona");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7940,6 +7946,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!uploadedClipId && !audioUrl) {
       return reply.code(400).send({ error: "uploaded_clip_id or audio_url is required." });
     }
+    if (uploadedClipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, uploadedClipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const cost = await costFor("upload_extend");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7971,6 +7981,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const audioUrl = body.audio_url as string | undefined;
     if (!uploadedClipId && !audioUrl) {
       return reply.code(400).send({ error: "uploaded_clip_id or audio_url is required." });
+    }
+    if (uploadedClipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, uploadedClipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const cost = await costFor("upload_cover");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
@@ -8211,6 +8225,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipId || !stylePrompt) {
       return reply.code(400).send({ error: "clip_id and style_prompt are required." });
     }
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("boost_style");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -8326,6 +8342,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         .code(400)
         .send({ error: "clip_id and name are required (or taskId + verifyUrl for a custom voice)." });
     }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const cost = await costFor("voice_generate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -8356,6 +8376,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string | undefined;
     if (!personaId && !clipId) {
       return reply.code(400).send({ error: "persona_id or clip_id is required." });
+    }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const model = body.model as string | undefined;
     const cost = await costFor("voice_apply", model);
@@ -8392,6 +8416,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string | undefined;
     if (!personaId && !clipId) {
       return reply.code(400).send({ error: "persona_id or clip_id is required." });
+    }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const cost = await costFor("voice_extend");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
