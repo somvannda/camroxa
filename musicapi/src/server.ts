@@ -2791,8 +2791,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return limits?.maxConcurrentJobs ?? config.suno.maxConcurrentPerUser;
   }
 
-  /** Run `fn` while holding one global + one per-user Suno slot. */
-  async function withSunoSlot<T>(job: Job, fn: () => Promise<T>): Promise<T | undefined> {
+  /**
+   * Run `fn` while holding one global + one per-user Suno slot. Returns whether
+   * `fn` actually ran: `false` means the backlog was full and the job was already
+   * failed out below (so the caller must NOT finalize again). The slot is released
+   * as soon as `fn` resolves, so durable media ingest (run by the caller
+   * afterwards) does not occupy a Suno slot.
+   */
+  async function withSunoSlot<T>(job: Job, fn: () => Promise<T>): Promise<boolean> {
     const owner = job.userId ?? "system";
     let release: () => void;
     try {
@@ -2804,12 +2810,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         job.status = "error";
         job.error = "Server busy: too many queued jobs. Please retry shortly.";
         await finalizeJob(job);
-        return undefined;
+        return false;
       }
       throw e;
     }
     try {
-      return await fn();
+      await fn();
+      return true;
     } finally {
       release();
     }
@@ -2820,7 +2827,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     submitFactory: (client: SunoClient) => Promise<import("./client.js").Clip[]>,
     options?: RetryOptions,
   ): Promise<void> {
-    return trackJob(withSunoSlot(job, () => runClipJobWithRetryImpl(job, submitFactory, options)));
+    return trackJob(
+      (async () => {
+        // Hold a Suno slot only for the account-bound work; durable media ingest
+        // (B2 copy) runs AFTER the slot is released so it does not block others.
+        const ran = await withSunoSlot(job, () =>
+          runClipJobWithRetryImpl(job, submitFactory, options),
+        );
+        if (ran) await finalizeJob(job);
+      })(),
+    );
   }
 
   async function runClipJobWithRetryImpl(
@@ -2857,7 +2873,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         if (ids.length) done = await client.pollClips(ids);
         job.result = { clips: done };
         job.status = "complete";
-        await finalizeJob(job);
         return;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -2871,7 +2886,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         if (!isRetryableSunoError(e)) {
           job.status = "error";
           job.error = msg;
-          await finalizeJob(job);
           return;
         }
       } finally {
@@ -2881,7 +2895,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
-    await finalizeJob(job);
   }
 
   /** Run an operation that returns a raw result (not clips to poll), with cross-account retry. */
@@ -2890,7 +2903,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     submitFactory: (client: SunoClient) => Promise<unknown>,
     options?: RetryOptions,
   ): Promise<void> {
-    return trackJob(withSunoSlot(job, () => runResultJobWithRetryImpl(job, submitFactory, options)));
+    return trackJob(
+      (async () => {
+        // Slot only for the account-bound work; finalize (incl. B2 ingest) after.
+        const ran = await withSunoSlot(job, () =>
+          runResultJobWithRetryImpl(job, submitFactory, options),
+        );
+        if (ran) await finalizeJob(job);
+      })(),
+    );
   }
 
   async function runResultJobWithRetryImpl(
@@ -2923,7 +2944,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       try {
         job.result = await submitFactory(client);
         job.status = "complete";
-        await finalizeJob(job);
         return;
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
@@ -2937,7 +2957,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         if (!isRetryableSunoError(e)) {
           job.status = "error";
           job.error = msg;
-          await finalizeJob(job);
           return;
         }
       } finally {
@@ -2947,7 +2966,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
-    await finalizeJob(job);
   }
 
   /**
