@@ -59,6 +59,26 @@ REMOTE_TARBALL = "/tmp/musicapi-src.tar.gz"
 REMOTE_PATH = "/tmp/camxora-musicapi-remote.sh"
 PACKAGE_DIRS = ("musicapi", "scripts/deploy")
 
+# Media/log artifacts are common in a musicapi working tree (local probe/E2E
+# output — see musicapi/.gitignore) and are not needed on the server. They are
+# gitignored, so a working-tree deploy would otherwise ship them: a 43 MB
+# e2e_wav.wav plus four ~5 MB probe *.mp3 once pushed the tarball to ~65 MB,
+# which is what made the flaky SFTP upload more likely to truncate. Scoped to
+# musicapi so the platform deploy (which ships real .wav assets under
+# music_web/public) is unaffected.
+_MUSICAPI_SKIP_SUFFIXES = (".wav", ".mp3", ".tsbuildinfo")
+_MUSICAPI_SKIP_DIRS = {".trae"}
+
+
+def musicapi_tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
+    if tar_filter(tarinfo) is None:
+        return None
+    if any(part in _MUSICAPI_SKIP_DIRS for part in Path(tarinfo.name).parts):
+        return None
+    if tarinfo.name.endswith(_MUSICAPI_SKIP_SUFFIXES):
+        return None
+    return tarinfo
+
 DeployEnv = Literal["sandbox", "production"]
 
 
@@ -90,7 +110,7 @@ def build_musicapi_tarball() -> Path:
             src = REPO_ROOT / name
             if not src.is_dir():
                 raise FileNotFoundError(f"Missing deploy directory: {src}")
-            tar.add(src, arcname=name, filter=tar_filter, recursive=True)
+            tar.add(src, arcname=name, filter=musicapi_tar_filter, recursive=True)
     print(f"Source archive ready ({archive.stat().st_size / (1024 * 1024):.1f} MB)")
     return archive
 
