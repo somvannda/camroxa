@@ -51,6 +51,12 @@ export interface GroupDef {
  */
 const SUNO_CONCURRENCY_DEFAULTS = { ...config.suno };
 
+/**
+ * Boot-time credit-gate defaults, captured before any stored override is
+ * applied. Used as the fallback when the field is cleared in the admin console.
+ */
+const CREDIT_GATE_DEFAULTS = { ...config.creditGate };
+
 /** Every key that can be managed from the admin console. */
 export const INTEGRATION_GROUPS: GroupDef[] = [
   {
@@ -120,6 +126,20 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         env: "SUNO_MIN_CREDITS",
         def: SUNO_CONCURRENCY_DEFAULTS.minCredits,
         help: "Accounts below this balance are skipped for new work, avoiding 402 'not enough credits' submissions.",
+      },
+    ],
+  },
+  {
+    key: "creditGate",
+    label: "Customer credit gate",
+    fields: [
+      {
+        key: "minCredits",
+        label: "Min credits to run free endpoints",
+        type: "number",
+        env: "USER_MIN_CREDITS",
+        def: CREDIT_GATE_DEFAULTS.minCredits,
+        help: "A customer must hold at least this many credits to run free (0-cost) generation endpoints. The credits are not spent — free stays free for paying customers — but a drained account cannot use them. Paid endpoints are unaffected; 0 disables the gate.",
       },
     ],
   },
@@ -280,6 +300,14 @@ function applyToConfig(): void {
   config.suno.minCredits = Math.max(
     0,
     num("sunoConcurrency", "minCredits", SUNO_CONCURRENCY_DEFAULTS.minCredits),
+  );
+
+  // Customer credit gate (see the `creditGate` block in src/config.ts). Applied
+  // on every save; the job-admission helpers read it live, so changes take
+  // effect without a restart.
+  config.creditGate.minCredits = Math.max(
+    0,
+    num("creditGate", "minCredits", CREDIT_GATE_DEFAULTS.minCredits),
   );
 
   config.twoCaptchaKey = str("captcha", "twoCaptchaKey", config.twoCaptchaKey);
