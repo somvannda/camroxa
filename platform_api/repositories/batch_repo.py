@@ -1412,7 +1412,7 @@ class BatchRepository:
         rows = await self._pool.fetch(
             """
             SELECT id, user_id, song_id, batch_id, external_task_id, status,
-                   audio_url_ok, audio_url_alt, audio_id_ok, audio_id_alt
+                   audio_url_ok, audio_url_alt, audio_id_ok, audio_id_alt, created_at
             FROM suno_tasks
             WHERE user_id = $1
               AND external_task_id IS NOT NULL
