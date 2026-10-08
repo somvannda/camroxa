@@ -28,6 +28,7 @@ interface User {
   free_count: number;
   failed_count: number;
   last_activity: string | null;
+  is_suno_account: boolean;
 }
 
 interface UserPage {
@@ -299,6 +300,11 @@ function UsersInner() {
                       {u.email}
                     </Link>
                     {u.name && <div className="text-xs text-[var(--muted)]">{u.name}</div>}
+                    {u.is_suno_account && (
+                      <div className="mt-0.5">
+                        <Badge tone="info">Suno login</Badge>
+                      </div>
+                    )}
                   </td>
                   <td className="px-4 py-3 capitalize">{u.role}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{num(u.credits)}</td>

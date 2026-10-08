@@ -5529,7 +5529,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         let topReasons: Array<{ reason: string; count: number }> = [];
         try {
           const reasonRows = await query<{ reason: string; count: string }>(
-            `SELECT COALESCE(NULLIF(left(error, 160), ''), 'unknown') AS reason,
+            `SELECT COALESCE(NULLIF(left(error, 300), ''), 'unknown') AS reason,
                     count(*)::text AS count
              FROM jobs
              WHERE status = 'error'
@@ -6132,7 +6132,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // Top terminal job errors in the window. Restart-interrupted jobs are
     // excluded — they are operator-caused, not generation failures.
     const byError = await query<{ reason: string; count: string }>(
-      `SELECT COALESCE(NULLIF(left(error, 160), ''), 'unknown') AS reason,
+      `SELECT COALESCE(NULLIF(left(error, 300), ''), 'unknown') AS reason,
               count(*)::text AS count
        FROM jobs
        WHERE status = 'error'
@@ -6192,7 +6192,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         `SELECT u.created_at, u.email, u.name, u.role, u.status,
                 (SELECT COALESCE(sum(k.credits),0) FROM api_keys k WHERE k.user_id = u.id) AS credits,
                 (SELECT count(*) FROM api_keys k WHERE k.user_id = u.id) AS key_count,
-                l.request_count, l.billed_count, l.free_count, l.failed_count, l.last_activity
+                l.request_count, l.billed_count, l.free_count, l.failed_count, l.last_activity,
+                EXISTS(SELECT 1 FROM suno_accounts s WHERE lower(s.label) = lower(u.email)) AS is_suno_account
          FROM users u
          LEFT JOIN LATERAL (
            SELECT count(*) AS request_count,
@@ -6206,7 +6207,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         params,
       );
       const lines = [
-        "created_at,email,name,role,status,credits,keys,requests,billed,free,failed,last_activity",
+        "created_at,email,name,role,status,credits,keys,requests,billed,free,failed,last_activity,is_suno_account",
         ...all.map((r) =>
           [
             r.created_at,
@@ -6221,6 +6222,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
             r.free_count,
             r.failed_count,
             r.last_activity,
+            r.is_suno_account,
           ]
             .map(csvCell)
             .join(","),
@@ -6238,7 +6240,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       `SELECT u.id, u.email, u.name, u.role, u.status, u.created_at,
               (SELECT COALESCE(sum(k.credits),0) FROM api_keys k WHERE k.user_id = u.id) AS credits,
               (SELECT count(*) FROM api_keys k WHERE k.user_id = u.id) AS key_count,
-              l.request_count, l.billed_count, l.free_count, l.failed_count, l.last_activity
+              l.request_count, l.billed_count, l.free_count, l.failed_count, l.last_activity,
+              EXISTS(SELECT 1 FROM suno_accounts s WHERE lower(s.label) = lower(u.email)) AS is_suno_account
        FROM users u
        LEFT JOIN LATERAL (
          SELECT count(*) AS request_count,

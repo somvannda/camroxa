@@ -171,10 +171,18 @@ function JobsInner() {
                 <th scope="col" className="px-4 py-3">Created</th>
                 <th scope="col" className="px-4 py-3">Type</th>
                 <th scope="col" className="px-4 py-3">Status</th>
-                <th scope="col" className="px-4 py-3">User</th>
+                <th scope="col" className="px-4 py-3" title="Customer who submitted the job">
+                  User
+                </th>
                 <th scope="col" className="px-4 py-3">Model</th>
                 <th scope="col" className="px-4 py-3 text-right">Credits</th>
-                <th scope="col" className="px-4 py-3">Account</th>
+                <th
+                  scope="col"
+                  className="px-4 py-3"
+                  title="Pooled Suno login that ran the job — not the customer"
+                >
+                  Suno account
+                </th>
                 <th scope="col" className="px-4 py-3">Error</th>
               </tr>
             </thead>
@@ -191,7 +199,12 @@ function JobsInner() {
                   <td className="px-4 py-3">{j.email ?? "—"}</td>
                   <td className="px-4 py-3 text-xs text-[var(--muted)]">{j.model ?? "—"}</td>
                   <td className="px-4 py-3 text-right tabular-nums">{num(j.credits)}</td>
-                  <td className="px-4 py-3 text-xs text-[var(--muted)]">{j.account_id ?? "—"}</td>
+                  <td
+                    className="px-4 py-3 text-xs text-[var(--muted)]"
+                    title="Pooled Suno login that ran the job — not the customer"
+                  >
+                    {j.account_id ?? "—"}
+                  </td>
                   <td className="px-4 py-3">
                     {j.error ? (
                       <span
