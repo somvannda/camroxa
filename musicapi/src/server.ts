@@ -1038,7 +1038,41 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return false;
   }
 
+  /**
+   * The minimum balance a customer must hold to run a free (0-cost) generation
+   * endpoint. Free operations are never charged, but they are reserved for
+   * funded accounts so "free" stays a perk for paying customers instead of an
+   * open tier for every signed-in user. `0` disables the gate.
+   */
+  async function requireFundedAccount(userId: string): Promise<boolean> {
+    const min = config.creditGate.minCredits;
+    if (!(min > 0)) return true;
+    const { credits } = await accountCredits(userId);
+    return credits >= min;
+  }
+
+  /** The user's oldest active key, used to attribute a free (uncharged) job. */
+  async function oldestActiveKey(userId: string): Promise<DbApiKey | null> {
+    return queryOne<DbApiKey>(
+      `SELECT id, user_id, name, key_prefix, credits, safe_spend_limit, safe_spend_hourly, safe_spend_daily, safe_spend_total, ip_whitelist, is_active, credits_expire_at
+       FROM api_keys WHERE user_id = $1 AND is_active = true ORDER BY created_at ASC LIMIT 1`,
+      [userId],
+    );
+  }
+
+  /**
+   * Read/detail/download variant of `charge`: a 0-cost read must not be gated
+   * by the funded-account floor — a drained customer can still view what they
+   * already own. A positive cost is charged exactly as before.
+   */
+  async function chargeRead(key: DbApiKey, cost: number): Promise<boolean> {
+    return cost > 0 ? charge(key, cost) : true;
+  }
+
   async function charge(key: DbApiKey, amount: number): Promise<boolean> {
+    // A 0-cost endpoint is never charged, but it still requires a funded account
+    // so free stays a customer perk. Read routes call `chargeRead` instead.
+    if (amount <= 0) return requireFundedAccount(key.user_id);
     const effectiveTotalLimit =
       key.safe_spend_total ?? key.safe_spend_limit ?? null;
 
@@ -1095,10 +1129,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * Atomically pick the user's oldest key that can afford `amount` and deduct the
    * credits in a single statement, so concurrent requests can never both spend the
    * same balance. Returns the charged key (with its new balance) or null when the
-   * user has no key that can pay. `amount <= 0` is a no-op and returns null.
+   * user has no key that can pay. For `amount <= 0` (a free endpoint) nothing is
+   * deducted, but the account must still be funded: it returns an active key for
+   * attribution when `requireFundedAccount` passes, else null.
    */
   async function chargeUserKey(userId: string, amount: number): Promise<DbApiKey | null> {
-    if (amount <= 0) return null;
+    if (amount <= 0) {
+      // Free generation: never charged, but the account must be funded (see
+      // `requireFundedAccount`). Returning a key lets the job be attributed
+      // without spending anything; null rejects only at call sites whose guard
+      // is `if (!key)`. Read/detail/download routes keep a `cost > 0 && !key`
+      // guard, so a null key on a 0-cost read still passes through.
+      if (!(await requireFundedAccount(userId))) return null;
+      return oldestActiveKey(userId);
+    }
     const rows = await query<DbApiKey>(
       `WITH candidate AS (
          SELECT id FROM api_keys
@@ -1764,8 +1808,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         cost = 0;
       }
       const key = await chargeUserKey(u.id, cost);
-      if (cost > 0 && !key) {
-        return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+      if (cost > 0 && key === null) {
+        return reply.code(402).send({ error: "Insufficient credits." });
       }
       const job = newJob(type);
       job.userId = u.id;
@@ -3574,8 +3618,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     const cost = await costFor(type, (body.model as string) || undefined);
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
 
     if (type === "lyrics") {
@@ -3665,8 +3709,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cost = await costFor("recovery_audio");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("recovery_audio", (body.callBackUrl || body.callback_url) as string | undefined);
     job.userId = u.id;
@@ -3687,8 +3731,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const stemsKey = separationType === "advanced" ? "stems_advanced" : separationType === "stems" ? "stems_split" : "stems";
     const cost = await costFor(stemsKey);
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const jobType: Job["type"] =
       separationType === "stems" || separationType === "advanced" ? "stems" : "stems";
@@ -3718,8 +3762,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cost = await costFor("replace_section");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("replace_section");
     job.userId = u.id;
@@ -3759,8 +3803,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const styles = ((body.style as string) || undefined);
     const cost = await costFor("persona");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("persona");
     job.userId = u.id;
@@ -3789,8 +3833,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const vocalEndS = body.vocalEndS != null ? Number(body.vocalEndS) : undefined;
     const cost = await costFor("voice_generate");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("voice_generate");
     job.userId = u.id;
@@ -3816,8 +3860,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const language = (body.language as string) || undefined;
     const cost = await costFor("voice_validate");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("voice_validate");
     job.userId = u.id;
@@ -3837,8 +3881,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const prompt = (body.prompt as string) || "";
     const cost = await costFor("voice_phrase");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("voice_phrase");
     job.userId = u.id;
@@ -3857,8 +3901,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const extension = (body.extension as string) || "wav";
     const cost = await costFor("voice_record");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("voice_record");
     job.userId = u.id;
@@ -4589,7 +4633,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           if (!chargedKey) {
             await query("DELETE FROM download_purchases WHERE id = $1", [purchaseId]);
             purchaseId = null;
-            return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+            return reply.code(402).send({ error: "Insufficient credits." });
           }
         }
       }
@@ -4794,11 +4838,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
       const model = modelField ? (body[modelField] as string) || undefined : undefined;
       const cost = await costFor(type, model);
-      // `chargeUserKey` returns null for a 0-credit request, so a free endpoint
-      // must not be rejected just because no key could be charged.
+      // `chargeUserKey` returns null for a rejected request: a paid endpoint
+      // needs enough credits, and a free (0-cost) one needs a funded account
+      // (see `requireFundedAccount`). Either way `if (!key)` is the gate.
       const key = await chargeUserKey(u.id, cost);
-      if (cost > 0 && !key) {
-        return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+      if (!key) {
+        return reply.code(402).send({ error: "Insufficient credits." });
       }
       const job = newJob(type, (body.callback_url as string) || undefined);
       job.userId = u.id;
@@ -4828,10 +4873,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         if (err) return reply.code(400).send({ error: err });
       }
       const cost = await costFor(type);
-      // See meClipRoute: a 0-credit request legitimately has no charged key.
+      // See meClipRoute: `if (!key)` gates both paid cost and the funded floor.
       const key = await chargeUserKey(u.id, cost);
-      if (cost > 0 && !key) {
-        return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+      if (!key) {
+        return reply.code(402).send({ error: "Insufficient credits." });
       }
       const job = newJob(type, (body.callback_url as string) || undefined);
       job.userId = u.id;
@@ -4933,8 +4978,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const format = (body.format as string) || "wav";
     const cost = await costFor("wav");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && key === null) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("wav", (body.callback_url as string) || undefined);
     job.userId = u.id;
@@ -4959,8 +5004,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cost = await costFor("midi_generate");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("midi_generate", (body.callback_url as string) || undefined);
     job.userId = u.id;
@@ -5097,8 +5142,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cost = await costFor("replace_section");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("replace_section", (body.callback_url as string) || undefined);
     job.userId = u.id;
@@ -5123,8 +5168,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const cost = await costFor("recovery_audio");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("recovery_audio", (body.callback_url as string) || undefined);
     job.userId = u.id;
@@ -5145,8 +5190,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
       const key = await chargeUserKey(u.id, cost);
-      if (cost > 0 && !key) {
-        return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+      if (cost > 0 && key === null) {
+        return reply.code(402).send({ error: "Insufficient credits." });
       }
       job = newJob("timestamped_lyrics_detail");
       job.userId = u.id;
@@ -5184,8 +5229,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       cost = 0;
     }
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (cost > 0 && key === null) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("wav_detail");
     job.userId = u.id;
@@ -5205,8 +5250,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
     const cost = await costFor("mp4_generate");
     const key = await chargeUserKey(u.id, cost);
-    if (cost > 0 && !key) {
-      return reply.code(402).send({ error: "Insufficient credits. Add credits to an API key first." });
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
     const job = newJob("mp4_generate", (body.callback_url as string) || undefined);
     job.userId = u.id;
@@ -7744,7 +7789,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const format = (body.format as string) || "wav";
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
     const cost = await costFor("wav");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+    if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
     const job = newJob("wav", body.callback_url as string | undefined);
     job.userId = key.user_id;
@@ -7936,7 +7981,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
-      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
       job = newJob("timestamped_lyrics_detail");
       job.userId = key.user_id;
       job.apiKeyId = key.id;
@@ -7957,7 +8002,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!id) return reply.code(400).send({ error: "id is required." });
       if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
       const cost = await costFor(type);
-      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
       const job = newJob(type);
       job.userId = key.user_id;
@@ -7987,7 +8032,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!id) return reply.code(400).send({ error: "id is required." });
     if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
     const cost = await costFor("wav_detail");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+    if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("wav_detail");
     job.userId = key.user_id;
     job.apiKeyId = key.id;
@@ -9079,7 +9124,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
     const cost = await costFor("wav");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+    if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
     const job = newJob("wav", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "wav"; job.credits = cost;
@@ -9330,7 +9375,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
     const cost = await costFor("wav");
-    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+    if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const cb = callbackUrl(in_);
     const job = newJob("wav", cb);
     job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "wav"; job.credits = cost;
@@ -9443,7 +9488,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
-      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
       job = newJob("timestamped_lyrics_detail");
       job.userId = key.user_id; job.apiKeyId = key.id; job.endpoint = "timestamped_lyrics_detail"; job.credits = cost;
       void submitDescribedJob(job, { op: "timestamped_lyrics_detail", args: { id } });
@@ -9694,7 +9739,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
-      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
+      if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
       job = newJob("timestamped_lyrics_detail", cb);
       job.userId = key.user_id;
       job.apiKeyId = key.id;

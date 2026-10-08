@@ -165,6 +165,17 @@ export const config = {
     maxQueue: Math.max(0, Number(process.env.SUNO_MAX_QUEUE ?? 1000)),
   },
   /**
+   * Customer-account credit floor. "Free" generation endpoints cost 0 credits
+   * and are never charged, but they must not become a free tier for every
+   * signed-in account: `minCredits` requires a funded balance before a
+   * cost-0 generation run is admitted, so free is a perk for paying customers.
+   * Paid endpoints are unaffected (their own cost already gates them), and
+   * read/detail/download routes stay open. 0 disables the gate.
+   */
+  creditGate: {
+    minCredits: Math.max(0, Number(process.env.USER_MIN_CREDITS ?? 10)),
+  },
+  /**
    * Outbound alert delivery (task 5.5, REQUIREMENTS §4.10). Reuses the same
    * Telegram bot the ops health probe uses; leaving either value unset keeps the
    * evaluator running but silently skips delivery (alerts still surface in the
