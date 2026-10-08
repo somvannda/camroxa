@@ -52,6 +52,7 @@ from deploy import (  # noqa: E402
     ssh_connect,
     tar_filter,
 )
+from deploy_guards import acquire_remote_lock, release_remote_lock  # noqa: E402
 
 REMOTE_SCRIPT = Path(__file__).resolve().parent / "camxora-musicapi-remote.sh"
 REMOTE_TARBALL = "/tmp/musicapi-src.tar.gz"
@@ -240,9 +241,17 @@ def deploy(env: DeployEnv, issue_cert: bool = False, skip_frontend: bool = False
 
     print(f"Connecting to {user}@{host}...")
     client = ssh_connect(host, user, key_path, password)
+    lock = None
     try:
+        # Serialize deploys to this host: two agents deploying at once clobber
+        # each other's node_modules mid-build (observed 2026-10-07). A TTL keeps
+        # a crashed deploy from wedging the lock; CAMXORA_ALLOW_CONCURRENT_DEPLOY=1
+        # overrides for a deliberate parallel deploy.
+        lock = acquire_remote_lock(client)
         code, output = upload_and_run(client, env, secrets, issue_cert, skip_frontend)
     finally:
+        if lock is not None:
+            release_remote_lock(client, lock)
         client.close()
 
     sentinel = f"MUSICAPI_{env.upper()}_DEPLOYED"
