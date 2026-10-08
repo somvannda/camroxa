@@ -9,6 +9,7 @@ import { logout as endSession } from "@/lib/api";
 
 const NAV = [
   { href: "/admin", label: "Dashboard" },
+  { href: "/admin/incidents", label: "Alerts & Incidents" },
   { href: "/admin/accounts", label: "Suno Accounts" },
   { href: "/admin/users", label: "Users" },
   { href: "/admin/keys", label: "API Keys" },
