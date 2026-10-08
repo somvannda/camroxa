@@ -2186,6 +2186,10 @@ class BatchRepository:
     async def get_batch_status_counters(self, batch_id: UUID) -> dict[str, int]:
         """Aggregate batch status counters across songs, suno tasks, and image jobs.
 
+        Suno counters are **per song** (not per task row): a song can have several
+        ``suno_tasks`` rows (superseded failures, retries), and only the song's
+        terminal state should decide batch status.
+
         Returns a dict with keys:
             total_songs, drafts_completed, drafts_failed,
             suno_submitted, suno_completed, suno_failed,
@@ -2210,17 +2214,17 @@ class BatchRepository:
         song_counts: dict[str, int] = {row["status"]: row["cnt"] for row in song_rows}
         total_songs = sum(song_counts.values())
 
-        # Suno task status counts
-        suno_rows = await self._pool.fetch(
+        # Count distinct songs that have any Suno task. A song can have several
+        # rows (superseded failures, retries), so counting rows would let stale
+        # or duplicate task rows distort the derived batch status.
+        suno_submitted = await self._pool.fetchval(
             """
-            SELECT status, COUNT(*) as cnt
+            SELECT COUNT(DISTINCT song_id)
             FROM suno_tasks
-            WHERE batch_id = $1
-            GROUP BY status
+            WHERE batch_id = $1 AND song_id IS NOT NULL
             """,
             batch_id,
-        )
-        suno_counts: dict[str, int] = {row["status"]: row["cnt"] for row in suno_rows}
+        ) or 0
 
         # Suno download counts
         downloaded_count = await self._pool.fetchval(
@@ -2247,9 +2251,12 @@ class BatchRepository:
             + song_counts.get("suno_success", 0)
             + song_counts.get("suno_failed", 0),
             "drafts_failed": song_counts.get("draft_failed", 0),
-            "suno_submitted": sum(suno_counts.values()),
-            "suno_completed": suno_counts.get("success", 0),
-            "suno_failed": suno_counts.get("failed", 0),
+            "suno_submitted": suno_submitted,
+            # Per-song terminal state is authoritative: a superseded failed task
+            # row or a duplicated success row must not keep a finished batch
+            # partial (the songs are the source of truth).
+            "suno_completed": song_counts.get("suno_success", 0),
+            "suno_failed": song_counts.get("suno_failed", 0),
             "audio_downloaded": downloaded_count,
             "images_completed": images_completed,
         }
