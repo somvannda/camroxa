@@ -576,7 +576,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // queue is bounded by `SUNO_MAX_QUEUE` so a flood cannot grow it without limit.
   const sunoSlots = new ConcurrencyGate(
     () => config.suno.maxConcurrent ?? Math.max(1, pool.size * config.suno.concurrentPerAccount),
-    config.suno.maxQueue,
+    () => config.suno.maxQueue,
   );
 
   // In-flight jobs per Suno account. Account selection is least-loaded-first

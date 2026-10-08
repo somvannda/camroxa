@@ -34,8 +34,13 @@ export class ConcurrencyGate {
    */
   constructor(
     private readonly max: () => number,
-    private readonly maxQueue = 0,
+    private readonly maxQueue: number | (() => number) = 0,
   ) {}
+
+  /** Current waiting-queue bound; supports a live getter (admin-editable). */
+  private maxQueueLimit(): number {
+    return typeof this.maxQueue === "function" ? this.maxQueue() : this.maxQueue;
+  }
 
   /**
    * Resolve once both a global slot and an owner slot are free, or reject with
@@ -48,7 +53,8 @@ export class ConcurrencyGate {
       this.start(owner);
       return Promise.resolve(() => this.release(owner));
     }
-    if (this.maxQueue > 0 && this.waiting.length >= this.maxQueue) {
+    const maxQueue = this.maxQueueLimit();
+    if (maxQueue > 0 && this.waiting.length >= maxQueue) {
       return Promise.reject(new QueueFullError());
     }
     return new Promise<() => void>((resolve) => {
@@ -90,6 +96,6 @@ export class ConcurrencyGate {
 
   /** Snapshot for the admin `/metrics` view. */
   stats(): { active: number; waiting: number; maxQueue: number } {
-    return { active: this.active, waiting: this.waiting.length, maxQueue: this.maxQueue };
+    return { active: this.active, waiting: this.waiting.length, maxQueue: this.maxQueueLimit() };
   }
 }

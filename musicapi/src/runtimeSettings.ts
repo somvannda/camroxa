@@ -44,6 +44,13 @@ export interface GroupDef {
   fields: FieldDef[];
 }
 
+/**
+ * Boot-time Suno concurrency defaults, captured before any stored override is
+ * applied. Used as the fallback when a field is cleared in the admin console, so
+ * clearing falls back to the configured value rather than the last-applied one.
+ */
+const SUNO_CONCURRENCY_DEFAULTS = { ...config.suno };
+
 /** Every key that can be managed from the admin console. */
 export const INTEGRATION_GROUPS: GroupDef[] = [
   {
@@ -60,6 +67,60 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
       { key: "apiUrl", label: "Suno API URL", type: "string", env: "SUNO_API_URL", def: "https://studio-api-prod.suno.com" },
       { key: "turnstileSitekey", label: "Turnstile sitekey", type: "string", env: "SUNO_TURNSTILE_SITEKEY", def: "0x4AAAAAADI7xDNyj-3LcIbi" },
       { key: "turnstilePageUrl", label: "Turnstile page URL", type: "string", env: "SUNO_TURNSTILE_PAGEURL", def: "https://suno.com/create" },
+    ],
+  },
+  {
+    key: "sunoConcurrency",
+    label: "Suno concurrency (jobs)",
+    fields: [
+      {
+        key: "concurrentPerAccount",
+        label: "Parallel jobs per Suno account",
+        type: "number",
+        env: "SUNO_CONCURRENT_PER_ACCOUNT",
+        def: SUNO_CONCURRENCY_DEFAULTS.concurrentPerAccount,
+        help: "The global ceiling is pool size × this value (unless Global max is set). Adding Suno accounts raises capacity automatically — no change needed here.",
+      },
+      {
+        key: "maxConcurrent",
+        label: "Global max concurrent (blank = auto)",
+        type: "number",
+        env: "SUNO_MAX_CONCURRENT",
+        def: SUNO_CONCURRENCY_DEFAULTS.maxConcurrent ?? "",
+        help: "Leave blank to derive the ceiling from the account pool. Set a number to pin it regardless of pool size.",
+      },
+      {
+        key: "maxConcurrentPerUser",
+        label: "Max concurrent per user",
+        type: "number",
+        env: "SUNO_MAX_CONCURRENT_PER_USER",
+        def: SUNO_CONCURRENCY_DEFAULTS.maxConcurrentPerUser,
+        help: "How many jobs one user may run at once across all their API keys. A per-user rate-limits override wins over this.",
+      },
+      {
+        key: "maxConcurrentPerAccount",
+        label: "Max in-flight per account",
+        type: "number",
+        env: "SUNO_MAX_CONCURRENT_PER_ACCOUNT",
+        def: SUNO_CONCURRENCY_DEFAULTS.maxConcurrentPerAccount,
+        help: "Per-account cap; selection is least-loaded-first so a burst spreads across the pool.",
+      },
+      {
+        key: "maxQueue",
+        label: "Max waiting jobs (0 = unlimited)",
+        type: "number",
+        env: "SUNO_MAX_QUEUE",
+        def: SUNO_CONCURRENCY_DEFAULTS.maxQueue,
+        help: "Jobs beyond the ceiling wait for a slot; past this depth new jobs fail fast with a retryable error.",
+      },
+      {
+        key: "minCredits",
+        label: "Min credits per account",
+        type: "number",
+        env: "SUNO_MIN_CREDITS",
+        def: SUNO_CONCURRENCY_DEFAULTS.minCredits,
+        help: "Accounts below this balance are skipped for new work, avoiding 402 'not enough credits' submissions.",
+      },
     ],
   },
   {
@@ -190,6 +251,36 @@ function applyToConfig(): void {
   config.apiUrl = str("suno", "apiUrl", config.apiUrl);
   config.turnstileSitekey = str("suno", "turnstileSitekey", config.turnstileSitekey);
   config.turnstilePageUrl = str("suno", "turnstilePageUrl", config.turnstilePageUrl);
+
+  // Suno concurrency (see the `suno` block in src/config.ts and
+  // src/concurrency.ts). Applied on every save; the ConcurrencyGate and the
+  // per-job caps read these live, so changes take effect without a restart.
+  config.suno.concurrentPerAccount = Math.max(
+    1,
+    num("sunoConcurrency", "concurrentPerAccount", SUNO_CONCURRENCY_DEFAULTS.concurrentPerAccount),
+  );
+  config.suno.maxConcurrent = (() => {
+    const v = current["sunoConcurrency"]?.["maxConcurrent"];
+    if (v === undefined || v === null || v === "") return SUNO_CONCURRENCY_DEFAULTS.maxConcurrent;
+    const n = typeof v === "number" ? v : Number(v);
+    return Number.isFinite(n) ? Math.max(1, n) : SUNO_CONCURRENCY_DEFAULTS.maxConcurrent;
+  })();
+  config.suno.maxConcurrentPerUser = Math.max(
+    1,
+    num("sunoConcurrency", "maxConcurrentPerUser", SUNO_CONCURRENCY_DEFAULTS.maxConcurrentPerUser),
+  );
+  config.suno.maxConcurrentPerAccount = Math.max(
+    1,
+    num("sunoConcurrency", "maxConcurrentPerAccount", SUNO_CONCURRENCY_DEFAULTS.maxConcurrentPerAccount),
+  );
+  config.suno.maxQueue = Math.max(
+    0,
+    num("sunoConcurrency", "maxQueue", SUNO_CONCURRENCY_DEFAULTS.maxQueue),
+  );
+  config.suno.minCredits = Math.max(
+    0,
+    num("sunoConcurrency", "minCredits", SUNO_CONCURRENCY_DEFAULTS.minCredits),
+  );
 
   config.twoCaptchaKey = str("captcha", "twoCaptchaKey", config.twoCaptchaKey);
 
