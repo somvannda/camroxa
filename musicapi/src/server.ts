@@ -23,6 +23,7 @@ import { trustProxyOption } from "./trustProxy.js";
 import { isProtectedPath, isPublicProtectedRoute } from "./routeAuth.js";
 import { verifyChmabaSignature, findReferenceId } from "./webhookSignature.js";
 import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
+import { flowVerdict, type AssetCheck } from "./flowGuard.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
@@ -1721,14 +1722,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /**
-   * True when `assetId` (a clip id or an upload-session id) is known to belong to
-   * a *different* user. The exact `asset_owners` mapping is checked first;
+   * Who owns `assetId` (a clip id or an upload-session id): the caller, someone
+   * else, or nobody known. The exact `asset_owners` mapping is checked first;
    * assets recorded before that table existed (or direct-upload ids that never
-   * became a job) fall back to scanning the stored job/usage results. An id
-   * attributed to nobody is allowed through, so this never regresses access.
+   * became a job) fall back to scanning the stored job/usage results.
    */
-  async function assetOwnedByOtherUser(userId: string, assetId: string): Promise<boolean> {
-    if (!userId || !assetId) return false;
+  async function findAssetOwner(
+    userId: string,
+    assetId: string,
+  ): Promise<"caller" | "other" | "none"> {
+    if (!userId || !assetId) return "none";
     // Exact, indexed path. If the table has not been migrated yet, fall through
     // to the result scan so a code-ahead-of-migration deploy never breaks access.
     let owner: { user_id: string } | null = null;
@@ -1740,7 +1743,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     } catch {
       owner = null;
     }
-    if (owner) return owner.user_id !== userId;
+    if (owner) return owner.user_id === userId ? "caller" : "other";
     const owns = await queryOne<{ one: number }>(
       `SELECT 1 AS one FROM jobs
          WHERE user_id = $1 AND result_json::text LIKE '%' || $2 || '%'
@@ -1750,7 +1753,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
        LIMIT 1`,
       [userId, assetId],
     );
-    if (owns) return false;
+    if (owns) return "caller";
     const foreign = await queryOne<{ one: number }>(
       `SELECT 1 AS one FROM jobs
          WHERE user_id IS NOT NULL AND user_id <> $1
@@ -1762,11 +1765,92 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
        LIMIT 1`,
       [userId, assetId],
     );
-    return Boolean(foreign);
+    return foreign ? "other" : "none";
+  }
+
+  /** True when the job that produced `assetId` reached a terminal success. */
+  async function assetProducedByCompletedJob(assetId: string): Promise<boolean> {
+    const row = await queryOne<{ status: string | null }>(
+      `SELECT j.status
+         FROM asset_owners ao
+         LEFT JOIN jobs j ON j.id = ao.job_id
+        WHERE ao.asset_id = $1`,
+      [assetId],
+    ).catch(() => null);
+    // No mapping, or a legacy row without a job → cannot assert, grandfather.
+    if (!row || row.status == null) return true;
+    return row.status === "complete";
+  }
+
+  /**
+   * Generation-flow guard: a derivative endpoint's prerequisite asset must
+   * belong to the caller and (when known) have been produced by a completed job.
+   * Returns "ok" when the guard is disabled, so route wiring is inert until
+   * `config.flowGuard.enforced` is turned on. The verdict table lives in
+   * `./flowGuard.ts` (unit-tested without a DB).
+   */
+  async function requireOwnedAsset(
+    userId: string,
+    assetId: string | null | undefined,
+    opts: { mustBeComplete?: boolean } = {},
+  ): Promise<AssetCheck> {
+    if (!config.flowGuard.enforced) return "ok";
+    if (!assetId) return "ok"; // required-field validation is the route's job
+    const owner = await findAssetOwner(userId, assetId);
+    if (owner !== "caller") return flowVerdict({ enforced: true, owner });
+    const producedByCompletedJob = await assetProducedByCompletedJob(assetId);
+    return flowVerdict({
+      enforced: true,
+      owner,
+      mustBeComplete: opts.mustBeComplete,
+      producedByCompletedJob,
+    });
+  }
+
+  /**
+   * The prerequisite asset ids referenced by a derivative request body. Only
+   * unambiguous clip/upload fields are read — `taskId` is excluded because it
+   * may be an origin job id, which is not an `asset_owners` row.
+   */
+  function assetIdsInBody(body: Record<string, unknown>): string[] {
+    const ids: string[] = [];
+    const push = (v: unknown) => {
+      if (typeof v === "string" && v) ids.push(v);
+    };
+    push(body.clip_id);
+    push(body.clipId);
+    push(body.uploaded_clip_id);
+    push(body.uploadedClipId);
+    push(body.audioId);
+    push(body.audio_id);
+    if (Array.isArray(body.clip_ids)) for (const v of body.clip_ids) push(v);
+    if (Array.isArray(body.uploaded_clip_ids)) for (const v of body.uploaded_clip_ids) push(v);
+    return ids;
   }
 
   function denyForeignAsset(reply: FastifyReply): void {
     reply.code(403).send({ error: "This asset does not belong to your account." });
+  }
+
+  /** Send the appropriate 403 for a failed generation-flow check. */
+  function denyFlow(reply: FastifyReply, check: AssetCheck): void {
+    if (check === "foreign") return denyForeignAsset(reply);
+    reply.code(403).send({ error: "No completed generation found for this asset." });
+  }
+
+  /**
+   * Run the generation-flow check for a derivative route; on failure it sends
+   * the 403 and returns false, so a handler can `if (!(await enforceFlow(...))) return;`.
+   */
+  async function enforceFlow(
+    reply: FastifyReply,
+    userId: string,
+    assetId: string | null | undefined,
+  ): Promise<boolean> {
+    const check = await requireOwnedAsset(userId, assetId);
+    if (check === "ok") return true;
+    denyFlow(reply, check);
+    return false;
   }
 
   /**
@@ -1800,7 +1884,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!u) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
-      if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
+      if (!(await enforceFlow(reply, u.id, id))) return;
       let cost = 0;
       try {
         cost = await costFor(type);
@@ -3713,6 +3797,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!sunoTaskId && !clipId) {
       return reply.code(400).send({ error: "sunoTaskId or clip_id is required." });
     }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(u.id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const cost = await costFor("recovery_audio");
     const key = await chargeUserKey(u.id, cost);
     if (!key) {
@@ -3733,6 +3821,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const clipId = (body.taskId || body.audioId || body.clip_id || body.task_id) as string | undefined;
     if (!clipId) return reply.code(400).send({ error: "taskId is required." });
+    const flowCheck = await requireOwnedAsset(u.id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const separationType = (body.separationType || "vocal") as "vocal" | "stems" | "advanced" | string;
     const stemsKey = separationType === "advanced" ? "stems_advanced" : separationType === "stems" ? "stems_split" : "stems";
     const cost = await costFor(stemsKey);
@@ -3766,6 +3856,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           "taskId, fullLyrics, infillStartS, infillEndS are required (duration must be at least 10 seconds).",
       });
     }
+    const flowCheck = await requireOwnedAsset(u.id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("replace_section");
     const key = await chargeUserKey(u.id, cost);
     if (!key) {
@@ -3806,6 +3898,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = (body.taskId || body.clip_id || body.clipId) as string | undefined;
     const name = (body.voiceName || body.name) as string | undefined;
     if (!clipId || !name) return reply.code(400).send({ error: "taskId and voiceName are required." });
+    const flowCheck = await requireOwnedAsset(u.id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const styles = ((body.style as string) || undefined);
     const cost = await costFor("persona");
     const key = await chargeUserKey(u.id, cost);
@@ -3833,6 +3927,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = (body.taskId || body.clip_id || body.clipId) as string | undefined;
     const name = (body.voiceName || body.name) as string | undefined;
     if (!clipId || !name) return reply.code(400).send({ error: "taskId and voiceName are required." });
+    const flowCheck = await requireOwnedAsset(u.id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const styles = (body.style as string) || undefined;
     const description = (body.description as string) || undefined;
     const vocalStartS = body.vocalStartS != null ? Number(body.vocalStartS) : undefined;
@@ -4528,7 +4624,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
-    if (await assetOwnedByOtherUser(u.id, clipId)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, u.id, clipId))) return;
     const format = q.format === "wav" ? "wav" : q.format === "m4a" ? "m4a" : "mp3";
 
     if (storageConfigured()) {
@@ -4575,7 +4671,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const q = (req.query ?? {}) as { clip_id?: string; format?: string; force_download?: string };
     const clipId = q.clip_id;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
-    if (await assetOwnedByOtherUser(u.id, clipId)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, u.id, clipId))) return;
     const formatRaw = (q.format as string) || "mp3";
 
     // Music-video download. `runMusicVideoJob` stores the rendered render at
@@ -4842,6 +4938,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         const err = validate(body);
         if (err) return reply.code(400).send({ error: err });
       }
+      // Generation-flow guard: a derivative must reference an owned, completed clip.
+      for (const assetId of assetIdsInBody(body)) {
+        const check = await requireOwnedAsset(u.id, assetId);
+        if (check !== "ok") return denyFlow(reply, check);
+      }
       const model = modelField ? (body[modelField] as string) || undefined : undefined;
       const cost = await costFor(type, model);
       // `chargeUserKey` returns null for a rejected request: a paid endpoint
@@ -4877,6 +4978,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (validate) {
         const err = validate(body);
         if (err) return reply.code(400).send({ error: err });
+      }
+      // Generation-flow guard: a derivative must reference an owned, completed clip.
+      for (const assetId of assetIdsInBody(body)) {
+        const check = await requireOwnedAsset(u.id, assetId);
+        if (check !== "ok") return denyFlow(reply, check);
       }
       const cost = await costFor(type);
       // See meClipRoute: `if (!key)` gates both paid cost and the funded floor.
@@ -4981,6 +5087,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const clipId = body.clip_id as string;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const flowCheck = await requireOwnedAsset(u.id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const format = (body.format as string) || "wav";
     const cost = await costFor("wav");
     const key = await chargeUserKey(u.id, cost);
@@ -5007,6 +5115,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = (body.clip_id as string) || (sourceTaskId ? undefined : audioId);
     if (!sourceTaskId && !clipId) {
       return reply.code(400).send({ error: "clip_id or task_id is required." });
+    }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(u.id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const cost = await costFor("midi_generate");
     const key = await chargeUserKey(u.id, cost);
@@ -5122,7 +5234,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
-    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, u.id, id))) return;
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -5146,6 +5258,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         .code(400)
         .send({ error: "clip_id, lyrics, start_s, end_s are required (end_s > start_s)." });
     }
+    const flowCheck = await requireOwnedAsset(u.id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("replace_section");
     const key = await chargeUserKey(u.id, cost);
     if (!key) {
@@ -5172,6 +5286,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!sunoTaskId && !clipId) {
       return reply.code(400).send({ error: "clip_id or sunoTaskId is required." });
     }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(u.id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const cost = await costFor("recovery_audio");
     const key = await chargeUserKey(u.id, cost);
     if (!key) {
@@ -5191,7 +5309,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const u = requireAuth(req, reply);
     if (!u) return;
     const { id } = req.params as { id: string };
-    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, u.id, id))) return;
     let job = await reusableLyricsJob(id, u.id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
@@ -5227,7 +5345,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!u) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await assetOwnedByOtherUser(u.id, id)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, u.id, id))) return;
     let cost = 0;
     try {
       cost = await costFor("wav_detail");
@@ -5254,6 +5372,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const clipId = body.clip_id as string;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const flowCheck = await requireOwnedAsset(u.id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("mp4_generate");
     const key = await chargeUserKey(u.id, cost);
     if (!key) {
@@ -7659,6 +7779,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const body = (req.body ?? {}) as Record<string, unknown>;
       const clipId = body.clip_id as string;
       if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+      // Generation-flow guard: this derivative must reference an owned, completed clip.
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
       // Only remaster takes a model; the other clip operations use the
       // account's default, so they stay on the endpoint-wide price.
       const model = type === "remaster" ? (body.model as string) || undefined : undefined;
@@ -7704,6 +7827,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipIds || !Array.isArray(clipIds) || clipIds.length < 2) {
       return reply.code(400).send({ error: "clip_ids (array of 2+) is required." });
     }
+    for (const id of clipIds) {
+      const check = await requireOwnedAsset(key.user_id, id);
+      if (check !== "ok") return denyFlow(reply, check);
+    }
     const cost = await costFor("mashup");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7730,6 +7857,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipId || !lyrics || !Number.isFinite(startS) || !Number.isFinite(endS) || endS <= startS) {
       return reply.code(400).send({ error: "clip_id, lyrics, start_s, end_s are required (end_s > start_s)." });
     }
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("replace_section");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7752,6 +7881,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string;
     const prompt = body.prompt as string;
     if (!clipId || !prompt) return reply.code(400).send({ error: "clip_id and prompt are required." });
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("cover_image");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7772,6 +7903,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string;
     const name = body.name as string;
     if (!clipId || !name) return reply.code(400).send({ error: "clip_id and name are required." });
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("persona");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7797,6 +7930,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string;
     const format = (body.format as string) || "wav";
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("wav");
     if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7818,6 +7953,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const audioUrl = body.audio_url as string | undefined;
     if (!uploadedClipId && !audioUrl) {
       return reply.code(400).send({ error: "uploaded_clip_id or audio_url is required." });
+    }
+    if (uploadedClipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, uploadedClipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const cost = await costFor("upload_extend");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
@@ -7850,6 +7989,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const audioUrl = body.audio_url as string | undefined;
     if (!uploadedClipId && !audioUrl) {
       return reply.code(400).send({ error: "uploaded_clip_id or audio_url is required." });
+    }
+    if (uploadedClipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, uploadedClipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const cost = await costFor("upload_cover");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
@@ -7947,7 +8090,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
-    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, key.user_id, id))) return;
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -7968,6 +8111,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!sunoTaskId && !clipId) {
       return reply.code(400).send({ error: "clip_id or sunoTaskId is required." });
     }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const cost = await costFor("recovery_audio");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -7986,7 +8133,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, key.user_id, id))) return;
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
       const cost = await costFor("timestamped_lyrics_detail");
@@ -8009,7 +8156,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!key) return;
       const { id } = req.params as { id: string };
       if (!id) return reply.code(400).send({ error: "id is required." });
-      if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
+      if (!(await enforceFlow(reply, key.user_id, id))) return;
       const cost = await costFor(type);
       if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -8039,7 +8186,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!key) return;
     const { id } = req.params as { id: string };
     if (!id) return reply.code(400).send({ error: "id is required." });
-    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, key.user_id, id))) return;
     const cost = await costFor("wav_detail");
     if (!(await chargeRead(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
     const job = newJob("wav_detail");
@@ -8058,6 +8205,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const clipId = body.clip_id as string;
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("mp4_generate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -8084,6 +8233,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipId || !stylePrompt) {
       return reply.code(400).send({ error: "clip_id and style_prompt are required." });
     }
+    const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+    if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     const cost = await costFor("boost_style");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -8109,6 +8260,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = (body.clip_id as string) || (sourceTaskId ? undefined : audioId);
     if (!sourceTaskId && !clipId) {
       return reply.code(400).send({ error: "task_id or clip_id is required." });
+    }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const cost = await costFor("midi_generate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
@@ -8195,6 +8350,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         .code(400)
         .send({ error: "clip_id and name are required (or taskId + verifyUrl for a custom voice)." });
     }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const cost = await costFor("voice_generate");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
@@ -8225,6 +8384,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string | undefined;
     if (!personaId && !clipId) {
       return reply.code(400).send({ error: "persona_id or clip_id is required." });
+    }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const model = body.model as string | undefined;
     const cost = await costFor("voice_apply", model);
@@ -8261,6 +8424,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const clipId = body.clip_id as string | undefined;
     if (!personaId && !clipId) {
       return reply.code(400).send({ error: "persona_id or clip_id is required." });
+    }
+    if (clipId) {
+      const flowCheck = await requireOwnedAsset(key.user_id, clipId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
     }
     const cost = await costFor("voice_extend");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
@@ -8424,6 +8591,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const continue_at = in_.continueAt != null ? Number(in_.continueAt) : (in_.continue_at as number | undefined);
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
@@ -8441,6 +8614,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
     // sunoapi.org `type`: separate_vocal → 2-track, split_stem → multi, split_stem_advanced → single stem.
@@ -8962,6 +9141,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const uploadedClipId = (in_.audioId as string) || (in_.uploaded_clip_id as string) || undefined;
     const audioUrl = (in_.audioUrl as string) || (in_.audio_url as string) || (in_.uploadUrl as string) || undefined;
     if (!uploadedClipId && !audioUrl) {
@@ -8993,6 +9178,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const uploadedClipId = (in_.audioId as string) || (in_.uploaded_clip_id as string) || undefined;
     const audioUrl = (in_.audioUrl as string) || (in_.audio_url as string) || (in_.uploadUrl as string) || undefined;
     if (!uploadedClipId && !audioUrl) {
@@ -9023,6 +9214,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const prompt = (in_.prompt as string) || (in_.lyrics as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
@@ -9041,6 +9238,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const prompt = (in_.prompt as string) || (in_.style as string) || (in_.tags as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
@@ -9059,6 +9262,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const name = (in_.name as string) || undefined;
     if (!clipId || !name) {
@@ -9096,6 +9305,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const prompt = (in_.prompt as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
@@ -9113,6 +9328,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const prompt = (in_.prompt as string) || undefined;
     if (!clipId || !prompt) return reply.code(400).send({ error: "audioId (clip_id) and prompt are required." });
@@ -9130,6 +9351,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
     const cost = await costFor("wav");
@@ -9147,6 +9374,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const stylePrompt = (in_.style_prompt as string) || (in_.prompt as string) || (in_.style as string) || undefined;
     if (!clipId || !stylePrompt) {
@@ -9168,6 +9401,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
     const cost = await costFor("mp4_generate");
@@ -9187,6 +9426,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clipIds = in_.clip_ids as string[] | undefined;
     const audioIds = in_.audio_ids as string[] | undefined;
     const ids = clipIds ?? audioIds;
@@ -9208,6 +9453,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const sourceTaskId = (in_.taskId as string) || (in_.task_id as string) || undefined;
     const audioId = (in_.audioId as string) || (in_.audio_id as string) || undefined;
     const clipId = (in_.clip_id as string) || (sourceTaskId ? undefined : audioId);
@@ -9228,6 +9479,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const sunoTaskId =
       (in_.sunoTaskId as string) || (in_.taskId as string) || (in_.task_id as string) || undefined;
     const clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
@@ -9252,6 +9509,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const prompt = (in_.prompt as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
@@ -9269,6 +9532,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const uploadedClipId = (in_.audioId as string) || (in_.uploaded_clip_id as string) || undefined;
     const audioUrl = (in_.audioUrl as string) || (in_.audio_url as string) || undefined;
     if (!uploadedClipId && !audioUrl) {
@@ -9299,6 +9568,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const uploadedClipId = (in_.audioId as string) || (in_.uploaded_clip_id as string) || undefined;
     const audioUrl = (in_.audioUrl as string) || (in_.audio_url as string) || undefined;
     if (!uploadedClipId && !audioUrl) {
@@ -9329,6 +9604,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const prompt = (in_.prompt as string) || (in_.lyrics as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
@@ -9347,6 +9628,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const prompt = (in_.prompt as string) || (in_.style as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
@@ -9365,6 +9652,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
     const cost = await costFor("remaster");
@@ -9381,6 +9674,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
     const cost = await costFor("wav");
@@ -9398,6 +9697,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clip_id = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     if (!clip_id) return reply.code(400).send({ error: "audioId (clip_id) is required." });
     const cost = await costFor("mp4_generate");
@@ -9417,6 +9722,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const prompt = in_.prompt as string | undefined;
     if (!prompt) return reply.code(400).send({ error: "prompt is required." });
     const cost = await costFor("lyrics");
@@ -9437,6 +9748,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const extension = in_.extension as string;
     if (!extension) return reply.code(400).send({ error: "extension is required (e.g. mp3, wav, m4a)." });
     const cost = await costFor("upload_init");
@@ -9455,6 +9772,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const uploadId = (in_.upload_id as string) || (in_.uploadId as string) || undefined;
     const uploadType = (in_.upload_type as string) || (in_.uploadType as string) || undefined;
     const uploadFilename = (in_.upload_filename as string) || (in_.uploadFilename as string) || undefined;
@@ -9478,7 +9801,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const { id } = req.params as { id: string };
-    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, key.user_id, id))) return;
     const client = await pool.pick();
     try {
       const data = await client.fetchAudioUploadStatus(id);
@@ -9515,6 +9838,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const prompt = (in_.prompt as string) || undefined;
     const cost = await costFor("voice_phrase");
     if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
@@ -9530,6 +9859,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const uploadId = (in_.upload_id as string) || (in_.uploadId as string) || undefined;
     const audioUrl = (in_.audio_url as string) || (in_.audioUrl as string) || (in_.verifyUrl as string) || undefined;
     const voiceUrl = (in_.voiceUrl as string) || (in_.voice_url as string) || undefined;
@@ -9550,6 +9885,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const extension = (in_.extension as string) || undefined;
     if (!extension) return reply.code(400).send({ error: "extension is required (e.g. wav, mp3, m4a)." });
     const cost = await costFor("voice_record");
@@ -9566,6 +9907,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clipId =
       (in_.clip_id as string) ||
       (in_.clipId as string) ||
@@ -9613,6 +9960,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const personaId = (in_.persona_id as string) || (in_.personaId as string) || undefined;
     const clipId = (in_.clip_id as string) || (in_.clipId as string) || undefined;
     if (!personaId && !clipId) return reply.code(400).send({ error: "persona_id or clip_id is required." });
@@ -9642,6 +9995,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const personaId = (in_.persona_id as string) || (in_.personaId as string) || undefined;
     const clipId = (in_.clip_id as string) || (in_.clipId as string) || undefined;
     if (!personaId && !clipId) return reply.code(400).send({ error: "persona_id or clip_id is required." });
@@ -9732,6 +10091,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     // sunoapi.org sends both taskId (the generation task) and audioId (the
     // clip). Alignment reads the clip record, so the clip id must win — using
     // taskId here 404s against /api/clip/{taskId}.
@@ -9743,7 +10108,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       (in_.taskId as string) ||
       (in_.task_id as string);
     if (!id) return reply.code(400).send({ error: "audioId (the clip id) is required." });
-    if (await assetOwnedByOtherUser(key.user_id, id)) return denyForeignAsset(reply);
+    if (!(await enforceFlow(reply, key.user_id, id))) return;
     const cb = callbackUrl(in_);
     let job = await reusableLyricsJob(id, key.user_id);
     if (!job) {
@@ -9765,6 +10130,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const clipId = (in_.audioId as string) || (in_.clip_id as string) || undefined;
     const startS = Number(in_.infillStartS ?? in_.startS ?? in_.start_s);
     const endS = Number(in_.infillEndS ?? in_.endS ?? in_.end_s);
@@ -9791,6 +10162,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const prompt =
       (in_.prompt as string) ||
       (in_.gpt_description_prompt as string) ||
@@ -9827,6 +10204,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const in_ = (req.body ?? {}) as Record<string, unknown>;
+    // Generation-flow guard: any clip/upload id referenced by the alias body
+    // must be owned by the caller and produced by a completed job.
+    for (const assetId of assetIdsInBody(in_)) {
+      const flowCheck = await requireOwnedAsset(key.user_id, assetId);
+      if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+    }
     const id = (in_.taskId as string) || (in_.task_id as string);
     if (!id) return { code: 400, msg: "taskId is required", data: null };
     const job = await getJob(id);

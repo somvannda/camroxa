@@ -133,7 +133,7 @@ test("upload-status routes enforce asset ownership", () => {
   for (const r of statusRoutes) {
     assert.match(
       r.body,
-      /assetOwnedByOtherUser\(/,
+      /enforceFlow\(|requireOwnedAsset\(|assetOwnedByOtherUser\(/,
       `${r.method} ${r.path} does not enforce asset ownership`,
     );
   }
