@@ -651,7 +651,12 @@ export default function AnalyticsPage() {
                   <tbody>
                     {data.by_error.map((e, i) => (
                       <tr key={i} className="border-t border-[var(--border)]">
-                        <td className="px-4 py-3 font-mono text-xs">{e.reason}</td>
+                        <td
+                          className="px-4 py-3 align-top font-mono text-xs break-all"
+                          title={e.reason}
+                        >
+                          {e.reason}
+                        </td>
                         <td className="px-4 py-3 text-right tabular-nums">{e.count}</td>
                       </tr>
                     ))}

@@ -104,7 +104,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   );
 
   return (
-    <div className="flex min-h-screen">
+    <div className="flex h-screen overflow-hidden">
       <div className="hidden md:block">{sidebar}</div>
 
       {drawerOpen && (
@@ -133,7 +133,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           />
           <span className="font-bold">Camxora Admin</span>
         </header>
-        <main className="flex-1 overflow-y-auto p-4 md:p-8">{children}</main>
+        <main className="flex-1 overflow-y-auto overscroll-contain p-4 md:p-8">{children}</main>
       </div>
     </div>
   );
