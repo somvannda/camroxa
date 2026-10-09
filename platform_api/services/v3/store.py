@@ -302,6 +302,36 @@ class V3BillingStore:
         )
         return dict(row) if row is not None else None
 
+    async def live_grant_lots_at_period(
+        self,
+        user_id: UUID,
+        period_start: date,
+        *,
+        exclude_period_start: date | None = None,
+    ) -> list[dict[str, Any]]:
+        """Live (unspent, unexpired) ``grant`` lots anchored to ``period_start``.
+
+        Used to retire a Free calendar-month allowance that a licence/subscription
+        grant supersedes. ``exclude_period_start`` protects the licence's own lot
+        when it happens to share the calendar-month anchor.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id, remaining_units
+            FROM credit_wallet_lots
+            WHERE user_id = $1
+              AND tag = 'grant'
+              AND remaining_units > 0
+              AND (expires_at IS NULL OR expires_at > NOW())
+              AND period_start = $2
+              AND period_start IS DISTINCT FROM $3
+            """,
+            user_id,
+            period_start,
+            exclude_period_start,
+        )
+        return [dict(row) for row in rows]
+
     async def grow_period_lot(
         self, lot_id: UUID, extra_units: int, *, below_units: int
     ) -> bool:
