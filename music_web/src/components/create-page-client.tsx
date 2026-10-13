@@ -64,6 +64,11 @@ const STYLE_CHIPS = [
   'indie',
 ];
 
+// Songs (generations) loaded per page. Each song renders two version rows
+// (Version 1 / Version 2), so 50 songs = 100 version rows per page.
+// The API caps `limit` at 100 songs/page.
+const WORKSPACE_PAGE_SIZE = 50;
+
 function clipWaitingLabel(generation: WebMusicGeneration): string {
   return (generation.status || '').toUpperCase() === 'SUCCESS' ? 'Finishing' : 'Waiting';
 }
@@ -492,6 +497,10 @@ export default function CreatePageClient() {
   const [lyricCredits, setLyricCredits] = useState(0);
   const [musicCredits, setMusicCredits] = useState(0);
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = useRef(false);
   const [selectedVersion, setSelectedVersion] = useState<{
     song: WebMusicGeneration;
     clip: WebMusicClip;
@@ -515,7 +524,7 @@ export default function CreatePageClient() {
     const resolvedWorkspaceId = workspaceId ?? activeWorkspaceId ?? undefined;
     const [nextQuota, list, workspaceList, nextBalance, nextPlans] = await Promise.all([
       fetchWebMusicQuota(),
-      listWebMusicGenerations(40, 0, resolvedWorkspaceId),
+      listWebMusicGenerations(WORKSPACE_PAGE_SIZE, 0, resolvedWorkspaceId),
       listWebMusicWorkspaces().catch(() => ({ items: [] as WebMusicWorkspace[] })),
       fetchCreditBalance().catch(() => null),
       fetchSubscriptionPlans().catch(() => ({ plans: [] })),
@@ -528,11 +537,44 @@ export default function CreatePageClient() {
     setLyricCredits(Number((priced && priced.lyric_credits) || 0));
     setMusicCredits(Number((priced && priced.music_credits) || 0));
     setItems(list.items);
+    setTotal(Number(list.total ?? list.items.length));
     setWorkspaces(workspaceList.items);
     if (!activeWorkspaceId && workspaceList.items.length) {
       const defaultWorkspace =
         workspaceList.items.find((workspace) => workspace.is_default) ?? workspaceList.items[0];
       setActiveWorkspaceId(defaultWorkspace.id);
+    }
+  }
+
+  async function loadMoreGenerations() {
+    if (loadingMoreRef.current) return;
+    if (items.length >= total) return;
+    if (!activeWorkspaceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const list = await listWebMusicGenerations(
+        WORKSPACE_PAGE_SIZE,
+        items.length,
+        activeWorkspaceId,
+      );
+      setTotal(Number(list.total ?? items.length + list.items.length));
+      setItems((prev) => {
+        const seen = new Set(prev.map((item) => item.id));
+        const merged = [...prev];
+        for (const item of list.items) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            merged.push(item);
+          }
+        }
+        return merged;
+      });
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Unable to load more songs');
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
     }
   }
 
@@ -558,8 +600,13 @@ export default function CreatePageClient() {
 
   useEffect(() => {
     if (!user || !activeWorkspaceId) return;
-    void listWebMusicGenerations(40, 0, activeWorkspaceId)
-      .then((list) => setItems(list.items))
+    setLoadingMore(false);
+    loadingMoreRef.current = false;
+    void listWebMusicGenerations(WORKSPACE_PAGE_SIZE, 0, activeWorkspaceId)
+      .then((list) => {
+        setItems(list.items);
+        setTotal(Number(list.total ?? list.items.length));
+      })
       .catch((err) => {
         setCreateError(err instanceof Error ? err.message : 'Unable to load workspace');
       });
@@ -579,6 +626,27 @@ export default function CreatePageClient() {
     }, 2500);
     return () => window.clearInterval(timer);
   }, [items]);
+
+  // Infinite scroll: when the "load more" sentinel nears the viewport, pull the
+  // next page of generations so a workspace with more than one page of songs is
+  // never capped at the first page.
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node) return undefined;
+    if (!activeWorkspaceId) return undefined;
+    if (items.length >= total) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadMoreGenerations();
+        }
+      },
+      { rootMargin: '400px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length, total, activeWorkspaceId]);
 
   const creditsPerSong = quota?.credits_per_song ?? 10;
   const totalCredits = creditBalance?.total_credits ?? quota?.credits_remaining ?? 0;
@@ -1434,6 +1502,28 @@ export default function CreatePageClient() {
               </p>
             </div>
           )}
+
+          {items.length ? (
+            <div className="mt-4 flex flex-col items-center gap-2">
+              {items.length < total ? (
+                <>
+                  <div ref={loadMoreRef} aria-hidden="true" className="h-1 w-full" />
+                  <button
+                    type="button"
+                    onClick={() => void loadMoreGenerations()}
+                    disabled={loadingMore}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08] disabled:opacity-50"
+                  >
+                    {loadingMore ? 'Loading…' : `Load more (${items.length} of ${total})`}
+                  </button>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Showing all {total} song{total === 1 ? '' : 's'}
+                </p>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* Right Sidebar - Version Details */}
