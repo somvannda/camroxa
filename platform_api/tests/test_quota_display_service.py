@@ -61,6 +61,19 @@ class FakeUsageRepo:
         return int(self._daily_by_op.get(operation_type, 0))
 
 
+class FakeAuthoritativeUsageRepo(FakeUsageRepo):
+    """Exposes the authoritative song counter used by enforcement."""
+
+    def __init__(self, monthly: int = 0, *, authoritative_songs: int = 0) -> None:
+        super().__init__(monthly)
+        self._authoritative_songs = authoritative_songs
+
+    async def count_generated_songs_for_period(
+        self, user_id, period_start: date, period_end: date
+    ) -> int:
+        return int(self._authoritative_songs)
+
+
 class FakeProfile:
     def __init__(self, *, profile_id, name: str) -> None:
         self.id = profile_id
@@ -183,3 +196,36 @@ async def test_get_monthly_quota_status_songs_and_drafts() -> None:
     assert songs_remaining == 258
     assert drafts_quota == 1260
     assert drafts_remaining == 1218
+
+
+@pytest.mark.asyncio
+async def test_songs_remaining_uses_authoritative_song_count() -> None:
+    """Songs remaining must reflect real generations, not the stale counter."""
+    plan = _plan()
+    ctx = ActiveSubscriptionContext(
+        plan=plan,
+        license_id=uuid4(),
+        activated_at=datetime(2026, 7, 1, tzinfo=timezone.utc),
+    )
+    # Counter says 999 (stale / not written on the credits-only path);
+    # the authoritative songs counter says 42.
+    usage_repo = FakeAuthoritativeUsageRepo(monthly=999, authoritative_songs=42)
+
+    songs_quota, songs_remaining = await get_monthly_quota_status(
+        user_id=uuid4(),
+        plan_repo=FakePlanRepo(ctx),
+        usage_repo=usage_repo,
+        quota_field="songs",
+    )
+    assert songs_quota == 300
+    assert songs_remaining == 258  # 300 - 42 (authoritative), not 0 (999 counter)
+
+    # Drafts have no authoritative source and keep using the counter (999).
+    drafts_quota, drafts_remaining = await get_monthly_quota_status(
+        user_id=uuid4(),
+        plan_repo=FakePlanRepo(ctx),
+        usage_repo=usage_repo,
+        quota_field="drafts",
+    )
+    assert drafts_quota == 1260
+    assert drafts_remaining == 261  # max(0, 1260 - 999)

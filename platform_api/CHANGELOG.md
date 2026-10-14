@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-14] — Admin quota "Used" for songs now matches enforcement
+
+### Fixed
+
+- The admin "Plan quota (this period)" card and the user-facing quota display read the incremental `usage_tracking` counter, which the credits-only v3 charge path no longer increments — so every user showed **Used = 0 / full Remaining** while the monthly song cap was still enforced from the real `songs` table. `QuotaTopupService._used_for_kind("music")` and `quota_display_service.get_monthly_quota_status("songs")` now use `count_generated_songs_for_period` (real generations), matching `_enforce_plan_quotas`. No migration. See `docs/changelog/2026-10-14-admin-quota-used-authoritative-songs.md`.
+
 ## [2026-10-08] — Batch status counts songs, not Suno task rows
 
 ### Fixed
