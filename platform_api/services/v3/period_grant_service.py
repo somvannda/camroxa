@@ -1,4 +1,5 @@
-"""Monthly/daily grants on the shared wallet. Unused grant lots expire; packs do not."""
+"""Monthly/daily grants on the shared wallet. Unused grants expire at the period
+boundary; pack credits expire 30 days from purchase (see ``wallet_sync``)."""
 
 from __future__ import annotations
 
