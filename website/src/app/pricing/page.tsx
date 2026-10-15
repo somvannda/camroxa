@@ -11,12 +11,15 @@ export const metadata: Metadata = {
 };
 
 async function getPlatformApiBaseUrl(): Promise<string> {
-  return (
+  const base =
     process.env.NEXT_PUBLIC_PLATFORM_API_BASE_URL ??
     (process.env.NODE_ENV === "development"
       ? "http://localhost:8000/api/v3"
-      : "https://api.camxora.com/api/v3")
-  );
+      : "https://api.camxora.com/api/v3");
+  // The deployed env still carries an older ".../api/v1" value (fine for the v1
+  // aliases like /plans/public, but /topups/packs is v3-only). Pin the version so
+  // a stale base cannot silently 404 the catalog and leave the page empty.
+  return base.replace(/\/api\/v\d+\/?$/, "/api/v3");
 }
 
 /**
@@ -50,8 +53,8 @@ export default async function PricingPage() {
       <main className="relative mx-auto w-full max-w-7xl flex-1 px-4 py-16 md:px-10 md:py-20">
         {packs.length === 0 ? (
           <div className="rounded-2xl border border-purple-500/20 bg-[#0c1230] p-6 text-sm text-gray-300">
-            No credit packs are active yet. Enable at least one pack in the Admin Portal to publish
-            pricing here.
+            Credit packs are temporarily unavailable. Please check back shortly, or buy credits
+            directly in the Camxora Music app.
           </div>
         ) : (
           <PricingCards packs={packs} musicWebBaseUrl={musicWebBaseUrl} />
