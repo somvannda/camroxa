@@ -40,6 +40,11 @@ def join_client_output_path(run_dir: str, filename: str) -> str:
         return base
     if is_windows_absolute_path(base):
         return f"{base}\\{name}"
+    if base.startswith("/"):
+        # POSIX absolute path - the API host's own output dir. Joining it as if it
+        # were a portable run key turned "/tmp/.../run" into "\tmp\...\run", so the
+        # file was written to a literal backslash-named path elsewhere.
+        return f"{base.rstrip('/')}/{name}"
     # Portable relative run key — keep Windows-style separators for the desktop.
     normalized_base = base.replace("/", "\\")
     return f"{normalized_base}\\{name}"
