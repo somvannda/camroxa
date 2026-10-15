@@ -162,7 +162,10 @@ def infer_alt_run_dir_from_ok(*, ok_run_dir: str, alt_profile_folder: str) -> st
     alt_folder = sanitize_folder_segment(alt_profile_folder)
     if not alt_folder:
         return None
-    album = Path(key.replace("/", "\\")).name
+    # ntpath.basename, not Path(...).name: the key is a Windows path, and on a
+    # Linux host PosixPath.name does not split on "\" so it returns the whole key
+    # instead of the trailing album folder.
+    album = ntpath.basename(key.replace("/", "\\"))
     if not album:
         return None
     return join_windows_path(alt_folder, album)
