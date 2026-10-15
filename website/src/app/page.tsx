@@ -22,51 +22,21 @@ import {
   MarketingHeader,
   getUserPortalBaseUrl,
 } from "@/components/marketing/site-chrome";
-import { formatPlanPrice } from "@/lib/plan-pricing";
-import { resolvePlatformApiBaseUrl } from "@/lib/platform-api-base";
-
 export const metadata: Metadata = {
   title: "Camxora — Dual faceless YouTube channels in one studio",
   description:
     "Camxora replaces ChatGPT + Suno + CapCut/Vizzy hopping with one Windows studio: dual channels, marketplace templates with one-click setup, and a monetization-path refund.",
 };
 
-type PublicPlan = {
-  id: string;
-  name: string;
-  effective_price_cents: number;
-  profile_allowance: number;
-};
-
-async function getPublicPlans(): Promise<PublicPlan[]> {
-  const base = resolvePlatformApiBaseUrl();
-  try {
-    const response = await fetch(`${base}/plans/public`, { next: { revalidate: 60 } });
-    if (!response.ok) return [];
-    return (await response.json()) as PublicPlan[];
-  } catch {
-    return [];
-  }
-}
-
-function lowestPaidPlan(plans: PublicPlan[]): PublicPlan | null {
-  const paid = plans
-    .filter((plan) => plan.effective_price_cents > 0)
-    .sort((a, b) => a.effective_price_cents - b.effective_price_cents);
-  return paid[0] ?? null;
-}
-
 function CtaRow({
   userPortalBaseUrl,
-  priceLabel,
   compact = false,
   hideCaption = false,
 }: {
   userPortalBaseUrl: string;
-  priceLabel: string | null;
   /** Two equal buttons in one row + centered price line — for narrow cards. */
   compact?: boolean;
-  /** Hide the Plans from / pricing caption under the buttons. */
+  /** Hide the pricing caption under the buttons. */
   hideCaption?: boolean;
 }) {
   return (
@@ -107,14 +77,8 @@ function CtaRow({
       </div>
       {!hideCaption ? (
         <p className={`text-sm leading-6 text-slate-300/70 ${compact ? "text-center" : ""}`}>
-          {priceLabel ? (
-            <>
-              Plans from <span className="font-medium text-white">{priceLabel}/mo</span>
-              <span className="mx-2 text-slate-500">·</span>
-            </>
-          ) : null}
           <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
-            {compact ? "View plans" : "See pricing & guarantee"}
+            {compact ? "Buy credits" : "See pricing & guarantee"}
           </Link>
         </p>
       ) : null}
@@ -124,11 +88,6 @@ function CtaRow({
 
 export default async function Home() {
   const userPortalBaseUrl = getUserPortalBaseUrl();
-  const plans = await getPublicPlans();
-  const entry = lowestPaidPlan(plans);
-  const priceLabel = entry ? formatPlanPrice(entry.effective_price_cents) : null;
-  const dualPlan =
-    plans.find((plan) => plan.profile_allowance >= 2 && plan.effective_price_cents > 0) ?? entry;
 
   const oldStack = [
     { tool: "ChatGPT (or similar)", job: "Write lyrics & titles" },
@@ -334,7 +293,6 @@ export default async function Home() {
               <div className="mt-auto pt-8">
                 <CtaRow
                   userPortalBaseUrl={userPortalBaseUrl}
-                  priceLabel={priceLabel}
                   hideCaption
                 />
               </div>
@@ -348,9 +306,7 @@ export default async function Home() {
               <ul className="mt-5 space-y-3 text-sm leading-6 text-slate-200/75">
                 {[
                   "End-to-end faceless music pipeline",
-                  dualPlan
-                    ? `Dual-channel capacity (${dualPlan.profile_allowance}+ profiles on paid plans)`
-                    : "Dual-channel capacity on paid plans",
+                  "Dual-channel capacity on paid plans",
                   "Free + premium marketplace templates (one-click setup)",
                   "Multi-provider AI routing for continuous production",
                   "Path to 10+ channels with less manual work",
@@ -423,7 +379,7 @@ export default async function Home() {
                 ))}
               </ul>
               <div className="mt-8">
-                <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} compact />
+                <CtaRow userPortalBaseUrl={userPortalBaseUrl} compact />
               </div>
             </div>
           </div>
@@ -672,7 +628,7 @@ export default async function Home() {
             </p>
           </div>
           <div>
-            <CtaRow userPortalBaseUrl={userPortalBaseUrl} priceLabel={priceLabel} compact />
+            <CtaRow userPortalBaseUrl={userPortalBaseUrl} compact />
             <p className="mt-4 text-sm leading-7 text-slate-200/65">
               <Link className="text-fuchsia-100/90 underline-offset-2 hover:underline" href="/pricing">
                 See guarantee details
