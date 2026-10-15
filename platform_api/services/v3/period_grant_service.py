@@ -24,9 +24,13 @@ class PeriodGrantService:
         self._plan_repo = plan_repo
         self._ledger = CreditLedger(credit_repo)
 
-    async def expire_unused_grants(self, user_id: UUID | None = None) -> int:
-        """Deduct leftover grant lots that passed expires_at. Returns users touched."""
-        lots = await self._store.expired_grant_lots(user_id)
+    async def expire_lapsed_lots(self, user_id: UUID | None = None) -> int:
+        """Deduct leftover lots that passed ``expires_at``. Returns lots touched.
+
+        Sweeps period/daily grants **and** packs: pack credits are now valid for
+        30 days from purchase, so a lapsed pack is clawed back here too.
+        """
+        lots = await self._store.expired_lots(user_id)
         touched = 0
         for lot in lots:
             remaining = int(lot["remaining_units"])
@@ -47,7 +51,7 @@ class PeriodGrantService:
         return touched
 
     async def ensure_period_grant(self, user_id: UUID) -> dict[str, Any]:
-        await self.expire_unused_grants(user_id)
+        await self.expire_lapsed_lots(user_id)
         plan = await self._store.resolve_charge_plan(user_id)
         if plan is None:
             return {"granted": False, "reason": "no_active_plan", "user_id": str(user_id)}
@@ -220,7 +224,7 @@ class PeriodGrantService:
                 continue
             expires_at = lot.get("expires_at")
             # Only carry lots that are still live; expired lots are clawed back by
-            # expire_unused_grants (zeroing them here without a deduction would leak).
+            # expire_lapsed_lots (zeroing them here without a deduction would leak).
             if expires_at is None or expires_at > datetime.now(timezone.utc):
                 await self._store.zero_lot_remaining(lot["id"])
 
@@ -265,7 +269,7 @@ class PeriodGrantService:
         Paid license / CutLuy rows have daily_credits=0, so they no-op.
         Daily lots expire at the next billing midnight and do not stack.
         """
-        await self.expire_unused_grants(user_id)
+        await self.expire_lapsed_lots(user_id)
         plan = await self._store.resolve_charge_plan(user_id)
         if plan is None:
             return {"granted": False, "reason": "no_active_plan", "user_id": str(user_id)}

@@ -89,7 +89,7 @@ class FakeStore:
             return True
         return False
 
-    async def expired_grant_lots(self, user_id: UUID | None = None) -> list[dict]:
+    async def expired_lots(self, user_id: UUID | None = None) -> list[dict]:
         return []
 
     async def zero_lot_remaining(self, lot_id: UUID) -> None:

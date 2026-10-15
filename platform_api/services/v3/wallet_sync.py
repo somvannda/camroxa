@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
@@ -10,6 +11,11 @@ from platform_api.services.credit_ledger import CreditLedger, GrantType
 from platform_api.services.credit_units import credits_to_units, units_to_credits
 
 logger = logging.getLogger(__name__)
+
+# A pack's credits are valid for this long from the moment of purchase. Buying
+# another pack re-stamps the whole live balance to ``now + PACK_CREDIT_VALIDITY``
+# (one shared expiry date per wallet -- see ``V3BillingStore.restamp_live_lots``).
+PACK_CREDIT_VALIDITY = timedelta(days=30)
 
 
 def pack_ref_id(topup_id: str) -> str:
@@ -59,13 +65,20 @@ class WalletSyncService:
             grant_type=GrantType.PACK,
             ref_id=ref_id,
         )
+        # Packs are no longer immortal. A purchase is valid for 30 days, and it
+        # resets the wallet's single shared expiry date so older packs plus any
+        # leftover subscription allowance age forward with it (Option B). The
+        # per-op credit is already granted above; stamping the lot only decides
+        # when the balance burns.
+        expires_at = datetime.now(timezone.utc) + PACK_CREDIT_VALIDITY
         lot = await self._store.insert_lot(
             user_id=user_id,
             tag="pack",
             amount_units=units,
-            expires_at=None,
+            expires_at=expires_at,
             period_start=None,
         )
+        restamped_lots = await self._store.restamp_live_lots(user_id, expires_at)
         await self._store.subtract_web_topup(user_id, amount)
         return {
             "minted": True,
@@ -74,6 +87,8 @@ class WalletSyncService:
             "amount_units": units,
             "ref_id": ref_id,
             "lot_id": str(lot["id"]),
+            "expires_at": expires_at.isoformat(),
+            "restamped_lots": restamped_lots,
             "balance_credits": units_to_credits(int(await self._credit_repo.get_balance(user_id))),
         }
 
