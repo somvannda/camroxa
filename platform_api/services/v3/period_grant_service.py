@@ -51,6 +51,44 @@ class PeriodGrantService:
             touched += 1
         return touched
 
+    async def _revoke_superseded_free_grant(
+        self, user_id: UUID, *, licence_period_start: date | None
+    ) -> int:
+        """Retire a lingering Free calendar-month grant a licence now supersedes.
+
+        A licence lapse can leave the Free plan's current-month lot (anchored to
+        the calendar month) alive. When the licence renews, its activation-anchored
+        allowance is minted alongside it, so the account holds two live grant lots
+        (the ``credit_invariants`` "multiple live grant lots" alert). The licence
+        allowance supersedes the Free one: claw its remaining credits (like an
+        expiry) and zero the lot. Idempotent — a spent/expired lot is skipped.
+        """
+        month_start = billing_month_start()
+        lots = await self._store.live_grant_lots_at_period(
+            user_id, month_start, exclude_period_start=licence_period_start
+        )
+        touched = 0
+        for lot in lots:
+            remaining = int(lot["remaining_units"])
+            if remaining > 0:
+                balance = int(await self._credit_repo.get_balance(user_id))
+                clawback = min(remaining, max(0, balance))
+                if clawback > 0:
+                    await self._credit_repo.atomic_deduct(
+                        user_id,
+                        clawback,
+                        "v3_free_grant_superseded",
+                        ref_id=str(lot["id"]),
+                        metadata={
+                            "source": "v3",
+                            "tag": "grant",
+                            "billing": "free_grant_superseded",
+                        },
+                    )
+            await self._store.zero_lot_remaining(lot["id"])
+            touched += 1
+        return touched
+
     async def ensure_period_grant(self, user_id: UUID) -> dict[str, Any]:
         await self.expire_lapsed_lots(user_id)
         plan = await self._store.resolve_charge_plan(user_id)
@@ -84,6 +122,12 @@ class PeriodGrantService:
                     activated_at=ctx.activated_at,
                 )
                 monthly_allowance = False
+                # A licence/subscription allowance supersedes any lingering Free
+                # calendar-month grant left by a lapse -> renew, so the account
+                # never holds two live grant lots.
+                await self._revoke_superseded_free_grant(
+                    user_id, licence_period_start=period_start
+                )
 
         units = credits_to_units(monthly)
 
