@@ -16,11 +16,15 @@ def is_windows_absolute_path(path: str) -> bool:
 
 def is_portable_run_relative_path(path: str) -> bool:
     """True for ``channel\\date_album`` style keys (no drive / UNC / POSIX root)."""
-    text = str(path or "").strip().replace("/", "\\")
-    if not text or is_windows_absolute_path(text) or text.startswith("\\\\") or text.startswith("/"):
+    # Check the POSIX root on the raw text: normalising "/" to "\\" first turned
+    # "/tmp/.../run" into "\\tmp\\...", which no longer looked rooted, so an
+    # absolute POSIX path was misread as a portable key and the API host skipped
+    # writing it.
+    raw = str(path or "").strip()
+    if not raw or raw.startswith("/") or is_windows_absolute_path(raw) or raw.startswith("\\\\"):
         return False
-    # Drive-letter absolute already excluded; reject single-segment filenames.
-    parts = [part for part in Path(text).parts if part not in ("/", "\\", "")]
+    # Drive-letter absolute already excluded; a key needs at least one segment.
+    parts = [part for part in raw.replace("/", "\\").split("\\") if part]
     return len(parts) >= 1
 
 
