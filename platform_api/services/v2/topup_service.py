@@ -158,7 +158,7 @@ class TopupService:
             }
         
         Raises:
-            ValueError: If pack not found or user has no subscription
+            ValueError: If pack not found or not purchasable
         """
         # Get pack
         pack = await self.get_pack_by_slug(pack_slug)
@@ -195,16 +195,16 @@ class TopupService:
                 "Too many pending top-up checkouts. Complete or wait for one to expire."
             )
         
-        # Check if user has active subscription
+        # Top-up packs are the only sellable product now, so an active
+        # subscription is no longer required to buy one (it used to gate this
+        # checkout). When the buyer happens to be a grandfathered subscriber we
+        # still link the purchase for reporting; otherwise the FK stays NULL.
         subscription = await self._db.fetch_one("""
             SELECT id
             FROM web_subscriptions
             WHERE user_id = $1 AND status = 'active'
         """, user_id)
-        
-        if not subscription:
-            raise ValueError("User must have active subscription to purchase top-ups")
-        
+
         # Create pending top-up purchase
         topup_id = await self._db.fetch_val("""
             INSERT INTO topup_purchases (
@@ -216,7 +216,7 @@ class TopupService:
             )
             RETURNING id
         """, 
-            user_id, subscription["id"], pack.id,
+            user_id, subscription["id"] if subscription else None, pack.id,
             pack.total_credits, pack.price_cents
         )
         

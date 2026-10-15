@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Subscriptions are retired.** Pricing/upgrade entry points, the `/pricing` plan grid, and the profile plan manager (browse / subscribe / renew) are gone; the profile section is credits-only and `Upgrade to Pro` became **Buy credits**. Grandfathered subscribers keep a read-only plan and can still cancel. See `docs/changelog/2026-10-15-packs-only-billing.md`.
+
+### Changed
+
+- Credits are sold as **one-time packs only** ($5 / $10 / $20 / $30). Pack credits are valid for **30 days from purchase**, buying again resets the clock on the whole balance, and unused credits expire at that date. `/pricing` is a packs-only page. Also corrects the Free-plan copy: Free is **50 credits per month**, not per day. See `docs/changelog/2026-10-15-packs-only-billing.md`.
+
 ### Fixed
 
 - **Create workspace no longer hides songs past the first page.** The list only ever showed the newest 40 songs, so users with more saw just the first page. It now loads 50 songs (100 version rows) per page and pulls the next page as you scroll, with a **Load more** fallback and a *Showing all N songs* footer. See `docs/changelog/2026-10-13-web-music-workspace-list-pagination.md`.

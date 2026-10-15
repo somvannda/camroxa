@@ -111,6 +111,14 @@ function apiError(err: unknown, fallback: string): string {
   );
 }
 
+/**
+ * Subscriptions are retired on music.camxora.com; credit packs are the only
+ * product. Flip this to true to bring the subscription-plan editor back (e.g. a
+ * migration, or adjusting a grandfathered term). Left false it hides plan
+ * management while keeping the code and its handlers intact and build-clean.
+ */
+const MANAGE_SUBSCRIPTION_PLANS = false;
+
 export function WebMusicPlansSection() {
   const { data: plans, isLoading, isError, error, refetch } = useWebMusicPlans();
   const { data: topups, isLoading: topupsLoading, isError: topupsError, error: topupsErr, refetch: refetchTopups } =
@@ -316,6 +324,7 @@ export function WebMusicPlansSection() {
 
   return (
     <>
+      {MANAGE_SUBSCRIPTION_PLANS ? (
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div>
@@ -374,6 +383,21 @@ export function WebMusicPlansSection() {
           )}
         </CardContent>
       </Card>
+      ) : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <Music2 className="h-5 w-5 text-violet-400" />
+              Web Music Plans (retired)
+            </CardTitle>
+            <CardDescription className="mt-1 max-w-2xl">
+              Subscriptions are no longer sold on music.camxora.com — credit packs are the only
+              product. Existing plan rows only matter to grandfathered subscribers, who keep the
+              term they already paid for. Manage pack pricing in the section below.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-start justify-between gap-4">

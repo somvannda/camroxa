@@ -563,7 +563,7 @@ async def test_v3_routes_and_v1_public_shape_unchanged() -> None:
         return {"granted": False, "reason": "test_noop"}
 
     grants = SimpleNamespace(
-        expire_unused_grants=_expire,
+        expire_lapsed_lots=_expire,
         ensure_daily_grant=_daily,
         ensure_period_grant=_period,
     )
