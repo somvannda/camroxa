@@ -10,6 +10,7 @@ Requirements: 13.1, 13.2, 13.3, 13.4, 13.5, 13.6, 13.7, 13.8
 from __future__ import annotations
 
 import logging
+import ntpath
 import re
 from dataclasses import dataclass, replace
 from datetime import date, datetime, timedelta, timezone
@@ -3896,11 +3897,11 @@ class BatchService:
                 explicit = str(item.get(key) or "").strip()
                 if explicit:
                     # Image filenames / relative asset names only — strip machine roots.
-                    name = Path(explicit).name
+                    name = ntpath.basename(explicit)
                     return name or explicit
                 value = getattr(scanned, key, None)
                 if value:
-                    return Path(str(value)).name or str(value)
+                    return ntpath.basename(str(value)) or str(value)
                 return None
 
             mark_complete = bool(item.get("pipeline_complete"))
@@ -5523,7 +5524,9 @@ class BatchService:
         base = BatchService._sanitize_music_file_name(title) or "track"
         prefix = f"{max(1, int(track_no))}. " if isinstance(track_no, int) else ""
         suffix = "OK" if str(variant).lower() == "primary" else "Alt"
-        return str(Path(normalized_dir) / f"{prefix}{base}_{suffix}.mp3")
+        # ntpath.join keeps the Windows separators the desktop client expects even
+        # when the API runs on Linux; Path/ on a Linux host would emit "/".
+        return ntpath.join(normalized_dir, f"{prefix}{base}_{suffix}.mp3")
 
     @staticmethod
     def _resolve_profile_image_kinds(image_config: dict[str, Any]) -> list[ImageKind]:
