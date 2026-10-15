@@ -10,6 +10,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Subscriptions are retired.** Pricing/upgrade entry points, the `/pricing` plan grid, and the profile plan manager (browse / subscribe / renew) are gone; the profile section is credits-only and `Upgrade to Pro` became **Buy credits**. Grandfathered subscribers keep a read-only plan and can still cancel. See `docs/changelog/2026-10-15-packs-only-billing.md`.
+
+### Changed
+
+- Credits are sold as **one-time packs only** ($5 / $10 / $20 / $30). Pack credits are valid for **30 days from purchase**, buying again resets the clock on the whole balance, and unused credits expire at that date. `/pricing` is a packs-only page. Also corrects the Free-plan copy: Free is **50 credits per month**, not per day. See `docs/changelog/2026-10-15-packs-only-billing.md`.
+
 ### Fixed
 
 - **Login was blocked for everyone** at `music.camxora.com`: the production build shipped the sandbox Turnstile sitekey, so Cloudflare rejected the challenge, the widget showed *"Unable to connect to website"*, and the disabled **Sign in** button never enabled. Production was rebuilt with the correct sitekey and the component no longer falls back to the sandbox key outside local development — a missing key now renders a visible error instead of a broken widget. See `docs/changelog/2026-10-05-music-web-turnstile-login-lockout.md`.

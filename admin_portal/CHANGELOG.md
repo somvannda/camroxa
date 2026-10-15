@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Removed
 
 - Deleted the unmounted `MusicWebFreeCreditsSection`; free daily credits are edited on the **Free** plan row. See `docs/changelog/2026-09-27-retire-web-music-free-daily-settings.md`.
+- **Plans → Web Music Plans** no longer manages subscription tiers. With subscriptions retired, the plan editor is gated behind `MANAGE_SUBSCRIPTION_PLANS` (default `false`) and the section renders a retired notice instead of the create/edit/delete UI. **Pack pricing stays fully editable.** See `docs/changelog/2026-10-15-packs-only-billing.md`.
 
 ### Added
 

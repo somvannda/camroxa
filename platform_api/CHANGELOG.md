@@ -7,7 +7,23 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [2026-10-08] — Version 2 no longer stranded by a first-clip success
+## [Unreleased] - Packs-only billing: 30-day pack credits
+
+### Added
+
+- `V3BillingStore.expired_lots()` and `V3BillingStore.restamp_live_lots()`; `PACK_CREDIT_VALIDITY` (30 days) in `wallet_sync`. A pack purchase stamps its own lot and re-stamps every other live lot to one shared expiry date (Option B). See `docs/changelog/2026-10-15-packs-only-billing.md`.
+
+### Changed
+
+- Pack credits now **expire 30 days from purchase**, and lapsed pack lots are clawed back like grants. `expire_unused_grants` → `expire_lapsed_lots`; `expired_grant_lots` → `expired_lots`. The re-stamp only ever extends an expiry, so a prepaid yearly term is never shortened; `daily_grant` lots are excluded. Existing lot expiries are untouched, so grandfathered subscribers keep the term they paid for.
+- Web-music packs re-priced to the retired plan ladder: $5 → 1,000, $10 → 2,300, $20 → 5,500 (new tier), $30 → 8,800. Migration `136_packs_only_billing`.
+
+### Removed
+
+- `POST /api/v3/subscriptions/purchase` and `POST /api/v3/subscriptions/renewal` now return **410 Gone** (`SubscriptionRetiredError`) instead of opening a CutLuy checkout. `GET /subscriptions/my-subscription` and `POST /subscriptions/cancel` stay live for grandfathered subscribers.
+- The `User must have active subscription to purchase top-ups` gate in `TopupService.purchase_topup`, which would otherwise have blocked every buyer once subscriptions stopped being sold.
+
+## [2026-10-08] - Version 2 no longer stranded by a first-clip success
 
 ### Fixed
 
