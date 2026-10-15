@@ -290,3 +290,128 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         working-directory: musicapi/web-admin
         run: npm test
+
+  # The five web/API surfaces above did not all get built: music_web and website
+  # had no job at all, and platform_api was only syntax-checked (py_compile), so a
+  # PR could go green while its tests failed. Those are covered below.
+  platform-api-tests:
+    name: Platform API tests (if changed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect platform_api changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- platform_api/ | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-python@v5
+        if: steps.changes.outputs.run == 'true'
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install platform_api with dev extras
+        if: steps.changes.outputs.run == 'true'
+        working-directory: platform_api
+        run: pip install -e ".[dev]"
+
+      # The suite runs without a database; billing/credit logic is unit-tested
+      # against fakes, so no service container is needed.
+      - name: pytest
+        if: steps.changes.outputs.run == 'true'
+        working-directory: platform_api
+        run: python -m pytest -q
+
+  music-web-checks:
+    name: Music portal tests + build (if changed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect music_web changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- music_web/ | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      # Node 24: the lib tests run via `node --experimental-strip-types`.
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: music_web/package-lock.json
+
+      - name: npm ci
+        if: steps.changes.outputs.run == 'true'
+        working-directory: music_web
+        run: npm ci --no-audit --no-fund
+
+      - name: unit tests
+        if: steps.changes.outputs.run == 'true'
+        working-directory: music_web
+        run: npm test
+
+      # `next build` typechecks as well, so no separate bare `tsc --noEmit` step:
+      # the lib tests import './x.ts' and that alone trips TS5097.
+      - name: build
+        if: steps.changes.outputs.run == 'true'
+        working-directory: music_web
+        run: CI=1 npm run build
+
+  website-build:
+    name: Website typecheck + build (if changed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect website changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- website/ | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: website/package-lock.json
+
+      - name: npm ci
+        if: steps.changes.outputs.run == 'true'
+        working-directory: website
+        run: npm ci --no-audit --no-fund
+
+      - name: typecheck
+        if: steps.changes.outputs.run == 'true'
+        working-directory: website
+        run: npx tsc --noEmit
+
+      - name: build
+        if: steps.changes.outputs.run == 'true'
+        working-directory: website
+        run: CI=1 npm run build
