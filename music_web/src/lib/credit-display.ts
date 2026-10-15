@@ -96,7 +96,7 @@ export function computeCreditDisplay(balance: CreditDisplayInput | null): Credit
       remaining: 0,
       progressPct: 0,
       resetLabel: null,
-      promoText: 'Get more credits with Pro.',
+      promoText: 'Buy a credit pack to keep creating.',
       isLow: true,
       hasSubscription: false,
     };
@@ -149,7 +149,7 @@ export function computeCreditDisplay(balance: CreditDisplayInput | null): Credit
     promoText:
       balance.topup_credits > 0
         ? `Includes ${balance.topup_credits.toLocaleString('en-US')} top-up credits`
-        : 'Get more credits with Pro.',
+        : 'Buy a credit pack to keep creating.',
     isLow: remaining > 0 && remaining < 30,
     hasSubscription: false,
   };

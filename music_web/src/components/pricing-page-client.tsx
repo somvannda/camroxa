@@ -116,11 +116,11 @@ export default function PricingPageClient() {
               </div>
               <div className="mb-6 border-b border-purple-500/20 pb-6 text-center">
                 <div className="text-2xl font-bold text-purple-400">50</div>
-                <div className="text-sm text-gray-400">daily credits</div>
-                <div className="mt-1 text-xs text-gray-500">Resets at midnight</div>
+                <div className="text-sm text-gray-400">credits per month</div>
+                <div className="mt-1 text-xs text-gray-500">Resets each month</div>
               </div>
               <ul className="mb-8 space-y-3">
-                {['Web Create', 'Daily credit reset', 'Buy packs any time'].map((feature) => (
+                {['Web Create', 'Monthly credit reset', 'Buy packs any time'].map((feature) => (
                   <li key={feature} className="flex items-start gap-3">
                     <Check className="mt-0.5 h-5 w-5 flex-shrink-0 text-purple-400" />
                     <span className="text-sm text-gray-300">{feature}</span>

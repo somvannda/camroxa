@@ -64,7 +64,7 @@ export default function CreditBalanceCard() {
               <h2 className="font-display text-xl font-semibold text-white">Credit Balance</h2>
               <p className="text-xs text-slate-400">
                 {isFreePlan
-                  ? 'Daily free credits for music creation'
+                  ? 'Free monthly credits for music creation'
                   : 'Same wallet as desktop. CutLuy leftover still counts until one-wallet.'}
               </p>
             </div>
@@ -83,7 +83,7 @@ export default function CreditBalanceCard() {
           <div className="text-sm text-slate-500 mt-1">
             {isFreePlan
               ? hasDailyGrant
-                ? `${freeRemaining.toLocaleString()} of ${balance.daily_free_limit.toLocaleString()} daily free credits`
+                ? `${freeRemaining.toLocaleString()} of ${balance.daily_free_limit.toLocaleString()} free credits`
                 : `${freeRemaining.toLocaleString()} credits on the Free plan`
               : `${balance.total_credits.toLocaleString()} credits total`}
           </div>
@@ -91,8 +91,8 @@ export default function CreditBalanceCard() {
 
         {isFreePlan ? (
           <div className="rounded-xl border border-violet-500/20 bg-violet-500/10 p-4 text-sm text-slate-300">
-            You&apos;re on the <span className="text-white">Free</span> plan. Upgrade for more daily
-            credits, downloads, and commercial usage.
+            You&apos;re on the <span className="text-white">Free</span> plan. Buy a credit pack for
+            more generations, downloads, and commercial usage.
           </div>
         ) : (
           <>
@@ -119,7 +119,7 @@ export default function CreditBalanceCard() {
                 <div className="text-xs text-slate-400 mt-1">
                   {balance.topup_credits} credits
                 </div>
-                <div className="text-xs text-slate-500 mt-1">Never expire</div>
+                <div className="text-xs text-slate-500 mt-1">Valid 30 days</div>
               </div>
             </div>
 

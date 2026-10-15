@@ -58,7 +58,7 @@ function CreditProgressCard({
           className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-[7px] border border-white/10 bg-white/[0.04] text-sm font-medium text-white transition hover:border-violet-400/30 hover:bg-violet-500/10"
         >
           <Sparkles className="h-4 w-4 text-fuchsia-300" />
-          Upgrade to Pro
+          Buy credits
         </button>
       ) : (
         <button
@@ -210,7 +210,7 @@ export default function CreditHeader({ variant = 'compact' }: CreditHeaderProps)
               className="flex h-full items-center gap-1 border-l border-white/10 bg-violet-500/10 px-3.5 py-2 text-xs font-medium text-violet-200 transition hover:bg-violet-500/15"
             >
               <Sparkles className="h-3.5 w-3.5" />
-              Upgrade to Pro
+              Buy credits
             </button>
           )}
         </div>
@@ -224,7 +224,7 @@ export default function CreditHeader({ variant = 'compact' }: CreditHeaderProps)
               ? 'border-amber-400/25 bg-amber-500/10 text-amber-200'
               : 'border-white/10 bg-white/[0.04] text-violet-200',
           )}
-          aria-label={display.hasSubscription ? 'Top up credits' : 'Upgrade to Pro'}
+          aria-label={display.hasSubscription ? 'Top up credits' : 'Buy credits'}
         >
           {display.hasSubscription ? <Plus className="h-4 w-4" /> : <Sparkles className="h-4 w-4" />}
         </button>
@@ -268,7 +268,7 @@ export default function CreditHeader({ variant = 'compact' }: CreditHeaderProps)
           ) : (
             <>
               <Sparkles className="h-3.5 w-3.5" />
-              <span>Upgrade to Pro</span>
+              <span>Buy credits</span>
             </>
           )}
         </button>
