@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ntpath
 import re
 from dataclasses import dataclass
 from datetime import date
@@ -65,12 +66,12 @@ def normalize_run_key(path: str | None) -> str | None:
     if not text:
         return None
     normalized = text.replace("/", "\\")
-    parts = [part for part in Path(normalized).parts if part not in ("/", "\\", "")]
-    if parts and len(parts[0]) == 2 and parts[0][1] == ":":
-        parts = parts[1:]
-    # Drop UNC host/share prefixes when present (\\server\\share\\channel\\album).
-    if len(parts) >= 4 and normalized.startswith("\\\\"):
-        parts = parts[-2:]
+    # ntpath, not pathlib.Path: these are Windows paths from the desktop client,
+    # and on a Linux host `Path` is PosixPath, which does not treat "\" as a
+    # separator. The drive prefix then survived, so a machine absolute path leaked
+    # into the stored key. splitdrive also strips a UNC "\\server\share" prefix.
+    _drive, tail = ntpath.splitdrive(normalized)
+    parts = [part for part in tail.split("\\") if part]
     if len(parts) >= 2:
         return join_windows_path(parts[-2], parts[-1])
     if len(parts) == 1:
