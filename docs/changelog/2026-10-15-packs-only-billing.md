@@ -97,6 +97,20 @@ the old packs deliberately granted *fewer* credits per dollar than a plan.
 No data migration for existing subscribers is required — their existing lots keep
 their current expiry by design.
 
+## Sandbox smoke test (before production)
+
+1. `alembic upgrade head` in `platform_api`.
+2. Buy a pack **with no active subscription** — must succeed (the old gate is gone).
+3. Check the wallet lot: `expires_at` is ~30 days out, not `NULL`.
+4. Buy a second pack — the **whole** balance re-stamps to the newer date (one shared
+   expiry), and Free daily credits keep their own reset.
+5. As a grandfathered subscriber, confirm existing credits keep their **current**
+   expiry (a monthly plan's period end; a yearly plan's prepaid term).
+6. `POST /api/v3/subscriptions/purchase` returns **410**.
+7. A Free account still receives **50 credits per month**.
+8. `/pricing` on music.camxora.com and camxora.com show packs only (no plan cards),
+   and the copy says credits are valid for 30 days.
+
 ## Tests
 
 - `platform_api/tests/test_pack_credit_expiry.py` (new, 8 tests): 30-day stamp;
@@ -106,22 +120,20 @@ their current expiry by design.
   and the extend-only guard in `restamp_live_lots`.
 - Fixed `test_wallet_sync.py`, whose fake store predated `restamp_live_lots`
   (a real regression the full suite caught, not just the targeted run).
-- `platform_api`: 3195 passed, 1 failed.
+- `platform_api`: **3210 passed, 0 failed** on this branch. (The one failure seen
+  during development was the date-dependent
+  `test_v3_period_grant.py::test_period_grant_uses_license_cycle_when_subscribed`;
+  it failed on `main` for everyone and is fixed in the merged PR #387, which this
+  branch now includes.)
 - `music_web`: `tsc` clean, `npm test` 50/50.
 - `admin_portal`: `tsc` clean (despite `noUnusedLocals: true`).
 - `website`: `tsc` clean.
 - `alembic heads` → single head `136_packs_only_billing`.
-
-**Known failure (pre-existing, unrelated):**
-`test_v3_period_grant.py::test_period_grant_uses_license_cycle_when_subscribed`
-also fails on clean `main`. It is date-dependent — it hardcodes
-`activated_at = 2026-09-15` and expects period start `2026-09-15`, but that 30-day
-period has since rolled. Confirmed by stashing all changes and reproducing on
-`main`.
+- Migration `136` verified to render valid SQL offline (`alembic upgrade 135:136 --sql`).
 
 ## Follow-ups
 
-- Fix the date-dependent `test_v3_period_grant` failure (its own tiny branch).
+- ~~Fix the date-dependent `test_v3_period_grant` failure~~ — done in PR #387 (merged).
 - Decide whether to delete the 4 orphaned website pricing components
   (`pricing-comparison-table.tsx`, `plan-channel-families.ts`,
   `profile-addon-pricing.tsx`, `usage-rates-section.tsx`) — pre-existing dead code,
