@@ -91,8 +91,8 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h2 className="text-2xl font-display font-bold text-white">Buy Credit Top-up</h2>
-              <p className="text-sm text-slate-400">One-time purchase • Credits never expire</p>
+              <h2 className="text-2xl font-display font-bold text-white">Buy Credits</h2>
+              <p className="text-sm text-slate-400">One-time purchase • Credits valid for 30 days</p>
             </div>
           </div>
           <button
@@ -110,7 +110,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
               <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {packs.map((pack, index) => {
                 const isPurchasing = purchasingPackId === pack.id;
                 // Largest pack has the best credits-per-dollar value, like musicapi.
@@ -165,7 +165,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                         </div>
                       </div>
                       <div className="text-xs text-slate-500">
-                        {pack.total_credits.toLocaleString()} credits • Never expire
+                        {pack.total_credits.toLocaleString()} credits • valid 30 days
                       </div>
                     </div>
 
@@ -177,11 +177,11 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                       </li>
                       <li className="flex items-start gap-2 text-sm text-slate-300">
                         <Check className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                        <span>Never expire or reset</span>
+                        <span>Valid for 30 days from purchase</span>
                       </li>
                       <li className="flex items-start gap-2 text-sm text-slate-300">
                         <Check className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                        <span>Use after monthly credits</span>
+                        <span>Buy another pack any time</span>
                       </li>
                     </ul>
 
@@ -217,11 +217,11 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
                 <Sparkles className="w-4 h-4 text-purple-400" />
               </div>
               <div className="text-sm text-slate-300">
-                <div className="font-medium mb-1">How top-up credits work:</div>
+                <div className="font-medium mb-1">How credits work:</div>
                 <ul className="space-y-1 text-slate-400 text-xs">
-                  <li>• Top-up credits never expire and carry over indefinitely</li>
-                  <li>• They're used after your monthly subscription credits run out</li>
-                  <li>• Perfect for busy months or special projects</li>
+                  <li>• Credits are valid for 30 days from your purchase</li>
+                  <li>• Buying another pack resets the 30-day clock on your whole balance</li>
+                  <li>• Run out early? Just buy another pack — no subscription needed</li>
                   <li>• Instant delivery after payment confirmation</li>
                 </ul>
               </div>
@@ -239,7 +239,7 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
         qrString={checkoutQrString}
         paymentId={checkoutPaymentId}
         kind="topup"
-        title="Top up with KHQR"
+        title="Buy credits with KHQR"
         planName={checkoutPack?.name}
         planPrice={checkoutPack?.price}
         onClose={() => {
