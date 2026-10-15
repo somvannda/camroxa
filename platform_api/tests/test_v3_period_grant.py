@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -343,12 +343,17 @@ async def test_period_grant_anchors_license_less_free_to_calendar_month(
 async def test_period_grant_uses_license_cycle_when_subscribed() -> None:
     """Licensed accounts keep the activation-anchored period (not the month)."""
 
+    # Anchor to the activation date rather than a fixed calendar date. The service
+    # reads date.today(), so a hardcoded activation eventually leaves its first
+    # 30-day period and the assertion below fails on a later date (it did, once
+    # 2026-09-15 + 30 days arrived). 15 days in keeps periods_elapsed at 0, with a
+    # day of slack either side for the runner's local date vs UTC.
     class CtxPlan:
         billing_cycle_days = 30
 
     class Ctx:
         plan = CtxPlan()
-        activated_at = datetime(2026, 9, 15, tzinfo=timezone.utc)
+        activated_at = datetime.now(timezone.utc) - timedelta(days=15)
 
     wallet = FakeWallet()
     store = FakeStore(_paid_plan())
@@ -359,10 +364,14 @@ async def test_period_grant_uses_license_cycle_when_subscribed() -> None:
 
     result = await service.ensure_period_grant(USER_ID)
     assert result["granted"] is True
-    # 30-day cycle activated 2026-09-15 -> current period starts 2026-09-15,
-    # not the calendar-month fallback used for license-less accounts.
-    assert result["period_start"] == "2026-09-15"
-    # The lot expires at the period boundary (2026-10-15 00:00 +07), so it cannot
-    # overlap the following period's grant.
-    expected_expiry = next_billing_midnight(from_date=date(2026, 10, 14)).isoformat()
+    # 15 days into a 30-day cycle anchored at activation -> the current period
+    # starts at the activation date, not the calendar-month fallback used for
+    # license-less accounts.
+    expected_start = Ctx.activated_at.date()
+    assert result["period_start"] == expected_start.isoformat()
+    # The lot expires at the period boundary (start + 29 days, next midnight), so
+    # it cannot overlap the following period's grant.
+    expected_expiry = next_billing_midnight(
+        from_date=expected_start + timedelta(days=29)
+    ).isoformat()
     assert result["expires_at"] == expected_expiry
