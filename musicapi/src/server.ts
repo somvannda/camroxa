@@ -580,19 +580,25 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     () => config.suno.maxQueue,
   );
 
-  // In-flight jobs per Suno account. Account selection is least-loaded-first
-  // (see `orderByLoad`), so a burst spreads across the pool instead of landing
-  // on one account; an account at `maxConcurrentPerAccount` is used only when no
-  // under-cap account is available. Counted per attempt, in-process.
+  // In-flight jobs per Suno account. Account selection is credit-aware and
+  // (within a credit tier) least-loaded-first (see `orderForDispatch`), so a
+  // burst spreads across the pool instead of landing on one account; an account
+  // at `maxConcurrentPerAccount` is used only when no under-cap account is
+  // available. Counted per attempt, in-process. Each start also reserves an
+  // estimated credit spend on the account so concurrent picks see a balance that
+  // already reflects work in flight (released on end; a fresh billing read
+  // clears it).
   const accountInflight = new Map<string, number>();
   const accountLoad = (id: string): number => accountInflight.get(id) ?? 0;
   const markAccountStart = (id: string): void => {
     accountInflight.set(id, accountLoad(id) + 1);
+    pool.reserveCredits(id, config.suno.creditReserve);
   };
   const markAccountEnd = (id: string): void => {
     const next = accountLoad(id) - 1;
     if (next > 0) accountInflight.set(id, next);
     else accountInflight.delete(id);
+    pool.releaseCredits(id, config.suno.creditReserve);
   };
 
   // Edge request counters for the admin `/metrics` snapshot. In-memory and reset

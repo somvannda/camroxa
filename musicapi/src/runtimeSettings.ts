@@ -154,6 +154,22 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         def: SUNO_CONCURRENCY_DEFAULTS.minCredits,
         help: "Accounts below this balance are skipped for new work, avoiding 402 'not enough credits' submissions.",
       },
+      {
+        key: "creditStrategy",
+        label: "Account credit strategy",
+        type: "string",
+        env: "SUNO_CREDIT_STRATEGY",
+        def: SUNO_CONCURRENCY_DEFAULTS.creditStrategy,
+        help: "off = least-loaded only (legacy). balanced = prefer the account with the most credits and reserve each in-flight job's spend against its balance, so concurrent jobs spread across the pool and the accounts drain together (default). max_first = always drain the single highest-credit account first.",
+      },
+      {
+        key: "creditReserve",
+        label: "Credits reserved per in-flight job",
+        type: "number",
+        env: "SUNO_CREDIT_RESERVE",
+        def: SUNO_CONCURRENCY_DEFAULTS.creditReserve,
+        help: "Estimated Suno credits an in-flight generation consumes, subtracted from the cached balance while the job runs so a burst spreads instead of re-picking the same account between the 30s billing refreshes. Used by the balanced strategy; 0 disables it.",
+      },
     ],
   },
   {
@@ -353,6 +369,24 @@ function applyToConfig(): void {
   config.suno.minCredits = Math.max(
     0,
     num("sunoConcurrency", "minCredits", SUNO_CONCURRENCY_DEFAULTS.minCredits),
+  );
+  // Credit-aware routing (see `orderForDispatch` in src/pool.ts). An unknown
+  // stored value falls back to the boot default rather than silently disabling
+  // balancing, matching the env parser in src/config.ts.
+  const creditStrategy = str(
+    "sunoConcurrency",
+    "creditStrategy",
+    SUNO_CONCURRENCY_DEFAULTS.creditStrategy,
+  )
+    .trim()
+    .toLowerCase();
+  config.suno.creditStrategy =
+    creditStrategy === "off" || creditStrategy === "max_first" || creditStrategy === "balanced"
+      ? creditStrategy
+      : SUNO_CONCURRENCY_DEFAULTS.creditStrategy;
+  config.suno.creditReserve = Math.max(
+    0,
+    num("sunoConcurrency", "creditReserve", SUNO_CONCURRENCY_DEFAULTS.creditReserve),
   );
 
   // Customer credit gate (see the `creditGate` block in src/config.ts). Applied

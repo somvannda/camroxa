@@ -35,6 +35,18 @@ function resolveCookieEncryptionKey(): Buffer {
   return Buffer.from(raw, "hex");
 }
 
+/** Account-selection credit strategy (see `config.suno.creditStrategy`). */
+export type CreditStrategy = "off" | "balanced" | "max_first";
+
+/**
+ * Parse `SUNO_CREDIT_STRATEGY`, falling back to `balanced` for an unset or
+ * unrecognized value so a typo can never silently disable credit balancing.
+ */
+function resolveCreditStrategy(): CreditStrategy {
+  const raw = (process.env.SUNO_CREDIT_STRATEGY ?? "balanced").trim().toLowerCase();
+  return raw === "off" || raw === "max_first" || raw === "balanced" ? raw : "balanced";
+}
+
 export const config = {
   /** Full cookie header (optional, sent as `Cookie` on Clerk requests). */
   cookie: process.env.SUNO_COOKIE ?? "",
@@ -176,6 +188,24 @@ export const config = {
      * jobs don't immediately re-hit the throttled account. 0 disables.
      */
     rateLimitCooldownMs: Math.max(0, Number(process.env.SUNO_RATE_LIMIT_COOLDOWN_MS ?? 5_000)),
+    /**
+     * Credit-aware account selection (see `src/pool.ts` `orderForDispatch`).
+     * `balanced` (default) prefers the highest-balance account and reserves the
+     * estimated spend of every in-flight job against that balance, so concurrent
+     * picks spread out and all accounts drain toward a common level.
+     * `max_first` prefers the highest balance too but reserves nothing, so it
+     * keeps drawing from the single richest account between billing refreshes.
+     * `off` restores the legacy least-loaded-only ordering.
+     */
+    creditStrategy: resolveCreditStrategy(),
+    /**
+     * Suno credits to reserve against an account's cached balance for each
+     * in-flight job. Suno debits a generation on submit, but the cached health
+     * only refreshes every 30s, so without a reservation every concurrent pick
+     * reads the same snapshot and dogpiles the same account. Estimate only;
+     * cleared whenever a fresh `billing/info` arrives. 0 disables reservations.
+     */
+    creditReserve: Math.max(0, Number(process.env.SUNO_CREDIT_RESERVE ?? 10)),
   },
   /**
    * Customer-account credit floor. "Free" generation endpoints cost 0 credits
