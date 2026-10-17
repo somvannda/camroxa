@@ -297,6 +297,26 @@ def test_coerce_suno_download_url_rewrites_cdn_m4a_to_mp3() -> None:
     )
 
 
+def test_prefer_suno_mpeg_cdn_url_rewrites_dead_stream_host() -> None:
+    from platform_api.clients.suno_client import (
+        coerce_suno_download_url,
+        prefer_suno_mpeg_cdn_url,
+    )
+
+    clip_id = "22a4e8b2-25ad-4041-9601-b76be1c8284f"
+    stream = f"https://audiostream.api.box/stream/{clip_id}.mp3"
+    tempfile = f"https://tempfile.aiquickdraw.com/r/{clip_id}.mp3"
+    # clip id parsed from the URL path, or supplied explicitly
+    assert prefer_suno_mpeg_cdn_url(stream) == tempfile
+    assert prefer_suno_mpeg_cdn_url(stream, clip_id) == tempfile
+    assert coerce_suno_download_url(url=stream, audio_id=clip_id) == tempfile
+    # a malformed stream path still yields the sibling from the explicit audio id
+    assert (
+        coerce_suno_download_url(url="https://audiostream.api.box/stream/", audio_id=clip_id)
+        == tempfile
+    )
+
+
 def test_extract_clip_download_url_rewrites_suno_m4a() -> None:
     clip_id = "441cb4bf-f013-4c88-8ea1-9d17499b1762"
     clip = {

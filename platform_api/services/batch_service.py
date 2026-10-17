@@ -305,6 +305,14 @@ class BatchService:
         # Background Suno-download health probe (per-user debounce/inflight).
         self._dead_download_probe_last: dict[str, float] = {}
         self._dead_download_probe_inflight: set[str] = set()
+        # Background reconciliation + image-job healing for the pending-download
+        # poll. Both are debounced off the request path so frequent desktop polls
+        # can never stampede Suno/DB or blow the client's 30s timeout.
+        self._background_tasks: set[Any] = set()
+        self._pending_reconcile_last: dict[str, float] = {}
+        self._pending_reconcile_inflight: set[str] = set()
+        self._pending_image_ensure_last: dict[str, float] = {}
+        self._pending_image_ensure_inflight: set[str] = set()
 
     # ------------------------------------------------------------------
     # Create Batch (Requirements 13.1, 13.6)
@@ -3087,7 +3095,11 @@ class BatchService:
         user_id: str,
         limit: int = 20,
     ) -> list[dict[str, Any]]:
-        await self.reconcile_pending_suno_tasks(user_id=user_id, limit=max(limit, 10))
+        # Reconciliation polls Suno per in-flight task and image-job healing hits
+        # the DB per batch — both used to run inline and pushed this endpoint past
+        # the desktop's 30s timeout, so no client ever retried its pending MP3s.
+        # Run them debounced in the background; the next poll sees the updates.
+        self._schedule_pending_reconcile(user_id=user_id, limit=max(limit, 10))
         # Fire-and-forget: detect Suno temp URLs that are permanently dead so the
         # next poll stops returning them (and back up any that are still alive).
         self._schedule_dead_download_probe(user_id=user_id)
@@ -3101,14 +3113,7 @@ class BatchService:
             for row in rows
             if row.get("batch_id")
         }
-        for batch_id in batch_ids:
-            try:
-                await self.ensure_batch_image_jobs(user_id=user_id, batch_id=batch_id)
-            except Exception:
-                logger.exception(
-                    "Failed to ensure image jobs during pending download sync for batch %s",
-                    batch_id,
-                )
+        self._schedule_pending_image_jobs(user_id=user_id, batch_ids=batch_ids)
         items: list[dict[str, Any]] = []
         from platform_api.clients.suno_client import coerce_suno_download_url
 
@@ -3210,20 +3215,53 @@ class BatchService:
             packaged = await self._load_packaged_variants(pool, task_ids)
             storage = StorageService.from_config(config)
             resolved: dict[tuple[str, str], str] = {}
+
+            pending: list[tuple[str, str, str]] = []
             for (task_id, variant), storage_key in storage_keys.items():
                 key = str(storage_key or "")
                 if not key or key.endswith((".cxa", ".cxo")):
                     continue
                 if (str(task_id), str(variant)) in packaged:
                     continue
-                try:
-                    # cache_bust: the CDN caches by URL for a long TTL; an
-                    # overwritten object would otherwise serve stale bytes.
-                    resolved[(str(task_id), str(variant))] = await storage.get_signed_get_url(
-                        key, cache_bust=True
-                    )
-                except Exception:
-                    continue
+                pending.append((str(task_id), str(variant), key))
+            if not pending:
+                return resolved
+
+            # Resolve concurrently: each cache-bust URL costs a B2 HEAD, and
+            # sequential HEADs across a whole pending queue is what stalled the
+            # poll. Bound the fan-out and cap the whole thing so the endpoint
+            # still returns (with Suno URLs only) if B2 is slow.
+            import asyncio
+
+            semaphore = asyncio.Semaphore(self._PENDING_B2_RESOLVE_CONCURRENCY)
+
+            async def _resolve_one(task_id: str, variant: str, key: str) -> None:
+                async with semaphore:
+                    try:
+                        # cache_bust: the CDN caches by URL for a long TTL; an
+                        # overwritten object would otherwise serve stale bytes.
+                        url = await storage.get_signed_get_url(key, cache_bust=True)
+                    except Exception:
+                        return
+                    if url:
+                        resolved[(task_id, variant)] = url
+
+            tasks = [
+                asyncio.create_task(_resolve_one(task_id, variant, key))
+                for task_id, variant, key in pending
+            ]
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks, return_exceptions=True),
+                    timeout=self._PENDING_B2_RESOLVE_TIMEOUT_S,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "Pending B2 URL resolution exceeded %.1fs; returning partial URLs",
+                    self._PENDING_B2_RESOLVE_TIMEOUT_S,
+                )
+                for task in tasks:
+                    task.cancel()
             return resolved
         except Exception:
             logger.warning("Could not resolve pending B2 download URLs", exc_info=True)
@@ -3261,9 +3299,27 @@ class BatchService:
         "Accept": "audio/mpeg,application/octet-stream,*/*;q=0.8",
     }
 
+    # The pending-download poll runs on the desktop's 30s budget. Keep every
+    # enrichment step off that path and cap the B2 fan-out that remains.
+    _PENDING_RECONCILE_COOLDOWN_S = 60.0
+    _PENDING_IMAGE_ENSURE_COOLDOWN_S = 60.0
+    _PENDING_B2_RESOLVE_CONCURRENCY = 8
+    _PENDING_B2_RESOLVE_TIMEOUT_S = 8.0
+
+    def _track_background_task(self, coro: Any) -> None:
+        """Run ``coro`` detached, holding a strong ref so it isn't GC'd mid-flight."""
+        import asyncio
+
+        try:
+            task = asyncio.create_task(coro)
+        except RuntimeError:
+            coro.close()
+            return
+        self._background_tasks.add(task)
+        task.add_done_callback(self._background_tasks.discard)
+
     def _schedule_dead_download_probe(self, *, user_id: str) -> None:
         """Debounced background probe; safe to call on every pending poll."""
-        import asyncio
         import time
 
         key = str(user_id or "").strip()
@@ -3284,10 +3340,60 @@ class BatchService:
             finally:
                 self._dead_download_probe_inflight.discard(key)
 
-        try:
-            asyncio.create_task(_run())
-        except RuntimeError:
-            self._dead_download_probe_inflight.discard(key)
+        self._track_background_task(_run())
+
+    def _schedule_pending_reconcile(self, *, user_id: str, limit: int) -> None:
+        """Debounced background Suno reconcile; safe to call on every pending poll."""
+        import time
+
+        key = str(user_id or "").strip()
+        if not key or key in self._pending_reconcile_inflight:
+            return
+        now = time.monotonic()
+        if (now - self._pending_reconcile_last.get(key, 0.0)) < self._PENDING_RECONCILE_COOLDOWN_S:
+            return
+        self._pending_reconcile_last[key] = now
+        self._pending_reconcile_inflight.add(key)
+
+        async def _run() -> None:
+            try:
+                await self.reconcile_pending_suno_tasks(user_id=key, limit=limit)
+            except Exception:
+                logger.exception("Background Suno reconcile failed for user %s", key)
+            finally:
+                self._pending_reconcile_inflight.discard(key)
+
+        self._track_background_task(_run())
+
+    def _schedule_pending_image_jobs(self, *, user_id: str, batch_ids: set[UUID]) -> None:
+        """Heal missing image-job rows off the request path (debounced per user)."""
+        targets = sorted({str(batch_id) for batch_id in batch_ids if batch_id})
+        key = str(user_id or "").strip()
+        if not key or not targets or key in self._pending_image_ensure_inflight:
+            return
+        import time
+
+        now = time.monotonic()
+        if (now - self._pending_image_ensure_last.get(key, 0.0)) < self._PENDING_IMAGE_ENSURE_COOLDOWN_S:
+            return
+        self._pending_image_ensure_last[key] = now
+        self._pending_image_ensure_inflight.add(key)
+
+        async def _run() -> None:
+            try:
+                for raw_batch_id in targets:
+                    try:
+                        await self.ensure_batch_image_jobs(
+                            user_id=key, batch_id=UUID(raw_batch_id)
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Background image-job ensure failed for batch %s", raw_batch_id
+                        )
+            finally:
+                self._pending_image_ensure_inflight.discard(key)
+
+        self._track_background_task(_run())
 
     async def probe_dead_suno_downloads(
         self,
