@@ -7,12 +7,6 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased] — Pending-downloads poll stays under the desktop 30s timeout
-
-### Fixed
-
-- `GET /music/downloads/pending` ran Suno reconcile and per-batch image-job healing inline (plus a sequential B2 `HEAD` per archived track), pushing the route past the desktop's 30s httpx timeout — clients never received the pending list and runs froze at 2–4 of 15 tracks. Reconcile and image-job healing now run debounced (60s, per user) in the background, and B2 URL resolution fans out concurrently (8) under an 8s cap that returns partial results. Separately, the reseller's `audiostream.api.box` host now answers `200 audio/mpeg` with a **0-byte body**, so stored/stream URLs are rewritten to the working `tempfile.aiquickdraw.com/r/<id>.mp3` sibling and the dead host is blocklisted. No desktop rebuild required. See `docs/changelog/2026-10-02-pending-downloads-poll-latency.md`.
-
 ## [Unreleased] - Packs-only billing: 30-day pack credits
 
 ### Added
@@ -28,6 +22,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `POST /api/v3/subscriptions/purchase` and `POST /api/v3/subscriptions/renewal` now return **410 Gone** (`SubscriptionRetiredError`) instead of opening a CutLuy checkout. `GET /subscriptions/my-subscription` and `POST /subscriptions/cancel` stay live for grandfathered subscribers.
 - The `User must have active subscription to purchase top-ups` gate in `TopupService.purchase_topup`, which would otherwise have blocked every buyer once subscriptions stopped being sold.
+
+## [2026-10-18] — Pending-downloads poll stays under the desktop 30s timeout
+
+### Fixed
+
+- `GET /music/downloads/pending` ran Suno reconcile and per-batch image-job healing inline (plus a sequential B2 `HEAD` per archived track), pushing the route past the desktop's 30s httpx timeout — clients never received the pending list and runs froze at 2–4 of 15 tracks. Reconcile and image-job healing now run debounced (60s, per user) in the background, and B2 URL resolution fans out concurrently (8) under an 8s cap that returns partial results. Separately, the reseller's `audiostream.api.box` host now answers `200 audio/mpeg` with a **0-byte body**, so stored/stream URLs are rewritten to the working `tempfile.aiquickdraw.com/r/<id>.mp3` sibling and the dead host is blocklisted. No desktop rebuild required. See `docs/changelog/2026-10-02-pending-downloads-poll-latency.md`.
 
 ## [2026-10-14] — Admin quota "Used" for songs now matches enforcement
 
