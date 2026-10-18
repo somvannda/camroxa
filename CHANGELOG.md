@@ -7,6 +7,12 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+
+- Progress now recovers MP3s that are missing **on this PC** without a right-click. The account-wide pending-download sync is driven by server flags (`downloaded_ok` / `pipeline_complete`), so a track the server already recorded as downloaded — but whose file is absent locally (deleted, moved, or pulled on another device) — was never re-fetched automatically. The Progress page now runs the same per-batch recovery as the row right-click, one channel per 60s tick, with a 10-minute per-channel cooldown. Manual right-click is unchanged. See `docs/changelog/2026-10-18-desktop-auto-missing-mp3.md`.
+
 ## [1.4.7] - 2026-10-05
 
 ### Changed
