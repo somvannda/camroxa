@@ -34,6 +34,10 @@ import {
   downloadWebMusicClip,
   downloadWebMusicClipWav,
   downloadWebMusicTimedLyrics,
+  fetchWebMusicClipBlob,
+  fetchWebMusicClipWavBlob,
+  fetchWebMusicTimedLyricsBlob,
+  saveBlob,
   generateWebMusic,
   generateWebMusicDraft,
   generateWebMusicStyles,
@@ -50,6 +54,7 @@ import {
 import { formatGeneratedTime, formatModelVersionTag } from '@/lib/clip-display';
 import { fetchCreditBalance, fetchSubscriptionPlans, type CreditBalance } from '@/lib/subscription-api';
 import { formatDuration, type StreamTrack } from '@/lib/streaming-api';
+import { createStoreZip, type ZipEntry } from '@/lib/zip-store';
 
 const STYLE_CHIPS = [
   'pop',
@@ -292,6 +297,17 @@ function ClipDownloadBadge({
 
 type DownloadKind = 'mp3' | 'wav' | 'lrc' | 'srt';
 
+const BATCH_FORMAT_OPTIONS: { value: DownloadKind; label: string }[] = [
+  { value: 'mp3', label: 'MP3 audio' },
+  { value: 'wav', label: 'WAV audio' },
+  { value: 'lrc', label: 'LRC lyrics' },
+  { value: 'srt', label: 'SRT subtitles' },
+];
+
+// Beyond this, one in-browser ZIP risks exhausting the tab's memory, so the
+// batch falls back to downloading files one at a time instead.
+const BATCH_ZIP_MAX_BYTES = 400 * 1024 * 1024;
+
 function downloadBusyKey(taskId: string, variant: string, kind: DownloadKind): string {
   return `${taskId}:${variant}:${kind}`;
 }
@@ -507,6 +523,11 @@ export default function CreatePageClient() {
   } | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [downloadingKeys, setDownloadingKeys] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedClipKeys, setSelectedClipKeys] = useState<string[]>([]);
+  const [batchFormat, setBatchFormat] = useState<DownloadKind>('mp3');
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -732,6 +753,123 @@ export default function CreatePageClient() {
 
   function canDownloadTimedLyrics(generation: WebMusicGeneration, clipReady: boolean): boolean {
     return clipReady && !generation.instrumental;
+  }
+
+  function clipSelectableFor(generation: WebMusicGeneration, clip: WebMusicClip): boolean {
+    if (!clip.ready) return false;
+    if ((batchFormat === 'lrc' || batchFormat === 'srt') && generation.instrumental) return false;
+    return true;
+  }
+
+  function toggleClipSelection(key: string) {
+    setSelectedClipKeys((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
+    );
+  }
+
+  function selectedBatchItems() {
+    const wanted = new Set(selectedClipKeys);
+    const rows: { generation: WebMusicGeneration; clip: WebMusicClip }[] = [];
+    for (const generation of items) {
+      for (const clip of generationClips(generation)) {
+        if (wanted.has(clipTrackId(generation, clip))) rows.push({ generation, clip });
+      }
+    }
+    return rows;
+  }
+
+  function batchFileName(
+    generation: WebMusicGeneration,
+    clip: WebMusicClip,
+    format: DownloadKind,
+  ): string {
+    const base =
+      clipDisplayTitle(generation, clip)
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim() || 'camxora-track';
+    const version = clip.variant === 'alt' ? 'V2' : 'V1';
+    return `${base} (${version}).${format}`;
+  }
+
+  async function fetchBatchBlob(
+    generation: WebMusicGeneration,
+    clip: WebMusicClip,
+    format: DownloadKind,
+  ): Promise<Blob> {
+    if (format === 'mp3') return fetchWebMusicClipBlob(generation.id, clip.variant);
+    if (format === 'wav') return fetchWebMusicClipWavBlob(generation.id, clip.variant);
+    return fetchWebMusicTimedLyricsBlob(generation.id, clip.variant, format);
+  }
+
+  async function onBatchDownload() {
+    if (!canDownload) {
+      setShowUpgradeModal(true);
+      return;
+    }
+    const chosen = selectedBatchItems().filter(({ generation, clip }) =>
+      clipSelectableFor(generation, clip),
+    );
+    if (!chosen.length) {
+      setCreateError(`No ready ${batchFormat.toUpperCase()} files in your selection.`);
+      return;
+    }
+    setCreateError(null);
+    setBatchBusy(true);
+    setBatchProgress({ done: 0, total: chosen.length });
+    try {
+      // Fetch everything before writing anything, so a failure part-way does not
+      // leave a corrupt archive or a partial set of files.
+      const fetched: { generation: WebMusicGeneration; clip: WebMusicClip; blob: Blob }[] = [];
+      for (const row of chosen) {
+        const blob = await fetchBatchBlob(row.generation, row.clip, batchFormat);
+        fetched.push({ ...row, blob });
+        setBatchProgress({ done: fetched.length, total: chosen.length });
+      }
+
+      const totalBytes = fetched.reduce((sum, row) => sum + row.blob.size, 0);
+      const usedNames = new Set<string>();
+      const uniqueName = (generation: WebMusicGeneration, clip: WebMusicClip) => {
+        const base = batchFileName(generation, clip, batchFormat);
+        let name = base;
+        let counter = 2;
+        while (usedNames.has(name)) {
+          name = base.replace(/(\.[^.]+)$/, ` (${counter})$1`);
+          counter += 1;
+        }
+        usedNames.add(name);
+        return name;
+      };
+
+      if (totalBytes > BATCH_ZIP_MAX_BYTES) {
+        // Too large for one in-browser archive; hand the browser each file.
+        for (const row of fetched) {
+          saveBlob(row.blob, uniqueName(row.generation, row.clip));
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, 150);
+          });
+        }
+        setCreateError(
+          `Archive would be ~${Math.round(totalBytes / (1024 * 1024))} MB, so ${fetched.length} files were saved individually.`,
+        );
+      } else {
+        const entries: ZipEntry[] = [];
+        for (const row of fetched) {
+          entries.push({
+            name: uniqueName(row.generation, row.clip),
+            data: new Uint8Array(await row.blob.arrayBuffer()),
+          });
+        }
+        const stamp = new Date().toISOString().slice(0, 10);
+        saveBlob(createStoreZip(entries), `camxora-${batchFormat}-${stamp}.zip`);
+      }
+      setSelectedClipKeys([]);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Batch download failed');
+    } finally {
+      setBatchBusy(false);
+      setBatchProgress(null);
+    }
   }
 
   function clipDownloadButtons(
@@ -1417,6 +1555,59 @@ export default function CreatePageClient() {
               </div>
             </div>
           </div>
+
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-[7px] border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-medium text-slate-300">
+              <input
+                type="checkbox"
+                checked={selectionMode}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  setSelectionMode(next);
+                  if (!next) setSelectedClipKeys([]);
+                }}
+                className="h-3.5 w-3.5 accent-violet-500"
+              />
+              Select
+            </label>
+
+            {selectionMode ? (
+              <>
+                <span className="text-xs text-slate-400">{selectedClipKeys.length} selected</span>
+                <MusicSelect
+                  value={batchFormat}
+                  onValueChange={(next) => setBatchFormat(next as DownloadKind)}
+                  options={BATCH_FORMAT_OPTIONS}
+                  className="h-9 w-[8.5rem] text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={batchBusy || selectedClipKeys.length === 0}
+                  onClick={() => void onBatchDownload()}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-[7px] border border-violet-400/30 bg-violet-500/10 px-3 text-xs font-medium text-violet-100 transition hover:bg-violet-500/20 disabled:opacity-40"
+                >
+                  {batchBusy ? (
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  {batchBusy
+                    ? batchProgress
+                      ? `Preparing ${batchProgress.done}/${batchProgress.total}…`
+                      : 'Preparing…'
+                    : `Download ${batchFormat.toUpperCase()} (.zip)`}
+                </button>
+                <button
+                  type="button"
+                  disabled={batchBusy || selectedClipKeys.length === 0}
+                  onClick={() => setSelectedClipKeys([])}
+                  className="inline-flex h-9 items-center rounded-[7px] border border-white/10 px-3 text-xs font-medium text-slate-300 disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              </>
+            ) : null}
+          </div>
           
           {items.length ? (
             <div className="space-y-2 min-w-0 overflow-hidden">
@@ -1457,6 +1648,17 @@ export default function CreatePageClient() {
                           : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.05]'
                       }`}
                     >
+                      {selectionMode ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedClipKeys.includes(clipTrackId(generation, clip))}
+                          disabled={!clipSelectableFor(generation, clip)}
+                          onChange={() => toggleClipSelection(clipTrackId(generation, clip))}
+                          aria-label={`Select ${clipDisplayTitle(generation, clip)} ${clipVersionLabel(clip.variant)}`}
+                          title={clipSelectableFor(generation, clip) ? 'Select for batch download' : 'Not ready'}
+                          className="h-4 w-4 shrink-0 accent-violet-500 disabled:opacity-30"
+                        />
+                      ) : null}
                       <ClipCoverControl
                         clip={clip}
                         variant={clip.variant}
