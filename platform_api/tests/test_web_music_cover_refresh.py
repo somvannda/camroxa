@@ -1,8 +1,9 @@
-"""Cover art must survive Suno's expiring CDN URLs.
+"""Cover art must not turn a cheap song read into a Suno poll.
 
-Stored covers are raw Suno CDN links. ``_ensure_cover_urls`` used to store them
-once and never refresh, so an expired/hotlink-blocked URL stayed broken forever.
-Rows whose cover is missing or still points at Suno are now re-polled.
+``_ensure_cover_urls`` runs on every ``GET /generations/{id}``, and the Create
+page polls every open song. It must only fetch art when none is stored; re-polling
+an existing URL caused one Suno request per poll tick and drove the API into OOM.
+Dead URLs are handled client-side by CoverImage (fallback on error).
 """
 
 from __future__ import annotations
@@ -14,26 +15,7 @@ from uuid import uuid4
 import pytest
 
 from platform_api.services import web_music_service as svc_mod
-from platform_api.services.web_music_service import (
-    WebMusicService,
-    _cover_url_looks_ephemeral,
-)
-
-
-@pytest.mark.parametrize(
-    "value",
-    ["", "   ", None, "https://cdn1.suno.ai/image_abc.jpeg", "https://cdn.suno.com/x.png"],
-)
-def test_ephemeral_covers_detected(value: object) -> None:
-    assert _cover_url_looks_ephemeral(value) is True
-
-
-@pytest.mark.parametrize(
-    "value",
-    ["https://storage.camxora.com/covers/x.jpeg", "https://b2.example.com/x.png"],
-)
-def test_durable_covers_kept(value: str) -> None:
-    assert _cover_url_looks_ephemeral(value) is False
+from platform_api.services.web_music_service import WebMusicService
 
 
 def _service(pool: AsyncMock) -> WebMusicService:
@@ -41,13 +23,12 @@ def _service(pool: AsyncMock) -> WebMusicService:
 
 
 @pytest.mark.asyncio
-async def test_expired_suno_cover_is_refreshed(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_missing_cover_is_backfilled(monkeypatch: pytest.MonkeyPatch) -> None:
     pool = AsyncMock()
     pool.execute = AsyncMock(return_value="UPDATE 1")
     pool.fetchrow = AsyncMock(return_value={"id": uuid4(), "image_url_ok": "https://cdn1.suno.ai/new.jpeg"})
     service = _service(pool)
-    polled = SimpleNamespace(state="success")
-    service._poll_suno_task_status = AsyncMock(return_value=polled)
+    service._poll_suno_task_status = AsyncMock(return_value=SimpleNamespace(state="success"))
     monkeypatch.setattr(
         svc_mod,
         "urls_from_generate_poll",
@@ -61,7 +42,7 @@ async def test_expired_suno_cover_is_refreshed(monkeypatch: pytest.MonkeyPatch) 
         "id": uuid4(),
         "status": "SUCCESS",
         "external_task_id": "suno-task-1",
-        "image_url_ok": "https://cdn1.suno.ai/stale.jpeg",
+        "image_url_ok": None,
         "image_url_alt": None,
     }
 
@@ -72,7 +53,7 @@ async def test_expired_suno_cover_is_refreshed(monkeypatch: pytest.MonkeyPatch) 
 
 
 @pytest.mark.asyncio
-async def test_durable_cover_is_not_repolled(monkeypatch: pytest.MonkeyPatch) -> None:
+async def test_existing_suno_cover_is_never_repolled() -> None:
     pool = AsyncMock()
     pool.execute = AsyncMock()
     service = _service(pool)
@@ -82,8 +63,8 @@ async def test_durable_cover_is_not_repolled(monkeypatch: pytest.MonkeyPatch) ->
         "id": uuid4(),
         "status": "SUCCESS",
         "external_task_id": "suno-task-1",
-        "image_url_ok": "https://storage.camxora.com/covers/ok.jpeg",
-        "image_url_alt": "https://storage.camxora.com/covers/alt.jpeg",
+        "image_url_ok": "https://cdn1.suno.ai/stored.jpeg",
+        "image_url_alt": None,
     }
 
     result = await service._ensure_cover_urls(row)
