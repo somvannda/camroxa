@@ -3,6 +3,7 @@
 import Link from 'next/link';
 
 import TrackRow from '@/components/track-row';
+import { CoverImage } from '@/components/cover-image';
 import SyncedLyrics from '@/components/synced-lyrics';
 import { usePlayer } from '@/components/player-provider';
 import { khmerTextClass } from '@/lib/khmer-text';
@@ -50,12 +51,11 @@ function DiscoverySections({
         <div className="space-y-3">
           {albums.slice(0, 4).map((album) => (
             <Link key={album.id} href={`/albums/${album.id}`} className="flex gap-3 hover:opacity-90">
-              {album.cover_url ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={album.cover_url} alt="" className="h-12 w-12 rounded-md object-cover" />
-              ) : (
-                <div className="h-12 w-12 rounded-md bg-white/[0.06]" />
-              )}
+              <CoverImage
+                src={album.cover_url}
+                className="h-12 w-12 rounded-md object-cover"
+                fallback={<div className="h-12 w-12 rounded-md bg-white/[0.06]" />}
+              />
               <div className="min-w-0">
                 <p className="truncate text-sm text-white">{album.album_name}</p>
                 <p className="truncate text-xs text-slate-400">{album.artist_name}</p>
@@ -107,16 +107,11 @@ function NowPlayingPanel() {
   return (
     <div className="space-y-4">
       <section className="flex gap-3">
-        {current.cover_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={current.cover_url}
-            alt=""
-            className="h-16 w-16 shrink-0 rounded-lg object-cover shadow-lg"
-          />
-        ) : (
-          <div className="h-16 w-16 shrink-0 rounded-lg bg-white/[0.06]" />
-        )}
+        <CoverImage
+          src={current.cover_url}
+          className="h-16 w-16 shrink-0 rounded-lg object-cover shadow-lg"
+          fallback={<div className="h-16 w-16 shrink-0 rounded-lg bg-white/[0.06]" />}
+        />
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
             {playing ? 'Now playing' : 'Paused'}
@@ -196,12 +191,11 @@ function NowPlayingPanel() {
                 onClick={() => void playTrack(track, queue)}
                 className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left hover:bg-white/5"
               >
-                {track.cover_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={track.cover_url} alt="" className="h-10 w-10 rounded object-cover" />
-                ) : (
-                  <div className="h-10 w-10 rounded bg-white/[0.06]" />
-                )}
+                <CoverImage
+                  src={track.cover_url}
+                  className="h-10 w-10 rounded object-cover"
+                  fallback={<div className="h-10 w-10 rounded bg-white/[0.06]" />}
+                />
                 <div className="min-w-0">
                   <p className={`truncate text-sm text-white ${khmerTextClass(track.title)}`}>
                     {track.title}
