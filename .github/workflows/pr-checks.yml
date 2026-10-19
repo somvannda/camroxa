@@ -307,7 +307,9 @@ jobs:
         shell: bash
         run: |
           BASE="${{ github.event.pull_request.base.sha }}"
-          if git diff --name-only "$BASE"...HEAD -- platform_api/ | grep -q .; then
+          # Also run when this workflow changes, so a CI edit is exercised (and a
+          # broken gate cannot land unnoticed) on its own PR.
+          if git diff --name-only "$BASE"...HEAD -- platform_api/ .github/workflows/pr-checks.yml | grep -q .; then
             echo "run=true" >> "$GITHUB_OUTPUT"
           else
             echo "run=false" >> "$GITHUB_OUTPUT"
@@ -339,6 +341,15 @@ jobs:
         continue-on-error: true
         working-directory: platform_api
         run: python -m pytest -q
+
+      # Blocking gate for the suites that are cross-platform and carry the most
+      # risk: web-music generation/charging, credits and billing. They are
+      # mock-based (no DB/Redis) and run on Linux, so a regression here fails the
+      # PR instead of only showing up in the non-blocking run above.
+      - name: "pytest (blocking: web-music, credits, billing)"
+        if: steps.changes.outputs.run == 'true'
+        working-directory: platform_api
+        run: python -m pytest tests/test_web_music_*.py tests/test_credit_*.py tests/test_billing_*.py -q
 
   music-web-checks:
     name: Music portal tests + build (if changed)
