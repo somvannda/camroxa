@@ -265,6 +265,13 @@ export async function updateWebMusicGenerationTitle(
   });
 }
 
+export async function deleteWebMusicGeneration(id: string): Promise<void> {
+  await musicFetch<void>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
+  );
+}
+
 export async function downloadWebMusicClip(id: string, variant: string, filename: string): Promise<void> {
   const response = await musicAuthFetch(
     `/api/v3/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,

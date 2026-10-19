@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, X } from 'lucide-react';
+import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, Trash2, X } from 'lucide-react';
 
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
@@ -31,6 +31,7 @@ function clampText(value: string, max: number): string {
 import {
   createWebMusicWorkspace,
   updateWebMusicWorkspace,
+  deleteWebMusicGeneration,
   downloadWebMusicClip,
   downloadWebMusicClipWav,
   downloadWebMusicTimedLyrics,
@@ -507,6 +508,7 @@ export default function CreatePageClient() {
   } | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [downloadingKeys, setDownloadingKeys] = useState<string[]>([]);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -824,6 +826,26 @@ export default function CreatePageClient() {
       });
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Could not save title');
+    }
+  }
+
+  async function onDeleteGeneration(generation: WebMusicGeneration) {
+    // Failed songs were already refunded, so deleting only clears the workspace.
+    const confirmed = window.confirm(
+      `Delete "${generation.title}" permanently from this workspace? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setCreateError(null);
+    setDeletingIds((prev) => (prev.includes(generation.id) ? prev : [...prev, generation.id]));
+    try {
+      await deleteWebMusicGeneration(generation.id);
+      setItems((prev) => prev.filter((item) => item.id !== generation.id));
+      setTotal((prev) => Math.max(0, prev - 1));
+      setSelectedVersion((prev) => (prev?.song.id === generation.id ? null : prev));
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not delete song');
+    } finally {
+      setDeletingIds((prev) => prev.filter((id) => id !== generation.id));
     }
   }
 
@@ -1422,20 +1444,38 @@ export default function CreatePageClient() {
             <div className="space-y-2 min-w-0 overflow-hidden">
               {items.map((generation) => {
                 if ((generation.status || '').toUpperCase() === 'FAILED') {
+                  const deleting = deletingIds.includes(generation.id);
                   return (
                     <div
                       key={generation.id}
-                      className="rounded-xl border border-rose-400/20 bg-rose-500/5 p-3 min-w-0"
+                      className="flex min-w-0 items-start gap-2 rounded-xl border border-rose-400/20 bg-rose-500/5 p-3"
                     >
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <p className={`truncate font-medium text-white ${khmerTextClass(generation.title)}`}>
-                          {generation.title}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <p className={`truncate font-medium text-white ${khmerTextClass(generation.title)}`}>
+                            {generation.title}
+                          </p>
+                          <ModelVersionTag model={generation.model} />
+                        </div>
+                        <p className="mt-1 text-sm text-rose-300">
+                          {generation.error_message || 'Generation failed.'}
                         </p>
-                        <ModelVersionTag model={generation.model} />
                       </div>
-                      <p className="mt-1 text-sm text-rose-300">
-                        {generation.error_message || 'Generation failed.'}
-                      </p>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => void onDeleteGeneration(generation)}
+                        title="Delete this song permanently"
+                        aria-label="Delete song"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-50"
+                      >
+                        {deleting ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        <span className="hidden sm:inline">{deleting ? 'Removing…' : 'Delete'}</span>
+                      </button>
                     </div>
                   );
                 }
