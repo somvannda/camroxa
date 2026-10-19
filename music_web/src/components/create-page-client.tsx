@@ -24,6 +24,7 @@ import {
   WEB_MUSIC_STYLE_MAX,
 } from '@/components/music-form-ui';
 import { khmerTextClass } from '@/lib/khmer-text';
+import { isFailedStatus } from '@/lib/generation-status';
 import { CoverImage } from '@/components/cover-image';
 
 function clampText(value: string, max: number): string {
@@ -103,9 +104,9 @@ function isGeneratingStatus(generation: WebMusicGeneration): boolean {
 }
 
 function isOpenGeneration(item: WebMusicGeneration): boolean {
-  const status = (item.status || '').toLowerCase();
-  if (status === 'failed' || status === 'cancelled') return false;
-  if (status === 'success') {
+  const status = (item.status || '').toUpperCase();
+  if (isFailedStatus(status)) return false;
+  if (status === 'SUCCESS') {
     if (item.clips.some((clip) => !clip.ready)) return true;
     return item.clips.some((clip) => clip.ready && !clip.image_url);
   }
@@ -1807,7 +1808,7 @@ export default function CreatePageClient() {
           {items.length ? (
             <div className="space-y-2 min-w-0 overflow-hidden">
               {items.map((generation) => {
-                if ((generation.status || '').toUpperCase() === 'FAILED') {
+                if (isFailedStatus(generation.status)) {
                   const deleting = deletingIds.includes(generation.id);
                   return (
                     <div
