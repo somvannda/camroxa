@@ -68,6 +68,19 @@ def _b2_key_is_task_scoped(storage_key: str | None, task_id: UUID) -> bool:
     return str(task_id) in parts
 
 
+# Suno serves cover art from its own CDN. Those URLs are short-lived / can be
+# blocked by hotlink protection, so they are not safe to store once and forget.
+_SUNO_COVER_HOST_MARKERS = ("suno.ai", "suno.com")
+
+
+def _cover_url_looks_ephemeral(value: object) -> bool:
+    """True when a stored cover URL points at Suno's expiring CDN (or is empty)."""
+    text = str(value or "").strip().lower()
+    if not text:
+        return True
+    return any(marker in text for marker in _SUNO_COVER_HOST_MARKERS)
+
+
 def _usable_web_music_b2_key(storage_key: Any, task_id: UUID) -> str | None:
     key = str(storage_key or "").strip()
     if key and _b2_key_is_task_scoped(key, task_id):
@@ -1598,11 +1611,22 @@ class WebMusicService:
         return refreshed or row
 
     async def _ensure_cover_urls(self, row: Any) -> Any:
-        """Backfill Suno cover art when audio is ready but image URLs were not stored yet."""
+        """Backfill or refresh Suno cover art for a ready song.
+
+        Stored Suno CDN URLs expire (and can be hotlink-blocked), so a row whose
+        cover is missing *or* still points at Suno is re-polled for a fresh URL.
+        """
         status = str(_row_value(row, "status") or "").strip().lower()
         if status != "success":
             return row
-        if str(_row_value(row, "image_url_ok") or "").strip() or str(_row_value(row, "image_url_alt") or "").strip():
+        stored_ok = str(_row_value(row, "image_url_ok") or "").strip()
+        stored_alt = str(_row_value(row, "image_url_alt") or "").strip()
+        if (
+            stored_ok
+            and stored_alt
+            and not _cover_url_looks_ephemeral(stored_ok)
+            and not _cover_url_looks_ephemeral(stored_alt)
+        ):
             return row
         external_id = str(_row_value(row, "external_task_id") or "").strip()
         if not external_id:
