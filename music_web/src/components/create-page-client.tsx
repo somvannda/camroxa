@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, X } from 'lucide-react';
+import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, Trash2, X } from 'lucide-react';
 
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
@@ -39,6 +39,7 @@ import {
   MusicApiError,
   createWebMusicWorkspace,
   updateWebMusicWorkspace,
+  deleteWebMusicGeneration,
   downloadWebMusicClip,
   downloadWebMusicClipWav,
   downloadWebMusicTimedLyrics,
@@ -540,11 +541,12 @@ export default function CreatePageClient() {
   } | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
   const [downloadingKeys, setDownloadingKeys] = useState<string[]>([]);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedClipKeys, setSelectedClipKeys] = useState<string[]>([]);
   const [batchFormat, setBatchFormat] = useState<DownloadKind>('mp3');
   const [batchBusy, setBatchBusy] = useState(false);
-  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
+  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -875,7 +877,7 @@ export default function CreatePageClient() {
     }
     setCreateError(null);
     setBatchBusy(true);
-    setBatchProgress({ done: 0, total: chosen.length });
+    setDownloadProgress({ done: 0, total: chosen.length });
     try {
       // Fetch everything before writing anything, so a failure part-way does not
       // leave a corrupt archive or a partial set of files.
@@ -883,7 +885,7 @@ export default function CreatePageClient() {
       for (const row of chosen) {
         const blob = await fetchBatchBlob(row.generation, row.clip, batchFormat);
         fetched.push({ ...row, blob });
-        setBatchProgress({ done: fetched.length, total: chosen.length });
+        setDownloadProgress({ done: fetched.length, total: chosen.length });
       }
 
       const totalBytes = fetched.reduce((sum, row) => sum + row.blob.size, 0);
@@ -927,7 +929,7 @@ export default function CreatePageClient() {
       setCreateError(err instanceof Error ? err.message : 'Batch download failed');
     } finally {
       setBatchBusy(false);
-      setBatchProgress(null);
+      setDownloadProgress(null);
     }
   }
 
@@ -1021,6 +1023,26 @@ export default function CreatePageClient() {
       });
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Could not save title');
+    }
+  }
+
+  async function onDeleteGeneration(generation: WebMusicGeneration) {
+    // Failed songs were already refunded, so deleting only clears the workspace.
+    const confirmed = window.confirm(
+      `Delete "${generation.title}" permanently from this workspace? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setCreateError(null);
+    setDeletingIds((prev) => (prev.includes(generation.id) ? prev : [...prev, generation.id]));
+    try {
+      await deleteWebMusicGeneration(generation.id);
+      setItems((prev) => prev.filter((item) => item.id !== generation.id));
+      setTotal((prev) => Math.max(0, prev - 1));
+      setSelectedVersion((prev) => (prev?.song.id === generation.id ? null : prev));
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not delete song');
+    } finally {
+      setDeletingIds((prev) => prev.filter((id) => id !== generation.id));
     }
   }
 
@@ -1765,8 +1787,8 @@ export default function CreatePageClient() {
                     <Download className="h-3.5 w-3.5" />
                   )}
                   {batchBusy
-                    ? batchProgress
-                      ? `Preparing ${batchProgress.done}/${batchProgress.total}…`
+                    ? downloadProgress
+                      ? `Preparing ${downloadProgress.done}/${downloadProgress.total}…`
                       : 'Preparing…'
                     : `Download ${batchFormat.toUpperCase()} (.zip)`}
                 </button>
@@ -1786,20 +1808,38 @@ export default function CreatePageClient() {
             <div className="space-y-2 min-w-0 overflow-hidden">
               {items.map((generation) => {
                 if ((generation.status || '').toUpperCase() === 'FAILED') {
+                  const deleting = deletingIds.includes(generation.id);
                   return (
                     <div
                       key={generation.id}
-                      className="rounded-xl border border-rose-400/20 bg-rose-500/5 p-3 min-w-0"
+                      className="flex min-w-0 items-start gap-2 rounded-xl border border-rose-400/20 bg-rose-500/5 p-3"
                     >
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <p className={`truncate font-medium text-white ${khmerTextClass(generation.title)}`}>
-                          {generation.title}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <p className={`truncate font-medium text-white ${khmerTextClass(generation.title)}`}>
+                            {generation.title}
+                          </p>
+                          <ModelVersionTag model={generation.model} />
+                        </div>
+                        <p className="mt-1 text-sm text-rose-300">
+                          {generation.error_message || 'Generation failed.'}
                         </p>
-                        <ModelVersionTag model={generation.model} />
                       </div>
-                      <p className="mt-1 text-sm text-rose-300">
-                        {generation.error_message || 'Generation failed.'}
-                      </p>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => void onDeleteGeneration(generation)}
+                        title="Delete this song permanently"
+                        aria-label="Delete song"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-50"
+                      >
+                        {deleting ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        <span className="hidden sm:inline">{deleting ? 'Removing…' : 'Delete'}</span>
+                      </button>
                     </div>
                   );
                 }

@@ -56,6 +56,10 @@ from platform_api.services.web_music_play_tokens import (
     resolve_play_token,
 )
 from platform_api.services.suno_lrc import lrc_to_srt, looks_like_lrc
+from platform_api.services.suno_status_messages import (
+    SUNO_PENDING_STATUSES,
+    normalize_suno_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -1512,6 +1516,41 @@ class WebMusicService:
         if updated is None:
             raise NotFoundError("Generation not found.")
         return await self.get_generation(user_id, task_id)
+
+    async def delete_generation(self, user_id: UUID, task_id: UUID) -> None:
+        """Permanently remove one of the user's own web-music songs.
+
+        Credits for a failed generation were already refunded, so this never
+        touches the wallet — it only drops the song from the user's workspace.
+        Rows that depend on the task (playlist items, likes, play counts) cascade
+        on delete via their foreign keys. In-flight generations are refused so an
+        active Suno job is not orphaned mid-flight.
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, status FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found.")
+        if normalize_suno_status(row["status"]) in SUNO_PENDING_STATUSES:
+            raise ValidationError(
+                "This song is still generating. Wait until it finishes or fails before deleting it.",
+                details={"status": str(row["status"] or "")},
+            )
+        await self._pool.execute(
+            """
+            DELETE FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
 
     async def _poll_suno_task_status(self, external_task_id: str):
         """Poll record-info across the pool's keys.
