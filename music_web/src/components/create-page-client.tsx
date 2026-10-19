@@ -84,6 +84,12 @@ const STYLE_CHIPS = [
 // The API caps `limit` at 100 songs/page.
 const WORKSPACE_PAGE_SIZE = 50;
 
+// Poll cadence for songs that are still generating. Kept deliberately relaxed and
+// chunked: each poll is a real server call, and a 20-song batch would otherwise
+// fire a burst of requests every tick.
+const WORKSPACE_POLL_MS = 5000;
+const WORKSPACE_POLL_CHUNK = 5;
+
 // Simple-mode batch sizes. 1 keeps the historical single-song behaviour as the
 // default; 5/10/20 submit that many `POST /web-music/generate` requests in a row
 // (each song returns two versions: Version 1 + Version 2).
@@ -653,20 +659,43 @@ export default function CreatePageClient() {
       });
   }, [user, activeWorkspaceId]);
 
+  // Poll only the songs that are still open. The effect is keyed to the set of
+  // open ids (not `items`) so a poll result does not tear down and rebuild the
+  // timer, and requests are chunked so a batch cannot fire them all at once.
+  const openGenerationKey = useMemo(
+    () => items.filter(isOpenGeneration).map((item) => item.id).join(','),
+    [items],
+  );
+
   useEffect(() => {
-    const pending = items.filter(isOpenGeneration);
-    if (!pending.length) return undefined;
-    const timer = window.setInterval(() => {
-      void Promise.all(pending.map((item) => getWebMusicGeneration(item.id)))
-        .then((updated) => {
-          setItems((currentItems) =>
-            currentItems.map((item) => updated.find((row) => row.id === item.id) ?? item),
-          );
-        })
-        .catch(() => undefined);
-    }, 2500);
-    return () => window.clearInterval(timer);
-  }, [items]);
+    if (!openGenerationKey) return undefined;
+    const ids = openGenerationKey.split(',');
+    let cancelled = false;
+
+    const poll = () => {
+      void (async () => {
+        for (let index = 0; index < ids.length && !cancelled; index += WORKSPACE_POLL_CHUNK) {
+          const chunk = ids.slice(index, index + WORKSPACE_POLL_CHUNK);
+          try {
+            const updated = await Promise.all(chunk.map((id) => getWebMusicGeneration(id)));
+            if (cancelled) return;
+            setItems((currentItems) =>
+              currentItems.map((item) => updated.find((row) => row.id === item.id) ?? item),
+            );
+          } catch {
+            /* transient; the next tick retries */
+          }
+        }
+      })();
+    };
+
+    const timer = window.setInterval(poll, WORKSPACE_POLL_MS);
+    poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [openGenerationKey]);
 
   // Infinite scroll: when the "load more" sentinel nears the viewport, pull the
   // next page of generations so a workspace with more than one page of songs is
