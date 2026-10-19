@@ -24,6 +24,7 @@ import {
   WEB_MUSIC_STYLE_MAX,
 } from '@/components/music-form-ui';
 import { khmerTextClass } from '@/lib/khmer-text';
+import { CoverImage } from '@/components/cover-image';
 
 function clampText(value: string, max: number): string {
   return value.length <= max ? value : value.slice(0, max);
@@ -367,14 +368,11 @@ function ClipCoverControl({
       aria-label={ready ? (showPause ? 'Pause' : 'Play') : 'Waiting for audio'}
       className={`relative flex ${box} flex-shrink-0 items-center justify-center overflow-hidden bg-violet-500/20 text-fuchsia-100 disabled:cursor-not-allowed`}
     >
-      {clip.image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={clip.image_url} alt="" className="h-full w-full object-cover" />
-      ) : variant === 'alt' ? (
-        <Mic2 className={icon} />
-      ) : (
-        <Music2 className={icon} />
-      )}
+      <CoverImage
+        src={clip.image_url}
+        className="h-full w-full object-cover"
+        fallback={variant === 'alt' ? <Mic2 className={icon} /> : <Music2 className={icon} />}
+      />
       <span className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
         {!ready ? (
           <LoaderCircle className={`${icon} animate-spin text-white`} />

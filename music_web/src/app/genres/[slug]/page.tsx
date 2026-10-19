@@ -1,4 +1,5 @@
 import TrackRow from '@/components/track-row';
+import { CoverImage } from '@/components/cover-image';
 import { getGenre } from '@/lib/streaming-api';
 
 export default async function GenreDetailPage({ params }: { params: Promise<{ slug: string }> }) {
@@ -40,16 +41,11 @@ export default async function GenreDetailPage({ params }: { params: Promise<{ sl
                 href={`/albums/${album.id}`}
                 className="rounded-2xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-4 transition hover:bg-white/5"
               >
-                {album.cover_url ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={album.cover_url}
-                    alt=""
-                    className="mb-4 aspect-square w-full rounded-xl object-cover"
-                  />
-                ) : (
-                  <div className="mb-4 aspect-square w-full rounded-xl bg-[hsl(var(--secondary))]" />
-                )}
+                <CoverImage
+                  src={album.cover_url}
+                  className="mb-4 aspect-square w-full rounded-xl object-cover"
+                  fallback={<div className="mb-4 aspect-square w-full rounded-xl bg-[hsl(var(--secondary))]" />}
+                />
                 <p className="font-medium">{album.album_name}</p>
                 <p className="text-sm text-[hsl(var(--muted-foreground))]">
                   {album.artist_name ?? 'Camxora Artist'} · {album.track_count ?? 0} tracks
