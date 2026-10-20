@@ -231,6 +231,68 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
     ],
   },
   {
+    key: "resend",
+    label: "Mail (Resend)",
+    fields: [
+      {
+        key: "apiKey",
+        label: "API key",
+        type: "secret",
+        env: "RESEND_API_KEY",
+        def: "",
+        help: "re_… from resend.com. Sending is disabled while this is blank; the Mail page stays usable for previews.",
+      },
+      {
+        key: "webhookSecret",
+        label: "Webhook signing secret",
+        type: "secret",
+        env: "RESEND_WEBHOOK_SECRET",
+        def: "",
+        help: "whsec_… from the Resend webhook endpoint. Deliveries, bounces and complaints are only trusted when this verifies.",
+      },
+      {
+        key: "fromTransactional",
+        label: "Transactional From",
+        type: "string",
+        env: "MAIL_FROM_TRANSACTIONAL",
+        def: "CAMXORA <no-reply@music.camxora.com>",
+        help: "Receipts and account mail. Keep this on the product domain.",
+      },
+      {
+        key: "fromCampaign",
+        label: "Marketing From",
+        type: "string",
+        env: "MAIL_FROM_CAMPAIGN",
+        def: "CAMXORA <hello@mail.camxora.com>",
+        help: "Campaigns and automations. Use a separate subdomain so marketing reputation never touches receipts.",
+      },
+      {
+        key: "replyTo",
+        label: "Reply-to (optional)",
+        type: "string",
+        env: "MAIL_REPLY_TO",
+        def: "",
+      },
+      {
+        key: "publicBaseUrl",
+        label: "Public API base URL",
+        type: "string",
+        env: "MAIL_PUBLIC_BASE_URL",
+        def: "",
+        help: "Used to build open-pixel, click-redirect and unsubscribe links. Must be publicly reachable (e.g. https://mail.camxora.com) or every link in a sent mail is dead.",
+      },
+      {
+        key: "appUrl",
+        label: "Product site (CTA target)",
+        type: "string",
+        env: "MAIL_APP_URL",
+        def: "https://music.camxora.com",
+        help: "Where a template's {{app_url}} button sends the user. Must be the site that shows their credits and checkout.",
+      },
+      { key: "enabled", label: "Sending enabled", type: "boolean", env: "MAIL_ENABLED", def: true },
+    ],
+  },
+  {
     key: "callbacks",
     label: "Webhook callbacks",
     fields: [
@@ -389,6 +451,18 @@ function applyToConfig(): void {
 
   config.alerts.telegramBotToken = str("alerts", "telegramBotToken", config.alerts.telegramBotToken);
   config.alerts.telegramChatId = str("alerts", "telegramChatId", config.alerts.telegramChatId);
+
+  config.mail.apiKey = str("resend", "apiKey", config.mail.apiKey);
+  config.mail.webhookSecret = str("resend", "webhookSecret", config.mail.webhookSecret);
+  config.mail.fromTransactional = str("resend", "fromTransactional", config.mail.fromTransactional);
+  config.mail.fromCampaign = str("resend", "fromCampaign", config.mail.fromCampaign);
+  config.mail.replyTo = str("resend", "replyTo", config.mail.replyTo);
+  config.mail.publicBaseUrl = str("resend", "publicBaseUrl", config.mail.publicBaseUrl).replace(
+    /\/+$/,
+    "",
+  );
+  config.mail.appUrl = str("resend", "appUrl", config.mail.appUrl).replace(/\/+$/, "");
+  config.mail.enabled = bool("resend", "enabled", config.mail.enabled);
 
   config.callbackAllowedHosts = str("callbacks", "allowedHosts", "")
     .split(",")

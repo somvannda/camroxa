@@ -22,6 +22,22 @@ import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "
 import { trustProxyOption } from "./trustProxy.js";
 import { isProtectedPath, isPublicProtectedRoute } from "./routeAuth.js";
 import { verifyChmabaSignature, findReferenceId } from "./webhookSignature.js";
+import { verifyResendSignature, mapResendEvent, suppressionReasonFor } from "./resendWebhook.js";
+import {
+  addSuppression,
+  findSendByProviderId,
+  mailConfigured,
+  mailHealth,
+  processMailQueue,
+  queueMail,
+  recordMailEvent,
+  removeSuppression,
+  sendMailNow,
+  testMailHtml,
+  touchUserActivity,
+  trackingSecret,
+} from "./mail.js";
+import { parseClickToken, parseOpenToken, parseUnsubToken } from "./mailTracking.js";
 import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
 import { flowVerdict, type AssetCheck } from "./flowGuard.js";
 import { createJobQueue } from "./jobQueue.js";
@@ -625,6 +641,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   const alertState = new Map<string, string>();
   let alertTimer: ReturnType<typeof setInterval> | null = null;
   let sessionTimer: ReturnType<typeof setInterval> | null = null;
+  let mailTimer: ReturnType<typeof setInterval> | null = null;
 
   // Terminal jobs only need to survive long enough for the client to poll their
   // result, so the in-memory map is kept bounded: finished jobs older than the
@@ -1235,6 +1252,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         return null;
       }
     }
+    // Recency axis for mail segmentation. Throttled to one write per hour per
+    // user inside SQL; fire-and-forget so it never delays the request.
+    if (user.id) touchUserActivity(user.id);
     return user;
   }
 
@@ -1543,6 +1563,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     await recoverJobs();
     startAlertLoop();
     startSessionKeepAlive();
+    startMailLoop();
   });
 
   function newJob(type: Job["type"], callbackUrl?: string): Job {
@@ -2857,6 +2878,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     stopAlertLoop();
     stopSessionKeepAlive();
     await drainJobs();
+    stopMailLoop();
     // Queued jobs have their own drain: `worker.close()` resolves once the job
     // currently being consumed finishes, bounded so a stuck job cannot hang the
     // shutdown indefinitely.
@@ -5788,6 +5810,29 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!alertTimer) return;
     clearInterval(alertTimer);
     alertTimer = null;
+  }
+
+  // Mail queue drain: queued rows are claimed with FOR UPDATE SKIP LOCKED, so
+  // running several API processes is safe — each tick sends a disjoint batch.
+  // MAIL_LOOP_INTERVAL_MS=0 disables the loop (admin routes keep working).
+  function startMailLoop(): void {
+    const intervalMs = config.mail.loopIntervalMs;
+    if (!(intervalMs > 0) || mailTimer) return;
+    mailTimer = setInterval(() => {
+      void processMailQueue()
+        .then((sent) => {
+          if (sent > 0) app.log.info({ sent }, "mail queue drained");
+        })
+        .catch((err) => app.log.warn({ err }, "mail queue drain failed"));
+    }, intervalMs);
+    mailTimer.unref?.();
+    app.log.info({ intervalMs, configured: mailConfigured() }, "mail loop started");
+  }
+
+  function stopMailLoop(): void {
+    if (!mailTimer) return;
+    clearInterval(mailTimer);
+    mailTimer = null;
   }
 
   // Suno session keep-alive: proactively refresh each account's JWT (and persist
@@ -10772,6 +10817,288 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   app.post("/payments/chmaba/webhook", handleChmabaWebhook);
   app.post("/payments/chmabapay/webhook", handleChmabaWebhook);
+
+  // --- mail: public routes -------------------------------------------------
+  // A 1x1 transparent GIF. Returned even for an invalid token so a broken or
+  // expired link never renders as a broken image in the inbox.
+  const OPEN_PIXEL = Buffer.from(
+    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+    "base64",
+  );
+
+  function mailPageHtml(title: string, body: string): string {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>${title}</title></head>
+<body style="margin:0;background:#0a0e27;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;color:#e5e7eb;">
+  <div style="max-width:520px;margin:64px auto;padding:32px;background:#081028;border-radius:16px;">
+    <div style="font-weight:700;letter-spacing:.12em;color:#a855f7;font-size:11px;margin-bottom:16px;">CAMXORA</div>
+    <h1 style="margin:0 0 12px;font-size:22px;color:#fff;">${title}</h1>
+    <div style="font-size:14px;line-height:1.65;color:#9ca3af;">${body}</div>
+  </div>
+</body></html>`;
+  }
+
+  // Open pixel. Recording is fire-and-forget: the image must return immediately,
+  // and a database hiccup must never show up as a broken tracking image.
+  app.get("/mail/o/:token", async (req, reply) => {
+    const raw = String((req.params as { token?: string }).token ?? "");
+    const token = raw.replace(/\.gif$/i, "");
+    const parsed = parseOpenToken(trackingSecret(), token);
+    if (parsed) {
+      void recordMailEvent(parsed.sendId, "opened", {
+        ip: req.ip,
+        userAgent: (req.headers["user-agent"] as string | undefined) ?? null,
+      }).catch(() => undefined);
+    }
+    return reply
+      .header("content-type", "image/gif")
+      .header("cache-control", "no-store, no-cache, must-revalidate, private")
+      .header("content-length", String(OPEN_PIXEL.length))
+      .send(OPEN_PIXEL);
+  });
+
+  // Click redirect. The destination lives inside the signed token, so this
+  // endpoint can never be turned into an open redirect.
+  app.get("/mail/c/:token", async (req, reply) => {
+    const token = String((req.params as { token?: string }).token ?? "");
+    const parsed = parseClickToken(trackingSecret(), token);
+    if (!parsed) return reply.code(400).send({ error: "Invalid or expired link." });
+    try {
+      await recordMailEvent(parsed.sendId, "clicked", {
+        url: parsed.url,
+        ip: req.ip,
+        userAgent: (req.headers["user-agent"] as string | undefined) ?? null,
+      });
+    } catch (err) {
+      // Still redirect: the recipient wanted the page, not our analytics.
+      req.log.warn({ err }, "mail click not recorded");
+    }
+    return reply.redirect(parsed.url, 302);
+  });
+
+  // Unsubscribe. GET unsubscribes immediately and confirms in the browser (no
+  // extra click = fewer "report spam" taps); POST answers Resend's and mail
+  // clients' RFC 8058 one-click request with a bare 200.
+  async function handleMailUnsubscribe(req: FastifyRequest, reply: FastifyReply) {
+    const token = String((req.params as { token?: string }).token ?? "");
+    const parsed = parseUnsubToken(trackingSecret(), token);
+    if (!parsed) {
+      return reply
+        .code(400)
+        .type("text/html")
+        .send(
+          mailPageHtml(
+            "Link not valid",
+            "This unsubscribe link is not valid or has been truncated. Sign in and change your email preferences in Settings.",
+          ),
+        );
+    }
+
+    const user = await queryOne<{ id: string; email: string }>(
+      "SELECT id, email FROM users WHERE id = $1",
+      [parsed.userId],
+    );
+    if (!user) {
+      return reply
+        .code(404)
+        .type("text/html")
+        .send(mailPageHtml("Account not found", "This account no longer exists, so no further email will be sent to it."));
+    }
+
+    await query("UPDATE users SET email_subscription = false WHERE id = $1", [user.id]);
+    // Suppression is the hard stop: it also covers the case where the row's
+    // preference is flipped back on by mistake.
+    await addSuppression(user.email, "unsubscribe", "one-click");
+
+    if (req.method === "POST") return reply.code(200).send("Unsubscribed");
+    return reply
+      .type("text/html")
+      .send(
+        mailPageHtml(
+          "You're unsubscribed",
+          "You will no longer receive marketing email from CAMXORA.<br />Receipts, payment confirmations and account notices will still be delivered.",
+        ),
+      );
+  }
+  app.get("/mail/u/:token", handleMailUnsubscribe);
+  app.post("/mail/u/:token", handleMailUnsubscribe);
+
+  // POST /webhooks/resend — PUBLIC, server-to-server. Authenticity rests on the
+  // Svix signature, not a session. Delivery state only: opens and clicks are
+  // ours (see /mail/o and /mail/c), which is why `email.opened`/`email.clicked`
+  // are intentionally not mapped here.
+  app.post("/webhooks/resend", async (req, reply) => {
+    if (!config.mail.webhookSecret) {
+      return reply.code(503).send({ error: "Webhook secret is not configured." });
+    }
+    const raw = (req as FastifyRequest & { rawBody?: string }).rawBody ?? "";
+    const verified = verifyResendSignature(raw, {
+      id: req.headers["svix-id"] as string | undefined,
+      timestamp: req.headers["svix-timestamp"] as string | undefined,
+      signature: req.headers["svix-signature"] as string | undefined,
+    }, config.mail.webhookSecret);
+    if (!verified) {
+      req.log.warn("resend webhook signature rejected");
+      return reply.code(400).send({ error: "Invalid signature." });
+    }
+
+    const event = mapResendEvent(req.body);
+    if (!event) return { ok: true, ignored: "unmapped event" };
+
+    const send = await findSendByProviderId(event.emailId);
+    if (!send) return { ok: true, ignored: "unknown message" };
+
+    // The svix id is stable across provider retries, so a retried delivery
+    // cannot inflate counters (unique index on provider_event_id).
+    const svixId = String(req.headers["svix-id"] ?? "");
+    await recordMailEvent(send.id, event.type, {
+      eventId: svixId ? `svix:${svixId}` : null,
+    });
+
+    const reason = suppressionReasonFor(event.type);
+    if (reason && event.recipient) await addSuppression(event.recipient, reason, "resend");
+    return { ok: true };
+  });
+
+  // --- mail: admin routes --------------------------------------------------
+  app.get("/admin/mail/health", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return mailHealth();
+  });
+
+  app.post("/admin/mail/process", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const sent = await processMailQueue(50);
+    return { sent };
+  });
+
+  // Test send: proves the key, the From identity and the ledger in one click.
+  // Defaults to the signed-in admin's own address.
+  app.post("/admin/mail/test", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const body = (req.body ?? {}) as { to?: unknown; subject?: unknown };
+    const to =
+      typeof body.to === "string" && body.to.includes("@") ? body.to.trim() : admin.email;
+    const subject =
+      typeof body.subject === "string" && body.subject.trim()
+        ? body.subject.trim().slice(0, 200)
+        : "CAMXORA mail test";
+
+    const result = await sendMailNow({
+      to,
+      kind: "transactional",
+      subject,
+      html: testMailHtml(config.mail.appUrl || "https://music.camxora.com"),
+    });
+    if (result.outcome === "queued") return { ok: true, id: result.id, to };
+    return reply.code(400).send({ error: result.reason ?? result.outcome });
+  });
+
+  app.get("/admin/mail/deliveries", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const q = (req.query ?? {}) as {
+      status?: string;
+      kind?: string;
+      search?: string;
+      limit?: string;
+    };
+    const limit = Math.min(200, Math.max(1, Number(q.limit ?? 50) || 50));
+    const params: unknown[] = [];
+    const where: string[] = [];
+    if (q.status) {
+      params.push(q.status);
+      where.push(`status = $${params.length}`);
+    }
+    if (q.kind) {
+      params.push(q.kind);
+      where.push(`kind = $${params.length}`);
+    }
+    if (q.search) {
+      params.push(`%${q.search.toLowerCase()}%`);
+      where.push(`lower(email) LIKE $${params.length}`);
+    }
+    params.push(limit);
+
+    const rows = await query(
+      `SELECT id, email, user_id, kind, subject, status, open_count, click_count,
+              sent_at, delivered_at, first_opened_at, first_clicked_at, error, created_at
+       FROM mail_sends
+       ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+       ORDER BY created_at DESC
+       LIMIT $${params.length}`,
+      params,
+    );
+
+    const stats = await queryOne<{
+      total: string;
+      delivered: string;
+      opened: string;
+      clicked: string;
+      bounced: string;
+    }>(
+      `SELECT
+         COUNT(*)::text AS total,
+         COUNT(*) FILTER (WHERE delivered_at IS NOT NULL)::text AS delivered,
+         COUNT(*) FILTER (WHERE open_count > 0)::text AS opened,
+         COUNT(*) FILTER (WHERE click_count > 0)::text AS clicked,
+         COUNT(*) FILTER (WHERE status IN ('bounced', 'complained'))::text AS bounced
+       FROM mail_sends`,
+    );
+    const suppressed = await queryOne<{ n: string }>(
+      "SELECT COUNT(*)::text AS n FROM mail_suppressions",
+    );
+
+    return {
+      rows,
+      stats: {
+        total: Number(stats?.total ?? 0),
+        delivered: Number(stats?.delivered ?? 0),
+        opened: Number(stats?.opened ?? 0),
+        clicked: Number(stats?.clicked ?? 0),
+        bounced: Number(stats?.bounced ?? 0),
+      },
+      suppressed: Number(suppressed?.n ?? 0),
+    };
+  });
+
+  app.get("/admin/mail/deliveries/:id/events", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid delivery id." });
+    const events = await query(
+      `SELECT type, url, user_agent, created_at
+       FROM mail_events WHERE send_id = $1 ORDER BY created_at`,
+      [id],
+    );
+    return { events };
+  });
+
+  app.get("/admin/mail/suppressions", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const rows = await query(
+      "SELECT email, reason, source, created_at FROM mail_suppressions ORDER BY created_at DESC LIMIT 200",
+    );
+    return { rows };
+  });
+
+  app.post("/admin/mail/suppressions", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const body = (req.body ?? {}) as { email?: unknown };
+    const email = typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+    if (!email.includes("@")) return reply.code(400).send({ error: "A valid email is required." });
+    await addSuppression(email, "manual", "admin");
+    return { ok: true };
+  });
+
+  app.delete("/admin/mail/suppressions/:email", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const email = String((req.params as { email?: string }).email ?? "");
+    if (!email.includes("@")) return reply.code(400).send({ error: "A valid email is required." });
+    await removeSuppression(email);
+    return { ok: true };
+  });
 
   return app;
 }
