@@ -1,10 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { apiFetch } from "@/lib/api";
+import { ApiError, apiFetch } from "@/lib/api";
 import { AuthorizedAudio, downloadClip } from "@/components/playground";
 
-type ModelOption = { label: string; key: string };
+type ModelOption = { label: string; key: string; credits?: number; allowanceModel?: boolean };
 
 /**
  * Shown only while `GET /models` is unreachable, and identical to the current
@@ -33,6 +34,23 @@ interface LiveModel {
   key: string;
   name: string;
   is_default: boolean;
+  credits?: number;
+  allowance_model?: boolean;
+}
+
+interface MonthlyAllowance {
+  granted: number;
+  used: number;
+  remaining: number;
+  period_start: string;
+  scope_model: string;
+  resets_at: string;
+  universal: boolean;
+}
+
+interface Billing {
+  credits: number;
+  allowance: MonthlyAllowance | null;
 }
 
 const SOUND_KEYS = [
@@ -175,10 +193,19 @@ function ModelDropdown({
   value,
   onChange,
   options,
+  balance,
+  allowanceRemaining,
+  allowanceUniversal,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: ModelOption[];
+  /** Purchased credit balance; null until /me/billing answers. */
+  balance: number | null;
+  /** Remaining monthly free credits, null when unknown. */
+  allowanceRemaining: number | null;
+  /** True once a purchase makes the allowance usable on every model. */
+  allowanceUniversal: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
@@ -189,7 +216,16 @@ function ModelDropdown({
     document.addEventListener("mousedown", onDoc);
     return () => document.removeEventListener("mousedown", onDoc);
   }, []);
-  const cur = options.find((o) => o.key === value)?.label ?? options[0]?.label ?? "—";
+  const selected = options.find((o) => o.key === value);
+  const cur = selected?.label ?? options[0]?.label ?? "—";
+  const priceLabel = (o: ModelOption): string =>
+    o.credits === 0 ? "Free" : o.credits != null ? `${o.credits} cr` : "";
+  const locked = (o: ModelOption): boolean => {
+    if (balance === null || o.credits == null) return false;
+    const allowance =
+      o.allowanceModel || allowanceUniversal ? (allowanceRemaining ?? 0) : 0;
+    return o.credits > balance + allowance;
+  };
   return (
     <div ref={ref} className="relative inline-block">
       <button
@@ -198,23 +234,31 @@ function ModelDropdown({
         className="flex items-center gap-1.5 rounded-lg bg-white/5 px-3 py-1.5 text-sm text-white hover:bg-white/10"
       >
         {cur}
+        {selected && priceLabel(selected) && (
+          <span className="text-[11px] text-white/40">{priceLabel(selected)}</span>
+        )}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5 opacity-60"><polyline points="6 9 12 15 18 9"/></svg>
       </button>
       {open && (
-        <div className="absolute right-0 z-50 mt-1 w-36 overflow-hidden rounded-lg border border-white/10 bg-[#1a1a1d] py-1 shadow-2xl">
+        <div className="absolute right-0 z-50 mt-1 w-48 overflow-hidden rounded-lg border border-white/10 bg-[#1a1a1d] py-1 shadow-2xl">
           {options.map((o) => (
             <button
               key={o.key}
               type="button"
+              disabled={locked(o)}
+              title={locked(o) ? "Not enough credits — buy a credit pack to use this model." : undefined}
               onClick={() => {
                 onChange(o.key);
                 setOpen(false);
               }}
-              className={`block w-full px-3 py-1.5 text-left text-sm transition-colors ${
+              className={`flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-sm transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
                 value === o.key ? "bg-gradient-to-r from-violet-500/20 via-purple-500/20 to-fuchsia-500/20 text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
               }`}
             >
-              {o.label}
+              <span>{o.label}</span>
+              <span className={o.credits === 0 ? "text-[11px] font-semibold text-[var(--emerald)]" : "text-[11px] text-white/40"}>
+                {priceLabel(o)}
+              </span>
             </button>
           ))}
         </div>
@@ -305,6 +349,9 @@ export default function PlaygroundPage() {
   const [soundKey, setSoundKey] = useState("");
 
   const [error, setError] = useState("");
+  const [upsell, setUpsell] = useState<string | null>(null);
+  const [balance, setBalance] = useState<number | null>(null);
+  const [allowance, setAllowance] = useState<MonthlyAllowance | null>(null);
   const [busy, setBusy] = useState(false);
   const [task, setTask] = useState<TaskResult | null>(null);
   const [lastBody, setLastBody] = useState<Record<string, unknown> | null>(null);
@@ -323,15 +370,42 @@ export default function PlaygroundPage() {
 
   // Pull the versions Suno actually offers our accounts. The endpoint already
   // sorts the account default first, so the head of the list is the default.
+  // It also returns the music price and free-tier flag, so the picker can label
+  // "Free" vs "N credits" and lock premium models the balance cannot cover.
   useEffect(() => {
     let cancelled = false;
     apiFetch<{ models: LiveModel[] }>("/models")
       .then(({ models }) => {
         if (cancelled || !models?.length) return;
-        setLiveModels(models.map((m) => ({ label: m.name.toUpperCase(), key: m.key })));
+        setLiveModels(
+          models.map((m) => ({
+            label: m.name.toUpperCase(),
+            key: m.key,
+            credits: m.credits,
+            allowanceModel: m.allowance_model,
+          })),
+        );
       })
       .catch(() => {
         // Keep the static fallback; a real generation problem surfaces on submit.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Balance + monthly allowance drive the client-side model lock; the server is
+  // still authoritative.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<Billing>("/me/billing")
+      .then((b) => {
+        if (cancelled) return;
+        setBalance(b.credits);
+        setAllowance(b.allowance ?? null);
+      })
+      .catch(() => {
+        // Unknown balance: leave models selectable and let the API decide.
       });
     return () => {
       cancelled = true;
@@ -461,10 +535,42 @@ export default function PlaygroundPage() {
     }
   }
 
+  const selectedVersion = versions.find((v) => v.key === musicVersion);
+  const allowanceRemaining = allowance?.remaining ?? 0;
+  // The allowance always covers V6-Mini; after a credit-pack purchase it also
+  // covers V6 / V6-WILD.
+  const allowanceApplies = Boolean(
+    selectedVersion && (selectedVersion.allowanceModel || allowance?.universal),
+  );
+  const availableCredits = (balance ?? 0) + (allowanceApplies ? allowanceRemaining : 0);
+  const musicLocked =
+    genType === "music" &&
+    balance !== null &&
+    selectedVersion?.credits != null &&
+    selectedVersion.credits > availableCredits;
+  const resetDate = allowance
+    ? new Date(`${allowance.resets_at}T00:00:00Z`).toLocaleDateString(undefined, {
+        month: "short",
+        day: "numeric",
+      })
+    : "";
+
+  function handleFailure(e: unknown, fallback: string) {
+    if (e instanceof ApiError) {
+      setError(e.message);
+      setUpsell(e.upgradeUrl ?? null);
+      return;
+    }
+    setError(e instanceof Error ? e.message : fallback);
+    setUpsell(null);
+  }
+
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (musicLocked) return;
     setBusy(true);
     setError("");
+    setUpsell(null);
     setTask(null);
     try {
       let body: Record<string, unknown>;
@@ -510,7 +616,7 @@ export default function PlaygroundPage() {
       });
       poll(created.job_id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Generation failed");
+      handleFailure(e, "Generation failed");
       setBusy(false);
     }
   }
@@ -519,6 +625,7 @@ export default function PlaygroundPage() {
     if (!lastBody || busy) return;
     setBusy(true);
     setError("");
+    setUpsell(null);
     setTask(null);
     try {
       const created = await apiFetch<{ job_id: string }>("/me/generate", {
@@ -527,7 +634,7 @@ export default function PlaygroundPage() {
       });
       poll(created.job_id);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Request failed");
+      handleFailure(e, "Request failed");
       setBusy(false);
     }
   }
@@ -559,8 +666,16 @@ export default function PlaygroundPage() {
       </div>
 
       {error && (
-        <div className="mb-6 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-          {error}
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+          <span>{error}</span>
+          {upsell && (
+            <a
+              href={upsell}
+              className="shrink-0 rounded-md bg-white/10 px-3 py-1.5 text-xs font-semibold text-white hover:bg-white/15"
+            >
+              Buy credits →
+            </a>
+          )}
         </div>
       )}
 
@@ -594,8 +709,44 @@ export default function PlaygroundPage() {
                   value={musicVersion}
                   onChange={setMusicVersion}
                   options={versions}
+                  balance={balance}
+                  allowanceRemaining={allowance?.remaining ?? null}
+                  allowanceUniversal={allowance?.universal ?? false}
                 />
               </div>
+
+              {allowance && allowanceApplies && (
+                <div className="text-[11px] text-white/40">
+                  Free monthly credits: {allowance.remaining}/{allowance.granted} left
+                  {resetDate ? ` · resets ${resetDate}` : ""} ·{" "}
+                  {allowance.universal
+                    ? "usable on any V6 model"
+                    : "V6-Mini only — a credit-pack purchase this month unlocks them for V6 and V6-WILD"}.
+                </div>
+              )}
+
+              {musicLocked && selectedVersion && (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-400/20 bg-amber-400/10 px-3 py-2 text-xs text-amber-200">
+                  <span>
+                    {selectedVersion.label} needs {selectedVersion.credits} credits.
+                    {allowanceApplies ? (
+                      <>
+                        {" "}Free monthly allowance left: {allowanceRemaining}
+                        {allowance ? `/${allowance.granted}` : ""}
+                        {resetDate ? ` (resets ${resetDate})` : ""}. Purchased balance: {balance ?? 0}.
+                      </>
+                    ) : (
+                      <> Your purchased balance is {balance ?? 0}.</>
+                    )}
+                  </span>
+                  <Link
+                    href="/dashboard/billing"
+                    className="shrink-0 rounded-md bg-white/10 px-2.5 py-1 font-semibold text-white hover:bg-white/15"
+                  >
+                    Buy credits →
+                  </Link>
+                </div>
+              )}
 
               {/* Prompt */}
               <div>
@@ -857,7 +1008,14 @@ export default function PlaygroundPage() {
             <>
               {/* Sounds: just model on pill row */}
               <div className="flex items-center justify-end rounded-xl bg-white/[0.03] px-3 py-2">
-                <ModelDropdown value={soundVersion} onChange={setSoundVersion} options={soundVersions} />
+                <ModelDropdown
+                  value={soundVersion}
+                  onChange={setSoundVersion}
+                  options={soundVersions}
+                  balance={null}
+                  allowanceRemaining={null}
+                  allowanceUniversal={false}
+                />
               </div>
 
               {/* Prompt */}
@@ -916,7 +1074,7 @@ export default function PlaygroundPage() {
           {/* Generate */}
           <button
             type="submit"
-            disabled={busy}
+            disabled={busy || musicLocked}
             className="w-full rounded-xl bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 py-3 text-sm font-semibold text-white shadow-lg shadow-purple-900/20 transition-opacity disabled:opacity-60"
           >
             {busy ? "Generating…" : genType === "sounds" ? "Generate Sound" : "Generate Music"}

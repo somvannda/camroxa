@@ -14,6 +14,15 @@ interface Pack {
 
 interface Billing {
   credits: number;
+  allowance: {
+    granted: number;
+    used: number;
+    remaining: number;
+    period_start: string;
+    scope_model: string;
+    resets_at: string;
+    universal: boolean;
+  } | null;
   packs: Pack[];
 }
 
@@ -173,10 +182,33 @@ export default function BillingPage() {
           {billing?.credits ?? 0} <span className="text-lg font-semibold text-white/60">credits</span>
         </div>
         <ul className="mt-4 space-y-1.5 text-xs text-white/50">
-          <li>Credits never expire and can be used anytime</li>
+          <li>Purchased credits never expire and can be used on any model.</li>
           <li>Rate limit: 20 request/10second (20 req/10s)</li>
           <li>Each credit is valued at ${creditValue.toFixed(4)} USD.</li>
         </ul>
+
+        {billing?.allowance && (
+          <div className="mt-4 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-sm text-white/60">Free monthly V6-Mini allowance</div>
+              <div className="text-sm font-semibold text-white">
+                {billing.allowance.remaining} / {billing.allowance.granted} credits
+              </div>
+            </div>
+            <p className="mt-1 text-xs text-white/40">
+              {billing.allowance.universal
+                ? "Usable on any V6 model."
+                : "V6-Mini only — buy any credit pack this month to unlock the rest for V6 and V6-WILD."}{" "}
+              Resets{" "}
+              {new Date(`${billing.allowance.resets_at}T00:00:00Z`).toLocaleDateString(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+              })}{" "}
+              (UTC); unused credits expire.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* Add credits */}

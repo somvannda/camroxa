@@ -75,3 +75,65 @@ export function defaultRoutingPolicy(
 ): "prefer_free" | "paid_only" {
   return normalizeModel(model) === "chirp-goose" ? "prefer_free" : "paid_only";
 }
+
+/** Admin-editable monthly free-allowance settings (see `freeMonthly` in config.ts). */
+export interface AllowanceConfig {
+  enabled: boolean;
+  model: string;
+}
+
+/**
+ * Whether a *music* request may spend the monthly free allowance: enabled, an
+ * explicit model, and the normalised model matches the configured free model.
+ * Sounds and every derivative stay on purchased credits. A request with no
+ * model is never eligible — Suno's default is a premium model, so omitting the
+ * field must not unlock the allowance.
+ */
+export function isAllowanceModel(
+  model: string | null | undefined,
+  tier: AllowanceConfig,
+): boolean {
+  if (!tier.enabled || !model) return false;
+  const want = normalizeModel(tier.model);
+  return Boolean(want) && normalizeModel(model) === want;
+}
+
+/**
+ * Whether the monthly allowance may pay for this model. The configured free
+ * model is always eligible. After a credit-pack purchase the remaining
+ * allowance becomes universal (`universal` true), so it can also pay for V6 /
+ * V6-WILD. Pure for unit tests.
+ */
+export function canSpendAllowance(
+  model: string | null | undefined,
+  tier: AllowanceConfig,
+  universal = false,
+): boolean {
+  if (!tier.enabled || !model) return false;
+  return isAllowanceModel(model, tier) || universal;
+}
+
+/** Human label for a model key, used in user-facing credit/upsell messages. */
+const MODEL_LABELS: Record<string, string> = {
+  "chirp-hawk": "V6",
+  "chirp-hawk-wild": "V6-WILD",
+  "chirp-goose": "V6-Mini",
+};
+
+export function modelLabel(model?: string | null): string | null {
+  if (!model) return null;
+  const key = normalizeModel(model);
+  return (key && MODEL_LABELS[key]) ?? model;
+}
+
+/**
+ * Routing policy for V6-Mini, independent of who pays (monthly allowance or
+ * purchased credits): free Suno accounts first, and by default *only* free
+ * accounts. `allowPaidFallback` is the admin safety valve for a dead free pool.
+ * Pure for unit tests.
+ */
+export function freeModelRoutingPolicy(
+  allowPaidFallback: boolean,
+): "free_only" | "prefer_free" {
+  return allowPaidFallback ? "prefer_free" : "free_only";
+}

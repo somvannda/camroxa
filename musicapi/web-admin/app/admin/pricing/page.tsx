@@ -76,7 +76,7 @@ export default function PricingPage() {
     <div className="space-y-6">
       <PageHeader
         title="Pricing"
-        description="Credit cost per endpoint — used to charge each generation and download"
+        description="Credit cost per endpoint — used to charge each generation and download. The monthly free allowance (Settings → Integrations, default V6-Mini) pays this price for its model only; V6 and V6-WILD always need purchased credits."
         actions={
           <Button onClick={() => (showForm ? resetForm() : setShowForm(true))}>
             {showForm ? "Cancel" : "Set / add price"}
