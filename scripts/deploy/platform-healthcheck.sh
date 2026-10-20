@@ -83,6 +83,31 @@ if command -v redis-cli >/dev/null 2>&1; then
   [[ "$(redis-cli ping 2>/dev/null)" == "PONG" ]] || add_failure "redis did not answer PONG"
 fi
 
+# Advisory-lock pileups: a leaked session lock blocks the audio packager and
+# eventually exhausts the API's DB pool (observed 2026-10-20).
+ADV_WAITERS="$(
+  cd "${REPO}" && PYTHONPATH="${REPO}" "${REPO}/platform_api/.venv/bin/python" - <<'PY' 2>/dev/null
+import asyncio, asyncpg
+from platform_api.config import get_settings
+
+async def main():
+    s = get_settings()
+    dsn = s.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    conn = await asyncpg.connect(dsn)
+    try:
+        print(await conn.fetchval(
+            "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND NOT granted"
+        ))
+    finally:
+        await conn.close()
+
+asyncio.run(main())
+PY
+)"
+if [[ "${ADV_WAITERS}" =~ ^[0-9]+$ ]] && [[ "${ADV_WAITERS}" -ge 5 ]]; then
+  add_failure "${ADV_WAITERS} sessions waiting on advisory locks"
+fi
+
 # --- SMTP login (the check that would have caught the Oct 15 outage) --------
 SMTP_OUT="$(
   cd "${REPO}" && PYTHONPATH="${REPO}" "${REPO}/platform_api/.venv/bin/python" - <<'PY' 2>&1
