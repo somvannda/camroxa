@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- Cross-product reporting (Telegram daily digest) ---
+    # Read-only DSN for the musicapi database (ChmabaPay / credit-pack revenue).
+    # Empty keeps the digest platform-only; the daily report omits musicapi.
+    musicapi_database_url: str = ""
+
     # --- JWT / Auth ---
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
