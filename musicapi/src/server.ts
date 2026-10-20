@@ -46,6 +46,15 @@ import {
   audienceRecipients,
   coerceAudience,
 } from "./mailSegments.js";
+import {
+  TRIGGERS,
+  coerceTrigger,
+  listAutomations,
+  runAutomation,
+  runDueAutomations,
+  triggerDef,
+  triggerValueOf,
+} from "./mailAutomations.js";
 import { parseClickToken, parseOpenToken, parseUnsubToken, renderVars } from "./mailTracking.js";
 import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
 import { flowVerdict, type AssetCheck } from "./flowGuard.js";
@@ -651,6 +660,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   let alertTimer: ReturnType<typeof setInterval> | null = null;
   let sessionTimer: ReturnType<typeof setInterval> | null = null;
   let mailTimer: ReturnType<typeof setInterval> | null = null;
+  /** Automations are cheap but not free; evaluate them on a 5-minute throttle. */
+  let lastAutomationRun = 0;
 
   // Terminal jobs only need to survive long enough for the client to poll their
   // result, so the in-memory map is kept bounded: finished jobs older than the
@@ -5833,6 +5844,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           if (sent > 0) app.log.info({ sent }, "mail queue drained");
         })
         .catch((err) => app.log.warn({ err }, "mail queue drain failed"));
+
+      // State-triggered journeys. Throttled separately from the queue drain so
+      // a 15s drain interval does not turn into a 15s full-table scan.
+      if (Date.now() - lastAutomationRun > 5 * 60_000) {
+        lastAutomationRun = Date.now();
+        void runDueAutomations()
+          .then((queued) => {
+            if (queued > 0) app.log.info({ queued }, "mail automations queued");
+          })
+          .catch((err) => app.log.warn({ err }, "mail automations failed"));
+      }
     }, intervalMs);
     mailTimer.unref?.();
     app.log.info({ intervalMs, configured: mailConfigured() }, "mail loop started");
@@ -11443,6 +11465,135 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       [id],
     );
     return { ok: true };
+  });
+
+  // --- mail: automations ---------------------------------------------------
+  app.get("/admin/mail/triggers", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    return { triggers: TRIGGERS };
+  });
+
+  app.get("/admin/mail/automations", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const rows = await listAutomations();
+    return {
+      rows: rows.map((row) => ({
+        id: row.id,
+        key: row.key,
+        name: row.name,
+        template_id: row.template_id,
+        trigger: row.trigger,
+        trigger_value: triggerValueOf(row.audience),
+        cooldown_days: row.cooldown_days,
+        is_active: row.is_active,
+        last_run_at: row.last_run_at,
+        eligible: row.eligible,
+        subject: row.subject,
+      })),
+    };
+  });
+
+  app.post("/admin/mail/automations", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const templateId = typeof body.templateId === "string" ? body.templateId : "";
+    if (!name || !UUID_RE.test(templateId)) {
+      return reply.code(400).send({ error: "name and a valid templateId are required." });
+    }
+    const template = await queryOne<{ id: string }>(
+      "SELECT id FROM mail_templates WHERE id = $1 AND is_active",
+      [templateId],
+    );
+    if (!template) return reply.code(400).send({ error: "Template not found or inactive." });
+
+    const trigger = coerceTrigger(body.trigger);
+    const def = triggerDef(trigger);
+    const rawAudience = (body.audience ?? {}) as Record<string, unknown>;
+    const triggerValue =
+      typeof rawAudience.triggerValue === "number" && Number.isFinite(rawAudience.triggerValue)
+        ? Math.max(0, Math.floor(rawAudience.triggerValue))
+        : (def?.defaultParam ?? 0);
+    const audience = { ...coerceAudience(rawAudience), triggerValue };
+    const cooldownDays =
+      typeof body.cooldownDays === "number" && body.cooldownDays >= 1
+        ? Math.floor(body.cooldownDays)
+        : (def?.defaultCooldownDays ?? 30);
+
+    const key =
+      name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60) ||
+      `automation-${Date.now()}`;
+
+    const row = await queryOne<{ id: string }>(
+      `INSERT INTO mail_automations
+         (key, name, template_id, trigger, audience, delay_minutes, cooldown_days, is_active)
+       VALUES ($1, $2, $3, $4, $5, 0, $6, $7)
+       ON CONFLICT (key) DO NOTHING
+       RETURNING id`,
+      [key, name, templateId, trigger, JSON.stringify(audience), cooldownDays, body.isActive === true],
+    );
+    if (!row) return reply.code(409).send({ error: "A journey with this name already exists." });
+    return { id: row.id };
+  });
+
+  app.put("/admin/mail/automations/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid automation id." });
+
+    const current = await queryOne<{
+      name: string;
+      trigger: string;
+      audience: unknown;
+      cooldown_days: number;
+    }>("SELECT name, trigger, audience, cooldown_days FROM mail_automations WHERE id = $1", [id]);
+    if (!current) return reply.code(404).send({ error: "Automation not found." });
+
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const trigger = body.trigger ? coerceTrigger(body.trigger) : coerceTrigger(current.trigger);
+    const def = triggerDef(trigger);
+    const rawAudience = (body.audience ?? current.audience ?? {}) as Record<string, unknown>;
+    const triggerValue =
+      typeof rawAudience.triggerValue === "number" && Number.isFinite(rawAudience.triggerValue)
+        ? Math.max(0, Math.floor(rawAudience.triggerValue))
+        : (def?.defaultParam ?? 0);
+    const audience = { ...coerceAudience(rawAudience), triggerValue };
+    const name =
+      typeof body.name === "string" && body.name.trim() ? body.name.trim() : current.name;
+    const cooldownDays =
+      typeof body.cooldownDays === "number" && body.cooldownDays >= 1
+        ? Math.floor(body.cooldownDays)
+        : current.cooldown_days;
+    const isActive = typeof body.isActive === "boolean" ? body.isActive : null;
+
+    await query(
+      `UPDATE mail_automations
+       SET name = $2, trigger = $3, audience = $4::jsonb, cooldown_days = $5,
+           is_active = COALESCE($6::boolean, is_active)
+       WHERE id = $1`,
+      [id, name, trigger, JSON.stringify(audience), cooldownDays, isActive],
+    );
+    return { ok: true };
+  });
+
+  app.delete("/admin/mail/automations/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid automation id." });
+    await query("DELETE FROM mail_automations WHERE id = $1", [id]);
+    return { ok: true };
+  });
+
+  /** Run one journey now instead of waiting for the 5-minute evaluator tick. */
+  app.post("/admin/mail/automations/:id/run", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid automation id." });
+    if (!mailConfigured()) {
+      return reply.code(400).send({ error: "Resend is not configured; nothing to send with." });
+    }
+    const queued = await runAutomation(id, 200);
+    return { queued };
   });
 
   return app;
