@@ -12,7 +12,6 @@ import httpx
 
 from platform_api.config import environment_display_label
 from platform_api.services.billing_calendar import BILLING_TIMEZONE
-from platform_api.services.credit_units import units_to_credits
 from platform_api.services.telegram_ops_alert_service import (
     _esc,
     _now_label,
@@ -33,27 +32,25 @@ _WINDOW_KEYS = ("today", "yesterday", "d7", "d30")
 _TABLE_HEADERS = ("Today", "Yesterday", "Last 7 Days", "Last 30 Days")
 _BURN_COMMANDS = frozenset({"/burncredit", "/burncredits"})
 _USD_PER_SONG_REQUEST = 0.06
-_PP_DATE = "(created_at AT TIME ZONE 'Asia/Phnom_Penh')::date"
-_PP_TODAY = "(NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date"
+# Phnom Penh calendar-day boundaries as timestamptz. Casting the column
+# (`(created_at AT TIME ZONE …)::date`) made every report a full table scan;
+# range predicates on the raw column can use an index instead.
+_PP_DAY_START = (
+    "(date_trunc('day', NOW() AT TIME ZONE 'Asia/Phnom_Penh') "
+    "AT TIME ZONE 'Asia/Phnom_Penh')"
+)
 
-_COUNT_SQL = """
+
+def _count_sql(*, table: str, where: str = "") -> str:
+    return f"""
 SELECT
+  COUNT(*) FILTER (WHERE created_at >= {_PP_DAY_START})::int AS today,
   COUNT(*) FILTER (
-    WHERE (created_at AT TIME ZONE 'Asia/Phnom_Penh')::date
-      = (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date
-  )::int AS today,
-  COUNT(*) FILTER (
-    WHERE (created_at AT TIME ZONE 'Asia/Phnom_Penh')::date
-      = (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date - 1
+    WHERE created_at >= {_PP_DAY_START} - interval '1 day'
+      AND created_at < {_PP_DAY_START}
   )::int AS yesterday,
-  COUNT(*) FILTER (
-    WHERE (created_at AT TIME ZONE 'Asia/Phnom_Penh')::date
-      > (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date - 7
-  )::int AS d7,
-  COUNT(*) FILTER (
-    WHERE (created_at AT TIME ZONE 'Asia/Phnom_Penh')::date
-      > (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date - 30
-  )::int AS d30
+  COUNT(*) FILTER (WHERE created_at >= {_PP_DAY_START} - interval '6 days')::int AS d7,
+  COUNT(*) FILTER (WHERE created_at >= {_PP_DAY_START} - interval '29 days')::int AS d30
 FROM {table}
 {where}
 """
@@ -61,45 +58,75 @@ FROM {table}
 
 def _window_agg(expr: str) -> str:
     return f"""
-  {expr} FILTER (WHERE {_PP_DATE} = {_PP_TODAY}) AS today,
-  {expr} FILTER (WHERE {_PP_DATE} = {_PP_TODAY} - 1) AS yesterday,
-  {expr} FILTER (WHERE {_PP_DATE} > {_PP_TODAY} - 7) AS d7,
-  {expr} FILTER (WHERE {_PP_DATE} > {_PP_TODAY} - 30) AS d30
+  {expr} FILTER (WHERE created_at >= {_PP_DAY_START}) AS today,
+  {expr} FILTER (
+    WHERE created_at >= {_PP_DAY_START} - interval '1 day'
+      AND created_at < {_PP_DAY_START}
+  ) AS yesterday,
+  {expr} FILTER (WHERE created_at >= {_PP_DAY_START} - interval '6 days') AS d7,
+  {expr} FILTER (WHERE created_at >= {_PP_DAY_START} - interval '29 days') AS d30
 """
 
 
 def _window_sum(expr: str) -> str:
     """FILTER must attach to the aggregate (SUM), not COALESCE."""
     return f"""
-  COALESCE({expr} FILTER (WHERE {_PP_DATE} = {_PP_TODAY}), 0) AS today,
-  COALESCE({expr} FILTER (WHERE {_PP_DATE} = {_PP_TODAY} - 1), 0) AS yesterday,
-  COALESCE({expr} FILTER (WHERE {_PP_DATE} > {_PP_TODAY} - 7), 0) AS d7,
-  COALESCE({expr} FILTER (WHERE {_PP_DATE} > {_PP_TODAY} - 30), 0) AS d30
+  COALESCE(SUM({expr}) FILTER (WHERE created_at >= {_PP_DAY_START}), 0) AS today,
+  COALESCE(SUM({expr}) FILTER (
+    WHERE created_at >= {_PP_DAY_START} - interval '1 day'
+      AND created_at < {_PP_DAY_START}
+  ), 0) AS yesterday,
+  COALESCE(SUM({expr}) FILTER (WHERE created_at >= {_PP_DAY_START} - interval '6 days'), 0) AS d7,
+  COALESCE(SUM({expr}) FILTER (WHERE created_at >= {_PP_DAY_START} - interval '29 days'), 0) AS d30
 """
 
 
-_WEB_CREDIT_SQL = f"""
-SELECT
-{_window_sum("SUM(-amount)")}
-FROM credit_transactions
-WHERE reason LIKE 'consumed_web_music%'
-   OR reason LIKE 'refunded_web_music%'
-"""
-
-_STUDIO_CREDIT_SQL = f"""
-SELECT
-  (COALESCE(SUM(amount) FILTER (WHERE direction = 'debit' AND {_PP_DATE} = {_PP_TODAY}), 0)
-   - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund' AND {_PP_DATE} = {_PP_TODAY}), 0))::bigint AS today,
-  (COALESCE(SUM(amount) FILTER (WHERE direction = 'debit' AND {_PP_DATE} = {_PP_TODAY} - 1), 0)
-   - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund' AND {_PP_DATE} = {_PP_TODAY} - 1), 0))::bigint AS yesterday,
-  (COALESCE(SUM(amount) FILTER (WHERE direction = 'debit' AND {_PP_DATE} > {_PP_TODAY} - 7), 0)
-   - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund' AND {_PP_DATE} > {_PP_TODAY} - 7), 0))::bigint AS d7,
-  (COALESCE(SUM(amount) FILTER (WHERE direction = 'debit' AND {_PP_DATE} > {_PP_TODAY} - 30), 0)
-   - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund' AND {_PP_DATE} > {_PP_TODAY} - 30), 0))::bigint AS d30
-FROM credit_transactions
-WHERE direction IN ('debit', 'refund')
-  AND COALESCE(reason, '') NOT LIKE 'consumed_web_music%'
-  AND COALESCE(reason, '') NOT LIKE 'refunded_web_music%'
+# `credit_transactions` is written by three generations of code with different
+# sign and scale conventions:
+#   * legacy studio debits — display credits, e.g. "music via suno"
+#   * legacy web debits    — display credits, "consumed_web_music_*"
+#   * v3 debits            — micro-units (1 display credit = 10_000), "v3_*"
+#   * refunds              — mixed, so magnitude is used and direction decides.
+# Only one attribution is provable from the row: a v3 music charge whose ref_id
+# is a platform `suno_tasks` row is web music. Other v3 operations
+# (image/lyric/title/album) are used by both products, so they land in
+# `unattributed` rather than being guessed into studio.
+_BURN_SQL = f"""
+WITH classified AS (
+  SELECT
+    ct.direction,
+    ABS(ct.amount)::numeric AS units,
+    ct.created_at,
+    CASE
+      WHEN ct.reason LIKE 'consumed_web_music%'
+        OR ct.reason LIKE 'refunded_web_music%' THEN 'web'
+      WHEN ct.reason LIKE 'v3_%' AND ct.direction = 'debit'
+        AND EXISTS (
+          SELECT 1 FROM suno_tasks t WHERE t.id::text = ct.ref_id
+        ) THEN 'web'
+      WHEN ct.reason LIKE 'v3_%' THEN 'studio'
+      WHEN ct.reason LIKE '% via %' THEN 'studio'
+      ELSE 'unattributed'
+    END AS family,
+    CASE
+      WHEN ct.reason LIKE 'consumed_web_music%'
+        OR ct.reason LIKE 'refunded_web_music%'
+        OR ct.reason LIKE '% via %' THEN 1.0
+      ELSE 10000.0
+    END AS per_credit
+  FROM credit_transactions ct
+  WHERE ct.direction IN ('debit', 'refund')
+    AND ct.created_at >= {_PP_DAY_START} - interval '29 days'
+), burn AS (
+  SELECT
+    family,
+    created_at,
+    (CASE WHEN direction = 'debit' THEN units ELSE -units END) / per_credit AS credits
+  FROM classified
+)
+SELECT family, {_window_sum("credits")}
+FROM burn
+GROUP BY family
 """
 
 
@@ -214,6 +241,7 @@ def format_burncredit_message(
     both_songs: dict[str, int],
     both_credits: dict[str, float],
     headline: str | None = None,
+    unattributed_credits: dict[str, float] | None = None,
 ) -> str:
     if scope == "help":
         return "🔥 <b>BURN CREDIT</b>\n" + _BURN_HELP
@@ -226,6 +254,7 @@ def format_burncredit_message(
         [
             "Each period: songs generated · credits burned. USD = songs × $0.06 / request.",
             "Asia/Phnom_Penh calendar days. Last 7 / 30 include today.",
+            "Web credits are proven against a web task; shared covers ops used by both products.",
             "",
         ]
     )
@@ -237,6 +266,17 @@ def format_burncredit_message(
         sections.append("")
     if scope in {"all", "both"}:
         sections.append(format_burn_table("Both", both_songs, both_credits))
+        sections.append("")
+    if unattributed_credits and any(
+        float(unattributed_credits.get(key, 0) or 0) for key in _WINDOW_KEYS
+    ):
+        sections.append(
+            "Shared (image/lyric/title or net refunds): "
+            + " · ".join(
+                f"{header} {_fmt_credits(unattributed_credits.get(key, 0))} cr"
+                for header, key in zip(_TABLE_HEADERS, _WINDOW_KEYS)
+            )
+        )
         sections.append("")
     sections.append(f"time: {_esc(_now_label())}")
     sections.append("Reply <code>/burncredit web</code> · <code>studio</code> · <code>both</code>")
@@ -252,12 +292,12 @@ def _row_windows(row: Any | None) -> dict[str, int]:
 async def fetch_ops_stats(pool: Any) -> dict[str, dict[str, int]]:
     """Count new users and suno_tasks (same song metric as admin user details)."""
     users = await pool.fetchrow(
-        _COUNT_SQL.format(
+        _count_sql(
             table="users",
             where="WHERE COALESCE(status, 'active') <> 'deleted' AND COALESCE(role, 'user') = 'user'",
         )
     )
-    songs = await pool.fetchrow(_COUNT_SQL.format(table="suno_tasks", where=""))
+    songs = await pool.fetchrow(_count_sql(table="suno_tasks"))
     return {"users": _row_windows(users), "songs": _row_windows(songs)}
 
 
@@ -273,7 +313,7 @@ def _add_credit_windows(
 
 
 async def fetch_burncredit_stats(pool: Any) -> dict[str, dict[str, dict[str, float]]]:
-    """Songs by suno_tasks.source; web/studio credits from credit_transactions."""
+    """Songs by suno_tasks.source; credits by provable product attribution."""
     web_songs = _row_windows(
         await pool.fetchrow(
             f"SELECT {_window_agg('COUNT(*)')} FROM suno_tasks WHERE source = 'web_music'"
@@ -286,16 +326,31 @@ async def fetch_burncredit_stats(pool: Any) -> dict[str, dict[str, dict[str, flo
             + " FROM suno_tasks WHERE COALESCE(source, 'studio') = 'studio'"
         )
     )
-    web_credit_row = _row_windows(await pool.fetchrow(_WEB_CREDIT_SQL))
-    web_credits = {key: float(web_credit_row[key]) for key in _WINDOW_KEYS}
-    studio_units = _row_windows(await pool.fetchrow(_STUDIO_CREDIT_SQL))
-    studio_credits = {key: units_to_credits(studio_units[key]) for key in _WINDOW_KEYS}
+
+    empty_credits = {key: 0.0 for key in _WINDOW_KEYS}
+    credits = {
+        "web": dict(empty_credits),
+        "studio": dict(empty_credits),
+        "unattributed": dict(empty_credits),
+    }
+    # `fetch` (not `fetchrow`): one row per attribution family. A family absent
+    # from the window keeps its zero row, so formatting is stable.
+    for row in await pool.fetch(_BURN_SQL):
+        family = str(row["family"] or "").strip().lower()
+        if family not in credits:
+            family = "unattributed"
+        credits[family] = {key: float(row[key] or 0) for key in _WINDOW_KEYS}
+
     return {
-        "web": {"songs": web_songs, "credits": web_credits},
-        "studio": {"songs": studio_songs, "credits": studio_credits},
+        "web": {"songs": web_songs, "credits": credits["web"]},
+        "studio": {"songs": studio_songs, "credits": credits["studio"]},
+        "unattributed": {
+            "songs": {key: 0 for key in _WINDOW_KEYS},
+            "credits": credits["unattributed"],
+        },
         "both": {
             "songs": _add_windows(web_songs, studio_songs),
-            "credits": _add_credit_windows(web_credits, studio_credits),
+            "credits": _add_credit_windows(credits["web"], credits["studio"]),
         },
     }
 
@@ -436,6 +491,7 @@ async def _send_daily_burncredit() -> None:
         studio_credits=stats["studio"]["credits"],
         both_songs=stats["both"]["songs"],
         both_credits=stats["both"]["credits"],
+        unattributed_credits=stats["unattributed"]["credits"],
         headline="Daily 10:00 PM report (Asia/Phnom_Penh)",
     )
     ok = await service.send_html(text)
@@ -546,6 +602,7 @@ async def _reply_burncredit(service: Any, scope: str) -> None:
             studio_credits=stats["studio"]["credits"],
             both_songs=stats["both"]["songs"],
             both_credits=stats["both"]["credits"],
+            unattributed_credits=stats["unattributed"]["credits"],
         )
         await service.send_html(text)
     except Exception as exc:

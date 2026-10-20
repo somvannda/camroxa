@@ -224,12 +224,17 @@ async def test_fetch_ops_stats_reads_user_and_suno_windows() -> None:
     assert "d10" not in stats["songs"]
 
 
-def test_web_credit_sql_attaches_filter_to_sum() -> None:
-    from platform_api.services.telegram_ops_commands import _WEB_CREDIT_SQL
+def test_burn_sql_proves_web_attribution_and_scales_v3_units() -> None:
+    from platform_api.services.telegram_ops_commands import _BURN_SQL
 
-    compact = " ".join(_WEB_CREDIT_SQL.split())
-    assert "SUM(-amount) FILTER" in compact
-    assert "COALESCE(SUM(-amount), 0) FILTER" not in compact
+    compact = " ".join(_BURN_SQL.split())
+    # Web music is proven by the ref_id -> suno_tasks join, not by reason text.
+    assert "suno_tasks t" in compact
+    assert "v3_" in compact
+    assert "ABS(ct.amount)" in compact
+    assert "per_credit" in compact
+    assert "10000.0" in compact
+    assert "consumed_web_music%" in compact
 
 
 def test_parse_ops_command_burncredit() -> None:
@@ -292,26 +297,52 @@ def test_format_burncredit_message_scopes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_burncredit_stats_splits_web_and_studio() -> None:
+async def test_fetch_burncredit_stats_uses_proven_families() -> None:
     from platform_api.services.telegram_ops_commands import fetch_burncredit_stats
 
     class FakePool:
         async def fetchrow(self, query: str, *args: object) -> dict[str, int]:
-            if "FROM suno_tasks" in query and "source = 'web_music'" in query:
+            if "source = 'web_music'" in query:
                 return {"today": 10, "yesterday": 5, "d7": 20, "d30": 40}
-            if "FROM suno_tasks" in query:
-                return {"today": 2, "yesterday": 1, "d7": 8, "d30": 16}
-            if "SUM(-amount)" in query:
-                return {"today": 50, "yesterday": 20, "d7": 100, "d30": 200}
-            return {"today": 10000, "yesterday": 20000, "d7": 30000, "d30": 40000}
+            assert "COALESCE(source, 'studio')" in query
+            return {"today": 2, "yesterday": 1, "d7": 8, "d30": 16}
+
+        async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+            assert "GROUP BY family" in query
+            return [
+                {"family": "web", "today": 930, "yesterday": 10, "d7": 3490, "d30": 5000},
+                {"family": "studio", "today": 28, "yesterday": 4, "d7": 6050, "d30": 9000},
+                {"family": "unattributed", "today": 12, "yesterday": 3, "d7": 2380, "d30": 3000},
+            ]
 
     stats = await fetch_burncredit_stats(FakePool())
     assert stats["web"]["songs"]["today"] == 10
-    assert stats["web"]["credits"]["today"] == 50
-    assert stats["studio"]["songs"]["today"] == 2
-    assert stats["studio"]["credits"]["today"] == 1.0
+    assert stats["web"]["credits"]["today"] == 930.0
+    assert stats["studio"]["credits"]["today"] == 28.0
+    # "Both" is web + studio only; shared infrastructure stays separate.
+    assert stats["both"]["credits"]["today"] == 958.0
+    assert stats["unattributed"]["credits"]["d7"] == 2380.0
     assert stats["both"]["songs"]["today"] == 12
-    assert stats["both"]["credits"]["today"] == 51.0
+
+
+def test_format_burncredit_message_shows_shared_bucket() -> None:
+    from platform_api.services.telegram_ops_commands import format_burncredit_message
+
+    empty = {"today": 0, "yesterday": 0, "d7": 0, "d30": 0}
+    text = format_burncredit_message(
+        env_label="Production",
+        scope="both",
+        web_songs=empty,
+        web_credits={"today": 930, "yesterday": 0, "d7": 3490, "d30": 0},
+        studio_songs=empty,
+        studio_credits={"today": 28, "yesterday": 0, "d7": 6050, "d30": 0},
+        both_songs=empty,
+        both_credits={"today": 958, "yesterday": 0, "d7": 9540, "d30": 0},
+        unattributed_credits={"today": 12, "yesterday": 0, "d7": 2380, "d30": 0},
+    )
+    assert "Shared (image/lyric/title" in text
+    assert "Today 12 cr" in text
+    assert "2380" in text
 
 
 def test_daily_burncredit_schedule() -> None:
