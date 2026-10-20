@@ -1,0 +1,10 @@
+[Unit]
+Description=CamXora platform-wide health probe + alert
+After=network.target
+
+[Service]
+Type=oneshot
+User=camxora
+Group=camxora
+WorkingDirectory=/opt/camxora/repo
+ExecStart=/usr/bin/env bash /opt/camxora/repo/scripts/deploy/platform-healthcheck.sh
