@@ -133,7 +133,9 @@ async def maybe_send_streaming_health_report(pool: Any) -> bool:
         env_label = environment_display_label()
     except Exception:
         env_label = "Unknown"
-    ok = await service.send_html(format_streaming_health_message(health, env_label))
+    ok = await service.send_html(
+        format_streaming_health_message(health, env_label), kind="streaming_report"
+    )
     if ok:
         logger.info("Streaming capture health report sent: %s", health)
     return ok

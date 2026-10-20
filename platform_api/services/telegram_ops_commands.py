@@ -567,7 +567,7 @@ async def _send_daily_burncredit() -> None:
         unattributed_credits=stats["unattributed"]["credits"],
         headline="\n".join(headline),
     )
-    ok = await service.send_html(text)
+    ok = await service.send_html(text, kind="daily_report")
     if not ok:
         raise RuntimeError("Telegram daily burncredit send failed.")
 
@@ -645,11 +645,14 @@ async def _reply_stats(service: Any) -> None:
             users=stats["users"],
             songs=stats["songs"],
         )
-        await service.send_html(text)
+        await service.send_html(text, kind="command")
     except Exception as exc:
         logger.warning("Telegram /stats reply failed: %s", str(exc)[:200])
         try:
-            await service.send_html("Could not load stats right now. Try /stats again in a moment.")
+            await service.send_html(
+                "Could not load stats right now. Try /stats again in a moment.",
+                kind="command",
+            )
         except Exception:
             return
 
@@ -668,7 +671,7 @@ async def _reply_burncredit(service: Any, scope: str) -> None:
                 studio_credits={},
                 both_songs={},
                 both_credits={},
-            ))
+            ), kind="command")
             return
         stats = await fetch_burncredit_stats(get_db_pool())
         text = format_burncredit_message(
@@ -682,12 +685,13 @@ async def _reply_burncredit(service: Any, scope: str) -> None:
             both_credits=stats["both"]["credits"],
             unattributed_credits=stats["unattributed"]["credits"],
         )
-        await service.send_html(text)
+        await service.send_html(text, kind="command")
     except Exception as exc:
         logger.warning("Telegram /burncredit reply failed: %s", str(exc)[:200])
         try:
             await service.send_html(
-                "Could not load credit burn right now. Try /burncredit again in a moment."
+                "Could not load credit burn right now. Try /burncredit again in a moment.",
+                kind="command",
             )
         except Exception:
             return

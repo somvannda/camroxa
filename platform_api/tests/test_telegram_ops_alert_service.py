@@ -29,7 +29,9 @@ def test_notify_provider_capacity_failure_is_debounced(monkeypatch) -> None:
     from platform_api.services import telegram_ops_alert_service as svc
 
     sent: list[str] = []
-    monkeypatch.setattr(svc, "schedule_ops_message", lambda text: sent.append(text))
+    monkeypatch.setattr(
+        svc, "schedule_ops_message", lambda text, **kwargs: sent.append(text)
+    )
     svc._provider_capacity_alert_last.clear()
     try:
         svc.notify_provider_capacity_failure(
@@ -185,6 +187,39 @@ async def test_send_html_retries_429(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     assert await service.send_html("hello") is True
     assert client.post.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_send_html_records_delivery_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_alert_service as mod
+
+    class _Resp:
+        status_code = 200
+        text = "ok"
+
+    async def _enabled() -> bool:
+        return True
+
+    logged: list[tuple[str, str, int | None]] = []
+
+    async def _log(chat_id, *, kind, text, status, http_status=None):  # type: ignore[no-untyped-def]
+        logged.append((kind, status, http_status))
+
+    monkeypatch.setattr(mod, "_runtime_enabled", _enabled)
+    monkeypatch.setattr(mod, "_log_delivery", _log)
+    client = AsyncMock()
+    client.post = AsyncMock(return_value=_Resp())
+    service = mod.TelegramOpsAlertService(
+        bot_token="123:abc",
+        chat_id="-1001",
+        enabled=True,
+        env_label="Production",
+        http_client=client,
+    )
+    assert await service.send_html("hello", kind="spend") is True
+    assert logged == [("spend", "sent", 200)]
 
 
 def test_install_telegram_ops_hooks_is_idempotent() -> None:

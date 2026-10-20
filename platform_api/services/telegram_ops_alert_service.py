@@ -200,7 +200,13 @@ class TelegramOpsAlertService:
             await self._http_client.aclose()
             self._http_client = None
 
-    async def send_html(self, text: str, *, reply_markup: dict[str, Any] | None = None) -> bool:
+    async def send_html(
+        self,
+        text: str,
+        *,
+        reply_markup: dict[str, Any] | None = None,
+        kind: str = "message",
+    ) -> bool:
         if not self.configured:
             return False
         if not await _runtime_enabled():
@@ -212,13 +218,21 @@ class TelegramOpsAlertService:
         # disappears from the ops channel.
         for index, chunk in enumerate(chunks):
             markup = reply_markup if index == len(chunks) - 1 else None
-            if not await self._post(chunk, markup):
+            ok, status = await self._post(chunk, markup)
+            await _log_delivery(
+                self._chat_id,
+                kind=kind,
+                text=chunk,
+                status="sent" if ok else "failed",
+                http_status=status,
+            )
+            if not ok:
                 return False
         return True
 
     async def _post(
         self, body: str, reply_markup: dict[str, Any] | None = None
-    ) -> bool:
+    ) -> tuple[bool, int | None]:
         client = await self._client()
         url = _TELEGRAM_SEND_URL.format(token=self._bot_token)
         payload: dict[str, Any] = {
@@ -254,8 +268,8 @@ class TelegramOpsAlertService:
                 response.status_code,
                 (response.text or "")[:200],
             )
-            return False
-        return True
+            return False, response.status_code
+        return True, response.status_code
 
     async def _client(self) -> httpx.AsyncClient:
         if self._http_client is None:
@@ -291,6 +305,35 @@ def _retry_after_seconds(response: Any) -> float:
         return float(((data.get("parameters") or {}).get("retry_after")) or 0)
     except Exception:
         return 0.0
+
+
+async def _log_delivery(
+    chat_id: str,
+    *,
+    kind: str,
+    text: str,
+    status: str,
+    http_status: int | None = None,
+) -> None:
+    """Best-effort audit row; never blocks or fails a product path."""
+    try:
+        from platform_api.dependencies import get_db_pool
+
+        pool = get_db_pool()
+        await pool.execute(
+            """
+            INSERT INTO telegram_ops_messages
+                (kind, chat_id, text, status, http_status)
+            VALUES ($1, $2, $3, $4, $5)
+            """,
+            (kind or "message")[:32],
+            str(chat_id)[:64],
+            (text or "")[:3500],
+            status,
+            http_status,
+        )
+    except Exception as exc:
+        logger.debug("Telegram delivery log skipped: %s", exc)
 
 
 def _chunk_text(text: str, limit: int = 4000) -> list[str]:
@@ -454,7 +497,7 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
     return snapshot
 
 
-def schedule_ops_message(text: str) -> None:
+def schedule_ops_message(text: str, *, kind: str = "message") -> None:
     """Queue a Telegram post without blocking the caller."""
     if get_telegram_ops_service() is None:
         return
@@ -468,7 +511,7 @@ def schedule_ops_message(text: str) -> None:
         if service is None:
             return
         try:
-            await service.send_html(text)
+            await service.send_html(text, kind=kind)
         except Exception as exc:
             logger.warning("Telegram ops post failed: %s", str(exc)[:200])
 
@@ -519,7 +562,7 @@ def notify_provider_capacity_failure(
     if song_id:
         lines.append(f"song: <code>{_esc(song_id)}</code>")
     lines.append(f"time: {_esc(_now_label())}")
-    schedule_ops_message("\n".join(lines))
+    schedule_ops_message("\n".join(lines), kind="provider_capacity")
 
 
 def _schedule_enriched(
@@ -566,7 +609,7 @@ def _schedule_enriched(
         if service is None:
             return
         try:
-            await service.send_html(text, reply_markup=reply_markup)
+            await service.send_html(text, reply_markup=reply_markup, kind=kind)
         except Exception as exc:
             logger.warning("Telegram ops post failed: %s", str(exc)[:200])
 
@@ -608,17 +651,19 @@ async def _flush_bulk_after_window() -> None:
     for text in rendered:
         candidate = f"{batch}\n\n{text}" if batch else text
         if len(candidate) > _MAX_BATCH_CHARS and batch:
-            await _send_text(service, batch)
+            await _send_text(service, batch, kind="spend_download")
             batch = text
         else:
             batch = candidate
     if batch:
-        await _send_text(service, batch)
+        await _send_text(service, batch, kind="spend_download")
 
 
-async def _send_text(service: TelegramOpsAlertService, text: str) -> None:
+async def _send_text(
+    service: TelegramOpsAlertService, text: str, *, kind: str = "message"
+) -> None:
     try:
-        await service.send_html(text)
+        await service.send_html(text, kind=kind)
     except Exception as exc:
         logger.warning("Telegram ops post failed: %s", str(exc)[:200])
 

@@ -71,12 +71,20 @@ found four concrete problems:
   `users`, `suno_tasks`, `credit_transactions`, and a partial
   `billing_payments(fulfilled_at)` index.
 
+### `feat(telegram): record every delivery in telegram_ops_messages`
+- Migration `140_telegram_ops_messages` adds a delivery log
+  (kind, chat_id, text, status, http_status, created_at).
+- Every post records whether it was delivered, so "what did we report and did
+  it land?" is a SQL query instead of a search across nine journals.
+  Query: `SELECT created_at, kind, status FROM telegram_ops_messages
+  ORDER BY created_at DESC LIMIT 50;`
+
 ## Action required (production)
 
 1. **Revoke and reissue the bot token** with @BotFather — the old token is in
    retained journals. Then update `PLATFORM_TELEGRAM_BOT_TOKEN` and remove old
    journal history if required by policy.
-2. Apply migration `139` (`alembic upgrade head`).
+2. Apply migrations `139` and `140` (`alembic upgrade head`).
 3. Deploy; worker units now receive
    `PLATFORM_TELEGRAM_POLLER_ENABLED=false`.
 4. Confirm one leader: `redis-cli -n 1 get telegram:ops:poller` should hold a
@@ -86,5 +94,5 @@ found four concrete problems:
 ## Tests
 
 `python -m pytest platform_api/tests/test_telegram_ops_alert_service.py` —
-26 tests covering attribution SQL, the shared bucket, daily claim/failure/
-in-progress recovery, 429 retry, chunking, and formatting.
+27 tests covering attribution SQL, the shared bucket, daily claim/failure/
+in-progress recovery, 429 retry, chunking, delivery logging, and formatting.

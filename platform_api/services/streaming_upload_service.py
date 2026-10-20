@@ -2125,7 +2125,8 @@ class StreamingUploadService:
                         f"jobs retried={stats['jobs_retried']} ok={stats['jobs_succeeded']} "
                         f"failed={stats['jobs_failed']} permanent={stats['permanent']}\n"
                         f"backfilled={stats['backfilled']} backfill_failed={stats['backfill_failed']} "
-                        f"wav={stats['wav_backfilled']} wav_failed={stats['wav_failed']}"
+                        f"wav={stats['wav_backfilled']} wav_failed={stats['wav_failed']}",
+                        kind="backfill_sweep",
                     )
             except Exception:
                 logger.warning("Could not send B2 backfill sweep alert", exc_info=True)
