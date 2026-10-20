@@ -25,6 +25,7 @@ const NAV = [
   { href: "/admin/mail/campaigns", label: "Mail Campaigns" },
   { href: "/admin/mail/templates", label: "Mail Templates" },
   { href: "/admin/mail/automations", label: "Mail Automations" },
+  { href: "/admin/mail/promos", label: "Mail Promo Codes" },
   { href: "/admin/content", label: "API Updates" },
   { href: "/admin/admins", label: "Administrators" },
   { href: "/admin/system", label: "System Health" },

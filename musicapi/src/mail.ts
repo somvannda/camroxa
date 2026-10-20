@@ -41,6 +41,8 @@ export interface OutboundMail {
   automationId?: string | null;
   /** Idempotency guard; a repeat with the same key is dropped. */
   dedupeKey?: string | null;
+  /** Promo code embedded in this message, when the campaign generated one. */
+  promoCodeId?: string | null;
   /** Extracted from a template; always merged with app-wide variables. */
   vars?: Record<string, string | number | null | undefined>;
   replyTo?: string | null;
@@ -221,8 +223,8 @@ export async function queueMail(mail: OutboundMail): Promise<QueueResult> {
   const inserted = await query<{ id: string }>(
     `INSERT INTO mail_sends
        (id, user_id, email, kind, campaign_id, automation_id, template_id,
-        subject, html, text, status, dedupe_key)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'queued', $11)
+        subject, html, text, status, dedupe_key, promo_code_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'queued', $11, $12)
      ON CONFLICT DO NOTHING
      RETURNING id`,
     [
@@ -237,6 +239,7 @@ export async function queueMail(mail: OutboundMail): Promise<QueueResult> {
       instrumented.html,
       text,
       mail.dedupeKey ?? null,
+      mail.promoCodeId ?? null,
     ],
   );
 

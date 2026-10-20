@@ -55,6 +55,14 @@ import {
   triggerDef,
   triggerValueOf,
 } from "./mailAutomations.js";
+import {
+  coercePreset,
+  createPromoCode,
+  listPromoCodes,
+  presetToCreateOptions,
+  redeemPromo,
+  validatePromoForUser,
+} from "./promo.js";
 import { parseClickToken, parseOpenToken, parseUnsubToken, renderVars } from "./mailTracking.js";
 import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
 import { flowVerdict, type AssetCheck } from "./flowGuard.js";
@@ -10565,15 +10573,33 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    */
   async function settleChmabaPayment(txId: string): Promise<boolean> {
     return withTransaction(async (tq) => {
-      const claimed = await tq<{ user_id: string; credit_amount: number; api_key_target_id: string | null }>(
+      const claimed = await tq<{
+        user_id: string;
+        credit_amount: number;
+        api_key_target_id: string | null;
+        promo_code_id: string | null;
+        promo_discount: string;
+      }>(
         `UPDATE payment_transactions SET status = 'paid', paid_at = now()
          WHERE id = $1 AND status = 'pending'
-         RETURNING user_id, credit_amount, api_key_target_id`,
+         RETURNING user_id, credit_amount, api_key_target_id, promo_code_id,
+                   promo_discount::text AS promo_discount`,
         [txId],
       );
       if (claimed.length === 0) return false;
       const row = claimed[0];
       await creditUser(tq, row.user_id, row.credit_amount, row.api_key_target_id ?? undefined, txId, "ChmabaPay");
+      // Redemption commits with the credit grant: a code cannot be marked used
+      // for a payment that failed to credit, and vice versa.
+      if (row.promo_code_id) {
+        await redeemPromo(tq, {
+          codeId: row.promo_code_id,
+          userId: row.user_id,
+          paymentTransactionId: txId,
+          discount: Number(row.promo_discount) || 0,
+          creditsGranted: row.credit_amount,
+        });
+      }
       return true;
     });
   }
@@ -10657,19 +10683,39 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
 
-    const amount = Number(pack.price);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const listedAmount = Number(pack.price);
+    if (!Number.isFinite(listedAmount) || listedAmount <= 0) {
       return reply.code(400).send({ error: "Pack has no valid price." });
+    }
+
+    // Optional promo code. The server recomputes the charge from the pack row,
+    // so a tampered client cannot pay less than the code allows.
+    const promoInput = typeof in_.promo_code === "string" ? in_.promo_code.trim() : "";
+    let amount = listedAmount;
+    let credits = pack.amount;
+    let promoDiscount = 0;
+    let promoCodeId: string | null = null;
+    if (promoInput) {
+      const result = await validatePromoForUser(promoInput, u.id, {
+        price: listedAmount,
+        credits: pack.amount,
+      });
+      if (!result.ok) return reply.code(400).send({ error: result.error });
+      amount = result.quote.amount;
+      credits = result.quote.credits;
+      promoDiscount = result.quote.discount;
+      promoCodeId = result.quote.codeId;
     }
 
     // Insert first so the row id doubles as the provider's reference_id,
     // giving the webhook a stable handle back to this transaction.
     const created = await queryOne<{ id: string }>(
       `INSERT INTO payment_transactions
-         (user_id, pack_id, credit_amount, currency, amount, payment_method, provider, status, api_key_target_id)
-       VALUES ($1, $2, $3, $4, $5, 'chmaba', 'chmaba', 'pending', $6)
+         (user_id, pack_id, credit_amount, currency, amount, payment_method, provider, status,
+          api_key_target_id, promo_code_id, promo_discount)
+       VALUES ($1, $2, $3, $4, $5, 'chmaba', 'chmaba', 'pending', $6, $7, $8)
        RETURNING id`,
-      [u.id, pack.id, pack.amount, pack.currency, amount, targetKeyId || null],
+      [u.id, pack.id, credits, pack.currency, amount, targetKeyId || null, promoCodeId, promoDiscount],
     );
     if (!created) return reply.code(500).send({ error: "Could not create transaction." });
 
@@ -10681,7 +10727,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           reference_id: created.id,
           idempotency_key: created.id,
           store: config.chmaba.storeId,
-          metadata: { user_id: u.id, pack_id: pack.id, credits: pack.amount },
+          metadata: { user_id: u.id, pack_id: pack.id, credits },
         },
       });
       await query(
@@ -10694,9 +10740,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return {
         transaction_id: created.id,
         provider: "chmaba",
-        credits: pack.amount,
+        credits,
         currency: pack.currency,
         amount,
+        discount: promoDiscount,
+        promo_code: promoCodeId ? promoInput.toUpperCase() : null,
         qr_string: payment.qr_string ?? null,
         // Same-origin SVG the billing modal renders inline instead of bouncing
         // the payer to the ChmabaPay hosted checkout.
@@ -11302,11 +11350,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!template) return reply.code(400).send({ error: "Template not found or inactive." });
 
     const audience = coerceAudience(body.audience);
+    const promoPreset = coercePreset(body.promoPreset);
     const row = await queryOne<{ id: string }>(
-      `INSERT INTO mail_campaigns (name, template_id, audience, created_by)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO mail_campaigns (name, template_id, audience, created_by, promo_preset)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id`,
-      [name, templateId, JSON.stringify(audience), admin.id],
+      [
+        name,
+        templateId,
+        JSON.stringify(audience),
+        admin.id,
+        promoPreset ? JSON.stringify(promoPreset) : null,
+      ],
     );
     return { id: row?.id };
   });
@@ -11328,14 +11383,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const audience = body.audience === undefined ? null : coerceAudience(body.audience);
     const templateId =
       typeof body.templateId === "string" && UUID_RE.test(body.templateId) ? body.templateId : null;
+    const promoPreset =
+      body.promoPreset === undefined ? undefined : body.promoPreset === null ? null : coercePreset(body.promoPreset);
     await query(
       `UPDATE mail_campaigns
        SET name = COALESCE($2::text, name),
            audience = COALESCE($3::jsonb, audience),
            template_id = COALESCE($4::uuid, template_id),
+           promo_preset = CASE WHEN $5::boolean THEN $6::jsonb ELSE promo_preset END,
            updated_at = now()
        WHERE id = $1`,
-      [id, name, audience ? JSON.stringify(audience) : null, templateId],
+      [
+        id,
+        name,
+        audience ? JSON.stringify(audience) : null,
+        templateId,
+        promoPreset !== undefined,
+        promoPreset ? JSON.stringify(promoPreset) : null,
+      ],
     );
     return { ok: true };
   });
@@ -11358,8 +11423,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       subject: string;
       html: string;
       text: string | null;
+      promo_preset: unknown;
     }>(
-      `SELECT c.id, c.status, c.audience, c.template_id, t.subject, t.html, t.text
+      `SELECT c.id, c.status, c.audience, c.template_id, t.subject, t.html, t.text, c.promo_preset
        FROM mail_campaigns c JOIN mail_templates t ON t.id = c.template_id
        WHERE c.id = $1`,
       [id],
@@ -11373,6 +11439,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     if (!mailConfigured()) {
       return reply.code(400).send({ error: "Resend is not configured; nothing to send with." });
+    }
+
+    // A template that prints {{code}} without a promo preset would mail a
+    // literal "{{code}}" to thousands of people. Refuse before marking sending.
+    const usesCode = /\{\{\s*code\s*\}\}/.test(
+      campaign.subject + campaign.html + (campaign.text ?? ""),
+    );
+    const preset = usesCode ? coercePreset(campaign.promo_preset) : null;
+    if (usesCode && !preset) {
+      return reply.code(400).send({
+        error: "This template uses {{code}} but the campaign has no promo code preset configured.",
+      });
     }
 
     const audience = coerceAudience(campaign.audience);
@@ -11392,7 +11470,30 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     let queued = 0;
     let skipped = 0;
     for (const recipient of recipients) {
-      const vars = { ...(await mailVarsForUser(recipient.user_id)), ...ladder };
+      const vars: Record<string, string> = {
+        ...(await mailVarsForUser(recipient.user_id)),
+        ...ladder,
+      };
+
+      // One single-use code per recipient: leakage is harmless and attribution
+      // is exact. A collision-exhausted insert skips that recipient rather than
+      // sending mail with an empty code.
+      let promoCodeId: string | null = null;
+      if (preset) {
+        const created = await createPromoCode(
+          presetToCreateOptions(preset, recipient.user_id, id),
+        );
+        if (!created) {
+          skipped += 1;
+          continue;
+        }
+        promoCodeId = created.id;
+        vars.code = created.code;
+        vars.discount_pct = preset.kind === "percent" ? String(preset.value) : "";
+        vars.discount_credits = preset.kind === "credit_bonus" ? String(preset.value) : "";
+        vars.code_expires_days = String(preset.expiresDays);
+      }
+
       const result = await queueMail({
         to: recipient.email,
         userId: recipient.user_id,
@@ -11403,6 +11504,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         html: campaign.html,
         text: campaign.text,
         vars,
+        promoCodeId,
         dedupeKey: `campaign:${id}:${recipient.user_id}`,
       });
       if (result.outcome === "queued") queued += 1;
@@ -11594,6 +11696,109 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const queued = await runAutomation(id, 200);
     return { queued };
+  });
+
+  // --- mail: promo codes ---------------------------------------------------
+  app.get("/admin/mail/promos", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const rows = await listPromoCodes(200);
+    return { rows };
+  });
+
+  /**
+   * Create a public code, or generate one single-use code per recipient of a
+   * segment. The segment form is what a campaign uses: each code is bound to one
+   * user, so a forwarded email cannot be redeemed by anyone else.
+   */
+  app.post("/admin/mail/promos", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const preset = coercePreset(body);
+    if (!preset) {
+      return reply
+        .code(400)
+        .send({ error: "kind must be 'percent' or 'credit_bonus' with a positive value." });
+    }
+
+    if (body.mode === "segment") {
+      const audience = coerceAudience(body.audience);
+      const recipients = await audienceRecipients(
+        audience,
+        config.mail.marketingCooldownDays,
+        500,
+      );
+      let created = 0;
+      let failed = 0;
+      for (const recipient of recipients) {
+        const code = await createPromoCode({
+          kind: preset.kind,
+          value: preset.value,
+          userId: recipient.user_id,
+          maxRedemptions: 1,
+          expiresDays: preset.expiresDays,
+          note: typeof body.note === "string" ? body.note.slice(0, 200) : null,
+        });
+        if (code) created += 1;
+        else failed += 1;
+      }
+      return { created, failed, audience: recipients.length };
+    }
+
+    const maxRedemptions = Math.max(
+      1,
+      Math.min(10_000, Number(body.maxRedemptions ?? 100) || 100),
+    );
+    const code = await createPromoCode({
+      kind: preset.kind,
+      value: preset.value,
+      userId: null,
+      maxRedemptions,
+      expiresDays: preset.expiresDays,
+      note: typeof body.note === "string" ? body.note.slice(0, 200) : null,
+    });
+    if (!code) return reply.code(500).send({ error: "Could not allocate a unique code." });
+    return { code: code.code, id: code.id };
+  });
+
+  app.post("/admin/mail/promos/:id/deactivate", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid code id." });
+    await query("UPDATE promo_codes SET is_active = false WHERE id = $1", [id]);
+    return { ok: true };
+  });
+
+  /**
+   * Checkout preview. Advisory only: the amount actually charged is recomputed
+   * inside /payments/chmaba/create, so a modified client cannot pay less.
+   */
+  app.post("/me/promo/validate", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const body = (req.body ?? {}) as { code?: unknown; pack_id?: unknown };
+    const code = typeof body.code === "string" ? body.code : "";
+    const packId = typeof body.pack_id === "string" ? body.pack_id : "";
+    if (!code.trim() || !UUID_RE.test(packId)) {
+      return reply.code(400).send({ error: "code and pack_id are required." });
+    }
+    const pack = await queryOne<{ amount: number; price: string }>(
+      "SELECT amount, price FROM credit_packs WHERE id = $1 AND is_active = true",
+      [packId],
+    );
+    if (!pack) return reply.code(404).send({ error: "Pack not found or unavailable." });
+    const result = await validatePromoForUser(code, u.id, {
+      price: Number(pack.price),
+      credits: pack.amount,
+    });
+    if (!result.ok) return reply.code(400).send({ error: result.error });
+    return {
+      code: result.quote.code,
+      kind: result.quote.kind,
+      value: result.quote.value,
+      amount: result.quote.amount,
+      credits: result.quote.credits,
+      discount: result.quote.discount,
+    };
   });
 
   return app;

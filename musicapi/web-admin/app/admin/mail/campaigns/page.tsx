@@ -72,6 +72,9 @@ export default function MailCampaignsPage() {
   const [name, setName] = useState("");
   const [templateId, setTemplateId] = useState("");
   const [audience, setAudience] = useState<Audience>(EMPTY_AUDIENCE);
+  const [promoKind, setPromoKind] = useState("");
+  const [promoValue, setPromoValue] = useState("");
+  const [promoExpires, setPromoExpires] = useState("7");
   const [count, setCount] = useState<number | null>(null);
   const [counting, setCounting] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -113,11 +116,21 @@ export default function MailCampaignsPage() {
     try {
       await apiFetch("/admin/mail/campaigns", {
         method: "POST",
-        body: JSON.stringify({ name, templateId, audience: audiencePayload() }),
+        body: JSON.stringify({
+          name,
+          templateId,
+          audience: audiencePayload(),
+          promoPreset:
+            promoKind && promoValue
+              ? { kind: promoKind, value: Number(promoValue), expiresDays: Number(promoExpires) || 7 }
+              : null,
+        }),
       });
       toast.success("Campaign created. Review the audience count before sending.");
       setName("");
       setTemplateId("");
+      setPromoKind("");
+      setPromoValue("");
       setCount(null);
       void campaigns.reload();
     } catch (err) {
@@ -291,6 +304,42 @@ export default function MailCampaignsPage() {
               mailing a full-price buyer a coupon teaches them to wait for the next sale.
             </span>
           </label>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <Field
+              label="Promo code (optional)"
+              hint="Needed if the template prints {{code}}. One single-use code per recipient."
+            >
+              <Select value={promoKind} onChange={(e) => setPromoKind(e.target.value)}>
+                <option value="">No code</option>
+                <option value="percent">Percent off</option>
+                <option value="credit_bonus">Bonus credits</option>
+              </Select>
+            </Field>
+            <Field
+              label={promoKind === "percent" ? "Percent (1-99)" : "Bonus credits"}
+              hint={promoKind === "percent" ? "20 = 20% off the pack price" : "500 = 500 extra credits"}
+            >
+              <Input
+                type="number"
+                min={1}
+                max={promoKind === "percent" ? 99 : undefined}
+                value={promoValue}
+                onChange={(e) => setPromoValue(e.target.value)}
+                disabled={!promoKind}
+              />
+            </Field>
+            <Field label="Code expires in (days)">
+              <Input
+                type="number"
+                min={1}
+                max={90}
+                value={promoExpires}
+                onChange={(e) => setPromoExpires(e.target.value)}
+                disabled={!promoKind}
+              />
+            </Field>
+          </div>
 
           <div className="flex flex-wrap items-center gap-3">
             <Button variant="secondary" onClick={countAudience} disabled={counting}>
