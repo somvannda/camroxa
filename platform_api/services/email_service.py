@@ -24,8 +24,29 @@ def _build_verification_email(
     display_name: str,
     from_name: str,
     from_address: str,
+    activation_link: str | None = None,
 ) -> MIMEMultipart:
-    """Build a minimal, clean HTML verification email."""
+    """Build a clean verification email with an optional 24-hour link."""
+    import html as _html
+
+    safe_name = _html.escape(display_name or "there")
+    link_block = ""
+    if activation_link:
+        safe_link = _html.escape(activation_link, quote=True)
+        link_block = f"""
+    <div style="margin: 24px 0 8px;">
+      <a href="{safe_link}"
+         style="display:inline-block;background:linear-gradient(90deg,#7466F1,#A259FF);
+                color:#ffffff;text-decoration:none;padding:14px 32px;border-radius:10px;
+                font-weight:700;font-size:15px;">
+        Activate my account
+      </a>
+    </div>
+    <div class="note" style="margin-top:12px;">
+      This button is valid for 24 hours. You can also enter the code below.
+    </div>
+    """
+
     html = f"""<!DOCTYPE html>
 <html>
 <head>
@@ -37,12 +58,12 @@ def _build_verification_email(
   .logo {{ font-size: 28px; font-weight: 800; color: #7466F1; letter-spacing: 2px; }}
   .subtitle {{ color: #888; font-size: 14px; margin-top: 8px; }}
   .card {{ background: #0f1629; border-radius: 16px; padding: 32px; text-align: center; border: 1px solid rgba(116,102,241,0.15); }}
-  .greeting {{ color: #eef4ff; font-size: 16px; margin-bottom: 24px; }}
+  .greeting {{ color: #eef4ff; font-size: 16px; margin-bottom: 16px; }}
   .code-label {{ color: rgba(255,255,255,0.5); font-size: 12px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }}
-  .code {{ color: #ffffff; font-size: 36px; font-weight: 800; letter-spacing: 8px; padding: 16px 0; }}
+  .code {{ color: #ffffff; font-size: 34px; font-weight: 800; letter-spacing: 8px; padding: 12px 0; }}
   .divider {{ height: 1px; background: rgba(255,255,255,0.08); margin: 24px 0; }}
   .note {{ color: rgba(255,255,255,0.45); font-size: 12px; line-height: 1.6; }}
-  .footer {{ text-align: center; margin-top: 32px; color: #aaa; font-size: 11px; }}
+  .footer {{ text-align: center; margin-top: 32px; color: #aaa; font-size: 11px; line-height: 1.7; }}
 </style>
 </head>
 <body>
@@ -52,31 +73,131 @@ def _build_verification_email(
     <div class="subtitle">Music Generation Studio</div>
   </div>
   <div class="card">
-    <div class="greeting">Hey {display_name},</div>
-    <div class="code-label">Your verification code</div>
-    <div class="code">{code}</div>
+    <div class="greeting">Hey {safe_name},</div>
+    <div style="color:#c7d2fe;font-size:14px;line-height:1.6;margin-bottom:8px;">
+      Thanks for joining CAMXORA Music. Confirm this email address to activate your account.
+    </div>
+    {link_block}
     <div class="divider"></div>
+    <div class="code-label">Or use this verification code</div>
+    <div class="code">{code}</div>
     <div class="note">
-      This code expires in 15 minutes.<br>
+      The code expires in 15 minutes.<br>
       If you didn't create an account, you can safely ignore this email.
     </div>
   </div>
   <div class="footer">
-    &copy; 2026 CAMXORA. All rights reserved.
+    &copy; 2026 CAMXORA. All rights reserved.<br>
+    Need help? Contact support@camxora.com
   </div>
 </div>
 </body>
 </html>"""
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Verify your CAMXORA account — {code}"
+    msg["Subject"] = "Activate your CAMXORA Music account"
+    msg["From"] = f"{from_name} <{from_address}>"
+    msg["To"] = ""  # Set by caller
+    plain_link = (
+        f"\nOr activate with one click (valid 24 hours):\n{activation_link}\n"
+        if activation_link
+        else ""
+    )
+    plain = (
+        f"Hey {display_name},\n\n"
+        "Thanks for joining CAMXORA Music. Confirm this email address to activate your account.\n"
+        f"{plain_link}\n"
+        f"Your verification code is: {code}\n"
+        "The code expires in 15 minutes.\n\n"
+        "If you didn't create an account, you can ignore this email.\n"
+        "Need help? Contact support@camxora.com\n"
+    )
+    msg.attach(MIMEText(plain, "plain", "utf-8"))
+    msg.attach(MIMEText(html, "html", "utf-8"))
+    return msg
+
+
+def _build_activation_email(
+    display_name: str,
+    activation_link: str,
+    from_name: str,
+    from_address: str,
+) -> MIMEMultipart:
+    """Professional one-click activation email for the recovery campaign."""
+    import html as _html
+
+    safe_name = _html.escape(display_name or "there")
+    safe_link = _html.escape(activation_link, quote=True)
+
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body {{ margin: 0; padding: 0; background: #ffffff; font-family: 'Segoe UI', system-ui, sans-serif; }}
+  .container {{ max-width: 520px; margin: 0 auto; padding: 40px 24px; }}
+  .header {{ text-align: center; margin-bottom: 28px; }}
+  .logo {{ font-size: 28px; font-weight: 800; color: #7466F1; letter-spacing: 2px; }}
+  .subtitle {{ color: #888; font-size: 13px; margin-top: 8px; }}
+  .card {{ background: #0f1629; border-radius: 18px; padding: 36px 32px; border: 1px solid rgba(116,102,241,0.18); }}
+  h1 {{ color: #ffffff; font-size: 22px; line-height: 1.3; margin: 0 0 16px; }}
+  p {{ color: #c7d2fe; font-size: 14px; line-height: 1.7; margin: 0 0 16px; }}
+  .button {{ display:inline-block;background:linear-gradient(90deg,#7466F1,#A259FF);
+             color:#ffffff;text-decoration:none;padding:14px 34px;border-radius:10px;
+             font-weight:700;font-size:15px;margin:8px 0 20px; }}
+  .muted {{ color: rgba(255,255,255,0.45); font-size: 12px; line-height: 1.7; }}
+  .footer {{ text-align: center; margin-top: 28px; color: #999; font-size: 11px; line-height: 1.7; }}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="logo">CAMXORA</div>
+    <div class="subtitle">Music Generation Studio</div>
+  </div>
+  <div class="card">
+    <h1>Activate your CAMXORA Music account</h1>
+    <p>Hi {safe_name},</p>
+    <p>
+      Thanks for signing up for CAMXORA Music. We noticed our verification email
+      didn&rsquo;t reach you, so here is a fresh activation link.
+    </p>
+    <div style="text-align:center;">
+      <a class="button" href="{safe_link}">Activate my account</a>
+    </div>
+    <p>
+      This link is valid for <strong style="color:#ffffff;">24 hours</strong>. Once
+      activated, sign in and start creating &mdash; your Free plan includes
+      <strong style="color:#ffffff;">50 credits every month</strong>.
+    </p>
+    <p class="muted">
+      If the button doesn&rsquo;t work, copy this link into your browser:<br>
+      <span style="color:#a5b4fc;word-break:break-all;">{safe_link}</span>
+    </p>
+    <p class="muted">
+      If you didn&rsquo;t create a CAMXORA account, you can safely ignore this email.
+    </p>
+  </div>
+  <div class="footer">
+    &copy; 2026 CAMXORA. All rights reserved.<br>
+    Questions? Contact support@camxora.com
+  </div>
+</div>
+</body>
+</html>"""
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Activate your CAMXORA Music account — 50 free credits inside"
     msg["From"] = f"{from_name} <{from_address}>"
     msg["To"] = ""  # Set by caller
     plain = (
-        f"Hey {display_name},\n\n"
-        f"Your CAMXORA verification code is: {code}\n\n"
-        "This code expires in 15 minutes.\n"
-        "If you didn't create an account, you can ignore this email.\n"
+        f"Hi {display_name},\n\n"
+        "Thanks for signing up for CAMXORA Music. We noticed our verification email "
+        "didn't reach you, so here is a fresh activation link.\n\n"
+        f"Activate your account (valid 24 hours):\n{activation_link}\n\n"
+        "Your Free plan includes 50 credits every month.\n\n"
+        "If you didn't create a CAMXORA account, you can ignore this email.\n"
+        "Questions? Contact support@camxora.com\n"
     )
     msg.attach(MIMEText(plain, "plain", "utf-8"))
     msg.attach(MIMEText(html, "html", "utf-8"))
@@ -114,8 +235,10 @@ def send_verification_email(
     to_email: str,
     code: str,
     display_name: str = "there",
+    *,
+    activation_link: str | None = None,
 ) -> bool:
-    """Send a verification code email via SMTP.
+    """Send a verification code email (optionally with a 24-hour link).
 
     Returns True on success, False on failure.
     """
@@ -125,10 +248,30 @@ def send_verification_email(
         display_name=display_name,
         from_name=settings.email_from_name,
         from_address=settings.email_from_address,
+        activation_link=activation_link,
     )
     ok = _send(msg, to_email)
     if ok:
         logger.info("Verification email sent to %s", to_email)
+    return ok
+
+
+def send_activation_email(
+    to_email: str,
+    activation_link: str,
+    display_name: str = "there",
+) -> bool:
+    """Send the recovery campaign's one-click activation email."""
+    settings = get_settings()
+    msg = _build_activation_email(
+        display_name=display_name,
+        activation_link=activation_link,
+        from_name=settings.email_from_name,
+        from_address=settings.email_from_address,
+    )
+    ok = _send(msg, to_email)
+    if ok:
+        logger.info("Activation email sent to %s", to_email)
     return ok
 
 

@@ -6,6 +6,7 @@ import { FormEvent, Suspense, useCallback, useState } from 'react';
 import { LoaderCircle, Shield } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
+import GoogleSignInButton from '@/components/google-signin-button';
 import { useAuth } from '@/components/auth-provider';
 import GuestOnly from '@/components/guest-only';
 import TurnstileWidget from '@/components/turnstile-widget';
@@ -72,6 +73,16 @@ function LoginForm() {
         </p>
       }
     >
+      <div className="space-y-4">
+        <GoogleSignInButton next={next} label="Continue with Google" />
+
+        <div className="flex items-center gap-3">
+          <div className="h-px flex-1 bg-white/10" />
+          <span className="text-xs uppercase tracking-wide text-slate-500">or use your password</span>
+          <div className="h-px flex-1 bg-white/10" />
+        </div>
+      </div>
+
       <form className="space-y-4" onSubmit={onSubmit}>
         <div className="space-y-2">
           <label className="block text-sm font-medium text-slate-300">Email address</label>
