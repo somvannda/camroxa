@@ -1,14 +1,14 @@
 """Add users.google_id for Google sign-in on music web.
 
-Revision ID: 136_user_google_id
-Revises: 135_web_subscription_renewal
+Revision ID: 137_user_google_id
+Revises: 136_packs_only_billing
 Create Date: 2026-10-20
 """
 
 from alembic import op
 
-revision = "136_user_google_id"
-down_revision = "135_web_subscription_renewal"
+revision = "137_user_google_id"
+down_revision = "136_packs_only_billing"
 branch_labels = None
 depends_on = None
 
