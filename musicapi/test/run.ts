@@ -11,6 +11,7 @@ import "./credit-gate.test.js";
 import "./flow-guard.test.js";
 import "./flow-guard-decision.test.js";
 import "./route-auth.test.js";
+import "./invites.test.js";
 import "./trust-proxy.test.js";
 import "./webhook-signature.test.js";
 import "./clips.test.js";
