@@ -29,7 +29,9 @@ def test_notify_provider_capacity_failure_is_debounced(monkeypatch) -> None:
     from platform_api.services import telegram_ops_alert_service as svc
 
     sent: list[str] = []
-    monkeypatch.setattr(svc, "schedule_ops_message", lambda text: sent.append(text))
+    monkeypatch.setattr(
+        svc, "schedule_ops_message", lambda text, **kwargs: sent.append(text)
+    )
     svc._provider_capacity_alert_last.clear()
     try:
         svc.notify_provider_capacity_failure(
@@ -144,6 +146,82 @@ async def test_send_html_posts_to_telegram(monkeypatch: pytest.MonkeyPatch) -> N
     assert kwargs["json"]["parse_mode"] == "HTML"
 
 
+def test_chunk_text_keeps_every_line() -> None:
+    from platform_api.services.telegram_ops_alert_service import _chunk_text
+
+    body = "\n".join(f"line {i} " + "x" * 120 for i in range(80))
+    chunks = _chunk_text(body)
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 4000 for chunk in chunks)
+    assert "".join(chunks) == body
+
+
+@pytest.mark.asyncio
+async def test_send_html_retries_429(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import telegram_ops_alert_service as mod
+
+    class _Resp:
+        def __init__(self, status: int, body: str = "") -> None:
+            self.status_code = status
+            self.text = body
+
+        def json(self):  # type: ignore[no-untyped-def]
+            return {"ok": False, "parameters": {"retry_after": 1}}
+
+    async def _enabled() -> bool:
+        return True
+
+    async def _no_sleep(*args: object, **kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(mod, "_runtime_enabled", _enabled)
+    monkeypatch.setattr(mod.asyncio, "sleep", _no_sleep)
+    client = AsyncMock()
+    client.post = AsyncMock(side_effect=[_Resp(429, "rate limited"), _Resp(200, "ok")])
+    service = mod.TelegramOpsAlertService(
+        bot_token="123:abc",
+        chat_id="-1001",
+        enabled=True,
+        env_label="Production",
+        http_client=client,
+    )
+    assert await service.send_html("hello") is True
+    assert client.post.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_send_html_records_delivery_kind(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_alert_service as mod
+
+    class _Resp:
+        status_code = 200
+        text = "ok"
+
+    async def _enabled() -> bool:
+        return True
+
+    logged: list[tuple[str, str, int | None]] = []
+
+    async def _log(chat_id, *, kind, text, status, http_status=None):  # type: ignore[no-untyped-def]
+        logged.append((kind, status, http_status))
+
+    monkeypatch.setattr(mod, "_runtime_enabled", _enabled)
+    monkeypatch.setattr(mod, "_log_delivery", _log)
+    client = AsyncMock()
+    client.post = AsyncMock(return_value=_Resp())
+    service = mod.TelegramOpsAlertService(
+        bot_token="123:abc",
+        chat_id="-1001",
+        enabled=True,
+        env_label="Production",
+        http_client=client,
+    )
+    assert await service.send_html("hello", kind="spend") is True
+    assert logged == [("spend", "sent", 200)]
+
+
 def test_install_telegram_ops_hooks_is_idempotent() -> None:
     from platform_api.services.telegram_ops_alert_service import install_telegram_ops_hooks
 
@@ -224,12 +302,17 @@ async def test_fetch_ops_stats_reads_user_and_suno_windows() -> None:
     assert "d10" not in stats["songs"]
 
 
-def test_web_credit_sql_attaches_filter_to_sum() -> None:
-    from platform_api.services.telegram_ops_commands import _WEB_CREDIT_SQL
+def test_burn_sql_proves_web_attribution_and_scales_v3_units() -> None:
+    from platform_api.services.telegram_ops_commands import _BURN_SQL
 
-    compact = " ".join(_WEB_CREDIT_SQL.split())
-    assert "SUM(-amount) FILTER" in compact
-    assert "COALESCE(SUM(-amount), 0) FILTER" not in compact
+    compact = " ".join(_BURN_SQL.split())
+    # Web music is proven by the ref_id -> suno_tasks join, not by reason text.
+    assert "suno_tasks t" in compact
+    assert "v3_" in compact
+    assert "ABS(ct.amount)" in compact
+    assert "per_credit" in compact
+    assert "10000.0" in compact
+    assert "consumed_web_music%" in compact
 
 
 def test_parse_ops_command_burncredit() -> None:
@@ -292,26 +375,81 @@ def test_format_burncredit_message_scopes() -> None:
 
 
 @pytest.mark.asyncio
-async def test_fetch_burncredit_stats_splits_web_and_studio() -> None:
+async def test_fetch_burncredit_stats_uses_proven_families() -> None:
     from platform_api.services.telegram_ops_commands import fetch_burncredit_stats
 
     class FakePool:
         async def fetchrow(self, query: str, *args: object) -> dict[str, int]:
-            if "FROM suno_tasks" in query and "source = 'web_music'" in query:
+            if "source = 'web_music'" in query:
                 return {"today": 10, "yesterday": 5, "d7": 20, "d30": 40}
-            if "FROM suno_tasks" in query:
-                return {"today": 2, "yesterday": 1, "d7": 8, "d30": 16}
-            if "SUM(-amount)" in query:
-                return {"today": 50, "yesterday": 20, "d7": 100, "d30": 200}
-            return {"today": 10000, "yesterday": 20000, "d7": 30000, "d30": 40000}
+            assert "COALESCE(source, 'studio')" in query
+            return {"today": 2, "yesterday": 1, "d7": 8, "d30": 16}
+
+        async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+            assert "GROUP BY family" in query
+            return [
+                {"family": "web", "today": 930, "yesterday": 10, "d7": 3490, "d30": 5000},
+                {"family": "studio", "today": 28, "yesterday": 4, "d7": 6050, "d30": 9000},
+                {"family": "unattributed", "today": 12, "yesterday": 3, "d7": 2380, "d30": 3000},
+            ]
 
     stats = await fetch_burncredit_stats(FakePool())
     assert stats["web"]["songs"]["today"] == 10
-    assert stats["web"]["credits"]["today"] == 50
-    assert stats["studio"]["songs"]["today"] == 2
-    assert stats["studio"]["credits"]["today"] == 1.0
+    assert stats["web"]["credits"]["today"] == 930.0
+    assert stats["studio"]["credits"]["today"] == 28.0
+    # "Both" is web + studio only; shared infrastructure stays separate.
+    assert stats["both"]["credits"]["today"] == 958.0
+    assert stats["unattributed"]["credits"]["d7"] == 2380.0
     assert stats["both"]["songs"]["today"] == 12
-    assert stats["both"]["credits"]["today"] == 51.0
+
+
+def test_format_burncredit_message_shows_shared_bucket() -> None:
+    from platform_api.services.telegram_ops_commands import format_burncredit_message
+
+    empty = {"today": 0, "yesterday": 0, "d7": 0, "d30": 0}
+    text = format_burncredit_message(
+        env_label="Production",
+        scope="both",
+        web_songs=empty,
+        web_credits={"today": 930, "yesterday": 0, "d7": 3490, "d30": 0},
+        studio_songs=empty,
+        studio_credits={"today": 28, "yesterday": 0, "d7": 6050, "d30": 0},
+        both_songs=empty,
+        both_credits={"today": 958, "yesterday": 0, "d7": 9540, "d30": 0},
+        unattributed_credits={"today": 12, "yesterday": 0, "d7": 2380, "d30": 0},
+    )
+    assert "Shared (image/lyric/title" in text
+    assert "Today 12 cr" in text
+    assert "2380" in text
+
+
+@pytest.mark.asyncio
+async def test_fetch_platform_revenue_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    calls: list[tuple[object, object]] = []
+
+    class _FakeRepo:
+        def __init__(self, pool: object) -> None:
+            pass
+
+        async def sum_fulfilled_subscription_revenue(
+            self, *, user_id=None, from_date=None, to_date=None
+        ) -> dict[str, int]:
+            calls.append((from_date, to_date))
+            return {
+                "subscription_revenue_cents": 1250 if len(calls) == 1 else 5000,
+                "credit_pack_revenue_cents": 300,
+            }
+
+    monkeypatch.setattr(
+        "platform_api.repositories.credit_repo.CreditRepository", _FakeRepo
+    )
+    revenue = await mod.fetch_platform_revenue(object())
+    assert revenue["today_cents"] == 1250.0
+    assert revenue["d7_cents"] == 5000.0
+    assert revenue["pack_today_cents"] == 300.0
+    assert len(calls) == 2
 
 
 def test_daily_burncredit_schedule() -> None:
@@ -336,4 +474,103 @@ def test_daily_burncredit_schedule() -> None:
     assert nxt_after.date().isoformat() == "2026-08-20"
     assert seconds_until_daily_burncredit_check(at_2200, last_sent_date=None) == 1.0
     assert seconds_until_daily_burncredit_check(at_2200, last_sent_date="2026-08-19") > 60
+
+
+class _FakeRedis:
+    """Minimal async redis surface used by the daily-report claim."""
+
+    def __init__(self, store: dict[str, str] | None = None) -> None:
+        self.store = dict(store or {})
+        self.deleted: list[str] = []
+
+    async def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    async def set(
+        self, key: str, value: str, *, ex: int | None = None, nx: bool = False
+    ) -> bool | None:
+        if nx and key in self.store:
+            return None
+        self.store[key] = value
+        return True
+
+    async def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.store.pop(key, None)
+
+
+def _fixed_2200(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import datetime
+
+    from platform_api.services.billing_calendar import BILLING_TIMEZONE
+    from platform_api.services import telegram_ops_commands as mod
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[no-untyped-def]
+            return datetime(2026, 10, 20, 22, 30, tzinfo=BILLING_TIMEZONE)
+
+    monkeypatch.setattr(mod, "datetime", FixedDatetime)
+
+
+@pytest.mark.asyncio
+async def test_daily_report_marks_sent_only_after_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    sent: list[int] = []
+
+    async def _send() -> None:
+        sent.append(1)
+
+    redis = _FakeRedis()
+    monkeypatch.setattr(mod, "_try_redis", lambda: redis)
+    monkeypatch.setattr(mod, "_send_daily_burncredit", _send)
+    _fixed_2200(monkeypatch)
+
+    assert await mod._maybe_send_daily_burncredit() is True
+    assert sent == [1]
+    assert redis.store[mod._daily_key("2026-10-20")] == "1"
+
+    # A completed day is a no-op, not a second post.
+    assert await mod._maybe_send_daily_burncredit() is True
+    assert sent == [1]
+
+
+@pytest.mark.asyncio
+async def test_daily_report_failure_clears_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    async def _boom() -> None:
+        raise RuntimeError("telegram down")
+
+    redis = _FakeRedis()
+    monkeypatch.setattr(mod, "_try_redis", lambda: redis)
+    monkeypatch.setattr(mod, "_send_daily_burncredit", _boom)
+    _fixed_2200(monkeypatch)
+
+    with pytest.raises(RuntimeError):
+        await mod._maybe_send_daily_burncredit()
+    assert mod._daily_key("2026-10-20") not in redis.store
+
+
+@pytest.mark.asyncio
+async def test_daily_report_in_progress_claim_retries_later(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    async def _send() -> None:  # pragma: no cover - must not be called
+        raise AssertionError("another worker owns the in-progress claim")
+
+    redis = _FakeRedis({mod._daily_key("2026-10-20"): "sending"})
+    monkeypatch.setattr(mod, "_try_redis", lambda: redis)
+    monkeypatch.setattr(mod, "_send_daily_burncredit", _send)
+    _fixed_2200(monkeypatch)
+
+    assert await mod._daily_sent_date(redis) is None
+    assert await mod._maybe_send_daily_burncredit() is False
 
