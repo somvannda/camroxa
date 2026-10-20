@@ -1,6 +1,5 @@
 import { randomInt } from "node:crypto";
 import { query, queryOne, type QueryFn } from "./db.js";
-
 /**
  * Promo codes: generation, validation and redemption.
  *
@@ -133,7 +132,11 @@ export type PromoResult =
   | { ok: true; quote: PromoQuote }
   | { ok: false; error: string };
 
-function computeQuote(
+/**
+ * Pure quote calculation, exported so the money arithmetic can be unit-tested
+ * without a database.
+ */
+export function computePromoQuote(
   promo: PromoCode,
   price: number,
   credits: number,
@@ -215,7 +218,7 @@ export async function validatePromoForUser(
   );
   if (already) return { ok: false, error: "You have already used that code." };
 
-  return computeQuote(promo, pack.price, pack.credits);
+  return computePromoQuote(promo, pack.price, pack.credits);
 }
 
 /**

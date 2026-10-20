@@ -15,6 +15,7 @@ import "./trust-proxy.test.js";
 import "./webhook-signature.test.js";
 import "./mail-tracking.test.js";
 import "./resend-webhook.test.js";
+import "./promo.test.js";
 import "./clips.test.js";
 import "./suno-error.test.js";
 import "./poll-clips.test.js";

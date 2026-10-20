@@ -1,5 +1,5 @@
 import { config } from "./config.js";
-import { query } from "./db.js";
+import { query, queryOne } from "./db.js";
 import { mailConfigured, mailVarsForUser, packLadderVars, queueMail } from "./mail.js";
 import { audienceWhere, coerceAudience, type Audience, type Recipient } from "./mailSegments.js";
 
@@ -111,10 +111,7 @@ function bucketKey(automationId: string, userId: string, cooldownDays: number): 
  * Build the eligibility query. The audience clause is reused verbatim so an
  * automation inherits consent, suppression and the shared cooldown for free.
  */
-function eligibility(
-  automation: AutomationRow,
-  limit: number,
-): { sql: string; params: unknown[] } {
+function eligibilityClause(automation: AutomationRow): { where: string; params: unknown[] } {
   const audience: Audience = coerceAudience(automation.audience);
   const { where, params } = audienceWhere(audience, config.mail.marketingCooldownDays);
 
@@ -171,31 +168,42 @@ function eligibility(
      )`,
   );
 
-  params.push(limit);
-  const sql = `
-    SELECT v.user_id, v.email
-    FROM user_value v
-    JOIN users u ON u.id = v.user_id
-    WHERE (${where})
-      AND ${triggerClauses.map((c) => `(${c})`).join(" AND ")}
-    ORDER BY v.last_seen_at DESC NULLS LAST
-    LIMIT $${params.length}`;
-
-  return { sql, params };
+  const whereSql = `(${where}) AND ${triggerClauses.map((c) => `(${c})`).join(" AND ")}`;
+  return { where: whereSql, params };
 }
 
 export async function eligibleRecipients(
   automation: AutomationRow,
   limit = 200,
 ): Promise<Recipient[]> {
-  const { sql, params } = eligibility(automation, limit);
-  return query<Recipient>(sql, params);
+  const { where, params } = eligibilityClause(automation);
+  params.push(limit);
+  return query<Recipient>(
+    `SELECT v.user_id, v.email
+     FROM user_value v
+     JOIN users u ON u.id = v.user_id
+     WHERE ${where}
+     ORDER BY v.last_seen_at DESC NULLS LAST
+     LIMIT $${params.length}`,
+    params,
+  );
 }
 
+/**
+ * Count without materialising the audience. The previous version selected up to
+ * 10k rows and measured the array, which got slower exactly when the number
+ * mattered most.
+ */
 export async function automationAudienceCount(automation: AutomationRow): Promise<number> {
-  const { sql, params } = eligibility(automation, 10_000);
-  const rows = await query<Recipient>(sql, params);
-  return rows.length;
+  const { where, params } = eligibilityClause(automation);
+  const row = await queryOne<{ n: string }>(
+    `SELECT COUNT(*)::text AS n
+     FROM user_value v
+     JOIN users u ON u.id = v.user_id
+     WHERE ${where}`,
+    params,
+  );
+  return Number(row?.n ?? 0);
 }
 
 async function loadAutomations(where = "a.is_active", params: unknown[] = []): Promise<AutomationRow[]> {
