@@ -144,6 +144,49 @@ async def test_send_html_posts_to_telegram(monkeypatch: pytest.MonkeyPatch) -> N
     assert kwargs["json"]["parse_mode"] == "HTML"
 
 
+def test_chunk_text_keeps_every_line() -> None:
+    from platform_api.services.telegram_ops_alert_service import _chunk_text
+
+    body = "\n".join(f"line {i} " + "x" * 120 for i in range(80))
+    chunks = _chunk_text(body)
+    assert len(chunks) > 1
+    assert all(len(chunk) <= 4000 for chunk in chunks)
+    assert "".join(chunks) == body
+
+
+@pytest.mark.asyncio
+async def test_send_html_retries_429(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import telegram_ops_alert_service as mod
+
+    class _Resp:
+        def __init__(self, status: int, body: str = "") -> None:
+            self.status_code = status
+            self.text = body
+
+        def json(self):  # type: ignore[no-untyped-def]
+            return {"ok": False, "parameters": {"retry_after": 1}}
+
+    async def _enabled() -> bool:
+        return True
+
+    async def _no_sleep(*args: object, **kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(mod, "_runtime_enabled", _enabled)
+    monkeypatch.setattr(mod.asyncio, "sleep", _no_sleep)
+    client = AsyncMock()
+    client.post = AsyncMock(side_effect=[_Resp(429, "rate limited"), _Resp(200, "ok")])
+    service = mod.TelegramOpsAlertService(
+        bot_token="123:abc",
+        chat_id="-1001",
+        enabled=True,
+        env_label="Production",
+        http_client=client,
+    )
+    assert await service.send_html("hello") is True
+    assert client.post.await_count == 2
+
+
 def test_install_telegram_ops_hooks_is_idempotent() -> None:
     from platform_api.services.telegram_ops_alert_service import install_telegram_ops_hooks
 

@@ -135,6 +135,14 @@ async def _shutdown_connections() -> None:
     from platform_api.dependencies import clear_connections, get_db_pool, get_redis
 
     try:
+        from platform_api.services.telegram_ops_alert_service import (
+            drain_telegram_ops,
+        )
+
+        await drain_telegram_ops(timeout=4.0)
+    except Exception:
+        pass
+    try:
         pool = get_db_pool()
         await pool.close()
     except Exception:

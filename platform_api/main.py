@@ -543,6 +543,15 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Error stopping B2 backfill task: %s", exc)
 
+    try:
+        from platform_api.services.telegram_ops_alert_service import (
+            drain_telegram_ops,
+        )
+
+        await drain_telegram_ops(timeout=4.0)
+    except Exception as exc:
+        logger.warning("Error draining Telegram ops queue: %s", exc)
+
     if redis_conn is not None:
         try:
             await redis_conn.aclose()

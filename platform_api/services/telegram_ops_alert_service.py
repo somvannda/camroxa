@@ -48,6 +48,27 @@ _PATCHED_ATTR = "_telegram_ops_patched"
 _SETTING_CACHE: dict[str, Any] = {"expires_at": 0.0, "enabled": True}
 _V2_HOOKS_INSTALLED = False
 
+# Before this, every message built and closed its own AsyncClient, paying DNS +
+# TLS for each one (~330 ms from the production VPS to api.telegram.org).
+_SHARED_CLIENT: httpx.AsyncClient | None = None
+_SEND_LOCK: asyncio.Lock | None = None
+_LAST_SEND_AT = 0.0
+# ~24 messages/minute per process, just under Telegram's ~20/min group limit
+# when the account-level burst allowance is shared across workers.
+_MIN_SEND_INTERVAL_S = float(
+    os.environ.get("PLATFORM_TELEGRAM_MIN_SEND_INTERVAL_S", "2.5")
+)
+# High-volume, low-value events are coalesced into one message per window. Money
+# events (signup/login/payment/refund/quota) and alerts are never delayed.
+_BULK_KINDS = frozenset({"spend", "download"})
+_BULK_WINDOW_S = float(os.environ.get("PLATFORM_TELEGRAM_BULK_WINDOW_S", "2.0"))
+_MAX_BATCH_CHARS = 3800
+_BULK_BUFFER: list[dict[str, Any]] = []
+_BULK_TASK: asyncio.Task[Any] | None = None
+_PENDING_TASKS: set[asyncio.Task[Any]] = set()
+_SNAPSHOT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_SNAPSHOT_TTL_S = 30.0
+
 
 def classify_activity(reason: str, metadata: dict[str, Any] | None = None) -> str:
     """Map a credit reason / metadata blob to a short activity label."""
@@ -166,7 +187,9 @@ class TelegramOpsAlertService:
         self._enabled = bool(enabled)
         self._env_label = env_label or "Unknown"
         self._http_client = http_client
-        self._owns_client = http_client is None
+        # The default client is process-wide and shared; never close it from a
+        # per-message service instance.
+        self._owns_client = False
 
     @property
     def configured(self) -> bool:
@@ -182,11 +205,20 @@ class TelegramOpsAlertService:
             return False
         if not await _runtime_enabled():
             return False
-        body = (text or "").strip()
-        if not body:
+        chunks = _chunk_text(text)
+        if not chunks:
             return False
-        if len(body) > 4000:
-            body = body[:3990] + "…"
+        # A long report is split instead of truncated, so no line silently
+        # disappears from the ops channel.
+        for index, chunk in enumerate(chunks):
+            markup = reply_markup if index == len(chunks) - 1 else None
+            if not await self._post(chunk, markup):
+                return False
+        return True
+
+    async def _post(
+        self, body: str, reply_markup: dict[str, Any] | None = None
+    ) -> bool:
         client = await self._client()
         url = _TELEGRAM_SEND_URL.format(token=self._bot_token)
         payload: dict[str, Any] = {
@@ -197,7 +229,25 @@ class TelegramOpsAlertService:
         }
         if reply_markup:
             payload["reply_markup"] = reply_markup
-        response = await client.post(url, json=payload)
+        global _LAST_SEND_AT
+        async with _send_lock():
+            wait = _MIN_SEND_INTERVAL_S - (time.monotonic() - _LAST_SEND_AT)
+            if wait > 0:
+                await asyncio.sleep(wait)
+            try:
+                response = await client.post(url, json=payload)
+                if response.status_code == 429:
+                    delay = min(10.0, max(1.0, _retry_after_seconds(response)))
+                    logger.warning(
+                        "Telegram 429; retrying in %.1fs", delay
+                    )
+                    await asyncio.sleep(delay)
+                    response = await client.post(url, json=payload)
+                elif response.status_code >= 500:
+                    await asyncio.sleep(1.0)
+                    response = await client.post(url, json=payload)
+            finally:
+                _LAST_SEND_AT = time.monotonic()
         if response.status_code >= 400:
             logger.warning(
                 "Telegram ops post failed status=%s body=%s",
@@ -209,8 +259,63 @@ class TelegramOpsAlertService:
 
     async def _client(self) -> httpx.AsyncClient:
         if self._http_client is None:
-            self._http_client = httpx.AsyncClient(timeout=httpx.Timeout(8.0, connect=4.0))
+            self._http_client = _shared_client()
         return self._http_client
+
+
+def _shared_client() -> httpx.AsyncClient:
+    """Process-wide keep-alive client (one TLS handshake, then reuse)."""
+    global _SHARED_CLIENT
+    if _SHARED_CLIENT is None or _SHARED_CLIENT.is_closed:
+        _SHARED_CLIENT = httpx.AsyncClient(
+            timeout=httpx.Timeout(10.0, connect=4.0),
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+                keepalive_expiry=60.0,
+            ),
+        )
+    return _SHARED_CLIENT
+
+
+def _send_lock() -> asyncio.Lock:
+    global _SEND_LOCK
+    if _SEND_LOCK is None:
+        _SEND_LOCK = asyncio.Lock()
+    return _SEND_LOCK
+
+
+def _retry_after_seconds(response: Any) -> float:
+    try:
+        data = response.json()
+        return float(((data.get("parameters") or {}).get("retry_after")) or 0)
+    except Exception:
+        return 0.0
+
+
+def _chunk_text(text: str, limit: int = 4000) -> list[str]:
+    """Split on line boundaries so nothing is truncated at Telegram's cap."""
+    body = (text or "").strip()
+    if not body:
+        return []
+    if len(body) <= limit:
+        return [body]
+    chunks: list[str] = []
+    current = ""
+    for line in body.splitlines(keepends=True):
+        while len(line) > limit:
+            if current:
+                chunks.append(current)
+                current = ""
+            chunks.append(line[:limit])
+            line = line[limit:]
+        if len(current) + len(line) > limit:
+            chunks.append(current)
+            current = ""
+        current += line
+    if current:
+        chunks.append(current)
+    return chunks
 
 
 def _telegram_delivery_allowed() -> bool:
@@ -296,10 +401,18 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
     }
     if not user_id:
         return snapshot
+    key = str(user_id)
+    now = time.monotonic()
+    cached = _SNAPSHOT_CACHE.get(key)
+    if cached is not None and now - cached[0] < _SNAPSHOT_TTL_S:
+        return cached[1]
+    fresh = False
     try:
         from platform_api.dependencies import get_db_pool
 
         pool = get_db_pool()
+        # One round trip instead of three: the web-subscription and licence
+        # probes are EXISTS subselects on the same user row.
         row = await pool.fetchrow(
             """
             SELECT u.email,
@@ -307,38 +420,37 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
                    EXISTS(
                      SELECT 1 FROM licenses l
                      WHERE l.user_id = u.id AND l.status = 'active'
-                   ) AS has_studio_license
+                   ) AS has_studio_license,
+                   EXISTS(
+                     SELECT 1 FROM web_subscriptions w
+                     WHERE w.user_id = $2
+                       AND w.status = 'active'
+                       AND w.current_period_end > NOW()
+                   ) AS has_web_sub
             FROM users u
             WHERE u.id = $1
             """,
             user_id if isinstance(user_id, UUID) else UUID(str(user_id)),
+            str(user_id),
         )
-        if row is None:
-            return snapshot
-        snapshot["email"] = row["email"]
-        snapshot["display_name"] = row["display_name"]
-        snapshot["has_studio_license"] = bool(row["has_studio_license"])
-        try:
-            web = await pool.fetchval(
-                """
-                SELECT 1
-                FROM web_subscriptions
-                WHERE user_id = $1
-                  AND status = 'active'
-                  AND current_period_end > NOW()
-                LIMIT 1
-                """,
-                str(user_id),
+        if row is not None:
+            snapshot["email"] = row["email"]
+            snapshot["display_name"] = row["display_name"]
+            snapshot["has_studio_license"] = bool(row["has_studio_license"])
+            snapshot["has_web_sub"] = bool(row["has_web_sub"])
+            snapshot["account_status"] = (
+                "PAID"
+                if snapshot["has_web_sub"] or snapshot["has_studio_license"]
+                else "FREE"
             )
-            snapshot["has_web_sub"] = web is not None
-        except Exception:
-            snapshot["has_web_sub"] = False
-        if snapshot["has_web_sub"] or snapshot["has_studio_license"]:
-            snapshot["account_status"] = "PAID"
-        else:
-            snapshot["account_status"] = "FREE"
+            fresh = True
     except Exception as exc:
         logger.debug("Telegram ops user snapshot skipped: %s", exc)
+    if fresh:
+        _SNAPSHOT_CACHE[key] = (now, snapshot)
+        if len(_SNAPSHOT_CACHE) > 512:
+            for stale in list(_SNAPSHOT_CACHE)[:256]:
+                _SNAPSHOT_CACHE.pop(stale, None)
     return snapshot
 
 
@@ -359,10 +471,15 @@ def schedule_ops_message(text: str) -> None:
             await service.send_html(text)
         except Exception as exc:
             logger.warning("Telegram ops post failed: %s", str(exc)[:200])
-        finally:
-            await service.close()
 
-    loop.create_task(_run(), name="telegram-ops-alert")
+    _spawn(loop, _run(), "telegram-ops-alert")
+
+
+def _spawn(loop: asyncio.AbstractEventLoop, coro: Any, name: str) -> asyncio.Task[Any]:
+    task = loop.create_task(coro, name=name)
+    _PENDING_TASKS.add(task)
+    task.add_done_callback(_PENDING_TASKS.discard)
+    return task
 
 
 # Provider-capacity failures (no paid Suno account / no credits) hit every song
@@ -419,6 +536,20 @@ def _schedule_enriched(
     except RuntimeError:
         return
 
+    if kind in _BULK_KINDS:
+        # Spend/download events arrive in bursts. Buffer them for a short
+        # window and post one combined message, so a batch generation cannot
+        # trip Telegram's group rate limit (and drop alerts on 429).
+        _BULK_BUFFER.append(
+            {"kind": kind, "user_id": user_id, "fields": dict(fields)}
+        )
+        global _BULK_TASK
+        if _BULK_TASK is None or _BULK_TASK.done():
+            _BULK_TASK = _spawn(
+                loop, _flush_bulk_after_window(), "telegram-ops-bulk"
+            )
+        return
+
     async def _run() -> None:
         snapshot = await _user_snapshot(user_id)
         account_status = fields.pop("account_status", None) or snapshot["account_status"]
@@ -438,10 +569,82 @@ def _schedule_enriched(
             await service.send_html(text, reply_markup=reply_markup)
         except Exception as exc:
             logger.warning("Telegram ops post failed: %s", str(exc)[:200])
-        finally:
-            await service.close()
 
-    loop.create_task(_run(), name="telegram-ops-alert")
+    _spawn(loop, _run(), "telegram-ops-alert")
+
+
+async def _flush_bulk_after_window() -> None:
+    """Render buffered spend/download facts into as few messages as possible."""
+    await asyncio.sleep(_BULK_WINDOW_S)
+    items = _BULK_BUFFER[:]
+    _BULK_BUFFER.clear()
+    if not items:
+        return
+    service = get_telegram_ops_service()
+    if service is None:
+        return
+    env_label = environment_display_label()
+    rendered: list[str] = []
+    for item in items:
+        try:
+            snapshot = await _user_snapshot(item["user_id"])
+            fields = dict(item["fields"])
+            rendered.append(
+                format_ops_message(
+                    kind=item["kind"],
+                    env_label=env_label,
+                    user_id=item["user_id"],
+                    email=fields.pop("email", None) or snapshot["email"],
+                    display_name=fields.pop("display_name", None)
+                    or snapshot["display_name"],
+                    account_status=fields.pop("account_status", None)
+                    or snapshot["account_status"],
+                    **fields,
+                )
+            )
+        except Exception as exc:
+            logger.debug("Telegram bulk render skipped: %s", exc)
+    batch = ""
+    for text in rendered:
+        candidate = f"{batch}\n\n{text}" if batch else text
+        if len(candidate) > _MAX_BATCH_CHARS and batch:
+            await _send_text(service, batch)
+            batch = text
+        else:
+            batch = candidate
+    if batch:
+        await _send_text(service, batch)
+
+
+async def _send_text(service: TelegramOpsAlertService, text: str) -> None:
+    try:
+        await service.send_html(text)
+    except Exception as exc:
+        logger.warning("Telegram ops post failed: %s", str(exc)[:200])
+
+
+async def drain_telegram_ops(timeout: float = 5.0) -> None:
+    """Best-effort flush of buffered/in-flight posts before shutdown."""
+    global _BULK_TASK
+    if _BULK_BUFFER:
+        try:
+            await asyncio.wait_for(_flush_bulk_after_window(), timeout=timeout)
+        except Exception:
+            pass
+    pending = [task for task in _PENDING_TASKS if not task.done()]
+    if pending:
+        await asyncio.wait(pending, timeout=timeout)
+    await close_shared_http_client()
+
+
+async def close_shared_http_client() -> None:
+    global _SHARED_CLIENT
+    client, _SHARED_CLIENT = _SHARED_CLIENT, None
+    if client is not None:
+        try:
+            await client.aclose()
+        except Exception:
+            pass
 
 
 def notify_signup(
