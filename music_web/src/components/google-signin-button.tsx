@@ -7,6 +7,7 @@ import { getGoogleAuthUrl } from '@/lib/auth-api';
 
 const STORAGE_NEXT = 'camxora_google_next';
 const STORAGE_STATE = 'camxora_google_state';
+const STORAGE_REF = 'camxora_invite_ref';
 
 function redirectUri(): string {
   const configured = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI;
@@ -29,6 +30,19 @@ export default function GoogleSignInButton({
     setLoading(true);
     setError(null);
     try {
+      // Keep a friend's referral code across the Google redirect. The callback
+      // page attaches it to the signup request; an unknown code is ignored by
+      // the API and never blocks sign-in.
+      const params = new URLSearchParams(window.location.search);
+      const ref = (params.get('ref') ?? params.get('invite') ?? '').trim().toUpperCase();
+      if (ref) {
+        window.localStorage.setItem(
+          STORAGE_REF,
+          ref.replace(/[^A-Z0-9]/g, '').slice(0, 32),
+        );
+      } else {
+        window.localStorage.removeItem(STORAGE_REF);
+      }
       const uri = redirectUri();
       const { url, state } = await getGoogleAuthUrl(uri);
       window.localStorage.setItem(STORAGE_NEXT, next);
@@ -81,4 +95,4 @@ export default function GoogleSignInButton({
   );
 }
 
-export { STORAGE_NEXT, STORAGE_STATE };
+export { STORAGE_NEXT, STORAGE_STATE, STORAGE_REF };

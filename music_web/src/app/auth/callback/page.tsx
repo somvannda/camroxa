@@ -6,7 +6,7 @@ import { Suspense, useEffect, useRef, useState } from 'react';
 import { LoaderCircle, ShieldAlert } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
-import { STORAGE_NEXT, STORAGE_STATE } from '@/components/google-signin-button';
+import { STORAGE_NEXT, STORAGE_REF, STORAGE_STATE } from '@/components/google-signin-button';
 import { useAuth } from '@/components/auth-provider';
 import { completeGoogleCallback, fetchMusicUser } from '@/lib/auth-api';
 import { DEFAULT_POST_AUTH_PATH, safeNextPath } from '@/lib/auth-redirect';
@@ -48,11 +48,13 @@ function GoogleCallbackInner() {
 
       const rawNext = window.localStorage.getItem(STORAGE_NEXT);
       const next = safeNextPath(rawNext) || DEFAULT_POST_AUTH_PATH;
+      const referralCode = window.localStorage.getItem(STORAGE_REF) || undefined;
       window.localStorage.removeItem(STORAGE_STATE);
       window.localStorage.removeItem(STORAGE_NEXT);
 
       try {
-        await completeGoogleCallback({ code, state });
+        await completeGoogleCallback({ code, state, referral_code: referralCode });
+        window.localStorage.removeItem(STORAGE_REF);
         await refresh();
         const me = await fetchMusicUser();
         if (me && me.email_confirmed === false) {

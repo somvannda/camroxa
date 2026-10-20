@@ -703,3 +703,59 @@ export interface ServiceHealth {
   latency_ms?: number;
   message?: string;
 }
+
+// ---------------------------------------------------------------------------
+// Invite-a-friend referral program (music.camxora.com)
+// ---------------------------------------------------------------------------
+
+export type InviteRewardMode = 'percent' | 'fixed';
+
+export interface InviteRewardRule {
+  mode: InviteRewardMode;
+  value: number;
+}
+
+export interface InviteProgramSettings {
+  enabled: boolean;
+  inviter: InviteRewardRule;
+  invitee: InviteRewardRule;
+}
+
+export type InviteProgramStatus = 'pending' | 'rewarded' | 'skipped' | 'rejected';
+
+export interface InviteProgramRow {
+  id: string;
+  status: InviteProgramStatus;
+  code: string;
+  invitee_email: string;
+  invited_ip: string | null;
+  purchased_credits: number | null;
+  inviter_reward: number;
+  invitee_reward: number;
+  qualifying_ref: string | null;
+  created_at: string | null;
+  rewarded_at: string | null;
+  inviter_id: string;
+  inviter_email: string;
+  inviter_name: string | null;
+}
+
+export interface InviteProgramSummary {
+  total: number;
+  pending: number;
+  rewarded: number;
+  skipped: number;
+  rejected: number;
+  inviter_credits: number;
+  invitee_credits: number;
+}
+
+export interface InviteProgramResponse {
+  rows: InviteProgramRow[];
+  total: number;
+  page: number;
+  page_size: number;
+  settings: InviteProgramSettings;
+  summary: InviteProgramSummary;
+}
+
