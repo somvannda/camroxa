@@ -122,7 +122,10 @@ export default function MailPage() {
   async function drainQueue() {
     setDraining(true);
     try {
-      const res = await apiFetch<{ sent: number }>("/admin/mail/process", { method: "POST" });
+      const res = await apiFetch<{ sent: number }>("/admin/mail/process", {
+        method: "POST",
+        body: "{}",
+      });
       toast.success(`Delivered ${res.sent} queued message(s).`);
       void deliveries.reload();
       void health.reload();

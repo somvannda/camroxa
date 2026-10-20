@@ -483,6 +483,104 @@ export async function mailHealth(): Promise<MailHealth> {
   };
 }
 
+/**
+ * Per-user variables handed to a template: identity, pooled credit balance and
+ * generation count. Templates link the product, never the API host.
+ */
+export async function mailVarsForUser(userId: string): Promise<Record<string, string>> {
+  const row = await queryOne<{
+    email: string;
+    name: string | null;
+    credits: string;
+    songs: string;
+  }>(
+    `SELECT u.email,
+            u.name,
+            COALESCE((SELECT SUM(k.credits) FROM api_keys k
+                      WHERE k.user_id = u.id AND k.is_active), 0)::text AS credits,
+            COALESCE((SELECT COUNT(*) FROM usage_logs l
+                      WHERE l.user_id = u.id AND l.endpoint = 'music'), 0)::text AS songs
+     FROM users u WHERE u.id = $1`,
+    [userId],
+  );
+  const vars = appVariables(userId);
+  if (!row) return vars;
+
+  const firstName = (row.name ?? "").trim().split(/\s+/)[0] ?? "";
+  return {
+    ...vars,
+    email: row.email,
+    name: row.name ?? (firstName || "there"),
+    first_name: firstName || "there",
+    credits: row.credits,
+    songs: row.songs,
+  };
+}
+
+/**
+ * Pack ladder facts rendered from `credit_packs` and `pricing`, so a "bigger
+ * packs are cheaper" email stays true when an operator reprices the ladder.
+ *
+ * `best_*` is the pack with the most credits per dollar. Percentages are stated
+ * against the smallest pack, which is the honest comparison a user can verify.
+ */
+export async function packLadderVars(): Promise<Record<string, string>> {
+  const music = await queryOne<{ credit_cost: number }>(
+    "SELECT credit_cost FROM pricing WHERE endpoint = 'music' AND model IS NULL LIMIT 1",
+  );
+  const perSong = Math.max(1, Number(music?.credit_cost ?? 10));
+
+  const packs = await query<{ amount: number; price: string }>(
+    "SELECT amount, price::text AS price FROM credit_packs WHERE is_active ORDER BY amount",
+  );
+  if (packs.length === 0) {
+    return { packs_html: "", best_pack_price: "", best_pack_songs: "", best_pack_bonus: "" };
+  }
+
+  const rows = packs.map((p) => {
+    const credits = Number(p.amount);
+    const price = Number(p.price);
+    return {
+      price,
+      credits,
+      songs: Math.floor(credits / perSong),
+      perDollar: price > 0 ? credits / price : 0,
+    };
+  });
+
+  const base = rows[0];
+  const best = rows.reduce((a, b) => (b.perDollar > a.perDollar ? b : a));
+
+  const packsHtml = rows
+    .map((r) => {
+      const bonus = base.perDollar > 0 ? Math.round((r.perDollar / base.perDollar - 1) * 100) : 0;
+      const highlight = r === best;
+      return (
+        `<tr style="border-bottom:1px solid #e5e7eb;">` +
+        `<td style="padding:10px 8px;font-weight:${highlight ? 700 : 400};">$${r.price}</td>` +
+        `<td style="padding:10px 8px;">${r.credits.toLocaleString("en-US")} credits</td>` +
+        `<td style="padding:10px 8px;">${r.songs.toLocaleString("en-US")} songs</td>` +
+        `<td style="padding:10px 8px;color:${bonus > 0 ? "#059669" : "#6b7280"};">` +
+        `${bonus > 0 ? `+${bonus}%` : "—"}</td>` +
+        `</tr>`
+      );
+    })
+    .join("");
+
+  return {
+    packs_html:
+      `<table role="presentation" style="width:100%;border-collapse:collapse;font-size:14px;">` +
+      `<thead><tr style="text-align:left;color:#6b7280;font-size:12px;">` +
+      `<th style="padding:8px;">Price</th><th style="padding:8px;">Credits</th>` +
+      `<th style="padding:8px;">Songs</th><th style="padding:8px;">vs smallest</th>` +
+      `</tr></thead><tbody>${packsHtml}</tbody></table>`,
+    best_pack_price: `$${best.price}`,
+    best_pack_songs: best.songs.toLocaleString("en-US"),
+    best_pack_bonus:
+      base.perDollar > 0 ? String(Math.round((best.perDollar / base.perDollar - 1) * 100)) : "0",
+  };
+}
+
 /** Admin test send: a plain transactional message proving the wiring works. */
 export function testMailHtml(appUrl: string): string {
   return `<!doctype html><html><body style="margin:0;padding:24px;background:#f6f7fb;font-family:system-ui,-apple-system,'Segoe UI',sans-serif;">

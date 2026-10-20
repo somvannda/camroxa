@@ -36,8 +36,17 @@ import {
   testMailHtml,
   touchUserActivity,
   trackingSecret,
+  mailVarsForUser,
+  packLadderVars,
 } from "./mail.js";
-import { parseClickToken, parseOpenToken, parseUnsubToken } from "./mailTracking.js";
+import {
+  MAX_CAMPAIGN_RECIPIENTS,
+  SEGMENT_PRESETS,
+  audienceCount,
+  audienceRecipients,
+  coerceAudience,
+} from "./mailSegments.js";
+import { parseClickToken, parseOpenToken, parseUnsubToken, renderVars } from "./mailTracking.js";
 import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
 import { flowVerdict, type AssetCheck } from "./flowGuard.js";
 import { createJobQueue } from "./jobQueue.js";
@@ -11097,6 +11106,342 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const email = String((req.params as { email?: string }).email ?? "");
     if (!email.includes("@")) return reply.code(400).send({ error: "A valid email is required." });
     await removeSuppression(email);
+    return { ok: true };
+  });
+
+  // --- mail: templates -----------------------------------------------------
+  /** Variables a template references, so a typo is visible before sending. */
+  function extractTemplateVars(
+    subject: string,
+    html: string,
+    text: string | null,
+  ): string[] {
+    const found = new Set<string>();
+    for (const source of [subject, html, text ?? ""]) {
+      for (const match of source.matchAll(/\{\{\s*([a-zA-Z0-9_.]+)\s*\}\}/g)) {
+        found.add(match[1]);
+      }
+    }
+    return [...found].sort();
+  }
+
+  app.get("/admin/mail/templates", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const rows = await query(
+      `SELECT id, key, locale, name, subject, jsonb_array_length(to_jsonb(vars)) AS var_count,
+              is_active, updated_at
+       FROM mail_templates ORDER BY is_active DESC, name`,
+    );
+    return { rows };
+  });
+
+  app.get("/admin/mail/templates/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid template id." });
+    const row = await queryOne(
+      "SELECT id, key, locale, name, subject, html, text, vars, is_active FROM mail_templates WHERE id = $1",
+      [id],
+    );
+    if (!row) return reply.code(404).send({ error: "Template not found." });
+    return row;
+  });
+
+  app.post("/admin/mail/templates", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const subject = typeof body.subject === "string" ? body.subject.trim() : "";
+    const html = typeof body.html === "string" ? body.html : "";
+    const text = typeof body.text === "string" ? body.text : null;
+    const locale = typeof body.locale === "string" && body.locale.trim() ? body.locale.trim() : "en";
+    if (!name || !subject || !html.trim()) {
+      return reply.code(400).send({ error: "name, subject and html are required." });
+    }
+    const row = await queryOne<{ id: string }>(
+      `INSERT INTO mail_templates (name, subject, html, text, locale, vars)
+       VALUES ($1, $2, $3, $4, $5, $6)
+       RETURNING id`,
+      [name, subject, html, text, locale, extractTemplateVars(subject, html, text)],
+    );
+    return { id: row?.id };
+  });
+
+  app.put("/admin/mail/templates/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid template id." });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const subject = typeof body.subject === "string" ? body.subject.trim() : "";
+    const html = typeof body.html === "string" ? body.html : "";
+    const text = typeof body.text === "string" ? body.text : null;
+    const locale = typeof body.locale === "string" && body.locale.trim() ? body.locale.trim() : "en";
+    if (!name || !subject || !html.trim()) {
+      return reply.code(400).send({ error: "name, subject and html are required." });
+    }
+    const row = await queryOne<{ id: string }>(
+      `UPDATE mail_templates
+       SET name = $2, subject = $3, html = $4, text = $5, locale = $6, vars = $7, updated_at = now()
+       WHERE id = $1
+       RETURNING id`,
+      [id, name, subject, html, text, locale, extractTemplateVars(subject, html, text)],
+    );
+    if (!row) return reply.code(404).send({ error: "Template not found." });
+    return { ok: true };
+  });
+
+  app.delete("/admin/mail/templates/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid template id." });
+    const used = await queryOne<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM mail_campaigns WHERE template_id = $1`,
+      [id],
+    );
+    if (Number(used?.n ?? 0) > 0) {
+      return reply
+        .code(409)
+        .send({ error: "This template is used by a campaign. Deactivate it instead." });
+    }
+    await query("DELETE FROM mail_templates WHERE id = $1", [id]);
+    return { ok: true };
+  });
+
+  // Preview with real numbers drawn from the admin's own account, so a template
+  // that says "you have {{credits}} credits" shows something plausible.
+  app.post("/admin/mail/templates/preview", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const body = (req.body ?? {}) as { subject?: unknown; html?: unknown; text?: unknown };
+    const subject = typeof body.subject === "string" ? body.subject : "";
+    const html = typeof body.html === "string" ? body.html : "";
+    const text = typeof body.text === "string" ? body.text : "";
+    const vars = { ...(await mailVarsForUser(admin.id)), ...(await packLadderVars()) };
+    return {
+      vars,
+      missing: extractTemplateVars(subject, html, text).filter((key) => vars[key] === undefined),
+      subject: renderVars(subject, vars, false),
+      html: renderVars(html, vars),
+      text: renderVars(text, vars, false),
+    };
+  });
+
+  // --- mail: segments and campaigns ----------------------------------------
+  app.get("/admin/mail/segments", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const presets = [];
+    for (const preset of SEGMENT_PRESETS) {
+      presets.push({
+        key: preset.key,
+        label: preset.label,
+        count: await audienceCount(preset.audience, config.mail.marketingCooldownDays),
+      });
+    }
+    return { presets, cooldownDays: config.mail.marketingCooldownDays };
+  });
+
+  app.post("/admin/mail/audience/count", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const audience = coerceAudience((req.body as { audience?: unknown } | undefined)?.audience);
+    const count = await audienceCount(audience, config.mail.marketingCooldownDays);
+    return { count, cappedAt: MAX_CAMPAIGN_RECIPIENTS };
+  });
+
+  app.get("/admin/mail/campaigns", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const rows = await query(
+      `SELECT c.id, c.name, c.status, c.audience, c.recipient_count, c.scheduled_at,
+              c.started_at, c.sent_at, c.created_at, t.name AS template_name,
+              (SELECT COUNT(*) FROM mail_sends s WHERE s.campaign_id = c.id)::int AS queued,
+              (SELECT COUNT(*) FROM mail_sends s WHERE s.campaign_id = c.id AND s.open_count > 0)::int AS opened,
+              (SELECT COUNT(*) FROM mail_sends s WHERE s.campaign_id = c.id AND s.click_count > 0)::int AS clicked
+       FROM mail_campaigns c
+       JOIN mail_templates t ON t.id = c.template_id
+       ORDER BY c.created_at DESC
+       LIMIT 100`,
+    );
+    return { rows };
+  });
+
+  app.post("/admin/mail/campaigns", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    const templateId = typeof body.templateId === "string" ? body.templateId : "";
+    if (!name || !UUID_RE.test(templateId)) {
+      return reply.code(400).send({ error: "name and a valid templateId are required." });
+    }
+    const template = await queryOne<{ id: string }>(
+      "SELECT id FROM mail_templates WHERE id = $1 AND is_active",
+      [templateId],
+    );
+    if (!template) return reply.code(400).send({ error: "Template not found or inactive." });
+
+    const audience = coerceAudience(body.audience);
+    const row = await queryOne<{ id: string }>(
+      `INSERT INTO mail_campaigns (name, template_id, audience, created_by)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id`,
+      [name, templateId, JSON.stringify(audience), admin.id],
+    );
+    return { id: row?.id };
+  });
+
+  app.put("/admin/mail/campaigns/:id", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid campaign id." });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const current = await queryOne<{ status: string }>(
+      "SELECT status FROM mail_campaigns WHERE id = $1",
+      [id],
+    );
+    if (!current) return reply.code(404).send({ error: "Campaign not found." });
+    if (current.status === "sent" || current.status === "sending") {
+      return reply.code(409).send({ error: "A sent campaign cannot be edited." });
+    }
+    const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : null;
+    const audience = body.audience === undefined ? null : coerceAudience(body.audience);
+    const templateId =
+      typeof body.templateId === "string" && UUID_RE.test(body.templateId) ? body.templateId : null;
+    await query(
+      `UPDATE mail_campaigns
+       SET name = COALESCE($2::text, name),
+           audience = COALESCE($3::jsonb, audience),
+           template_id = COALESCE($4::uuid, template_id),
+           updated_at = now()
+       WHERE id = $1`,
+      [id, name, audience ? JSON.stringify(audience) : null, templateId],
+    );
+    return { ok: true };
+  });
+
+  /**
+   * Queue the campaign. Sending is deliberately two steps (queue, then the loop
+   * delivers) so a click cannot hold a request open for thousands of sends, and
+   * a restart mid-campaign resumes from the queue instead of losing it.
+   */
+  app.post("/admin/mail/campaigns/:id/send", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid campaign id." });
+
+    const campaign = await queryOne<{
+      id: string;
+      status: string;
+      audience: unknown;
+      template_id: string;
+      subject: string;
+      html: string;
+      text: string | null;
+    }>(
+      `SELECT c.id, c.status, c.audience, c.template_id, t.subject, t.html, t.text
+       FROM mail_campaigns c JOIN mail_templates t ON t.id = c.template_id
+       WHERE c.id = $1`,
+      [id],
+    );
+    if (!campaign) return reply.code(404).send({ error: "Campaign not found." });
+    if (campaign.status === "sent") {
+      return reply.code(409).send({ error: "This campaign was already sent." });
+    }
+    if (campaign.status === "sending") {
+      return reply.code(409).send({ error: "This campaign is already sending." });
+    }
+    if (!mailConfigured()) {
+      return reply.code(400).send({ error: "Resend is not configured; nothing to send with." });
+    }
+
+    const audience = coerceAudience(campaign.audience);
+    const recipients = await audienceRecipients(
+      audience,
+      config.mail.marketingCooldownDays,
+      MAX_CAMPAIGN_RECIPIENTS,
+    );
+
+    await query(
+      "UPDATE mail_campaigns SET status = 'sending', started_at = now(), updated_at = now() WHERE id = $1",
+      [id],
+    );
+
+    // Pricing facts are the same for every recipient, so compute them once.
+    const ladder = await packLadderVars();
+    let queued = 0;
+    let skipped = 0;
+    for (const recipient of recipients) {
+      const vars = { ...(await mailVarsForUser(recipient.user_id)), ...ladder };
+      const result = await queueMail({
+        to: recipient.email,
+        userId: recipient.user_id,
+        kind: "campaign",
+        campaignId: id,
+        templateId: campaign.template_id,
+        subject: campaign.subject,
+        html: campaign.html,
+        text: campaign.text,
+        vars,
+        dedupeKey: `campaign:${id}:${recipient.user_id}`,
+      });
+      if (result.outcome === "queued") queued += 1;
+      else skipped += 1;
+    }
+
+    await query(
+      `UPDATE mail_campaigns
+       SET status = 'sent', sent_at = now(), recipient_count = $2, updated_at = now()
+       WHERE id = $1`,
+      [id, queued],
+    );
+
+    return { queued, skipped, audience: recipients.length };
+  });
+
+  /** Test send: renders the campaign for one real user and mails it to `to`. */
+  app.post("/admin/mail/campaigns/:id/test", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid campaign id." });
+
+    const campaign = await queryOne<{ subject: string; html: string; text: string | null }>(
+      `SELECT t.subject, t.html, t.text
+       FROM mail_campaigns c JOIN mail_templates t ON t.id = c.template_id
+       WHERE c.id = $1`,
+      [id],
+    );
+    if (!campaign) return reply.code(404).send({ error: "Campaign not found." });
+
+    const body = (req.body ?? {}) as { to?: unknown };
+    const to = typeof body.to === "string" && body.to.includes("@") ? body.to.trim() : admin.email;
+    const vars = { ...(await mailVarsForUser(admin.id)), ...(await packLadderVars()) };
+
+    const result = await sendMailNow({
+      to,
+      kind: "transactional",
+      subject: `[TEST] ${renderVars(campaign.subject, vars, false)}`,
+      html: campaign.html,
+      text: campaign.text,
+      vars,
+    });
+    if (result.outcome === "queued") return { ok: true, to };
+    return reply.code(400).send({ error: result.reason ?? result.outcome });
+  });
+
+  app.post("/admin/mail/campaigns/:id/cancel", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const id = String((req.params as { id?: string }).id ?? "");
+    if (!UUID_RE.test(id)) return reply.code(400).send({ error: "Invalid campaign id." });
+    // Only unsent deliveries are dropped; anything already handed to Resend
+    // stays in the ledger so nothing is silently lost from the audit trail.
+    await query(
+      "UPDATE mail_sends SET status = 'skipped', error = 'campaign cancelled' WHERE campaign_id = $1 AND status = 'queued'",
+      [id],
+    );
+    await query(
+      "UPDATE mail_campaigns SET status = 'cancelled', updated_at = now() WHERE id = $1 AND status IN ('draft','scheduled','sending')",
+      [id],
+    );
     return { ok: true };
   });
 
