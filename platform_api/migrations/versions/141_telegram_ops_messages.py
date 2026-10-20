@@ -5,15 +5,15 @@ to be scattered journal lines across nine systemd units. This table records
 every post attempt (kind, text, status, HTTP code) so ops can answer "what did
 we report, when, and did it land?" with SQL.
 
-Revision ID: 140_telegram_ops_messages
-Revises: 139_telegram_report_indexes
+Revision ID: 141_telegram_ops_messages
+Revises: 140_telegram_report_indexes
 Create Date: 2026-10-20
 """
 
 from alembic import op
 
-revision = "140_telegram_ops_messages"
-down_revision = "139_telegram_report_indexes"
+revision = "141_telegram_ops_messages"
+down_revision = "140_telegram_report_indexes"
 branch_labels = None
 depends_on = None
 

@@ -67,12 +67,12 @@ found four concrete problems:
 - Pending posts are flushed on shutdown (`drain_telegram_ops`).
 
 ### `feat(telegram): indexes for report windows`
-- Migration `139_telegram_report_indexes` adds `created_at` indexes on
+- Migration `140_telegram_report_indexes` adds `created_at` indexes on
   `users`, `suno_tasks`, `credit_transactions`, and a partial
   `billing_payments(fulfilled_at)` index.
 
 ### `feat(telegram): record every delivery in telegram_ops_messages`
-- Migration `140_telegram_ops_messages` adds a delivery log
+- Migration `141_telegram_ops_messages` adds a delivery log
   (kind, chat_id, text, status, http_status, created_at).
 - Every post records whether it was delivered, so "what did we report and did
   it land?" is a SQL query instead of a search across nine journals.
@@ -87,7 +87,7 @@ found four concrete problems:
 1. **Revoke and reissue the bot token** with @BotFather — the old token is in
    retained journals. Then update `PLATFORM_TELEGRAM_BOT_TOKEN` and remove old
    journal history if required by policy.
-2. Apply migrations `139` and `140` (`alembic upgrade head`).
+2. Apply migrations `140` and `141` (`alembic upgrade head`).
 3. Deploy; worker units now receive
    `PLATFORM_TELEGRAM_POLLER_ENABLED=false`.
 4. Confirm one leader: `redis-cli -n 1 get telegram:ops:poller` should hold a

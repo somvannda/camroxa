@@ -10,15 +10,15 @@ The tables are small today (suno_tasks ~10k rows, credit_transactions ~55k), so
 a plain CREATE INDEX is fast enough inside alembic's transaction. Use
 CONCURRENTLY manually if the tables grow large before this runs.
 
-Revision ID: 139_telegram_report_indexes
-Revises: 138_users_email_lower_unique
+Revision ID: 140_telegram_report_indexes
+Revises: 139_referral_program
 Create Date: 2026-10-20
 """
 
 from alembic import op
 
-revision = "139_telegram_report_indexes"
-down_revision = "138_users_email_lower_unique"
+revision = "140_telegram_report_indexes"
+down_revision = "139_referral_program"
 branch_labels = None
 depends_on = None
 
