@@ -178,6 +178,7 @@ class CreditsOnlyBillingService:
         ref_id: str | None = None,
         waive: bool = False,
         plan_id: UUID | None = None,
+        product: str | None = None,
     ) -> dict[str, Any]:
         quote = await self.quote(op=op, user_id=user_id, plan_id=plan_id, waive=waive)
         if self._enforcement is not None and not waive:
@@ -203,18 +204,23 @@ class CreditsOnlyBillingService:
                     "balance_units": int(await self._credit_repo.get_balance(user_id)),
                 }
 
+        metadata = {
+            "billing": "wallet",
+            "source": "v3",
+            "op": quote.op,
+            "operation": quote.op,
+            "quote_source": quote.source,
+        }
+        if product:
+            # Product context makes web vs desktop attribution provable for
+            # image/lyric/title charges, which share the same reason strings.
+            metadata["product"] = str(product)[:32]
         ok = await self._credit_repo.atomic_deduct(
             user_id,
             quote.amount_units,
             reason,
             ref_id=ref_id,
-            metadata={
-                "billing": "wallet",
-                "source": "v3",
-                "op": quote.op,
-                "operation": quote.op,
-                "quote_source": quote.source,
-            },
+            metadata=metadata,
         )
         if not ok:
             current = int(await self._credit_repo.get_balance(user_id))
@@ -242,6 +248,7 @@ class CreditsOnlyBillingService:
         amount_credits: float | None = None,
         ref_id: str | None = None,
         absorb: bool = False,
+        product: str | None = None,
     ) -> dict[str, Any]:
         operation = self._normalize_op(op)
         if amount_credits is None:
@@ -261,6 +268,8 @@ class CreditsOnlyBillingService:
                 "source": "v3",
                 "op": operation,
             }
+            if product:
+                metadata["product"] = str(product)[:32]
             # A stable ref_id makes the refund idempotent, so a retried or
             # cross-process refund of the same charge cannot double-credit.
             refund_once = getattr(self._credit_repo, "refund_once", None)

@@ -93,8 +93,10 @@ def _window_sum(expr: str) -> str:
 #   * legacy web debits    — display credits, "consumed_web_music_*"
 #   * v3 debits            — micro-units (1 display credit = 10_000), "v3_*"
 #   * refunds              — mixed, so magnitude is used and direction decides.
-# Only one attribution is provable from the row: a v3 music charge whose ref_id
-# is a platform `suno_tasks` row is web music. Other v3 operations
+# Attribution uses product metadata when the writer supplied it (web music and
+# desktop now tag `metadata->>'product'`). Historical rows without it fall back
+# to the one provable signal: a v3 music charge whose ref_id is a platform
+# `suno_tasks` row is web music. Other untagged v3 operations
 # (image/lyric/title/album) are used by both products, so they land in
 # `unattributed` rather than being guessed into studio.
 _BURN_SQL = f"""
@@ -106,11 +108,17 @@ WITH classified AS (
     CASE
       WHEN ct.reason LIKE 'consumed_web_music%'
         OR ct.reason LIKE 'refunded_web_music%' THEN 'web'
-      WHEN ct.reason LIKE 'v3_%' AND ct.direction = 'debit'
+      WHEN ct.reason LIKE 'v3_%'
+        AND ct.metadata->>'product' = 'web_music' THEN 'web'
+      WHEN ct.reason LIKE 'v3_%'
+        AND ct.metadata->>'product' = 'desktop' THEN 'studio'
+      WHEN ct.reason LIKE 'v3_%'
         AND EXISTS (
           SELECT 1 FROM suno_tasks t WHERE t.id::text = ct.ref_id
         ) THEN 'web'
-      WHEN ct.reason LIKE 'v3_%' THEN 'studio'
+      WHEN ct.reason LIKE 'v3_%'
+        AND ct.reason IN ('v3_music', 'v3_refund_music') THEN 'studio'
+      WHEN ct.reason LIKE 'v3_%' THEN 'unattributed'
       WHEN ct.reason LIKE '% via %' THEN 'studio'
       ELSE 'unattributed'
     END AS family,
@@ -382,6 +390,93 @@ async def fetch_platform_revenue(pool: Any) -> dict[str, float]:
     }
 
 
+async def fetch_musicapi_revenue(
+    *,
+    dsn: str | None = None,
+    now: datetime | None = None,
+    connect: Any = None,
+) -> dict[str, dict[str, float]]:
+    """Paid musicapi revenue by currency (ChmabaPay / pack purchases).
+
+    Returns ``{}`` when no DSN is configured or the database is unreachable:
+    the daily digest is platform-only by default and must never fail because a
+    cross-product read is unavailable.
+    """
+    if dsn is None:
+        try:
+            from platform_api.config import get_settings
+
+            dsn = (get_settings().musicapi_database_url or "").strip()
+        except Exception:
+            return {}
+    dsn = str(dsn or "").strip()
+    if not dsn:
+        return {}
+    dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
+    current = now or datetime.now(BILLING_TIMEZONE)
+    day_start = current.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = day_start - timedelta(days=6)
+    try:
+        connector = connect
+        if connector is None:
+            import asyncpg
+
+            connector = asyncpg.connect
+        conn = await connector(dsn)
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT currency,
+                       COALESCE(SUM(amount) FILTER (
+                         WHERE paid_at >= $1 AND paid_at < $2
+                       ), 0) AS today,
+                       COALESCE(SUM(amount), 0) AS d7
+                FROM payment_transactions
+                WHERE status = 'paid'
+                  AND paid_at >= $3
+                  AND paid_at < $2
+                GROUP BY currency
+                """,
+                day_start,
+                current,
+                week_start,
+            )
+        finally:
+            await conn.close()
+    except Exception as exc:
+        logger.debug("musicapi revenue unavailable: %s", exc)
+        return {}
+    return {
+        str(row["currency"] or "UNKNOWN").upper(): {
+            "today": float(row["today"] or 0),
+            "d7": float(row["d7"] or 0),
+        }
+        for row in rows
+    }
+
+
+def format_revenue_line(
+    platform: dict[str, float],
+    musicapi: dict[str, dict[str, float]] | None,
+) -> str:
+    parts = [
+        "platform "
+        f"<b>${platform.get('today_cents', 0) / 100:,.2f}</b> "
+        f"(7d ${platform.get('d7_cents', 0) / 100:,.2f})"
+    ]
+    for currency, values in (musicapi or {}).items():
+        today = float(values.get("today") or 0)
+        week = float(values.get("d7") or 0)
+        if currency == "USD":
+            parts.append(f"musicapi <b>${today:,.2f}</b> (7d ${week:,.2f})")
+        else:
+            parts.append(
+                f"musicapi <b>{_esc(currency)} {today:,.0f}</b> "
+                f"(7d {week:,.0f})"
+            )
+    return "revenue today: " + " · ".join(parts)
+
+
 def next_daily_burncredit_at(now: datetime | None = None) -> datetime:
     """Next 10:00 PM Asia/Phnom_Penh (or tomorrow if that time has passed)."""
     current = now.astimezone(BILLING_TIMEZONE) if now else datetime.now(BILLING_TIMEZONE)
@@ -548,11 +643,9 @@ async def _send_daily_burncredit() -> None:
     except Exception as exc:
         logger.debug("Daily report user/song line skipped: %s", exc)
     try:
-        revenue = await fetch_platform_revenue(pool)
-        headline.append(
-            f"platform revenue today: <b>${revenue['today_cents'] / 100:,.2f}</b> "
-            f"(7d ${revenue['d7_cents'] / 100:,.2f})"
-        )
+        platform_revenue = await fetch_platform_revenue(pool)
+        musicapi_revenue = await fetch_musicapi_revenue()
+        headline.append(format_revenue_line(platform_revenue, musicapi_revenue))
     except Exception as exc:
         logger.debug("Daily report revenue line skipped: %s", exc)
     text = format_burncredit_message(

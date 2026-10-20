@@ -95,6 +95,7 @@ class WebMusicChargeBridge:
                 op=charge.op,
                 amount_credits=float(charge.amount_credits),
                 ref_id=charge.ref_id,
+                product="web_music",
             )
             return
         if self._credit_service is None:
@@ -124,7 +125,9 @@ class WebMusicChargeBridge:
         ref_id: str | None,
     ) -> WebMusicCharge:
         try:
-            await self._billing.charge(user_id=user_id, op=op, ref_id=ref_id)
+            await self._billing.charge(
+                user_id=user_id, op=op, ref_id=ref_id, product="web_music"
+            )
         except InsufficientCreditsError as exc:
             details = getattr(exc, "details", None) or {}
             available = int(details.get("current_balance") or 0)

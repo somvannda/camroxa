@@ -313,6 +313,7 @@ def test_burn_sql_proves_web_attribution_and_scales_v3_units() -> None:
     assert "per_credit" in compact
     assert "10000.0" in compact
     assert "consumed_web_music%" in compact
+    assert "metadata->>'product'" in compact
 
 
 def test_parse_ops_command_burncredit() -> None:
@@ -450,6 +451,70 @@ async def test_fetch_platform_revenue_windows(monkeypatch: pytest.MonkeyPatch) -
     assert revenue["d7_cents"] == 5000.0
     assert revenue["pack_today_cents"] == 300.0
     assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_musicapi_revenue_groups_by_currency() -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    captured: dict[str, object] = {}
+
+    class FakeConn:
+        async def fetch(self, query: str, *args: object):
+            assert "payment_transactions" in query
+            captured["args"] = args
+            return [
+                {"currency": "khr", "today": 12000, "d7": 40000},
+                {"currency": "usd", "today": 3.5, "d7": 10},
+            ]
+
+        async def close(self) -> None:
+            captured["closed"] = True
+
+    async def fake_connect(dsn: str):
+        captured["dsn"] = dsn
+        return FakeConn()
+
+    revenue = await mod.fetch_musicapi_revenue(
+        dsn="postgresql+asyncpg://u:p@localhost/sunoapi",
+        connect=fake_connect,
+    )
+    assert captured["dsn"] == "postgresql://u:p@localhost/sunoapi"
+    assert captured["closed"] is True
+    assert revenue["KHR"] == {"today": 12000.0, "d7": 40000.0}
+    assert revenue["USD"]["today"] == 3.5
+
+
+@pytest.mark.asyncio
+async def test_fetch_musicapi_revenue_is_optional_and_safe() -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    assert await mod.fetch_musicapi_revenue(dsn="") == {}
+
+    async def failing_connect(dsn: str):
+        raise RuntimeError("musicapi db down")
+
+    assert (
+        await mod.fetch_musicapi_revenue(
+            dsn="postgresql://x", connect=failing_connect
+        )
+        == {}
+    )
+
+
+def test_format_revenue_line_includes_both_products() -> None:
+    from platform_api.services.telegram_ops_commands import format_revenue_line
+
+    line = format_revenue_line(
+        {"today_cents": 1250, "d7_cents": 5000},
+        {
+            "KHR": {"today": 12000, "d7": 40000},
+            "USD": {"today": 3.5, "d7": 10},
+        },
+    )
+    assert "platform <b>$12.50</b> (7d $50.00)" in line
+    assert "musicapi <b>KHR 12,000</b> (7d 40,000)" in line
+    assert "musicapi <b>$3.50</b> (7d $10.00)" in line
 
 
 def test_daily_burncredit_schedule() -> None:
