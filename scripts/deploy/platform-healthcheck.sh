@@ -108,6 +108,42 @@ if [[ "${ADV_WAITERS}" =~ ^[0-9]+$ ]] && [[ "${ADV_WAITERS}" -ge 15 ]]; then
   add_failure "${ADV_WAITERS} sessions waiting on advisory locks"
 fi
 
+# --- ops Telegram delivery heartbeat ----------------------------------------
+# The daily 22:00 report guarantees at least one successful post per day. If
+# nothing has landed in 26h, the feed is silently broken (revoked token, wrong
+# chat id, or no process polling) even though every unit says "active".
+TG_AGE_H="$(
+  cd "${REPO}" && PYTHONPATH="${REPO}" "${REPO}/platform_api/.venv/bin/python" - <<'PY' 2>/dev/null
+import asyncio, asyncpg
+from platform_api.config import get_settings
+
+async def main():
+    s = get_settings()
+    dsn = s.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    conn = await asyncpg.connect(dsn)
+    try:
+        row = await conn.fetchrow(
+            "SELECT count(*)::int AS n, "
+            "count(*) FILTER (WHERE status = 'sent')::int AS sent_n, "
+            "EXTRACT(EPOCH FROM (NOW() - MAX(created_at) "
+            "  FILTER (WHERE status = 'sent')))::int AS age_s "
+            "FROM telegram_ops_messages"
+        )
+        if row and row["n"]:
+            # Rows exist but none ever landed: the feed is broken outright.
+            print("never" if not row["sent_n"] else int((row["age_s"] or 0) / 3600))
+    finally:
+        await conn.close()
+
+asyncio.run(main())
+PY
+)"
+if [[ "${TG_AGE_H}" == "never" ]]; then
+  add_failure "ops Telegram has no successful delivery yet (see telegram_ops_messages)"
+elif [[ "${TG_AGE_H}" =~ ^[0-9]+$ ]] && [[ "${TG_AGE_H}" -ge 26 ]]; then
+  add_failure "ops Telegram has not delivered for ${TG_AGE_H}h"
+fi
+
 # --- SMTP login (the check that would have caught the Oct 15 outage) --------
 SMTP_OUT="$(
   cd "${REPO}" && PYTHONPATH="${REPO}" "${REPO}/platform_api/.venv/bin/python" - <<'PY' 2>&1

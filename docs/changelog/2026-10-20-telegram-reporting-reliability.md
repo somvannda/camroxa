@@ -78,6 +78,9 @@ found four concrete problems:
   it land?" is a SQL query instead of a search across nine journals.
   Query: `SELECT created_at, kind, status FROM telegram_ops_messages
   ORDER BY created_at DESC LIMIT 50;`
+- `platform-healthcheck.sh` pages when no successful delivery has been recorded
+  for 26h (skipped when the table is missing or empty, so a fresh install stays
+  quiet).
 
 ## Action required (production)
 
@@ -90,6 +93,8 @@ found four concrete problems:
 4. Confirm one leader: `redis-cli -n 1 get telegram:ops:poller` should hold a
    single `pid:uuid` value, and `journalctl -u camxora-api | grep "status=409"`
    should stay empty.
+5. Confirm delivery rows land in `telegram_ops_messages` and the 26h heartbeat
+   is satisfied (it stays silent until the first successful post).
 
 ## Tests
 
