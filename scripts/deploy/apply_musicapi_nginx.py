@@ -59,6 +59,10 @@ ENV_CONFIG = {
         "names": [
             "musicapi.camxora.com",
             "admin.musicapi.camxora.com",
+            # Mail surface: open pixels, click redirects, unsubscribe and the
+            # Resend webhook. Requires an A record (DNS only, not proxied) before
+            # `--issue-cert` can obtain the certificate.
+            "mail.camxora.com",
         ],
     },
 }
