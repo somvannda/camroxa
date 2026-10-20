@@ -255,7 +255,8 @@ def format_burncredit_message(
         f"🔥 <b>BURN CREDIT</b> · {_esc(env_label)}",
     ]
     if headline:
-        sections.append(_esc(headline))
+        # Callers may pass HTML (bold numbers); plain text is still valid.
+        sections.append(headline)
     sections.extend(
         [
             "Each period: songs generated · credits burned. USD = songs × $0.06 / request.",
@@ -358,6 +359,26 @@ async def fetch_burncredit_stats(pool: Any) -> dict[str, dict[str, dict[str, flo
             "songs": _add_windows(web_songs, studio_songs),
             "credits": _add_credit_windows(credits["web"], credits["studio"]),
         },
+    }
+
+
+async def fetch_platform_revenue(pool: Any) -> dict[str, float]:
+    """Fulfilled platform checkout revenue (cents) for today / last 7 days."""
+    from platform_api.repositories.credit_repo import CreditRepository
+
+    now = datetime.now(BILLING_TIMEZONE)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    repo = CreditRepository(pool)
+    today = await repo.sum_fulfilled_subscription_revenue(
+        from_date=day_start, to_date=now
+    )
+    week = await repo.sum_fulfilled_subscription_revenue(
+        from_date=day_start - timedelta(days=6), to_date=now
+    )
+    return {
+        "today_cents": float(today.get("subscription_revenue_cents") or 0),
+        "d7_cents": float(week.get("subscription_revenue_cents") or 0),
+        "pack_today_cents": float(today.get("credit_pack_revenue_cents") or 0),
     }
 
 
@@ -515,7 +536,25 @@ async def _send_daily_burncredit() -> None:
         raise RuntimeError("Telegram ops service is not configured.")
     from platform_api.dependencies import get_db_pool
 
-    stats = await fetch_burncredit_stats(get_db_pool())
+    pool = get_db_pool()
+    stats = await fetch_burncredit_stats(pool)
+    headline: list[str] = ["Daily 10:00 PM report (Asia/Phnom_Penh)"]
+    try:
+        users = (await fetch_ops_stats(pool))["users"]
+        headline.append(
+            f"new users today: <b>{users['today']}</b> · "
+            f"songs today: <b>{stats['both']['songs']['today']}</b>"
+        )
+    except Exception as exc:
+        logger.debug("Daily report user/song line skipped: %s", exc)
+    try:
+        revenue = await fetch_platform_revenue(pool)
+        headline.append(
+            f"platform revenue today: <b>${revenue['today_cents'] / 100:,.2f}</b> "
+            f"(7d ${revenue['d7_cents'] / 100:,.2f})"
+        )
+    except Exception as exc:
+        logger.debug("Daily report revenue line skipped: %s", exc)
     text = format_burncredit_message(
         env_label=environment_display_label(),
         scope="all",
@@ -526,7 +565,7 @@ async def _send_daily_burncredit() -> None:
         both_songs=stats["both"]["songs"],
         both_credits=stats["both"]["credits"],
         unattributed_credits=stats["unattributed"]["credits"],
-        headline="Daily 10:00 PM report (Asia/Phnom_Penh)",
+        headline="\n".join(headline),
     )
     ok = await service.send_html(text)
     if not ok:

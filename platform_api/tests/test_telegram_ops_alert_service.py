@@ -388,6 +388,35 @@ def test_format_burncredit_message_shows_shared_bucket() -> None:
     assert "2380" in text
 
 
+@pytest.mark.asyncio
+async def test_fetch_platform_revenue_windows(monkeypatch: pytest.MonkeyPatch) -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    calls: list[tuple[object, object]] = []
+
+    class _FakeRepo:
+        def __init__(self, pool: object) -> None:
+            pass
+
+        async def sum_fulfilled_subscription_revenue(
+            self, *, user_id=None, from_date=None, to_date=None
+        ) -> dict[str, int]:
+            calls.append((from_date, to_date))
+            return {
+                "subscription_revenue_cents": 1250 if len(calls) == 1 else 5000,
+                "credit_pack_revenue_cents": 300,
+            }
+
+    monkeypatch.setattr(
+        "platform_api.repositories.credit_repo.CreditRepository", _FakeRepo
+    )
+    revenue = await mod.fetch_platform_revenue(object())
+    assert revenue["today_cents"] == 1250.0
+    assert revenue["d7_cents"] == 5000.0
+    assert revenue["pack_today_cents"] == 300.0
+    assert len(calls) == 2
+
+
 def test_daily_burncredit_schedule() -> None:
     from datetime import datetime
 
