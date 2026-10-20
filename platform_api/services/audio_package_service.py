@@ -46,12 +46,17 @@ class AudioPackageService:
             return {"status": "ready", "skipped": True}
 
         async with self._pool.acquire() as conn:
-            await conn.execute(
-                "SELECT pg_advisory_lock(hashtext($1::text), hashtext($2::text))",
-                str(subject_id),
-                f"{subject_type}:{variant}",
-            )
-            try:
+            # Transaction-scoped advisory lock: Postgres releases it on COMMIT,
+            # ROLLBACK, cancellation, or connection loss. A session-level
+            # `pg_advisory_lock` leaked once (the holder sat idle after the
+            # insert) and blocked every other packager + the API pool.
+            async with conn.transaction():
+                await conn.execute("SET LOCAL lock_timeout = '30s'")
+                await conn.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext($2::text))",
+                    str(subject_id),
+                    f"{subject_type}:{variant}",
+                )
                 if subject_type == "stream_track":
                     existing = await conn.fetchrow(
                         "SELECT package_status, packaged_storage_key FROM stream_tracks WHERE id = $1",
@@ -86,12 +91,6 @@ class AudioPackageService:
                     storage=storage,
                     null_suno_urls=null_suno_urls,
                     source_key=source_key,
-                )
-            finally:
-                await conn.execute(
-                    "SELECT pg_advisory_unlock(hashtext($1::text), hashtext($2::text))",
-                    str(subject_id),
-                    f"{subject_type}:{variant}",
                 )
 
     async def _package_plaintext_body(
