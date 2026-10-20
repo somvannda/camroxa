@@ -34,6 +34,11 @@ from platform_api.services.credit_units import format_display_credits, units_to_
 
 logger = logging.getLogger(__name__)
 
+# httpx logs every request URL at INFO, and the Telegram bot token is part of the
+# URL (`/bot<token>/sendMessage`). Production journals were retaining the live
+# token that way, so keep httpx request logs out of ops output entirely.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+
 KILL_SWITCH_SETTING_KEY = "telegram_ops_alerts_enabled"
 _SETTING_CACHE_SECONDS = 15
 _PHNOM_PENH = timezone(timedelta(hours=7))
