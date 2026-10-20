@@ -141,6 +141,7 @@ export async function getGoogleAuthUrl(
 export async function completeGoogleCallback(input: {
   code: string;
   state: string;
+  referral_code?: string;
 }): Promise<void> {
   const response = await musicAuthFetch('/api/v3/auth/google/callback', {
     method: 'POST',

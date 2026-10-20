@@ -52,6 +52,7 @@ const LicensesPage = React.lazy(() => import('@/pages/licenses/index'));
 const PlansPage = React.lazy(() => import('@/pages/plans/index'));
 const RedeemCodesPage = React.lazy(() => import('@/pages/redeem-codes/index'));
 const InvitationsPage = React.lazy(() => import('@/pages/invitations/index'));
+const InviteProgramPage = React.lazy(() => import('@/pages/invite-program/index'));
 const BlogPostsPage = React.lazy(() => import('@/pages/blog-posts/index'));
 const CreditsPage = React.lazy(() => import('@/pages/credits/index'));
 const PromptsPage = React.lazy(() => import('@/pages/prompts/index'));
@@ -113,6 +114,7 @@ function App() {
                     <Route path="/plans" element={<PlansPage />} />
                     <Route path="/redeem-codes" element={<RedeemCodesPage />} />
                     <Route path="/invitations" element={<InvitationsPage />} />
+              <Route path="/invite-program" element={<InviteProgramPage />} />
                     <Route path="/blog-posts" element={<BlogPostsPage />} />
                     <Route path="/credits" element={<CreditsPage />} />
                     <Route path="/prompts" element={<PromptsPage />} />

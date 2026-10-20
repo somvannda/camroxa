@@ -655,11 +655,32 @@ async def _fulfill_credit_pack_payment(
             pack_repo=credit_repo,
         )
         payment_ref = str(locked.get("external_payment_id") or locked["id"])
+        pack_row = await connection.fetchrow(
+            "SELECT song_credits FROM credit_packs WHERE id = $1",
+            pack_id,
+        )
         await credit_service.purchase_pack(
             user_id=str(locked["user_id"]),
             pack_id=pack_id,
             payment_ref=payment_ref,
         )
+        # Referral rewards share this transaction with the purchase. The
+        # referral row is claimed once, so a retried fulfillment is safe.
+        try:
+            from platform_api.services.invite_program_service import apply_referral_reward
+
+            await apply_referral_reward(
+                connection,
+                invitee_id=locked["user_id"],
+                purchased_credits=int(pack_row["song_credits"] or 0) if pack_row is not None else 0,
+                qualifying_ref=str(locked["id"]),
+            )
+        except Exception:
+            logger.exception(
+                "invite reward failed for credit pack payment %s user=%s",
+                locked["id"],
+                locked["user_id"],
+            )
 
         fulfilled = await connection.fetchrow(
             """

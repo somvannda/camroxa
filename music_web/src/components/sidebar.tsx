@@ -5,9 +5,9 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   ArrowRight,
+  Gift,
   Home,
   ListMusic,
-  Lock,
   Menu,
   Plus,
   Shield,
@@ -66,15 +66,14 @@ function SidebarFooter({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="rounded-[7px] border border-white/10 bg-[linear-gradient(180deg,rgba(14,20,50,0.96),rgba(8,12,28,0.98))] p-3 shadow-[0_24px_80px_rgba(15,22,58,0.34)]">
       <div className="space-y-1 text-sm">
-        <button
-          type="button"
-          disabled
-          className="flex w-full items-center gap-3 rounded-[7px] px-3 py-2.5 text-left text-slate-500"
-          title="Coming soon"
+        <Link
+          href="/invite"
+          onClick={onNavigate}
+          className="flex w-full items-center gap-3 rounded-[7px] px-3 py-2.5 text-left text-slate-300/80 transition hover:bg-white/[0.05] hover:text-white"
         >
-          <Lock className="h-4 w-4" />
+          <Gift className="h-4 w-4" />
           Invite friends
-        </button>
+        </Link>
         <Link
           href={`${getWebsiteBaseUrl()}/privacy`}
           onClick={onNavigate}

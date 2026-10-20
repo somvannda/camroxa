@@ -689,6 +689,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from platform_api.routers import web_music, web_music_licenses
     from platform_api.routers import v2_subscriptions, v2_credits, v2_topups, webhooks_cutluy
     from platform_api.routers import v3_billing
+    from platform_api.routers import invite_program
 
     v1 = settings.api_v1_prefix
     v2 = settings.api_v2_prefix
@@ -752,6 +753,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         web_music.router,
         web_music_licenses.router,
         webhooks_cutluy.router,
+        invite_program.router,
     )
     for router in _core:
         app.include_router(router, prefix=v1)

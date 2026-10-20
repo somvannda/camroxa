@@ -10,6 +10,7 @@ import random
 import re
 import secrets
 import string
+import logging
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
@@ -56,6 +57,7 @@ from platform_api.services.shared.turnstile_service import TurnstileService
 # ---------------------------------------------------------------------------
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+_logger = logging.getLogger(__name__)
 USER_ACCESS_TOKEN_COOKIE_NAME = "camxora_access_token"
 USER_REFRESH_TOKEN_COOKIE_NAME = "camxora_refresh_token"
 ADMIN_ACCESS_TOKEN_COOKIE_NAME = "camxora_admin_access_token"
@@ -65,6 +67,32 @@ ADMIN_REFRESH_TOKEN_COOKIE_NAME = "camxora_admin_refresh_token"
 # ---------------------------------------------------------------------------
 # Request / Response schemas specific to this router
 # ---------------------------------------------------------------------------
+
+
+async def _try_link_referral(
+    *,
+    invitee_id: UUID,
+    invitee_email: str,
+    referral_code: str | None,
+    invited_ip: str | None,
+) -> None:
+    """Attach a new account to an inviter; a bonus must never block signup."""
+    if not referral_code:
+        return
+    try:
+        from platform_api.dependencies import get_db_pool
+        from platform_api.services.invite_program_service import link_referral
+
+        await link_referral(
+            get_db_pool(),
+            invitee_id=invitee_id,
+            invitee_email=invitee_email,
+            referral_code=referral_code,
+            invited_ip=invited_ip,
+        )
+    except Exception:
+        _logger.warning("referral link failed for new user %s", invitee_id, exc_info=True)
+
 
 
 class RefreshRequest(BaseModel):
@@ -80,6 +108,7 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=1, max_length=200)
     display_name: str = Field(..., min_length=1, max_length=200)
     invitation_code: str | None = Field(default=None, min_length=1, max_length=64)
+    referral_code: str | None = Field(default=None, max_length=32)
     product: str | None = Field(default=None, max_length=32)
     cf_turnstile_response: str | None = Field(default=None, description="Cloudflare Turnstile token")
 
@@ -139,6 +168,7 @@ class GoogleCallbackRequest(BaseModel):
 
     code: str = Field(..., min_length=1, max_length=4096)
     state: str = Field(..., min_length=1, max_length=4096)
+    referral_code: str | None = Field(default=None, max_length=32)
 
 
 class VerifyEmailLinkRequest(BaseModel):
@@ -690,6 +720,12 @@ async def register(
         add_product = getattr(auth_service._user_repo, "add_product", None)
         if callable(add_product):
             await add_product(existing_user.id, signup_product)
+        await _try_link_referral(
+            invitee_id=existing_user.id,
+            invitee_email=existing_user.email,
+            referral_code=request.referral_code,
+            invited_ip=get_client_ip(http_request),
+        )
         if refreshed_user is not None:
             await _set_session_for_user(auth_service, refreshed_user, response, http_request)
         return UserResponse(
@@ -750,6 +786,13 @@ async def register(
             display_name=created_user.display_name or "there",
             activation_link=build_email_verify_link(created_user.id, created_user.email),
         )
+
+    await _try_link_referral(
+        invitee_id=created_user.id,
+        invitee_email=created_user.email,
+        referral_code=request.referral_code,
+        invited_ip=get_client_ip(http_request),
+    )
 
     await _set_session_for_user(auth_service, created_user, response, http_request)
     return UserResponse(
@@ -1135,6 +1178,7 @@ async def google_auth_callback(
             row["id"],
             google_id,
         )
+        created_user_id = None
     else:
         user = User(
             email=email,
@@ -1145,6 +1189,7 @@ async def google_auth_callback(
             products=[PRODUCT_MUSIC_WEB],
         )
         created = await auth_service._user_repo.create(user)
+        created_user_id = created.id
         await pool.execute(
             "UPDATE users SET google_id = $2, email_confirmed = true WHERE id = $1",
             created.id,
@@ -1154,6 +1199,15 @@ async def google_auth_callback(
     user = await auth_service._user_repo.get_by_email(email)
     if user is None:
         raise AuthenticationError("Could not create the account. Please try again.")
+    # Only a brand-new account can be referred; an existing user signing in
+    # through someone's link must not rewrite their history.
+    if created_user_id is not None:
+        await _try_link_referral(
+            invitee_id=created_user_id,
+            invitee_email=user.email,
+            referral_code=request.referral_code,
+            invited_ip=get_client_ip(http_request),
+        )
     await auth_service._user_repo.add_product(user.id, PRODUCT_MUSIC_WEB)
     return await _issue_session(auth_service, user, response, http_request)
 
