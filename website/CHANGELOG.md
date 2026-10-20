@@ -12,6 +12,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- `/pricing` is **packs-only**: plan cards and the Monthly/Yearly toggle are gone, and the page reads the public `GET /api/v3/topups/packs` catalog so prices stay in sync with the app instead of being hardcoded. The homepage no longer shows a *Plans from $X/mo* caption derived from retired plans. See `docs/changelog/2026-10-15-packs-only-billing.md`.
 - `/pricing` song hints are ×2 (one generate = two songs). Feature bullets and credit captions come from Admin plan lines. See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 - All API calls target `/api/v3` only (`platform-api-base.ts` and pricing pages updated). See `docs/changelog/2026-08-25-clients-api-v3-only.md`.
 - `/pricing` matches music web: purple/pink cards, monthly/yearly toggle, same credits and bullets. Free no longer lists Desktop studio. See `docs/changelog/2026-08-23-desktop-paid-gate-and-website-pricing.md`.

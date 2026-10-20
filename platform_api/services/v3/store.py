@@ -302,6 +302,36 @@ class V3BillingStore:
         )
         return dict(row) if row is not None else None
 
+    async def live_grant_lots_at_period(
+        self,
+        user_id: UUID,
+        period_start: date,
+        *,
+        exclude_period_start: date | None = None,
+    ) -> list[dict[str, Any]]:
+        """Live (unspent, unexpired) ``grant`` lots anchored to ``period_start``.
+
+        Used to retire a Free calendar-month allowance that a licence/subscription
+        grant supersedes. ``exclude_period_start`` protects the licence's own lot
+        when it happens to share the calendar-month anchor.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id, remaining_units
+            FROM credit_wallet_lots
+            WHERE user_id = $1
+              AND tag = 'grant'
+              AND remaining_units > 0
+              AND (expires_at IS NULL OR expires_at > NOW())
+              AND period_start = $2
+              AND period_start IS DISTINCT FROM $3
+            """,
+            user_id,
+            period_start,
+            exclude_period_start,
+        )
+        return [dict(row) for row in rows]
+
     async def grow_period_lot(
         self, lot_id: UUID, extra_units: int, *, below_units: int
     ) -> bool:
@@ -343,13 +373,19 @@ class V3BillingStore:
         )
         return dict(row) if row is not None else None
 
-    async def expired_grant_lots(self, user_id: UUID | None = None) -> list[dict[str, Any]]:
+    async def expired_lots(self, user_id: UUID | None = None) -> list[dict[str, Any]]:
+        """Live (unspent) lots whose ``expires_at`` has passed.
+
+        Covers period/daily grants **and** pack lots. Packs used to be minted with
+        ``expires_at = NULL`` (never expire); now that a pack is valid for 30 days
+        from purchase, a lapsed pack must be clawed back exactly like a grant.
+        """
         if user_id is None:
             rows = await self._pool.fetch(
                 """
                 SELECT id, user_id, remaining_units
                 FROM credit_wallet_lots
-                WHERE tag IN ('grant', 'daily_grant')
+                WHERE tag IN ('grant', 'daily_grant', 'pack')
                   AND remaining_units > 0
                   AND expires_at IS NOT NULL
                   AND expires_at <= NOW()
@@ -361,7 +397,7 @@ class V3BillingStore:
                 SELECT id, user_id, remaining_units
                 FROM credit_wallet_lots
                 WHERE user_id = $1
-                  AND tag IN ('grant', 'daily_grant')
+                  AND tag IN ('grant', 'daily_grant', 'pack')
                   AND remaining_units > 0
                   AND expires_at IS NOT NULL
                   AND expires_at <= NOW()
@@ -369,6 +405,38 @@ class V3BillingStore:
                 user_id,
             )
         return [dict(row) for row in rows]
+
+    async def restamp_live_lots(self, user_id: UUID, expires_at: datetime) -> int:
+        """Give every live spendable lot the same new ``expires_at`` (Option B).
+
+        A wallet carries a **single** expiry date: buying a pack pushes that date
+        to ``purchase + 30 days`` for the new pack *and* everything already live
+        (older packs, leftover subscription allowance, admin adjustments), so the
+        whole balance ages together instead of splitting into per-purchase buckets.
+
+        Two deliberate guards:
+
+        * ``daily_grant`` is excluded — Free daily credits must keep rolling off at
+          midnight. Re-stamping them would turn the daily allowance into a 30-day
+          pool the first time a Free user buys a pack.
+        * ``expires_at < :expires_at`` only ever **extends**. A prepaid yearly
+          subscriber's grant (expiring months out) must not be shortened by buying
+          a pack, which honours the term they already paid for.
+        """
+        rows = await self._pool.fetch(
+            """
+            UPDATE credit_wallet_lots
+            SET expires_at = $2
+            WHERE user_id = $1
+              AND remaining_units > 0
+              AND tag IN ('grant', 'pack', 'admin', 'quota_conversion')
+              AND (expires_at IS NULL OR expires_at < $2)
+            RETURNING id
+            """,
+            user_id,
+            expires_at,
+        )
+        return len(rows)
 
     async def zero_lot_remaining(self, lot_id: UUID) -> None:
         await self._pool.execute(

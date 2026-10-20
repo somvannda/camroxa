@@ -33,6 +33,7 @@ const TYPE_TONES: Record<string, BadgeTone> = {
   adjust: "warning",
   spend: "neutral",
   refund: "info",
+  referral: "success",
 };
 
 const PAGE_SIZE = 25;

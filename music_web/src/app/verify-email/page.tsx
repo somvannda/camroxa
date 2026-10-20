@@ -1,12 +1,17 @@
 'use client';
 
 import { useRouter, useSearchParams } from 'next/navigation';
-import { FormEvent, Suspense, useEffect, useState } from 'react';
-import { LoaderCircle, MailCheck } from 'lucide-react';
+import { FormEvent, Suspense, useEffect, useRef, useState } from 'react';
+import { LoaderCircle, MailCheck, ShieldAlert } from 'lucide-react';
 
 import AuthFormShell from '@/components/auth-form-shell';
 import { useAuth } from '@/components/auth-provider';
-import { fetchMusicUser, sendVerificationEmail, verifyEmailCode } from '@/lib/auth-api';
+import {
+  fetchMusicUser,
+  sendVerificationEmail,
+  verifyEmailCode,
+  verifyEmailLink,
+} from '@/lib/auth-api';
 import { DEFAULT_POST_AUTH_PATH, safeNextPath } from '@/lib/auth-redirect';
 
 function VerifyEmailForm() {
@@ -14,6 +19,7 @@ function VerifyEmailForm() {
   const params = useSearchParams();
   const next = safeNextPath(params.get('next'));
   const initialEmail = params.get('email') ?? '';
+  const token = params.get('token') ?? '';
   const { refresh, user, loading } = useAuth();
 
   const [email, setEmail] = useState(initialEmail);
@@ -22,6 +28,8 @@ function VerifyEmailForm() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [resending, setResending] = useState(false);
+  const [activating, setActivating] = useState(Boolean(token));
+  const started = useRef(false);
 
   useEffect(() => {
     if (loading) return;
@@ -39,6 +47,31 @@ function VerifyEmailForm() {
     }
     router.replace(`/login?next=${encodeURIComponent(next || DEFAULT_POST_AUTH_PATH)}`);
   }
+
+  useEffect(() => {
+    if (!token || started.current) return;
+    started.current = true;
+    let cancelled = false;
+    (async () => {
+      try {
+        await verifyEmailLink(token);
+        if (!cancelled) await continueAfterVerify();
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error
+              ? err.message
+              : 'This activation link is invalid or has expired.',
+          );
+          setActivating(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
 
   async function onVerify(event: FormEvent) {
     event.preventDefault();
@@ -71,6 +104,20 @@ function VerifyEmailForm() {
     } finally {
       setResending(false);
     }
+  }
+
+  if (activating) {
+    return (
+      <AuthFormShell
+        title="Activating your account"
+        subtitle="One moment while we confirm your email address."
+      >
+        <div className="flex flex-col items-center gap-4 py-6 text-slate-300">
+          <LoaderCircle className="h-7 w-7 animate-spin text-purple-400" />
+          <p className="text-sm">This usually takes a second…</p>
+        </div>
+      </AuthFormShell>
+    );
   }
 
   if (loading || user?.email_confirmed) {

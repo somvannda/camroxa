@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID, uuid4
 
 import pytest
@@ -62,7 +62,7 @@ class FakeStore:
         return None
 
     async def insert_lot(self, **kwargs) -> dict:
-        lot = {"id": uuid4(), **kwargs}
+        lot = {"id": uuid4(), "remaining_units": kwargs.get("amount_units"), **kwargs}
         self.lots.append(lot)
         return lot
 
@@ -89,11 +89,33 @@ class FakeStore:
             return True
         return False
 
-    async def expired_grant_lots(self, user_id: UUID | None = None) -> list[dict]:
+    async def expired_lots(self, user_id: UUID | None = None) -> list[dict]:
         return []
 
+    async def live_grant_lots_at_period(
+        self,
+        user_id: UUID,
+        period_start: date,
+        *,
+        exclude_period_start: date | None = None,
+    ) -> list[dict]:
+        found = []
+        for lot in self.lots:
+            if lot["tag"] != "grant":
+                continue
+            if int(lot.get("remaining_units") or 0) <= 0:
+                continue
+            if lot.get("period_start") != period_start:
+                continue
+            if exclude_period_start is not None and lot.get("period_start") == exclude_period_start:
+                continue
+            found.append(lot)
+        return found
+
     async def zero_lot_remaining(self, lot_id: UUID) -> None:
-        return None
+        for lot in self.lots:
+            if str(lot["id"]) == str(lot_id):
+                lot["remaining_units"] = 0
 
 
 def _free_plan() -> dict:
@@ -343,12 +365,17 @@ async def test_period_grant_anchors_license_less_free_to_calendar_month(
 async def test_period_grant_uses_license_cycle_when_subscribed() -> None:
     """Licensed accounts keep the activation-anchored period (not the month)."""
 
+    # Anchor to the activation date rather than a fixed calendar date. The service
+    # reads date.today(), so a hardcoded activation eventually leaves its first
+    # 30-day period and the assertion below fails on a later date (it did, once
+    # 2026-09-15 + 30 days arrived). 15 days in keeps periods_elapsed at 0, with a
+    # day of slack either side for the runner's local date vs UTC.
     class CtxPlan:
         billing_cycle_days = 30
 
     class Ctx:
         plan = CtxPlan()
-        activated_at = datetime(2026, 9, 15, tzinfo=timezone.utc)
+        activated_at = datetime.now(timezone.utc) - timedelta(days=15)
 
     wallet = FakeWallet()
     store = FakeStore(_paid_plan())
@@ -359,10 +386,77 @@ async def test_period_grant_uses_license_cycle_when_subscribed() -> None:
 
     result = await service.ensure_period_grant(USER_ID)
     assert result["granted"] is True
-    # 30-day cycle activated 2026-09-15 -> current period starts 2026-09-15,
-    # not the calendar-month fallback used for license-less accounts.
-    assert result["period_start"] == "2026-09-15"
-    # The lot expires at the period boundary (2026-10-15 00:00 +07), so it cannot
-    # overlap the following period's grant.
-    expected_expiry = next_billing_midnight(from_date=date(2026, 10, 14)).isoformat()
+    # 15 days into a 30-day cycle anchored at activation -> the current period
+    # starts at the activation date, not the calendar-month fallback used for
+    # license-less accounts.
+    expected_start = Ctx.activated_at.date()
+    assert result["period_start"] == expected_start.isoformat()
+    # The lot expires at the period boundary (start + 29 days, next midnight), so
+    # it cannot overlap the following period's grant.
+    expected_expiry = next_billing_midnight(
+        from_date=expected_start + timedelta(days=29)
+    ).isoformat()
     assert result["expires_at"] == expected_expiry
+
+
+@pytest.mark.asyncio
+async def test_licensed_renewal_revokes_lingering_free_month_grant(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: a lapse -> renew must not leave two live grant lots.
+
+    Incident (2026-10-05): a licence lapse let the Free plan's calendar-month lot
+    (50 cr) get minted; the licence renewed on 2026-10-07 and its
+    activation-anchored allowance (5,150) was minted on top. The account then held
+    two live ``grant`` lots — the ``credit_invariants`` alert. Minting the licence
+    allowance must claw the superseded Free lot so exactly one remains.
+    """
+    licence_start = date(2026, 10, 2)
+    free_month_start = date(2026, 10, 1)
+
+    class CtxPlan:
+        billing_cycle_days = 30
+
+    class Ctx:
+        plan = CtxPlan()
+        activated_at = datetime(2026, 9, 2, tzinfo=timezone.utc)
+
+    monkeypatch.setattr(
+        "platform_api.services.v3.period_grant_service.billing_month_start",
+        lambda *args, **kwargs: free_month_start,
+    )
+    monkeypatch.setattr(
+        "platform_api.services.billing_period_service.period_start_for_subscription",
+        lambda **kwargs: licence_start,
+    )
+
+    wallet = FakeWallet(balance=credits_to_units(50))
+    store = FakeStore(_paid_plan())
+    # Lingering Free calendar-month lot from the lapse window.
+    store.lots.append(
+        {
+            "id": uuid4(),
+            "user_id": USER_ID,
+            "tag": "grant",
+            "amount_units": credits_to_units(50),
+            "remaining_units": credits_to_units(50),
+            "period_start": free_month_start,
+            "expires_at": None,
+        }
+    )
+    service = PeriodGrantService(
+        store=store, credit_repo=wallet, plan_repo=FakePlanRepo(ctx=Ctx())
+    )
+
+    result = await service.ensure_period_grant(USER_ID)
+
+    assert result["granted"] is True
+    assert result["period_start"] == licence_start.isoformat()
+    # The Free lot is clawed to zero; only the licence lot stays live.
+    free_lots = [lot for lot in store.lots if lot["period_start"] == free_month_start]
+    assert free_lots and all(int(lot["remaining_units"]) == 0 for lot in free_lots)
+    live = [lot for lot in store.lots if int(lot.get("remaining_units") or 0) > 0]
+    assert len(live) == 1
+    assert live[0]["period_start"] == licence_start
+    # 50 Free claws back, then the 1,000 licence allowance is granted.
+    assert wallet.balance == credits_to_units(1000)

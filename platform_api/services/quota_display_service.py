@@ -14,6 +14,7 @@ from platform_api.services.billing_mode_service import (
 )
 from platform_api.services.billing_period_service import (
     ActiveSubscriptionContext,
+    period_end_for_subscription,
     period_start_for_subscription,
 )
 from platform_api.services.subscription_entitlement_service import (
@@ -159,7 +160,22 @@ async def get_monthly_quota_status(
         if limit is None:
             return None, None
 
-    used = await usage_repo.get_monthly_count(user_id, operation_type, period_start)
+    # For songs use the authoritative count (real ``songs`` rows) to match
+    # enforcement; other meters have no authoritative source and use the counter.
+    # The incremental counter is not written on the credits-only v3 charge path.
+    # See docs/bugs/2026-10-05-plan-quota-enforcement-bypass.md.
+    songs_counter = (
+        getattr(usage_repo, "count_generated_songs_for_period", None)
+        if quota_field == "songs"
+        else None
+    )
+    if songs_counter is not None:
+        period_end = period_end_for_subscription(plan=plan, period_start=period_start)
+        used = int(await songs_counter(user_id, period_start, period_end) or 0)
+    else:
+        used = await usage_repo.get_monthly_count(
+            user_id, operation_type, period_start
+        )
     if quota_field == "images":
         used += await usage_repo.get_monthly_count(
             user_id, "thumbnail_image", period_start

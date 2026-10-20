@@ -543,6 +543,16 @@ async def update_generation(
     return _generation_response(payload)
 
 
+@router.delete("/generations/{task_id}", status_code=204)
+async def delete_generation(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> Response:
+    await service.delete_generation(UUID(ctx.user_id), task_id)
+    return Response(status_code=204)
+
+
 @router.get("/generations/{task_id}/download")
 async def download_generation(
     task_id: UUID,

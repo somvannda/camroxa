@@ -261,9 +261,23 @@ class NotFoundError(PlatformAPIError):
         super().__init__(message, details=details)
 
 
+class SubscriptionRetiredError(PlatformAPIError):
+    """Subscriptions are no longer sold — buying one is a dead endpoint (410)."""
+
+    status_code = 410
+    error_code = "SUBSCRIPTION_RETIRED"
+
+    def __init__(
+        self,
+        message: str = "Subscriptions are no longer available. Buy a credit pack instead.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+
+
 class NoAvailableKeysError(PlatformAPIError):
     """Raised when no active keys exist for a provider (503)."""
-
     status_code = 503
     error_code = "NO_AVAILABLE_KEYS"
 

@@ -4,6 +4,7 @@ import { Pause, Play } from 'lucide-react';
 import type { ReactNode } from 'react';
 
 import PlayingEqualizer from '@/components/playing-equalizer';
+import { CoverImage } from '@/components/cover-image';
 import { LikeButton } from '@/components/likes-provider';
 import { usePlayer } from '@/components/player-provider';
 import { khmerTextClass } from '@/lib/khmer-text';
@@ -137,12 +138,11 @@ export default function TrackRow({
         aria-label={isPlaying ? `Pause ${track.title}` : `Play ${track.title}`}
       >
         <span className="relative block">
-          {track.cover_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={track.cover_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
-          ) : (
-            <div className="h-12 w-12 rounded-lg bg-[hsl(var(--secondary))]" />
-          )}
+          <CoverImage
+            src={track.cover_url}
+            className="h-12 w-12 rounded-lg object-cover"
+            fallback={<div className="h-12 w-12 rounded-lg bg-[hsl(var(--secondary))]" />}
+          />
           {isCurrent ? (
             <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-black/45">
               <PlayingEqualizer playing={isPlaying} />

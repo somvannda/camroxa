@@ -18,9 +18,8 @@ from pydantic import BaseModel, Field
 from platform_api.dependencies import get_v3_billing_service
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.middleware.rate_limit import enforce_rate_limit
-from platform_api.services.v2.payment_security import sanitize_music_web_return_url
 from platform_api.services.v2.subscription_service import SubscriptionService
-from platform_api.exceptions import NotFoundError, ValidationError
+from platform_api.exceptions import NotFoundError, SubscriptionRetiredError
 from platform_api.services.pricing_display import (
     resolve_pricing_credit_lines,
     resolve_pricing_features,
@@ -233,35 +232,14 @@ async def purchase_subscription(
     ctx: CurrentUserDep,
     service: SubscriptionServiceDep
 ) -> PurchaseSubscriptionResponse:
-    """Create a CutLuy checkout session for subscription payment.
-    
-    User will be redirected to CutLuy to complete payment.
-    After payment, CutLuy will call our webhook to activate the subscription.
+    """Retired: subscriptions are no longer sold.
+
+    Kept as a routable path so old clients get an explicit 410 instead of a 404,
+    which tells them to switch to a credit-pack top-up. Grandfathered subscribers
+    keep their read-only ``my-subscription`` / ``cancel`` endpoints.
     """
     await enforce_rate_limit(http_request, ctx.user_id)
-    
-    # Check if user already has active subscription
-    existing = await service.get_user_subscription(ctx.user_id)
-    if existing and existing["status"] == "active":
-        raise ValidationError("You already have an active subscription. Cancel it first to change plans.")
-    
-    # Create subscription checkout
-    try:
-        payment = await service.create_subscription_by_plan_id(
-            user_id=str(ctx.user_id),
-            plan_id=str(body.plan_id),
-            success_url=sanitize_music_web_return_url(body.success_url),
-            cancel_url=sanitize_music_web_return_url(body.cancel_url),
-        )
-    except ValueError as exc:
-        raise ValidationError(str(exc)) from exc
-    
-    return PurchaseSubscriptionResponse(
-        checkout_url=payment["checkout_url"],
-        payment_id=payment["payment_id"],
-        expires_at=payment.get("expires_at") or "",
-        qr_string=payment.get("qr_string") or "",
-    )
+    raise SubscriptionRetiredError()
 
 
 @router.get("/payments/{payment_id}", response_model=CheckoutStatusResponse)
@@ -301,17 +279,13 @@ async def create_renewal(
     ctx: CurrentUserDep,
     service: SubscriptionServiceDep,
 ) -> RenewalCheckoutResponse:
-    """Start a CutLuy KHQR checkout for the next period of the user's own plan."""
+    """Retired: subscriptions are no longer sold, so there is nothing to renew.
+
+    Grandfathered subscribers finish the term they already paid for, then buy
+    credit packs like everyone else.
+    """
     await enforce_rate_limit(http_request, ctx.user_id)
-    try:
-        result = await service.create_renewal_checkout(
-            user_id=str(ctx.user_id),
-            success_url=sanitize_music_web_return_url(body.success_url),
-            cancel_url=sanitize_music_web_return_url(body.cancel_url),
-        )
-    except ValueError as exc:
-        raise ValidationError(str(exc)) from exc
-    return RenewalCheckoutResponse(**result)
+    raise SubscriptionRetiredError()
 
 
 @router.get("/renewals/{payment_id}", response_model=CheckoutStatusResponse)

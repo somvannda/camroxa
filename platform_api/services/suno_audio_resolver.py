@@ -42,6 +42,10 @@ _DISALLOWED_URL_MARKERS = (
     # musicfile.removeai.ai is the cover/stream host, not the finished MP3
     # (GET returns 200 audio/mp3 with 0 bytes). Never store it as a download URL.
     "musicfile.removeai.ai",
+    # audiostream.api.box is the reseller's "durable" stream host, but it now
+    # answers 200 audio/mpeg with a 0-byte body. ``prefer_suno_mpeg_cdn_url``
+    # rewrites it to the working tempfile sibling; never store/keep the raw host.
+    "audiostream.api.box",
 )
 _DOWNLOAD_HEADERS = {
     "User-Agent": "Mozilla/5.0 (compatible; Camxora-Platform/1.0)",

@@ -143,6 +143,7 @@ Requests are routed by **model** with a policy:
 Rules: pick an account that (1) supports the model, (2) has credits, (3) matches the preferred type, (4) is not captcha-locked/disabled.
 
 - Implemented via `pool.pick(model, policy)` + `routingPolicy(model)` (DB `routing_rules` override, else defaults).
+- `[DONE]` **Credit-aware selection** — among eligible accounts the highest credit balance is preferred, subject to the `prefer_free` policy and the per-account in-flight cap; the in-flight count is the final tiebreak. `suno.creditStrategy` (`SUNO_CREDIT_STRATEGY`, admin-editable, default `balanced`) sets this: `balanced` also reserves each in-flight job's estimated spend (`SUNO_CREDIT_RESERVE`) against the account so concurrent jobs spread and the accounts drain together; `max_first` always draws from the richest account; `off` restores the legacy least-loaded-only ordering. An "at or below the pool average" cut is deliberately **not** used — it is a no-op against a plain balance-descending sort.
 
 ---
 

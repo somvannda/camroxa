@@ -154,7 +154,7 @@ async def me_credits(ctx: UserDep, billing: BillingDep) -> dict[str, Any]:
 
 @router.get("/users/{user_id}/credits", summary="Admin view of a user wallet")
 async def user_credits(user_id: UUID, ctx: AdminDep, billing: BillingDep, grants: GrantDep) -> dict[str, Any]:
-    await grants.expire_unused_grants(user_id)
+    await grants.expire_lapsed_lots(user_id)
     return await billing.wallet_view(user_id)
 
 
