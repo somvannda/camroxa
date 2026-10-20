@@ -8,11 +8,13 @@ from __future__ import annotations
 
 import random
 import re
+import secrets
 import string
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, Request, Response
 from pydantic import BaseModel, EmailStr, Field
 
 from platform_api.config import get_settings
@@ -21,6 +23,7 @@ from platform_api.exceptions import (
     AuthenticationError,
     DesktopPlanRequiredError,
     DuplicateError,
+    ForbiddenError,
     NotFoundError,
     ValidationError,
 )
@@ -37,6 +40,13 @@ from platform_api.services.desktop_access import (
     assert_paid_desktop_access,
     is_desktop_client,
 )
+from platform_api.services.email_link_tokens import (
+    build_email_verify_link,
+    sign_oauth_state,
+    verify_email_verify_token,
+    verify_oauth_state,
+)
+from platform_api.services import google_oauth
 from platform_api.services.invitation_code_service import InvitationCodeService
 from platform_api.services.lockout import AccountLockout
 from platform_api.services.shared.turnstile_service import TurnstileService
@@ -115,6 +125,26 @@ class VerificationResponse(BaseModel):
     message: str
     email: str | None = None
     is_verified: bool = False
+
+
+class GoogleAuthUrlResponse(BaseModel):
+    """Authorization URL the browser should navigate to."""
+
+    url: str
+    state: str
+
+
+class GoogleCallbackRequest(BaseModel):
+    """Authorization code + signed state returned by Google."""
+
+    code: str = Field(..., min_length=1, max_length=4096)
+    state: str = Field(..., min_length=1, max_length=4096)
+
+
+class VerifyEmailLinkRequest(BaseModel):
+    """24-hour activation token from the email link."""
+
+    token: str = Field(..., min_length=10, max_length=4096)
 
 
 # ---------------------------------------------------------------------------
@@ -317,6 +347,21 @@ _EMAIL_ALLOWED_RE = re.compile(
     r"[A-Za-z0-9](?:[A-Za-z0-9._%+\-]{0,63})?@(?:[A-Za-z0-9\-]+\.)+[A-Za-z]{2,}"
 )
 
+# Common mistyped domains that are syntactically valid (and therefore pass the
+# regex) but can never receive mail. Catch them at signup with a suggestion.
+_TYPO_DOMAINS = {
+    "gmail.con": "gmail.com",
+    "gmail.co": "gmail.com",
+    "gmail.cm": "gmail.com",
+    "gmial.com": "gmail.com",
+    "gmai.com": "gmail.com",
+    "gmail.co m": "gmail.com",
+    "yahoo.con": "yahoo.com",
+    "hotmail.con": "hotmail.com",
+    "outlook.con": "outlook.com",
+    "icloud.con": "icloud.com",
+}
+
 
 def _validate_registration(request: RegisterRequest) -> list[dict[str, str]]:
     """Validate all registration fields and return ALL errors at once.
@@ -334,6 +379,14 @@ def _validate_registration(request: RegisterRequest) -> list[dict[str, str]]:
             "field": "email",
             "message": "Please enter a valid email address.",
         })
+    else:
+        domain = str(request.email).rsplit("@", 1)[-1].strip().lower()
+        suggestion = _TYPO_DOMAINS.get(domain)
+        if suggestion:
+            errors.append({
+                "field": "email",
+                "message": f"That email domain looks like a typo. Did you mean @{suggestion}?",
+            })
 
     # Password length (Pydantic handles min/max but we double-check for clarity)
     password = request.password
@@ -553,6 +606,10 @@ async def register(
 
     header_product = http_request.headers.get("X-Signup-Product")
     signup_product = normalize_signup_product(request.product or header_product)
+    if signup_product == PRODUCT_MUSIC_WEB and not get_settings().music_web_email_signup_enabled:
+        raise ForbiddenError(
+            "Email sign-up is closed for CAMXORA Music. Continue with Google."
+        )
     require_turnstile = signup_product == PRODUCT_MUSIC_WEB and _turnstile_is_configured()
     await _verify_turnstile_token(
         token=request.cf_turnstile_response,
@@ -627,6 +684,7 @@ async def register(
             to_email=request.email,
             code=code,
             display_name=request.display_name or "there",
+            activation_link=build_email_verify_link(existing_user.id, existing_user.email),
         )
         refreshed_user = await auth_service._user_repo.get_by_email(request.email)
         add_product = getattr(auth_service._user_repo, "add_product", None)
@@ -690,6 +748,7 @@ async def register(
             to_email=created_user.email,
             code=code,
             display_name=created_user.display_name or "there",
+            activation_link=build_email_verify_link(created_user.id, created_user.email),
         )
 
     await _set_session_for_user(auth_service, created_user, response, http_request)
@@ -870,6 +929,7 @@ async def send_verification(
         to_email=request.email,
         code=code,
         display_name=display_name,
+        activation_link=build_email_verify_link(user_id, request.email),
     )
 
     return VerificationResponse(
@@ -937,7 +997,18 @@ async def verify_email(
         code_row["id"],
     )
     await pool.execute(
-        "UPDATE users SET email_confirmed = true WHERE id = $1",
+        """
+        UPDATE users
+        SET email_confirmed = true,
+            status = CASE
+                WHEN status = 'suspended' AND suspension_reason = 'Email not confirmed'
+                THEN 'active' ELSE status END,
+            suspension_reason = CASE
+                WHEN suspension_reason = 'Email not confirmed' THEN NULL
+                ELSE suspension_reason END,
+            updated_at = NOW()
+        WHERE id = $1
+        """,
         user_id,
     )
 
@@ -948,5 +1019,224 @@ async def verify_email(
     return VerificationResponse(
         message="Email verified successfully.",
         email=request.email,
+        is_verified=True,
+    )
+
+# ---------------------------------------------------------------------------
+# Google sign-in (music web)
+# ---------------------------------------------------------------------------
+
+
+async def _issue_session(
+    auth_service: AuthService,
+    user: User,
+    response: Response,
+    http_request: Request,
+) -> TokenResponse:
+    """Issue a fresh token pair and set the browser session cookies."""
+    token_pair = await auth_service.issue_token_pair_for_user(user)
+    token_response = TokenResponse(
+        access_token=token_pair.access_token,
+        refresh_token=token_pair.refresh_token,
+        token_type="bearer",
+        expires_in=token_pair.expires_in,
+    )
+    _set_auth_cookies(response, token_response, http_request)
+    return token_response
+
+
+@router.get(
+    "/google/url",
+    response_model=GoogleAuthUrlResponse,
+    summary="Get the Google sign-in consent URL",
+)
+async def google_auth_url(
+    redirect_uri: str | None = Query(default=None),
+) -> GoogleAuthUrlResponse:
+    if not google_oauth.google_configured():
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured.")
+    if redirect_uri and redirect_uri not in google_oauth.redirect_allowlist():
+        raise ValidationError(
+            message="Google sign-in is not enabled for this application.",
+            details={"field": "redirect_uri"},
+        )
+    chosen = google_oauth.resolve_redirect_uri(redirect_uri)
+    state = sign_oauth_state(chosen)
+    return GoogleAuthUrlResponse(
+        url=google_oauth.authorization_url(chosen, state),
+        state=state,
+    )
+
+
+@router.post(
+    "/google/callback",
+    response_model=TokenResponse,
+    summary="Finish Google sign-in and start a session",
+)
+async def google_auth_callback(
+    request: GoogleCallbackRequest,
+    auth_service: AuthServiceDep,
+    response: Response,
+    http_request: Request,
+) -> TokenResponse:
+    from platform_api.dependencies import get_db_pool
+
+    redirect_uri = verify_oauth_state(request.state)
+    if not redirect_uri or redirect_uri not in google_oauth.redirect_allowlist():
+        raise ValidationError(
+            message="Google sign-in session is invalid or has expired. Please try again.",
+            details={"field": "state"},
+        )
+
+    info = await google_oauth.exchange_code(request.code, redirect_uri)
+    google_id = str(info["sub"])
+    email = str(info["email"]).strip().lower()
+    display_name = str(info.get("name") or email.split("@")[0]).strip()[:50] or "Camxora user"
+
+    pool = get_db_pool()
+    row = await pool.fetchrow(
+        """
+        SELECT id, email, status, suspension_reason
+        FROM users
+        WHERE google_id = $1 AND deleted_at IS NULL
+        """,
+        google_id,
+    )
+    if row is None:
+        row = await pool.fetchrow(
+            """
+            SELECT id, email, status, suspension_reason
+            FROM users
+            WHERE LOWER(email) = LOWER($1) AND deleted_at IS NULL
+            """,
+            email,
+        )
+
+    if row is not None:
+        status = str(row["status"] or "")
+        if status == "deleted":
+            raise AuthenticationError("This account is no longer available.")
+        if status == "suspended" and (row["suspension_reason"] or "") != "Email not confirmed":
+            raise ForbiddenError("Account suspended")
+        await pool.execute(
+            """
+            UPDATE users
+            SET google_id = $2,
+                email_confirmed = true,
+                status = CASE
+                    WHEN status = 'suspended' AND suspension_reason = 'Email not confirmed'
+                    THEN 'active' ELSE status END,
+                suspension_reason = CASE
+                    WHEN suspension_reason = 'Email not confirmed' THEN NULL
+                    ELSE suspension_reason END,
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            row["id"],
+            google_id,
+        )
+    else:
+        user = User(
+            email=email,
+            password_hash=AuthService.hash_password(secrets.token_urlsafe(32)),
+            display_name=display_name,
+            role=UserRole.USER,
+            status=UserStatus.ACTIVE,
+            products=[PRODUCT_MUSIC_WEB],
+        )
+        created = await auth_service._user_repo.create(user)
+        await pool.execute(
+            "UPDATE users SET google_id = $2, email_confirmed = true WHERE id = $1",
+            created.id,
+            google_id,
+        )
+
+    user = await auth_service._user_repo.get_by_email(email)
+    if user is None:
+        raise AuthenticationError("Could not create the account. Please try again.")
+    await auth_service._user_repo.add_product(user.id, PRODUCT_MUSIC_WEB)
+    return await _issue_session(auth_service, user, response, http_request)
+
+
+# ---------------------------------------------------------------------------
+# 24-hour email activation link
+# ---------------------------------------------------------------------------
+
+
+@router.post(
+    "/verify-email-link",
+    response_model=VerificationResponse,
+    summary="Verify an email with a 24-hour activation link",
+)
+async def verify_email_link(
+    request: VerifyEmailLinkRequest,
+    auth_service: AuthServiceDep,
+    response: Response,
+    http_request: Request,
+) -> VerificationResponse:
+    from platform_api.dependencies import get_db_pool
+
+    payload = verify_email_verify_token(request.token)
+    if payload is None:
+        raise ValidationError(
+            message="This activation link is invalid or has expired. Request a new one.",
+            details={"field": "token"},
+        )
+
+    try:
+        user_id = UUID(str(payload["sub"]))
+    except (TypeError, ValueError) as exc:
+        raise ValidationError(
+            message="This activation link is invalid or has expired.",
+            details={"field": "token"},
+        ) from exc
+
+    pool = get_db_pool()
+    row = await pool.fetchrow(
+        "SELECT id, email, status, suspension_reason FROM users WHERE id = $1",
+        user_id,
+    )
+    if row is None or str(row["email"]).lower() != str(payload["email"]).lower():
+        raise ValidationError(
+            message="This activation link is invalid or has expired.",
+            details={"field": "token"},
+        )
+    if str(row["status"] or "") == "deleted":
+        raise ValidationError(
+            message="This account is no longer available.",
+            details={"field": "token"},
+        )
+
+    await pool.execute(
+        """
+        UPDATE email_verifications
+        SET used = true
+        WHERE user_id = $1 AND purpose = 'register' AND used = false
+        """,
+        user_id,
+    )
+    await pool.execute(
+        """
+        UPDATE users
+        SET email_confirmed = true,
+            status = CASE
+                WHEN status = 'suspended' AND suspension_reason = 'Email not confirmed'
+                THEN 'active' ELSE status END,
+            suspension_reason = CASE
+                WHEN suspension_reason = 'Email not confirmed' THEN NULL
+                ELSE suspension_reason END,
+            updated_at = NOW()
+        WHERE id = $1
+        """,
+        user_id,
+    )
+
+    user = await auth_service._user_repo.get_by_email(str(row["email"]))
+    if user is not None:
+        await _issue_session(auth_service, user, response, http_request)
+
+    return VerificationResponse(
+        message="Email verified successfully.",
+        email=str(row["email"]),
         is_verified=True,
     )
