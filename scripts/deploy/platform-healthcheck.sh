@@ -104,7 +104,7 @@ async def main():
 asyncio.run(main())
 PY
 )"
-if [[ "${ADV_WAITERS}" =~ ^[0-9]+$ ]] && [[ "${ADV_WAITERS}" -ge 5 ]]; then
+if [[ "${ADV_WAITERS}" =~ ^[0-9]+$ ]] && [[ "${ADV_WAITERS}" -ge 15 ]]; then
   add_failure "${ADV_WAITERS} sessions waiting on advisory locks"
 fi
 

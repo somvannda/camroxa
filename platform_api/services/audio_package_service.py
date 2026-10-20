@@ -51,7 +51,7 @@ class AudioPackageService:
             # `pg_advisory_lock` leaked once (the holder sat idle after the
             # insert) and blocked every other packager + the API pool.
             async with conn.transaction():
-                await conn.execute("SET LOCAL lock_timeout = '30s'")
+                await conn.execute("SET LOCAL lock_timeout = '180s'")
                 await conn.execute(
                     "SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext($2::text))",
                     str(subject_id),
