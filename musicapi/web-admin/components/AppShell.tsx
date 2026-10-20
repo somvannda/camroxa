@@ -12,6 +12,7 @@ const NAV = [
   { href: "/admin/incidents", label: "Alerts & Incidents" },
   { href: "/admin/accounts", label: "Suno Accounts" },
   { href: "/admin/users", label: "Users" },
+  { href: "/admin/invites", label: "Invite Program" },
   { href: "/admin/keys", label: "API Keys" },
   { href: "/admin/logs", label: "Usage Logs" },
   { href: "/admin/jobs", label: "Jobs" },

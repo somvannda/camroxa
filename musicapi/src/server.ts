@@ -11,6 +11,15 @@ import { isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoErro
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
+import {
+  coerceInvites,
+  generateInviteCode,
+  inviteRewardCredits,
+  maskEmail,
+  mergeInvites,
+  normalizeInviteCode,
+  type InviteSettings,
+} from "./invites.js";
 import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, verifyOAuthState, UserPayload, SESSION_COOKIE_ADMIN, serializeSessionCookie, serializeClearedSessionCookie, readSessionCookie, readCookie } from "./appAuth.js";
 
 /** Readable (non-httpOnly) admin CSRF cookie, double-submitted in `x-csrf-token`. */
@@ -3538,7 +3547,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   // Step 2: Exchange the code Google returned → id_token → upsert user → return session token
   //         Body: { code, state } — state is the signed value returned by Step 1.
   app.post("/auth/google/callback", async (req, reply) => {
-    const { code, state } = (req.body ?? {}) as { code?: string; state?: string };
+    const {
+      code,
+      state,
+      invite_code: inviteCode,
+    } = (req.body ?? {}) as { code?: string; state?: string; invite_code?: string };
     if (!code) return reply.code(400).send({ error: "code is required." });
     if (!state) return reply.code(400).send({ error: "state is required." });
     const verifiedState = verifyOAuthState(state);
@@ -3590,6 +3603,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
             [email, googleId, name],
           );
           user = rows[0];
+          // Only a brand-new account can be referred: an existing user signing
+          // in through someone's link must not rewrite their history.
+          if (user && inviteCode) {
+            try {
+              await linkInvite(user.id, email, inviteCode, req.ip ?? null);
+            } catch (err) {
+              // A referral is a bonus, never a reason to block onboarding.
+              req.log.warn({ err }, "invite link failed");
+            }
+          }
         }
       }
       if (!user) return reply.code(500).send({ error: "Failed to create or find user." });
@@ -4194,6 +4217,64 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       `SELECT ${PROFILE_COLUMNS} FROM users WHERE id = $1`,
       [u.id],
     );
+  });
+
+  // Invite-a-friend: the caller's personal code, program terms, and the friends
+  // they have invited. Rewards are paid only after the friend's first paid
+  // credit pack (see `rewardInviteOnPurchase`).
+  app.get("/me/invite", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const [settings, code, summary, rows] = await Promise.all([
+      loadInviteSettings(),
+      ensureInviteCode(u.id),
+      queryOne<{
+        total: string;
+        pending: string;
+        rewarded: string;
+        credits_earned: string;
+      }>(
+        `SELECT count(*)::text AS total,
+                count(*) FILTER (WHERE status = 'pending')::text AS pending,
+                count(*) FILTER (WHERE status = 'rewarded')::text AS rewarded,
+                COALESCE(sum(inviter_reward) FILTER (WHERE status = 'rewarded'), 0)::text AS credits_earned
+           FROM invites WHERE inviter_id = $1`,
+        [u.id],
+      ),
+      query<{
+        id: string;
+        invitee_email: string;
+        status: string;
+        purchased_credits: number | null;
+        reward: number;
+        created_at: string;
+        rewarded_at: string | null;
+      }>(
+        `SELECT id, invitee_email, status, purchased_credits,
+                inviter_reward AS reward, created_at, rewarded_at
+           FROM invites WHERE inviter_id = $1
+          ORDER BY created_at DESC LIMIT 50`,
+        [u.id],
+      ),
+    ]);
+    return {
+      enabled: settings.enabled,
+      settings,
+      code,
+      share_path: `/login?ref=${encodeURIComponent(code)}`,
+      summary: {
+        total: Number(summary?.total ?? 0),
+        pending: Number(summary?.pending ?? 0),
+        rewarded: Number(summary?.rewarded ?? 0),
+        credits_earned: Number(summary?.credits_earned ?? 0),
+      },
+      invites: rows.map((r) => ({
+        ...r,
+        // The inviter already knows their friend, but a leaked code should not
+        // expose every invited address; the admin console shows the full value.
+        invitee_email: maskEmail(r.invitee_email),
+      })),
+    };
   });
 
   // Settings Danger Zone: permanently delete the account. Every dependent row
@@ -5506,6 +5587,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return coerceAlerts(await readSettingsValue("alerts"));
   }
 
+  async function loadInviteSettings(): Promise<InviteSettings> {
+    return coerceInvites(await readSettingsValue("invites"));
+  }
+
   type AlertType =
     | "low_credits"
     | "captcha_no_solver"
@@ -6398,7 +6483,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!(await requireAdmin(req, reply))) return;
     const { id } = req.params as { id: string };
     const user = await queryOne<Record<string, unknown>>(
-      `SELECT id, email, name, role, status, language, created_at,
+      `SELECT id, email, name, role, status, language, created_at, invite_code,
               email_subscription, credit_alert_thresholds,
               (google_id IS NOT NULL) AS has_google,
               (password_hash IS NOT NULL) AS has_password
@@ -6406,7 +6491,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       [id],
     );
     if (!user) return reply.code(404).send({ error: "User not found." });
-    const [keys, creditsRow, usage, transactions] = await Promise.all([
+    const [keys, creditsRow, usage, transactions, inviteStats, referredBy] = await Promise.all([
       query<Record<string, unknown>>(
         `SELECT id, name, key_prefix, credits, is_active, created_at, last_used_at, credits_expire_at
          FROM api_keys WHERE user_id = $1 ORDER BY created_at ASC`,
@@ -6431,6 +6516,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
          ORDER BY created_at DESC LIMIT 20`,
         [id],
       ),
+      queryOne<{ total: string; rewarded: string; credits: string }>(
+        `SELECT count(*)::text AS total,
+                count(*) FILTER (WHERE status = 'rewarded')::text AS rewarded,
+                COALESCE(sum(inviter_reward) FILTER (WHERE status = 'rewarded'), 0)::text AS credits
+           FROM invites WHERE inviter_id = $1`,
+        [id],
+      ),
+      queryOne<{ email: string; status: string; code: string; created_at: string }>(
+        `SELECT inviter.email, i.status, i.code, i.created_at
+           FROM invites i JOIN users inviter ON inviter.id = i.inviter_id
+          WHERE i.invitee_id = $1`,
+        [id],
+      ),
     ]);
     return {
       user,
@@ -6444,6 +6542,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         last_activity: usage?.last ?? null,
       },
       transactions,
+      invite: {
+        code: (user.invite_code as string | null) ?? null,
+        invited: Number(inviteStats?.total ?? 0),
+        rewarded: Number(inviteStats?.rewarded ?? 0),
+        credits_earned: Number(inviteStats?.credits ?? 0),
+        referred_by: referredBy
+          ? {
+              email: referredBy.email,
+              status: referredBy.status,
+              code: referredBy.code,
+              created_at: referredBy.created_at,
+            }
+          : null,
+      },
     };
   });
 
@@ -6655,6 +6767,156 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       req,
     });
     return { ok: true, credits: resulting };
+  });
+
+  // --- admin: invite-a-friend program --------------------------------------
+  // Read the referral pipeline, tune reward terms and veto suspicious invites.
+  // Referral credits themselves are only ever minted by
+  // `rewardInviteOnPurchase` inside a settled payment transaction.
+
+  app.get("/admin/invites", async (req, reply) => {
+    if (!(await requireAdmin(req, reply))) return;
+    const q = (req.query ?? {}) as {
+      page?: string;
+      pageSize?: string;
+      status?: string;
+      q?: string;
+    };
+    const page = Math.max(1, Math.floor(Number(q.page) || 1));
+    const pageSize = Math.min(100, Math.max(1, Math.floor(Number(q.pageSize) || 25)));
+    const offset = (page - 1) * pageSize;
+    const filters: string[] = [];
+    const params: unknown[] = [];
+    if (q.status && ["pending", "rewarded", "skipped", "rejected"].includes(q.status)) {
+      params.push(q.status);
+      filters.push(`i.status = $${params.length}`);
+    }
+    if (q.q) {
+      params.push(`%${q.q.toLowerCase()}%`);
+      filters.push(
+        `(lower(inviter.email) LIKE $${params.length}
+          OR lower(COALESCE(inviter.name, '')) LIKE $${params.length}
+          OR lower(i.invitee_email) LIKE $${params.length}
+          OR lower(i.code) LIKE $${params.length})`,
+      );
+    }
+    const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+    const [total, rows, summary, settings] = await Promise.all([
+      queryOne<{ n: string }>(
+        `SELECT count(*)::text AS n FROM invites i JOIN users inviter ON inviter.id = i.inviter_id ${where}`,
+        params,
+      ),
+      query<Record<string, unknown>>(
+        `SELECT i.id, i.status, i.code, i.invitee_email, i.invited_ip,
+                i.purchased_credits, i.inviter_reward, i.invitee_reward,
+                i.qualifying_transaction_id, i.created_at, i.rewarded_at,
+                inviter.id AS inviter_id, inviter.email AS inviter_email,
+                inviter.name AS inviter_name
+           FROM invites i
+           JOIN users inviter ON inviter.id = i.inviter_id
+           ${where}
+          ORDER BY i.created_at DESC
+          LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+        [...params, pageSize, offset],
+      ),
+      queryOne<Record<string, string>>(
+        `SELECT count(*)::text AS total,
+                count(*) FILTER (WHERE status = 'pending')::text AS pending,
+                count(*) FILTER (WHERE status = 'rewarded')::text AS rewarded,
+                count(*) FILTER (WHERE status = 'skipped')::text AS skipped,
+                count(*) FILTER (WHERE status = 'rejected')::text AS rejected,
+                COALESCE(sum(inviter_reward) FILTER (WHERE status = 'rewarded'), 0)::text AS inviter_credits,
+                COALESCE(sum(invitee_reward) FILTER (WHERE status = 'rewarded'), 0)::text AS invitee_credits
+           FROM invites`,
+      ),
+      loadInviteSettings(),
+    ]);
+    return {
+      rows,
+      total: Number(total?.n ?? 0),
+      page,
+      page_size: pageSize,
+      settings,
+      summary: {
+        total: Number(summary?.total ?? 0),
+        pending: Number(summary?.pending ?? 0),
+        rewarded: Number(summary?.rewarded ?? 0),
+        skipped: Number(summary?.skipped ?? 0),
+        rejected: Number(summary?.rejected ?? 0),
+        inviter_credits: Number(summary?.inviter_credits ?? 0),
+        invitee_credits: Number(summary?.invitee_credits ?? 0),
+      },
+    };
+  });
+
+  app.put("/admin/invites/settings", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const body = (req.body ?? {}) as { settings?: unknown };
+    if (body.settings === undefined) {
+      return reply.code(400).send({ error: "Provide an invite settings patch." });
+    }
+    const merged = mergeInvites(await loadInviteSettings(), body.settings);
+    if (!merged.ok) return reply.code(400).send({ error: merged.error });
+    await writeSettingsValue("invites", merged.value, admin.id);
+    await recordAudit({
+      actor: admin,
+      action: "settings.update",
+      targetType: "settings",
+      targetId: "invites",
+      details: merged.value as unknown as Record<string, unknown>,
+      req,
+    });
+    return merged.value;
+  });
+
+  app.post("/admin/invites/:id/reject", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const updated = await query<{ id: string }>(
+      "UPDATE invites SET status = 'rejected' WHERE id = $1 AND status = 'pending' RETURNING id",
+      [id],
+    );
+    if (updated.length === 0) {
+      return reply.code(409).send({ error: "Only a pending invite can be rejected." });
+    }
+    await recordAudit({
+      actor: admin,
+      action: "invite.reject",
+      targetType: "invite",
+      targetId: id,
+      req,
+    });
+    return { ok: true };
+  });
+
+  // Undo a veto, or re-open an invite that was skipped while the program was
+  // disabled. The next paid pack purchase becomes the qualifying one.
+  app.post("/admin/invites/:id/restore", async (req, reply) => {
+    const admin = await requireAdmin(req, reply);
+    if (!admin) return;
+    const { id } = req.params as { id: string };
+    const updated = await query<{ id: string }>(
+      `UPDATE invites
+          SET status = 'pending', qualifying_transaction_id = NULL,
+              purchased_credits = NULL, inviter_reward = 0, invitee_reward = 0,
+              rewarded_at = NULL
+        WHERE id = $1 AND status IN ('rejected', 'skipped')
+        RETURNING id`,
+      [id],
+    );
+    if (updated.length === 0) {
+      return reply.code(409).send({ error: "Only a rejected or skipped invite can be restored." });
+    }
+    await recordAudit({
+      actor: admin,
+      action: "invite.restore",
+      targetType: "invite",
+      targetId: id,
+      req,
+    });
+    return { ok: true };
   });
 
   app.get("/admin/users/:id/rate-limits", async (req, reply) => {
@@ -10392,6 +10654,139 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return createHash("md5").update(str).digest("hex");
   }
 
+  /**
+   * Return the user's invite code, creating one on first use. A guarded UPDATE
+   * plus the unique index makes this safe under concurrent first visits: the
+   * loser of the race re-reads the code the winner stored.
+   */
+  async function ensureInviteCode(userId: string): Promise<string> {
+    const existing = await queryOne<{ invite_code: string | null }>(
+      "SELECT invite_code FROM users WHERE id = $1",
+      [userId],
+    );
+    if (existing?.invite_code) return existing.invite_code;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        const updated = await query<{ invite_code: string }>(
+          "UPDATE users SET invite_code = $1 WHERE id = $2 AND invite_code IS NULL RETURNING invite_code",
+          [generateInviteCode(), userId],
+        );
+        if (updated[0]?.invite_code) return updated[0].invite_code;
+      } catch (err) {
+        // 23505 = unique_violation: another user already owns this random code.
+        if ((err as { code?: string }).code !== "23505") throw err;
+      }
+      const again = await queryOne<{ invite_code: string | null }>(
+        "SELECT invite_code FROM users WHERE id = $1",
+        [userId],
+      );
+      if (again?.invite_code) return again.invite_code;
+    }
+    throw new Error("Could not allocate an invite code.");
+  }
+
+  /**
+   * Link a brand-new account to the inviter whose code they signed up with.
+   * Best-effort: an unknown/self code simply means no referral, never a failed
+   * signup. The unique `invitee_id` makes a retried OAuth callback a no-op.
+   */
+  async function linkInvite(
+    inviteeId: string,
+    inviteeEmail: string,
+    rawCode: unknown,
+    ip: string | null,
+  ): Promise<boolean> {
+    const code = normalizeInviteCode(rawCode);
+    if (!code) return false;
+    const inviter = await queryOne<{ id: string; email: string }>(
+      "SELECT id, email FROM users WHERE invite_code = $1 AND status = 'active' LIMIT 1",
+      [code],
+    );
+    if (!inviter) return false;
+    if (inviter.id === inviteeId) return false;
+    if (inviter.email.toLowerCase() === inviteeEmail.toLowerCase()) return false;
+    const inserted = await query<{ id: string }>(
+      `INSERT INTO invites (inviter_id, invitee_id, invitee_email, code, invited_ip)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (invitee_id) DO NOTHING
+       RETURNING id`,
+      [inviter.id, inviteeId, inviteeEmail, code, ip],
+    );
+    return inserted.length > 0;
+  }
+
+  /**
+   * Pay both sides of an invite when the invited user's first credit-pack
+   * purchase settles. Runs inside the payment transaction: the guarded UPDATE
+   * claims the invite exactly once, and the rewards land atomically with the
+   * purchase. A disabled program still claims the invite as `skipped`, so a
+   * later second purchase can never be mistaken for the qualifying first one.
+   */
+  async function rewardInviteOnPurchase(
+    tx: QueryFn,
+    inviteeId: string,
+    purchasedCredits: number,
+    transactionId: string,
+  ): Promise<void> {
+    const pending = await tx<{ id: string; inviter_id: string }>(
+      "SELECT id, inviter_id FROM invites WHERE invitee_id = $1 AND status = 'pending' LIMIT 1",
+      [inviteeId],
+    );
+    if (pending.length === 0) return;
+    const invite = pending[0];
+
+    const settingRow = await tx<{ value: unknown }>(
+      "SELECT value FROM app_settings WHERE key = 'invites'",
+    );
+    const settings = coerceInvites(settingRow[0]?.value);
+    if (!settings.enabled) {
+      await tx(
+        `UPDATE invites
+            SET status = 'skipped', qualifying_transaction_id = $2,
+                purchased_credits = $3, rewarded_at = now()
+          WHERE id = $1 AND status = 'pending'`,
+        [invite.id, transactionId, purchasedCredits],
+      );
+      return;
+    }
+
+    const inviterCredits = inviteRewardCredits(settings.inviter, purchasedCredits);
+    const inviteeCredits = inviteRewardCredits(settings.invitee, purchasedCredits);
+    const claimed = await tx<{ id: string }>(
+      `UPDATE invites
+          SET status = 'rewarded', qualifying_transaction_id = $2,
+              purchased_credits = $3, inviter_reward = $4, invitee_reward = $5,
+              rewarded_at = now()
+        WHERE id = $1 AND status = 'pending'
+        RETURNING id`,
+      [invite.id, transactionId, purchasedCredits, inviterCredits, inviteeCredits],
+    );
+    if (claimed.length === 0) return;
+
+    if (inviterCredits > 0) {
+      await creditUser(
+        tx,
+        invite.inviter_id,
+        inviterCredits,
+        undefined,
+        transactionId,
+        "Invite reward",
+        "referral",
+      );
+    }
+    if (inviteeCredits > 0) {
+      await creditUser(
+        tx,
+        inviteeId,
+        inviteeCredits,
+        undefined,
+        transactionId,
+        "Invite welcome reward",
+        "referral",
+      );
+    }
+  }
+
   async function creditUser(
     q: QueryFn,
     userId: string,
@@ -10399,6 +10794,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     apiKeyId?: string,
     txId?: string,
     label = "Purchase",
+    type: "purchase" | "referral" = "purchase",
   ): Promise<void> {
     if (apiKeyId) {
       await q(
@@ -10422,9 +10818,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         );
       }
     }
+    const description =
+      type === "referral"
+        ? txId
+          ? `${label} (ref: ${txId})`
+          : label
+        : txId
+          ? `${label} top-up (ref: ${txId})`
+          : `${label} top-up`;
     await q(
-      `INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, 'purchase', $3)`,
-      [userId, amount, txId ? `${label} top-up (ref: ${txId})` : `${label} top-up`],
+      `INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)`,
+      [userId, amount, type, description],
     );
   }
 
@@ -10504,6 +10908,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (claimed.length === 0) return false;
       const row = claimed[0];
       await creditUser(tq, row.user_id, row.credit_amount, row.api_key_target_id ?? undefined, txId, "ChmabaPay");
+      // Invite rewards ride the same transaction as the qualifying purchase:
+      // either the purchase, the credits and both referral payouts all commit,
+      // or none do. Only the first purchase can trigger it (the invite row is
+      // claimed exactly once).
+      await rewardInviteOnPurchase(tq, row.user_id, Number(row.credit_amount) || 0, txId);
       return true;
     });
   }
