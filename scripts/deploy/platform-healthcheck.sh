@@ -121,11 +121,9 @@ fi
 if [[ -f "${HEALTHCHECK_STATE}" ]]; then
   grep -q '^ok$' "${HEALTHCHECK_STATE}" 2>/dev/null || add_failure "musicapi healthcheck state is not ok"
 fi
-if [[ "${JOURNAL_OK}" == "1" ]]; then
-  if ! journalctl -u camxora-api --since '2 hours ago' --no-pager 2>/dev/null | grep -q 'Credit grant maintenance'; then
-    add_failure "credit grant maintenance has not logged in 2 hours"
-  fi
-fi
+# The grant-maintenance loop lives inside camxora-api and only logs when it
+# actually grants something, so absence of a recent log is not an outage. The
+# unit-active check above already covers the process; don't false-alarm here.
 
 # --- disk / TLS -------------------------------------------------------------
 DISK_PCT="$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')"
