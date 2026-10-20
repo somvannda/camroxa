@@ -242,6 +242,47 @@ export const config = {
     checkIntervalMs: Number(process.env.ALERT_CHECK_INTERVAL_MS ?? 300_000),
   },
   /**
+   * Outbound mail (Resend). Every message — receipts, credit alerts, campaigns,
+   * automations — goes through the same ledger in `mail.ts`, so consent,
+   * suppression and engagement live in one place.
+   *
+   * Two `from` identities are kept as separate fields even though both point at
+   * the same verified domain today: `mail.camxora.com` is the only domain
+   * verified in Resend, so receipts and campaigns share it. Splitting them later
+   * is one string — verify music.camxora.com, then change `fromTransactional` —
+   * and that is worth keeping cheap because a marketing complaint spike should
+   * eventually not touch receipts.
+   *
+   * `publicBaseUrl` is the externally reachable origin used in tracking,
+   * click-redirect and unsubscribe URLs; `appUrl` is the product site a CTA
+   * links to. They are different hosts on purpose.
+   */
+  mail: {
+    apiKey: process.env.RESEND_API_KEY ?? "",
+    webhookSecret: process.env.RESEND_WEBHOOK_SECRET ?? "",
+    fromTransactional:
+      process.env.MAIL_FROM_TRANSACTIONAL ?? "CAMXORA <no-reply@mail.camxora.com>",
+    fromCampaign: process.env.MAIL_FROM_CAMPAIGN ?? "CAMXORA <hello@mail.camxora.com>",
+    /**
+     * Where a CTA button sends the user. This is the product the recipient sees,
+     * not the API: it must be the site that actually shows their credits and
+     * checkout, or a "buy credits" button lands somewhere that cannot sell.
+     */
+    appUrl: (process.env.MAIL_APP_URL ?? "https://music.camxora.com").replace(/\/+$/, ""),
+    replyTo: process.env.MAIL_REPLY_TO ?? "",
+    publicBaseUrl: (process.env.MAIL_PUBLIC_BASE_URL ?? "").replace(/\/+$/, ""),
+    /** Master switch; sending is also skipped whenever `apiKey` is empty. */
+    enabled: (process.env.MAIL_ENABLED ?? "true") === "true",
+    /** Resend limits concurrent requests per second; the sender paces to this. */
+    ratePerSecond: Math.max(1, Number(process.env.MAIL_RATE_PER_SECOND ?? 2)),
+    /** How often the queue is drained. 0 disables the in-process loop. */
+    loopIntervalMs: Number(process.env.MAIL_LOOP_INTERVAL_MS ?? 15_000),
+    /** Give up after this many delivery attempts. */
+    maxAttempts: Math.max(1, Number(process.env.MAIL_MAX_ATTEMPTS ?? 3)),
+    /** Marketing mail is capped per user to protect reputation. */
+    marketingCooldownDays: Math.max(1, Number(process.env.MAIL_MARKETING_COOLDOWN_DAYS ?? 7)),
+  },
+  /**
    * Background job queue (roadmap R4). `driver: "memory"` is the default and
    * keeps the original behaviour: a job runs inline in the process that accepted
    * the request, and a restart fails out whatever was in flight. Setting
