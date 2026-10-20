@@ -103,6 +103,10 @@ async def main() -> None:
 
         link = build_email_verify_link(str(row["id"]), email)
         flag = "  [UNDELIVERABLE TLD]" if undeliverable(email) else ""
+        if undeliverable(email) and not args.force:
+            print(f"SKIP  {email} (undeliverable TLD){flag}")
+            skipped += 1
+            continue
         if not args.apply:
             print(f"DRY   {email:<42} name={display_name!r} link_len={len(link)}{flag}")
             continue
