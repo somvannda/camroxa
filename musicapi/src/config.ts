@@ -216,17 +216,22 @@ export const config = {
    * automations — goes through the same ledger in `mail.ts`, so consent,
    * suppression and engagement live in one place.
    *
-   * Two `from` identities on purpose: transactional mail must come from the
-   * product domain so a marketing complaint/reputation hit never touches
-   * receipts and password resets. `publicBaseUrl` is the externally reachable
-   * origin used in tracking, click-redirect and unsubscribe URLs — it must be
-   * the public API host, not localhost, in production.
+   * Two `from` identities are kept as separate fields even though both point at
+   * the same verified domain today: `mail.camxora.com` is the only domain
+   * verified in Resend, so receipts and campaigns share it. Splitting them later
+   * is one string — verify music.camxora.com, then change `fromTransactional` —
+   * and that is worth keeping cheap because a marketing complaint spike should
+   * eventually not touch receipts.
+   *
+   * `publicBaseUrl` is the externally reachable origin used in tracking,
+   * click-redirect and unsubscribe URLs; `appUrl` is the product site a CTA
+   * links to. They are different hosts on purpose.
    */
   mail: {
     apiKey: process.env.RESEND_API_KEY ?? "",
     webhookSecret: process.env.RESEND_WEBHOOK_SECRET ?? "",
     fromTransactional:
-      process.env.MAIL_FROM_TRANSACTIONAL ?? "CAMXORA <no-reply@music.camxora.com>",
+      process.env.MAIL_FROM_TRANSACTIONAL ?? "CAMXORA <no-reply@mail.camxora.com>",
     fromCampaign: process.env.MAIL_FROM_CAMPAIGN ?? "CAMXORA <hello@mail.camxora.com>",
     /**
      * Where a CTA button sends the user. This is the product the recipient sees,

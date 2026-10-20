@@ -50,9 +50,15 @@ if [[ "${MUSICAPI_ENV}" == "production" ]]; then
   # Production has no app.* host: the apex IS the user app portal + landing page,
   # and the core API is mounted by path (/backend, /v1, /api/v1, /payments).
   APP_HOST_PREFIX=""
+  # Dedicated mail surface (open pixel, click redirect, unsubscribe, Resend
+  # webhook). Its own vhost exists because API_HOST only proxies a fixed set of
+  # paths to :4003 — /mail/* and /webhooks/* would fall through to the Next app.
+  MAIL_HOST="mail.${MUSICAPI_DOMAIN}"
 else
   MUSICAPI_DOMAIN="sandbox.camxora.com"
   APP_HOST_PREFIX="app."
+  # Sandbox has no mail vhost; the sandbox nginx conf does not define one.
+  MAIL_HOST=""
 fi
 API_HOST="musicapi.${MUSICAPI_DOMAIN}"
 APP_HOST="${APP_HOST_PREFIX}musicapi.${MUSICAPI_DOMAIN}"
@@ -63,7 +69,7 @@ ADMIN_HOST="admin.musicapi.${MUSICAPI_DOMAIN}"
 
 # TLS/nginx host list, deduped (in production APP_HOST == API_HOST).
 TLS_HOSTS=()
-for _host in "${API_HOST}" "${APP_HOST}" "${ADMIN_HOST}"; do
+for _host in "${API_HOST}" "${APP_HOST}" "${ADMIN_HOST}" ${MAIL_HOST:+"${MAIL_HOST}"}; do
   [[ " ${TLS_HOSTS[*]} " == *" ${_host} "* ]] || TLS_HOSTS+=("${_host}")
 done
 
@@ -254,6 +260,20 @@ PREV_ENV="$(mktemp)"
 if [[ -f "${MUSICAPI_DIR}/.env" ]]; then
   cp "${MUSICAPI_DIR}/.env" "${PREV_ENV}"
 fi
+# Mail. The Resend API key and webhook secret are deliberately NOT here: they
+# live in app_settings, encrypted, editable at /admin/settings > Mail (Resend),
+# so rotating them needs no redeploy. These three decide what is printed inside
+# every email, and this file rewrites .env wholesale — without them a redeploy
+# blanks the base URL and every link in every sent mail falls back to localhost.
+if [[ "${MUSICAPI_ENV}" == "production" ]]; then
+  MAIL_PUBLIC_BASE_URL_DEFAULT="https://${MAIL_HOST}"
+  MAIL_APP_URL_DEFAULT="https://music.${MUSICAPI_DOMAIN}"
+else
+  # Sandbox has no mail vhost; leave empty so the core falls back to localhost.
+  MAIL_PUBLIC_BASE_URL_DEFAULT=""
+  MAIL_APP_URL_DEFAULT=""
+fi
+
 sudo -u camxora tee "${MUSICAPI_DIR}/.env" >/dev/null <<EOF
 NODE_ENV=production
 # Deployment target (sandbox|production). The runtime reads this to keep
@@ -327,6 +347,11 @@ ALERT_TELEGRAM_BOT_TOKEN=${MUSICAPI_ALERT_TELEGRAM_BOT_TOKEN}
 ALERT_TELEGRAM_CHAT_ID=${MUSICAPI_ALERT_TELEGRAM_CHAT_ID}
 BACKUP_DIR=${BACKUP_DIR}
 BACKUP_RETENTION_DAYS=${BACKUP_RETENTION_DAYS}
+# Mail (Resend). publicBaseUrl is what open pixels, click redirects and
+# unsubscribe links point at; appUrl is the product site a CTA links to.
+MAIL_PUBLIC_BASE_URL=${MUSICAPI_MAIL_PUBLIC_BASE_URL:-${MAIL_PUBLIC_BASE_URL_DEFAULT}}
+MAIL_APP_URL=${MUSICAPI_MAIL_APP_URL:-${MAIL_APP_URL_DEFAULT}}
+MAIL_ENABLED=${MUSICAPI_MAIL_ENABLED:-true}
 EOF
 # Re-append unmanaged keys from the snapshot: any KEY= the canonical set above
 # does not define is preserved. Keys this script owns are always emitted, so

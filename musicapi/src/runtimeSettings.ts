@@ -255,8 +255,8 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         label: "Transactional From",
         type: "string",
         env: "MAIL_FROM_TRANSACTIONAL",
-        def: "CAMXORA <no-reply@music.camxora.com>",
-        help: "Receipts and account mail. Keep this on the product domain.",
+        def: "CAMXORA <no-reply@mail.camxora.com>",
+        help: "Receipts and account mail. Points at mail.camxora.com today because that is the domain verified in Resend; verify music.camxora.com and change this one string to separate the two reputations.",
       },
       {
         key: "fromCampaign",
