@@ -125,8 +125,8 @@ async def _bootstrap_connections() -> None:
             install_telegram_ops_hooks,
         )
 
-        install_telegram_ops_hooks()
-        logger.info("Worker Telegram ops hooks installed.")
+        install_telegram_ops_hooks(enable_poller=False)
+        logger.info("Worker Telegram ops hooks installed (poller disabled).")
     except Exception as exc:
         logger.warning("Worker Telegram ops hooks skipped: %s", exc)
 

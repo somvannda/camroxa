@@ -318,7 +318,6 @@ Environment=PYTHONPATH=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=CAMXORA_WORKER_JOB_TYPES=draft
 Environment=CAMXORA_WORKER_NAME=draft@%i
-Environment=PLATFORM_TELEGRAM_POLLER_ENABLED=false
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always
@@ -343,7 +342,6 @@ Environment=PYTHONPATH=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=CAMXORA_WORKER_JOB_TYPES=suno
 Environment=CAMXORA_WORKER_NAME=suno@%i
-Environment=PLATFORM_TELEGRAM_POLLER_ENABLED=false
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always
@@ -368,7 +366,6 @@ Environment=PYTHONPATH=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=CAMXORA_WORKER_JOB_TYPES=images
 Environment=CAMXORA_WORKER_NAME=images@%i
-Environment=PLATFORM_TELEGRAM_POLLER_ENABLED=false
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always
@@ -392,7 +389,6 @@ Group=camxora
 WorkingDirectory=${REPO_DIR}
 Environment=PYTHONPATH=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
-Environment=PLATFORM_TELEGRAM_POLLER_ENABLED=false
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always

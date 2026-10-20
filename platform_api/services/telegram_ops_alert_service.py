@@ -949,8 +949,14 @@ def notify_billing_row(row: Any) -> None:
     )
 
 
-def install_telegram_ops_hooks() -> None:
-    """Wrap signup, billing, wallet, plan-quota, and web-music credit paths."""
+def install_telegram_ops_hooks(*, enable_poller: bool = True) -> None:
+    """Wrap signup, billing, wallet, plan-quota, and web-music credit paths.
+
+    ``enable_poller=False`` is used by job-worker processes: they still emit
+    activity messages, but only the API process runs getUpdates / the daily
+    report. A systemd ``Environment=`` flag cannot express this because
+    ``EnvironmentFile`` overrides it.
+    """
     global _V2_HOOKS_INSTALLED
     if _V2_HOOKS_INSTALLED:
         return
@@ -963,6 +969,8 @@ def install_telegram_ops_hooks() -> None:
     _patch_v2_credit_service()
     _patch_v2_subscription_service()
     _patch_web_music_downloads()
+    if not enable_poller:
+        return
     try:
         from platform_api.services.telegram_ops_commands import (
             start_telegram_ops_command_poller,

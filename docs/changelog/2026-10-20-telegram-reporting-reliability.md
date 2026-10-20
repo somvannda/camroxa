@@ -53,8 +53,9 @@ found four concrete problems:
 - Offset is kept in memory when Redis is unavailable (no replay loop).
 - Daily report claims `"sending"` for 10 minutes, marks the day only after a
   successful post, deletes the claim on failure, and retries every 60 s.
-- New `PLATFORM_TELEGRAM_POLLER_ENABLED` (default `true`); worker units set it
-  to `false` so only the API process polls.
+- New `PLATFORM_TELEGRAM_POLLER_ENABLED` (default `true`) can disable the
+  poller for the API process too; job workers install the hooks with
+  `enable_poller=False`, so they emit activity without polling.
 
 ### `perf(telegram): pool the HTTP client, retry 429s, batch bursts, drain on shutdown`
 - Process-wide keep-alive `httpx.AsyncClient`.
@@ -88,8 +89,7 @@ found four concrete problems:
    retained journals. Then update `PLATFORM_TELEGRAM_BOT_TOKEN` and remove old
    journal history if required by policy.
 2. Apply migrations `140` and `141` (`alembic upgrade head`).
-3. Deploy; worker units now receive
-   `PLATFORM_TELEGRAM_POLLER_ENABLED=false`.
+3. Deploy; job workers no longer run the poller (API process only).
 4. Confirm one leader: `redis-cli -n 1 get telegram:ops:poller` should hold a
    single `pid:uuid` value, and `journalctl -u camxora-api | grep "status=409"`
    should stay empty.
