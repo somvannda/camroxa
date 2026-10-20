@@ -379,10 +379,19 @@ class UsageEnforcementService:
                 f"Operation '{operation_type}' is not mapped to credits-only billing.",
                 details={"operation_type": operation_type},
             )
+        # v1 paths serve both the desktop client and the public API; web music
+        # legacy flows use `web_music_*` operation names. Tagging here makes the
+        # burn report's product split provable instead of heuristic.
+        product = (
+            "web_music"
+            if str(operation_type or "").startswith("web_music")
+            else "desktop"
+        )
         result = await self._v3_billing_service().charge(
             user_id=user_id,
             op=op,
             ref_id=ref_id,
+            product=product,
         )
         return int(result.get("amount_units") or 0)
 
