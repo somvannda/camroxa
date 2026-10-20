@@ -26,6 +26,8 @@ SCRIPT_REMOTE = f"{REPO}/scripts/deploy/platform-healthcheck.sh"
 
 
 def main() -> int:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     secrets = load_production_secrets()
     host, user, password = resolve_production_ssh(secrets)
     if host != PRODUCTION_HOST:

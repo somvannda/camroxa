@@ -152,6 +152,10 @@ else
   for failure in "${failures[@]}"; do log "FAIL: ${failure}"; done
 fi
 
+if [[ "${state}" == "ok" ]]; then
+  log "healthy: units, endpoints, DB, Redis, SMTP, email, grants, disk ${DISK_PCT}%, TLS"
+fi
+
 prev="$(cat "${STATE_FILE}" 2>/dev/null || echo unknown)"
 if [[ "${state}" != "${prev}" ]]; then
   if [[ "${state}" == "down" ]]; then
