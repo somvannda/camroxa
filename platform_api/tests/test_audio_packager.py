@@ -123,6 +123,9 @@ async def test_package_plaintext_skips_when_already_ready() -> None:
         async def fetchrow(self, *_a, **_k):
             return {"package_status": "ready", "packaged_storage_key": "web-music/x/ok.cxa"}
 
+        async def fetchval(self, *_a, **_k):
+            return True
+
         def transaction(self):
             class _Tx:
                 async def __aenter__(self):

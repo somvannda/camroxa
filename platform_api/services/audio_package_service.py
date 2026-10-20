@@ -52,11 +52,21 @@ class AudioPackageService:
             # insert) and blocked every other packager + the API pool.
             async with conn.transaction():
                 await conn.execute("SET LOCAL lock_timeout = '30s'")
-                await conn.execute(
-                    "SELECT pg_advisory_xact_lock(hashtext($1::text), hashtext($2::text))",
+                acquired = await conn.fetchval(
+                    "SELECT pg_try_advisory_xact_lock(hashtext($1::text), hashtext($2::text))",
                     str(subject_id),
                     f"{subject_type}:{variant}",
                 )
+                if not acquired:
+                    # Another request/worker is already packaging this exact
+                    # subject. Do not queue on the lock: long storage uploads
+                    # would otherwise exhaust the API's DB pool with waiters.
+                    logger.info(
+                        "Skip packaging (busy) subject=%s variant=%s",
+                        subject_id,
+                        variant,
+                    )
+                    return {"status": "busy", "skipped": True}
                 if subject_type == "stream_track":
                     existing = await conn.fetchrow(
                         "SELECT package_status, packaged_storage_key FROM stream_tracks WHERE id = $1",
