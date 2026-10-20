@@ -368,3 +368,102 @@ def test_daily_burncredit_schedule() -> None:
     assert seconds_until_daily_burncredit_check(at_2200, last_sent_date=None) == 1.0
     assert seconds_until_daily_burncredit_check(at_2200, last_sent_date="2026-08-19") > 60
 
+
+class _FakeRedis:
+    """Minimal async redis surface used by the daily-report claim."""
+
+    def __init__(self, store: dict[str, str] | None = None) -> None:
+        self.store = dict(store or {})
+        self.deleted: list[str] = []
+
+    async def get(self, key: str) -> str | None:
+        return self.store.get(key)
+
+    async def set(
+        self, key: str, value: str, *, ex: int | None = None, nx: bool = False
+    ) -> bool | None:
+        if nx and key in self.store:
+            return None
+        self.store[key] = value
+        return True
+
+    async def delete(self, key: str) -> None:
+        self.deleted.append(key)
+        self.store.pop(key, None)
+
+
+def _fixed_2200(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import datetime
+
+    from platform_api.services.billing_calendar import BILLING_TIMEZONE
+    from platform_api.services import telegram_ops_commands as mod
+
+    class FixedDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):  # type: ignore[no-untyped-def]
+            return datetime(2026, 10, 20, 22, 30, tzinfo=BILLING_TIMEZONE)
+
+    monkeypatch.setattr(mod, "datetime", FixedDatetime)
+
+
+@pytest.mark.asyncio
+async def test_daily_report_marks_sent_only_after_success(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    sent: list[int] = []
+
+    async def _send() -> None:
+        sent.append(1)
+
+    redis = _FakeRedis()
+    monkeypatch.setattr(mod, "_try_redis", lambda: redis)
+    monkeypatch.setattr(mod, "_send_daily_burncredit", _send)
+    _fixed_2200(monkeypatch)
+
+    assert await mod._maybe_send_daily_burncredit() is True
+    assert sent == [1]
+    assert redis.store[mod._daily_key("2026-10-20")] == "1"
+
+    # A completed day is a no-op, not a second post.
+    assert await mod._maybe_send_daily_burncredit() is True
+    assert sent == [1]
+
+
+@pytest.mark.asyncio
+async def test_daily_report_failure_clears_claim(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    async def _boom() -> None:
+        raise RuntimeError("telegram down")
+
+    redis = _FakeRedis()
+    monkeypatch.setattr(mod, "_try_redis", lambda: redis)
+    monkeypatch.setattr(mod, "_send_daily_burncredit", _boom)
+    _fixed_2200(monkeypatch)
+
+    with pytest.raises(RuntimeError):
+        await mod._maybe_send_daily_burncredit()
+    assert mod._daily_key("2026-10-20") not in redis.store
+
+
+@pytest.mark.asyncio
+async def test_daily_report_in_progress_claim_retries_later(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import telegram_ops_commands as mod
+
+    async def _send() -> None:  # pragma: no cover - must not be called
+        raise AssertionError("another worker owns the in-progress claim")
+
+    redis = _FakeRedis({mod._daily_key("2026-10-20"): "sending"})
+    monkeypatch.setattr(mod, "_try_redis", lambda: redis)
+    monkeypatch.setattr(mod, "_send_daily_burncredit", _send)
+    _fixed_2200(monkeypatch)
+
+    assert await mod._daily_sent_date(redis) is None
+    assert await mod._maybe_send_daily_burncredit() is False
+

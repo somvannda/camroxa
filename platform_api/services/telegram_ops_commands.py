@@ -7,6 +7,7 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
@@ -22,10 +23,15 @@ logger = logging.getLogger(__name__)
 
 _POLLER_STARTED = False
 _I_AM_POLLER = False
+# Unique per process: a lock value lets the holder prove ownership before
+# renewing. `pid` alone is not unique across restarts/reused PIDs.
+_LOCK_VALUE = f"{os.getpid()}:{uuid4().hex}"
+_LOCK_TTL_S = 40
 _LOCK_KEY = "telegram:ops:poller"
 _OFFSET_KEY = "telegram:ops:update_offset"
 _DAILY_SENT_KEY = "telegram:ops:burncredit_daily"
 _DAILY_BURN_HOUR = 22
+_LAST_UPDATE_ID = 0  # in-process offset fallback when Redis is unavailable
 _ALLOWED_COMMANDS = frozenset({"/stats", "/report", "/summary"})
 
 _WINDOW_KEYS = ("today", "yesterday", "d7", "d30")
@@ -395,6 +401,16 @@ def start_telegram_ops_command_poller() -> None:
     if _POLLER_STARTED:
         return
     try:
+        from platform_api.config import get_settings
+
+        if not get_settings().telegram_poller_enabled:
+            logger.info(
+                "Telegram ops poller disabled by PLATFORM_TELEGRAM_POLLER_ENABLED."
+            )
+            return
+    except Exception:
+        pass
+    try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
@@ -424,7 +440,12 @@ async def _daily_burncredit_loop() -> None:
             last_sent = await _daily_sent_date(_try_redis())
             wait = seconds_until_daily_burncredit_check(last_sent_date=last_sent)
             await asyncio.sleep(wait)
-            await _maybe_send_daily_burncredit()
+            sent = await _maybe_send_daily_burncredit()
+            if not sent and datetime.now(BILLING_TIMEZONE).hour >= _DAILY_BURN_HOUR:
+                # Another worker may hold the claim, or it died mid-send. Retry
+                # soon instead of sleeping until tomorrow (the old bug: a crash
+                # at 22:00 left the claim behind and skipped the day entirely).
+                await asyncio.sleep(60)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -443,29 +464,35 @@ async def _daily_sent_date(redis: Any | None) -> str | None:
         return None
     try:
         raw = await redis.get(_daily_key(today))
-        return today if raw else None
+        # "sending" is a short in-progress claim, not a completed send.
+        return today if str(raw) in {"1", "b'1'"} else None
     except Exception:
         return None
 
 
-async def _maybe_send_daily_burncredit() -> None:
+async def _maybe_send_daily_burncredit() -> bool:
     now = datetime.now(BILLING_TIMEZONE)
     if now.hour < _DAILY_BURN_HOUR:
-        return
+        return False
     date_iso = now.date().isoformat()
     redis = _try_redis()
     if redis is not None:
         try:
-            acquired = await redis.set(_daily_key(date_iso), "1", nx=True, ex=172800)
+            if str(await redis.get(_daily_key(date_iso))) in {"1", "b'1'"}:
+                return True
+            # Short in-progress claim: a crashed sender retries after 10
+            # minutes instead of blocking the day with a 48h marker.
+            acquired = await redis.set(
+                _daily_key(date_iso), "sending", nx=True, ex=600
+            )
         except Exception:
             acquired = _I_AM_POLLER
         if not acquired:
-            return
+            return False
     elif not _I_AM_POLLER:
-        return
+        return False
     try:
         await _send_daily_burncredit()
-        logger.info("Telegram daily 10 PM burncredit report sent for %s.", date_iso)
     except Exception:
         if redis is not None:
             try:
@@ -473,6 +500,13 @@ async def _maybe_send_daily_burncredit() -> None:
             except Exception:
                 pass
         raise
+    if redis is not None:
+        try:
+            await redis.set(_daily_key(date_iso), "1", ex=172800)
+        except Exception:
+            pass
+    logger.info("Telegram daily 10 PM burncredit report sent for %s.", date_iso)
+    return True
 
 
 async def _send_daily_burncredit() -> None:
@@ -530,6 +564,11 @@ async def _poll_once() -> None:
             response.status_code,
             (response.text or "")[:200],
         )
+        if response.status_code == 409:
+            # Another process is polling with this token: we no longer own the
+            # leader key, so stop pretending we do (the old sticky flag caused
+            # thousands of conflicts until restart).
+            await _release_leader(redis)
         await asyncio.sleep(5)
         return
     payload = response.json()
@@ -627,19 +666,72 @@ def _try_redis() -> Any | None:
 async def _hold_poller_lock(redis: Any | None) -> bool:
     global _I_AM_POLLER
     if redis is None:
+        # No Redis: stay a poller in this process. The offset is also kept in
+        # memory so updates are confirmed instead of being replayed forever.
+        _I_AM_POLLER = True
         return True
     try:
         if _I_AM_POLLER:
-            await redis.expire(_LOCK_KEY, 40)
-            return True
-        acquired = await redis.set(_LOCK_KEY, str(os.getpid()), ex=40, nx=True)
+            if await _renew_leader(redis):
+                return True
+            _I_AM_POLLER = False
+        acquired = await redis.set(
+            _LOCK_KEY, _LOCK_VALUE, ex=_LOCK_TTL_S, nx=True
+        )
         if acquired:
             _I_AM_POLLER = True
             await _register_bot_commands(redis)
             return True
         return False
     except Exception:
-        return True
+        # Redis trouble must fail closed: assuming leadership here is what made
+        # API workers and job workers poll the same bot simultaneously.
+        _I_AM_POLLER = False
+        return False
+
+
+# Compare-and-renew / compare-and-delete keep a stale holder from extending or
+# deleting a lock that now belongs to another process.
+_LOCK_RENEW_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end"
+)
+_LOCK_RELEASE_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) else return 0 end"
+)
+
+
+async def _renew_leader(redis: Any) -> bool:
+    try:
+        result = await redis.eval(
+            _LOCK_RENEW_LUA, 1, _LOCK_KEY, _LOCK_VALUE, _LOCK_TTL_S
+        )
+        return bool(result)
+    except Exception:
+        try:
+            current = await redis.get(_LOCK_KEY)
+            if str(current) != _LOCK_VALUE:
+                return False
+            await redis.expire(_LOCK_KEY, _LOCK_TTL_S)
+            return True
+        except Exception:
+            return False
+
+
+async def _release_leader(redis: Any | None) -> None:
+    global _I_AM_POLLER
+    _I_AM_POLLER = False
+    if redis is None:
+        return
+    try:
+        await redis.eval(_LOCK_RELEASE_LUA, 1, _LOCK_KEY, _LOCK_VALUE)
+    except Exception:
+        try:
+            if str(await redis.get(_LOCK_KEY)) == _LOCK_VALUE:
+                await redis.delete(_LOCK_KEY)
+        except Exception:
+            pass
 
 
 async def _register_bot_commands(redis: Any | None) -> None:
@@ -669,16 +761,19 @@ async def _register_bot_commands(redis: Any | None) -> None:
 
 
 async def _read_offset(redis: Any | None) -> int:
+    global _LAST_UPDATE_ID
     if redis is None:
-        return 0
+        return _LAST_UPDATE_ID
     try:
         raw = await redis.get(_OFFSET_KEY)
-        return int(raw or 0)
+        return int(raw or 0) if raw is not None else _LAST_UPDATE_ID
     except Exception:
-        return 0
+        return _LAST_UPDATE_ID
 
 
 async def _write_offset(redis: Any | None, offset: int) -> None:
+    global _LAST_UPDATE_ID
+    _LAST_UPDATE_ID = int(offset)
     if redis is None:
         return
     try:

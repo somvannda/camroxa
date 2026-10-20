@@ -192,6 +192,7 @@ PLATFORM_SLAI_API_BASE_URL=https://api.slai.shop
 PLATFORM_TELEGRAM_BOT_TOKEN=${PLATFORM_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}
 PLATFORM_TELEGRAM_CHAT_ID=${PLATFORM_TELEGRAM_CHAT_ID:-${TELEGRAM_CHAT_ID:-}}
 PLATFORM_TELEGRAM_OPS_ENABLED=${PLATFORM_TELEGRAM_OPS_ENABLED:-true}
+PLATFORM_TELEGRAM_POLLER_ENABLED=${PLATFORM_TELEGRAM_POLLER_ENABLED:-true}
 # Transactional email (Resend SMTP relay). Kept here so a full deploy can never
 # silently wipe verification / activation / renewal mail again.
 PLATFORM_SMTP_HOST=${PLATFORM_SMTP_HOST:-}
@@ -317,6 +318,7 @@ Environment=PYTHONPATH=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=CAMXORA_WORKER_JOB_TYPES=draft
 Environment=CAMXORA_WORKER_NAME=draft@%i
+Environment=PLATFORM_TELEGRAM_POLLER_ENABLED=false
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always
@@ -341,6 +343,7 @@ Environment=PYTHONPATH=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=CAMXORA_WORKER_JOB_TYPES=suno
 Environment=CAMXORA_WORKER_NAME=suno@%i
+Environment=PLATFORM_TELEGRAM_POLLER_ENABLED=false
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always
@@ -365,6 +368,7 @@ Environment=PYTHONPATH=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
 Environment=CAMXORA_WORKER_JOB_TYPES=images
 Environment=CAMXORA_WORKER_NAME=images@%i
+Environment=PLATFORM_TELEGRAM_POLLER_ENABLED=false
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always
@@ -388,6 +392,7 @@ Group=camxora
 WorkingDirectory=${REPO_DIR}
 Environment=PYTHONPATH=${REPO_DIR}
 Environment=PYTHONUNBUFFERED=1
+Environment=PLATFORM_TELEGRAM_POLLER_ENABLED=false
 EnvironmentFile=${REPO_DIR}/platform_api/.env
 ExecStart=${REPO_DIR}/platform_api/.venv/bin/python -m platform_api.worker
 Restart=always

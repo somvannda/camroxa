@@ -175,6 +175,10 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     telegram_ops_enabled: bool = True
+    # Run the getUpdates command poller / daily report in this process. Every
+    # API worker and job worker imports the hooks, so keep this True only on the
+    # API service (or one worker) and set it False elsewhere.
+    telegram_poller_enabled: bool = True
 
     # --- Cloudflare Turnstile (Bot Protection) ---
     # These use CLOUDFLARE_* env names (not PLATFORM_*) to match Cloudflare dashboard naming.
