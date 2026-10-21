@@ -36,6 +36,8 @@ export type WebMusicQuota = {
   can_download?: boolean;
   daily_free_remaining?: number;
   daily_free_limit?: number;
+  premium_unlocked?: boolean;
+  free_model?: string;
   queue_limit?: number;
   queue_used?: number;
 };

@@ -214,14 +214,27 @@ export type MusicModelId = 'V6' | 'V6_MINI' | 'V6_WILD';
 export function MusicModelSelect({
   value,
   onChange,
+  allowPremium = true,
+  onLocked,
 }: {
   value: MusicModelId;
   onChange: (value: MusicModelId) => void;
+  /** Free-plan users without a pack can only use V6-Mini. */
+  allowPremium?: boolean;
+  /** Called when a locked premium model is selected. */
+  onLocked?: () => void;
 }) {
   return (
     <MusicSelect
       value={value}
-      onValueChange={(next) => onChange(next as MusicModelId)}
+      onValueChange={(next) => {
+        const id = next as MusicModelId;
+        if (!allowPremium && (id === 'V6' || id === 'V6_WILD')) {
+          onLocked?.();
+          return;
+        }
+        onChange(id);
+      }}
       options={[
         { value: 'V6', label: 'V6' },
         { value: 'V6_MINI', label: 'V6 Mini' },

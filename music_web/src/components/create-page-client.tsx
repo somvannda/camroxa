@@ -547,6 +547,8 @@ export default function CreatePageClient() {
     clip: WebMusicClip;
   } | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeHeadline, setUpgradeHeadline] = useState<string | undefined>();
+  const [upgradeMessage, setUpgradeMessage] = useState<string | undefined>();
   const [downloadingKeys, setDownloadingKeys] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
@@ -566,6 +568,27 @@ export default function CreatePageClient() {
       setMode('simple');
     }
   }, []);
+
+  function openPackModal(headline: string, message: string) {
+    setUpgradeHeadline(headline);
+    setUpgradeMessage(message);
+    setShowUpgradeModal(true);
+  }
+
+  function closePackModal() {
+    setShowUpgradeModal(false);
+    setUpgradeHeadline(undefined);
+    setUpgradeMessage(undefined);
+  }
+
+  // Free users start on V6 and cannot use it until they buy a pack. Once the
+  // quota says premium is locked, move the selection to V6-Mini.
+  useEffect(() => {
+    if (quota?.premium_unlocked !== false) return;
+    setModel((current) =>
+      current === 'V6' || current === 'V6_WILD' ? 'V6_MINI' : current,
+    );
+  }, [quota]);
 
   async function refreshList(workspaceId?: string | null) {
     const resolvedWorkspaceId = workspaceId ?? activeWorkspaceId ?? undefined;
@@ -1224,8 +1247,14 @@ export default function CreatePageClient() {
         .catch(() => undefined);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Create failed';
-      if (message.toLowerCase().includes('insufficient credits')) {
-        setShowUpgradeModal(true);
+      const packBlocked = message.toLowerCase().includes('requires purchased credits');
+      if (message.toLowerCase().includes('insufficient credits') || packBlocked) {
+        openPackModal(
+          packBlocked ? 'A credit pack is required' : 'You are out of credits',
+          packBlocked
+            ? message
+            : 'Buy a credit pack to keep creating music.',
+        );
       }
       setCreateError(
         count > 1 && createdCount > 0
@@ -1347,7 +1376,17 @@ export default function CreatePageClient() {
                 </button>
               ))}
             </div>
-            <MusicModelSelect value={model} onChange={setModel} />
+            <MusicModelSelect
+              value={model}
+              onChange={setModel}
+              allowPremium={quota?.premium_unlocked !== false}
+              onLocked={() =>
+                openPackModal(
+                  'V6-Pro and V6 Wild need a credit pack',
+                  'Your monthly 50 free credits can only be used on V6 Mini. Buy a credit pack to unlock V6-Pro and V6 Wild — the remaining monthly credits then work on every model for the rest of the month.',
+                )
+              }
+            />
           </div>
 
           <MusicPillTabs
@@ -2107,7 +2146,12 @@ export default function CreatePageClient() {
           </div>
         )}
       </section>
-      <UpgradeModal isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={closePackModal}
+        headline={upgradeHeadline}
+        message={upgradeMessage}
+      />
     </div>
   );
 }
