@@ -126,122 +126,146 @@ export default function TopupModal({ isOpen, onClose, headline, message }: Topup
               <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {packs.map((pack, index) => {
                 const isPurchasing = purchasingPackId === pack.id;
-                // Largest pack has the best credits-per-dollar value, like musicapi.
+                // Largest pack has the best credits-per-dollar value.
                 const isPopular = index === packs.length - 1;
+                // `songs_equivalent` counts both versions returned per generation.
+                const generations = Math.max(1, Math.round(pack.songs_equivalent / 2));
+                const perSong = pack.price_cents / generations / 100;
+                const perSongLabel = `$${Number(perSong.toFixed(3))}`;
 
                 return (
                   <div
                     key={pack.id}
-                    className={`relative rounded-xl p-6 border-2 transition-all hover:scale-[1.02] ${
+                    className={`relative flex h-full flex-col rounded-xl border p-4 transition-colors ${
                       isPopular
                         ? 'border-purple-500 bg-gradient-to-br from-purple-900/30 to-[#0c1230]/50'
                         : 'border-purple-500/20 bg-[#0c1230]/50 hover:border-purple-500/40'
                     }`}
                   >
                     {isPopular && (
-                      <div className="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-1 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full text-xs font-medium">
+                      <span className="absolute right-3 top-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
                         Best value
-                      </div>
+                      </span>
                     )}
 
-                    {/* Pack Name & Icon */}
-                    <div className="flex items-center gap-3 mb-4">
-                      <div
-                        className={`p-2 rounded-full ${
+                    {/* Header: fixed one-line name so every card starts the same row. */}
+                    <div className="flex min-w-0 items-center gap-2 pr-14">
+                      <span
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                           isPopular
                             ? 'bg-gradient-to-br from-purple-500 to-pink-500'
                             : 'bg-purple-500/20'
                         }`}
                       >
-                        <Sparkles className={`w-4 h-4 ${isPopular ? 'text-white' : 'text-purple-400'}`} />
+                        <Sparkles
+                          className={`h-3.5 w-3.5 ${isPopular ? 'text-white' : 'text-purple-400'}`}
+                        />
+                      </span>
+                      <h3 className="truncate text-base font-semibold text-white" title={pack.name}>
+                        {pack.name}
+                      </h3>
+                    </div>
+
+                    {/* Primary metric row: credits (what you buy) and price. */}
+                    <div className="mt-4 flex items-end justify-between gap-2 border-b border-white/10 pb-3">
+                      <div className="min-w-0">
+                        <div className="truncate text-2xl font-bold leading-none text-white">
+                          {pack.total_credits.toLocaleString()}
+                        </div>
+                        <div className="mt-1 text-[10px] font-medium uppercase tracking-wider text-slate-500">
+                          credits
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="text-lg font-bold text-white">{pack.name}</h3>
-                        <p className="text-xs text-slate-400">{pack.description}</p>
+                      <div className="shrink-0 text-right">
+                        <div className="text-xl font-bold leading-none text-white">
+                          {formatPrice(pack.price_cents)}
+                        </div>
+                        <div className="mt-1 text-[10px] uppercase tracking-wider text-slate-500">
+                          one-time
+                        </div>
                       </div>
                     </div>
 
-                    {/* Credits & Price */}
-                    <div className="mb-4 pb-4 border-b border-white/10">
-                      <div className="flex items-baseline justify-between mb-2">
-                        <div>
-                          <div className="text-3xl font-bold text-purple-400">
-                            {pack.songs_equivalent}
-                          </div>
-                          <div className="text-xs text-slate-400">songs</div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-2xl font-bold text-white">
-                            {formatPrice(pack.price_cents)}
-                          </div>
-                          <div className="text-xs text-slate-400">one-time</div>
-                        </div>
+                    {/* Comparison rows: one label/value per line, identical in every card. */}
+                    <dl className="mt-3 space-y-2 text-xs">
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">Songs</dt>
+                        <dd className="font-medium text-slate-200">{generations.toLocaleString()}</dd>
                       </div>
-                      <div className="text-xs text-slate-500">
-                        {pack.total_credits.toLocaleString()} credits • valid 30 days
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">Versions</dt>
+                        <dd className="font-medium text-slate-200">
+                          {pack.songs_equivalent.toLocaleString()}
+                        </dd>
                       </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">Per song</dt>
+                        <dd className="font-medium text-slate-200">{perSongLabel}</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">Valid</dt>
+                        <dd className="font-medium text-slate-200">30 days</dd>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <dt className="text-slate-500">Delivery</dt>
+                        <dd className="font-medium text-emerald-300">Instant</dd>
+                      </div>
+                    </dl>
+
+                    {/* CTA pinned to the bottom so all buttons share one baseline. */}
+                    <div className="mt-auto pt-4">
+                      <button
+                        onClick={() => handlePurchase(pack)}
+                        disabled={isPurchasing}
+                        className={`w-full rounded-lg py-2.5 text-sm font-semibold transition-all disabled:cursor-not-allowed disabled:opacity-50 ${
+                          isPopular
+                            ? 'bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600'
+                            : 'border border-purple-500/30 bg-purple-500/20 text-purple-200 hover:bg-purple-500/30'
+                        }`}
+                      >
+                        {isPurchasing ? (
+                          <span className="flex items-center justify-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            Processing…
+                          </span>
+                        ) : (
+                          <span>Buy {pack.name}</span>
+                        )}
+                      </button>
                     </div>
-
-                    {/* Features */}
-                    <ul className="space-y-2 mb-4">
-                      <li className="flex items-start gap-2 text-sm text-slate-300">
-                        <Check className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                        <span>Credits added to your account instantly</span>
-                      </li>
-                      <li className="flex items-start gap-2 text-sm text-slate-300">
-                        <Check className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                        <span>Valid for 30 days from purchase</span>
-                      </li>
-                      <li className="flex items-start gap-2 text-sm text-slate-300">
-                        <Check className="w-4 h-4 text-purple-400 flex-shrink-0 mt-0.5" />
-                        <span>Buy another pack any time</span>
-                      </li>
-                    </ul>
-
-                    {/* Purchase Button */}
-                    <button
-                      onClick={() => handlePurchase(pack)}
-                      disabled={isPurchasing}
-                      className={`w-full py-3 rounded-lg font-medium transition-all flex items-center justify-center gap-2 ${
-                        isPopular
-                          ? 'bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white'
-                          : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-300 border border-purple-500/30'
-                      } disabled:opacity-50 disabled:cursor-not-allowed`}
-                    >
-                      {isPurchasing ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          <span>Processing...</span>
-                        </>
-                      ) : (
-                        <span>Buy {pack.name}</span>
-                      )}
-                    </button>
                   </div>
                 );
               })}
             </div>
           )}
 
-          {/* Info */}
-          <div className="mt-6 p-4 rounded-xl bg-purple-500/10 border border-purple-500/20">
-            <div className="flex items-start gap-3">
-              <div className="p-1.5 rounded-full bg-purple-500/20">
-                <Sparkles className="w-4 h-4 text-purple-400" />
-              </div>
-              <div className="text-sm text-slate-300">
-                <div className="font-medium mb-1">How credits work:</div>
-                <ul className="space-y-1 text-slate-400 text-xs">
-                  <li>• Credits are valid for 30 days from your purchase</li>
-                  <li>• Buying another pack resets the 30-day clock on your whole balance</li>
-                  <li>• Run out early? Just buy another pack — no subscription needed</li>
-                  <li>• Instant delivery after payment confirmation</li>
-                </ul>
-              </div>
+          {/* Shared benefits: shown once instead of repeated inside every card. */}
+          <div className="mt-5 rounded-xl border border-purple-500/20 bg-purple-500/10 p-4">
+            <div className="flex items-center gap-2 text-sm font-medium text-white">
+              <Sparkles className="h-4 w-4 text-purple-400" />
+              Every pack includes
             </div>
+            <ul className="mt-2 grid gap-x-6 gap-y-1.5 text-xs text-slate-400 sm:grid-cols-2">
+              <li className="flex items-center gap-2">
+                <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                Credits added instantly after payment
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                Valid for 30 days from purchase
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                Buying again resets the 30-day clock
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                No subscription required
+              </li>
+            </ul>
           </div>
         </div>
       </div>
