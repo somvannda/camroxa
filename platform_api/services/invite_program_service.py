@@ -13,11 +13,13 @@ import json
 import logging
 import secrets
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Protocol
 
 from platform_api.exceptions import ValidationError
 from platform_api.repositories.credit_repo import CreditRepository, MAX_WALLET_BALANCE
 from platform_api.services.credit_units import credits_to_units
+from platform_api.services.v3.store import V3BillingStore
 
 logger = logging.getLogger(__name__)
 
@@ -284,16 +286,25 @@ async def _grant_reward(
         logger.warning("invite reward skipped (wallet full) user=%s invite=%s", user_id, invite_id)
         return
     repo = CreditRepository(pool=db)
+    ref_id = f"invite:{invite_id}:{side}"
     await repo.add_credits(
         user_id=user_id,
         amount=units,
         reason="invite_reward",
-        ref_id=f"invite:{invite_id}:{side}",
+        ref_id=ref_id,
         metadata={
             "invite_id": str(invite_id),
             "reward_credits": reward_credits,
             "side": side,
         },
+    )
+    # Universal wallet credits, but on the same 30-day term as pack credits.
+    # The stable ref_id makes the lot idempotent across payment retries.
+    await V3BillingStore(pool=db).insert_referral_lot_if_absent(
+        user_id=user_id,
+        amount_units=units,
+        expires_at=datetime.now(timezone.utc) + timedelta(days=30),
+        ref_id=ref_id,
     )
 
 
