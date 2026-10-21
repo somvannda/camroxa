@@ -1766,33 +1766,32 @@ export default function CreatePageClient() {
                 />
               </div>
             </MusicCollapsibleSection>
-
-            <div className="overflow-hidden rounded-[7px] border border-white/10 bg-[rgba(12,14,28,0.72)]">
-              <label className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
-                <Music2 className="h-4 w-4 text-violet-200" />
-                <input
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="Song Title (Optional)"
-                  className={`w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500 ${khmerTextClass(title)}`}
-                />
-              </label>
-              <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-slate-300">
-                <span className="inline-flex items-center gap-2">
-                  <FolderOpen className="h-4 w-4 text-slate-500" />
-                  Save to...
-                </span>
-                <MusicSelect
-                  value={activeWorkspaceId ?? ''}
-                  onValueChange={setActiveWorkspaceId}
-                  options={workspaceOptions}
-                  placeholder="Select workspace"
-                  className="h-9 max-w-[11rem] text-xs"
-                />
-              </div>
-            </div>
           </div>
         )}
+        <div className="mt-3 overflow-hidden rounded-[7px] border border-white/10 bg-[rgba(12,14,28,0.72)]">
+          <label className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
+            <Music2 className="h-4 w-4 text-violet-200" />
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Song Title (Optional)"
+              className={`w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500 ${khmerTextClass(title)}`}
+            />
+          </label>
+          <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-slate-300">
+            <span className="inline-flex items-center gap-2">
+              <FolderOpen className="h-4 w-4 text-slate-500" />
+              Save to...
+            </span>
+            <MusicSelect
+              value={activeWorkspaceId ?? ''}
+              onValueChange={setActiveWorkspaceId}
+              options={workspaceOptions}
+              placeholder="Select workspace"
+              className="h-9 max-w-[11rem] text-xs"
+            />
+          </div>
+        </div>
         </div>
 
         <MusicFloatingActionBar>
