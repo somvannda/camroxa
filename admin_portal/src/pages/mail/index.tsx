@@ -15,6 +15,13 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/http-client';
 
@@ -271,8 +278,8 @@ export default function MailPage() {
     queryKey: ['mail', 'templates'],
     queryFn: async () =>
       (await apiClient.get<{ rows: Template[] }>('/api/v3/mail/templates')).data,
-    // Needed by the campaign builder as well as the templates tab.
-    enabled: tab === 'templates' || tab === 'campaigns',
+    // Always fetched: the campaign and journey builders both need it, and tying
+    // it to the active tab left those pickers empty.
   });
 
   const automations = useQuery({
@@ -475,20 +482,20 @@ export default function MailPage() {
                   value={campaignName}
                   onChange={(event) => setCampaignName(event.target.value)}
                 />
-                <select
-                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                  value={campaignTemplate}
-                  onChange={(event) => setCampaignTemplate(event.target.value)}
-                >
-                  <option value="">Select a template</option>
-                  {(templates.data?.rows ?? [])
-                    .filter((row) => row.is_active)
-                    .map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {row.name}
-                      </option>
-                    ))}
-                </select>
+                <Select value={campaignTemplate} onValueChange={setCampaignTemplate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(templates.data?.rows ?? [])
+                      .filter((row) => row.is_active)
+                      .map((row) => (
+                        <SelectItem key={row.id} value={row.id}>
+                          {row.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex flex-wrap gap-2">
@@ -651,38 +658,42 @@ export default function MailPage() {
                   value={journeyName}
                   onChange={(event) => setJourneyName(event.target.value)}
                 />
-                <select
-                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
-                  value={journeyTemplate}
-                  onChange={(event) => setJourneyTemplate(event.target.value)}
-                >
-                  <option value="">Select a template</option>
-                  {(templates.data?.rows ?? [])
-                    .filter((row) => row.is_active && row.send_mode !== 'manual')
-                    .map((row) => (
-                      <option key={row.id} value={row.id}>
-                        {row.name}
-                      </option>
-                    ))}
-                </select>
+                <Select value={journeyTemplate} onValueChange={setJourneyTemplate}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a template" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(templates.data?.rows ?? [])
+                      .filter((row) => row.is_active && row.send_mode !== 'manual')
+                      .map((row) => (
+                        <SelectItem key={row.id} value={row.id}>
+                          {row.name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
-                <select
-                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                <Select
                   value={journeyTrigger}
-                  onChange={(event) => {
-                    setJourneyTrigger(event.target.value);
+                  onValueChange={(value) => {
+                    setJourneyTrigger(value);
                     setJourneyParam('');
                     setJourneyCooldown('');
                   }}
                 >
-                  {(triggersQuery.data?.triggers ?? []).map((trigger) => (
-                    <option key={trigger.key} value={trigger.key}>
-                      {trigger.label}
-                    </option>
-                  ))}
-                </select>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Trigger" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(triggersQuery.data?.triggers ?? []).map((trigger) => (
+                      <SelectItem key={trigger.key} value={trigger.key}>
+                        {trigger.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   type="number"
                   placeholder={
