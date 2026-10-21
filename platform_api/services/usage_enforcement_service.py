@@ -370,6 +370,7 @@ class UsageEnforcementService:
         operation_type: str,
         *,
         ref_id: str | None = None,
+        model: str | None = None,
     ) -> int:
         from platform_api.services.v3.generate_charge import map_v1_op_to_v3
 
@@ -392,6 +393,7 @@ class UsageEnforcementService:
             op=op,
             ref_id=ref_id,
             product=product,
+            model=model,
         )
         return int(result.get("amount_units") or 0)
 
@@ -431,7 +433,9 @@ class UsageEnforcementService:
         """
         if await self._v3_op_if_enabled(operation_type) is not None:
             await self.enforce_fail_absorb_budget(user_id)
-            return await self._charge_via_v3(user_id, operation_type)
+            return await self._charge_via_v3(
+                user_id, operation_type, model=sub_model
+            )
 
         # Step 1: Get pricing
         pricing_entry = await lookup_pricing_entry(
@@ -1376,7 +1380,9 @@ class UsageEnforcementService:
         """
         v3_op = await self._v3_op_if_enabled(operation_type)
         if v3_op is not None:
-            held = await self._charge_via_v3(user_id, operation_type)
+            held = await self._charge_via_v3(
+                user_id, operation_type, model=sub_model
+            )
             return OperationHold(
                 held_units=held,
                 plan_covered=False,
@@ -1552,7 +1558,9 @@ class UsageEnforcementService:
         """Deduct credits and increment usage for the provider that actually served the request."""
         if await self._v3_op_if_enabled(operation_type) is not None:
             await self.enforce_fail_absorb_budget(user_id)
-            return await self._charge_via_v3(user_id, operation_type)
+            return await self._charge_via_v3(
+                user_id, operation_type, model=sub_model
+            )
 
         pricing_entry = await lookup_pricing_entry(
             self._pricing_repo, ai_service, operation_type, sub_model

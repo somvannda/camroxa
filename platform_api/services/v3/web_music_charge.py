@@ -118,7 +118,7 @@ class WebMusicChargeBridge:
             user_id, model, allow_free_preview=allow_free_preview
         )
 
-        return await self._charge_v3(user_id, op, amount, ref_id=ref_id)
+        return await self._charge_v3(user_id, op, amount, ref_id=ref_id, model=model)
 
     async def _enforce_free_model_scope(
         self,
@@ -217,10 +217,15 @@ class WebMusicChargeBridge:
         amount: int,
         *,
         ref_id: str | None,
+        model: str | None = None,
     ) -> WebMusicCharge:
         try:
             await self._billing.charge(
-                user_id=user_id, op=op, ref_id=ref_id, product="web_music"
+                user_id=user_id,
+                op=op,
+                ref_id=ref_id,
+                product="web_music",
+                model=model,
             )
         except InsufficientCreditsError as exc:
             details = getattr(exc, "details", None) or {}

@@ -106,6 +106,25 @@ def _user_short(user_id: Any) -> str:
     return text[:8] if text else "—"
 
 
+def _model_label(model: Any) -> str:
+    """Map the stored Suno model id to the label users see in the app."""
+    key = (
+        str(model or "")
+        .strip()
+        .upper()
+        .replace("-", "_")
+        .replace(".", "_")
+    )
+    labels = {
+        "V6": "v6 pro",
+        "V6_WILD": "v6 wild",
+        "V6_MINI": "v6 mini",
+        "V5_5": "v5.5",
+        "V5": "v5",
+    }
+    return labels.get(key, key.lower().replace("_", " "))
+
+
 def format_ops_message(
     *,
     kind: str,
@@ -114,6 +133,7 @@ def format_ops_message(
     email: str | None = None,
     display_name: str | None = None,
     activity: str | None = None,
+    model: str | None = None,
     credits_label: str | None = None,
     pool: str | None = None,
     reason: str | None = None,
@@ -151,6 +171,8 @@ def format_ops_message(
         lines.append(f"status: <b>{_esc(status)}</b>")
     if activity:
         lines.append(f"activity: <b>{_esc(activity)}</b>")
+    if model:
+        lines.append(f"model: <b>{_esc(_model_label(model))}</b>")
     if credits_label:
         lines.append(f"credits: {_esc(credits_label)}")
     if pool:
@@ -757,17 +779,20 @@ def notify_wallet_spend(
     ref_id: Any | None = None,
     metadata: dict[str, Any] | None = None,
     new_balance_units: int | None = None,
+    pool: str = "studio wallet",
 ) -> None:
     credits = format_display_credits(units_to_credits(int(amount_units)))
     if new_balance_units is not None:
         credits = f"{credits} (balance {format_display_credits(units_to_credits(int(new_balance_units)))})"
     extra = [f"ref: {_esc(ref_id)}"] if ref_id else None
+    model = metadata.get("model") if metadata else None
     _schedule_enriched(
         "spend",
         user_id=user_id,
         activity=classify_activity(reason, metadata),
+        model=str(model) if model else None,
         credits_label=credits,
-        pool="studio wallet",
+        pool=pool,
         reason=reason,
         extra_lines=extra,
     )
@@ -1018,13 +1043,16 @@ def _patch_wallet_credits() -> None:
             reason = kwargs.get("reason", args[2] if len(args) > 2 else "")
             ref_id = kwargs.get("ref_id", args[3] if len(args) > 3 else None)
             metadata = kwargs.get("metadata")
+            meta = metadata if isinstance(metadata, dict) else None
+            product = str((meta or {}).get("product") or "")
             if result and user_id is not None and amount is not None:
                 notify_wallet_spend(
                     user_id=user_id,
                     amount_units=int(amount),
                     reason=str(reason or ""),
                     ref_id=ref_id,
-                    metadata=metadata if isinstance(metadata, dict) else None,
+                    metadata=meta,
+                    pool="web music" if product == "web_music" else "studio wallet",
                 )
             return result
 

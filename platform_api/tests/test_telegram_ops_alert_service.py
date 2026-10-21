@@ -106,6 +106,27 @@ def test_format_spend_highlights_free_status() -> None:
     assert "activity: <b>music</b>" in text
 
 
+def test_format_spend_shows_model_version() -> None:
+    text = format_ops_message(
+        kind="spend",
+        env_label="Production",
+        account_status="FREE",
+        activity="music",
+        model="V6_WILD",
+        credits_label="10",
+        pool="web music",
+        reason="v3_music",
+        user_id="abc",
+    )
+    assert "model: <b>v6 wild</b>" in text
+    assert "pool: web music" in text
+
+    from platform_api.services.telegram_ops_alert_service import _model_label
+
+    assert _model_label("V6") == "v6 pro"
+    assert _model_label("V6_MINI") == "v6 mini"
+
+
 @pytest.mark.asyncio
 async def test_send_html_noops_when_not_configured() -> None:
     client = AsyncMock()

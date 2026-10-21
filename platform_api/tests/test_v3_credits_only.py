@@ -437,8 +437,11 @@ async def test_charge_and_refund_change_shared_wallet(
 async def test_charge_records_product_metadata(
     billing: CreditsOnlyBillingService, wallet: FakeWallet
 ) -> None:
-    await billing.charge(user_id=USER_ID, op="lyric", product="web_music")
+    await billing.charge(
+        user_id=USER_ID, op="lyric", product="web_music", model="V6_WILD"
+    )
     assert wallet.txs[-1]["metadata"]["product"] == "web_music"
+    assert wallet.txs[-1]["metadata"]["model"] == "V6_WILD"
 
     await billing.refund(user_id=USER_ID, op="lyric", product="web_music")
     assert wallet.txs[-1]["metadata"]["product"] == "web_music"
