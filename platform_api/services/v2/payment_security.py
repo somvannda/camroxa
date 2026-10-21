@@ -45,6 +45,18 @@ def require_cutluy_checkout_url(url: str | None) -> str:
     return value
 
 
+def _is_allowed_chmaba_host(host: str | None, api_base_url: str | None = None) -> bool:
+    host = (host or "").lower()
+    if not host:
+        return False
+    if host == "chmaba.com" or host.endswith(".chmaba.com"):
+        return True
+    # A self-hosted or staging gateway is trusted only when it is the host the
+    # admin configured as the API base, never one echoed back by the provider.
+    base_host = (urlparse(str(api_base_url or "").strip()).hostname or "").lower()
+    return bool(base_host) and host == base_host
+
+
 def is_allowed_chmaba_checkout_url(
     url: str | None,
     *,
@@ -54,15 +66,7 @@ def is_allowed_chmaba_checkout_url(
     parsed = urlparse(str(url or "").strip())
     if parsed.scheme != "https" or parsed.username or parsed.password:
         return False
-    host = (parsed.hostname or "").lower()
-    if not host:
-        return False
-    if host == "chmaba.com" or host.endswith(".chmaba.com"):
-        return True
-    # A self-hosted or staging gateway is trusted only when it is the host the
-    # admin configured as the API base, never one echoed back by the provider.
-    base_host = (urlparse(str(api_base_url or "").strip()).hostname or "").lower()
-    return bool(base_host) and host == base_host
+    return _is_allowed_chmaba_host(parsed.hostname, api_base_url)
 
 
 def require_chmaba_checkout_url(
@@ -100,6 +104,22 @@ def resolve_chmaba_checkout_url(
         raise ValueError("Payment provider returned an invalid checkout URL")
     if value.startswith("/") and not value.startswith("//"):
         value = f"{str(api_base_url or '').rstrip('/')}{value}"
+
+    # ChmabaPay answers with `http://pay.chmaba.com/pay/{id}` (verified against
+    # musicapi's stored payments). Serving that from an HTTPS page would be
+    # blocked as mixed content, and we would be shipping the payer a plaintext
+    # payment page, so upgrade the scheme before validating the host.
+    parsed = urlparse(value)
+    if (
+        parsed.scheme == "http"
+        and not parsed.username
+        and not parsed.password
+        and _is_allowed_chmaba_host(parsed.hostname, api_base_url)
+    ):
+        value = urlunparse(
+            ("https", parsed.netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+        )
+
     return require_chmaba_checkout_url(value, api_base_url=api_base_url)
 
 

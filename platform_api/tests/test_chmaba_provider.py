@@ -237,7 +237,7 @@ async def test_chmaba_create_uses_api_v1_path_and_omits_redirect_urls(monkeypatc
 
     class _Resp:
         status_code = 201
-        text = '{"id":"pay_1","status":"pending","checkout_url":"/pay/pay_1","qr_string":"00020101021229300012D156000000000510A93FO3230Q31280012","expires_at":"2026-10-21T09:00:00Z"}'
+        text = '{"id":"pay_1","status":"pending","checkout_url":"http://pay.chmaba.com/pay/pay_1","qr_string":"00020101021229300012D156000000000510A93FO3230Q31280012","expires_at":"2026-10-21T09:00:00Z"}'
 
         def json(self):
             import json
@@ -302,9 +302,17 @@ def test_chmaba_relative_checkout_url_resolution() -> None:
         )
         == "https://pay.chmaba.com/pay/abc"
     )
+    # The provider's real answer is plain http; it must be upgraded, not rejected.
+    assert (
+        resolve_chmaba_checkout_url(
+            "http://pay.chmaba.com/pay/abc", api_base_url="https://pay.chmaba.com"
+        )
+        == "https://pay.chmaba.com/pay/abc"
+    )
     for bad in (
         "//evil.example/pay/abc",
-        "http://pay.chmaba.com/pay/abc",
+        "http://api:8000/pay/abc",
+        "http://evil.example/pay/abc",
         "https://evil.example/pay/abc",
         "",
     ):
