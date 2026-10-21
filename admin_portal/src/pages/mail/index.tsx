@@ -177,11 +177,58 @@ export default function MailPage() {
     enabled: tab === 'campaigns',
   });
 
+  const segmentsQuery = useQuery({
+    queryKey: ['mail', 'segments'],
+    queryFn: async () =>
+      (
+        await apiClient.get<{
+          presets: Array<{ key: string; label: string; count: number }>;
+          cooldownDays: number;
+        }>('/api/v3/mail/segments')
+      ).data,
+    enabled: tab === 'campaigns',
+  });
+
+  const [campaignName, setCampaignName] = useState('');
+  const [campaignTemplate, setCampaignTemplate] = useState('');
+  const [audience, setAudience] = useState({
+    lifecycle: '',
+    spendTier: '',
+    excludeRecentPayers: false,
+  });
+
+  const createCampaign = useMutation({
+    mutationFn: async () =>
+      (
+        await apiClient.post('/api/v3/mail/campaigns', {
+          name: campaignName.trim(),
+          templateId: campaignTemplate,
+          audience: {
+            lifecycle: audience.lifecycle || null,
+            spendTier: audience.spendTier || null,
+            excludeRecentPayers: audience.excludeRecentPayers,
+          },
+        })
+      ).data,
+    onSuccess: () => {
+      toast({
+        title: 'Draft created',
+        description: 'Press Test to review it, then Send.',
+      });
+      setCampaignName('');
+      setCampaignTemplate('');
+      void queryClient.invalidateQueries({ queryKey: ['mail', 'campaigns'] });
+    },
+    onError: (error) =>
+      toast({ title: 'Create failed', description: String(error), variant: 'destructive' }),
+  });
+
   const templates = useQuery({
     queryKey: ['mail', 'templates'],
     queryFn: async () =>
       (await apiClient.get<{ rows: Template[] }>('/api/v3/mail/templates')).data,
-    enabled: tab === 'templates',
+    // Needed by the campaign builder as well as the templates tab.
+    enabled: tab === 'templates' || tab === 'campaigns',
   });
 
   const automations = useQuery({
@@ -375,7 +422,81 @@ export default function MailPage() {
           <CardHeader>
             <CardTitle>Campaigns</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent className="space-y-4 overflow-x-auto">
+            <div className="space-y-3 rounded-lg border border-border p-4">
+              <div className="text-sm font-semibold">New campaign</div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  placeholder="Campaign name"
+                  value={campaignName}
+                  onChange={(event) => setCampaignName(event.target.value)}
+                />
+                <select
+                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                  value={campaignTemplate}
+                  onChange={(event) => setCampaignTemplate(event.target.value)}
+                >
+                  <option value="">Select a template</option>
+                  {(templates.data?.rows ?? [])
+                    .filter((row) => row.is_active)
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                {(segmentsQuery.data?.presets ?? []).map((preset) => {
+                  const [presetLifecycle = '', presetSpendTier = ''] = preset.key.split('-');
+                  const active =
+                    audience.lifecycle === presetLifecycle &&
+                    audience.spendTier === presetSpendTier;
+                  return (
+                    <Button
+                      key={preset.key}
+                      size="sm"
+                      variant={active ? 'default' : 'outline'}
+                      onClick={() =>
+                        setAudience((prev) => ({
+                          ...prev,
+                          lifecycle: presetLifecycle,
+                          spendTier: presetSpendTier,
+                        }))
+                      }
+                    >
+                      {preset.label}
+                      <span className="ml-2 font-semibold">{preset.count}</span>
+                    </Button>
+                  );
+                })}
+              </div>
+
+              <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  className="mt-0.5"
+                  checked={audience.excludeRecentPayers}
+                  onChange={(event) =>
+                    setAudience({ ...audience, excludeRecentPayers: event.target.checked })
+                  }
+                />
+                <span>
+                  Exclude anyone who paid in the last 14 days — keep this on for discount mail.
+                </span>
+              </label>
+
+              <Button
+                disabled={
+                  createCampaign.isPending || !campaignName.trim() || !campaignTemplate
+                }
+                onClick={() => createCampaign.mutate()}
+              >
+                {createCampaign.isPending ? 'Creating…' : 'Create draft'}
+              </Button>
+            </div>
+
             {(campaigns.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No campaigns yet. Create one from the mail templates you want to send.
