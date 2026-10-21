@@ -60,6 +60,9 @@ const CREDIT_GATE_DEFAULTS = { ...config.creditGate };
 /** Boot-time flow-guard default, captured before any stored override. */
 const FLOW_GUARD_DEFAULTS = { ...config.flowGuard };
 
+/** Boot-time free monthly allowance defaults, captured before any stored override. */
+const FREE_MONTHLY_DEFAULTS = { ...config.freeMonthly };
+
 /** Every key that can be managed from the admin console. */
 export const INTEGRATION_GROUPS: GroupDef[] = [
   {
@@ -183,6 +186,44 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         env: "USER_MIN_CREDITS",
         def: CREDIT_GATE_DEFAULTS.minCredits,
         help: "A customer must hold at least this many credits to run free (0-cost) generation endpoints. The credits are not spent — free stays free for paying customers — but a drained account cannot use them. Paid endpoints are unaffected; 0 disables the gate.",
+      },
+    ],
+  },
+  {
+    key: "freeMonthly",
+    label: "Free monthly (V6-Mini)",
+    fields: [
+      {
+        key: "enabled",
+        label: "Enable the monthly free allowance",
+        type: "boolean",
+        env: "FREE_MONTHLY_ENABLED",
+        def: FREE_MONTHLY_DEFAULTS.enabled,
+        help: "Grants every user a monthly credit allowance that can only be spent on the free model below. It is not a wallet balance and never pays for V6 or V6-WILD; purchased pack credits stay separate and universal.",
+      },
+      {
+        key: "model",
+        label: "Free model key",
+        type: "string",
+        env: "FREE_MONTHLY_MODEL",
+        def: FREE_MONTHLY_DEFAULTS.model,
+        help: "Suno model the allowance can pay for, default chirp-goose (V6-Mini). Only music generation is eligible; sounds and derivatives are unaffected.",
+      },
+      {
+        key: "credits",
+        label: "Monthly allowance (credits)",
+        type: "number",
+        env: "FREE_MONTHLY_CREDITS",
+        def: FREE_MONTHLY_DEFAULTS.credits,
+        help: "Credits granted per user each calendar month (UTC, resets on the 1st, unused expires). At the default V6-Mini price of 10, 50 credits = 5 free tracks per month. A credit-pack purchase in the same month unlocks the remainder for V6 and V6-WILD; next month resets to V6-Mini-only. 0 disables the grant.",
+      },
+      {
+        key: "allowPaidFallback",
+        label: "Allow paid-account fallback",
+        type: "boolean",
+        env: "FREE_MONTHLY_ALLOW_PAID_FALLBACK",
+        def: FREE_MONTHLY_DEFAULTS.allowPaidFallback,
+        help: "Off: V6-Mini runs on free Suno accounts only (even when purchased credits pay for it) and fails if none is available. On: it still prefers free accounts but falls back to a paid one, so a dead free pool does not block users. Paid fallback spends paid Suno credits.",
       },
     ],
   },
@@ -457,6 +498,21 @@ function applyToConfig(): void {
   config.creditGate.minCredits = Math.max(
     0,
     num("creditGate", "minCredits", CREDIT_GATE_DEFAULTS.minCredits),
+  );
+
+  // Free monthly allowance (see the `freeMonthly` block in src/config.ts).
+  // Applied on every save; the allowance helpers read it live.
+  config.freeMonthly.enabled = bool("freeMonthly", "enabled", FREE_MONTHLY_DEFAULTS.enabled);
+  config.freeMonthly.model =
+    str("freeMonthly", "model", FREE_MONTHLY_DEFAULTS.model).trim() || FREE_MONTHLY_DEFAULTS.model;
+  config.freeMonthly.credits = Math.max(
+    0,
+    num("freeMonthly", "credits", FREE_MONTHLY_DEFAULTS.credits),
+  );
+  config.freeMonthly.allowPaidFallback = bool(
+    "freeMonthly",
+    "allowPaidFallback",
+    FREE_MONTHLY_DEFAULTS.allowPaidFallback,
   );
 
   // Generation flow guard (see the `flowGuard` block in src/config.ts). Applied

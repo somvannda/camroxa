@@ -13,7 +13,7 @@ interface Endpoint {
 
 const MODELS: Array<{ label: string; key: string; tagline: string }> = [
   { label: "V6", key: "chirp-hawk", tagline: "Powerful. Versatile. Refined. Our best model yet — the default for every generation." },
-  { label: "V6-Mini", key: "chirp-goose", tagline: "A free, more efficient version of the premium v6 models." },
+  { label: "V6-Mini", key: "chirp-goose", tagline: "Covered by the free monthly allowance — a more efficient version of the premium v6 models." },
   { label: "V6-Wild", key: "chirp-hawk-wild", tagline: "Best for experimental ideas." },
 ];
 
@@ -877,6 +877,7 @@ curl -X POST "https://musicapi.camxora.com/api/v1/generate" \\
                 </thead>
                 <tbody>
                   {[
+                    ["Generate music with V6-Mini (chirp-goose) — covered by the 50-credit monthly allowance", "10"],
                     ["Generate, extend, cover, remaster, mashup, add vocals/instrumental, upload cover/extend, recovery audio, voice generate/apply/extend", "10"],
                     ["Split stems — 12-track (vocal-removal type split_stem)", "20"],
                     ["Advanced split stem", "12"],
@@ -896,6 +897,12 @@ curl -X POST "https://musicapi.camxora.com/api/v1/generate" \\
               </table>
             </div>
             <p className="mt-3 text-xs text-[var(--muted)]">
+              Free monthly allowance: every account gets 50 credits each calendar month (UTC — resets on the 1st,
+              unused credits expire) that can only be spent on V6-Mini. After a credit-pack purchase in the same
+              month, the remaining monthly credits become universal and can also be spent on V6 and V6-WILD; next
+              month starts V6-Mini-only again. Pack credits are universal and work on every model.
+            </p>
+            <p className="mt-2 text-xs text-[var(--muted)]">
               Credits are charged when a job is accepted and automatically refunded if the job fails. Your live balance is
               authoritative at <code className="rounded bg-white/10 px-1.5 py-0.5">GET /v1/credits</code>.
             </p>
@@ -918,13 +925,13 @@ curl -X POST "https://musicapi.camxora.com/api/v1/generate" \\
                     ["202", "Accepted", "Native /v1 async create — poll /v1/task/:id."],
                     ["400", "Bad request", "Missing or invalid parameter."],
                     ["401", "Unauthorized", "Missing or invalid API key."],
-                    ["402", "Insufficient credits", "Native /v1 and /me. On /api/v1 this is returned as 429."],
+                    ["402", "Insufficient credits", "Native /v1 and /me. Body carries code: \"credit_pack_required\", allowance_remaining and upgrade_url. On /api/v1 this is returned as 429."],
                     ["403", "Forbidden", "API-key IP not allowed, cross-origin request blocked, or account suspended."],
                     ["404", "Not found", "Unknown task id, clip id, or route."],
                     ["409", "Conflict", "Duplicate resource."],
                     ["413", "Payload too large", "Request body exceeds 50 MB."],
                     ["415", "Unsupported media type", "Send Content-Type: application/json on POST/PUT."],
-                    ["429", "Too many requests", "Rate limited (native + per-key). On /api/v1 it also signals insufficient credits, matching sunoapi.org."],
+                    ["429", "Too many requests", "Rate limited. On /api/v1 it also signals insufficient credits, matching sunoapi.org."],
                     ["5xx", "Server error", "Transient — retry with backoff."],
                   ].map(([code, meaning, note]) => (
                     <tr key={code} className="border-t border-[var(--border)] align-top">
