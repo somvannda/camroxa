@@ -7,7 +7,7 @@ process.env.JWT_SECRET ??= "unit-test-jwt-secret-0123456789abcdef0123456789";
 process.env.COOKIE_ENCRYPTION_KEY ??=
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-const { orderByLoad, orderForDispatch, belowCreditFloor, matchesPolicy } = await import("../src/pool.js");
+const { orderByLoad, orderForDispatch, belowCreditFloor } = await import("../src/pool.js");
 
 type Client = { account: { id: string; type?: string } };
 
@@ -49,23 +49,6 @@ test("belowCreditFloor never treats an empty account as usable", () => {
   // A floor of 0 (legacy setting) must still exclude exactly-empty accounts.
   assert.equal(belowCreditFloor(0, 0), true);
   assert.equal(belowCreditFloor(1, 0), false);
-});
-
-test("matchesPolicy enforces free_only and paid_only as hard restrictions", () => {
-  assert.equal(matchesPolicy("free", "free_only"), true);
-  assert.equal(matchesPolicy("paid", "free_only"), false);
-  // A missing type is treated as free, matching every other pool call site.
-  assert.equal(matchesPolicy(undefined, "free_only"), true);
-
-  assert.equal(matchesPolicy("paid", "paid_only"), true);
-  assert.equal(matchesPolicy("free", "paid_only"), false);
-  assert.equal(matchesPolicy(undefined, "paid_only"), false);
-
-  // Soft policies admit both kinds; prefer_free only changes ordering.
-  for (const policy of ["any", "prefer_free"] as const) {
-    assert.equal(matchesPolicy("free", policy), true);
-    assert.equal(matchesPolicy("paid", policy), true);
-  }
 });
 
 const ids = (ordered: Client[]): string[] => ordered.map((c) => c.account.id);

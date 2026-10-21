@@ -37,35 +37,6 @@ export interface ApiFetchOptions {
   allowUnauthenticated?: boolean;
 }
 
-/**
- * A non-2xx API response. Carries the machine-readable fields the UI needs for
- * targeted prompts (e.g. `credit_pack_required` → show the buy-credits CTA)
- * while staying an `Error`, so existing `instanceof Error` handling works.
- */
-export class ApiError extends Error {
-  readonly status: number;
-  readonly code?: string;
-  readonly upgradeUrl?: string;
-  readonly requiredCredits?: number | null;
-
-  constructor(
-    message: string,
-    status: number,
-    body: {
-      code?: string;
-      upgrade_url?: string;
-      required_credits?: number | null;
-    } = {},
-  ) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = body.code;
-    this.upgradeUrl = body.upgrade_url;
-    this.requiredCredits = body.required_credits ?? null;
-  }
-}
-
 export async function apiFetch<T>(
   path: string,
   init: RequestInit = {},
@@ -90,13 +61,8 @@ export async function apiFetch<T>(
   }
   if (res.status === 401 && !options.allowUnauthenticated) redirectToLogin();
   if (!res.ok) {
-    const body = (await res.json().catch(() => ({}))) as {
-      error?: string;
-      code?: string;
-      upgrade_url?: string;
-      required_credits?: number | null;
-    };
-    throw new ApiError(body.error ?? `Request failed (${res.status})`, res.status, body);
+    const body = (await res.json().catch(() => ({}))) as { error?: string };
+    throw new Error(body.error ?? `Request failed (${res.status})`);
   }
   return res.json() as Promise<T>;
 }
