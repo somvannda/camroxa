@@ -229,7 +229,7 @@ export default function PricingPageClient() {
 
           {/* FAQ / Info */}
           <div className="max-w-3xl mx-auto mt-16 text-center text-gray-400 text-sm space-y-2">
-            <p>All purchases are securely processed via CutLuy</p>
+            <p>All purchases are securely processed via KHQR</p>
             <p>Credits are valid for 30 days from your last purchase — buying again extends them</p>
             <p>No subscription • No auto-renewal • Buy only when you need credits</p>
           </div>

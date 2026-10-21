@@ -195,6 +195,17 @@ class Settings(BaseSettings):
     # Signing secret from CutLuy Dashboard → Webhooks (distinct from ck_live_…).
     cutluy_webhook_secret: str = ""
 
+    # --- Billing / ChmabaPay ---
+    # ChmabaPay (https://pay.chmaba.com) — KHQR / ABA PayWay. There is no
+    # sandbox: every `ck_live_…` key moves real money. Checkout stays disabled
+    # until `api_key` + `store_id` are set (Admin → Settings → Payment, or the
+    # PLATFORM_CHMABA_* environment variables).
+    chmaba_api_base_url: str = "https://pay.chmaba.com"
+    chmaba_api_key: str = ""
+    chmaba_store_id: str = ""
+    # `whsec_…` used to verify `X-ChmabaPay-Signature` (t=…,v1=… HMAC-SHA256).
+    chmaba_webhook_secret: str = ""
+
     # --- Ops Telegram activity feed ---
     # Empty token/chat_id = disabled. PLATFORM_TELEGRAM_OPS_ENABLED=false
     # kills posts without removing credentials (restart required).

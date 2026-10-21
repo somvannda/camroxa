@@ -42,6 +42,37 @@ def require_cutluy_checkout_url(url: str | None) -> str:
     return value
 
 
+def is_allowed_chmaba_checkout_url(
+    url: str | None,
+    *,
+    api_base_url: str | None = None,
+) -> bool:
+    """Only ChmabaPay HTTPS checkout pages may be returned to the browser."""
+    parsed = urlparse(str(url or "").strip())
+    if parsed.scheme != "https" or parsed.username or parsed.password:
+        return False
+    host = (parsed.hostname or "").lower()
+    if not host:
+        return False
+    if host == "chmaba.com" or host.endswith(".chmaba.com"):
+        return True
+    # A self-hosted or staging gateway is trusted only when it is the host the
+    # admin configured as the API base, never one echoed back by the provider.
+    base_host = (urlparse(str(api_base_url or "").strip()).hostname or "").lower()
+    return bool(base_host) and host == base_host
+
+
+def require_chmaba_checkout_url(
+    url: str | None,
+    *,
+    api_base_url: str | None = None,
+) -> str:
+    value = str(url or "").strip()
+    if not is_allowed_chmaba_checkout_url(value, api_base_url=api_base_url):
+        raise ValueError("Payment provider returned an invalid checkout URL")
+    return value
+
+
 def sanitize_music_web_return_url(
     raw: str | None,
     *,
