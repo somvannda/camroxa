@@ -131,10 +131,17 @@ export default function TopupModal({ isOpen, onClose, headline, message }: Topup
                 const isPurchasing = purchasingPackId === pack.id;
                 // Largest pack has the best credits-per-dollar value.
                 const isPopular = index === packs.length - 1;
-                // `songs_equivalent` counts both versions returned per generation.
-                const generations = Math.max(1, Math.round(pack.songs_equivalent / 2));
-                const perSong = pack.price_cents / generations / 100;
-                const perSongLabel = `$${Number(perSong.toFixed(3))}`;
+                const base = packs[0];
+                const baseRate =
+                  base && base.price_cents > 0
+                    ? base.total_credits / (base.price_cents / 100)
+                    : 0;
+                const packRate =
+                  pack.price_cents > 0 ? pack.total_credits / (pack.price_cents / 100) : 0;
+                const bonusPct =
+                  baseRate > 0 && packRate > 0
+                    ? Math.round((packRate / baseRate - 1) * 100)
+                    : 0;
 
                 return (
                   <div
@@ -192,18 +199,20 @@ export default function TopupModal({ isOpen, onClose, headline, message }: Topup
                     {/* Comparison rows: one label/value per line, identical in every card. */}
                     <dl className="mt-3 space-y-2 text-xs">
                       <div className="flex items-center justify-between gap-2">
-                        <dt className="text-slate-500">Songs</dt>
-                        <dd className="font-medium text-slate-200">{generations.toLocaleString()}</dd>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <dt className="text-slate-500">Versions</dt>
+                        <dt className="text-slate-500">Total songs</dt>
                         <dd className="font-medium text-slate-200">
                           {pack.songs_equivalent.toLocaleString()}
                         </dd>
                       </div>
                       <div className="flex items-center justify-between gap-2">
-                        <dt className="text-slate-500">Per song</dt>
-                        <dd className="font-medium text-slate-200">{perSongLabel}</dd>
+                        <dt className="text-slate-500">Extra value</dt>
+                        <dd
+                          className={`font-semibold ${
+                            bonusPct > 0 ? 'text-emerald-300' : 'text-slate-400'
+                          }`}
+                        >
+                          {bonusPct > 0 ? `+${bonusPct}%` : 'Base'}
+                        </dd>
                       </div>
                       <div className="flex items-center justify-between gap-2">
                         <dt className="text-slate-500">Valid</dt>
