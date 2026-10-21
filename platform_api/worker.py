@@ -370,6 +370,9 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
             signal.signal(sig, lambda *_: _ask_stop())
 
     next_sweep = loop.time() + sweep_interval
+    # Mail tick: drain queued sends and evaluate journeys. Its own cadence, so a
+    # large campaign never slows job pickup.
+    next_mail = loop.time() + 15
 
     while not stop.is_set():
         # Periodic recovery: a hung handler or a dead worker would otherwise
@@ -382,6 +385,21 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
                     logger.warning("Periodic sweep requeued %s stale running job(s).", swept)
             except Exception:
                 logger.exception("Periodic stale-job sweep failed; continuing.")
+
+        if loop.time() >= next_mail:
+            next_mail = loop.time() + 15
+            try:
+                from platform_api.dependencies import get_db_pool
+                from platform_api.services.mail import automations as mail_automations
+                from platform_api.services.mail import mailer as mail_sender
+
+                mail_pool = get_db_pool()
+                sent = await mail_sender.process_queue(mail_pool, 25)
+                triggered = await mail_automations.run_due(mail_pool)
+                if sent or triggered:
+                    logger.info("mail tick: %s sent, %s queued by journeys", sent, triggered)
+            except Exception:
+                logger.exception("Mail tick failed; continuing.")
 
         try:
             job = await queue.claim_next(worker_id=worker_id, job_types=claim_types)
