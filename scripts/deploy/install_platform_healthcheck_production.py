@@ -37,7 +37,10 @@ def main() -> int:
     client = ssh_connect(host, user, ensure_deploy_key(), password)
     try:
         sftp = client.open_sftp()
-        sftp.put(str(DEPLOY / "platform-healthcheck.sh"), SCRIPT_REMOTE)
+        # Upload to /tmp and install by rename: writing straight onto the live
+        # path lets a timer run read a half-written script (seen 2026-10-21,
+        # "syntax error near unexpected token" mid-install).
+        sftp.put(str(DEPLOY / "platform-healthcheck.sh"), "/tmp/camxora-platform-healthcheck.sh")
         sftp.put(
             str(DEPLOY / "systemd" / "camxora-platform-healthcheck.service"),
             "/tmp/camxora-platform-healthcheck.service",
@@ -50,8 +53,9 @@ def main() -> int:
 
         remote = f"""
 set -e
-chown camxora:camxora {SCRIPT_REMOTE}
-chmod 755 {SCRIPT_REMOTE}
+bash -n /tmp/camxora-platform-healthcheck.sh
+install -m 755 -o camxora -g camxora /tmp/camxora-platform-healthcheck.sh {SCRIPT_REMOTE}.new
+mv -f {SCRIPT_REMOTE}.new {SCRIPT_REMOTE}
 install -m 644 /tmp/camxora-platform-healthcheck.service /etc/systemd/system/
 install -m 644 /tmp/camxora-platform-healthcheck.timer /etc/systemd/system/
 systemctl daemon-reload
