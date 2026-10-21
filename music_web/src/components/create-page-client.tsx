@@ -219,7 +219,9 @@ function ClipReadyLabel({
   createdAt?: string | null;
   className?: string;
 }) {
-  const duration = formatDuration(clip.duration_seconds);
+  const duration = formatDuration(
+    clip.is_preview ? clip.preview_seconds ?? 60 : clip.duration_seconds,
+  );
   const status = clip.ready ? 'Ready' : waitingLabel;
   const generatedTime = formatGeneratedTime(createdAt);
 
@@ -229,6 +231,11 @@ function ClipReadyLabel({
         {duration ? `${duration} · ${status}` : status}
         {generating ? ' · Generating…' : ''}
       </span>
+      {clip.is_preview ? (
+        <span className="shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+          Preview
+        </span>
+      ) : null}
       <ModelVersionTag model={model} />
       {generatedTime ? (
         <span className="shrink-0 text-[11px] text-slate-500">· {generatedTime}</span>
@@ -581,13 +588,17 @@ export default function CreatePageClient() {
     setUpgradeMessage(undefined);
   }
 
-  // Free users start on V6 and cannot use it until they buy a pack. Once the
-  // quota says premium is locked, move the selection to V6-Mini.
+  // Free users start on V6 and cannot use a premium model once its preview is
+  // used and no pack is active. Move the selection back to V6-Mini.
   useEffect(() => {
     if (quota?.premium_unlocked !== false) return;
-    setModel((current) =>
-      current === 'V6' || current === 'V6_WILD' ? 'V6_MINI' : current,
-    );
+    setModel((current) => {
+      if (current !== 'V6' && current !== 'V6_WILD') return current;
+      const preview = quota?.previews?.eligible
+        ? quota.previews.models.find((item) => item.model === current)
+        : null;
+      return (preview?.remaining ?? 0) > 0 ? current : 'V6_MINI';
+    });
   }, [quota]);
 
   async function refreshList(workspaceId?: string | null) {
@@ -747,6 +758,22 @@ export default function CreatePageClient() {
     quota && (quota.requires_upgrade || totalCredits < creditsPerSong),
   );
   const canDownload = Boolean(quota?.can_download ?? quota?.has_subscription ?? quota?.is_pro);
+  const previewState = quota?.previews ?? null;
+  const selectedPreview =
+    previewState?.eligible
+      ? previewState.models.find((item) => item.model === String(model).toUpperCase()) ?? null
+      : null;
+  const previewRemaining = selectedPreview?.remaining ?? 0;
+  const previewExhausted = Boolean(selectedPreview && previewRemaining <= 0);
+  const lockedPremiumModels = useMemo(() => {
+    if (quota?.premium_unlocked !== false) return [] as MusicModelId[];
+    return (['V6', 'V6_WILD'] as MusicModelId[]).filter((id) => {
+      const preview = previewState?.eligible
+        ? previewState.models.find((item) => item.model === id)
+        : null;
+      return (preview?.remaining ?? 0) <= 0;
+    });
+  }, [quota?.premium_unlocked, previewState]);
   const workspaceQueue = useMemo(() => workspaceReadyTracks(items), [items]);
 
   const simpleSongOptions = useMemo(
@@ -871,6 +898,7 @@ export default function CreatePageClient() {
 
   function clipSelectableFor(generation: WebMusicGeneration, clip: WebMusicClip): boolean {
     if (!clip.ready) return false;
+    if (generation.is_preview || clip.is_preview) return false;
     if ((batchFormat === 'lrc' || batchFormat === 'srt') && generation.instrumental) return false;
     return true;
   }
@@ -991,6 +1019,30 @@ export default function CreatePageClient() {
     clip: WebMusicClip,
     size: 'sm' | 'md',
   ) {
+    const isPreview = Boolean(generation.is_preview || clip.is_preview);
+    if (isPreview) {
+      return (
+        <>
+          <AddToPlaylistButton
+            taskId={generation.id}
+            variant={clip.variant}
+            disabled={!clip.ready}
+            compact={size === 'sm'}
+          />
+          <button
+            type="button"
+            onClick={() => setShowUpgradeModal(true)}
+            title="Previews are play-only. Buy a credit pack to unlock the full track and downloads."
+            className={`inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-amber-300/30 bg-amber-400/10 font-semibold text-amber-200 transition hover:bg-amber-400/20 ${
+              size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
+            }`}
+          >
+            Extend preview
+          </button>
+        </>
+      );
+    }
+
     const timedTitle = (format: 'lrc' | 'srt') => {
       if (!canDownload) return `Upgrade to download ${format.toUpperCase()}`;
       if (generation.instrumental) return 'Timed lyrics not available for instrumentals';
@@ -1174,7 +1226,7 @@ export default function CreatePageClient() {
   }
 
   async function onCreate() {
-    if (needsUpgrade) {
+    if (needsUpgrade || previewExhausted) {
       setShowUpgradeModal(true);
       return;
     }
@@ -1227,6 +1279,9 @@ export default function CreatePageClient() {
           lyrics,
           style: created.style,
           model,
+          model_label: created.model_label,
+          is_preview: created.is_preview,
+          preview_seconds: created.preview_seconds ?? null,
           instrumental: lyricsMode === 'instrumental',
           status: created.status,
           vocal_gender:
@@ -1247,8 +1302,12 @@ export default function CreatePageClient() {
         .catch(() => undefined);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Create failed';
-      const packBlocked = message.toLowerCase().includes('requires purchased credits');
-      if (message.toLowerCase().includes('insufficient credits') || packBlocked) {
+      const lowered = message.toLowerCase();
+      const packBlocked =
+        lowered.includes('requires purchased credits') ||
+        lowered.includes('preview is used') ||
+        lowered.includes('preview tracks are play-only');
+      if (lowered.includes('insufficient credits') || packBlocked) {
         openPackModal(
           packBlocked ? 'A credit pack is required' : 'You are out of credits',
           packBlocked
@@ -1379,15 +1438,31 @@ export default function CreatePageClient() {
             <MusicModelSelect
               value={model}
               onChange={setModel}
-              allowPremium={quota?.premium_unlocked !== false}
+              lockedModels={lockedPremiumModels}
               onLocked={() =>
                 openPackModal(
-                  'V6-Pro and V6 Wild need a credit pack',
-                  'Your monthly 50 free credits can only be used on V6 Mini. Buy a credit pack to unlock V6-Pro and V6 Wild — the remaining monthly credits then work on every model for the rest of the month.',
+                  'A credit pack is required',
+                  'Your free V6-Pro / V6 Wild preview is used this month. Buy a credit pack to generate full-length tracks and keep using every model.',
                 )
               }
             />
           </div>
+
+          {selectedPreview ? (
+            <p
+              className={`rounded-[7px] border px-2.5 py-1.5 text-[11px] leading-snug ${
+                previewExhausted
+                  ? 'border-amber-300/25 bg-amber-400/10 text-amber-200'
+                  : 'border-violet-400/20 bg-violet-500/10 text-violet-200'
+              }`}
+            >
+              {previewExhausted
+                ? `${selectedPreview.label} preview used this month. Buy a credit pack to generate the full-length track.`
+                : `Free ${selectedPreview.label} preview · first ${Math.round(
+                    selectedPreview.seconds / 60,
+                  )} minute · ${previewRemaining} of ${selectedPreview.limit} left this month.`}
+            </p>
+          ) : null}
 
           <MusicPillTabs
             value={featureTab}
@@ -2079,6 +2154,14 @@ export default function CreatePageClient() {
                   <span className="text-slate-400">Model</span>
                   <span className="text-white">{formatModelVersionTag(selectedVersion.song.model)}</span>
                 </div>
+                {selectedVersion.song.is_preview ? (
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-400">Preview</span>
+                    <span className="text-amber-300">
+                      First {selectedVersion.song.preview_seconds ?? 60}s · play-only
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-3">
                   <span className="text-slate-400">Type</span>
                   <span className="text-white">{selectedVersion.song.instrumental ? 'Instrumental' : 'With Vocals'}</span>

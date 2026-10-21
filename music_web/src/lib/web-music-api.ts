@@ -24,6 +24,21 @@ export class MusicApiError extends Error {
 
 export type { WebMusicGenerateInput };
 
+export type WebMusicPreviewModel = {
+  model: string;
+  label: string;
+  limit: number;
+  used: number;
+  remaining: number;
+  seconds: number;
+};
+
+export type WebMusicPreviews = {
+  eligible: boolean;
+  seconds: number;
+  models: WebMusicPreviewModel[];
+};
+
 export type WebMusicQuota = {
   limit: number;
   used: number;
@@ -40,6 +55,7 @@ export type WebMusicQuota = {
   free_model?: string;
   queue_limit?: number;
   queue_used?: number;
+  previews?: WebMusicPreviews | null;
 };
 
 export type WebMusicClip = {
@@ -52,6 +68,8 @@ export type WebMusicClip = {
   image_url?: string | null;
   duration_seconds?: number | null;
   title?: string;
+  is_preview?: boolean;
+  preview_seconds?: number | null;
 };
 
 export type WebMusicGeneration = {
@@ -60,10 +78,13 @@ export type WebMusicGeneration = {
   lyrics: string;
   style: string;
   model: string;
+  model_label?: string;
   instrumental: boolean;
   status: string;
   error_message?: string | null;
   created_at?: string | null;
+  is_preview?: boolean;
+  preview_seconds?: number | null;
   negative_tags?: string | null;
   vocal_gender?: string | null;
   style_weight?: number | null;
@@ -228,7 +249,17 @@ export async function generateWebMusicDraft(prompt: string): Promise<{ lyrics: s
 
 export async function generateWebMusic(
   input: WebMusicGenerateInput,
-): Promise<{ task_id: string; status: string; title: string; style: string; quota: WebMusicQuota }> {
+): Promise<{
+  task_id: string;
+  status: string;
+  title: string;
+  style: string;
+  model?: string;
+  model_label?: string;
+  is_preview?: boolean;
+  preview_seconds?: number | null;
+  quota: WebMusicQuota;
+}> {
   return musicFetch('/api/v3/web-music/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
