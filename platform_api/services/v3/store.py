@@ -229,6 +229,25 @@ class V3BillingStore:
         )
         return int(value or 0)
 
+    async def has_completed_topup_this_month(self, user_id: UUID) -> bool:
+        """True when the user bought a credit pack in the current billing month.
+
+        Drives the Free-plan rule: the monthly 50 is V6-Mini-only until a pack
+        purchase in the same month unlocks it for V6 / V6-Wild.
+        """
+        value = await self._pool.fetchval(
+            """
+            SELECT 1
+            FROM topup_purchases
+            WHERE user_id = $1
+              AND payment_status = 'completed'
+              AND COALESCE(completed_at, created_at) >= date_trunc('month', NOW())
+            LIMIT 1
+            """,
+            user_id,
+        )
+        return value is not None
+
     async def insert_lot(
         self,
         *,

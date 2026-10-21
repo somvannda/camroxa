@@ -20,6 +20,34 @@ from platform_api.services.v3.generate_charge import map_v1_op_to_v3
 
 ChargePath = Literal["v3", "v2", "included"]
 
+# Free-plan users may spend the monthly grant on V6-Mini only until they buy a
+# pack in the same calendar month.
+_FREE_MODEL_KEYS = {"V6-MINI", "CHIRP-GOOSE"}
+
+
+def model_allows_free_grant(
+    model: str | None,
+    *,
+    is_free_plan: bool,
+    has_pack_this_month: bool,
+) -> bool:
+    """Whether a Free-plan user may use this model with the monthly grant."""
+    if not is_free_plan:
+        return True
+    key = str(model or "").strip().upper()
+    if not key or key in _FREE_MODEL_KEYS:
+        return True
+    return has_pack_this_month
+
+
+def _premium_label(model: str | None) -> str:
+    key = str(model or "").strip().upper()
+    if key in {"V6", "V6-PRO"}:
+        return "V6-Pro"
+    if key == "V6-WILD":
+        return "V6-Wild"
+    return str(model or "This model")
+
 
 @dataclass(slots=True)
 class WebMusicCharge:
@@ -77,6 +105,7 @@ class WebMusicChargeBridge:
         operation: str,
         *,
         ref_id: str | None = None,
+        model: str | None = None,
     ) -> WebMusicCharge:
         await self._grant.ensure_daily_grant(user_id)
         await self._grant.ensure_period_grant(user_id)
@@ -84,7 +113,44 @@ class WebMusicChargeBridge:
         if amount <= 0 or bool(getattr(quote, "included", False)):
             return WebMusicCharge(path="included", op=op, amount_credits=0, ref_id=ref_id)
 
+        await self._enforce_free_model_scope(user_id, model)
+
         return await self._charge_v3(user_id, op, amount, ref_id=ref_id)
+
+    async def _enforce_free_model_scope(self, user_id: UUID, model: str | None) -> None:
+        """Block premium models for Free-plan users until they buy a pack.
+
+        The Free plan's monthly credits are granted into the shared wallet, so
+        this is the only place the V6-Mini-only rule can be enforced. A paid
+        plan is unrestricted; a completed top-up in the same calendar month
+        unlocks the grant for V6 / V6-Wild.
+        """
+        plan = await self._store.resolve_charge_plan(user_id)
+        is_free = (
+            plan is None
+            or str((plan or {}).get("name") or "").strip().lower() == "free"
+            or int((plan or {}).get("price_cents") or 0) == 0
+        )
+        if not is_free:
+            return
+        has_pack = await self._store.has_completed_topup_this_month(user_id)
+        if not has_pack and self._credit_repo is not None:
+            # A pack bought earlier may still be live (30-day validity). Once the
+            # wallet exceeds the Free grant, the extra is purchased credit.
+            free_limit = int((plan or {}).get("monthly_credits") or 0)
+            if free_limit > 0:
+                wallet_units = int(await self._credit_repo.get_balance(user_id))
+                has_pack = units_to_credits(wallet_units) > free_limit
+        if model_allows_free_grant(
+            model, is_free_plan=True, has_pack_this_month=has_pack
+        ):
+            return
+        raise _upgrade_error(
+            f"{_premium_label(model)} requires purchased credits. "
+            "Buy a credit pack to use it on the Free plan.",
+            required=0,
+            available=0,
+        )
 
     async def refund(self, user_id: UUID, charge: WebMusicCharge) -> None:
         if charge.amount_credits <= 0 or charge.path == "included":
