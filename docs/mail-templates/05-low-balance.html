@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>You're running low on credits</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    {{credits}} credits left, about {{songs_left}} songs. Top up before you run out mid-track.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#f59e0b;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                You're running low
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; your balance is <strong>{{credits}} credits</strong>, which is
+                about <strong>{{songs_left}} more songs</strong> at 10 credits each.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#92400e;">
+                      <strong>Why now:</strong> a generation that fails on credits loses the prompt too.
+                      Topping up before you hit zero means your next idea does not have to wait.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$10 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;">2,300 credits &middot; 230 songs</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$20 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;">5,500 credits &middot; 550 songs</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$30 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;">8,800 credits &middot; 880 songs</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard/billing" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Top up credits
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                You set this alert yourself in Settings. You can change the threshold or turn it off
+                at any time.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                Account notice for your CAMXORA balance.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Manage email preferences</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
