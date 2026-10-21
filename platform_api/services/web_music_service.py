@@ -785,12 +785,19 @@ class WebMusicService:
             "daily_free_limit": updated.daily_free_limit,
         }
 
-    async def _reserve_daily_slot(self, user_id: UUID, *, reservation_id: str) -> dict[str, Any]:
+    async def _reserve_daily_slot(
+        self,
+        user_id: UUID,
+        *,
+        reservation_id: str,
+        model: str | None = None,
+    ) -> dict[str, Any]:
         if await self._credits_only_v3_enabled():
             charged = await self._web_music_charge_bridge().charge(
                 user_id,
                 "music",
                 ref_id=reservation_id,
+                model=model,
             )
             self._open_charges[reservation_id] = charged
             spendable, music_credits, paid_web = await self._web_music_charge_bridge().spendable_credits(
@@ -1027,7 +1034,9 @@ class WebMusicService:
         reservation_id = str(uuid4())
         logger.info("service.generate step reserve user=%s reservation=%s", user_id, reservation_id)
         # Charge only after title/blocklist checks so 422s do not burn daily credits.
-        quota = await self._reserve_daily_slot(user_id, reservation_id=reservation_id)
+        quota = await self._reserve_daily_slot(
+            user_id, reservation_id=reservation_id, model=normalized_model
+        )
         logger.info("service.generate step reserved_ok user=%s reservation=%s", user_id, reservation_id)
 
         if mode_key == "simple":

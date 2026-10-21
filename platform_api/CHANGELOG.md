@@ -11,6 +11,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Free-plan web music is now **V6-Mini-only**. `WebMusicChargeBridge.charge()` receives the requested model and rejects V6-Pro / V6-Wild for Free-plan users until a credit pack is purchased in the same calendar month (or the wallet holds more than the monthly grant). Paid plans are unrestricted. Enforced in the V3 charge path before the wallet debit, so every existing Telegram spend report still fires. See `docs/changelog/2026-10-21-web-music-free-model-scope.md`.
+
 - `V3BillingStore.expired_lots()` and `V3BillingStore.restamp_live_lots()`; `PACK_CREDIT_VALIDITY` (30 days) in `wallet_sync`. A pack purchase stamps its own lot and re-stamps every other live lot to one shared expiry date (Option B). See `docs/changelog/2026-10-15-packs-only-billing.md`.
 
 ### Changed
