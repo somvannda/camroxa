@@ -171,6 +171,11 @@ async def check_ip_abuse(
                 },
             )
 
+    if event_type == "generation" and credited:
+        # Credit-funded users are gated by their balance. Do not let an IP
+        # block (or the per-IP farm counter) stop someone who is paying.
+        return
+
     block_key = f"abuse:blocked:{ip}"
     blocked = await redis.get(block_key)
     if blocked:

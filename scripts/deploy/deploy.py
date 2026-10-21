@@ -42,6 +42,13 @@ _INSECURE_HOST_KEY = os.environ.get("DEPLOY_INSECURE_IGNORE_HOST_KEY", "").strip
 }
 VENV_DIR = Path(__file__).resolve().parent / ".venv"
 DEPLOY_DIRS = ("platform_api", "admin_portal", "website", "user_portal", "music_web", "shared")
+# Single files the systemd timers execute by absolute path. They live outside
+# DEPLOY_DIRS, so without this the healthcheck units start with status 127
+# ("No such file or directory") after every tarball deploy.
+DEPLOY_FILES = (
+    "scripts/deploy/platform-healthcheck.sh",
+    "scripts/deploy/musicapi-healthcheck.sh",
+)
 SKIP_NAMES = {
     "node_modules",
     ".venv",
@@ -376,6 +383,11 @@ def build_source_tarball() -> Path:
             if not src.is_dir():
                 raise FileNotFoundError(f"Missing deploy directory: {src}")
             tar.add(src, arcname=name, filter=tar_filter, recursive=True)
+        for name in DEPLOY_FILES:
+            src = REPO_ROOT / name
+            if not src.is_file():
+                raise FileNotFoundError(f"Missing deploy file: {src}")
+            tar.add(src, arcname=name)
     size_mb = archive.stat().st_size / (1024 * 1024)
     print(f"Source archive ready ({size_mb:.1f} MB)")
     return archive
@@ -432,6 +444,9 @@ def upload_and_run(client, secrets: dict[str, str]) -> int:
         "PLATFORM_CUTLUY_SECRET_KEY",
         "PLATFORM_CUTLUY_PAYMENT_LINK_ID",
         "PLATFORM_CUTLUY_WEBHOOK_SECRET",
+        "PLATFORM_CHMABA_API_KEY",
+        "PLATFORM_CHMABA_STORE_ID",
+        "PLATFORM_CHMABA_WEBHOOK_SECRET",
         "API_WORKERS",
     ]
     exports = ["export SYNC_FROM_LOCAL='1'"]

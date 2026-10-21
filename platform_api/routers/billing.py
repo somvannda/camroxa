@@ -19,7 +19,21 @@ from platform_api.dependencies import get_db_pool
 from platform_api.exceptions import ExternalServiceError, ForbiddenError, NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, get_current_user
 from platform_api.repositories.license_repo import LicenseRepository, PlanRepository
-from platform_api.services.billing_config_service import resolve_cutluy_config
+from platform_api.services.billing_config_service import (
+    resolve_chmaba_config,
+    resolve_cutluy_config,
+)
+from platform_api.services.billing_provider_service import (
+    BILLING_PORTAL_BASE_URL_SETTING_KEY,
+    get_provider_config as load_provider_config,
+    resolve_active_provider,
+)
+from platform_api.services.chmaba_webhook import (
+    chmaba_event_type,
+    chmaba_webhook_payload,
+    find_chmaba_reference_id,
+    verify_chmaba_webhook_signature,
+)
 from platform_api.services.cutluy_webhook import (
     cutluy_event_type,
     verify_cutluy_webhook_signature,
@@ -36,24 +50,9 @@ router = APIRouter(prefix="/billing", tags=["billing"])
 
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
-BILLING_ACTIVE_PROVIDER_SETTING_KEY = "billing.active_provider"
-BILLING_PORTAL_BASE_URL_SETTING_KEY = "billing.portal_base_url"
 MOCK_TERMINAL_STATUSES = {"paid", "failed", "expired"}
 # Self-serve renewal opens this many days before the license expiry (or whenever expired).
 RENEWAL_WINDOW_DAYS = 7
-
-PROVIDER_REGISTRY: dict[str, dict[str, str]] = {
-    "mock": {
-        "label": "Mock Checkout",
-        "kind": "khqr",
-        "description": "Development-only hosted checkout simulator for testing onboarding and billing flows.",
-    },
-    "cutluy": {
-        "label": "CutLuy KHQR",
-        "kind": "khqr",
-        "description": "Production KHQR checkout via CutLuy hosted payment pages.",
-    },
-}
 
 
 class CreatePaymentRequest(BaseModel):
@@ -174,27 +173,16 @@ class BillingProviderConfigResponse(BaseModel):
     cutluy_secret_configured: bool = False
     cutluy_secret_source: str | None = None
     cutluy_api_base_url: str = "https://cutluy.com"
-
-
-def _provider_enabled_setting_key(provider_id: str) -> str:
-    return f"billing.provider.{provider_id}.enabled"
+    chmaba_secret_configured: bool = False
+    chmaba_secret_source: str | None = None
+    chmaba_store_configured: bool = False
+    chmaba_api_base_url: str = "https://pay.chmaba.com"
 
 
 def _to_cents(amount: str | int | float | Decimal) -> int:
     """Convert decimal USD amount into integer cents."""
     dec = Decimal(str(amount)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
     return int(dec * 100)
-
-
-def _parse_bool(raw: str | None, default: bool) -> bool:
-    if raw is None:
-        return default
-    normalized = raw.strip().lower()
-    if normalized in {"true", "1", "yes", "on"}:
-        return True
-    if normalized in {"false", "0", "no", "off"}:
-        return False
-    return default
 
 
 async def _load_system_setting(pool: Any, key: str) -> str | None:
@@ -215,95 +203,52 @@ async def _load_system_setting(pool: Any, key: str) -> str | None:
     return str(value).strip()
 
 
-async def _provider_available(pool: Any, provider_id: str) -> bool:
-    """Return whether the provider can currently be used."""
-    settings = get_settings()
-    if provider_id == "mock":
-        return bool(settings.debug)
-    if provider_id == "cutluy":
-        cutluy = await resolve_cutluy_config(pool)
-        return bool(cutluy.secret_key)
-    return False
-
-
 def _ensure_mock_checkout_allowed() -> None:
     if not get_settings().debug:
         raise ValidationError("Mock checkout is only available in debug environments.")
 
 
-def _default_provider_enabled(provider_id: str) -> bool:
-    """Return the implicit enabled state when admin has not saved a setting yet."""
-    settings = get_settings()
-    if provider_id == "mock":
-        return bool(settings.debug)
-    if provider_id == "cutluy":
-        return not settings.debug
-    return False
-
-
-async def _is_provider_enabled(pool: Any, provider_id: str) -> bool:
-    """Resolve provider enabled state from admin settings or defaults."""
-    raw = await _load_system_setting(pool, _provider_enabled_setting_key(provider_id))
-    return _parse_bool(raw, _default_provider_enabled(provider_id))
-
-
 async def _get_provider_config(pool: Any) -> BillingProviderConfigResponse:
     """Build provider registry state with enabled/active/available flags."""
-    raw_active = await _load_system_setting(pool, BILLING_ACTIVE_PROVIDER_SETTING_KEY)
-    configured_active = (raw_active or "").strip().lower()
-    explicit_off = configured_active in {"none", "off", "disabled"}
-    if not configured_active:
-        configured_active = "mock" if get_settings().debug else "cutluy"
-
-    provider_rows: list[BillingProviderResponse] = []
-    resolved_active: str | None = None
+    config = await load_provider_config(pool)
     cutluy = await resolve_cutluy_config(pool)
-
-    for provider_id, meta in PROVIDER_REGISTRY.items():
-        enabled = await _is_provider_enabled(pool, provider_id)
-        available = await _provider_available(pool, provider_id)
-        is_active = enabled and available and configured_active == provider_id
-        if is_active:
-            resolved_active = provider_id
-        provider_rows.append(
-            BillingProviderResponse(
-                id=provider_id,
-                label=meta["label"],
-                kind=meta["kind"],
-                description=meta["description"],
-                enabled=enabled,
-                active=is_active,
-                available=available,
-            )
-        )
-
-    if resolved_active is None and not explicit_off:
-        fallback = next((item.id for item in provider_rows if item.enabled and item.available), None)
-        resolved_active = fallback
-        provider_rows = [
-            BillingProviderResponse(
-                **{
-                    **item.model_dump(),
-                    "active": item.id == resolved_active,
-                }
-            )
-            for item in provider_rows
-        ]
+    chmaba = await resolve_chmaba_config(pool)
 
     return BillingProviderConfigResponse(
-        active_provider=resolved_active,
-        paid_checkout_available=resolved_active is not None,
-        providers=provider_rows,
+        active_provider=config.active_provider,
+        paid_checkout_available=config.paid_checkout_available,
+        providers=[
+            BillingProviderResponse(
+                id=row.id,
+                label=row.label,
+                kind=row.kind,
+                description=row.description,
+                enabled=row.enabled,
+                active=row.active,
+                available=row.available,
+            )
+            for row in config.providers
+        ],
         cutluy_secret_configured=bool(cutluy.secret_key),
         cutluy_secret_source=cutluy.secret_source if cutluy.secret_key else None,
         cutluy_api_base_url=cutluy.api_base_url,
+        chmaba_secret_configured=bool(chmaba.api_key),
+        chmaba_secret_source=chmaba.api_key_source if chmaba.api_key else None,
+        chmaba_store_configured=bool(chmaba.store_id),
+        chmaba_api_base_url=chmaba.api_base_url,
     )
 
 
 async def _get_active_provider(pool: Any) -> str | None:
     """Return the currently active enabled provider, or None when paid checkout is off."""
-    config = await _get_provider_config(pool)
-    return config.active_provider
+    return await resolve_active_provider(pool)
+
+
+def _provider_is_usable(config: BillingProviderConfigResponse, provider_id: str) -> bool:
+    """True when a specific provider is enabled and has credentials."""
+    row = next((item for item in config.providers if item.id == provider_id), None)
+    return bool(row is not None and row.enabled and row.available)
+
 
 
 async def _get_portal_base_url(pool: Any) -> str:
@@ -471,16 +416,39 @@ async def _hydrate_created_payment(pool: Any, payment_id: UUID) -> BillingPaymen
     return _payment_response_from_row(row)
 
 
-async def _refresh_external_status(pool: Any, row: Any) -> Any:
-    """Pull the latest payment status from the external provider when needed."""
-    status = str(row["status"])
-    provider = str(row["provider"])
-    if status in {"paid", "expired", "failed"} or provider != "cutluy":
-        return row
+async def _fetch_provider_status_payload(pool: Any, provider: str, external_id: str) -> dict[str, Any]:
+    """Ask the external provider for the authoritative status payload."""
+    if provider == "chmaba":
+        from platform_api.services.shared.chmaba_service import (
+            ChmabaAPIError,
+            ChmabaConfigurationError,
+            ChmabaService,
+        )
+
+        chmaba = await resolve_chmaba_config(pool)
+        service = ChmabaService(
+            api_base_url=chmaba.api_base_url,
+            api_key=chmaba.api_key,
+            store_id=chmaba.store_id,
+            webhook_secret=chmaba.webhook_secret,
+        )
+        try:
+            return await service.get_payment_status(external_id)
+        except ChmabaConfigurationError as exc:
+            raise ExternalServiceError(
+                str(exc),
+                details={"provider": "chmaba"},
+            ) from exc
+        except ChmabaAPIError as exc:
+            raise ExternalServiceError(
+                str(exc),
+                is_retryable=exc.retryable,
+                details={"provider": "chmaba", "status_code": exc.status_code},
+            ) from exc
 
     cutluy = await resolve_cutluy_config(pool)
     api_key, _payment_link_id = _ensure_cutluy_ready(cutluy)
-    url = f"{cutluy.api_base_url}/v1/payments/{row['external_payment_id']}"
+    url = f"{cutluy.api_base_url}/v1/payments/{external_id}"
 
     try:
         async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=10.0)) as client:
@@ -503,6 +471,32 @@ async def _refresh_external_status(pool: Any, row: Any) -> Any:
             is_retryable=True,
             details={"provider": "cutluy", "reason": type(exc).__name__},
         ) from exc
+    return payload if isinstance(payload, dict) else {}
+
+
+async def _refresh_external_status(pool: Any, row: Any) -> Any:
+    """Pull the latest payment status from the external provider when needed."""
+    status = str(row["status"])
+    provider = str(row["provider"])
+    if status in {"paid", "expired", "failed"} or provider not in {"cutluy", "chmaba"}:
+        return row
+
+    payload = await _fetch_provider_status_payload(
+        pool,
+        provider,
+        str(row["external_payment_id"]),
+    )
+
+    if provider == "chmaba":
+        from platform_api.services.shared.chmaba_service import (
+            normalize_chmaba_payment_status,
+        )
+
+        next_status = normalize_chmaba_payment_status(payload.get("status"))
+        approved_at = datetime.now(timezone.utc) if next_status == "paid" else None
+    else:
+        next_status = str(payload.get("status") or row["status"])
+        approved_at = _parse_cutluy_timestamp(payload.get("approved_at"))
 
     updated = await pool.fetchrow(
         """
@@ -518,13 +512,14 @@ async def _refresh_external_status(pool: Any, row: Any) -> Any:
         RETURNING *
         """,
         row["id"],
-        payload.get("status", row["status"]),
-        _parse_cutluy_timestamp(payload.get("approved_at")),
+        next_status,
+        approved_at,
         json.dumps(payload),
     )
     if updated is None:
         raise NotFoundError("Payment record not found.")
     return updated
+
 
 
 async def _fulfill_profile_addon_payment(
@@ -1208,6 +1203,169 @@ async def _create_cutluy_payment(
     return await _hydrate_created_payment(pool, UUID(str(created["id"])))
 
 
+async def _create_chmaba_payment(
+    pool: Any,
+    *,
+    ctx: AuthContext,
+    plan_id: UUID,
+    plan_name: str,
+    amount_cents: int,
+    offer_id: UUID | None,
+    extra_metadata: dict[str, Any] | None = None,
+) -> BillingPaymentResponse:
+    """Create a ChmabaPay KHQR payment using the admin-managed plan price."""
+    from platform_api.services.shared.chmaba_service import (
+        ChmabaAPIError,
+        ChmabaConfigurationError,
+        ChmabaService,
+    )
+
+    chmaba = await resolve_chmaba_config(pool)
+    if not chmaba.configured:
+        raise ExternalServiceError(
+            "ChmabaPay billing is not configured yet. Add the API key and store id "
+            "in Admin Settings → Payment.",
+            details={"provider": "chmaba"},
+        )
+
+    reference_id = f"camxora:{ctx.user_id}:{plan_id}:{uuid4().hex[:12]}"
+    metadata: dict[str, Any] = {
+        "user_id": ctx.user_id,
+        "plan_id": str(plan_id),
+        "plan_name": plan_name,
+        "offer_id": str(offer_id) if offer_id is not None else None,
+        "provider": "chmaba",
+    }
+    if extra_metadata:
+        metadata.update(extra_metadata)
+
+    service = ChmabaService(
+        api_base_url=chmaba.api_base_url,
+        api_key=chmaba.api_key,
+        store_id=chmaba.store_id,
+        webhook_secret=chmaba.webhook_secret,
+    )
+    try:
+        payment = await service.create_payment(
+            amount_cents=amount_cents,
+            reference_id=reference_id,
+            metadata=metadata,
+        )
+    except ChmabaConfigurationError as exc:
+        raise ExternalServiceError(str(exc), details={"provider": "chmaba"}) from exc
+    except ChmabaAPIError as exc:
+        raise ExternalServiceError(
+            str(exc),
+            is_retryable=exc.retryable,
+            details={"provider": "chmaba", "status_code": exc.status_code},
+        ) from exc
+
+    metadata["qr_string"] = payment.get("qr_string") or ""
+
+    created = await pool.fetchrow(
+        """
+        INSERT INTO billing_payments (
+            id,
+            provider,
+            external_payment_id,
+            user_id,
+            plan_id,
+            offer_id,
+            reference_id,
+            status,
+            amount_cents,
+            currency,
+            checkout_url,
+            approved_at,
+            metadata,
+            raw_response,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            $1,
+            'chmaba',
+            $2,
+            $3,
+            $4,
+            $5,
+            $6,
+            $7,
+            $8,
+            $9,
+            $10,
+            NULL,
+            $11::jsonb,
+            $12::jsonb,
+            NOW(),
+            NOW()
+        )
+        RETURNING id
+        """,
+        uuid4(),
+        payment["payment_id"],
+        UUID(ctx.user_id),
+        plan_id,
+        offer_id,
+        reference_id,
+        "pending",
+        amount_cents,
+        "USD",
+        payment["checkout_url"],
+        json.dumps(metadata),
+        json.dumps(
+            {
+                "provider": "chmaba",
+                "id": payment["payment_id"],
+                "status": "pending",
+                "checkout_url": payment["checkout_url"],
+                "qr_string": payment.get("qr_string") or "",
+                "expires_at": payment.get("expires_at") or None,
+                "amount": f"{amount_cents / 100:.2f}",
+            }
+        ),
+    )
+    if created is None:
+        raise ExternalServiceError("Payment record could not be created.")
+
+    return await _hydrate_created_payment(pool, UUID(str(created["id"])))
+
+
+async def _create_provider_checkout(
+    provider: str,
+    pool: Any,
+    *,
+    ctx: AuthContext,
+    plan_id: UUID,
+    plan_name: str,
+    amount_cents: int,
+    offer_id: UUID | None,
+    extra_metadata: dict[str, Any] | None = None,
+) -> BillingPaymentResponse:
+    """Route a checkout to the concrete provider implementation."""
+    if provider == "cutluy":
+        return await _create_cutluy_payment(
+            pool,
+            ctx=ctx,
+            plan_id=plan_id,
+            plan_name=plan_name,
+            amount_cents=amount_cents,
+            offer_id=offer_id,
+            extra_metadata=extra_metadata,
+        )
+    if provider == "chmaba":
+        return await _create_chmaba_payment(
+            pool,
+            ctx=ctx,
+            plan_id=plan_id,
+            plan_name=plan_name,
+            amount_cents=amount_cents,
+            offer_id=offer_id,
+            extra_metadata=extra_metadata,
+        )
+    raise ValidationError("No active billing provider is configured.")
+
+
 async def _create_payment_response(
     request: CreatePaymentRequest,
     *,
@@ -1373,6 +1531,17 @@ async def _create_payment_response(
 
     if provider == "cutluy":
         return await _create_cutluy_payment(
+            pool,
+            ctx=ctx,
+            plan_id=plan_id,
+            plan_name=plan.name,
+            amount_cents=amount_cents,
+            offer_id=offer_id,
+            extra_metadata=extra_metadata,
+        )
+
+    if provider == "chmaba":
+        return await _create_chmaba_payment(
             pool,
             ctx=ctx,
             plan_id=plan_id,
@@ -1667,9 +1836,10 @@ async def create_addon_renewal(
             offer_id=None,
             extra_metadata=extra_metadata,
         )
-    if provider != "cutluy":
+    if provider not in {"cutluy", "chmaba"}:
         raise ValidationError("No active billing provider is configured.")
-    return await _create_cutluy_payment(
+    return await _create_provider_checkout(
+        provider,
         pool,
         ctx=ctx,
         plan_id=plan.id,
@@ -1804,10 +1974,11 @@ async def _create_profile_addon_payment_response(
             raise ExternalServiceError("Mock payment record could not be created.")
         return await _hydrate_created_payment(pool, payment_id)
 
-    if provider != "cutluy":
+    if provider not in {"cutluy", "chmaba"}:
         raise ValidationError("No active billing provider is configured.")
 
-    return await _create_cutluy_payment(
+    return await _create_provider_checkout(
+        provider,
         pool,
         ctx=ctx,
         plan_id=plan.id,
@@ -1907,10 +2078,11 @@ async def _create_credit_pack_payment_response(
             raise ExternalServiceError("Mock payment record could not be created.")
         return await _hydrate_created_payment(pool, payment_id)
 
-    if provider != "cutluy":
+    if provider not in {"cutluy", "chmaba"}:
         raise ValidationError("No active billing provider is configured.")
 
-    return await _create_cutluy_payment(
+    return await _create_provider_checkout(
+        provider,
         pool,
         ctx=ctx,
         plan_id=anchor_plan_id,
@@ -2156,8 +2328,7 @@ async def create_cutluy_payment_compat(
 ) -> BillingPaymentResponse:
     """Compatibility endpoint that always creates a CutLuy payment."""
     provider_config = await _get_provider_config(pool)
-    cutluy_provider = next((item for item in provider_config.providers if item.id == "cutluy"), None)
-    if cutluy_provider is None or not cutluy_provider.enabled or not cutluy_provider.available:
+    if not _provider_is_usable(provider_config, "cutluy"):
         raise ValidationError("CutLuy checkout is not enabled for this environment.")
     return await _create_payment_response(request, provider="cutluy", ctx=ctx, pool=pool)
 
@@ -2287,3 +2458,204 @@ async def cutluy_webhook(
             "event_type": event_type,
         }
     )
+
+
+@router.post(
+    "/chmaba/payments",
+    response_model=BillingPaymentResponse,
+    status_code=201,
+    summary="Create a ChmabaPay checkout payment for a selected plan",
+)
+async def create_chmaba_payment_compat(
+    request: CreatePaymentRequest,
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> BillingPaymentResponse:
+    """Compatibility endpoint that always creates a ChmabaPay payment."""
+    provider_config = await _get_provider_config(pool)
+    if not _provider_is_usable(provider_config, "chmaba"):
+        raise ValidationError("ChmabaPay checkout is not enabled for this environment.")
+    return await _create_payment_response(request, provider="chmaba", ctx=ctx, pool=pool)
+
+
+@router.get(
+    "/chmaba/payments/{payment_id}",
+    response_model=BillingPaymentResponse,
+    status_code=200,
+    summary="Get the latest ChmabaPay payment status for the current user",
+)
+async def get_chmaba_payment_compat(
+    payment_id: UUID,
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> BillingPaymentResponse:
+    """Status route paired with the ChmabaPay compatibility checkout above."""
+    return await _get_payment_response(payment_id, ctx=ctx, pool=pool)
+
+
+async def _handle_chmaba_billing_webhook(
+    request: Request,
+    pool: Any,
+) -> JSONResponse:
+    """Verify a ChmabaPay delivery and settle exactly one ``billing_payments`` row.
+
+    Authenticity rests entirely on the HMAC signature: the provider has no
+    sandbox, so an unverifiable delivery must never move money or credits. The
+    local row is found by the ``reference_id`` we generated at checkout, which
+    the provider echoes back in the event payload.
+    """
+    raw_body = await request.body()
+    chmaba = await resolve_chmaba_config(pool)
+    if not chmaba.webhook_secret:
+        raise ForbiddenError(
+            "ChmabaPay webhook secret is not configured. "
+            "Set PLATFORM_CHMABA_WEBHOOK_SECRET or billing.chmaba.webhook_secret.",
+            details={"error_code": "CHMABA_WEBHOOK_SECRET_MISSING"},
+        )
+
+    signature = request.headers.get("X-ChmabaPay-Signature") or request.headers.get(
+        "x-chmabapay-signature"
+    )
+    if not verify_chmaba_webhook_signature(
+        raw_body=raw_body,
+        signature_header=signature,
+        secret=chmaba.webhook_secret,
+    ):
+        raise ForbiddenError(
+            "Invalid ChmabaPay webhook signature.",
+            details={"error_code": "CHMABA_WEBHOOK_SIGNATURE_INVALID"},
+        )
+
+    event = chmaba_webhook_payload(raw_body)
+    if not event:
+        raise ValidationError("Invalid ChmabaPay webhook JSON body.")
+
+    event_type = chmaba_event_type(request.headers) or str(event.get("type") or "")
+    reference_id = find_chmaba_reference_id(event)
+    if not reference_id:
+        return JSONResponse(
+            {"received": True, "fulfilled": False, "reason": "missing_reference"}
+        )
+
+    row = await pool.fetchrow(
+        """
+        SELECT *
+        FROM billing_payments
+        WHERE reference_id = $1
+          AND provider = 'chmaba'
+        LIMIT 1
+        """,
+        reference_id,
+    )
+    if row is None:
+        # One ChmabaPay store fronts both plan checkout (`billing_payments`) and
+        # music-web credit top-ups (`topup_purchases`), so the same webhook URL
+        # has to settle whichever ledger owns this reference.
+        try:
+            UUID(reference_id)
+        except (TypeError, ValueError):
+            pass
+        else:
+            from platform_api.dependencies import get_v2_topup_service
+
+            topup_service = get_v2_topup_service()
+            topup_result = await topup_service.settle_chmaba_topup(
+                event_type=event_type,
+                topup_id=reference_id,
+            )
+            return JSONResponse(
+                {
+                    "received": True,
+                    "fulfilled": bool(topup_result.get("processed")),
+                    "ledger": "topup",
+                    "reason": topup_result.get("message"),
+                }
+            )
+
+        logger.info(
+            "ChmabaPay webhook for unknown reference %s (event=%s)",
+            reference_id,
+            event_type,
+        )
+        return JSONResponse(
+            {"received": True, "fulfilled": False, "reason": "payment_not_found"}
+        )
+
+    if event_type == "payment.completed":
+        target_status = "paid"
+    elif event_type == "payment.reversed":
+        target_status = "refunded"
+    elif event_type == "payment.superseded":
+        # A replacement code was minted; the old one can never settle.
+        target_status = "failed"
+    elif event_type == "payment.expired":
+        # Deliberately not terminal: ChmabaPay keeps confirming a late payment
+        # after the code expires and promotes the row to `paid` when it lands,
+        # so the status poll must still be able to reconcile it.
+        return JSONResponse(
+            {"received": True, "fulfilled": False, "reason": "ignored:payment.expired"}
+        )
+    else:
+        return JSONResponse(
+            {
+                "received": True,
+                "fulfilled": False,
+                "reason": f"ignored:{event_type or 'unknown'}",
+            }
+        )
+
+    updated = await pool.fetchrow(
+        """
+        UPDATE billing_payments
+        SET status = $2::varchar,
+            approved_at = CASE
+                WHEN $2::varchar = 'paid'::varchar THEN COALESCE(approved_at, NOW())
+                ELSE approved_at
+            END,
+            raw_response = COALESCE(raw_response, '{}'::jsonb) || $3::jsonb,
+            updated_at = NOW()
+        WHERE id = $1
+        RETURNING *
+        """,
+        row["id"],
+        target_status,
+        json.dumps({"webhook_event": event, "webhook_event_type": event_type}),
+    )
+    if updated is None:
+        raise NotFoundError("Payment record not found.")
+
+    fulfilled = False
+    if str(updated["status"]) == "paid" and updated["fulfilled_at"] is None:
+        hydrated = await _fulfill_paid_payment(pool, updated)
+        fulfilled = hydrated["fulfilled_at"] is not None
+
+    # A reversal only flips the ledger row. Clawing back delivered credits is a
+    # manual/ops decision (see the desk refund path), so nothing is debited here.
+    return JSONResponse(
+        {
+            "received": True,
+            "fulfilled": bool(fulfilled),
+            "payment_id": str(updated["id"]),
+            "status": str(updated["status"]),
+            "event_type": event_type,
+        }
+    )
+
+
+@router.post(
+    "/webhooks/chmaba",
+    status_code=200,
+    summary="ChmabaPay signed webhook (plan payment fulfillment)",
+)
+@router.post(
+    "/webhooks/chmabapay",
+    status_code=200,
+    include_in_schema=False,
+    summary="ChmabaPay signed webhook alias",
+)
+async def chmaba_webhook(
+    request: Request,
+    pool: Any = Depends(get_db_pool),
+) -> JSONResponse:
+    """Verify ChmabaPay's signature and fulfil the matching billing payment."""
+    return await _handle_chmaba_billing_webhook(request, pool)

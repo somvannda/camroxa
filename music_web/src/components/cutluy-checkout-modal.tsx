@@ -9,7 +9,7 @@ import {
   fetchSubscriptionCheckoutStatus,
   fetchTopupCheckoutStatus,
   formatPlanDisplayName,
-  isAllowedCutluyCheckoutUrl,
+  isAllowedPaymentCheckoutUrl,
   type CheckoutStatus,
 } from '@/lib/subscription-api';
 import KhqrCode from '@/components/khqr-code';
@@ -85,7 +85,7 @@ export default function CutluyCheckoutModal({
     };
   }, [isOpen, paymentId, kind]);
 
-  const safeCheckoutUrl = isAllowedCutluyCheckoutUrl(checkoutUrl) ? checkoutUrl : null;
+  const safeCheckoutUrl = isAllowedPaymentCheckoutUrl(checkoutUrl) ? checkoutUrl : null;
   const khqrPayload = qrString?.startsWith('000201') ? qrString : null;
 
   if (!mounted || !isOpen || !checkoutUrl) return null;
@@ -184,7 +184,7 @@ export default function CutluyCheckoutModal({
             <p className="text-sm text-slate-300">
               {status?.status === 'expired'
                 ? 'This KHQR code expired before payment completed.'
-                : 'CutLuy could not confirm this payment.'}
+                : 'The payment provider could not confirm this payment.'}
             </p>
             <button
               type="button"
@@ -203,13 +203,14 @@ export default function CutluyCheckoutModal({
                 </div>
               ) : (
                 <p className="px-2 py-6 text-center text-sm text-slate-300">
-                  CutLuy does not allow this page inside our app. Open the full checkout to scan KHQR.
+                  The payment provider does not allow this page inside our app. Open the full
+                  checkout to scan KHQR.
                 </p>
               )}
               {safeCheckoutUrl ? (
                 <div className="mt-3 flex items-center justify-between gap-3 text-xs sm:text-sm">
                   <p className="text-slate-400">
-                    {khqrPayload ? 'Scan with Bakong or your bank app' : 'Secure payment via CutLuy'}
+                    {khqrPayload ? 'Scan with Bakong or your bank app' : 'Secure KHQR payment'}
                   </p>
                   <a
                     href={safeCheckoutUrl}
