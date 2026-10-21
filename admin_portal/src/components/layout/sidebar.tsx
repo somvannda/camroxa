@@ -34,6 +34,7 @@ import {
   Activity,
   Wallet,
 } from 'lucide-react';
+import { Mail } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -70,6 +71,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Subscriptions', path: '/licenses', icon: KeyRound },
       { label: 'Plans', path: '/plans', icon: CreditCard },
       { label: 'Redeem Codes', path: '/redeem-codes', icon: TicketPercent },
+  { label: 'Mail', path: '/mail', icon: Mail },
       { label: 'Invitations', path: '/invitations', icon: UserPlus },
       { label: 'Invite Program', path: '/invite-program', icon: Gift },
     ],

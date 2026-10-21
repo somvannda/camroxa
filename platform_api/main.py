@@ -712,6 +712,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(health.router)
     _mount(health.router, v1, v3)
 
+    # Mail: public tracking/webhook + the admin console API. Mounted on v1 and
+    # v3 like everything else; the public paths are /api/{v}/mail/{o|c|u} and
+    # mail.camxora.com gets an explicit nginx location for /api/mail/.
+    from platform_api.routers import mail as mail_router
+
+    _mount(mail_router.router, v1, v3)
+
     # Former v1 surface — dual-mounted on /api/v1 (temporary) and /api/v3 (canonical).
     _core = (
         auth.router,
