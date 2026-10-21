@@ -290,6 +290,39 @@ class V3BillingStore:
         )
         return dict(row) if row is not None else None
 
+    async def insert_referral_lot_if_absent(
+        self,
+        *,
+        user_id: UUID,
+        amount_units: int,
+        expires_at: datetime,
+        ref_id: str,
+    ) -> dict[str, Any] | None:
+        """Insert one referral lot, idempotent on ``(user_id, ref_id)``.
+
+        Must be called in the same transaction as the credit grant: a rejected
+        lot must not leave a wallet credit, and a retried grant must not create a
+        second expiry bucket.
+        """
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO credit_wallet_lots (
+                id, user_id, tag, amount_units, remaining_units,
+                expires_at, period_start, ref_id, created_at
+            )
+            VALUES ($1, $2, 'referral', $3, $3, $4, NULL, $5, NOW())
+            ON CONFLICT DO NOTHING
+            RETURNING id, user_id, tag, amount_units, remaining_units,
+                      expires_at, period_start, ref_id, created_at
+            """,
+            uuid4(),
+            user_id,
+            amount_units,
+            expires_at,
+            ref_id,
+        )
+        return dict(row) if row is not None else None
+
     async def find_period_grant(self, user_id: UUID, period_start: date) -> dict[str, Any] | None:
         row = await self._pool.fetchrow(
             """
@@ -385,7 +418,7 @@ class V3BillingStore:
                 """
                 SELECT id, user_id, remaining_units
                 FROM credit_wallet_lots
-                WHERE tag IN ('grant', 'daily_grant', 'pack')
+                WHERE tag IN ('grant', 'daily_grant', 'pack', 'referral')
                   AND remaining_units > 0
                   AND expires_at IS NOT NULL
                   AND expires_at <= NOW()
@@ -397,7 +430,7 @@ class V3BillingStore:
                 SELECT id, user_id, remaining_units
                 FROM credit_wallet_lots
                 WHERE user_id = $1
-                  AND tag IN ('grant', 'daily_grant', 'pack')
+                  AND tag IN ('grant', 'daily_grant', 'pack', 'referral')
                   AND remaining_units > 0
                   AND expires_at IS NOT NULL
                   AND expires_at <= NOW()
