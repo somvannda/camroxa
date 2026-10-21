@@ -1819,8 +1819,6 @@ class WebMusicService:
                 package_status_{variant} = 'none',
                 packaged_storage_key_{variant} = NULL,
                 packaged_storage_key_{variant}_b = NULL,
-                hls_status_{variant} = NULL,
-                hls_storage_prefix_{variant} = NULL,
                 stream_ready_{variant} = TRUE,
                 updated_at = NOW()
             WHERE id = $1
