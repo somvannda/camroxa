@@ -28,7 +28,7 @@ from platform_api.services.billing_config_service import (
 from platform_api.services.chmaba_webhook import verify_chmaba_webhook_signature
 from platform_api.services.shared.cutluy_service import extract_cutluy_qr_string
 from platform_api.services.v2.payment_security import (
-    require_chmaba_checkout_url,
+    resolve_chmaba_checkout_url,
     validate_payment_id,
 )
 
@@ -239,11 +239,12 @@ class ChmabaService:
         payment_id = validate_payment_id(str(payload.get("id") or payload.get("payment_id") or ""))
 
         checkout_raw = payload.get("checkout_url") or payload.get("url")
-        checkout_url = (
-            require_chmaba_checkout_url(str(checkout_raw), api_base_url=config.api_base_url)
-            if checkout_raw
-            else f"{config.api_base_url}/pay/{payment_id}"
-        )
+        if checkout_raw:
+            checkout_url = resolve_chmaba_checkout_url(
+                str(checkout_raw), api_base_url=config.api_base_url
+            )
+        else:
+            checkout_url = f"{config.api_base_url}/pay/{payment_id}"
 
         expires_raw = payload.get("expires_at")
         return {

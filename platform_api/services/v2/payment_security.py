@@ -1,10 +1,13 @@
-"""Shared guards for music-web CutLuy checkout and top-up."""
+"""Shared guards for music-web KHQR checkout and top-up."""
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Mapping
 from urllib.parse import urlparse, urlunparse
+
+logger = logging.getLogger(__name__)
 
 _PAYMENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]{4,128}$")
 
@@ -69,8 +72,35 @@ def require_chmaba_checkout_url(
 ) -> str:
     value = str(url or "").strip()
     if not is_allowed_chmaba_checkout_url(value, api_base_url=api_base_url):
+        parsed = urlparse(value)
+        logger.warning(
+            "ChmabaPay checkout URL rejected: scheme=%r host=%r value=%r",
+            parsed.scheme,
+            parsed.hostname,
+            value[:160],
+        )
         raise ValueError("Payment provider returned an invalid checkout URL")
     return value
+
+
+def resolve_chmaba_checkout_url(
+    url: str | None,
+    *,
+    api_base_url: str,
+) -> str:
+    """Turn the provider's checkout link into an absolute, validated URL.
+
+    ChmabaPay answers ``POST /api/v1/payments`` with a same-origin relative
+    path (``/pay/{id}``), not a full URL. Left relative, the browser would
+    resolve it against the calling site, so prepend the configured gateway
+    origin and then apply the usual allowlist.
+    """
+    value = str(url or "").strip()
+    if not value:
+        raise ValueError("Payment provider returned an invalid checkout URL")
+    if value.startswith("/") and not value.startswith("//"):
+        value = f"{str(api_base_url or '').rstrip('/')}{value}"
+    return require_chmaba_checkout_url(value, api_base_url=api_base_url)
 
 
 def sanitize_music_web_return_url(

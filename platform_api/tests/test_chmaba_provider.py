@@ -237,7 +237,7 @@ async def test_chmaba_create_uses_api_v1_path_and_omits_redirect_urls(monkeypatc
 
     class _Resp:
         status_code = 201
-        text = '{"id":"pay_1","status":"pending","checkout_url":"https://pay.chmaba.com/pay/pay_1","qr_string":"00020101021229300012D156000000000510A93FO3230Q31280012","expires_at":"2026-10-21T09:00:00Z"}'
+        text = '{"id":"pay_1","status":"pending","checkout_url":"/pay/pay_1","qr_string":"00020101021229300012D156000000000510A93FO3230Q31280012","expires_at":"2026-10-21T09:00:00Z"}'
 
         def json(self):
             import json
@@ -285,7 +285,31 @@ async def test_chmaba_create_uses_api_v1_path_and_omits_redirect_urls(monkeypatc
     assert body["store"] == "st_test"
     assert "success_url" not in body and "cancel_url" not in body
     assert result["payment_id"] == "pay_1"
+    assert result["checkout_url"] == "https://pay.chmaba.com/pay/pay_1"
     assert result["qr_string"].startswith("000201")
+
+
+def test_chmaba_relative_checkout_url_resolution() -> None:
+    from platform_api.services.v2.payment_security import resolve_chmaba_checkout_url
+
+    assert (
+        resolve_chmaba_checkout_url("/pay/abc", api_base_url="https://pay.chmaba.com")
+        == "https://pay.chmaba.com/pay/abc"
+    )
+    assert (
+        resolve_chmaba_checkout_url(
+            "https://pay.chmaba.com/pay/abc", api_base_url="https://pay.chmaba.com"
+        )
+        == "https://pay.chmaba.com/pay/abc"
+    )
+    for bad in (
+        "//evil.example/pay/abc",
+        "http://pay.chmaba.com/pay/abc",
+        "https://evil.example/pay/abc",
+        "",
+    ):
+        with pytest.raises(ValueError):
+            resolve_chmaba_checkout_url(bad, api_base_url="https://pay.chmaba.com")
 
 
 @pytest.mark.asyncio
