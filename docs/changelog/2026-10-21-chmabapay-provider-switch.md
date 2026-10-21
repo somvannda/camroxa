@@ -31,8 +31,9 @@ Provider plumbing:
 - `services/billing_provider_service.py` (new) — single source of truth for the
   registry and the enabled/available/active rules, shared by the billing router
   and the v2 top-up service.
-- `services/shared/chmaba_service.py` (new) — `POST /v1/payments`,
-  `GET /v1/transactions/check-status/{id}`, DB-resolved credentials.
+- `services/shared/chmaba_service.py` (new) — `POST /api/v1/payments`,
+  `GET /api/v1/transactions/check-status/{id}`, DB-resolved credentials.
+  The provider has no `/v1` mount; every route lives under `/api/v1`.
 - `services/chmaba_webhook.py` (new) — `X-ChmabaPay-Signature` (`t=…,v1=…`,
   HMAC-SHA256, ±300 s, constant-time) plus `reference_id` scanning.
 - `routers/billing.py` — `chmaba` branch in the provider registry, checkout
@@ -93,10 +94,21 @@ webhook settles a top-up exactly once.
 
 ## Follow-ups
 
-- **Confirm the live ChmabaPay webhook envelope** before enabling it in
-  production. `find_chmaba_reference_id` scans recursively for `reference_id`
-  because the provider does not publish the field-by-field shape; if the real
-  delivery only carries the provider payment id, plan fulfilment will not bind.
+- **`musicapi` calls the retired prefix.** Its client hardcodes `/v1/payments`
+  and `CHMABA_API_BASE_URL` is unset in production, so it requests
+  `https://pay.chmaba.com/v1/payments`, which now answers the marketing site's
+  404 (verified: `/api/v1/payments` → 401 JSON, `/v1/payments` → 404 HTML). The
+  last settled musicapi payment is 2026-10-19; new checkouts there should be
+  expected to fail until that client moves to `/api/v1`. Out of scope for this
+  branch by request, but it is the same gateway and the same fix.
+- Confirm the live ChmabaPay **webhook** envelope before enabling it. The docs
+  say to branch on `data.payment.status` and that events are
+  `payment.completed|expired|superseded|reversed`; `find_chmaba_reference_id`
+  scans recursively for `reference_id` and is covered for the create response,
+  but an actual delivery has not been observed.
+- `payment.expired` is intentionally **not** terminal: ChmabaPay keeps
+  confirming a late payment and promotes the row to `paid`, so the status poll
+  must stay able to reconcile it. `payment.superseded` fails the row instead.
 - ChmabaPay's `payment.reversed` event marks the ledger row `refunded` but does
   not claw back delivered credits; that remains a desk/ops action.
 - `TopupService` falls back to CutLuy when the provider cannot be resolved, so
