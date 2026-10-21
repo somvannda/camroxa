@@ -85,6 +85,27 @@ const html = `<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CAMXORA — mail templates</title>
   <style>
+    /* Local copies so the Khmer headline previews in Niradei. The templates
+       themselves point at the public URL; here we use relative paths because the
+       gallery is a local file. */
+    @font-face {
+      font-family: 'Niradei';
+      src: url('fonts/Niradei-Medium.ttf') format('truetype');
+      font-weight: 500;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Niradei';
+      src: url('fonts/Niradei-ExtraBold.ttf') format('truetype');
+      font-weight: 700;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Noto Sans Khmer';
+      src: url('fonts/NotoSansKhmer-khmer.woff2') format('woff2');
+      font-weight: 400 700;
+      font-display: swap;
+    }
     :root {
       --bg: #0a0e27;
       --panel: #0c1230;
