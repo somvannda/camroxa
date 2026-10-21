@@ -8,6 +8,7 @@ Handles:
 
 from __future__ import annotations
 
+import logging
 from typing import Annotated
 from uuid import UUID
 
@@ -19,9 +20,11 @@ from platform_api.middleware.rate_limit import enforce_rate_limit
 from platform_api.services.pricing_display import credits_to_songs
 from platform_api.services.v2.payment_security import sanitize_music_web_return_url
 from platform_api.services.v2.topup_service import TopupService
-from platform_api.exceptions import NotFoundError, ValidationError
+from platform_api.exceptions import ExternalServiceError, NotFoundError, ValidationError
 
 router = APIRouter(prefix="/topups", tags=["topups-v2"])
+
+logger = logging.getLogger(__name__)
 
 CurrentUserDep = Annotated[AuthContext, Depends(get_current_user)]
 
@@ -158,6 +161,16 @@ async def purchase_topup(
         )
     except ValueError as exc:
         raise ValidationError(str(exc)) from exc
+    except RuntimeError as exc:
+        # Provider clients raise RuntimeError for transport/HTTP failures. A
+        # gateway refusal is a 502 with the provider's reason, never a bare
+        # "unexpected error" the payer cannot act on.
+        logger.exception("top-up checkout failed at the provider")
+        raise ExternalServiceError(
+            f"Payment provider could not start checkout: {exc}",
+            is_retryable=True,
+            details={"provider": "khqr"},
+        ) from exc
     
     return PurchaseTopupResponse(
         checkout_url=payment["checkout_url"],

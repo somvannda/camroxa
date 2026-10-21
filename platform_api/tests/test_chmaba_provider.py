@@ -11,6 +11,7 @@ from platform_api.services.billing_config_service import (
     CHMABA_API_KEY_SETTING,
     CHMABA_STORE_ID_KEY,
     ChmabaConfig,
+    normalize_chmaba_api_base_url,
     resolve_chmaba_config,
 )
 from platform_api.services.billing_provider_service import (
@@ -167,6 +168,33 @@ def test_chmaba_config_requires_key_and_store() -> None:
     assert ChmabaConfig(api_key="k", store_id="s", **base).configured is True
     assert ChmabaConfig(api_key="k", store_id="", **base).configured is False
     assert ChmabaConfig(api_key="", store_id="s", **base).configured is False
+
+
+def test_chmaba_api_base_is_normalized_to_the_bare_origin() -> None:
+    for raw in (
+        "https://pay.chmaba.com",
+        "https://pay.chmaba.com/",
+        "https://pay.chmaba.com/api",
+        "https://pay.chmaba.com/api/",
+        "https://pay.chmaba.com/api/v1",
+        "https://pay.chmaba.com/v1",
+    ):
+        assert normalize_chmaba_api_base_url(raw) == "https://pay.chmaba.com"
+    assert normalize_chmaba_api_base_url("") == "https://pay.chmaba.com"
+    assert normalize_chmaba_api_base_url(None) == "https://pay.chmaba.com"
+
+
+@pytest.mark.asyncio
+async def test_resolve_chmaba_config_strips_stored_api_suffix() -> None:
+    pool = FakePool(
+        {
+            CHMABA_API_KEY_SETTING: "db-key",
+            CHMABA_STORE_ID_KEY: "db-store",
+            "billing.chmaba.api_base_url": "https://pay.chmaba.com/api",
+        }
+    )
+    config = await resolve_chmaba_config(pool, settings=FakeSettings())  # type: ignore[arg-type]
+    assert config.api_base_url == "https://pay.chmaba.com"
 
 
 def test_chmaba_is_opt_in_and_bool_parsing() -> None:
