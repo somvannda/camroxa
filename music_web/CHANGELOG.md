@@ -16,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Simple mode can pick a workspace.** The *Save to…* picker (and the optional song title) used to render in the Advanced form only, so Simple-mode users could not choose where a batch lands without switching tabs. It now sits below both forms; creation already saved to the selected workspace. See `docs/changelog/2026-10-21-web-music-simple-mode-workspace-picker.md`.
 - Credits are sold as **one-time packs only** ($5 / $10 / $20 / $30). Pack credits are valid for **30 days from purchase**, buying again resets the clock on the whole balance, and unused credits expire at that date. `/pricing` is a packs-only page. Also corrects the Free-plan copy: Free is **50 credits per month**, not per day. See `docs/changelog/2026-10-15-packs-only-billing.md`.
 
 ### Fixed
