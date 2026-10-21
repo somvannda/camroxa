@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+﻿import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Mail, Send, Trash2 } from 'lucide-react';
 
@@ -91,9 +91,9 @@ const TABS: Array<{ key: Tab; label: string }> = [
 ];
 
 function fmt(value: string | null): string {
-  if (!value) return '—';
+  if (!value) return 'â€”';
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  return Number.isNaN(date.getTime()) ? 'â€”' : date.toLocaleString();
 }
 
 interface MailSettings {
@@ -122,12 +122,12 @@ export default function MailPage() {
 
   const health = useQuery({
     queryKey: ['mail', 'health'],
-    queryFn: async () => (await apiClient.get<Health>('/mail/health')).data,
+    queryFn: async () => (await apiClient.get<Health>('/api/v3/mail/health')).data,
   });
 
   const mailSettings = useQuery({
     queryKey: ['mail', 'settings'],
-    queryFn: async () => (await apiClient.get<MailSettings>('/mail/settings')).data,
+    queryFn: async () => (await apiClient.get<MailSettings>('/api/v3/mail/settings')).data,
     enabled: tab === 'settings',
   });
 
@@ -148,7 +148,7 @@ export default function MailPage() {
 
   const saveSettings = useMutation({
     mutationFn: async (payload: Record<string, string>) =>
-      (await apiClient.put<MailSettings>('/mail/settings', payload)).data,
+      (await apiClient.put<MailSettings>('/api/v3/mail/settings', payload)).data,
     onSuccess: () => {
       toast({ title: 'Mail settings saved' });
       setForm((prev) => ({ ...prev, apiKey: '', webhookSecret: '' }));
@@ -164,7 +164,7 @@ export default function MailPage() {
     queryFn: async () =>
       (
         await apiClient.get<{ rows: Delivery[]; stats: Record<string, number> }>(
-          '/mail/deliveries?limit=100',
+          '/api/v3/mail/deliveries?limit=100',
         )
       ).data,
     enabled: tab === 'deliveries',
@@ -173,28 +173,28 @@ export default function MailPage() {
   const campaigns = useQuery({
     queryKey: ['mail', 'campaigns'],
     queryFn: async () =>
-      (await apiClient.get<{ rows: Campaign[] }>('/mail/campaigns')).data,
+      (await apiClient.get<{ rows: Campaign[] }>('/api/v3/mail/campaigns')).data,
     enabled: tab === 'campaigns',
   });
 
   const templates = useQuery({
     queryKey: ['mail', 'templates'],
     queryFn: async () =>
-      (await apiClient.get<{ rows: Template[] }>('/mail/templates')).data,
+      (await apiClient.get<{ rows: Template[] }>('/api/v3/mail/templates')).data,
     enabled: tab === 'templates',
   });
 
   const automations = useQuery({
     queryKey: ['mail', 'automations'],
     queryFn: async () =>
-      (await apiClient.get<{ rows: Automation[] }>('/mail/automations')).data,
+      (await apiClient.get<{ rows: Automation[] }>('/api/v3/mail/automations')).data,
     enabled: tab === 'automations',
   });
 
   const suppressions = useQuery({
     queryKey: ['mail', 'suppressions'],
     queryFn: async () =>
-      (await apiClient.get<{ rows: Suppression[] }>('/mail/suppressions')).data,
+      (await apiClient.get<{ rows: Suppression[] }>('/api/v3/mail/suppressions')).data,
     enabled: tab === 'suppressions',
   });
 
@@ -204,7 +204,7 @@ export default function MailPage() {
   const sendCampaign = useMutation({
     mutationFn: async (id: string) =>
       (await apiClient.post<{ queued: number; skipped: number; audience: number }>(
-        `/mail/campaigns/${id}/send`,
+        `/api/v3/mail/campaigns/${id}/send`,
       )).data,
     onSuccess: (result) => {
       toast({
@@ -219,7 +219,7 @@ export default function MailPage() {
 
   const testCampaign = useMutation({
     mutationFn: async (id: string) =>
-      (await apiClient.post<{ to: string }>(`/mail/campaigns/${id}/test`, {})).data,
+      (await apiClient.post<{ to: string }>(`/api/v3/mail/campaigns/${id}/test`, {})).data,
     onSuccess: (result) =>
       toast({ title: 'Test sent', description: `Delivered to ${result.to}.` }),
     onError: (error) =>
@@ -228,7 +228,7 @@ export default function MailPage() {
 
   const toggleAutomation = useMutation({
     mutationFn: async (input: { id: string; isActive: boolean }) =>
-      (await apiClient.put(`/mail/automations/${input.id}`, { isActive: input.isActive })).data,
+      (await apiClient.put(`/api/v3/mail/automations/${input.id}`, { isActive: input.isActive })).data,
     onSuccess: () => void invalidate('automations'),
     onError: (error) =>
       toast({ title: 'Update failed', description: String(error), variant: 'destructive' }),
@@ -236,7 +236,7 @@ export default function MailPage() {
 
   const addSuppression = useMutation({
     mutationFn: async (email: string) =>
-      (await apiClient.post('/mail/suppressions', { email })).data,
+      (await apiClient.post('/api/v3/mail/suppressions', { email })).data,
     onSuccess: () => {
       setNewEmail('');
       void invalidate('suppressions');
@@ -247,7 +247,7 @@ export default function MailPage() {
 
   const removeSuppression = useMutation({
     mutationFn: async (email: string) =>
-      (await apiClient.delete(`/mail/suppressions/${encodeURIComponent(email)}`)).data,
+      (await apiClient.delete(`/api/v3/mail/suppressions/${encodeURIComponent(email)}`)).data,
     onSuccess: () => void invalidate('suppressions'),
   });
 
@@ -327,7 +327,7 @@ export default function MailPage() {
             <CardTitle>Deliveries</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            {deliveries.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+            {deliveries.isLoading && <p className="text-sm text-muted-foreground">Loadingâ€¦</p>}
             {(deliveries.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">No mail sent yet.</p>
             )}
@@ -480,7 +480,7 @@ export default function MailPage() {
           <CardContent className="overflow-x-auto">
             {(automations.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">
-                No journeys yet. Manual-only templates never run here — use a campaign.
+                No journeys yet. Manual-only templates never run here â€” use a campaign.
               </p>
             )}
             {(automations.data?.rows ?? []).length > 0 && (
@@ -568,7 +568,7 @@ export default function MailPage() {
                     <TableRow key={row.email}>
                       <TableCell className="break-all">{row.email}</TableCell>
                       <TableCell>{row.reason}</TableCell>
-                      <TableCell className="text-muted-foreground">{row.source ?? '—'}</TableCell>
+                      <TableCell className="text-muted-foreground">{row.source ?? 'â€”'}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">
                         {fmt(row.created_at)}
                       </TableCell>
@@ -598,7 +598,7 @@ export default function MailPage() {
             <p className="text-sm text-muted-foreground">
               Stored encrypted and applied without a redeploy. Leave a secret blank to keep the
               current value. API key:{' '}
-              <strong>{mailSettings.data?.configured ? 'configured' : 'missing'}</strong> · webhook:{' '}
+              <strong>{mailSettings.data?.configured ? 'configured' : 'missing'}</strong> Â· webhook:{' '}
               <strong>{mailSettings.data?.webhook_configured ? 'configured' : 'missing'}</strong>
             </p>
 
@@ -608,7 +608,7 @@ export default function MailPage() {
                 <Input
                   type="password"
                   autoComplete="off"
-                  placeholder={mailSettings.data?.configured ? 'stored — leave blank to keep' : 're_...'}
+                  placeholder={mailSettings.data?.configured ? 'stored â€” leave blank to keep' : 're_...'}
                   value={form.apiKey}
                   onChange={(event) => setForm({ ...form, apiKey: event.target.value })}
                 />
@@ -619,7 +619,7 @@ export default function MailPage() {
                   type="password"
                   autoComplete="off"
                   placeholder={
-                    mailSettings.data?.webhook_configured ? 'stored — leave blank to keep' : 'whsec_...'
+                    mailSettings.data?.webhook_configured ? 'stored â€” leave blank to keep' : 'whsec_...'
                   }
                   value={form.webhookSecret}
                   onChange={(event) => setForm({ ...form, webhookSecret: event.target.value })}
@@ -678,7 +678,7 @@ export default function MailPage() {
                 saveSettings.mutate(payload);
               }}
             >
-              {saveSettings.isPending ? 'Saving…' : 'Save settings'}
+              {saveSettings.isPending ? 'Savingâ€¦' : 'Save settings'}
             </Button>
           </CardContent>
         </Card>
