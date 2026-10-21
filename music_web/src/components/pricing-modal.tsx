@@ -5,6 +5,9 @@ import TopupModal from '@/components/topup-modal';
 type PricingModalProps = {
   isOpen: boolean;
   onClose: () => void;
+  /** Optional context shown above the pack grid. */
+  headline?: string;
+  message?: string;
   /**
    * Kept only for call-site compatibility. Packs have no billing cycle, so the
    * value is ignored.
@@ -20,6 +23,6 @@ type PricingModalProps = {
  * means every existing entry point (site header, footer, shell switcher, credit
  * header, upgrade modal) shows the same pack store with no call-site changes.
  */
-export default function PricingModal({ isOpen, onClose }: PricingModalProps) {
-  return <TopupModal isOpen={isOpen} onClose={onClose} />;
+export default function PricingModal({ isOpen, onClose, headline, message }: PricingModalProps) {
+  return <TopupModal isOpen={isOpen} onClose={onClose} headline={headline} message={message} />;
 }

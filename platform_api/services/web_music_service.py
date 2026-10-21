@@ -452,6 +452,8 @@ class WebMusicService:
         daily_free_limit: int = 0,
         limit: int = 0,
         used: int = 0,
+        premium_unlocked: bool = True,
+        free_model: str = "V6-MINI",
     ) -> dict[str, Any]:
         per_song = max(1, int(credits_per_song or WEB_MUSIC_CREDITS_PER_SONG))
         remaining_songs = max(0, int(credits_remaining)) // per_song
@@ -467,6 +469,8 @@ class WebMusicService:
             "can_download": True,
             "daily_free_remaining": daily_free_remaining,
             "daily_free_limit": daily_free_limit,
+            "premium_unlocked": premium_unlocked,
+            "free_model": free_model,
         }
 
     async def _usage_today_v3(self, user_id: UUID) -> dict[str, Any]:
@@ -475,6 +479,7 @@ class WebMusicService:
         )
         is_pro = await self._has_pro(user_id)
         has_subscription = paid_web or await self._has_web_subscription(user_id)
+        premium_unlocked = await self._web_music_charge_bridge().premium_unlocked(user_id)
         daily_limit = 0
         daily_remaining = 0
         if not is_pro and not paid_web:
@@ -492,6 +497,7 @@ class WebMusicService:
                 daily_free_limit=daily_limit,
                 limit=daily_limit if not paid_web and not is_pro else spendable,
                 used=max(0, daily_limit - daily_remaining) if daily_limit else 0,
+                premium_unlocked=premium_unlocked,
             ),
         )
 
@@ -809,6 +815,7 @@ class WebMusicService:
                 credits_per_song=charged.amount_credits or music_credits or WEB_MUSIC_CREDITS_PER_SONG,
                 is_pro=is_pro,
                 has_subscription=paid_web or await self._has_web_subscription(user_id),
+                premium_unlocked=await self._web_music_charge_bridge().premium_unlocked(user_id),
             )
 
         if await self._has_pro(user_id):

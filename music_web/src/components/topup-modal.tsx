@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Sparkles, Loader2, Check } from 'lucide-react';
+import { X, Sparkles, Loader2, Check, Lock } from 'lucide-react';
 import CutluyCheckoutModal from '@/components/cutluy-checkout-modal';
 import {
   fetchCreditPacks,
@@ -14,9 +14,12 @@ import {
 interface TopupModalProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Optional context shown above the pack grid (e.g. a premium-model block). */
+  headline?: string;
+  message?: string;
 }
 
-export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
+export default function TopupModal({ isOpen, onClose, headline, message }: TopupModalProps) {
   const [mounted, setMounted] = useState(false);
   const [packs, setPacks] = useState<CreditPack[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +108,19 @@ export default function TopupModal({ isOpen, onClose }: TopupModalProps) {
 
         {/* Content */}
         <div className="p-6">
+          {message && (
+            <div className="mb-5 flex items-start gap-3 rounded-xl border border-amber-400/25 bg-amber-400/10 px-4 py-3">
+              <span className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-amber-400/15 text-amber-300">
+                <Lock className="h-4 w-4" />
+              </span>
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-white">
+                  {headline ?? 'A credit pack is required'}
+                </div>
+                <p className="mt-1 text-sm leading-relaxed text-amber-100/80">{message}</p>
+              </div>
+            </div>
+          )}
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
