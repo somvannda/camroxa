@@ -36,6 +36,7 @@ interface TemplateRow {
   id: string;
   name: string;
   is_active: boolean;
+  send_mode: string;
 }
 
 export default function MailAutomationsPage() {
@@ -157,11 +158,14 @@ export default function MailAutomationsPage() {
                 placeholder="Win-back — inactive 30 days"
               />
             </Field>
-            <Field label="Template">
+            <Field
+              label="Template"
+              hint="Manual-only templates (discount, seasonal) are excluded — use a campaign for those."
+            >
               <Select required value={templateId} onChange={(e) => setTemplateId(e.target.value)}>
                 <option value="">Select a template</option>
                 {(templates.data?.rows ?? [])
-                  .filter((t) => t.is_active)
+                  .filter((t) => t.is_active && t.send_mode !== "manual")
                   .map((t) => (
                     <option key={t.id} value={t.id}>
                       {t.name}
