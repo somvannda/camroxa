@@ -68,7 +68,7 @@ function formatModelVersionTag(model: string | null | undefined): string {
     .replace(/[\s.-]+/g, '_');
   if (key === 'V6_MINI') return 'V6 Mini';
   if (key === 'V6_WILD') return 'V6 Wild';
-  if (key === 'V6') return 'V6';
+  if (key === 'V6') return 'V6 Pro';
   if (key === 'V5_5') return 'V5.5';
   if (key === 'V5') return 'V5';
   return key.replace(/_/g, ' ');
@@ -231,11 +231,18 @@ function ClipReadyLabel({
   waitingLabel?: string;
   className?: string;
 }) {
-  const duration = formatDuration(clip.duration_seconds);
+  const duration = formatDuration(
+    clip.is_preview ? clip.preview_seconds ?? 60 : clip.duration_seconds,
+  );
   const status = clip.ready ? 'Ready' : waitingLabel;
   return (
     <p className={`flex min-w-0 flex-nowrap items-center gap-1.5 ${className}`}>
       <span className="truncate">{duration ? `${duration} · ${status}` : status}</span>
+      {clip.is_preview ? (
+        <span className="shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+          Preview
+        </span>
+      ) : null}
       <ModelVersionTag model={model} />
     </p>
   );
@@ -450,6 +457,18 @@ export function UserGeneratedSongs({ userId }: { userId: string }) {
     clip: AdminWebMusicClip,
     size: 'sm' | 'md',
   ) {
+    if (song.is_preview || clip.is_preview) {
+      return (
+        <span
+          className={`inline-flex items-center rounded-md border border-amber-300/30 bg-amber-400/10 font-medium text-amber-200 ${
+            size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
+          }`}
+          title="Free preview: 60 seconds, play-only. Downloads unlock after a credit-pack purchase."
+        >
+          Preview · play-only
+        </span>
+      );
+    }
     const busy = (kind: string) => downloadingKeys.includes(`${song.id}:${clip.variant}:${kind}`);
     return (
       <>
@@ -676,6 +695,14 @@ export function UserGeneratedSongs({ userId }: { userId: string }) {
                   <span className="text-slate-400">Model</span>
                   <span className="text-white">{formatModelVersionTag(selectedVersion.song.model)}</span>
                 </div>
+                {selectedVersion.song.is_preview ? (
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-400">Preview</span>
+                    <span className="text-amber-300">
+                      First {selectedVersion.song.preview_seconds ?? 60}s · play-only
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-3">
                   <span className="text-slate-400">Type</span>
                   <span className="text-white">
