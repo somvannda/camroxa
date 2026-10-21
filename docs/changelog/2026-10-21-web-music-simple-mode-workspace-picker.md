@@ -34,6 +34,11 @@ title) now renders below both forms, so Simple mode can choose where its batch l
 
 Rebuild music web. No backend change, no migration.
 
+- **Sandbox:** full `rebuild_music_web_sandbox.py` rebuild.
+- **Production:** file-scoped `scripts/deploy/hotfix_music_web_simple_mode_workspace_picker_production.py`
+  (upload `create-page-client.tsx`, `npm run build`, restart `camxora-music`). A full tree sync
+  would roll production back to this branch's base, which predates the ChmabaPay provider switch.
+
 ## Tests
 
 - `npx tsc --noEmit` (music_web) — no new errors (only the pre-existing `.ts`-extension
