@@ -17,6 +17,7 @@ interface TemplateRow {
   locale: string;
   var_count: number;
   is_active: boolean;
+  send_mode: string;
   updated_at: string;
 }
 
@@ -289,6 +290,14 @@ export default function MailTemplatesPage() {
                 <tr key={row.id} className="border-t border-[var(--border)]">
                   <td className="py-2 pr-3">
                     {row.name}
+                    {row.send_mode === "manual" && (
+                      <span
+                        className="ml-2 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300"
+                        title="Campaign only — cannot be attached to an automation"
+                      >
+                        manual
+                      </span>
+                    )}
                     {!row.is_active && (
                       <span className="ml-2 text-[11px] text-[var(--muted)]">inactive</span>
                     )}

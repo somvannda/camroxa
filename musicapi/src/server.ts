@@ -11615,7 +11615,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!(await requireAdmin(req, reply))) return;
     const rows = await query(
       `SELECT id, key, locale, name, subject, jsonb_array_length(to_jsonb(vars)) AS var_count,
-              is_active, updated_at
+              is_active, send_mode, updated_at
        FROM mail_templates ORDER BY is_active DESC, name`,
     );
     return { rows };
