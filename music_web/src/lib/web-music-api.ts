@@ -84,6 +84,7 @@ export type WebMusicGeneration = {
   error_message?: string | null;
   created_at?: string | null;
   is_preview?: boolean;
+  unlockable?: boolean;
   preview_seconds?: number | null;
   negative_tags?: string | null;
   vocal_gender?: string | null;
@@ -257,6 +258,7 @@ export async function generateWebMusic(
   model?: string;
   model_label?: string;
   is_preview?: boolean;
+  unlockable?: boolean;
   preview_seconds?: number | null;
   quota: WebMusicQuota;
 }> {

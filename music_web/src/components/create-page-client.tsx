@@ -1033,17 +1033,23 @@ export default function CreatePageClient() {
             compact={size === 'sm'}
           />
           {quota?.premium_unlocked ? (
-            <button
-              type="button"
-              onClick={() => void onUnlockPreview(generation, clip)}
-              disabled={unlocking}
-              title="Replace this 60-second preview with the full-length track."
-              className={`inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-emerald-300/30 bg-emerald-400/10 font-semibold text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-50 ${
-                size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
-              }`}
-            >
-              {unlocking ? 'Unlocking…' : 'Unlock full track'}
-            </button>
+            generation.unlockable ? (
+              <button
+                type="button"
+                onClick={() => void onUnlockPreview(generation, clip)}
+                disabled={unlocking}
+                title="Replace this 60-second preview with the full-length track."
+                className={`inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-emerald-300/30 bg-emerald-400/10 font-semibold text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-50 ${
+                  size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
+                }`}
+              >
+                {unlocking ? 'Unlocking…' : 'Unlock full track'}
+              </button>
+            ) : (
+              <span className="shrink-0 text-[11px] text-slate-500">
+                Preview only · generate a new version
+              </span>
+            )
           ) : (
             <button
               type="button"
@@ -1322,6 +1328,7 @@ export default function CreatePageClient() {
           model,
           model_label: created.model_label,
           is_preview: created.is_preview,
+          unlockable: created.unlockable,
           preview_seconds: created.preview_seconds ?? null,
           instrumental: lyricsMode === 'instrumental',
           status: created.status,

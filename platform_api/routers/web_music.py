@@ -259,6 +259,7 @@ class WebMusicGenerationResponse(BaseModel):
     error_message: str | None = None
     created_at: str | None = None
     is_preview: bool = False
+    unlockable: bool = False
     preview_seconds: int | None = None
     negative_tags: str | None = None
     vocal_gender: str | None = None
@@ -290,6 +291,7 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         error_message=payload.get("error_message"),
         created_at=created_text,
         is_preview=bool(payload.get("is_preview")),
+        unlockable=bool(payload.get("unlockable")),
         preview_seconds=(
             int(payload["preview_seconds"])
             if payload.get("preview_seconds") is not None

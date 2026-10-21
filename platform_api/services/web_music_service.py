@@ -43,6 +43,7 @@ from platform_api.services.suno_audio_resolver import (
     download_suno_mp3_bytes,
     download_suno_wav_bytes,
     fetch_timestamped_lrc_with_pool,
+    recover_suno_task_download_urls,
     refresh_suno_task_download_urls,
     urls_from_generate_poll,
     validate_mp3_bytes,
@@ -1606,6 +1607,7 @@ class WebMusicService:
                    image_url_ok, image_url_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
                    is_preview, preview_seconds,
+                   b2_full_storage_key_ok, b2_full_storage_key_alt,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -1774,8 +1776,31 @@ class WebMusicService:
                 include_other_variant=False,
             )
             if not candidates:
+                # Older previews were created before private masters existed and
+                # their stored URLs were nulled at ingest. Try the recovery
+                # endpoint (re-signs provider-side audio) before giving up.
+                if external_id:
+                    try:
+                        recovered = await recover_suno_task_download_urls(
+                            self._pool, external_id
+                        )
+                        audio_id = str(_row_value(row, f"audio_id_{variant}") or "").strip()
+                        recovered_url = recovered.get(audio_id) if audio_id else None
+                        if not recovered_url and len(recovered) == 1:
+                            recovered_url = next(iter(recovered.values()))
+                        if recovered_url:
+                            candidates = [recovered_url]
+                    except Exception as exc:
+                        logger.warning(
+                            "Full-track recovery failed task=%s variant=%s: %s",
+                            task_id,
+                            variant,
+                            exc,
+                        )
+            if not candidates:
                 raise ValidationError(
-                    "Could not retrieve the full track. Please generate it again.",
+                    "This preview was created before full-track storage was enabled. "
+                    "Generate a new version to get the full-length song.",
                 )
             plaintext = await download_suno_mp3_bytes(
                 candidates[0], fallback_urls=candidates[1:]
@@ -1869,6 +1894,7 @@ class WebMusicService:
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
                    is_preview, preview_seconds,
+                   b2_full_storage_key_ok, b2_full_storage_key_alt,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -2056,6 +2082,7 @@ class WebMusicService:
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
                    is_preview, preview_seconds,
+                   b2_full_storage_key_ok, b2_full_storage_key_alt,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -2116,6 +2143,7 @@ class WebMusicService:
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
                    is_preview, preview_seconds,
+                   b2_full_storage_key_ok, b2_full_storage_key_alt,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -2172,6 +2200,7 @@ class WebMusicService:
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
                    is_preview, preview_seconds,
+                   b2_full_storage_key_ok, b2_full_storage_key_alt,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -2229,6 +2258,7 @@ class WebMusicService:
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
                    is_preview, preview_seconds,
+                   b2_full_storage_key_ok, b2_full_storage_key_alt,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -3302,6 +3332,14 @@ class WebMusicService:
             "error_message": row["error_message"],
             "created_at": created,
             "is_preview": bool(_row_value(row, "is_preview")),
+            "unlockable": bool(
+                _row_value(row, "is_preview")
+                and (
+                    _row_value(row, "b2_full_storage_key_ok")
+                    or _row_value(row, "b2_full_storage_key_alt")
+                    or _row_value(row, "external_task_id")
+                )
+            ),
             "preview_seconds": (
                 int(_row_value(row, "preview_seconds"))
                 if _row_value(row, "preview_seconds") is not None
