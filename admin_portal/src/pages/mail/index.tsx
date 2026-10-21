@@ -290,7 +290,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {deliveries.data.rows.map((row) => (
+                  {(deliveries.data?.rows ?? []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell className="break-all">{row.email}</TableCell>
                       <TableCell className="max-w-[22rem] truncate" title={row.subject}>
@@ -340,7 +340,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {campaigns.data.rows.map((row) => (
+                  {(campaigns.data?.rows ?? []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>
                         <div>{row.name}</div>
@@ -397,7 +397,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {templates.data.rows.map((row) => (
+                  {(templates.data?.rows ?? []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>{row.name}</TableCell>
                       <TableCell className="max-w-[20rem] truncate" title={row.subject}>
@@ -441,7 +441,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {automations.data.rows.map((row) => (
+                  {(automations.data?.rows ?? []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>
                         <div>{row.name}</div>
@@ -510,7 +510,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {suppressions.data.rows.map((row) => (
+                  {(suppressions.data?.rows ?? []).map((row) => (
                     <TableRow key={row.email}>
                       <TableCell className="break-all">{row.email}</TableCell>
                       <TableCell>{row.reason}</TableCell>
