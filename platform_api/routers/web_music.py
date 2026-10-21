@@ -489,10 +489,11 @@ async def generate(
     )
     await enforce_rate_limit(http_request, ctx.user_id)
     # Credit-funded users are gated by their balance, not the per-IP farm cap.
+    credited = await service.has_generation_credits(UUID(ctx.user_id))
     await track_generation_attempt(
         http_request,
         ctx.user_id,
-        credited=await service.has_generation_credits(UUID(ctx.user_id)),
+        credited=credited,
     )
     
     try:
@@ -512,9 +513,10 @@ async def generate(
             audio_weight=body.audio_weight,
             workspace_id=body.workspace_id,
         )
-    except QuotaExceededError as exc:
-        # Track quota exceeded for abuse detection
-        await track_quota_exceeded(http_request, ctx.user_id)
+    except QuotaExceededError:
+        # A paying user hitting a preview/plan limit is not farm abuse.
+        if not credited:
+            await track_quota_exceeded(http_request, ctx.user_id)
         raise
     
     return WebMusicGenerateResponse(
