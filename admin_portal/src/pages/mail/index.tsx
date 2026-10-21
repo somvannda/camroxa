@@ -274,10 +274,10 @@ export default function MailPage() {
           </CardHeader>
           <CardContent className="overflow-x-auto">
             {deliveries.isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
-            {deliveries.data && deliveries.data.rows.length === 0 && (
+            {(deliveries.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">No mail sent yet.</p>
             )}
-            {deliveries.data && deliveries.data.rows.length > 0 && (
+            {(deliveries.data?.rows ?? []).length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -290,7 +290,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {deliveries.data.rows.map((row) => (
+                  {(deliveries.data?.rows ?? []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell className="break-all">{row.email}</TableCell>
                       <TableCell className="max-w-[22rem] truncate" title={row.subject}>
@@ -322,12 +322,12 @@ export default function MailPage() {
             <CardTitle>Campaigns</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            {campaigns.data && campaigns.data.rows.length === 0 && (
+            {(campaigns.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No campaigns yet. Create one from the mail templates you want to send.
               </p>
             )}
-            {campaigns.data && campaigns.data.rows.length > 0 && (
+            {(campaigns.data?.rows ?? []).length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -340,7 +340,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {campaigns.data.rows.map((row) => (
+                  {(campaigns.data?.rows ?? []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>
                         <div>{row.name}</div>
@@ -383,10 +383,10 @@ export default function MailPage() {
             <CardTitle>Templates</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            {templates.data && templates.data.rows.length === 0 && (
+            {(templates.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">No templates yet.</p>
             )}
-            {templates.data && templates.data.rows.length > 0 && (
+            {(templates.data?.rows ?? []).length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -397,7 +397,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {templates.data.rows.map((row) => (
+                  {(templates.data?.rows ?? []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>{row.name}</TableCell>
                       <TableCell className="max-w-[20rem] truncate" title={row.subject}>
@@ -424,12 +424,12 @@ export default function MailPage() {
             <CardTitle>Automations</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
-            {automations.data && automations.data.rows.length === 0 && (
+            {(automations.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No journeys yet. Manual-only templates never run here — use a campaign.
               </p>
             )}
-            {automations.data && automations.data.rows.length > 0 && (
+            {(automations.data?.rows ?? []).length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -441,7 +441,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {automations.data.rows.map((row) => (
+                  {(automations.data?.rows ?? []).map((row) => (
                     <TableRow key={row.id}>
                       <TableCell>
                         <div>{row.name}</div>
@@ -493,12 +493,12 @@ export default function MailPage() {
                 Add
               </Button>
             </div>
-            {suppressions.data && suppressions.data.rows.length === 0 && (
+            {(suppressions.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">
                 Nothing suppressed. Bounces and complaints are added automatically by Resend.
               </p>
             )}
-            {suppressions.data && suppressions.data.rows.length > 0 && (
+            {(suppressions.data?.rows ?? []).length > 0 && (
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -510,7 +510,7 @@ export default function MailPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {suppressions.data.rows.map((row) => (
+                  {(suppressions.data?.rows ?? []).map((row) => (
                     <TableRow key={row.email}>
                       <TableCell className="break-all">{row.email}</TableCell>
                       <TableCell>{row.reason}</TableCell>
