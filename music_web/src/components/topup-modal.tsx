@@ -126,11 +126,14 @@ export default function TopupModal({ isOpen, onClose, headline, message }: Topup
               <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
             </div>
           ) : (
-            <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="grid auto-rows-fr grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-4">
               {packs.map((pack, index) => {
                 const isPurchasing = purchasingPackId === pack.id;
-                // Largest pack has the best credits-per-dollar value.
-                const isPopular = index === packs.length - 1;
+                // The $10 pack is the recommended middle tier.
+                const tenDollarIndex = packs.findIndex((item) => item.price_cents === 1000);
+                const popularIndex =
+                  tenDollarIndex >= 0 ? tenDollarIndex : Math.min(1, packs.length - 1);
+                const isPopular = index === popularIndex;
                 const base = packs[0];
                 const baseRate =
                   base && base.price_cents > 0
@@ -152,14 +155,17 @@ export default function TopupModal({ isOpen, onClose, headline, message }: Topup
                         : 'border-purple-500/20 bg-[#0c1230]/50 hover:border-purple-500/40'
                     }`}
                   >
-                    {isPopular && (
-                      <span className="absolute right-3 top-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
-                        Best value
-                      </span>
-                    )}
+                    {/* Reserved badge row keeps every card's header aligned. */}
+                    <div className="flex h-5 items-center justify-end">
+                      {isPopular && (
+                        <span className="rounded-full bg-gradient-to-r from-purple-500 to-pink-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white">
+                          Most popular
+                        </span>
+                      )}
+                    </div>
 
                     {/* Header: fixed one-line name so every card starts the same row. */}
-                    <div className="flex min-w-0 items-center gap-2 pr-14">
+                    <div className="mt-1 flex min-w-0 items-center gap-2">
                       <span
                         className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${
                           isPopular
