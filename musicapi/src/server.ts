@@ -12019,11 +12019,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!name || !UUID_RE.test(templateId)) {
       return reply.code(400).send({ error: "name and a valid templateId are required." });
     }
-    const template = await queryOne<{ id: string }>(
-      "SELECT id FROM mail_templates WHERE id = $1 AND is_active",
+    const template = await queryOne<{ id: string; send_mode: string }>(
+      "SELECT id, send_mode FROM mail_templates WHERE id = $1 AND is_active",
       [templateId],
     );
     if (!template) return reply.code(400).send({ error: "Template not found or inactive." });
+    // Manual-only templates (discount, seasonal, ...) must not be wired to a
+    // trigger: a human prices each discount, and a dated message on a timer is
+    // wrong the day after the holiday.
+    if (template.send_mode === "manual") {
+      return reply.code(400).send({
+        error: "This template is manual-only and cannot be attached to an automation. Use a campaign instead.",
+      });
+    }
 
     const trigger = coerceTrigger(body.trigger);
     const def = triggerDef(trigger);

@@ -262,7 +262,9 @@ export async function runAutomation(id: string, limit = 200): Promise<number> {
  */
 export async function runDueAutomations(limitPerAutomation = 200): Promise<number> {
   if (!mailConfigured()) return 0;
-  const automations = await loadAutomations();
+  // Defence in depth: the create route already refuses manual-only templates,
+  // but a row inserted by hand or by an older build must not start mailing.
+  const automations = await loadAutomations("a.is_active AND t.send_mode = 'auto'");
   let queued = 0;
   for (const automation of automations) {
     try {
