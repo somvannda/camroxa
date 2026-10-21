@@ -179,6 +179,7 @@ class CreditsOnlyBillingService:
         waive: bool = False,
         plan_id: UUID | None = None,
         product: str | None = None,
+        model: str | None = None,
     ) -> dict[str, Any]:
         quote = await self.quote(op=op, user_id=user_id, plan_id=plan_id, waive=waive)
         if self._enforcement is not None and not waive:
@@ -215,6 +216,10 @@ class CreditsOnlyBillingService:
             # Product context makes web vs desktop attribution provable for
             # image/lyric/title charges, which share the same reason strings.
             metadata["product"] = str(product)[:32]
+        if model:
+            # Suno model (V6 / V6_WILD / V6_MINI) so ops can see which version
+            # a spend actually bought.
+            metadata["model"] = str(model).strip().upper()[:32]
         ok = await self._credit_repo.atomic_deduct(
             user_id,
             quote.amount_units,
