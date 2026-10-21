@@ -369,7 +369,7 @@ class WebMusicService:
         """True for a free user: no paid plan/subscription and no pack credits."""
         if await self._has_pro(user_id):
             return False
-        if await self._has_web_subscription(user_id):
+        if await self._has_paid_web_subscription(user_id):
             return False
         return not await self._has_pack_credits(user_id)
 
@@ -2546,6 +2546,7 @@ class WebMusicService:
         if variant_key not in ("ok", "alt"):
             raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
         row = await self._fetch_playable_task_row(user_id, task_id, variant_key)
+        self._reject_preview_download(row)
         data, filename, content_type = await self._serve_mp3_row(
             row,
             task_id=task_id,
@@ -2652,6 +2653,7 @@ class WebMusicService:
         )
         if row is None:
             raise NotFoundError("Generation not found.")
+        self._reject_preview_download(row)
         
         status = str(_row_value(row, "status") or "").upper()
         if status != "SUCCESS":
@@ -2856,6 +2858,18 @@ class WebMusicService:
         data = await self._limit_preview_audio(row, data, fmt="wav")
         return data, filename, "audio/wav"
 
+    def _reject_preview_download(self, row: Any) -> None:
+        """A preview is play-only: no MP3/WAV/LRC/SRT export until they buy a pack."""
+        if bool(_row_value(row, "is_preview")):
+            raise QuotaExceededError(
+                "Preview tracks are play-only. Buy a credit pack to unlock the "
+                "full-length track and downloads.",
+                details={
+                    "code": "preview_download_blocked",
+                    "requires_upgrade": True,
+                },
+            )
+
     async def download_timed_lyrics(
         self,
         user_id: UUID,
@@ -2877,7 +2891,8 @@ class WebMusicService:
             """
             SELECT id, title, status, instrumental, external_task_id,
                    audio_id_ok, audio_id_alt,
-                   b2_lrc_storage_key_ok, b2_lrc_storage_key_alt
+                   b2_lrc_storage_key_ok, b2_lrc_storage_key_alt,
+                   is_preview
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -2887,6 +2902,7 @@ class WebMusicService:
         )
         if row is None:
             raise NotFoundError("Generation not found.")
+        self._reject_preview_download(row)
         if bool(row["instrumental"]):
             raise ValidationError(
                 "Timed lyrics are not available for instrumental tracks.",

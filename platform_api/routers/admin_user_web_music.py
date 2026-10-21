@@ -16,6 +16,7 @@ from pydantic import BaseModel, Field
 from platform_api.dependencies import get_db_pool
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
+from platform_api.services.web_music_previews import model_label
 
 logger = logging.getLogger(__name__)
 
@@ -240,6 +241,13 @@ def _generation_payload(row: Any, user_id: UUID) -> dict[str, Any]:
         "lyrics": str(_row_get(row, "lyrics") or ""),
         "style": str(_row_get(row, "style") or ""),
         "model": str(_row_get(row, "model") or "V5"),
+        "model_label": model_label(str(_row_get(row, "model") or "V5")),
+        "is_preview": bool(_row_get(row, "is_preview") or False),
+        "preview_seconds": (
+            int(_row_get(row, "preview_seconds"))
+            if _row_get(row, "preview_seconds") is not None
+            else None
+        ),
         "instrumental": bool(_row_get(row, "instrumental") or False),
         "status": str(_row_get(row, "status") or "pending").upper(),
         "error_message": _row_get(row, "error_message"),
@@ -281,7 +289,8 @@ _GENERATION_SELECTS: tuple[str, ...] = (
            image_url_ok, image_url_alt, duration_ok, duration_alt,
            encrypted_original_key_ok, encrypted_original_key_alt,
            package_status_ok, package_status_alt,
-           content_key_id_ok, content_key_id_alt
+           content_key_id_ok, content_key_id_alt,
+           is_preview, preview_seconds
     FROM suno_tasks
     """,
     """
@@ -343,6 +352,23 @@ async def _list_generation_rows(
     return [], 0
 
 
+async def _limit_admin_preview(row: Any, data: bytes) -> bytes:
+    """Admin audio for preview tasks is cut to the same 60 seconds users hear."""
+    if not bool(_row_get(row, "is_preview")):
+        return data
+    from platform_api.services.audio_preview_trim import PreviewTrimError, trim_audio_bytes
+
+    try:
+        return await trim_audio_bytes(
+            data,
+            seconds=int(_row_get(row, "preview_seconds") or 60),
+            fmt="mp3",
+        )
+    except PreviewTrimError as exc:
+        logger.warning("Admin preview trim failed: %s", exc)
+        raise ValidationError("Preview audio is not ready yet.") from exc
+
+
 async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> tuple[bytes, str, str]:
     variant_key = str(variant or "ok").strip().lower()
     if variant_key not in {"ok", "alt"}:
@@ -355,7 +381,8 @@ async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> 
                b2_storage_key_ok, b2_storage_key_alt, source,
                encrypted_original_key_ok, encrypted_original_key_alt,
                content_key_id_ok, content_key_id_alt,
-               package_status_ok, package_status_alt
+               package_status_ok, package_status_alt,
+               is_preview, preview_seconds
         FROM suno_tasks
         WHERE id = $1 AND user_id = $2
         """,
@@ -412,6 +439,7 @@ async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> 
                         storage, str(enc_key), wrapped
                     )
                     if data:
+                        data = await _limit_admin_preview(row, data)
                         return data, filename, "audio/mpeg"
         except Exception as exc:
             logger.warning("Admin encrypted original decrypt failed task=%s: %s", task_id, exc)
@@ -440,6 +468,7 @@ async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> 
                                     data, bytes(wrapped)
                                 )
                                 if data:
+                                    data = await _limit_admin_preview(row, data)
                                     return data, filename, "audio/mpeg"
                         logger.warning(
                             "Admin B2 object is ciphertext task=%s variant=%s",
@@ -447,6 +476,7 @@ async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> 
                             variant_key,
                         )
                     else:
+                        data = await _limit_admin_preview(row, data)
                         return data, filename, "audio/mpeg"
         except Exception as exc:
             logger.warning("Admin B2 audio read failed task=%s variant=%s: %s", task_id, variant_key, exc)
@@ -456,6 +486,7 @@ async def _load_clip_audio(pool, user_id: UUID, task_id: UUID, variant: str) -> 
         from platform_api.services.suno_audio_resolver import download_suno_mp3_bytes
 
         data = await download_suno_mp3_bytes(audio_url)
+        data = await _limit_admin_preview(row, data)
         return data, filename, "audio/mpeg"
 
     raise NotFoundError("Audio file is not available for this clip.")
