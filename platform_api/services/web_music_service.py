@@ -29,7 +29,15 @@ from platform_api.models.products import (
     WEB_MUSIC_CREDITS_PER_SONG,
 )
 from platform_api.ports.generation_port import SunoRequest
-from platform_api.services.billing_calendar import billing_today
+from platform_api.services.billing_calendar import billing_month_start, billing_today, billing_usage_date
+from platform_api.services.audio_preview_trim import PreviewTrimError, trim_audio_bytes
+from platform_api.services.web_music_previews import (
+    PREVIEW_PER_MODEL_LIMIT,
+    PREVIEW_SECONDS,
+    is_preview_model,
+    model_label,
+    preview_quota_payload,
+)
 from platform_api.services.generation_service import GenerationService
 from platform_api.services.suno_audio_resolver import (
     download_suno_mp3_bytes,
@@ -332,7 +340,132 @@ class WebMusicService:
         payload = dict(quota)
         payload["queue_limit"] = await self._queue_cap_for_user(user_id)
         payload["queue_used"] = await self._active_generate_queue_count(user_id)
+        if await self._is_preview_eligible(user_id):
+            payload["previews"] = await self._preview_quota_payload(user_id, eligible=True)
         return payload
+
+    async def _has_pack_credits(self, user_id: UUID) -> bool:
+        """True when the wallet holds purchased or admin-granted credits.
+
+        Free-plan users get ``grant`` / ``daily_grant`` lots. A purchased pack (or
+        an admin/quota conversion) means they have paid for full-length tracks,
+        so premium generations must not be downgraded to a preview.
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT 1
+            FROM credit_wallet_lots
+            WHERE user_id = $1
+              AND tag IN ('pack', 'admin', 'quota_conversion')
+              AND remaining_units > 0
+              AND (expires_at IS NULL OR expires_at > NOW())
+            LIMIT 1
+            """,
+            user_id,
+        )
+        return row is not None
+
+    async def _is_preview_eligible(self, user_id: UUID) -> bool:
+        """True for a free user: no paid plan/subscription and no pack credits."""
+        if await self._has_pro(user_id):
+            return False
+        if await self._has_web_subscription(user_id):
+            return False
+        return not await self._has_pack_credits(user_id)
+
+    async def _preview_usage(self, user_id: UUID, period_start: date) -> dict[str, int]:
+        rows = await self._pool.fetch(
+            """
+            SELECT model, used
+            FROM web_music_preview_entitlements
+            WHERE user_id = $1 AND period_start = $2
+            """,
+            user_id,
+            period_start,
+        )
+        return {str(row["model"]): int(row["used"] or 0) for row in rows}
+
+    async def _preview_quota_payload(
+        self,
+        user_id: UUID,
+        *,
+        eligible: bool,
+    ) -> dict[str, Any]:
+        used = await self._preview_usage(user_id, billing_month_start())
+        return preview_quota_payload(used, eligible=eligible)
+
+    async def _reserve_preview(
+        self,
+        user_id: UUID,
+        period_start: date,
+        model: str,
+    ) -> bool:
+        """Atomically claim this month's preview for ``model``. False = used up."""
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO web_music_preview_entitlements (
+                user_id, period_start, model, used
+            )
+            VALUES ($1, $2, $3, 1)
+            ON CONFLICT (user_id, period_start, model) DO UPDATE
+              SET used = web_music_preview_entitlements.used + 1
+              WHERE web_music_preview_entitlements.used < $4
+            RETURNING used
+            """,
+            user_id,
+            period_start,
+            model,
+            PREVIEW_PER_MODEL_LIMIT,
+        )
+        return row is not None
+
+    async def _release_preview(
+        self,
+        user_id: UUID,
+        period_start: date,
+        model: str,
+    ) -> None:
+        await self._pool.execute(
+            """
+            UPDATE web_music_preview_entitlements
+            SET used = GREATEST(0, used - 1)
+            WHERE user_id = $1 AND period_start = $2 AND model = $3
+            """,
+            user_id,
+            period_start,
+            model,
+        )
+
+    async def _release_preview_for_task(
+        self,
+        user_id: UUID,
+        *,
+        task_id: str | UUID | None,
+    ) -> None:
+        """Release a preview slot when a queued generation fails upstream.
+
+        ``preview_released`` makes this idempotent across worker retries.
+        """
+        if not task_id:
+            return
+        try:
+            parsed = UUID(str(task_id))
+        except (TypeError, ValueError):
+            return
+        row = await self._pool.fetchrow(
+            """
+            UPDATE suno_tasks
+            SET preview_released = TRUE
+            WHERE id = $1 AND user_id = $2 AND is_preview = TRUE AND preview_released = FALSE
+            RETURNING model, created_at
+            """,
+            parsed,
+            user_id,
+        )
+        if row is None:
+            return
+        period_start = billing_month_start(billing_usage_date(row["created_at"]))
+        await self._release_preview(user_id, period_start, str(row["model"] or "").strip().upper())
 
     async def _has_pro(self, user_id: UUID) -> bool:
         row = await self._pool.fetchrow(
@@ -797,6 +930,7 @@ class WebMusicService:
         *,
         reservation_id: str,
         model: str | None = None,
+        allow_free_preview: bool = False,
     ) -> dict[str, Any]:
         if await self._credits_only_v3_enabled():
             charged = await self._web_music_charge_bridge().charge(
@@ -804,6 +938,7 @@ class WebMusicService:
                 "music",
                 ref_id=reservation_id,
                 model=model,
+                allow_free_preview=allow_free_preview,
             )
             self._open_charges[reservation_id] = charged
             spendable, music_credits, paid_web = await self._web_music_charge_bridge().spendable_credits(
@@ -831,6 +966,8 @@ class WebMusicService:
         reference_id: str | None = None,
         task_id: str | None = None,
     ) -> None:
+        # A failed preview must free its monthly slot, not only its credits.
+        await self._release_preview_for_task(user_id, task_id=task_id)
         if await self._credits_only_v3_enabled():
             charge = self._open_charges.pop(reference_id, None) if reference_id else None
             if charge is not None:
@@ -1040,11 +1177,57 @@ class WebMusicService:
 
         reservation_id = str(uuid4())
         logger.info("service.generate step reserve user=%s reservation=%s", user_id, reservation_id)
-        # Charge only after title/blocklist checks so 422s do not burn daily credits.
-        quota = await self._reserve_daily_slot(
-            user_id, reservation_id=reservation_id, model=normalized_model
-        )
+        # Free-tier premium previews: reserve the per-model monthly slot before
+        # charging, so two concurrent requests cannot both claim the last one.
+        is_preview = False
+        preview_period: date | None = None
+        preview_seconds: int | None = None
+        if is_preview_model(normalized_model):
+            eligible = await self._is_preview_eligible(user_id)
+            if eligible:
+                preview_period = billing_month_start()
+                reserved = await self._reserve_preview(
+                    user_id, preview_period, normalized_model
+                )
+                if not reserved:
+                    label = model_label(normalized_model)
+                    raise QuotaExceededError(
+                        f"Your free {label} preview is used for this month. "
+                        f"Your remaining free credits only cover V6 Mini. "
+                        f"Buy a credit pack to generate full-length {label} tracks.",
+                        details={
+                            "code": "preview_exhausted",
+                            "model": normalized_model,
+                            "requires_upgrade": True,
+                        },
+                    )
+                is_preview = True
+                preview_seconds = PREVIEW_SECONDS
+
+        # Charge only after title/blocklist checks so 422s do not burn credits.
+        try:
+            quota = await self._reserve_daily_slot(
+                user_id,
+                reservation_id=reservation_id,
+                model=normalized_model,
+                allow_free_preview=is_preview,
+            )
+        except Exception:
+            if is_preview and preview_period is not None:
+                await self._release_preview(user_id, preview_period, normalized_model)
+            raise
         logger.info("service.generate step reserved_ok user=%s reservation=%s", user_id, reservation_id)
+
+        async def release_reservation(task_id: str | None = None) -> None:
+            await self._release_daily_slot(
+                user_id,
+                reference_id=reservation_id,
+                task_id=task_id,
+            )
+            # Before the task row exists there is nothing for
+            # _release_preview_for_task to find, so release it directly.
+            if is_preview and preview_period is not None and not task_id:
+                await self._release_preview(user_id, preview_period, normalized_model)
 
         if mode_key == "simple":
             try:
@@ -1053,7 +1236,7 @@ class WebMusicService:
                     safe_prompt
                 )
             except Exception:
-                await self._release_daily_slot(user_id, reference_id=reservation_id)
+                await release_reservation()
                 raise
             safe_lyrics = str(generated_lyrics or "").strip() or safe_prompt
             safe_title = prepare_web_music_title(
@@ -1074,7 +1257,7 @@ class WebMusicService:
                     negative_tags=safe_negative,
                 )
             except Exception:
-                await self._release_daily_slot(user_id, reference_id=reservation_id)
+                await release_reservation()
                 raise
 
         stored_style_weight = _normalize_slider(style_weight)
@@ -1085,6 +1268,7 @@ class WebMusicService:
             if vocal_gender and vocal_gender.lower() in ("m", "f", "both")
             else None
         )
+        task_id: UUID | None = None
         try:
             logger.info("service.generate step submit_suno user=%s reservation=%s", user_id, reservation_id)
             task_id = await self._enqueue_web_generate(
@@ -1101,10 +1285,12 @@ class WebMusicService:
                 weirdness_constraint=stored_weirdness,
                 audio_weight=stored_audio_weight,
                 workspace_id=workspace_id,
+                is_preview=is_preview,
+                preview_seconds=preview_seconds,
             )
             logger.info("service.generate step submitted_ok user=%s reservation=%s task=%s", user_id, reservation_id, task_id)
         except Exception:
-            await self._release_daily_slot(user_id, reference_id=reservation_id)
+            await release_reservation(task_id=str(task_id) if task_id else None)
             raise
 
         await self._link_generation_debit_reference(user_id, reservation_id, str(task_id))
@@ -1116,6 +1302,9 @@ class WebMusicService:
             "status": "QUEUED",
             "title": safe_title,
             "style": safe_style,
+            "model": normalized_model,
+            "is_preview": is_preview,
+            "preview_seconds": preview_seconds,
             "quota": await self._with_queue_fields(user_id, quota),
             "workspace_id": str(resolved_workspace_id),
         }
@@ -1136,6 +1325,8 @@ class WebMusicService:
         weirdness_constraint: float,
         audio_weight: float,
         workspace_id: UUID | None,
+        is_preview: bool = False,
+        preview_seconds: int | None = None,
     ) -> UUID:
         from platform_api.dependencies import get_job_queue_repo
         from platform_api.services.generation_service import compute_suno_request_hash
@@ -1160,13 +1351,13 @@ class WebMusicService:
                 id, user_id, request_hash, model, title, lyrics, style,
                 instrumental, external_task_id, status, source, workspace_id,
                 negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                audio_weight, created_at, updated_at
+                audio_weight, is_preview, preview_seconds, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, NULL, $9, $10, $11,
                 $12, $13, $14, $15,
-                $16, NOW(), NOW()
+                $16, $17, $18, NOW(), NOW()
             )
             """,
             task_id,
@@ -1185,6 +1376,8 @@ class WebMusicService:
             style_weight,
             weirdness_constraint,
             audio_weight,
+            is_preview,
+            preview_seconds,
         )
         paid = await self._is_paid_queue_user(user_id)
         await get_job_queue_repo().enqueue(
@@ -1455,6 +1648,7 @@ class WebMusicService:
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   is_preview, preview_seconds,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -1641,6 +1835,7 @@ class WebMusicService:
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   is_preview, preview_seconds,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -1700,6 +1895,7 @@ class WebMusicService:
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   is_preview, preview_seconds,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -1755,6 +1951,7 @@ class WebMusicService:
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   is_preview, preview_seconds,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -1811,6 +2008,7 @@ class WebMusicService:
                    weirdness_constraint, audio_weight, image_url_ok, image_url_alt,
                    b2_storage_key_ok, b2_storage_key_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   is_preview, preview_seconds,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -2019,7 +2217,8 @@ class WebMusicService:
                        encrypted_original_key_ok, encrypted_original_key_alt,
                        package_status_ok, package_status_alt,
                        content_key_id_ok, content_key_id_alt,
-                       packaged_storage_key_ok, packaged_storage_key_alt
+                       packaged_storage_key_ok, packaged_storage_key_alt,
+                       is_preview, preview_seconds
                 FROM suno_tasks
                 WHERE id = $1 AND user_id = $2 AND source = $3
                 """,
@@ -2036,7 +2235,8 @@ class WebMusicService:
                    t.encrypted_original_key_ok, t.encrypted_original_key_alt,
                    t.package_status_ok, t.package_status_alt,
                    t.content_key_id_ok, t.content_key_id_alt,
-                   t.packaged_storage_key_ok, t.packaged_storage_key_alt
+                   t.packaged_storage_key_ok, t.packaged_storage_key_alt,
+                   t.is_preview, t.preview_seconds
             FROM suno_tasks t
             JOIN web_music_playlist_items i
               ON i.suno_task_id = t.id AND i.variant = $3
@@ -2052,6 +2252,28 @@ class WebMusicService:
         if row is None:
             raise NotFoundError("Generation not found.")
         return row
+
+    async def _limit_preview_audio(self, row: Any, data: bytes, *, fmt: str) -> bytes:
+        """Cut a preview task's audio to its configured length.
+
+        This runs on every on-demand delivery path (B2 miss, Suno fallback,
+        download) as a second line of defence after ingest-time trimming.
+        """
+        if not bool(_row_value(row, "is_preview")):
+            return data
+        seconds = int(_row_value(row, "preview_seconds") or PREVIEW_SECONDS)
+        try:
+            return await trim_audio_bytes(data, seconds=seconds, fmt=fmt)
+        except PreviewTrimError as exc:
+            logger.error(
+                "Preview trim failed task=%s fmt=%s: %s",
+                _row_value(row, "id"),
+                fmt,
+                exc,
+            )
+            raise NotFoundError(
+                "Preview audio is not ready yet. Please try again in a moment."
+            ) from exc
 
     async def _serve_mp3_row(
         self,
@@ -2076,6 +2298,7 @@ class WebMusicService:
             variant_key=variant_key,
             allow_suno_ingest=allow_suno_ingest,
         )
+        plaintext = await self._limit_preview_audio(row, plaintext, fmt="mp3")
         return plaintext, filename, "audio/mpeg"
 
     async def _maybe_decrypt_suno_export(
@@ -2418,7 +2641,8 @@ class WebMusicService:
                    {wav_url_col} as wav_url,
                    {wav_status_col} as wav_status,
                    {b2_wav_key_col} as b2_wav_key,
-                   {audio_id_col} as audio_id
+                   {audio_id_col} as audio_id,
+                   is_preview, preview_seconds
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -2456,6 +2680,7 @@ class WebMusicService:
                     )
                     data = b""
                 if data and validate_wav_bytes(data):
+                    data = await self._limit_preview_audio(row, data, fmt="wav")
                     title = str(row["title"] or "camxora-track").strip() or "camxora-track"
                     filename = f"{title}-{variant_key}.wav"
                     return data, filename, "audio/wav"
@@ -2628,6 +2853,7 @@ class WebMusicService:
             )
         title = str(row["title"] or "camxora-track").strip() or "camxora-track"
         filename = f"{title}-{variant_key}.wav"
+        data = await self._limit_preview_audio(row, data, fmt="wav")
         return data, filename, "audio/wav"
 
     async def download_timed_lyrics(
@@ -2834,10 +3060,17 @@ class WebMusicService:
             "lyrics": row["lyrics"] or "",
             "style": row["style"] or "",
             "model": row["model"] or "V5",
+            "model_label": model_label(row["model"]),
             "instrumental": bool(row["instrumental"]),
             "status": str(row["status"] or "pending").upper(),
             "error_message": row["error_message"],
             "created_at": created,
+            "is_preview": bool(_row_value(row, "is_preview")),
+            "preview_seconds": (
+                int(_row_value(row, "preview_seconds"))
+                if _row_value(row, "preview_seconds") is not None
+                else None
+            ),
             "negative_tags": _row_value(row, "negative_tags") or None,
             "vocal_gender": _row_value(row, "vocal_gender") or None,
             "style_weight": float(row["style_weight"]) if _row_value(row, "style_weight") is not None else None,
@@ -2854,6 +3087,12 @@ class WebMusicService:
                     "package_status": str(_row_value(row, "package_status_ok") or "none"),
                     "image_url": image_ok,
                     "duration_seconds": _duration_seconds(row, "duration_ok"),
+                    "is_preview": bool(_row_value(row, "is_preview")),
+                    "preview_seconds": (
+                        int(_row_value(row, "preview_seconds"))
+                        if _row_value(row, "preview_seconds") is not None
+                        else None
+                    ),
                 },
                 {
                     "variant": "alt",
@@ -2865,6 +3104,12 @@ class WebMusicService:
                     "package_status": str(_row_value(row, "package_status_alt") or "none"),
                     "image_url": image_alt,
                     "duration_seconds": _duration_seconds(row, "duration_alt"),
+                    "is_preview": bool(_row_value(row, "is_preview")),
+                    "preview_seconds": (
+                        int(_row_value(row, "preview_seconds"))
+                        if _row_value(row, "preview_seconds") is not None
+                        else None
+                    ),
                 },
             ],
         }

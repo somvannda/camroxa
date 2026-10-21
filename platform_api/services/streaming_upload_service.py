@@ -36,6 +36,8 @@ from platform_api.services.suno_audio_resolver import (
 )
 from platform_api.services.audio_package_service import AudioPackageService
 from platform_api.services.audio_packager import GCM_MIME, looks_like_camxora_audio
+from platform_api.services.audio_preview_trim import PreviewTrimError, trim_audio_bytes
+from platform_api.services.web_music_previews import PREVIEW_SECONDS
 from platform_api.services.suno_lrc import looks_like_lrc
 from platform_api.services.web_music_storage_keys import (
     usable_web_music_b2_key,
@@ -916,6 +918,23 @@ class StreamingUploadService:
                 return
 
             data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+            if bool(context.get("is_preview")):
+                try:
+                    data = await trim_audio_bytes(
+                        data,
+                        seconds=int(context.get("preview_seconds") or PREVIEW_SECONDS),
+                        fmt="mp3",
+                    )
+                except PreviewTrimError as exc:
+                    # Never store the full track for a preview. The on-demand
+                    # fallback trims too, and refuses to serve if it cannot.
+                    logger.error(
+                        "Preview MP3 trim failed task=%s variant=%s: %s",
+                        suno_task_id,
+                        variant,
+                        exc,
+                    )
+                    return
             data = await ensure_mp3_duration_header_async(data)
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
@@ -1142,6 +1161,22 @@ class StreamingUploadService:
                     response = await client.get(wav_url)
                     response.raise_for_status()
                     wav_data = response.content
+
+                if bool(context.get("is_preview")):
+                    try:
+                        wav_data = await trim_audio_bytes(
+                            wav_data,
+                            seconds=int(context.get("preview_seconds") or PREVIEW_SECONDS),
+                            fmt="wav",
+                        )
+                    except PreviewTrimError as exc:
+                        logger.error(
+                            "Preview WAV trim failed task=%s variant=%s: %s",
+                            suno_task_id,
+                            variant,
+                            exc,
+                        )
+                        return
                 
                 wav_data = await AudioPackageService(self._pool).encrypt_suno_export(
                     wav_data,

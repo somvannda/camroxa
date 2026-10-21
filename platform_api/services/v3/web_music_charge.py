@@ -106,6 +106,7 @@ class WebMusicChargeBridge:
         *,
         ref_id: str | None = None,
         model: str | None = None,
+        allow_free_preview: bool = False,
     ) -> WebMusicCharge:
         await self._grant.ensure_daily_grant(user_id)
         await self._grant.ensure_period_grant(user_id)
@@ -113,18 +114,29 @@ class WebMusicChargeBridge:
         if amount <= 0 or bool(getattr(quote, "included", False)):
             return WebMusicCharge(path="included", op=op, amount_credits=0, ref_id=ref_id)
 
-        await self._enforce_free_model_scope(user_id, model)
+        await self._enforce_free_model_scope(
+            user_id, model, allow_free_preview=allow_free_preview
+        )
 
         return await self._charge_v3(user_id, op, amount, ref_id=ref_id)
 
-    async def _enforce_free_model_scope(self, user_id: UUID, model: str | None) -> None:
+    async def _enforce_free_model_scope(
+        self,
+        user_id: UUID,
+        model: str | None,
+        *,
+        allow_free_preview: bool = False,
+    ) -> None:
         """Block premium models for Free-plan users until they buy a pack.
 
         The Free plan's monthly credits are granted into the shared wallet, so
         this is the only place the V6-Mini-only rule can be enforced. A paid
         plan is unrestricted; a completed top-up in the same calendar month
-        unlocks the grant for V6 / V6-Wild.
+        unlocks the grant for V6 / V6-Wild. ``allow_free_preview`` is set only
+        after the caller reserved this month's one-per-model preview slot.
         """
+        if allow_free_preview:
+            return
         plan = await self._store.resolve_charge_plan(user_id)
         if not self._is_free_plan(plan):
             return

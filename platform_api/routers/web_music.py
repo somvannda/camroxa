@@ -62,6 +62,23 @@ class WebMusicClipResponse(BaseModel):
     image_url: str | None = None
     duration_seconds: float | None = None
     title: str = ""
+    is_preview: bool = False
+    preview_seconds: int | None = None
+
+
+class WebMusicPreviewModelResponse(BaseModel):
+    model: str
+    label: str
+    limit: int = 1
+    used: int = 0
+    remaining: int = 0
+    seconds: int = 60
+
+
+class WebMusicPreviewsResponse(BaseModel):
+    eligible: bool = False
+    seconds: int = 60
+    models: list[WebMusicPreviewModelResponse] = Field(default_factory=list)
 
 
 class WebMusicQuotaResponse(BaseModel):
@@ -74,6 +91,7 @@ class WebMusicQuotaResponse(BaseModel):
     has_subscription: bool = False
     queue_limit: int = 2
     queue_used: int = 0
+    previews: WebMusicPreviewsResponse | None = None
 
 
 class WebMusicPlaylistResponse(BaseModel):
@@ -218,6 +236,10 @@ class WebMusicGenerateResponse(BaseModel):
     status: str
     title: str
     style: str
+    model: str = DEFAULT_SUNO_MUSIC_MODEL
+    model_label: str = "V6 Pro"
+    is_preview: bool = False
+    preview_seconds: int | None = None
     quota: WebMusicQuotaResponse
 
 
@@ -227,10 +249,13 @@ class WebMusicGenerationResponse(BaseModel):
     lyrics: str = ""
     style: str = ""
     model: str = "V5"
+    model_label: str = "V6 Pro"
     instrumental: bool = False
     status: str
     error_message: str | None = None
     created_at: str | None = None
+    is_preview: bool = False
+    preview_seconds: int | None = None
     negative_tags: str | None = None
     vocal_gender: str | None = None
     style_weight: float | None = None
@@ -255,10 +280,17 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         lyrics=str(payload.get("lyrics") or ""),
         style=str(payload.get("style") or ""),
         model=str(payload.get("model") or "V5"),
+        model_label=str(payload.get("model_label") or payload.get("model") or "V5"),
         instrumental=bool(payload.get("instrumental")),
         status=str(payload.get("status") or "PENDING"),
         error_message=payload.get("error_message"),
         created_at=created_text,
+        is_preview=bool(payload.get("is_preview")),
+        preview_seconds=(
+            int(payload["preview_seconds"])
+            if payload.get("preview_seconds") is not None
+            else None
+        ),
         negative_tags=payload.get("negative_tags") or None,
         vocal_gender=payload.get("vocal_gender") or None,
         style_weight=_optional_float(payload.get("style_weight")),
@@ -486,6 +518,14 @@ async def generate(
         status=str(payload["status"]),
         title=str(payload["title"]),
         style=str(payload["style"]),
+        model=str(payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        model_label=str(payload.get("model_label") or payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        is_preview=bool(payload.get("is_preview")),
+        preview_seconds=(
+            int(payload["preview_seconds"])
+            if payload.get("preview_seconds") is not None
+            else None
+        ),
         quota=WebMusicQuotaResponse(**payload["quota"]),
     )
 
