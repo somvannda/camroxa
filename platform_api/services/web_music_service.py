@@ -1602,7 +1602,7 @@ class WebMusicService:
             """
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
-                   negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
+                   external_task_id, negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
                    b2_storage_key_ok, b2_storage_key_alt, workspace_id,
                    image_url_ok, image_url_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
@@ -3335,6 +3335,7 @@ class WebMusicService:
                 and (
                     _row_value(row, "b2_full_storage_key_ok")
                     or _row_value(row, "b2_full_storage_key_alt")
+                    or _row_value(row, "external_task_id")
                 )
             ),
             "preview_seconds": (
