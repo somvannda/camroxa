@@ -224,25 +224,28 @@ class TopupService:
             WHERE user_id = $1 AND status = 'active'
         """, user_id)
 
+        # Resolve the gateway before the row exists so a failed attempt is still
+        # attributed to the provider that refused it.
+        provider = await self._payment_provider()
+
         # Create pending top-up purchase
         topup_id = await self._db.fetch_val("""
             INSERT INTO topup_purchases (
                 user_id, web_subscription_id, credit_pack_id,
                 credits_purchased, amount_paid_cents,
-                payment_status
+                payment_status, payment_provider
             ) VALUES (
-                $1, $2, $3, $4, $5, 'pending'
+                $1, $2, $3, $4, $5, 'pending', $6
             )
             RETURNING id
         """, 
             user_id, subscription["id"] if subscription else None, pack.id,
-            pack.total_credits, pack.price_cents
+            pack.total_credits, pack.price_cents, provider
         )
         
         # Create the gateway payment. The provider is resolved once per
         # checkout and recorded on the row so status polling/webhooks keep
         # talking to the gateway that actually holds the money.
-        provider = await self._payment_provider()
         try:
             if provider == "chmaba":
                 from platform_api.services.shared.chmaba_service import ChmabaService

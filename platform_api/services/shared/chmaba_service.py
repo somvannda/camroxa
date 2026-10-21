@@ -22,6 +22,7 @@ import httpx
 
 from platform_api.services.billing_config_service import (
     ChmabaConfig,
+    normalize_chmaba_api_base_url,
     resolve_chmaba_config,
 )
 from platform_api.services.chmaba_webhook import verify_chmaba_webhook_signature
@@ -118,11 +119,11 @@ class ChmabaService:
             store_id = self._store_id or env_store_id
             webhook_secret = self._webhook_secret or env_webhook_secret
             return ChmabaConfig(
-                api_base_url=(
+                api_base_url=normalize_chmaba_api_base_url(
                     self._api_base_url
                     or getattr(settings, "chmaba_api_base_url", "")
                     or "https://pay.chmaba.com"
-                ).rstrip("/"),
+                ),
                 api_key=api_key,
                 store_id=store_id,
                 api_key_source="environment" if api_key else "none",
@@ -135,7 +136,9 @@ class ChmabaService:
         config = await resolve_chmaba_config(pool)
         # Explicit constructor values (tests, one-off scripts) win over both.
         return ChmabaConfig(
-            api_base_url=(self._api_base_url or config.api_base_url).rstrip("/"),
+            api_base_url=normalize_chmaba_api_base_url(
+                self._api_base_url or config.api_base_url
+            ),
             api_key=self._api_key or config.api_key,
             store_id=self._store_id or config.store_id,
             api_key_source=config.api_key_source,
@@ -180,8 +183,16 @@ class ChmabaService:
                 response.status_code,
                 text[:300],
             )
+            detail = ""
+            if isinstance(payload, dict):
+                raw_detail = payload.get("detail")
+                if isinstance(raw_detail, str):
+                    detail = raw_detail[:200]
+            message = f"Payment provider error ({response.status_code})"
+            if detail:
+                message = f"{message}: {detail}"
             raise ChmabaAPIError(
-                f"Payment provider error ({response.status_code}).",
+                message,
                 retryable=response.status_code >= 500,
                 status_code=response.status_code,
             )

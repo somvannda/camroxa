@@ -19,6 +19,27 @@ CHMABA_WEBHOOK_SECRET_KEY = "billing.chmaba.webhook_secret"
 
 DEFAULT_CHMABA_API_BASE_URL = "https://pay.chmaba.com"
 
+_BASE_URL_SUFFIXES = ("/api/v1", "/api", "/v1")
+
+
+def normalize_chmaba_api_base_url(raw: str | None) -> str:
+    """Return the bare gateway origin.
+
+    ChmabaPay's routes live under ``/api/v1`` and the client appends that path
+    itself, so a stored base of ``https://pay.chmaba.com/api`` would produce
+    ``/api/api/v1/payments`` and a 404. Admins often copy the value used by
+    other products, so strip any API suffix instead of trusting the form.
+    """
+    value = (raw or "").strip().rstrip("/")
+    if not value:
+        return DEFAULT_CHMABA_API_BASE_URL
+    lowered = value.lower()
+    for suffix in _BASE_URL_SUFFIXES:
+        if lowered.endswith(suffix):
+            value = value[: -len(suffix)].rstrip("/")
+            break
+    return value or DEFAULT_CHMABA_API_BASE_URL
+
 CutluySecretSource = Literal["database", "environment", "none"]
 ChmabaSecretSource = Literal["database", "environment", "none"]
 
@@ -153,11 +174,11 @@ async def resolve_chmaba_config(
         webhook_secret = resolved.chmaba_webhook_secret.strip()
         webhook_secret_source = "environment"
 
-    api_base_url = (
+    api_base_url = normalize_chmaba_api_base_url(
         db_api_base_url
         or getattr(resolved, "chmaba_api_base_url", "")
         or DEFAULT_CHMABA_API_BASE_URL
-    ).rstrip("/")
+    )
 
     return ChmabaConfig(
         api_base_url=api_base_url,
