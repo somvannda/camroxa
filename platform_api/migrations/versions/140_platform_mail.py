@@ -66,6 +66,11 @@ def upgrade() -> None:
             html TEXT NOT NULL,
             text TEXT,
             vars TEXT[] NOT NULL DEFAULT '{}',
+            -- 'auto' may be attached to an automation; 'manual' is campaigns
+            -- only. Discount and seasonal are manual: a human prices a discount,
+            -- and a dated holiday message must not keep firing on a timer.
+            send_mode TEXT NOT NULL DEFAULT 'auto'
+                CHECK (send_mode IN ('auto', 'manual')),
             is_active BOOLEAN NOT NULL DEFAULT true,
             created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
