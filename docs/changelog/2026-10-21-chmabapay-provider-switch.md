@@ -78,6 +78,7 @@ One URL settles both ledgers: `billing_payments` (plan/add-on/pack checkout) and
 
 ```
 pytest platform_api/tests/test_chmaba_provider.py \
+       platform_api/tests/test_topup_chmaba_flow.py \
        platform_api/tests/test_web_music_owned_checkout.py \
        platform_api/tests/test_billing_config_service.py \
        platform_api/tests/test_billing_plan_fulfillment.py \
@@ -85,6 +86,10 @@ pytest platform_api/tests/test_chmaba_provider.py \
 npx tsc -b                      # admin_portal
 npx tsc --noEmit --allowImportingTsExtensions   # music_web
 ```
+
+`test_topup_chmaba_flow.py` pins the two behaviours that actually broke:
+a non-subscriber checkout inserts `web_subscription_id = NULL`, and a ChmabaPay
+webhook settles a top-up exactly once.
 
 ## Follow-ups
 
