@@ -66,6 +66,23 @@ Deploy plumbing:
 No schema migration required: `topup_purchases.payment_provider` already exists
 (default `cutluy`) and `billing_payments.provider` is a free-form column.
 
+### Go-live fixes (found while enabling it in production)
+
+1. **Base URL must be the bare origin.** A stored value of
+   `https://pay.chmaba.com/api` produced `/api/api/v1/payments` → 404. The
+   resolver now strips a trailing `/api`, `/api/v1` or `/v1`.
+2. **The provider returns `http://pay.chmaba.com/pay/{id}`.** The HTTPS-only
+   allowlist rejected a valid checkout with a 422. Allowed ChmabaPay hosts are
+   now upgraded to `https` (a plaintext payment page would be blocked as mixed
+   content anyway); unknown hosts and internal addresses are still refused.
+3. Provider refusals now surface as 502 carrying the provider's `detail`
+   instead of a generic 500, and `payment_provider` is written at INSERT time so
+   a failed attempt is attributed to the gateway that refused it.
+
+Verified live: `POST /api/v3/topups/purchase → 200`, the dashboard delivery
+`POST /api/v3/billing/webhooks/chmaba → 200` from `ChmabaPay-Webhook/1.0`, and
+the purchase row settled to `completed` with a provider payment id.
+
 Register the webhook in the ChmabaPay dashboard as:
 
 ```
