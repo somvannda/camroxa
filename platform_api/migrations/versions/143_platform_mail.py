@@ -11,15 +11,15 @@ so recency x spend is exact rather than reconstructed from ledger rows. The
 vocabularies were verified against production: ``credit_transactions.direction``
 uses ``debit`` for spend, and ``billing_payments.status`` uses ``paid``.
 
-Revision ID: 140_platform_mail
-Revises: 139_referral_program
-Create Date: 2026-10-20
+Revision ID: 143_platform_mail
+Revises: 142_referral_credit_lot_expiry
+Create Date: 2026-10-21
 """
 
 from alembic import op
 
-revision = "140_platform_mail"
-down_revision = "139_referral_program"
+revision = "143_platform_mail"
+down_revision = "142_referral_credit_lot_expiry"
 branch_labels = None
 depends_on = None
 
