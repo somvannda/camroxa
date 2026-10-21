@@ -77,7 +77,7 @@ import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
 import { flowVerdict, type AssetCheck } from "./flowGuard.js";
 import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
-import { canSpendAllowance, defaultRoutingPolicy, freeModelRoutingPolicy, isAllowanceModel, modelLabel, normalizeModel } from "./models.js";
+import { defaultRoutingPolicy, normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured, storageInfo } from "./storage.js";
 import { extractVideoFrame } from "./video.js";
 import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
@@ -399,10 +399,6 @@ interface Job {
   model?: string;
   prompt?: string;
   credits?: number;
-  /** Credits paid from the monthly free allowance (V6-Mini runs). */
-  allowanceCredits?: number;
-  /** UTC month the allowance was taken from (`YYYY-MM-01`), for refunds. */
-  allowancePeriod?: string;
   createdAt: number;
   /** When the job reached a terminal state (complete/error). Used for WAV `completeTime`. */
   completedAt?: number;
@@ -1259,12 +1255,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * Routing policy for a model: an admin override from `routing_rules` (keyed
    * on the normalised model so retired aliases still match), else the built-in
    * default — chirp-goose prefers free accounts, every other model is paid-only.
-   * Allowance-funded runs bypass this and use the hard `free_only` policy in
-   * `chargeForMusic` so monthly free credits never spend a paid account.
    */
-  async function routingPolicy(
-    model?: string,
-  ): Promise<"prefer_free" | "paid_only" | "any"> {
+  async function routingPolicy(model?: string): Promise<"prefer_free" | "paid_only" | "any"> {
     const want = normalizeModel(model);
     if (want) {
       const row = await queryOne<{ policy: string }>(
@@ -1276,254 +1268,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
     return defaultRoutingPolicy(want);
-  }
-
-  /** Absolute billing URL used by 402 upsell payloads. */
-  function upgradeUrl(): string {
-    const origin = (config.frontendOrigins[0] ?? "http://localhost:4001").replace(/\/$/, "");
-    return `${origin}/dashboard/billing`;
-  }
-
-  /** First day of the current UTC month, as `YYYY-MM-01`. */
-  function allowanceMonthStart(now = new Date()): string {
-    const year = now.getUTCFullYear();
-    const month = String(now.getUTCMonth() + 1).padStart(2, "0");
-    return `${year}-${month}-01`;
-  }
-
-  /** First day of next UTC month, used for "resets on …" copy. */
-  function nextAllowanceMonthStart(now = new Date()): string {
-    return allowanceMonthStart(
-      new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 1)),
-    );
-  }
-
-  function allowanceEnabled(): boolean {
-    return config.freeMonthly.enabled && config.freeMonthly.credits > 0;
-  }
-
-  interface AllowanceRow {
-    granted: number;
-    used: number;
-    period_start: string;
-    scope_model: string;
-  }
-
-  /**
-   * Lazily mint the current month's allowance. Signup needs no cron: the first
-   * billing view or eligible generation creates the grant. Unused credits are
-   * never carried forward — the next month gets a fresh row — so the spendable
-   * balance is capped at one month's grant (50 by default), never 100.
-   */
-  async function ensureAllowance(userId: string): Promise<AllowanceRow | null> {
-    if (!allowanceEnabled()) return null;
-    const period = allowanceMonthStart();
-    const scope = normalizeModel(config.freeMonthly.model) ?? config.freeMonthly.model;
-    const created = await queryOne<AllowanceRow>(
-      `INSERT INTO monthly_allowances (user_id, period_start, granted, scope_model)
-       VALUES ($1, $2::date, $3, $4)
-       ON CONFLICT (user_id, period_start) DO NOTHING
-       RETURNING granted, used, period_start::text, scope_model`,
-      [userId, period, config.freeMonthly.credits, scope],
-    );
-    if (created) return created;
-    return queryOne<AllowanceRow>(
-      `SELECT granted, used, period_start::text, scope_model
-       FROM monthly_allowances WHERE user_id = $1 AND period_start = $2::date`,
-      [userId, period],
-    );
-  }
-
-  /** UI/API-safe view of the current month's allowance. */
-  interface AllowanceSummary {
-    granted: number;
-    used: number;
-    remaining: number;
-    period_start: string;
-    scope_model: string;
-    resets_at: string;
-    /** True once the user has bought a credit pack: allowance works on any model. */
-    universal: boolean;
-  }
-
-  /**
-   * A credit-pack purchase made during the same calendar month unlocks that
-   * month's remaining allowance for every model (V6 / V6-WILD included). The
-   * next month starts mini-only again unless the user buys again. Purchases
-   * already have a ledger row, so no extra schema is needed.
-   */
-  async function allowanceUniversal(userId: string, period: string): Promise<boolean> {
-    const row = await queryOne<{ ok: number }>(
-      `SELECT 1 AS ok FROM credit_transactions
-       WHERE user_id = $1 AND type = 'purchase'
-         AND created_at >= ($2::date AT TIME ZONE 'UTC')
-         AND created_at < (($2::date + interval '1 month') AT TIME ZONE 'UTC')
-       LIMIT 1`,
-      [userId, period],
-    );
-    return Boolean(row);
-  }
-
-  async function allowanceSummary(userId: string): Promise<AllowanceSummary | null> {
-    const row = await ensureAllowance(userId);
-    if (!row) return null;
-    return {
-      granted: row.granted,
-      used: row.used,
-      remaining: Math.max(0, row.granted - row.used),
-      period_start: row.period_start,
-      scope_model: row.scope_model,
-      resets_at: nextAllowanceMonthStart(),
-      universal: await allowanceUniversal(userId, row.period_start),
-    };
-  }
-
-  /** Atomically spend `amount` from the month's allowance. False = not enough. */
-  async function consumeAllowance(
-    userId: string,
-    period: string,
-    amount: number,
-  ): Promise<boolean> {
-    if (amount <= 0) return true;
-    const rows = await query<{ remaining: number }>(
-      `UPDATE monthly_allowances SET used = used + $3
-       WHERE user_id = $1 AND period_start = $2::date AND granted - used >= $3
-       RETURNING granted - used AS remaining`,
-      [userId, period, amount],
-    );
-    return rows.length > 0;
-  }
-
-  /** Return allowance credits after a rejected or failed generation. */
-  async function refundAllowance(
-    userId: string,
-    period: string,
-    amount: number,
-  ): Promise<void> {
-    if (amount <= 0) return;
-    await query(
-      `UPDATE monthly_allowances SET used = GREATEST(0, used - $3)
-       WHERE user_id = $1 AND period_start = $2::date`,
-      [userId, period, amount],
-    );
-  }
-
-  /**
-   * 402 payload for a credit-gated generation. The UI reads `code` to show the
-   * buy-a-pack CTA; `upgrade_url` keeps that useful for API clients too. For the
-   * free monthly model the body also explains that the allowance is gone and
-   * when it renews.
-   */
-  function sendCreditUpsell(
-    reply: FastifyReply,
-    opts: {
-      model?: string | null;
-      required?: number;
-      allowanceRemaining?: number | null;
-    } = {},
-  ): void {
-    const label = modelLabel(opts.model);
-    const eligible = opts.model
-      ? isAllowanceModel(opts.model, config.freeMonthly)
-      : false;
-    const exhausted = eligible && opts.allowanceRemaining === 0;
-    const error = exhausted
-      ? `Your free ${label ?? "V6-Mini"} credits are used up for this month (${config.freeMonthly.credits} credits). Buy a credit pack to keep generating now, or wait for next month's grant.`
-      : label
-        ? `${label} requires credits. Buy a credit pack to continue.`
-        : "Insufficient credits. Buy a credit pack to continue.";
-    reply.code(402).send({
-      error,
-      code: "credit_pack_required",
-      required_credits: opts.required ?? null,
-      allowance_remaining: opts.allowanceRemaining ?? null,
-      upgrade_url: upgradeUrl(),
-    });
-  }
-
-  interface MusicAdmission {
-    cost: number;
-    /** Credits paid from the monthly free allowance. */
-    allowanceCredits: number;
-    allowancePeriod: string | null;
-    /** Attribution key; an allowance-only run may have none. */
-    key: DbApiKey | null;
-    policy: RoutingPolicy;
-  }
-
-  /**
-   * Charge a music generation.
-   *
-   * The monthly free allowance is spent first. It always covers V6-Mini, and
-   * covers V6 / V6-WILD only when the user bought a credit pack during the same
-   * month. Whatever the allowance does not cover is charged to purchased
-   * credits, which are universal. If the purchased charge fails after allowance
-   * credits were taken, the allowance is refunded so a rejected request never
-   * burns the monthly grant.
-   */
-  async function chargeForMusic(
-    reply: FastifyReply,
-    userId: string,
-    model: string | undefined,
-    chargingKey?: DbApiKey,
-  ): Promise<MusicAdmission | null> {
-    const cost = await costFor("music", model);
-    const isFreeModel = isAllowanceModel(model, config.freeMonthly);
-    const allowanceRow = config.freeMonthly.enabled ? await ensureAllowance(userId) : null;
-    // Buying a pack during this month unlocks that month's remaining allowance
-    // for premium models too; next month starts mini-only again.
-    const universal =
-      allowanceRow && !isFreeModel
-        ? await allowanceUniversal(userId, allowanceRow.period_start)
-        : false;
-    const eligible = canSpendAllowance(model, config.freeMonthly, universal);
-    let allowanceCredits = 0;
-    let allowancePeriod: string | null = null;
-    let allowanceRemaining: number | null = null;
-
-    if (eligible && allowanceRow) {
-      const remaining = Math.max(0, allowanceRow.granted - allowanceRow.used);
-      const take = Math.min(cost, remaining);
-      if (take > 0 && (await consumeAllowance(userId, allowanceRow.period_start, take))) {
-        allowanceCredits = take;
-        allowancePeriod = allowanceRow.period_start;
-        allowanceRemaining = remaining - take;
-      } else {
-        allowanceRemaining = remaining;
-      }
-    }
-
-    const purchased = Math.max(0, cost - allowanceCredits);
-    let key: DbApiKey | null = chargingKey ?? null;
-    if (purchased > 0) {
-      if (chargingKey) {
-        if (!(await charge(chargingKey, purchased))) {
-          if (allowanceCredits > 0 && allowancePeriod) {
-            await refundAllowance(userId, allowancePeriod, allowanceCredits);
-          }
-          sendCreditUpsell(reply, { model, required: purchased, allowanceRemaining });
-          return null;
-        }
-      } else {
-        key = await chargeUserKey(userId, purchased);
-        if (!key) {
-          if (allowanceCredits > 0 && allowancePeriod) {
-            await refundAllowance(userId, allowancePeriod, allowanceCredits);
-          }
-          sendCreditUpsell(reply, { model, required: purchased, allowanceRemaining });
-          return null;
-        }
-      }
-    } else if (!chargingKey) {
-      key = await oldestActiveKey(userId);
-    }
-
-    // V6-Mini always runs on free Suno accounts, even when a paid user funds it
-    // with purchased credits or unlocked allowance. Premium models stay paid_only.
-    const policy: RoutingPolicy = isFreeModel
-      ? freeModelRoutingPolicy(config.freeMonthly.allowPaidFallback)
-      : await routingPolicy(model);
-    return { cost, allowanceCredits, allowancePeriod, key, policy };
   }
 
   function requireAuth(req: FastifyRequest, reply: FastifyReply): UserPayload | null {
@@ -1630,15 +1374,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     prompt?: string;
     status: string;
     credits: number;
-    /** Portion of `credits` paid by the monthly free allowance. */
-    allowanceCredits?: number;
     taskId: string;
     result?: unknown;
   }): Promise<void> {
     const insert = (apiKeyId: string | null) =>
       query(
-        `INSERT INTO usage_logs (user_id, api_key_id, endpoint, model, prompt, status, credits_consumed, allowance_credits, task_id, result_json)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        `INSERT INTO usage_logs (user_id, api_key_id, endpoint, model, prompt, status, credits_consumed, task_id, result_json)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
         [
           args.userId,
           apiKeyId,
@@ -1647,7 +1389,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           args.prompt ?? null,
           args.status,
           args.credits,
-          args.allowanceCredits ?? 0,
           args.taskId,
           args.result ? JSON.stringify(args.result) : null,
         ],
@@ -1675,8 +1416,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     await query(
       `INSERT INTO jobs
          (id, type, status, account_id, result_json, error, callback_url,
-          user_id, api_key_id, endpoint, model, prompt, credits, allowance_credits, allowance_period, payload, created_at, updated_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16, to_timestamp($17 / 1000.0), now())
+          user_id, api_key_id, endpoint, model, prompt, credits, payload, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14, to_timestamp($15 / 1000.0), now())
        ON CONFLICT (id) DO UPDATE SET
          status = EXCLUDED.status,
          account_id = EXCLUDED.account_id,
@@ -1698,8 +1439,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         job.model ?? null,
         job.prompt ?? null,
         job.credits ?? null,
-        job.allowanceCredits ?? 0,
-        job.allowancePeriod ?? null,
         job.payload === undefined ? null : JSON.stringify(job.payload),
         job.createdAt,
       ],
@@ -1720,14 +1459,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     model: string | null;
     prompt: string | null;
     credits: number | null;
-    allowance_credits: number;
-    allowance_period: string | null;
     payload: unknown;
     created_at: Date;
   }
 
   const JOB_COLUMNS =
-    "id, type, status, account_id, result_json, error, callback_url, user_id, api_key_id, endpoint, model, prompt, credits, allowance_credits, allowance_period, payload, created_at";
+    "id, type, status, account_id, result_json, error, callback_url, user_id, api_key_id, endpoint, model, prompt, credits, payload, created_at";
 
   function rowToJob(row: JobRow): Job {
     return {
@@ -1744,8 +1481,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       model: row.model ?? undefined,
       prompt: row.prompt ?? undefined,
       credits: row.credits ?? undefined,
-      allowanceCredits: row.allowance_credits || undefined,
-      allowancePeriod: row.allowance_period ?? undefined,
       payload:
         row.payload && typeof row.payload === "object" ? (row.payload as JobDescriptor) : undefined,
       createdAt: new Date(row.created_at).getTime(),
@@ -2356,27 +2091,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * job is a no-op — a retried/duplicated finalize can never refund twice.
    */
   async function settleCredits(job: Job): Promise<void> {
-    if (!job.userId) return;
+    if (!job.userId || !job.apiKeyId) return;
     const amount = job.credits ?? 0;
-    const allowance = Math.min(job.allowanceCredits ?? 0, amount);
-    const purchased = Math.max(0, amount - allowance);
     if (amount <= 0) return;
 
     // The spend row, the refund row and the credit restore must commit together:
     // otherwise a crash between the refund insert and the balance update would
     // lose the credits forever (the idempotency guard would skip the retry).
-    // Allowance credits were never added to `api_keys`, so only the purchased
-    // portion moves through the wallet; a failed job refunds the allowance to
-    // the month it was taken from.
     await withTransaction(async (tx) => {
-      if (purchased > 0) {
-        await tx(
-          `INSERT INTO credit_transactions (user_id, amount, type, description, job_id)
-           VALUES ($1, $2, 'spend', $3, $4)
-           ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING`,
-          [job.userId, -purchased, `${job.type} job (${job.status})`, job.id],
-        );
-      }
+      await tx(
+        `INSERT INTO credit_transactions (user_id, amount, type, description, job_id)
+         VALUES ($1, $2, 'spend', $3, $4)
+         ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING`,
+        [job.userId, -amount, `${job.type} job (${job.status})`, job.id],
+      );
 
       if (job.status !== "error") return;
 
@@ -2385,23 +2113,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
          VALUES ($1, $2, 'refund', $3, $4)
          ON CONFLICT (job_id, type) WHERE job_id IS NOT NULL DO NOTHING
          RETURNING id`,
-        [job.userId, purchased, `refund for failed ${job.type} job`, job.id],
+        [job.userId, amount, `refund for failed ${job.type} job`, job.id],
       );
       if (refunded.length === 0) return; // already refunded
-
-      if (allowance > 0 && job.allowancePeriod) {
-        await tx(
-          `UPDATE monthly_allowances SET used = GREATEST(0, used - $3)
-           WHERE user_id = $1 AND period_start = $2::date`,
-          [job.userId, job.allowancePeriod, allowance],
-        );
-      }
-      if (purchased > 0 && job.apiKeyId) {
-        await tx(
-          "UPDATE api_keys SET credits = credits + $1, credits_expire_at = now() + interval '12 months' WHERE id = $2",
-          [purchased, job.apiKeyId],
-        );
-      }
+      await tx("UPDATE api_keys SET credits = credits + $1, credits_expire_at = now() + interval '12 months' WHERE id = $2", [amount, job.apiKeyId]);
     });
   }
 
@@ -2503,7 +2218,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         // (safe-spend limits sum usage_logs.credits_consumed) nor show as
         // charged in the dashboard. The gross charge stays in credit_transactions.
         credits: job.status === "error" ? 0 : (job.credits ?? 0),
-        allowanceCredits: job.status === "error" ? 0 : (job.allowanceCredits ?? 0),
         taskId: job.id,
         result: job.result,
       });
@@ -3954,12 +3668,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!user) return reply.code(500).send({ error: "Failed to create or find user." });
       if (user.status !== "active") return reply.code(403).send({ error: "Account suspended." });
 
-      // Mint this month's free allowance on sign-in so it exists before the
-      // first billing/generation request. Idempotent per UTC month.
-      await ensureAllowance(user.id).catch((err) =>
-        req.log.warn({ err }, "allowance grant failed"),
-      );
-
       const token = signToken({ id: user.id, email: user.email, role: user.role });
       // Set the httpOnly session cookie alongside the (optional) body token.
       reply.header("set-cookie", serializeSessionCookie(token, config.sessionCookieSecure));
@@ -4077,28 +3785,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return reply.code(400).send({ error: "prompt is required." });
     }
 
-    const model = (body.model as string) || undefined;
-    let cost: number;
-    let key: DbApiKey | null = null;
-    let allowanceCredits = 0;
-    let allowancePeriod: string | null = null;
-    let policy: RoutingPolicy;
-    if (type === "music") {
-      const admission = await chargeForMusic(reply, u.id, model);
-      if (!admission) return;
-      cost = admission.cost;
-      key = admission.key;
-      allowanceCredits = admission.allowanceCredits;
-      allowancePeriod = admission.allowancePeriod;
-      policy = admission.policy;
-    } else {
-      cost = await costFor(type, model);
-      key = await chargeUserKey(u.id, cost);
-      if (!key) {
-        sendCreditUpsell(reply, { model, required: cost });
-        return;
-      }
-      policy = await routingPolicy(model);
+    const cost = await costFor(type, (body.model as string) || undefined);
+    const key = await chargeUserKey(u.id, cost);
+    if (!key) {
+      return reply.code(402).send({ error: "Insufficient credits." });
     }
 
     if (type === "lyrics") {
@@ -4118,12 +3808,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       job.userId = u.id;
       job.apiKeyId = key?.id;
       job.endpoint = "sounds";
-      job.model = model;
+      job.model = (body.model as string) || undefined;
       job.prompt = body.prompt as string;
       job.credits = cost;
+      const spolicy = await routingPolicy((body.model as string) || undefined);
       void runClipJobWithRetry(job, processSoundsSubmit(body), {
-        model,
-        policy,
+        model: (body.model as string) || undefined,
+        policy: spolicy,
       });
       return reply.code(202).send({ job_id: job.id, status: job.status });
     }
@@ -4132,17 +3823,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.userId = u.id;
     job.apiKeyId = key?.id;
     job.endpoint = "music";
-    job.model = model;
+    job.model = (body.model as string) || undefined;
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
     job.credits = cost;
-    job.allowanceCredits = allowanceCredits;
-    job.allowancePeriod = allowancePeriod ?? undefined;
+    const mpolicy = await routingPolicy((body.model as string) || undefined);
     const imageData = Array.isArray(body.images)
       ? (body.images as unknown[]).filter((d): d is string => typeof d === "string" && d.startsWith("data:image/"))
       : [];
     void runClipJobWithRetry(job, musicSubmitFactory(body, imageData), {
-      model,
-      policy,
+      model: (body.model as string) || undefined,
+      policy: mpolicy,
     });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
@@ -5055,10 +4745,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       "SELECT COALESCE(sum(credits),0)::text AS sum FROM api_keys WHERE user_id = $1",
       [u.id],
     );
-    const allowance = await allowanceSummary(u.id);
     return {
       credits: Number(credits?.sum ?? 0),
-      allowance,
       packs: packs.map((p) => ({ id: p.id, amount: p.amount, price: Number(p.price), currency: p.currency })),
     };
   });
@@ -5399,8 +5087,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // (see `requireFundedAccount`). Either way `if (!key)` is the gate.
       const key = await chargeUserKey(u.id, cost);
       if (!key) {
-        sendCreditUpsell(reply, { model, required: cost });
-        return;
+        return reply.code(402).send({ error: "Insufficient credits." });
       }
       const job = newJob(type, (body.callback_url as string) || undefined);
       job.userId = u.id;
@@ -5438,8 +5125,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // See meClipRoute: `if (!key)` gates both paid cost and the funded floor.
       const key = await chargeUserKey(u.id, cost);
       if (!key) {
-        sendCreditUpsell(reply, { required: cost });
-        return;
+        return reply.code(402).send({ error: "Insufficient credits." });
       }
       const job = newJob(type, (body.callback_url as string) || undefined);
       job.userId = u.id;
@@ -5922,37 +5608,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * the live Suno catalog of every funded account, so a Suno-side model rollout
    * (or retirement) reaches the clients without a code change.
    */
-  app.get("/models", async () => {
-    const models = await pool.listModels().catch(() => []);
-    // Public catalog + music pricing, so the playground can price each model and
-    // lock the ones the user's allowance + purchased credits cannot cover.
-    const rows = await query<{ model: string | null; credit_cost: number }>(
-      "SELECT model, credit_cost FROM pricing WHERE endpoint = 'music'",
-    ).catch(() => [] as Array<{ model: string | null; credit_cost: number }>);
-    const baseCost = rows.find((r) => r.model == null)?.credit_cost ?? 0;
-    const byModel = new Map(
-      rows
-        .filter((r): r is { model: string; credit_cost: number } => Boolean(r.model))
-        .map((r) => [r.model, r.credit_cost]),
-    );
-    const freeModel = normalizeModel(config.freeMonthly.model) ?? config.freeMonthly.model;
-    return {
-      models: models.map((m) => {
-        const key = normalizeModel(m.key) ?? m.key;
-        return {
-          ...m,
-          credits: byModel.get(key) ?? baseCost,
-          allowance_model: config.freeMonthly.enabled && key === freeModel,
-        };
-      }),
-      allowance: {
-        enabled: config.freeMonthly.enabled,
-        model: freeModel,
-        credits: config.freeMonthly.credits,
-        period: "month",
-      },
-    };
-  });
+  app.get("/models", async () => ({ models: await pool.listModels().catch(() => []) }));
 
   // --- settings + alerts (task 5.5, REQUIREMENTS §4.10) --------------------
   // Operator-managed settings live in `app_settings` as one JSONB document per
@@ -8401,8 +8057,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const bal = await accountCredits(key.user_id);
-    const allowance = await allowanceSummary(key.user_id);
-    return { name: key.name, credits: bal.credits, credits_expire_at: bal.credits_expire_at, allowance };
+    return { name: key.name, credits: bal.credits, credits_expire_at: bal.credits_expire_at };
   });
 
   app.post("/v1/lyrics", async (req, reply) => {
@@ -8431,23 +8086,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return reply.code(400).send({ error: "gpt_description_prompt or prompt is required." });
     }
     const model = (body.model as string) || undefined;
-    const admission = await chargeForMusic(reply, key.user_id, model, key);
-    if (!admission) return;
+    const cost = await costFor("music", model);
+    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
     const callbackUrl = (body.callback_url as string) || undefined;
     const job = newJob("music", callbackUrl);
     job.userId = key.user_id;
-    job.apiKeyId = admission.key?.id;
+    job.apiKeyId = key.id;
     job.endpoint = "music";
     job.model = model;
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
-    job.credits = admission.cost;
-    job.allowanceCredits = admission.allowanceCredits;
-    job.allowancePeriod = admission.allowancePeriod ?? undefined;
-    void runClipJobWithRetry(job, musicSubmitFactory(body), {
-      model,
-      policy: admission.policy,
-    });
+    job.credits = cost;
+    const policy = await routingPolicy(model);
+    void runClipJobWithRetry(job, musicSubmitFactory(body), { model, policy });
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
@@ -8459,10 +8110,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!prompt) return reply.code(400).send({ error: "prompt is required." });
     const model = (body.model as string) || undefined;
     const cost = await costFor("sounds", model);
-    if (!(await charge(key, cost))) {
-      sendCreditUpsell(reply, { model, required: cost });
-      return;
-    }
+    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
     const job = newJob("sounds", body.callback_url as string | undefined);
     job.userId = key.user_id;
@@ -8490,10 +8138,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // account's default, so they stay on the endpoint-wide price.
       const model = type === "remaster" ? (body.model as string) || undefined : undefined;
       const cost = await costFor(pricingKey, model);
-      if (!(await charge(key, cost))) {
-        sendCreditUpsell(reply, { model, required: cost });
-        return;
-      }
+      if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
       const job = newJob(type, body.callback_url as string | undefined);
       job.userId = key.user_id;
@@ -9239,16 +8884,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const key = await requireKey(req, reply);
     if (!key) return;
     const bal = await accountCredits(key.user_id);
-    const allowance = await allowanceSummary(key.user_id);
-    return { code: 200, msg: "success", data: { credits: bal.credits, name: key.name, credits_expire_at: bal.credits_expire_at, allowance } };
+    return { code: 200, msg: "success", data: { credits: bal.credits, name: key.name, credits_expire_at: bal.credits_expire_at } };
   });
   // Alias: /v1/get-credits so both work
   app.get(`/v1/get-credits`, async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;
     const bal = await accountCredits(key.user_id);
-    const allowance = await allowanceSummary(key.user_id);
-    return { code: 200, msg: "success", data: { credits: bal.credits, name: key.name, credits_expire_at: bal.credits_expire_at, allowance } };
+    return { code: 200, msg: "success", data: { credits: bal.credits, name: key.name, credits_expire_at: bal.credits_expire_at } };
   });
 
   // POST /api/v1/generate -> /v1/music (with payload translation)
@@ -9261,23 +8904,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       return reply.code(400).send({ error: "prompt is required." });
     }
     const model = (body.model as string) || undefined;
-    const admission = await chargeForMusic(reply, key.user_id, model, key);
-    if (!admission) return;
+    const cost = await costFor("music", model);
+    if (!(await charge(key, cost))) return reply.code(402).send({ error: "Insufficient credits." });
 
     const callbackUrl = body.callback_url as string | undefined;
     const job = newJob("music", callbackUrl);
     job.userId = key.user_id;
-    job.apiKeyId = admission.key?.id;
+    job.apiKeyId = key.id;
     job.endpoint = "music";
     job.model = model;
     job.prompt = (body.gpt_description_prompt ?? body.prompt) as string;
-    job.credits = admission.cost;
-    job.allowanceCredits = admission.allowanceCredits;
-    job.allowancePeriod = admission.allowancePeriod ?? undefined;
-    void runClipJobWithRetry(job, musicSubmitFactory(body), {
-      model,
-      policy: admission.policy,
-    });
+    job.credits = cost;
+    const policy = await routingPolicy(model);
+    void runClipJobWithRetry(job, musicSubmitFactory(body), { model, policy });
     return reply.code(202).send({ code: 200, msg: "success", data: { taskId: job.id } });
   });
 

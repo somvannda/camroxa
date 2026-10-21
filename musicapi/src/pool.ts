@@ -5,22 +5,7 @@ import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { query } from "./db.js";
 import { normalizeModel } from "./models.js";
 
-export type RoutingPolicy = "prefer_free" | "paid_only" | "any" | "free_only";
-
-/**
- * Whether an account type is eligible under a routing policy. `free_only` is a
- * hard restriction (the free tier): a 0-credit generation must never spend a
- * paid Suno account's credits. Pure so it can be unit-tested without a pool.
- */
-export function matchesPolicy(
-  accountType: string | undefined,
-  policy: RoutingPolicy,
-): boolean {
-  const type = accountType ?? "free";
-  if (policy === "paid_only") return type === "paid";
-  if (policy === "free_only") return type === "free";
-  return true;
-}
+export type RoutingPolicy = "prefer_free" | "paid_only" | "any";
 
 export interface AccountHealth {
   credits: number;
@@ -487,7 +472,7 @@ export class AccountPool {
 
   /**
    * Pick a healthy account that can use `model`, has credits, and matches the
-   * routing `policy` (prefer_free / paid_only / any / free_only).
+   * routing `policy` (prefer_free / paid_only / any).
    */
   async pick(
     model?: string,
@@ -495,15 +480,13 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
-    const filtered = this.clients.filter((c) => matchesPolicy(c.account.type, policy));
+    const filtered = this.clients.filter((c) => {
+      if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
+      return true;
+    });
     if (filtered.length === 0 && policy === "paid_only") {
       throw new Error(
         "No paid Suno account is available for this model; premium models require a paid account.",
-      );
-    }
-    if (filtered.length === 0 && policy === "free_only") {
-      throw new Error(
-        "No free Suno account is configured; free-tier generation is unavailable right now.",
       );
     }
     return this.pickFrom(filtered, model, policy, opts);
@@ -521,7 +504,9 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     const want = normalizeModel(model);
-    const candidates = this.clients.filter((c) => matchesPolicy(c.account.type, policy));
+    const candidates = this.clients.filter(
+      (c) => policy !== "paid_only" || (c.account.type ?? "free") === "paid",
+    );
     const healths = await this.probeHealth(candidates);
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
     for (const client of this.prioritizeCooling(ordered)) {
@@ -546,7 +531,9 @@ export class AccountPool {
     const exclude = new Set(excludeIds);
     const want = normalizeModel(model);
     const candidates = this.clients.filter(
-      (c) => !exclude.has(c.account.id) && matchesPolicy(c.account.type, policy),
+      (c) =>
+        !exclude.has(c.account.id) &&
+        (policy !== "paid_only" || (c.account.type ?? "free") === "paid"),
     );
     const healths = await this.probeHealth(candidates);
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
@@ -580,18 +567,14 @@ export class AccountPool {
     const exclude = new Set(excludeIds);
     const filtered = this.clients.filter((c) => {
       if (exclude.has(c.account.id)) return false;
-      return matchesPolicy(c.account.type, policy);
+      if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
+      return true;
     });
     if (filtered.length === 0) {
       const anyPaid = this.clients.some((c) => (c.account.type ?? "free") === "paid");
       if (policy === "paid_only" && !anyPaid) {
         throw new Error(
           "No paid Suno account is available for this model; premium models require a paid account.",
-        );
-      }
-      if (policy === "free_only") {
-        throw new Error(
-          "No free Suno account is available for this model; free-tier generation is unavailable right now.",
         );
       }
       throw new Error("No Suno accounts available after excluding attempted ones.");

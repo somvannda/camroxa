@@ -219,26 +219,6 @@ export const config = {
     minCredits: Math.max(0, Number(process.env.USER_MIN_CREDITS ?? 10)),
   },
   /**
-   * Free monthly allowance. Every user gets a fixed credit grant each calendar
-   * month (UTC) that can only be spent on the free model (V6-Mini). It is not a
-   * wallet balance: unused credits expire at the next month, and the allowance
-   * can never pay for V6 / V6-WILD. Purchased pack credits are separate and
-   * universal. Admin-editable in Settings → Integrations → Free monthly.
-   */
-  freeMonthly: {
-    enabled: (process.env.FREE_MONTHLY_ENABLED ?? "true") === "true",
-    model: process.env.FREE_MONTHLY_MODEL ?? "chirp-goose",
-    credits: Math.max(0, Number(process.env.FREE_MONTHLY_CREDITS ?? 50)),
-    /**
-     * Safety valve for a dead free pool. V6-Mini normally runs on free Suno
-     * accounts only, whether the allowance or purchased credits pay for it.
-     * When true, it still prefers free accounts but may fall back to a paid one
-     * instead of failing. Off by default so monthly free credits never spend
-     * paid Suno credits.
-     */
-    allowPaidFallback: (process.env.FREE_MONTHLY_ALLOW_PAID_FALLBACK ?? "false") === "true",
-  },
-  /**
    * Generation-flow guard. When enabled, a derivative endpoint (extend, cover,
    * remaster, stems, cover-image, wav, midi, video, recovery, timestamped
    * lyrics, and the `*_detail` reads) requires the caller to own the referenced
