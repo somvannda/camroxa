@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from platform_api.ai.registry import DEFAULT_SUNO_MUSIC_MODEL, SUNO_MODEL_PATTERN
@@ -19,7 +20,7 @@ from platform_api.services.generation_freeze import (
 )
 from platform_api.services.web_music_service import WebMusicService, content_disposition
 from platform_api.services.audio_origin_proxy import is_missing_range
-from platform_api.exceptions import NotFoundError, QuotaExceededError
+from platform_api.exceptions import NotFoundError, QuotaExceededError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -600,7 +601,19 @@ async def unlock_preview(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
 ) -> WebMusicGenerationResponse:
-    payload = await service.unlock_preview(UUID(ctx.user_id), task_id)
+    try:
+        payload = await service.unlock_preview(UUID(ctx.user_id), task_id)
+    except ValidationError as exc:
+        # Old previews created before private masters cannot be recovered.
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": "preview_unlock_unavailable",
+                    "message": exc.message,
+                }
+            },
+        )
     return _generation_response(payload)
 
 

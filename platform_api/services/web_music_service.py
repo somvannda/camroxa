@@ -3337,7 +3337,6 @@ class WebMusicService:
                 and (
                     _row_value(row, "b2_full_storage_key_ok")
                     or _row_value(row, "b2_full_storage_key_alt")
-                    or _row_value(row, "external_task_id")
                 )
             ),
             "preview_seconds": (
