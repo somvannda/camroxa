@@ -56,6 +56,10 @@ from platform_api.services.web_music_play_tokens import (
     resolve_play_token,
 )
 from platform_api.services.suno_lrc import lrc_to_srt, looks_like_lrc
+from platform_api.services.suno_status_messages import (
+    SUNO_PENDING_STATUSES,
+    normalize_suno_status,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -448,6 +452,8 @@ class WebMusicService:
         daily_free_limit: int = 0,
         limit: int = 0,
         used: int = 0,
+        premium_unlocked: bool = True,
+        free_model: str = "V6-MINI",
     ) -> dict[str, Any]:
         per_song = max(1, int(credits_per_song or WEB_MUSIC_CREDITS_PER_SONG))
         remaining_songs = max(0, int(credits_remaining)) // per_song
@@ -463,6 +469,8 @@ class WebMusicService:
             "can_download": True,
             "daily_free_remaining": daily_free_remaining,
             "daily_free_limit": daily_free_limit,
+            "premium_unlocked": premium_unlocked,
+            "free_model": free_model,
         }
 
     async def _usage_today_v3(self, user_id: UUID) -> dict[str, Any]:
@@ -471,6 +479,7 @@ class WebMusicService:
         )
         is_pro = await self._has_pro(user_id)
         has_subscription = paid_web or await self._has_web_subscription(user_id)
+        premium_unlocked = await self._web_music_charge_bridge().premium_unlocked(user_id)
         daily_limit = 0
         daily_remaining = 0
         if not is_pro and not paid_web:
@@ -488,6 +497,7 @@ class WebMusicService:
                 daily_free_limit=daily_limit,
                 limit=daily_limit if not paid_web and not is_pro else spendable,
                 used=max(0, daily_limit - daily_remaining) if daily_limit else 0,
+                premium_unlocked=premium_unlocked,
             ),
         )
 
@@ -781,12 +791,19 @@ class WebMusicService:
             "daily_free_limit": updated.daily_free_limit,
         }
 
-    async def _reserve_daily_slot(self, user_id: UUID, *, reservation_id: str) -> dict[str, Any]:
+    async def _reserve_daily_slot(
+        self,
+        user_id: UUID,
+        *,
+        reservation_id: str,
+        model: str | None = None,
+    ) -> dict[str, Any]:
         if await self._credits_only_v3_enabled():
             charged = await self._web_music_charge_bridge().charge(
                 user_id,
                 "music",
                 ref_id=reservation_id,
+                model=model,
             )
             self._open_charges[reservation_id] = charged
             spendable, music_credits, paid_web = await self._web_music_charge_bridge().spendable_credits(
@@ -798,6 +815,7 @@ class WebMusicService:
                 credits_per_song=charged.amount_credits or music_credits or WEB_MUSIC_CREDITS_PER_SONG,
                 is_pro=is_pro,
                 has_subscription=paid_web or await self._has_web_subscription(user_id),
+                premium_unlocked=await self._web_music_charge_bridge().premium_unlocked(user_id),
             )
 
         if await self._has_pro(user_id):
@@ -1023,7 +1041,9 @@ class WebMusicService:
         reservation_id = str(uuid4())
         logger.info("service.generate step reserve user=%s reservation=%s", user_id, reservation_id)
         # Charge only after title/blocklist checks so 422s do not burn daily credits.
-        quota = await self._reserve_daily_slot(user_id, reservation_id=reservation_id)
+        quota = await self._reserve_daily_slot(
+            user_id, reservation_id=reservation_id, model=normalized_model
+        )
         logger.info("service.generate step reserved_ok user=%s reservation=%s", user_id, reservation_id)
 
         if mode_key == "simple":
@@ -1500,6 +1520,41 @@ class WebMusicService:
             raise NotFoundError("Generation not found.")
         return await self.get_generation(user_id, task_id)
 
+    async def delete_generation(self, user_id: UUID, task_id: UUID) -> None:
+        """Permanently remove one of the user's own web-music songs.
+
+        Credits for a failed generation were already refunded, so this never
+        touches the wallet — it only drops the song from the user's workspace.
+        Rows that depend on the task (playlist items, likes, play counts) cascade
+        on delete via their foreign keys. In-flight generations are refused so an
+        active Suno job is not orphaned mid-flight.
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, status FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found.")
+        if normalize_suno_status(row["status"]) in SUNO_PENDING_STATUSES:
+            raise ValidationError(
+                "This song is still generating. Wait until it finishes or fails before deleting it.",
+                details={"status": str(row["status"] or "")},
+            )
+        await self._pool.execute(
+            """
+            DELETE FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+
     async def _poll_suno_task_status(self, external_task_id: str):
         """Poll record-info across the pool's keys.
 
@@ -1598,11 +1653,19 @@ class WebMusicService:
         return refreshed or row
 
     async def _ensure_cover_urls(self, row: Any) -> Any:
-        """Backfill Suno cover art when audio is ready but image URLs were not stored yet."""
+        """Backfill Suno cover art when audio is ready but no image URL is stored.
+
+        Do NOT refresh an existing URL: this runs on every ``GET /generations/{id}``
+        and the Create page polls each open song, so re-polling Suno here turned a
+        cheap read into a Suno request per tick and drove the API into OOM
+        territory. A dead URL is handled client-side (CoverImage falls back).
+        """
         status = str(_row_value(row, "status") or "").strip().lower()
         if status != "success":
             return row
-        if str(_row_value(row, "image_url_ok") or "").strip() or str(_row_value(row, "image_url_alt") or "").strip():
+        if str(_row_value(row, "image_url_ok") or "").strip() or str(
+            _row_value(row, "image_url_alt") or ""
+        ).strip():
             return row
         external_id = str(_row_value(row, "external_task_id") or "").strip()
         if not external_id:

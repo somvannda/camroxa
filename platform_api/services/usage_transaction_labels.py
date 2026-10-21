@@ -34,6 +34,7 @@ _REASON_LABELS: dict[str, str] = {
     "v3_period_grant": "Period grant",
     "v3_daily_grant": "Daily grant",
     "v3_grant_expire": "Grant expired",
+    "v3_free_grant_superseded": "Free grant superseded",
     "v3_pack": "Credit pack",
     "v3_web_remaining": "Web leftover",
     "v3_refund_music": "Refund: music",

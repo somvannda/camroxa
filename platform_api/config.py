@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- Cross-product reporting (Telegram daily digest) ---
+    # Read-only DSN for the musicapi database (ChmabaPay / credit-pack revenue).
+    # Empty keeps the digest platform-only; the daily report omits musicapi.
+    musicapi_database_url: str = ""
+
     # --- JWT / Auth ---
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
@@ -196,6 +201,10 @@ class Settings(BaseSettings):
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     telegram_ops_enabled: bool = True
+    # Run the getUpdates command poller / daily report in this process. Every
+    # API worker and job worker imports the hooks, so keep this True only on the
+    # API service (or one worker) and set it False elsewhere.
+    telegram_poller_enabled: bool = True
 
     # --- Cloudflare Turnstile (Bot Protection) ---
     # These use CLOUDFLARE_* env names (not PLATFORM_*) to match Cloudflare dashboard naming.
@@ -244,6 +253,23 @@ class Settings(BaseSettings):
     # Empty = auto (on for sandbox/production, off for local). "true"/"false" override.
     music_web_geo_enforce: str = ""
     music_web_geo_allowed_country: str = "KH"
+
+    # --- Music web signup / sign-in ---
+    # Email+password registration is closed for music web; Google is the signup
+    # path. Password login stays available for existing accounts. Other products
+    # (desktop / studio) keep email registration.
+    music_web_email_signup_enabled: bool = True
+
+    # --- Google OAuth (music web) ---
+    # Reuses the same Google Cloud OAuth client as musicapi.camxora.com. Every
+    # redirect URI used by the browser must be allowlisted here.
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uris: str = (
+        "https://music.camxora.com/auth/callback,"
+        "https://music.sandbox.camxora.com/auth/callback,"
+        "http://localhost:3001/auth/callback"
+    )
     # Shared secret the edge proxy (nginx) sets as `X-Origin-Verify`. When set,
     # music-web geo enforcement requires it and fails closed without it, so a
     # direct-to-origin request cannot spoof CF-IPCountry. Unset = legacy behavior

@@ -16,11 +16,15 @@ def is_windows_absolute_path(path: str) -> bool:
 
 def is_portable_run_relative_path(path: str) -> bool:
     """True for ``channel\\date_album`` style keys (no drive / UNC / POSIX root)."""
-    text = str(path or "").strip().replace("/", "\\")
-    if not text or is_windows_absolute_path(text) or text.startswith("\\\\") or text.startswith("/"):
+    # Check the POSIX root on the raw text: normalising "/" to "\\" first turned
+    # "/tmp/.../run" into "\\tmp\\...", which no longer looked rooted, so an
+    # absolute POSIX path was misread as a portable key and the API host skipped
+    # writing it.
+    raw = str(path or "").strip()
+    if not raw or raw.startswith("/") or is_windows_absolute_path(raw) or raw.startswith("\\\\"):
         return False
-    # Drive-letter absolute already excluded; reject single-segment filenames.
-    parts = [part for part in Path(text).parts if part not in ("/", "\\", "")]
+    # Drive-letter absolute already excluded; a key needs at least one segment.
+    parts = [part for part in raw.replace("/", "\\").split("\\") if part]
     return len(parts) >= 1
 
 
@@ -40,6 +44,11 @@ def join_client_output_path(run_dir: str, filename: str) -> str:
         return base
     if is_windows_absolute_path(base):
         return f"{base}\\{name}"
+    if base.startswith("/"):
+        # POSIX absolute path - the API host's own output dir. Joining it as if it
+        # were a portable run key turned "/tmp/.../run" into "\tmp\...\run", so the
+        # file was written to a literal backslash-named path elsewhere.
+        return f"{base.rstrip('/')}/{name}"
     # Portable relative run key — keep Windows-style separators for the desktop.
     normalized_base = base.replace("/", "\\")
     return f"{normalized_base}\\{name}"

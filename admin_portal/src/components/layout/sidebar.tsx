@@ -14,6 +14,7 @@ import {
   BarChart3,
   DollarSign,
   UserPlus,
+  Gift,
   Newspaper,
   Settings,
   PanelLeftClose,
@@ -72,6 +73,7 @@ const NAV_GROUPS: NavGroup[] = [
       { label: 'Redeem Codes', path: '/redeem-codes', icon: TicketPercent },
   { label: 'Mail', path: '/mail', icon: Mail },
       { label: 'Invitations', path: '/invitations', icon: UserPlus },
+      { label: 'Invite Program', path: '/invite-program', icon: Gift },
     ],
   },
   {

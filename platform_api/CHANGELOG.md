@@ -7,6 +7,54 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased] - Packs-only billing: 30-day pack credits
+
+### Added
+
+- Free-plan web music is now **V6-Mini-only**. `WebMusicChargeBridge.charge()` receives the requested model and rejects V6-Pro / V6-Wild for Free-plan users until a credit pack is purchased in the same calendar month (or the wallet holds more than the monthly grant). Paid plans are unrestricted. Enforced in the V3 charge path before the wallet debit, so every existing Telegram spend report still fires. See `docs/changelog/2026-10-21-web-music-free-model-scope.md`.
+
+- `V3BillingStore.expired_lots()` and `V3BillingStore.restamp_live_lots()`; `PACK_CREDIT_VALIDITY` (30 days) in `wallet_sync`. A pack purchase stamps its own lot and re-stamps every other live lot to one shared expiry date (Option B). See `docs/changelog/2026-10-15-packs-only-billing.md`.
+
+### Changed
+
+- Pack credits now **expire 30 days from purchase**, and lapsed pack lots are clawed back like grants. `expire_unused_grants` is now `expire_lapsed_lots`, and `expired_grant_lots` is now `expired_lots`. The re-stamp only ever extends an expiry, so a prepaid yearly term is never shortened; `daily_grant` lots are excluded. Existing lot expiries are untouched, so grandfathered subscribers keep the term they paid for.
+- Web-music packs re-priced to the retired plan ladder: $5 to 1,000, $10 to 2,300, $20 to 5,500 (new tier), $30 to 8,800. Migration `136_packs_only_billing`.
+
+### Removed
+
+- `POST /api/v3/subscriptions/purchase` and `POST /api/v3/subscriptions/renewal` now return **410 Gone** (`SubscriptionRetiredError`) instead of opening a CutLuy checkout. `GET /subscriptions/my-subscription` and `POST /subscriptions/cancel` stay live for grandfathered subscribers.
+- The `User must have active subscription to purchase top-ups` gate in `TopupService.purchase_topup`, which would otherwise have blocked every buyer once subscriptions stopped being sold.
+
+## [2026-10-18] — Pending-downloads poll stays under the desktop 30s timeout
+
+### Fixed
+
+- `GET /music/downloads/pending` ran Suno reconcile and per-batch image-job healing inline (plus a sequential B2 `HEAD` per archived track), pushing the route past the desktop's 30s httpx timeout — clients never received the pending list and runs froze at 2–4 of 15 tracks. Reconcile and image-job healing now run debounced (60s, per user) in the background, and B2 URL resolution fans out concurrently (8) under an 8s cap that returns partial results. Separately, the reseller's `audiostream.api.box` host now answers `200 audio/mpeg` with a **0-byte body**, so stored/stream URLs are rewritten to the working `tempfile.aiquickdraw.com/r/<id>.mp3` sibling and the dead host is blocklisted. No desktop rebuild required. See `docs/changelog/2026-10-02-pending-downloads-poll-latency.md`.
+
+## [2026-10-14] — Admin quota "Used" for songs now matches enforcement
+
+### Fixed
+
+- The admin "Plan quota (this period)" card and the user-facing quota display read the incremental `usage_tracking` counter, which the credits-only v3 charge path no longer increments — so every user showed **Used = 0 / full Remaining** while the monthly song cap was still enforced from the real `songs` table. `QuotaTopupService._used_for_kind("music")` and `quota_display_service.get_monthly_quota_status("songs")` now use `count_generated_songs_for_period` (real generations), matching `_enforce_plan_quotas`. No migration. See `docs/changelog/2026-10-14-admin-quota-used-authoritative-songs.md`.
+
+## [2026-10-08] — Batch status counts songs, not Suno task rows
+
+### Fixed
+
+- `get_batch_status_counters` counted `suno_tasks` **rows** by status, so a batch whose songs all completed stayed `partial`: a superseded `failed` row made `suno_failed > 0`, and duplicate `success` rows made `suno_completed != drafts_completed`. 19 production batches (all songs `suno_success`) were stuck `partial`. The counters are now **per song**: `suno_submitted = COUNT(DISTINCT song_id)`, `suno_completed`/`suno_failed` from `songs.status`. Finished batches self-heal on the next `refresh_batch_status`. See `docs/changelog/2026-10-08-platform-batch-status-per-song.md`.
+
+## [2026-10-08] — Stuck Suno tasks no longer hang `pending` when the provider returns 404
+
+### Fixed
+
+- `reconcile_pending_suno_tasks` caught every poll error with `except Exception: … continue`, so a task the provider no longer knows (`check_status` → HTTP 404) stayed `pending` forever — the song never finished and the wallet debit was never refunded (23 stale rows in production, 17 of them one user's). An aged (>30 min) 404 is now treated as terminal: it is reconciled as a failure via the existing `update_status` + `handle_suno_task_update` path, which refunds (`suno_generation_failed`) and refreshes the batch. A fresh 404 (propagation lag) and transient errors keep the old skip. See `docs/changelog/2026-10-08-platform-reconcile-suno-404-terminal.md`.
+
+## [2026-10-08] — Retrying a failed Suno song no longer charge-refunds forever
+
+### Fixed
+
+- `suno_tasks` is `UNIQUE(user_id, request_hash)`, and after the #372 change `find_by_hash` skips `failed` rows so a retry regenerates — but `create_suno_task` still did a plain `INSERT`, so it collided with the still-present failed row (`duplicate key value violates unique constraint "suno_tasks_user_id_request_hash_key"`). The batch retry path caught that as a failure and refunded, producing a `v3_music` charge → `suno_generation_failed` refund on every retry, so a failed song could never regenerate. `create_suno_task` is now an upsert that revives the failed row in place (`WHERE suno_tasks.status = 'failed'`) and reuses its id; a live/successful row is never clobbered. See `docs/changelog/2026-10-08-platform-suno-retry-unique-constraint.md`.
+
 ## [2026-10-08] — Version 2 no longer stranded by a first-clip success
 
 ### Fixed

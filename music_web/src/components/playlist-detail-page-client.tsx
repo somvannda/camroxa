@@ -20,6 +20,7 @@ import {
 
 import AlbumPlaybackControls from '@/components/album-playback-controls';
 import { useAuth } from '@/components/auth-provider';
+import { CoverImage } from '@/components/cover-image';
 import { MusicSelect } from '@/components/music-form-ui';
 import PlayingEqualizer from '@/components/playing-equalizer';
 import { usePlayer } from '@/components/player-provider';
@@ -153,14 +154,15 @@ function PlaylistItemRow({
 
       <div className="pointer-events-none relative z-10 flex min-w-0 items-center gap-3">
         <span className="relative h-12 w-12 shrink-0 overflow-hidden rounded-lg bg-violet-500/15 sm:h-10 sm:w-10">
-          {item.image_url ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={item.image_url} alt="" className="h-full w-full object-cover" />
-          ) : (
-            <span className="flex h-full w-full items-center justify-center">
-              <Music2 className="h-4 w-4 text-fuchsia-100" />
-            </span>
-          )}
+          <CoverImage
+            src={item.image_url}
+            className="h-full w-full object-cover"
+            fallback={
+              <span className="flex h-full w-full items-center justify-center">
+                <Music2 className="h-4 w-4 text-fuchsia-100" />
+              </span>
+            }
+          />
           {isCurrent ? (
             <span className="absolute inset-0 flex items-center justify-center bg-black/50 sm:hidden">
               <PlayingEqualizer playing={isPlaying} />
@@ -624,12 +626,11 @@ export default function PlaylistDetailPageClient({ playlistId }: { playlistId: s
                         className="flex w-full items-center gap-3 rounded-xl px-2 py-2 text-left transition hover:bg-white/[0.04] disabled:opacity-50"
                       >
                         <div className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-violet-500/15 sm:h-10 sm:w-10">
-                          {row.image_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img src={row.image_url} alt="" className="h-full w-full object-cover" />
-                          ) : (
-                            <Music2 className="h-4 w-4 text-fuchsia-100" />
-                          )}
+                          <CoverImage
+                            src={row.image_url}
+                            className="h-full w-full object-cover"
+                            fallback={<Music2 className="h-4 w-4 text-fuchsia-100" />}
+                          />
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className={cn('truncate text-sm font-medium text-white', khmerTextClass(row.title))}>

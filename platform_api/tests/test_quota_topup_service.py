@@ -108,6 +108,31 @@ class FakeUsageRepo:
         return int(self._monthly_by_op.get(operation_type, 0))
 
 
+class FakeAuthoritativeUsageRepo(FakeUsageRepo):
+    """Usage repo that also exposes the authoritative song counter.
+
+    Mirrors the real repo after the credits-only migration: the incremental
+    ``usage_tracking`` counter is stale/zero, but ``count_generated_songs_for_period``
+    reflects real generations (what enforcement uses).
+    """
+
+    def __init__(
+        self,
+        monthly_by_op: dict[str, int] | None = None,
+        *,
+        authoritative_songs: int = 0,
+    ) -> None:
+        super().__init__(monthly_by_op)
+        self._authoritative_songs = authoritative_songs
+        self.authoritative_calls: list[tuple] = []
+
+    async def count_generated_songs_for_period(
+        self, user_id, period_start: date, period_end: date
+    ) -> int:
+        self.authoritative_calls.append((user_id, period_start, period_end))
+        return int(self._authoritative_songs)
+
+
 def test_normalize_quota_kind_aliases() -> None:
     assert normalize_quota_kind("songs") == "music"
     assert normalize_quota_kind("Drafts") == "draft"
@@ -291,3 +316,67 @@ async def test_display_remaining_includes_topup() -> None:
     )
     assert limit == 120
     assert remaining == 30
+
+
+@pytest.mark.asyncio
+async def test_grant_used_songs_prefers_authoritative_count(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Admin 'Used' for songs must match enforcement (real songs), not the stale counter."""
+    from platform_api.services import quota_topup_service
+
+    monkeypatch.setattr(quota_topup_service, "billing_today", lambda: date(2026, 8, 4))
+    user_id = uuid4()
+    plan = _plan()
+    ctx = ActiveSubscriptionContext(
+        plan=plan,
+        license_id=uuid4(),
+        activated_at=datetime(2026, 7, 10, tzinfo=timezone.utc),
+    )
+    # Counter says 0 (credits-only path never wrote it); authoritative says 37.
+    usage_repo = FakeAuthoritativeUsageRepo({"music": 0}, authoritative_songs=37)
+    service = QuotaTopupService(
+        topup_repo=FakeTopupRepo(),
+        plan_repo=FakePlanRepo(ctx),
+        usage_repo=usage_repo,
+    )
+
+    result = await service.grant(
+        user_id=user_id,
+        quota_kind="music",
+        amount=10,
+        reason="bump",
+        admin_id=uuid4(),
+    )
+    assert result["used"] == 37
+    assert result["effective_limit"] == 110
+    assert result["remaining"] == 73
+    assert usage_repo.authoritative_calls  # (user, period_start, period_end)
+
+
+@pytest.mark.asyncio
+async def test_build_snapshot_songs_used_is_authoritative(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import quota_topup_service
+
+    monkeypatch.setattr(quota_topup_service, "billing_today", lambda: date(2026, 8, 4))
+    user_id = uuid4()
+    ctx = ActiveSubscriptionContext(
+        plan=_plan(),
+        license_id=uuid4(),
+        activated_at=datetime(2026, 7, 10, tzinfo=timezone.utc),
+    )
+    usage_repo = FakeAuthoritativeUsageRepo({"music": 0, "draft": 5}, authoritative_songs=80)
+    service = QuotaTopupService(
+        topup_repo=FakeTopupRepo(),
+        plan_repo=FakePlanRepo(ctx),
+        usage_repo=usage_repo,
+    )
+
+    snapshot = await service.build_period_snapshot(user_id)
+    music = snapshot.kinds["music"]
+    assert music.used == 80
+    assert music.remaining == 20  # 100 base - 80 used
+    # Non-song meters still use the incremental counter.
+    assert snapshot.kinds["draft"].used == 5

@@ -125,8 +125,8 @@ async def _bootstrap_connections() -> None:
             install_telegram_ops_hooks,
         )
 
-        install_telegram_ops_hooks()
-        logger.info("Worker Telegram ops hooks installed.")
+        install_telegram_ops_hooks(enable_poller=False)
+        logger.info("Worker Telegram ops hooks installed (poller disabled).")
     except Exception as exc:
         logger.warning("Worker Telegram ops hooks skipped: %s", exc)
 
@@ -134,6 +134,14 @@ async def _bootstrap_connections() -> None:
 async def _shutdown_connections() -> None:
     from platform_api.dependencies import clear_connections, get_db_pool, get_redis
 
+    try:
+        from platform_api.services.telegram_ops_alert_service import (
+            drain_telegram_ops,
+        )
+
+        await drain_telegram_ops(timeout=4.0)
+    except Exception:
+        pass
     try:
         pool = get_db_pool()
         await pool.close()

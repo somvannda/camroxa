@@ -154,6 +154,22 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
         def: SUNO_CONCURRENCY_DEFAULTS.minCredits,
         help: "Accounts below this balance are skipped for new work, avoiding 402 'not enough credits' submissions.",
       },
+      {
+        key: "creditStrategy",
+        label: "Account credit strategy",
+        type: "string",
+        env: "SUNO_CREDIT_STRATEGY",
+        def: SUNO_CONCURRENCY_DEFAULTS.creditStrategy,
+        help: "off = least-loaded only (legacy). balanced = prefer the account with the most credits and reserve each in-flight job's spend against its balance, so concurrent jobs spread across the pool and the accounts drain together (default). max_first = always drain the single highest-credit account first.",
+      },
+      {
+        key: "creditReserve",
+        label: "Credits reserved per in-flight job",
+        type: "number",
+        env: "SUNO_CREDIT_RESERVE",
+        def: SUNO_CONCURRENCY_DEFAULTS.creditReserve,
+        help: "Estimated Suno credits an in-flight generation consumes, subtracted from the cached balance while the job runs so a burst spreads instead of re-picking the same account between the 30s billing refreshes. Used by the balanced strategy; 0 disables it.",
+      },
     ],
   },
   {
@@ -228,6 +244,68 @@ export const INTEGRATION_GROUPS: GroupDef[] = [
     fields: [
       { key: "telegramBotToken", label: "Telegram bot token", type: "secret", env: "ALERT_TELEGRAM_BOT_TOKEN", def: "" },
       { key: "telegramChatId", label: "Telegram chat id", type: "string", env: "ALERT_TELEGRAM_CHAT_ID", def: "" },
+    ],
+  },
+  {
+    key: "resend",
+    label: "Mail (Resend)",
+    fields: [
+      {
+        key: "apiKey",
+        label: "API key",
+        type: "secret",
+        env: "RESEND_API_KEY",
+        def: "",
+        help: "re_… from resend.com. Sending is disabled while this is blank; the Mail page stays usable for previews.",
+      },
+      {
+        key: "webhookSecret",
+        label: "Webhook signing secret",
+        type: "secret",
+        env: "RESEND_WEBHOOK_SECRET",
+        def: "",
+        help: "whsec_… from the Resend webhook endpoint. Deliveries, bounces and complaints are only trusted when this verifies.",
+      },
+      {
+        key: "fromTransactional",
+        label: "Transactional From",
+        type: "string",
+        env: "MAIL_FROM_TRANSACTIONAL",
+        def: "CAMXORA <no-reply@mail.camxora.com>",
+        help: "Receipts and account mail. Points at mail.camxora.com today because that is the domain verified in Resend; verify music.camxora.com and change this one string to separate the two reputations.",
+      },
+      {
+        key: "fromCampaign",
+        label: "Marketing From",
+        type: "string",
+        env: "MAIL_FROM_CAMPAIGN",
+        def: "CAMXORA <hello@mail.camxora.com>",
+        help: "Campaigns and automations. Use a separate subdomain so marketing reputation never touches receipts.",
+      },
+      {
+        key: "replyTo",
+        label: "Reply-to (optional)",
+        type: "string",
+        env: "MAIL_REPLY_TO",
+        def: "",
+      },
+      {
+        key: "publicBaseUrl",
+        label: "Public API base URL",
+        type: "string",
+        env: "MAIL_PUBLIC_BASE_URL",
+        def: "",
+        help: "Used to build open-pixel, click-redirect and unsubscribe links. Must be publicly reachable (e.g. https://mail.camxora.com) or every link in a sent mail is dead.",
+      },
+      {
+        key: "appUrl",
+        label: "Product site (CTA target)",
+        type: "string",
+        env: "MAIL_APP_URL",
+        def: "https://music.camxora.com",
+        help: "Where a template's {{app_url}} button sends the user. Must be the site that shows their credits and checkout.",
+      },
+      { key: "enabled", label: "Sending enabled", type: "boolean", env: "MAIL_ENABLED", def: true },
     ],
   },
   {
@@ -354,6 +432,24 @@ function applyToConfig(): void {
     0,
     num("sunoConcurrency", "minCredits", SUNO_CONCURRENCY_DEFAULTS.minCredits),
   );
+  // Credit-aware routing (see `orderForDispatch` in src/pool.ts). An unknown
+  // stored value falls back to the boot default rather than silently disabling
+  // balancing, matching the env parser in src/config.ts.
+  const creditStrategy = str(
+    "sunoConcurrency",
+    "creditStrategy",
+    SUNO_CONCURRENCY_DEFAULTS.creditStrategy,
+  )
+    .trim()
+    .toLowerCase();
+  config.suno.creditStrategy =
+    creditStrategy === "off" || creditStrategy === "max_first" || creditStrategy === "balanced"
+      ? creditStrategy
+      : SUNO_CONCURRENCY_DEFAULTS.creditStrategy;
+  config.suno.creditReserve = Math.max(
+    0,
+    num("sunoConcurrency", "creditReserve", SUNO_CONCURRENCY_DEFAULTS.creditReserve),
+  );
 
   // Customer credit gate (see the `creditGate` block in src/config.ts). Applied
   // on every save; the job-admission helpers read it live, so changes take
@@ -389,6 +485,18 @@ function applyToConfig(): void {
 
   config.alerts.telegramBotToken = str("alerts", "telegramBotToken", config.alerts.telegramBotToken);
   config.alerts.telegramChatId = str("alerts", "telegramChatId", config.alerts.telegramChatId);
+
+  config.mail.apiKey = str("resend", "apiKey", config.mail.apiKey);
+  config.mail.webhookSecret = str("resend", "webhookSecret", config.mail.webhookSecret);
+  config.mail.fromTransactional = str("resend", "fromTransactional", config.mail.fromTransactional);
+  config.mail.fromCampaign = str("resend", "fromCampaign", config.mail.fromCampaign);
+  config.mail.replyTo = str("resend", "replyTo", config.mail.replyTo);
+  config.mail.publicBaseUrl = str("resend", "publicBaseUrl", config.mail.publicBaseUrl).replace(
+    /\/+$/,
+    "",
+  );
+  config.mail.appUrl = str("resend", "appUrl", config.mail.appUrl).replace(/\/+$/, "");
+  config.mail.enabled = bool("resend", "enabled", config.mail.enabled);
 
   config.callbackAllowedHosts = str("callbacks", "allowedHosts", "")
     .split(",")

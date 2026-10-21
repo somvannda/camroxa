@@ -168,6 +168,25 @@ class FakeTaskRepo:
         return None
 
     async def create(self, task: SunoTask) -> SunoTask:
+        # Mirror BatchRepository.create_suno_task's upsert: a *failed* row for
+        # the same (user_id, request_hash) is revived in place and its id
+        # reused; a live row is left untouched.
+        for existing in self.tasks:
+            if (
+                existing.user_id == task.user_id
+                and existing.request_hash == task.request_hash
+            ):
+                if existing.status == TaskStatus.FAILED:
+                    existing.external_task_id = task.external_task_id
+                    existing.model = task.model
+                    existing.title = task.title
+                    existing.lyrics = task.lyrics
+                    existing.style = task.style
+                    existing.instrumental = task.instrumental
+                    existing.status = task.status
+                    existing.source = getattr(task, "source", existing.source)
+                task.id = existing.id
+                return task
         self.tasks.append(task)
         return task
 
@@ -1281,9 +1300,11 @@ class TestSubmitSuno:
     ):
         """A *failed* task must not be returned as a duplicate (issue #372).
 
-        Re-running a song whose only task failed has to create a fresh task and
-        charge normally, instead of returning the dead task (which used to leave
-        the caller charged with no regeneration).
+        Re-running a song whose only task failed has to regenerate and charge
+        normally instead of returning the dead task. Because ``suno_tasks`` is
+        ``UNIQUE(user_id, request_hash)``, the regeneration revives that failed
+        row (same id) rather than inserting a second row — a plain INSERT used
+        to raise the duplicate-key error and refund on every retry.
         """
         user_uuid = UUID("00000000-0000-0000-0000-000000000000")
         user_id = str(user_uuid)
@@ -1310,8 +1331,10 @@ class TestSubmitSuno:
 
         result = await service.submit_suno(user_id, request)
 
-        assert result != str(existing.id)  # not the dead task
-        assert len(task_repo.tasks) == 2  # a fresh task was created
+        assert result == str(existing.id)  # the failed row is revived in place
+        assert len(task_repo.tasks) == 1  # reused, not duplicated
+        assert task_repo.tasks[0].external_task_id == "ext-task-retry"
+        assert task_repo.tasks[0].status == TaskStatus.PENDING
         assert len(credit_service.deductions) == 1  # the (legit) charge happened
 
     @pytest.mark.asyncio

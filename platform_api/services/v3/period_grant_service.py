@@ -1,4 +1,5 @@
-"""Monthly/daily grants on the shared wallet. Unused grant lots expire; packs do not."""
+"""Monthly/daily grants on the shared wallet. Unused grants expire at the period
+boundary; pack credits expire 30 days from purchase (see ``wallet_sync``)."""
 
 from __future__ import annotations
 
@@ -24,9 +25,13 @@ class PeriodGrantService:
         self._plan_repo = plan_repo
         self._ledger = CreditLedger(credit_repo)
 
-    async def expire_unused_grants(self, user_id: UUID | None = None) -> int:
-        """Deduct leftover grant lots that passed expires_at. Returns users touched."""
-        lots = await self._store.expired_grant_lots(user_id)
+    async def expire_lapsed_lots(self, user_id: UUID | None = None) -> int:
+        """Deduct leftover lots that passed ``expires_at``. Returns lots touched.
+
+        Sweeps period/daily grants **and** packs: pack credits are now valid for
+        30 days from purchase, so a lapsed pack is clawed back here too.
+        """
+        lots = await self._store.expired_lots(user_id)
         touched = 0
         for lot in lots:
             remaining = int(lot["remaining_units"])
@@ -46,8 +51,46 @@ class PeriodGrantService:
             touched += 1
         return touched
 
+    async def _revoke_superseded_free_grant(
+        self, user_id: UUID, *, licence_period_start: date | None
+    ) -> int:
+        """Retire a lingering Free calendar-month grant a licence now supersedes.
+
+        A licence lapse can leave the Free plan's current-month lot (anchored to
+        the calendar month) alive. When the licence renews, its activation-anchored
+        allowance is minted alongside it, so the account holds two live grant lots
+        (the ``credit_invariants`` "multiple live grant lots" alert). The licence
+        allowance supersedes the Free one: claw its remaining credits (like an
+        expiry) and zero the lot. Idempotent — a spent/expired lot is skipped.
+        """
+        month_start = billing_month_start()
+        lots = await self._store.live_grant_lots_at_period(
+            user_id, month_start, exclude_period_start=licence_period_start
+        )
+        touched = 0
+        for lot in lots:
+            remaining = int(lot["remaining_units"])
+            if remaining > 0:
+                balance = int(await self._credit_repo.get_balance(user_id))
+                clawback = min(remaining, max(0, balance))
+                if clawback > 0:
+                    await self._credit_repo.atomic_deduct(
+                        user_id,
+                        clawback,
+                        "v3_free_grant_superseded",
+                        ref_id=str(lot["id"]),
+                        metadata={
+                            "source": "v3",
+                            "tag": "grant",
+                            "billing": "free_grant_superseded",
+                        },
+                    )
+            await self._store.zero_lot_remaining(lot["id"])
+            touched += 1
+        return touched
+
     async def ensure_period_grant(self, user_id: UUID) -> dict[str, Any]:
-        await self.expire_unused_grants(user_id)
+        await self.expire_lapsed_lots(user_id)
         plan = await self._store.resolve_charge_plan(user_id)
         if plan is None:
             return {"granted": False, "reason": "no_active_plan", "user_id": str(user_id)}
@@ -79,6 +122,12 @@ class PeriodGrantService:
                     activated_at=ctx.activated_at,
                 )
                 monthly_allowance = False
+                # A licence/subscription allowance supersedes any lingering Free
+                # calendar-month grant left by a lapse -> renew, so the account
+                # never holds two live grant lots.
+                await self._revoke_superseded_free_grant(
+                    user_id, licence_period_start=period_start
+                )
 
         units = credits_to_units(monthly)
 
@@ -220,7 +269,7 @@ class PeriodGrantService:
                 continue
             expires_at = lot.get("expires_at")
             # Only carry lots that are still live; expired lots are clawed back by
-            # expire_unused_grants (zeroing them here without a deduction would leak).
+            # expire_lapsed_lots (zeroing them here without a deduction would leak).
             if expires_at is None or expires_at > datetime.now(timezone.utc):
                 await self._store.zero_lot_remaining(lot["id"])
 
@@ -265,7 +314,7 @@ class PeriodGrantService:
         Paid license / CutLuy rows have daily_credits=0, so they no-op.
         Daily lots expire at the next billing midnight and do not stack.
         """
-        await self.expire_unused_grants(user_id)
+        await self.expire_lapsed_lots(user_id)
         plan = await self._store.resolve_charge_plan(user_id)
         if plan is None:
             return {"granted": False, "reason": "no_active_plan", "user_id": str(user_id)}

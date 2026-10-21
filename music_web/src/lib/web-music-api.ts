@@ -36,6 +36,8 @@ export type WebMusicQuota = {
   can_download?: boolean;
   daily_free_remaining?: number;
   daily_free_limit?: number;
+  premium_unlocked?: boolean;
+  free_model?: string;
   queue_limit?: number;
   queue_used?: number;
 };
@@ -265,14 +267,14 @@ export async function updateWebMusicGenerationTitle(
   });
 }
 
-export async function downloadWebMusicClip(id: string, variant: string, filename: string): Promise<void> {
-  const response = await musicAuthFetch(
-    `/api/v3/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
+export async function deleteWebMusicGeneration(id: string): Promise<void> {
+  await musicFetch<void>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
   );
-  if (!response.ok) {
-    await rejectResponse(response, 'Download failed');
-  }
-  const blob = await response.blob();
+}
+
+export function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -283,7 +285,17 @@ export async function downloadWebMusicClip(id: string, variant: string, filename
   URL.revokeObjectURL(url);
 }
 
-export async function downloadWebMusicClipWav(id: string, variant: string, filename: string): Promise<void> {
+export async function fetchWebMusicClipBlob(id: string, variant: string): Promise<Blob> {
+  const response = await musicAuthFetch(
+    `/api/v3/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
+  );
+  if (!response.ok) {
+    await rejectResponse(response, 'Download failed');
+  }
+  return response.blob();
+}
+
+export async function fetchWebMusicClipWavBlob(id: string, variant: string): Promise<Blob> {
   const maxAttempts = 8;
   let lastError = 'WAV download failed';
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -291,16 +303,7 @@ export async function downloadWebMusicClipWav(id: string, variant: string, filen
       `/api/v3/web-music/generations/${id}/download-wav?variant=${encodeURIComponent(variant)}`,
     );
     if (response.ok) {
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      return;
+      return response.blob();
     }
     const parsed = await readError(response, 'WAV download failed');
     lastError = parsed.message;
@@ -315,25 +318,33 @@ export async function downloadWebMusicClipWav(id: string, variant: string, filen
   throw new Error(lastError);
 }
 
-export async function downloadWebMusicTimedLyrics(
+export async function fetchWebMusicTimedLyricsBlob(
   id: string,
   variant: string,
   format: 'lrc' | 'srt',
-  filename: string,
-): Promise<void> {
+): Promise<Blob> {
   const response = await musicAuthFetch(
     `/api/v3/web-music/generations/${id}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${encodeURIComponent(format)}`,
   );
   if (!response.ok) {
     await rejectResponse(response, 'Timed lyrics download failed');
   }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  return response.blob();
+}
+
+export async function downloadWebMusicClip(id: string, variant: string, filename: string): Promise<void> {
+  saveBlob(await fetchWebMusicClipBlob(id, variant), filename);
+}
+
+export async function downloadWebMusicClipWav(id: string, variant: string, filename: string): Promise<void> {
+  saveBlob(await fetchWebMusicClipWavBlob(id, variant), filename);
+}
+
+export async function downloadWebMusicTimedLyrics(
+  id: string,
+  variant: string,
+  format: 'lrc' | 'srt',
+  filename: string,
+): Promise<void> {
+  saveBlob(await fetchWebMusicTimedLyricsBlob(id, variant, format), filename);
 }

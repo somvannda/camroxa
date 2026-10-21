@@ -2,68 +2,49 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { AlertCircle, Check, Crown, Loader2 } from 'lucide-react';
+import { AlertCircle, Check, Coins, Crown, Loader2 } from 'lucide-react';
 import {
   cancelSubscription,
   creditsToSongs,
   fetchCreditBalance,
   fetchMySubscription,
-  fetchRenewalOffer,
-  fetchSubscriptionPlans,
   formatPlanDisplayName,
-  formatPrice,
-  matchCurrentPlan,
   parseBillingDate,
-  purchaseRenewal,
-  purchaseSubscription,
   type CreditBalance,
-  type RenewalOffer,
-  type SubscriptionPlan,
   type UserSubscription,
 } from '@/lib/subscription-api';
-import AvailablePlansGrid from '@/components/available-plans-grid';
-import CutluyCheckoutModal from '@/components/cutluy-checkout-modal';
-import { useAuth } from '@/components/auth-provider';
+import TopupModal from '@/components/topup-modal';
 
+/**
+ * Profile billing section — packs-only.
+ *
+ * Subscriptions are no longer sold, so there is no plan grid and no renewal
+ * checkout here. Credit packs are bought through the shared top-up dialog. A
+ * grandfathered subscriber still sees their own plan read-only, and can cancel
+ * the term they already paid for.
+ */
 export default function SubscriptionSection() {
-  const { user } = useAuth();
   const [subscription, setSubscription] = useState<UserSubscription | null>(null);
   const [balance, setBalance] = useState<CreditBalance | null>(null);
-  const [plans, setPlans] = useState<SubscriptionPlan[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCancelModal, setShowCancelModal] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly');
-  const [purchasingPlanId, setPurchasingPlanId] = useState<string | null>(null);
-  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
-  const [checkoutQrString, setCheckoutQrString] = useState<string | null>(null);
-  const [checkoutPaymentId, setCheckoutPaymentId] = useState<string | null>(null);
-  const [checkoutPlan, setCheckoutPlan] = useState<{ name: string; price: string } | null>(null);
-  const [checkoutKind, setCheckoutKind] = useState<'subscription' | 'renewal'>('subscription');
-  const [renewalOffer, setRenewalOffer] = useState<RenewalOffer | null>(null);
-  const [renewing, setRenewing] = useState(false);
+  const [showTopupModal, setShowTopupModal] = useState(false);
 
   useEffect(() => {
-    void loadSubscription();
+    void loadData();
   }, []);
 
-  async function loadSubscription() {
+  async function loadData() {
     try {
-      const [sub, credits, planData, offer] = await Promise.all([
+      const [sub, credits] = await Promise.all([
         fetchMySubscription().catch(() => null),
         fetchCreditBalance().catch(() => null),
-        fetchSubscriptionPlans().catch(() => ({ plans: [] as SubscriptionPlan[] })),
-        fetchRenewalOffer().catch(() => null),
       ]);
       setSubscription(sub);
       setBalance(credits);
-      setPlans(planData.plans.filter((plan) => plan.is_public));
-      setRenewalOffer(offer);
-      if (sub?.billing_cycle === 'yearly' || sub?.billing_cycle === 'monthly') {
-        setBillingCycle(sub.billing_cycle);
-      }
     } catch (err) {
-      console.error('Failed to load subscription:', err);
+      console.error('Failed to load credits:', err);
     } finally {
       setLoading(false);
     }
@@ -89,63 +70,6 @@ export default function SubscriptionSection() {
     }
   }
 
-  async function handleSelectPlan(plan: SubscriptionPlan) {
-    if (!user) return;
-    if (subscription?.status === 'active' && plan.id === subscription.plan_id) return;
-
-    setPurchasingPlanId(plan.id);
-    try {
-      if (subscription?.status === 'active' && plan.id !== subscription.plan_id) {
-        alert('Cancel your current plan first, then subscribe to a different plan.');
-        setPurchasingPlanId(null);
-        return;
-      }
-      const currentUrl = window.location.origin;
-      const { checkout_url, payment_id, qr_string } = await purchaseSubscription({
-        plan_id: plan.id,
-        success_url: `${currentUrl}/profile?payment=success`,
-        cancel_url: `${currentUrl}/profile`,
-      });
-      setCheckoutKind('subscription');
-      setCheckoutPlan({
-        name: formatPlanDisplayName(plan.name),
-        price: formatPrice(plan.price_cents),
-      });
-      setCheckoutPaymentId(payment_id);
-      setCheckoutQrString(qr_string || null);
-      setCheckoutUrl(checkout_url);
-    } catch (err: unknown) {
-      console.error('Purchase failed:', err);
-      alert(err instanceof Error ? err.message : 'Failed to start checkout process');
-      setPurchasingPlanId(null);
-    }
-  }
-
-  async function handleRenew() {
-    if (!renewalOffer?.eligible) return;
-    setRenewing(true);
-    try {
-      const currentUrl = window.location.origin;
-      const { checkout_url, payment_id, qr_string } = await purchaseRenewal({
-        success_url: `${currentUrl}/profile?payment=success`,
-        cancel_url: `${currentUrl}/profile`,
-      });
-      setCheckoutKind('renewal');
-      setCheckoutPlan({
-        name: formatPlanDisplayName(renewalOffer.plan_name || 'your plan'),
-        price: formatPrice(renewalOffer.price_cents),
-      });
-      setCheckoutPaymentId(payment_id);
-      setCheckoutQrString(qr_string || null);
-      setCheckoutUrl(checkout_url);
-    } catch (err: unknown) {
-      console.error('Renewal failed:', err);
-      alert(err instanceof Error ? err.message : 'Failed to start renewal');
-    } finally {
-      setRenewing(false);
-    }
-  }
-
   if (loading) {
     return (
       <div className="flex items-center justify-center rounded-3xl border border-white/8 bg-[rgba(8,10,20,0.55)] p-8">
@@ -156,80 +80,17 @@ export default function SubscriptionSection() {
 
   const isSubscribed =
     subscription?.status === 'active' || Boolean(balance?.has_subscription);
-  const grantedCredits =
-    subscription?.monthly_credits_granted ||
-    (balance ? balance.monthly_credits + balance.monthly_credits_used : 0);
-  const currentPlan = matchCurrentPlan(plans, subscription, grantedCredits);
-
-  const renewalBanner =
-    renewalOffer?.eligible && renewalOffer.renewable ? (
-      <div
-        className={`rounded-2xl border p-5 ${
-          renewalOffer.expired
-            ? 'border-red-500/30 bg-red-500/10'
-            : 'border-amber-500/30 bg-amber-500/10'
-        }`}
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0">
-            <p className="font-medium text-white">
-              {renewalOffer.expired ? 'Your subscription has ended' : 'Your plan renews soon'}
-            </p>
-            <p className="mt-1 text-sm text-slate-300">
-              {renewalOffer.expired
-                ? `Renew ${formatPlanDisplayName(renewalOffer.plan_name)} for ${formatPrice(renewalOffer.price_cents)} to keep creating.`
-                : `${renewalOffer.days_left ?? 0} day(s) left. Renew ${formatPlanDisplayName(renewalOffer.plan_name)} for ${formatPrice(renewalOffer.price_cents)} to avoid losing access.`}
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => void handleRenew()}
-            disabled={renewing}
-            className="inline-flex h-10 shrink-0 items-center gap-2 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-5 text-sm font-medium text-white transition-all hover:from-purple-600 hover:to-pink-600 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {renewing ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-            Renew now
-          </button>
-        </div>
-      </div>
-    ) : null;
-
-  if (!isSubscribed) {
-    return (
-      <div className="rounded-3xl border border-purple-500/20 bg-gradient-to-br from-purple-900/20 via-[rgba(8,10,20,0.55)] to-transparent p-8 text-center">
-        {renewalBanner ? <div className="mb-6 text-left">{renewalBanner}</div> : null}
-        <div className="mb-4 inline-flex rounded-full bg-purple-500/20 p-3">
-          <Crown className="h-8 w-8 text-purple-400" />
-        </div>
-        <h2 className="mb-2 font-display text-2xl font-semibold text-white">
-          Unlock Unlimited Music Creation
-        </h2>
-        <p className="mx-auto mb-6 max-w-md text-slate-400">
-          Subscribe to create AI-generated music with flexible credit-based plans. Choose monthly
-          or yearly billing and save up to 15%.
-        </p>
-        <Link
-          href="/pricing"
-          className="inline-flex h-11 items-center rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-6 text-sm font-medium text-white transition-all hover:from-purple-600 hover:to-pink-600"
-        >
-          View Plans & Pricing
-        </Link>
-      </div>
-    );
-  }
+  const totalCredits = Math.max(0, balance?.total_credits ?? 0);
+  const songs = creditsToSongs(totalCredits);
 
   const periodEnd =
     parseBillingDate(subscription?.current_period_end) ||
     parseBillingDate(balance?.current_period_end);
-  const daysLeft = periodEnd
-    ? Math.ceil((periodEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))
-    : null;
-  const songs = creditsToSongs(grantedCredits);
-  const planTitle = currentPlan
-    ? formatPlanDisplayName(currentPlan.name)
-    : subscription?.plan_name
-      ? formatPlanDisplayName(subscription.plan_name)
-      : 'Pro';
+  const planTitle = subscription?.plan_name
+    ? formatPlanDisplayName(subscription.plan_name)
+    : balance?.has_subscription
+      ? 'Legacy plan'
+      : 'Free';
 
   return (
     <>
@@ -238,12 +99,12 @@ export default function SubscriptionSection() {
           <div className="mb-6 flex items-start justify-between">
             <div className="flex items-center gap-3">
               <div className="rounded-full bg-gradient-to-br from-purple-500 to-pink-500 p-2">
-                <Crown className="h-5 w-5 text-white" />
+                <Coins className="h-5 w-5 text-white" />
               </div>
               <div>
-                <h2 className="font-display text-xl font-semibold text-white">{planTitle}</h2>
-                <p className="text-xs text-slate-400 capitalize">
-                  {subscription?.billing_cycle || currentPlan?.billing_cycle || 'paid'} subscription
+                <h2 className="font-display text-xl font-semibold text-white">Credits</h2>
+                <p className="text-xs text-slate-400">
+                  {isSubscribed ? `${planTitle} — no longer sold` : 'Pay as you go'}
                 </p>
               </div>
             </div>
@@ -254,14 +115,16 @@ export default function SubscriptionSection() {
 
           <div className="mb-6 grid grid-cols-2 gap-4 border-b border-white/10 pb-6">
             <div>
-              <div className="mb-1 text-sm text-slate-400">Monthly Credits</div>
-              <div className="text-2xl font-bold text-white">{songs} songs</div>
-              <div className="text-xs text-slate-500">{grantedCredits.toLocaleString()} credits</div>
+              <div className="mb-1 text-sm text-slate-400">Available Credits</div>
+              <div className="text-2xl font-bold text-white">
+                {totalCredits.toLocaleString()}
+              </div>
+              <div className="text-xs text-slate-500">≈ {songs.toLocaleString()} songs</div>
             </div>
             <div>
-              <div className="mb-1 text-sm text-slate-400">Next Billing</div>
+              <div className="mb-1 text-sm text-slate-400">Credits Expire</div>
               <div className="text-2xl font-bold text-white">
-                {daysLeft != null && Number.isFinite(daysLeft) ? `${Math.max(daysLeft, 0)}d` : '—'}
+                {periodEnd ? '—' : '30 days'}
               </div>
               <div className="text-xs text-slate-500">
                 {periodEnd
@@ -270,73 +133,93 @@ export default function SubscriptionSection() {
                       day: 'numeric',
                       year: 'numeric',
                     })
-                  : 'Renews with your plan'}
+                  : 'after your last purchase'}
               </div>
             </div>
           </div>
 
           <div className="mb-6">
-            <div className="mb-3 text-sm text-slate-400">Includes:</div>
+            <div className="mb-3 text-sm text-slate-400">How credits work:</div>
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-sm text-slate-300">
                 <Check className="h-4 w-4 text-purple-400" />
-                <span>{songs} AI-generated songs monthly</span>
+                <span>Buy a pack any time — no subscription needed</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-slate-300">
                 <Check className="h-4 w-4 text-purple-400" />
-                <span>Full commercial rights</span>
+                <span>Credits are valid for 30 days from your last purchase</span>
               </li>
               <li className="flex items-center gap-2 text-sm text-slate-300">
                 <Check className="h-4 w-4 text-purple-400" />
-                <span>MP3 & WAV downloads</span>
-              </li>
-              <li className="flex items-center gap-2 text-sm text-slate-300">
-                <Check className="h-4 w-4 text-purple-400" />
-                <span>Buy additional credits anytime</span>
+                <span>Buying again resets the clock on your whole balance</span>
               </li>
             </ul>
           </div>
 
-          {subscription?.cancel_at_period_end && periodEnd ? (
-            <div className="mb-6 flex items-start gap-3 rounded-xl border border-yellow-500/20 bg-yellow-500/10 p-4">
-              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-400" />
-              <div className="text-sm">
-                <div className="mb-1 font-medium text-yellow-300">Subscription ending soon</div>
-                <div className="text-slate-400">
-                  Your subscription will be cancelled on{' '}
-                  {periodEnd.toLocaleDateString('en-US', {
-                    month: 'long',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })}
-                  . You&apos;ll keep access until then.
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {subscription && !subscription.cancel_at_period_end ? (
+          <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() => setShowCancelModal(true)}
-              className="inline-flex h-10 items-center rounded-xl border border-white/10 px-4 text-sm text-slate-400 transition-all hover:bg-white/[0.04] hover:text-white"
+              onClick={() => setShowTopupModal(true)}
+              className="inline-flex h-10 items-center rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-5 text-sm font-medium text-white transition-all hover:from-purple-600 hover:to-pink-600"
             >
-              Cancel Subscription
+              Buy credits
             </button>
-          ) : null}
+            <Link
+              href="/pricing"
+              className="inline-flex h-10 items-center rounded-xl border border-white/10 px-4 text-sm text-slate-300 transition-all hover:bg-white/[0.04] hover:text-white"
+            >
+              See packs
+            </Link>
+            {subscription && !subscription.cancel_at_period_end ? (
+              <button
+                type="button"
+                onClick={() => setShowCancelModal(true)}
+                className="inline-flex h-10 items-center rounded-xl border border-white/10 px-4 text-sm text-slate-400 transition-all hover:bg-white/[0.04] hover:text-white"
+              >
+                Cancel legacy subscription
+              </button>
+            ) : null}
+          </div>
         </div>
 
-        {renewalBanner}
+        {subscription?.cancel_at_period_end && periodEnd ? (
+          <div className="flex items-start gap-3 rounded-2xl border border-yellow-500/20 bg-yellow-500/10 p-5">
+            <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-yellow-400" />
+            <div className="text-sm">
+              <div className="mb-1 font-medium text-yellow-300">Subscription ending soon</div>
+              <div className="text-slate-400">
+                Your legacy subscription is cancelled on{' '}
+                {periodEnd.toLocaleDateString('en-US', {
+                  month: 'long',
+                  day: 'numeric',
+                  year: 'numeric',
+                })}
+                . You keep access until then, then buy credits as you go.
+              </div>
+            </div>
+          </div>
+        ) : null}
 
-        {plans.length ? (
-          <AvailablePlansGrid
-            plans={plans}
-            billingCycle={billingCycle}
-            onBillingCycleChange={setBillingCycle}
-            currentPlanId={currentPlan?.id}
-            purchasingPlanId={purchasingPlanId}
-            onSelectPlan={(plan) => void handleSelectPlan(plan)}
-          />
+        {!isSubscribed ? (
+          <div className="rounded-3xl border border-purple-500/20 bg-gradient-to-br from-purple-900/20 via-[rgba(8,10,20,0.55)] to-transparent p-8 text-center">
+            <div className="mb-4 inline-flex rounded-full bg-purple-500/20 p-3">
+              <Crown className="h-8 w-8 text-purple-400" />
+            </div>
+            <h2 className="mb-2 font-display text-2xl font-semibold text-white">
+              Pay Only for What You Use
+            </h2>
+            <p className="mx-auto mb-6 max-w-md text-slate-400">
+              No subscription required. Buy a pack of credits whenever you need them, and they stay
+              valid for 30 days from your purchase.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowTopupModal(true)}
+              className="inline-flex h-11 items-center rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 px-6 text-sm font-medium text-white transition-all hover:from-purple-600 hover:to-pink-600"
+            >
+              Buy credits
+            </button>
+          </div>
         ) : null}
       </div>
 
@@ -357,8 +240,8 @@ export default function SubscriptionSection() {
             </div>
 
             <p className="mb-6 text-slate-400">
-              Are you sure you want to cancel your subscription? You can choose to keep access
-              until the end of your billing period or cancel immediately.
+              Subscriptions are no longer sold, but you can still end the term you already paid for.
+              Keep access until the end of your billing period, or cancel now.
             </p>
 
             <div className="space-y-3">
@@ -391,23 +274,7 @@ export default function SubscriptionSection() {
         </div>
       ) : null}
 
-      <CutluyCheckoutModal
-        isOpen={Boolean(checkoutUrl)}
-        checkoutUrl={checkoutUrl}
-        qrString={checkoutQrString}
-        paymentId={checkoutPaymentId}
-        kind={checkoutKind}
-        planName={checkoutPlan?.name}
-        planPrice={checkoutPlan?.price}
-        onClose={() => {
-          setCheckoutUrl(null);
-          setCheckoutQrString(null);
-          setCheckoutPaymentId(null);
-          setCheckoutPlan(null);
-          setCheckoutKind('subscription');
-          setPurchasingPlanId(null);
-        }}
-      />
+      <TopupModal isOpen={showTopupModal} onClose={() => setShowTopupModal(false)} />
     </>
   );
 }

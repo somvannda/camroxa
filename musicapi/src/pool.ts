@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { SunoClient, AccountCreds, BillingInfo } from "./client.js";
-import { config } from "./config.js";
+import { config, CreditStrategy } from "./config.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { query } from "./db.js";
 import { normalizeModel } from "./models.js";
@@ -41,28 +41,67 @@ export interface AccountStatus {
 }
 
 /**
- * Order eligible clients for fair dispatch: routing preference first (free
- * before paid for `prefer_free`), then accounts still below `maxPerAccount`,
- * then least in-flight. Least-loaded-first means a burst spreads across the
- * pool instead of hammering whichever account happens to be first — with a
- * global cap of `size × K`, no account ends up with more than `K` in flight.
+ * Order eligible clients for dispatch. The ranking is, in order:
+ *   1. `prefer_free` routing preference (free before paid when set);
+ *   2. accounts still below `maxPerAccount` (an over-cap account is a last resort);
+ *   3. credit balance, highest first — skipped entirely for `off`;
+ *   4. least in-flight.
+ *
+ * The final tiebreak is what spreads a burst across the pool instead of
+ * hammering whichever account happens to be first — with a global cap of
+ * `size × K`, no account ends up with more than `K` in flight. The credit term
+ * sits *above* load so a burst draws down the funded accounts rather than merely
+ * equalising job counts (equal counts would preserve an existing balance gap).
+ *
+ * `credits` must already be the *effective* balance (live credits minus the
+ * credits reserved by in-flight jobs). The strategy does not change this sort —
+ * `balanced` and `max_first` order identically here; what separates them is
+ * `AccountPool.reserveCredits`, which only `balanced` applies. Reserving makes
+ * concurrent picks see the richest account's balance fall as it is used, so
+ * dispatch converges on a common level; `max_first` reserves nothing and keeps
+ * drawing from the single highest-balance account until a fresh read.
+ *
  * Pure and exported so it can be unit-tested without a live pool.
+ */
+export function orderForDispatch<T extends { account: { id: string; type?: string } }>(
+  clients: T[],
+  opts: {
+    load?: (id: string) => number;
+    credits?: (id: string) => number;
+    maxPerAccount?: number;
+    preferFree?: boolean;
+    strategy?: CreditStrategy;
+  } = {},
+): T[] {
+  const load = opts.load ?? (() => 0);
+  const credits = opts.credits ?? (() => 0);
+  const creditAware = (opts.strategy ?? "off") !== "off";
+  const rank = (c: T): [number, number, number, number] => [
+    opts.preferFree && c.account.type === "paid" ? 1 : 0,
+    opts.maxPerAccount != null && load(c.account.id) >= opts.maxPerAccount ? 1 : 0,
+    creditAware ? -credits(c.account.id) : 0,
+    load(c.account.id),
+  ];
+  return [...clients].sort((a, b) => {
+    const ra = rank(a);
+    const rb = rank(b);
+    for (let i = 0; i < ra.length; i += 1) {
+      if (ra[i] !== rb[i]) return ra[i] - rb[i];
+    }
+    return 0;
+  });
+}
+
+/**
+ * Legacy least-loaded-only ordering, kept as the `creditStrategy: "off"` case
+ * and for callers that don't want credit awareness. Pure and exported for tests.
  */
 export function orderByLoad<T extends { account: { id: string; type?: string } }>(
   clients: T[],
   load: (id: string) => number,
   opts: { preferFree?: boolean; maxPerAccount?: number } = {},
 ): T[] {
-  const rank = (c: T): [number, number, number] => [
-    opts.preferFree && c.account.type === "paid" ? 1 : 0,
-    opts.maxPerAccount != null && load(c.account.id) >= opts.maxPerAccount ? 1 : 0,
-    load(c.account.id),
-  ];
-  return [...clients].sort((a, b) => {
-    const ra = rank(a);
-    const rb = rank(b);
-    return ra[0] - rb[0] || ra[1] - rb[1] || ra[2] - rb[2];
-  });
+  return orderForDispatch(clients, { ...opts, load, strategy: "off" });
 }
 
 /**
@@ -85,6 +124,14 @@ export class AccountPool {
   private clients: SunoClient[] = [];
   private health: Map<string, { info: AccountHealth; updatedAt: number }> = new Map();
   private captcha: Map<string, { required: boolean; updatedAt: number }> = new Map();
+  /**
+   * Effective live credits an in-flight job has consumed but the last
+   * `billing/info` read has not yet reflected (the health cache lives 30s).
+   * Subtracting this from a cached balance keeps concurrent picks from all
+   * reading one snapshot and dogpiling the same account. Cleared whenever a
+   * fresh `billing/info` arrives, because that value already includes the spend.
+   */
+  private readonly reservedCredits: Map<string, number> = new Map();
 
   constructor(accounts: AccountCreds[] = []) {
     this.clients = accounts.map((a) => this.makeClient(a));
@@ -205,6 +252,7 @@ export class AccountPool {
     this.health.clear();
     this.captcha.clear();
     this.rateLimitedUntil.clear();
+    this.reservedCredits.clear();
   }
 
   /**
@@ -236,6 +284,9 @@ export class AccountPool {
       catalog: usable,
     };
     this.health.set(client.account.id, { info: health, updatedAt: Date.now() });
+    // The fresh balance already reflects every settled spend, so any outstanding
+    // reservation for this account is now double-counting.
+    this.reservedCredits.delete(client.account.id);
     return health;
   }
 
@@ -253,6 +304,34 @@ export class AccountPool {
       ? { ...existing, credits: 0 }
       : { credits: 0, models: [], plan: "unknown", features: [], catalog: [] };
     this.health.set(id, { info, updatedAt: Date.now() });
+  }
+
+  /**
+   * Reserve `amount` credits against an account's cached balance while a job it
+   * was picked for is in flight. This is what makes `balanced` dispatch converge:
+   * without it every concurrent pick reads the same 30s snapshot and chooses the
+   * same richest account, so `balanced` and `max_first` would behave alike.
+   * Only the `balanced` strategy reserves; `off` ignores credits and `max_first`
+   * deliberately keeps drawing from the highest-balance account. Over-counting is
+   * safe — a fresh `billing/info` read clears the reservation.
+   */
+  reserveCredits(id: string, amount: number): void {
+    if (config.suno.creditStrategy !== "balanced") return;
+    if (!(amount > 0)) return;
+    this.reservedCredits.set(id, (this.reservedCredits.get(id) ?? 0) + amount);
+  }
+
+  /** Release a reservation made by `reserveCredits` (e.g. when a job settles). */
+  releaseCredits(id: string, amount: number): void {
+    if (!(amount > 0)) return;
+    const next = (this.reservedCredits.get(id) ?? 0) - amount;
+    if (next > 0) this.reservedCredits.set(id, next);
+    else this.reservedCredits.delete(id);
+  }
+
+  /** Cached credits minus the reservations still outstanding for this account. */
+  private effectiveCredits(id: string, credits: number): number {
+    return Math.max(0, credits - (this.reservedCredits.get(id) ?? 0));
   }
 
   /** Accounts a 429 put on a short cooldown (epoch ms until they may be picked). */
@@ -301,6 +380,97 @@ export class AccountPool {
   }
 
   /**
+   * Live health for every candidate, keyed by account id. A probe failure is
+   * captured (not thrown) so one unreachable account cannot blank out routing:
+   * the caller's scan still records the message and moves on, exactly as the
+   * old inline `try/catch` did.
+   */
+  private async probeHealth(
+    clients: SunoClient[],
+  ): Promise<Map<string, { health: AccountHealth } | { error: string }>> {
+    const entries = await Promise.all(
+      clients.map(async (c): Promise<[string, { health: AccountHealth } | { error: string }]> => {
+        try {
+          return [c.account.id, { health: await this.healthFor(c) }];
+        } catch (e) {
+          return [c.account.id, { error: e instanceof Error ? e.message : String(e) }];
+        }
+      }),
+    );
+    return new Map(entries);
+  }
+
+  /**
+   * Order candidates with the configured credit strategy, using a pre-fetched
+   * health map. One place so the plain, exclude, and feature pick paths all
+   * balance identically.
+   */
+  private orderCandidates(
+    candidates: SunoClient[],
+    healths: Map<string, { health: AccountHealth } | { error: string }>,
+    policy: RoutingPolicy,
+    opts: { load?: (id: string) => number; maxPerAccount?: number },
+  ): SunoClient[] {
+    return orderForDispatch(candidates, {
+      load: opts.load ?? (() => 0),
+      maxPerAccount: opts.maxPerAccount,
+      preferFree: policy === "prefer_free",
+      strategy: config.suno.creditStrategy,
+      credits: (id) => {
+        const probed = healths.get(id);
+        return probed && "health" in probed ? this.effectiveCredits(id, probed.health.credits) : 0;
+      },
+    });
+  }
+
+  /**
+   * Shared selection scan: order the candidates, then return the first that is
+   * funded, advertises `model` (or is kept as a last-resort fallback when it
+   * doesn't), and isn't cooling after a 429.
+   */
+  private async pickFrom(
+    candidates: SunoClient[],
+    model: string | undefined,
+    policy: RoutingPolicy,
+    opts: { load?: (id: string) => number; maxPerAccount?: number },
+  ): Promise<SunoClient> {
+    // Retired keys are folded onto the current model first, so an old client's
+    // request still matches the account catalog instead of falling through.
+    const want = normalizeModel(model);
+    const healths = await this.probeHealth(candidates);
+    const ordered = this.orderCandidates(candidates, healths, policy, opts);
+    let lastError = "No healthy account available.";
+    let fallback: SunoClient | null = null;
+    let sawLowCredits = false;
+    for (const client of this.prioritizeCooling(ordered)) {
+      const probed = healths.get(client.account.id);
+      if (!probed) continue;
+      if ("error" in probed) {
+        lastError = probed.error;
+        continue;
+      }
+      const health = probed.health;
+      if (belowCreditFloor(health.credits)) {
+        sawLowCredits = true;
+        continue;
+      }
+      if (want && health.models.length && !health.models.includes(want)) {
+        // Suno isn't advertising this model for the account — but a key it
+        // won't advertise may still be accepted, so keep the account as a
+        // last resort rather than failing with "no healthy account".
+        fallback ??= client;
+        continue;
+      }
+      return client;
+    }
+    if (fallback) return fallback;
+    if (sawLowCredits) {
+      throw new Error("No Suno account with available credits for this model.");
+    }
+    throw new Error(lastError);
+  }
+
+  /**
    * Pick a healthy account that can use `model`, has credits, and matches the
    * routing `policy` (prefer_free / paid_only / any).
    */
@@ -310,9 +480,6 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
-    // Retired keys are folded onto the current model first, so an old client's
-    // request still matches the account catalog instead of falling through.
-    const want = normalizeModel(model);
     const filtered = this.clients.filter((c) => {
       if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
       return true;
@@ -322,37 +489,7 @@ export class AccountPool {
         "No paid Suno account is available for this model; premium models require a paid account.",
       );
     }
-    const ordered = orderByLoad(filtered, opts.load ?? (() => 0), {
-      preferFree: policy === "prefer_free",
-      maxPerAccount: opts.maxPerAccount,
-    });
-    let lastError = "No healthy account available.";
-    let fallback: SunoClient | null = null;
-    let sawLowCredits = false;
-    for (const client of this.prioritizeCooling(ordered)) {
-      try {
-        const health = await this.healthFor(client);
-        if (belowCreditFloor(health.credits)) {
-          sawLowCredits = true;
-          continue;
-        }
-        if (want && health.models.length && !health.models.includes(want)) {
-          // Suno isn't advertising this model for the account — but a key it
-          // won't advertise may still be accepted, so keep the account as a
-          // last resort rather than failing with "no healthy account".
-          fallback ??= client;
-          continue;
-        }
-        return client;
-      } catch (e) {
-        lastError = e instanceof Error ? e.message : String(e);
-      }
-    }
-    if (fallback) return fallback;
-    if (sawLowCredits) {
-      throw new Error("No Suno account with available credits for this model.");
-    }
-    throw new Error(lastError);
+    return this.pickFrom(filtered, model, policy, opts);
   }
 
   /**
@@ -367,20 +504,18 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     const want = normalizeModel(model);
-    const ordered = orderByLoad(this.clients, opts.load ?? (() => 0), {
-      preferFree: policy === "prefer_free",
-      maxPerAccount: opts.maxPerAccount,
-    });
+    const candidates = this.clients.filter(
+      (c) => policy !== "paid_only" || (c.account.type ?? "free") === "paid",
+    );
+    const healths = await this.probeHealth(candidates);
+    const ordered = this.orderCandidates(candidates, healths, policy, opts);
     for (const client of this.prioritizeCooling(ordered)) {
-      if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
-      try {
-        const health = await this.healthFor(client);
-        if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
-        if (want && health.models.length && !health.models.includes(want)) continue;
-        return client;
-      } catch {
-        /* try the next account */
-      }
+      const probed = healths.get(client.account.id);
+      if (!probed || "error" in probed) continue;
+      const health = probed.health;
+      if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
+      if (want && health.models.length && !health.models.includes(want)) continue;
+      return client;
     }
     return this.pick(model, policy, opts);
   }
@@ -395,21 +530,20 @@ export class AccountPool {
   ): Promise<SunoClient> {
     const exclude = new Set(excludeIds);
     const want = normalizeModel(model);
-    const ordered = orderByLoad(
-      this.clients.filter((c) => !exclude.has(c.account.id)),
-      opts.load ?? (() => 0),
-      { preferFree: policy === "prefer_free", maxPerAccount: opts.maxPerAccount },
+    const candidates = this.clients.filter(
+      (c) =>
+        !exclude.has(c.account.id) &&
+        (policy !== "paid_only" || (c.account.type ?? "free") === "paid"),
     );
+    const healths = await this.probeHealth(candidates);
+    const ordered = this.orderCandidates(candidates, healths, policy, opts);
     for (const client of this.prioritizeCooling(ordered)) {
-      if (policy === "paid_only" && (client.account.type ?? "free") !== "paid") continue;
-      try {
-        const health = await this.healthFor(client);
-        if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
-        if (want && health.models.length && !health.models.includes(want)) continue;
-        return client;
-      } catch {
-        /* try the next account */
-      }
+      const probed = healths.get(client.account.id);
+      if (!probed || "error" in probed) continue;
+      const health = probed.health;
+      if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
+      if (want && health.models.length && !health.models.includes(want)) continue;
+      return client;
     }
     return this.pickExcept(excludeIds, model, policy, opts);
   }
@@ -430,7 +564,6 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
-    const want = normalizeModel(model);
     const exclude = new Set(excludeIds);
     const filtered = this.clients.filter((c) => {
       if (exclude.has(c.account.id)) return false;
@@ -446,36 +579,6 @@ export class AccountPool {
       }
       throw new Error("No Suno accounts available after excluding attempted ones.");
     }
-    const ordered = orderByLoad(filtered, opts.load ?? (() => 0), {
-      preferFree: policy === "prefer_free",
-      maxPerAccount: opts.maxPerAccount,
-    });
-    let lastError = "No healthy account available.";
-    let fallback: SunoClient | null = null;
-    let sawLowCredits = false;
-    for (const client of this.prioritizeCooling(ordered)) {
-      try {
-        const health = await this.healthFor(client);
-        if (belowCreditFloor(health.credits)) {
-          sawLowCredits = true;
-          continue;
-        }
-        if (want && health.models.length && !health.models.includes(want)) {
-          // See pick(): an unlisted model is attempted with a healthy account
-          // rather than filtered out, so a key Suno accepts but doesn't
-          // advertise still works.
-          fallback ??= client;
-          continue;
-        }
-        return client;
-      } catch (e) {
-        lastError = e instanceof Error ? e.message : String(e);
-      }
-    }
-    if (fallback) return fallback;
-    if (sawLowCredits) {
-      throw new Error("No Suno account with available credits for this model.");
-    }
-    throw new Error(lastError);
+    return this.pickFrom(filtered, model, policy, opts);
   }
 }

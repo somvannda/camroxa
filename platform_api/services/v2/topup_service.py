@@ -158,7 +158,7 @@ class TopupService:
             }
         
         Raises:
-            ValueError: If pack not found or user has no subscription
+            ValueError: If pack not found or not purchasable
         """
         # Get pack
         pack = await self.get_pack_by_slug(pack_slug)
@@ -195,16 +195,16 @@ class TopupService:
                 "Too many pending top-up checkouts. Complete or wait for one to expire."
             )
         
-        # Check if user has active subscription
+        # Top-up packs are the only sellable product now, so an active
+        # subscription is no longer required to buy one (it used to gate this
+        # checkout). When the buyer happens to be a grandfathered subscriber we
+        # still link the purchase for reporting; otherwise the FK stays NULL.
         subscription = await self._db.fetch_one("""
             SELECT id
             FROM web_subscriptions
             WHERE user_id = $1 AND status = 'active'
         """, user_id)
-        
-        if not subscription:
-            raise ValueError("User must have active subscription to purchase top-ups")
-        
+
         # Create pending top-up purchase
         topup_id = await self._db.fetch_val("""
             INSERT INTO topup_purchases (
@@ -216,7 +216,7 @@ class TopupService:
             )
             RETURNING id
         """, 
-            user_id, subscription["id"], pack.id,
+            user_id, subscription["id"] if subscription else None, pack.id,
             pack.total_credits, pack.price_cents
         )
         
@@ -401,11 +401,34 @@ class TopupService:
         from platform_api.services.v3.wallet_sync import sync_topup_pack
         from uuid import UUID
 
-        await sync_topup_pack(
+        credits = int(row.get("credits_purchased") or 0)
+        result = await sync_topup_pack(
             UUID(str(row["user_id"])),
-            int(row.get("credits_purchased") or 0),
+            credits,
             topup_id=str(topup_id),
         )
+        if result and credits > 0:
+            # Referral rewards ride after the pack mint and are idempotent: the
+            # referral row is claimed once, so repeated status polls are safe.
+            try:
+                from platform_api.dependencies import get_db_pool
+                from platform_api.services.invite_program_service import apply_referral_reward
+
+                pool = get_db_pool()
+                async with pool.acquire() as conn:
+                    async with conn.transaction():
+                        await apply_referral_reward(
+                            conn,
+                            invitee_id=UUID(str(row["user_id"])),
+                            purchased_credits=credits,
+                            qualifying_ref=str(topup_id),
+                        )
+            except Exception:
+                logger.exception(
+                    "invite reward failed for topup %s user=%s",
+                    topup_id,
+                    row.get("user_id"),
+                )
 
     async def _mark_topup_terminal(
         self,

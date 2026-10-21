@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import QDate, Qt
+from PySide6.QtCore import QDate, Qt, QTimer
 from PySide6.QtWidgets import (
     QFileDialog,
     QFrame,
@@ -192,6 +192,17 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._suno_retry_worker: BatchRetrySunoWorker | None = None
         self._run_folder_recovery_worker: RunFolderRecoveryWorker | None = None
         self._missing_mp3_worker: MissingMp3DownloadWorker | None = None
+        # Auto missing-MP3 recovery: the account-wide pending download sync only
+        # sees tracks the *server* marks undownloaded, so a file missing on this
+        # PC is never re-fetched on its own. Reuse the manual right-click path,
+        # one channel per cycle, with a per-channel cooldown.
+        self._auto_missing_mp3_interval_ms = 60_000
+        self._auto_missing_mp3_cooldown_s = 600.0
+        self._auto_missing_mp3_attempted: dict[tuple[str, str, str], float] = {}
+        self._auto_missing_mp3_timer = QTimer(self)
+        self._auto_missing_mp3_timer.setInterval(self._auto_missing_mp3_interval_ms)
+        self._auto_missing_mp3_timer.timeout.connect(self._maybe_auto_download_missing_mp3s)
+        self._auto_missing_mp3_timer.start()
         self._pending_auto_continue_key: tuple[str, str, str] | None = None
         self._rows: list[ProgressRow] = []
         self._runtime_by_key: dict[str, ProgressRuntimePresentation] = {}
@@ -787,6 +798,75 @@ class ProgressView(PollablePageMixin, QScrollArea):
             f"Downloading {missing_n} missing MP3{suffix} into this PC's run folder…",
             tone="neutral",
         )
+        self._start_missing_mp3_download(
+            batch_id=batch_id,
+            profile_id=profile_id,
+            role=role,
+            run_dir=run_dir,
+        )
+
+    def _maybe_auto_download_missing_mp3s(self) -> None:
+        """Auto-run the right-click missing-MP3 recovery — one channel per tick.
+
+        The account-wide pending-download sync is driven by *server* flags, so a
+        file missing on this PC (deleted, moved, or pulled on another device)
+        never comes back on its own. This reuses the same batch-redownload path
+        the manual action uses, with a per-channel cooldown so a track with no
+        fetchable URL is not retried in a tight loop.
+        """
+        if not self._ever_loaded or not self._page_active:
+            return
+        if self._worker is not None and self._worker.isRunning():
+            return
+        if self._missing_mp3_worker is not None and self._missing_mp3_worker.isRunning():
+            return
+        if (
+            self._run_folder_recovery_worker is not None
+            and self._run_folder_recovery_worker.isRunning()
+        ):
+            return
+
+        from shared.services.video_pipeline_activity import is_app_quitting
+
+        if is_app_quitting():
+            return
+
+        import time
+
+        from shared.lib.missing_mp3 import pick_auto_missing_mp3_target
+
+        target = pick_auto_missing_mp3_target(
+            self._rows,
+            attempted_at=self._auto_missing_mp3_attempted,
+            now=time.monotonic(),
+            cooldown_s=self._auto_missing_mp3_cooldown_s,
+        )
+        if target is None:
+            return
+        self._auto_missing_mp3_attempted[target.key] = time.monotonic()
+        from shared.services.app_logger import log_info
+
+        log_info(
+            f"Auto missing-MP3 recovery: {target.missing_n} track(s) for "
+            f"batch {target.batch_id} role {target.role}.",
+            category="music",
+        )
+        self._start_missing_mp3_download(
+            batch_id=target.batch_id,
+            profile_id=target.profile_id,
+            role=target.role,
+            run_dir=target.run_dir,
+        )
+
+    def _start_missing_mp3_download(
+        self,
+        *,
+        batch_id: str,
+        profile_id: str,
+        role: str,
+        run_dir: str,
+    ) -> None:
+        """Start one missing-MP3 download worker (shared by manual + auto paths)."""
         worker = MissingMp3DownloadWorker(
             self._api,
             batch_id=batch_id,

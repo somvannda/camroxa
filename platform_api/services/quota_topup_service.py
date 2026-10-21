@@ -295,7 +295,7 @@ class QuotaTopupService:
         effective = int(base_limit) + int(topup_extra)
         used = 0
         if self._usage_repo is not None:
-            used = await self._used_for_kind(user_id, kind, period_start)
+            used = await self._used_for_kind(user_id, kind, period_start, period_end)
 
         return {
             "id": str(topup_id),
@@ -347,7 +347,7 @@ class QuotaTopupService:
             effective = None if base is None else int(base) + extra
             used = 0
             if self._usage_repo is not None:
-                used = await self._used_for_kind(user_id, kind, period_start)
+                used = await self._used_for_kind(user_id, kind, period_start, period_end)
             remaining = None if effective is None else max(0, effective - used)
             kinds[kind] = QuotaKindStatus(
                 quota_kind=kind,
@@ -369,9 +369,20 @@ class QuotaTopupService:
         user_id: UUID,
         kind: str,
         period_start: date,
+        period_end: date | None = None,
     ) -> int:
         assert self._usage_repo is not None
         if kind == "music":
+            # Authoritative, matching enforcement: ``_enforce_plan_quotas`` counts
+            # real ``songs`` rows, not the incremental ``usage_tracking`` counter
+            # (which the credits-only v3 charge path no longer increments — see
+            # docs/bugs/2026-10-05-plan-quota-enforcement-bypass.md). Fall back to
+            # the counter when the authoritative query is unavailable.
+            songs_counter = getattr(
+                self._usage_repo, "count_generated_songs_for_period", None
+            )
+            if songs_counter is not None and period_end is not None:
+                return int(await songs_counter(user_id, period_start, period_end) or 0)
             return int(
                 await self._usage_repo.get_monthly_count(user_id, "music", period_start)
                 or 0

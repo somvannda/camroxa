@@ -44,6 +44,7 @@ class FakeStore:
         self.lots: list[dict] = []
         self.zeroed: list[UUID] = []
         self.topup_subtracted: list[tuple[UUID, int]] = []
+        self.restamped: list[tuple[UUID, object]] = []
 
     async def has_transaction_ref(self, ref_id: str) -> bool:
         return ref_id in self.refs
@@ -52,6 +53,10 @@ class FakeStore:
         lot = {"id": uuid4(), **kwargs}
         self.lots.append(lot)
         return lot
+
+    async def restamp_live_lots(self, user_id: UUID, expires_at: object) -> int:
+        self.restamped.append((user_id, expires_at))
+        return 0
 
     async def zero_web_monthly_remaining(self, user_id: UUID) -> None:
         self.zeroed.append(user_id)
@@ -90,6 +95,10 @@ async def test_topup_mints_pack_once() -> None:
     assert wallet.balance == credits_to_units(200)
     assert store.lots[0]["tag"] == "pack"
     assert store.topup_subtracted == [(USER_ID, 200)]
+    # A pack is no longer immortal: it is stamped 30 days out, and the purchase
+    # sets the wallet's one shared expiry date to the same moment.
+    assert store.lots[0]["expires_at"] is not None
+    assert store.restamped == [(USER_ID, store.lots[0]["expires_at"])]
     store.refs.add(pack_ref_id(TOPUP_ID))
 
     second = await sync.after_topup_fulfill(USER_ID, 200, topup_id=TOPUP_ID)

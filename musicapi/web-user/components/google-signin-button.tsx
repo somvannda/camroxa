@@ -30,6 +30,18 @@ export default function GoogleSignInButton({
     setLoading(true);
     setError("");
     try {
+      // Remember an invite code from the landing URL (`/login?ref=CODE`) so it
+      // survives the Google redirect and is attached to the signup callback.
+      if (typeof window !== "undefined") {
+        const params = new URLSearchParams(window.location.search);
+        const ref = (params.get("ref") ?? params.get("invite") ?? "").trim().toUpperCase();
+        if (ref) {
+          localStorage.setItem("camxora_invite_code", ref.replace(/[^A-Z0-9]/g, ""));
+        } else {
+          // Never let a code from an abandoned attempt leak into a fresh signup.
+          localStorage.removeItem("camxora_invite_code");
+        }
+      }
       const { url, state } = await apiFetch<{ url: string; state: string }>(
         `/auth/google/url?redirect_uri=${encodeURIComponent(REDIRECT_URI)}`,
       );
@@ -88,11 +100,13 @@ export default function GoogleSignInButton({
 export async function completeGoogleCallback(state: string, code: string): Promise<{
   user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
 }> {
+  const inviteCode =
+    typeof window !== "undefined" ? localStorage.getItem("camxora_invite_code") : null;
   const res = await apiFetch<{
     user: { id: string; email: string; role: "user" | "admin"; name?: string | null };
   }>("/auth/google/callback", {
     method: "POST",
-    body: JSON.stringify({ code, state }),
+    body: JSON.stringify({ code, state, invite_code: inviteCode ?? undefined }),
   });
   // The API also sets an httpOnly session cookie; we only cache the profile.
   setSession(res.user);

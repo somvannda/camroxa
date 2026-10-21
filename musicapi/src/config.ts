@@ -35,6 +35,18 @@ function resolveCookieEncryptionKey(): Buffer {
   return Buffer.from(raw, "hex");
 }
 
+/** Account-selection credit strategy (see `config.suno.creditStrategy`). */
+export type CreditStrategy = "off" | "balanced" | "max_first";
+
+/**
+ * Parse `SUNO_CREDIT_STRATEGY`, falling back to `balanced` for an unset or
+ * unrecognized value so a typo can never silently disable credit balancing.
+ */
+function resolveCreditStrategy(): CreditStrategy {
+  const raw = (process.env.SUNO_CREDIT_STRATEGY ?? "balanced").trim().toLowerCase();
+  return raw === "off" || raw === "max_first" || raw === "balanced" ? raw : "balanced";
+}
+
 export const config = {
   /** Full cookie header (optional, sent as `Cookie` on Clerk requests). */
   cookie: process.env.SUNO_COOKIE ?? "",
@@ -176,6 +188,24 @@ export const config = {
      * jobs don't immediately re-hit the throttled account. 0 disables.
      */
     rateLimitCooldownMs: Math.max(0, Number(process.env.SUNO_RATE_LIMIT_COOLDOWN_MS ?? 5_000)),
+    /**
+     * Credit-aware account selection (see `src/pool.ts` `orderForDispatch`).
+     * `balanced` (default) prefers the highest-balance account and reserves the
+     * estimated spend of every in-flight job against that balance, so concurrent
+     * picks spread out and all accounts drain toward a common level.
+     * `max_first` prefers the highest balance too but reserves nothing, so it
+     * keeps drawing from the single richest account between billing refreshes.
+     * `off` restores the legacy least-loaded-only ordering.
+     */
+    creditStrategy: resolveCreditStrategy(),
+    /**
+     * Suno credits to reserve against an account's cached balance for each
+     * in-flight job. Suno debits a generation on submit, but the cached health
+     * only refreshes every 30s, so without a reservation every concurrent pick
+     * reads the same snapshot and dogpiles the same account. Estimate only;
+     * cleared whenever a fresh `billing/info` arrives. 0 disables reservations.
+     */
+    creditReserve: Math.max(0, Number(process.env.SUNO_CREDIT_RESERVE ?? 10)),
   },
   /**
    * Customer-account credit floor. "Free" generation endpoints cost 0 credits
@@ -210,6 +240,47 @@ export const config = {
     telegramBotToken: process.env.ALERT_TELEGRAM_BOT_TOKEN ?? "",
     telegramChatId: process.env.ALERT_TELEGRAM_CHAT_ID ?? "",
     checkIntervalMs: Number(process.env.ALERT_CHECK_INTERVAL_MS ?? 300_000),
+  },
+  /**
+   * Outbound mail (Resend). Every message — receipts, credit alerts, campaigns,
+   * automations — goes through the same ledger in `mail.ts`, so consent,
+   * suppression and engagement live in one place.
+   *
+   * Two `from` identities are kept as separate fields even though both point at
+   * the same verified domain today: `mail.camxora.com` is the only domain
+   * verified in Resend, so receipts and campaigns share it. Splitting them later
+   * is one string — verify music.camxora.com, then change `fromTransactional` —
+   * and that is worth keeping cheap because a marketing complaint spike should
+   * eventually not touch receipts.
+   *
+   * `publicBaseUrl` is the externally reachable origin used in tracking,
+   * click-redirect and unsubscribe URLs; `appUrl` is the product site a CTA
+   * links to. They are different hosts on purpose.
+   */
+  mail: {
+    apiKey: process.env.RESEND_API_KEY ?? "",
+    webhookSecret: process.env.RESEND_WEBHOOK_SECRET ?? "",
+    fromTransactional:
+      process.env.MAIL_FROM_TRANSACTIONAL ?? "CAMXORA <no-reply@mail.camxora.com>",
+    fromCampaign: process.env.MAIL_FROM_CAMPAIGN ?? "CAMXORA <hello@mail.camxora.com>",
+    /**
+     * Where a CTA button sends the user. This is the product the recipient sees,
+     * not the API: it must be the site that actually shows their credits and
+     * checkout, or a "buy credits" button lands somewhere that cannot sell.
+     */
+    appUrl: (process.env.MAIL_APP_URL ?? "https://music.camxora.com").replace(/\/+$/, ""),
+    replyTo: process.env.MAIL_REPLY_TO ?? "",
+    publicBaseUrl: (process.env.MAIL_PUBLIC_BASE_URL ?? "").replace(/\/+$/, ""),
+    /** Master switch; sending is also skipped whenever `apiKey` is empty. */
+    enabled: (process.env.MAIL_ENABLED ?? "true") === "true",
+    /** Resend limits concurrent requests per second; the sender paces to this. */
+    ratePerSecond: Math.max(1, Number(process.env.MAIL_RATE_PER_SECOND ?? 2)),
+    /** How often the queue is drained. 0 disables the in-process loop. */
+    loopIntervalMs: Number(process.env.MAIL_LOOP_INTERVAL_MS ?? 15_000),
+    /** Give up after this many delivery attempts. */
+    maxAttempts: Math.max(1, Number(process.env.MAIL_MAX_ATTEMPTS ?? 3)),
+    /** Marketing mail is capped per user to protect reputation. */
+    marketingCooldownDays: Math.max(1, Number(process.env.MAIL_MARKETING_COOLDOWN_DAYS ?? 7)),
   },
   /**
    * Background job queue (roadmap R4). `driver: "memory"` is the default and
