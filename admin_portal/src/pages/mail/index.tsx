@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Mail, Send, Trash2 } from 'lucide-react';
 
@@ -18,7 +18,7 @@ import {
 import { toast } from '@/hooks/use-toast';
 import { apiClient } from '@/lib/http-client';
 
-type Tab = 'deliveries' | 'campaigns' | 'templates' | 'automations' | 'suppressions';
+type Tab = 'deliveries' | 'campaigns' | 'templates' | 'automations' | 'suppressions' | 'settings';
 
 interface Health {
   configured: boolean;
@@ -87,6 +87,7 @@ const TABS: Array<{ key: Tab; label: string }> = [
   { key: 'templates', label: 'Templates' },
   { key: 'automations', label: 'Automations' },
   { key: 'suppressions', label: 'Suppressions' },
+  { key: 'settings', label: 'Settings' },
 ];
 
 function fmt(value: string | null): string {
@@ -94,6 +95,25 @@ function fmt(value: string | null): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
 }
+
+interface MailSettings {
+  configured: boolean;
+  webhook_configured: boolean;
+  from_transactional: string;
+  from_campaign: string;
+  public_base_url: string;
+  app_url: string;
+  enabled: boolean;
+}
+
+const EMPTY_SETTINGS = {
+  apiKey: '',
+  webhookSecret: '',
+  fromTransactional: '',
+  fromCampaign: '',
+  publicBaseUrl: '',
+  appUrl: '',
+};
 
 export default function MailPage() {
   const [tab, setTab] = useState<Tab>('deliveries');
@@ -103,6 +123,40 @@ export default function MailPage() {
   const health = useQuery({
     queryKey: ['mail', 'health'],
     queryFn: async () => (await apiClient.get<Health>('/mail/health')).data,
+  });
+
+  const mailSettings = useQuery({
+    queryKey: ['mail', 'settings'],
+    queryFn: async () => (await apiClient.get<MailSettings>('/mail/settings')).data,
+    enabled: tab === 'settings',
+  });
+
+  const [form, setForm] = useState(EMPTY_SETTINGS);
+
+  // Seed the non-secret fields once the server view arrives; secrets stay blank
+  // so an empty field means "leave the stored value alone".
+  useEffect(() => {
+    if (!mailSettings.data) return;
+    setForm((prev) => ({
+      ...prev,
+      fromTransactional: mailSettings.data?.from_transactional ?? '',
+      fromCampaign: mailSettings.data?.from_campaign ?? '',
+      publicBaseUrl: mailSettings.data?.public_base_url ?? '',
+      appUrl: mailSettings.data?.app_url ?? '',
+    }));
+  }, [mailSettings.data]);
+
+  const saveSettings = useMutation({
+    mutationFn: async (payload: Record<string, string>) =>
+      (await apiClient.put<MailSettings>('/mail/settings', payload)).data,
+    onSuccess: () => {
+      toast({ title: 'Mail settings saved' });
+      setForm((prev) => ({ ...prev, apiKey: '', webhookSecret: '' }));
+      void queryClient.invalidateQueries({ queryKey: ['mail', 'settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['mail', 'health'] });
+    },
+    onError: (error) =>
+      toast({ title: 'Save failed', description: String(error), variant: 'destructive' }),
   });
 
   const deliveries = useQuery({
@@ -532,6 +586,100 @@ export default function MailPage() {
                 </TableBody>
               </Table>
             )}
+          </CardContent>
+        </Card>
+      )}
+      {tab === 'settings' && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Resend settings</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-sm text-muted-foreground">
+              Stored encrypted and applied without a redeploy. Leave a secret blank to keep the
+              current value. API key:{' '}
+              <strong>{mailSettings.data?.configured ? 'configured' : 'missing'}</strong> · webhook:{' '}
+              <strong>{mailSettings.data?.webhook_configured ? 'configured' : 'missing'}</strong>
+            </p>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Resend API key</div>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={mailSettings.data?.configured ? 'stored — leave blank to keep' : 're_...'}
+                  value={form.apiKey}
+                  onChange={(event) => setForm({ ...form, apiKey: event.target.value })}
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Webhook signing secret</div>
+                <Input
+                  type="password"
+                  autoComplete="off"
+                  placeholder={
+                    mailSettings.data?.webhook_configured ? 'stored — leave blank to keep' : 'whsec_...'
+                  }
+                  value={form.webhookSecret}
+                  onChange={(event) => setForm({ ...form, webhookSecret: event.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Transactional from</div>
+                <Input
+                  value={form.fromTransactional}
+                  onChange={(event) => setForm({ ...form, fromTransactional: event.target.value })}
+                  placeholder="CAMXORA <no-reply@mail.camxora.com>"
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Marketing from</div>
+                <Input
+                  value={form.fromCampaign}
+                  onChange={(event) => setForm({ ...form, fromCampaign: event.target.value })}
+                  placeholder="CAMXORA <hello@mail.camxora.com>"
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Tracking / unsubscribe base URL</div>
+                <Input
+                  value={form.publicBaseUrl}
+                  onChange={(event) => setForm({ ...form, publicBaseUrl: event.target.value })}
+                  placeholder="https://mail.camxora.com/api/mail"
+                />
+              </div>
+              <div className="space-y-1">
+                <div className="text-xs text-muted-foreground">Product site (CTA target)</div>
+                <Input
+                  value={form.appUrl}
+                  onChange={(event) => setForm({ ...form, appUrl: event.target.value })}
+                  placeholder="https://music.camxora.com"
+                />
+              </div>
+            </div>
+
+            <Button
+              disabled={saveSettings.isPending}
+              onClick={() => {
+                // Only send secrets that were actually typed, so an empty field
+                // never wipes a stored key.
+                const payload: Record<string, string> = {
+                  fromTransactional: form.fromTransactional,
+                  fromCampaign: form.fromCampaign,
+                  publicBaseUrl: form.publicBaseUrl,
+                  appUrl: form.appUrl,
+                };
+                if (form.apiKey.trim()) payload.apiKey = form.apiKey.trim();
+                if (form.webhookSecret.trim()) payload.webhookSecret = form.webhookSecret.trim();
+                saveSettings.mutate(payload);
+              }}
+            >
+              {saveSettings.isPending ? 'Saving…' : 'Save settings'}
+            </Button>
           </CardContent>
         </Card>
       )}

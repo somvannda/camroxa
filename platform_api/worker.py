@@ -400,8 +400,12 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
                 from platform_api.dependencies import get_db_pool
                 from platform_api.services.mail import automations as mail_automations
                 from platform_api.services.mail import mailer as mail_sender
+                from platform_api.services.mail import settings_store
 
                 mail_pool = get_db_pool()
+                # Credentials may live in system_settings (set from the portal);
+                # load them once per process before any send is attempted.
+                await settings_store.ensure_loaded(mail_pool)
                 sent = await mail_sender.process_queue(mail_pool, 25)
                 triggered = await mail_automations.run_due(mail_pool)
                 if sent or triggered:

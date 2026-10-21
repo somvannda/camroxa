@@ -26,6 +26,7 @@ from platform_api.config import get_settings
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.services.mail import mailer, segments, tracking
+from platform_api.services.mail import settings_store
 from platform_api.services.mail.resend_webhook import (
     map_event,
     suppression_reason,
@@ -217,6 +218,23 @@ async def mail_health(pool: PoolDep, _: AdminDep) -> dict[str, Any]:
         "counts": {r["status"]: int(r["n"]) for r in counts},
         "suppressed": int(suppressed["n"]) if suppressed else 0,
     }
+
+
+@router.get("/settings")
+async def get_mail_settings(pool: PoolDep, _: AdminDep) -> dict[str, Any]:
+    """Masked mail configuration: secrets report configured, never their value."""
+    await settings_store.ensure_loaded(pool)
+    return await settings_store.public_view(pool)
+
+
+@router.put("/settings")
+async def update_mail_settings(
+    pool: PoolDep,
+    _: AdminDep,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    await settings_store.save(pool, payload)
+    return await settings_store.public_view(pool)
 
 
 @router.get("/templates")
