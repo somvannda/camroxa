@@ -3653,6 +3653,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
             [email, googleId, name],
           );
           user = rows[0];
+          if (user) void notifySignup(user, "google");
           // Only a brand-new account can be referred: an existing user signing
           // in through someone's link must not rewrite their history.
           if (user && inviteCode) {
@@ -5852,7 +5853,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   }
 
   /** Deliver one Telegram message; false when creds are unset or delivery fails. */
-  async function sendTelegram(text: string): Promise<boolean> {
+  async function sendTelegram(
+    text: string,
+    opts: { html?: boolean } = {},
+  ): Promise<boolean> {
     // Production-only. Sandbox and production share the same alert bot/chat, so
     // delivering from a non-production process would spam the live ops channel.
     if (!isProduction()) {
@@ -5869,7 +5873,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         method: "POST",
         headers: { "content-type": "application/json" },
         signal: AbortSignal.timeout(10_000),
-        body: JSON.stringify({ chat_id: telegramChatId, text, disable_web_page_preview: true }),
+        body: JSON.stringify({
+          chat_id: telegramChatId,
+          text,
+          disable_web_page_preview: true,
+          ...(opts.html ? { parse_mode: "HTML" } : {}),
+        }),
       });
       if (!res.ok) {
         app.log.warn({ status: res.status }, "telegram alert delivery failed");
@@ -5879,6 +5888,57 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     } catch (err) {
       app.log.warn({ err }, "telegram alert delivery error");
       return false;
+    }
+  }
+
+  function telegramEnvironmentLabel(): string {
+    const env = String(config.environment || "").toLowerCase();
+    if (env === "production" || env === "prod") return "Production";
+    if (env === "sandbox" || env === "staging") return "Sandbox";
+    return config.environment || "Unknown";
+  }
+
+  function escapeTelegramHtml(value: unknown): string {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }
+
+  /**
+   * Feed a brand-new music-web account into the shared ops channel. Google is
+   * the only signup path for music.camxora.com and it inserts into this
+   * service's users table directly, so the platform_api signup hook never sees
+   * it.
+   */
+  async function notifySignup(
+    user: { id: string; email: string; name: string | null },
+    source: string,
+  ): Promise<void> {
+    try {
+      const time = new Intl.DateTimeFormat("en-GB", {
+        timeZone: "Asia/Phnom_Penh",
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+        hour12: false,
+      }).format(new Date());
+      const lines = [
+        `🆕 <b>SIGNUP</b> · ${escapeTelegramHtml(telegramEnvironmentLabel())}`,
+        `email: <code>${escapeTelegramHtml(user.email)}</code>`,
+        user.name ? `name: ${escapeTelegramHtml(user.name)}` : null,
+        "status: <b>FREE</b>",
+        "product: music_web",
+        `source: ${escapeTelegramHtml(source)}`,
+        `user: <code>${escapeTelegramHtml(user.id)}</code>`,
+        `time: ${escapeTelegramHtml(time)} +07`,
+      ].filter(Boolean);
+      await sendTelegram(lines.join("\n"), { html: true });
+    } catch (err) {
+      app.log.warn({ err }, "signup notification failed");
     }
   }
 
