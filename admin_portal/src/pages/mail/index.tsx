@@ -189,8 +189,52 @@ export default function MailPage() {
     enabled: tab === 'campaigns',
   });
 
-  const [campaignName, setCampaignName] = useState('');
-  const [campaignTemplate, setCampaignTemplate] = useState('');
+  const triggersQuery = useQuery({
+    queryKey: ['mail', 'triggers'],
+    queryFn: async () =>
+      (
+        await apiClient.get<{
+          triggers: Array<{
+            key: string;
+            label: string;
+            description: string;
+            paramLabel?: string;
+            defaultParam?: number;
+            defaultCooldownDays: number;
+          }>;
+        }>('/api/v3/mail/triggers')
+      ).data,
+    enabled: tab === 'automations',
+  });
+
+  const [journeyName, setJourneyName] = useState('');
+  const [journeyTemplate, setJourneyTemplate] = useState('');
+  const [journeyTrigger, setJourneyTrigger] = useState('welcome');
+  const [journeyParam, setJourneyParam] = useState('');
+  const [journeyCooldown, setJourneyCooldown] = useState('');
+
+  const createJourney = useMutation({
+    mutationFn: async () =>
+      (
+        await apiClient.post('/api/v3/mail/automations', {
+          name: journeyName.trim(),
+          templateId: journeyTemplate,
+          trigger: journeyTrigger,
+          cooldownDays: journeyCooldown ? Number(journeyCooldown) : undefined,
+          audience: { triggerValue: journeyParam ? Number(journeyParam) : undefined },
+        })
+      ).data,
+    onSuccess: () => {
+      toast({ title: 'Journey created', description: 'Enable it when you are ready.' });
+      setJourneyName('');
+      setJourneyTemplate('');
+      void queryClient.invalidateQueries({ queryKey: ['mail', 'automations'] });
+    },
+    onError: (error) =>
+      toast({ title: 'Create failed', description: String(error), variant: 'destructive' }),
+  });
+
+  const [campaignName, setCampaignName] = useState('');  const [campaignTemplate, setCampaignTemplate] = useState('');
   const [audience, setAudience] = useState({
     lifecycle: '',
     spendTier: '',
@@ -598,7 +642,83 @@ export default function MailPage() {
           <CardHeader>
             <CardTitle>Automations</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent className="space-y-4 overflow-x-auto">
+            <div className="space-y-3 rounded-lg border border-border p-4">
+              <div className="text-sm font-semibold">New journey</div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Input
+                  placeholder="Journey name"
+                  value={journeyName}
+                  onChange={(event) => setJourneyName(event.target.value)}
+                />
+                <select
+                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                  value={journeyTemplate}
+                  onChange={(event) => setJourneyTemplate(event.target.value)}
+                >
+                  <option value="">Select a template</option>
+                  {(templates.data?.rows ?? [])
+                    .filter((row) => row.is_active && row.send_mode !== 'manual')
+                    .map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {row.name}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <select
+                  className="h-9 rounded-md border border-input bg-transparent px-3 text-sm"
+                  value={journeyTrigger}
+                  onChange={(event) => {
+                    setJourneyTrigger(event.target.value);
+                    setJourneyParam('');
+                    setJourneyCooldown('');
+                  }}
+                >
+                  {(triggersQuery.data?.triggers ?? []).map((trigger) => (
+                    <option key={trigger.key} value={trigger.key}>
+                      {trigger.label}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  type="number"
+                  placeholder={
+                    triggersQuery.data?.triggers.find((t) => t.key === journeyTrigger)
+                      ?.paramLabel ?? 'Threshold'
+                  }
+                  value={journeyParam}
+                  onChange={(event) => setJourneyParam(event.target.value)}
+                />
+                <Input
+                  type="number"
+                  min={1}
+                  placeholder={
+                    journeyCooldown ||
+                    String(
+                      triggersQuery.data?.triggers.find((t) => t.key === journeyTrigger)
+                        ?.defaultCooldownDays ?? 30,
+                    )
+                  }
+                  value={journeyCooldown}
+                  onChange={(event) => setJourneyCooldown(event.target.value)}
+                />
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Manual-only templates are excluded here by design — discount and seasonal mail
+                must be sent from a campaign.
+              </p>
+
+              <Button
+                disabled={createJourney.isPending || !journeyName.trim() || !journeyTemplate}
+                onClick={() => createJourney.mutate()}
+              >
+                {createJourney.isPending ? 'Creating…' : 'Create journey'}
+              </Button>
+            </div>
             {(automations.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">
                 No journeys yet. Manual-only templates never run here â€” use a campaign.
