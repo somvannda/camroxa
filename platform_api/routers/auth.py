@@ -1199,6 +1199,22 @@ async def google_auth_callback(
     user = await auth_service._user_repo.get_by_email(email)
     if user is None:
         raise AuthenticationError("Could not create the account. Please try again.")
+    if created_user_id is None:
+        # Existing account signing in through Google. `install_telegram_ops_hooks`
+        # only sees password `authenticate` and new-user `create`, so this is the
+        # one login path that needs an explicit feed event.
+        try:
+            from platform_api.services.telegram_ops_alert_service import (
+                notify_login,
+            )
+
+            notify_login(
+                user_id=user.id,
+                email=user.email,
+                display_name=user.display_name,
+            )
+        except Exception:
+            pass
     # Only a brand-new account can be referred; an existing user signing in
     # through someone's link must not rewrite their history.
     if created_user_id is not None:
