@@ -344,34 +344,22 @@ class WebMusicService:
             payload["previews"] = await self._preview_quota_payload(user_id, eligible=True)
         return payload
 
-    async def _has_pack_credits(self, user_id: UUID) -> bool:
-        """True when the wallet holds purchased or admin-granted credits.
-
-        Free-plan users get ``grant`` / ``daily_grant`` lots. A purchased pack (or
-        an admin/quota conversion) means they have paid for full-length tracks,
-        so premium generations must not be downgraded to a preview.
-        """
-        row = await self._pool.fetchrow(
-            """
-            SELECT 1
-            FROM credit_wallet_lots
-            WHERE user_id = $1
-              AND tag IN ('pack', 'admin', 'quota_conversion')
-              AND remaining_units > 0
-              AND (expires_at IS NULL OR expires_at > NOW())
-            LIMIT 1
-            """,
-            user_id,
-        )
-        return row is not None
-
     async def _is_preview_eligible(self, user_id: UUID) -> bool:
-        """True for a free user: no paid plan/subscription and no pack credits."""
-        if await self._has_pro(user_id):
+        """True for a Free-plan user whose premium models are still locked.
+
+        ``premium_unlocked`` is the single source of truth added with the
+        Free-plan model scope: it is true for paid plans, a completed pack
+        purchase this month, or a wallet larger than the monthly grant. Preview
+        only applies while that flag is false.
+        """
+        try:
+            return not await self._web_music_charge_bridge().premium_unlocked(user_id)
+        except Exception:
+            logger.debug(
+                "Preview eligibility check failed for %s", user_id, exc_info=True
+            )
+            # Never downgrade a possibly-paying user to a preview on an error.
             return False
-        if await self._has_paid_web_subscription(user_id):
-            return False
-        return not await self._has_pack_credits(user_id)
 
     async def _preview_usage(self, user_id: UUID, period_start: date) -> dict[str, int]:
         rows = await self._pool.fetch(
