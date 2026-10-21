@@ -149,6 +149,31 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
     mv "${REPO_BACKUP}/musicapi" "${REPO_DIR}/musicapi"
   fi
   chown -R camxora:camxora "${REPO_DIR}"
+
+  # The checkout was just swapped, so every frontend build artefact is gone.
+  # If anything below fails — npm ci, a Next build, a service reload — the site
+  # is left with no .next/dist and nginx returns 502 (this happened twice on
+  # 2026-10-21). The previous checkout is intact in REPO_BACKUP, so put its
+  # artefacts back rather than leaving production broken.
+  restore_frontends_on_failure() {
+    local rc=$?
+    [[ ${rc} -eq 0 ]] && return 0
+    [[ -z "${REPO_BACKUP}" || ! -d "${REPO_BACKUP}" ]] && return 0
+    log "Deploy failed (exit ${rc}); restoring previous frontend builds from ${REPO_BACKUP}..."
+    local app artefact
+    for app in admin_portal website user_portal music_web; do
+      for artefact in .next dist; do
+        if [[ -d "${REPO_BACKUP}/${app}/${artefact}" && ! -d "${REPO_DIR}/${app}/${artefact}" ]]; then
+          if cp -a "${REPO_BACKUP}/${app}/${artefact}" "${REPO_DIR}/${app}/${artefact}"; then
+            chown -R camxora:camxora "${REPO_DIR}/${app}/${artefact}" || true
+            log "Restored ${app}/${artefact}"
+          fi
+        fi
+      done
+    done
+    systemctl restart camxora-music camxora-api 2>/dev/null || true
+  }
+  trap restore_frontends_on_failure EXIT
 elif [[ ! -d "${REPO_DIR}/.git" ]]; then
   log "Cloning repository..."
   sudo -u camxora -H git clone --branch "${GIT_BRANCH}" "${CLONE_URL}" "${REPO_DIR}"
@@ -273,7 +298,11 @@ log "Building music web (public streaming)..."
 sudo -u camxora -H bash -lc "
   set -e
   cd '${REPO_DIR}/music_web'
-  npm ci --no-audit --no-fund
+  npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+  # npm ci removes node_modules before reinstalling; if that is interrupted (or a
+  # concurrent deploy races it) the tree is left empty and 'next build' fails
+  # with 'next: not found'. Fail here, with a clear message, instead.
+  [ -x node_modules/.bin/next ] || { echo 'ERROR: next binary missing after dependency install in music_web'; exit 1; }
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_API_BASE_URL=https://api.camxora.com
 NEXT_PUBLIC_USER_PORTAL_URL=https://app.camxora.com
