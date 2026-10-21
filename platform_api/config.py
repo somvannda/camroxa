@@ -148,6 +148,27 @@ class Settings(BaseSettings):
     email_from_address: str = "noreply@camxora.com"
     email_verification_expire_minutes: int = 15
 
+    # --- Outbound mail (campaigns, automations) via Resend ---
+    # The SMTP fields above stay for verification codes. Bulk mail goes through
+    # Resend with a delivery ledger, pacing and suppression; see
+    # docs/PLATFORM-MAIL.md. Env names are PLATFORM_RESEND_API_KEY etc.
+    resend_api_key: str = ""
+    resend_webhook_secret: str = ""
+    mail_from_transactional: str = "CAMXORA <no-reply@mail.camxora.com>"
+    mail_from_campaign: str = "CAMXORA <hello@mail.camxora.com>"
+    mail_reply_to: str = ""
+    # Public origin printed inside pixel/click/unsubscribe links. Must reach
+    # this API: /api/mail/{o|c|u}/{token} on mail.camxora.com.
+    mail_public_base_url: str = "https://mail.camxora.com/api/mail"
+    # Where a template's {{app_url}} button sends the customer.
+    mail_app_url: str = "https://music.camxora.com"
+    mail_enabled: bool = True
+    mail_rate_per_second: int = 2
+    mail_max_attempts: int = 3
+    # HMAC key for tracking tokens. Distinct from JWT so a token minted for one
+    # purpose can never authenticate anything else.
+    mail_tracking_secret: str = ""
+
     # --- Backup / User Data Reset ---
     backup_dir: str = "./backups/user_data"
 
