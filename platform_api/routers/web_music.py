@@ -89,6 +89,10 @@ class WebMusicQuotaResponse(BaseModel):
     requires_upgrade: bool = False
     can_download: bool = False
     has_subscription: bool = False
+    credits_remaining: int = 0
+    credits_per_song: int = 10
+    premium_unlocked: bool = False
+    free_model: str = "V6-MINI"
     queue_limit: int = 2
     queue_used: int = 0
     previews: WebMusicPreviewsResponse | None = None
