@@ -419,17 +419,22 @@ export type CheckoutStatus = {
   credits: number;
 };
 
-export function isAllowedCutluyCheckoutUrl(url: string | null | undefined): boolean {
+export function isAllowedPaymentCheckoutUrl(url: string | null | undefined): boolean {
   try {
     const parsed = new URL(String(url || ''));
     if (parsed.protocol !== 'https:') return false;
     if (parsed.username || parsed.password) return false;
     const host = parsed.hostname.toLowerCase();
-    return host === 'cutluy.com' || host.endsWith('.cutluy.com');
+    if (host === 'cutluy.com' || host.endsWith('.cutluy.com')) return true;
+    if (host === 'chmaba.com' || host.endsWith('.chmaba.com')) return true;
+    return false;
   } catch {
     return false;
   }
 }
+
+/** @deprecated use isAllowedPaymentCheckoutUrl — kept for older call sites. */
+export const isAllowedCutluyCheckoutUrl = isAllowedPaymentCheckoutUrl;
 
 export async function fetchSubscriptionCheckoutStatus(paymentId: string): Promise<CheckoutStatus> {
   return apiFetch(`${API_V3}/subscriptions/payments/${encodeURIComponent(paymentId)}`);

@@ -432,6 +432,9 @@ def upload_and_run(client, secrets: dict[str, str]) -> int:
         "PLATFORM_CUTLUY_SECRET_KEY",
         "PLATFORM_CUTLUY_PAYMENT_LINK_ID",
         "PLATFORM_CUTLUY_WEBHOOK_SECRET",
+        "PLATFORM_CHMABA_API_KEY",
+        "PLATFORM_CHMABA_STORE_ID",
+        "PLATFORM_CHMABA_WEBHOOK_SECRET",
         "API_WORKERS",
     ]
     exports = ["export SYNC_FROM_LOCAL='1'"]
