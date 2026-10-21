@@ -25,8 +25,8 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from platform_api.config import get_settings
 from platform_api.exceptions import NotFoundError, ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
-from platform_api.services.mail import mailer, segments, tracking
-from platform_api.services.mail import settings_store
+from platform_api.services.mail import automations as mail_automations
+from platform_api.services.mail import mailer, segments, tracking, settings_store
 from platform_api.services.mail.resend_webhook import (
     map_event,
     suppression_reason,
@@ -447,6 +447,22 @@ def segments_json(audience: Any) -> str:
     return json.dumps(segments.coerce(audience if isinstance(audience, dict) else None))
 
 
+def audience_with_param(raw: Any) -> str:
+    """Audience JSON for an automation, preserving the per-trigger parameter.
+
+    ``segments.coerce`` deliberately drops unknown keys, so triggerValue has to be
+    re-attached or the journey would silently fall back to its default threshold.
+    """
+    import json
+
+    source = raw if isinstance(raw, dict) else {}
+    audience = segments.coerce(source)
+    value = source.get("triggerValue")
+    if isinstance(value, int) and value >= 0:
+        audience["triggerValue"] = value
+    return json.dumps(audience)
+
+
 async def _user_vars(pool: Any, user_id: Any) -> dict[str, Any]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -634,6 +650,12 @@ async def delete_suppression(email: str, pool: PoolDep, _: AdminDep) -> dict[str
     return {"ok": True}
 
 
+@router.get("/triggers")
+async def list_triggers(_: AdminDep) -> dict[str, Any]:
+    """The journey catalog, so the console does not hardcode trigger names."""
+    return {"triggers": mail_automations.TRIGGERS}
+
+
 @router.get("/automations")
 async def list_automations(pool: PoolDep, _: AdminDep) -> dict[str, Any]:
     async with pool.acquire() as conn:
@@ -687,7 +709,7 @@ async def create_automation(
             name,
             template_id,
             trigger,
-            segments_json(payload.get("audience")),
+            audience_with_param(payload.get("audience")),
             int(payload.get("delayMinutes") or 0),
             int(payload.get("cooldownDays") or 30),
             bool(payload.get("isActive")),
