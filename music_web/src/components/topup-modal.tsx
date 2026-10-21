@@ -272,6 +272,10 @@ export default function TopupModal({ isOpen, onClose, headline, message }: Topup
               </li>
               <li className="flex items-center gap-2">
                 <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
+                Buy another pack any time
+              </li>
+              <li className="flex items-center gap-2">
+                <Check className="h-3.5 w-3.5 shrink-0 text-emerald-400" />
                 No subscription required
               </li>
             </ul>
