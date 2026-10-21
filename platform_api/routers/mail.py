@@ -20,7 +20,7 @@ from typing import Annotated, Any
 from uuid import UUID
 
 from fastapi import APIRouter, Body, Depends, Request, Response
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from platform_api.config import get_settings
 from platform_api.exceptions import NotFoundError, ValidationError
@@ -156,7 +156,9 @@ async def _unsubscribe(token: str, pool: Any, *, one_click: bool) -> Response:
 async def resend_webhook(request: Request, pool: PoolDep) -> dict[str, Any]:
     settings = get_settings()
     if not settings.resend_webhook_secret:
-        return {"ok": False, "error": "Webhook secret is not configured."}
+        # 503, not 200: the endpoint is not ready, and Resend should retry rather
+        # than treat the delivery as accepted and drop it.
+        return JSONResponse({"error": "Webhook secret is not configured."}, status_code=503)
 
     raw = await request.body()
     verified = verify_signature(
@@ -167,7 +169,8 @@ async def resend_webhook(request: Request, pool: PoolDep) -> dict[str, Any]:
         secret=settings.resend_webhook_secret,
     )
     if not verified:
-        return {"ok": False, "error": "Invalid signature."}
+        # 400 so a forged delivery is rejected loudly, matching musicapi.
+        return JSONResponse({"error": "Invalid signature."}, status_code=400)
 
     event = map_event(await request.json())
     if event is None:
