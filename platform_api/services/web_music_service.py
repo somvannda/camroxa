@@ -1605,6 +1605,7 @@ class WebMusicService:
                    b2_storage_key_ok, b2_storage_key_alt, workspace_id,
                    image_url_ok, image_url_alt, duration_ok, duration_alt,
                    audio_id_ok, audio_id_alt, title_ok, title_alt, stream_ready_ok, stream_ready_alt,
+                   is_preview, preview_seconds,
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
@@ -1626,6 +1627,237 @@ class WebMusicService:
             "limit": safe_limit,
             "offset": safe_offset,
         }
+
+    async def unlock_preview(self, user_id: UUID, task_id: UUID) -> dict[str, Any]:
+        """Replace a 60-second preview with its full-length private master.
+
+        Only available after a credit-pack purchase (or on a paid plan). The
+        full MP3 was stored encrypted under a private key at ingest and is never
+        referenced by playback/download until this method publishes it.
+        """
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, title, status, model, instrumental, is_preview,
+                   external_task_id, audio_url_ok, audio_url_alt,
+                   b2_storage_key_ok, b2_storage_key_alt,
+                   b2_full_storage_key_ok, b2_full_storage_key_alt,
+                   b2_full_wav_storage_key_ok, b2_full_wav_storage_key_alt,
+                   content_key_id_ok, content_key_id_alt,
+                   duration_ok, duration_alt, created_at
+            FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found.")
+        if not bool(row["is_preview"]):
+            return await self.get_generation(user_id, task_id)
+        if str(row["status"] or "").upper() != "SUCCESS":
+            raise ValidationError("This song is still generating.")
+        if not await self._web_music_charge_bridge().premium_unlocked(user_id):
+            raise QuotaExceededError(
+                "Buy a credit pack to unlock this full-length track.",
+                details={
+                    "code": "preview_unlock_requires_pack",
+                    "requires_upgrade": True,
+                },
+            )
+
+        from platform_api.services.audio_package_service import AudioPackageService
+        from platform_api.services.streaming_config_service import resolve_streaming_storage_config
+        from platform_api.services.storage_service import StorageService
+
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ValidationError("Media storage is not configured.")
+        storage = StorageService.from_config(config)
+        packager = AudioPackageService(self._pool)
+
+        for variant in ("ok", "alt"):
+            await self._publish_full_variant(
+                row,
+                user_id=user_id,
+                task_id=task_id,
+                variant=variant,
+                storage=storage,
+                packager=packager,
+            )
+
+        await self._pool.execute(
+            """
+            UPDATE suno_tasks
+            SET is_preview = FALSE,
+                preview_seconds = NULL,
+                b2_full_storage_key_ok = NULL,
+                b2_full_storage_key_alt = NULL,
+                b2_full_wav_storage_key_ok = NULL,
+                b2_full_wav_storage_key_alt = NULL,
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            task_id,
+        )
+        return await self.get_generation(user_id, task_id)
+
+    async def _decrypt_private_master(self, blob: bytes, key_id: Any) -> bytes:
+        from platform_api.services.audio_package_service import AudioPackageService
+        from platform_api.services.audio_packager import looks_like_camxora_audio
+
+        if not blob or not looks_like_camxora_audio(blob):
+            return blob
+        if not key_id:
+            raise ValueError("private master has no content key")
+        wrapped = await self._pool.fetchval(
+            "SELECT wrapped_key FROM content_keys WHERE id = $1",
+            key_id,
+        )
+        if not wrapped:
+            raise ValueError("private master content key is missing")
+        return AudioPackageService(self._pool)._decrypt_with_wrapped(blob, bytes(wrapped))
+
+    async def _publish_full_variant(
+        self,
+        row: Any,
+        *,
+        user_id: UUID,
+        task_id: UUID,
+        variant: str,
+        storage: Any,
+        packager: Any,
+    ) -> None:
+        from platform_api.services.audio_packager import GCM_MIME, looks_like_camxora_audio
+        from platform_api.services.mp3_duration_header import ensure_mp3_duration_header_async
+        from platform_api.services.web_music_storage_keys import web_music_object_key
+
+        old_key_id = _row_value(row, f"content_key_id_{variant}")
+        full_key = str(_row_value(row, f"b2_full_storage_key_{variant}") or "").strip()
+        plaintext: bytes | None = None
+
+        if full_key:
+            try:
+                blob = await storage.download_bytes(key=full_key)
+                if blob:
+                    plaintext = await self._decrypt_private_master(blob, old_key_id)
+            except Exception as exc:
+                logger.warning(
+                    "Private full master unavailable task=%s variant=%s: %s",
+                    task_id,
+                    variant,
+                    exc,
+                )
+
+        if not plaintext:
+            # Storage fallback: re-fetch the full clip from Suno by task id.
+            refreshed = None
+            external_id = str(row["external_task_id"] or "").strip()
+            if external_id:
+                try:
+                    refreshed = await refresh_suno_task_download_urls(
+                        external_id,
+                        poll_status=self._poll_suno_task_status,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Full-track URL refresh failed task=%s variant=%s: %s",
+                        task_id,
+                        variant,
+                        exc,
+                    )
+            candidates = variant_url_candidates(
+                variant=variant,
+                stored_ok=str(row["audio_url_ok"] or ""),
+                stored_alt=str(row["audio_url_alt"] or ""),
+                refreshed=refreshed,
+                include_other_variant=False,
+            )
+            if not candidates:
+                raise ValidationError(
+                    "Could not retrieve the full track. Please generate it again.",
+                )
+            plaintext = await download_suno_mp3_bytes(
+                candidates[0], fallback_urls=candidates[1:]
+            )
+
+        plaintext = await ensure_mp3_duration_header_async(plaintext)
+        served_key = web_music_object_key(user_id, task_id, variant, "mp3")
+        await storage.upload_bytes(key=served_key, data=plaintext, content_type="audio/mpeg")
+
+        # Force a fresh package: the old chunks/HLS were built from the preview.
+        await self._pool.execute(
+            f"""
+            UPDATE suno_tasks
+            SET b2_storage_key_{variant} = $2,
+                b2_uploaded_at_{variant} = NOW(),
+                package_status_{variant} = 'none',
+                packaged_storage_key_{variant} = NULL,
+                packaged_storage_key_{variant}_b = NULL,
+                hls_status_{variant} = NULL,
+                hls_storage_prefix_{variant} = NULL,
+                stream_ready_{variant} = TRUE,
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            task_id,
+            served_key,
+        )
+        await packager.package_plaintext(
+            plaintext,
+            subject_type="suno_task",
+            subject_id=task_id,
+            variant=variant,
+            base_key=served_key.rsplit(".mp3", 1)[0],
+            storage=storage,
+            null_suno_urls=True,
+            source_key=served_key,
+        )
+
+        # WAV is a cache, not the source of truth. Publish it from the private
+        # master when present; otherwise the existing WAV path rebuilds it from
+        # Suno on first download.
+        full_wav_key = str(
+            _row_value(row, f"b2_full_wav_storage_key_{variant}") or ""
+        ).strip()
+        if not full_wav_key:
+            return
+        try:
+            wav_blob = await storage.download_bytes(key=full_wav_key)
+            if not wav_blob:
+                return
+            wav_plain = await self._decrypt_private_master(wav_blob, old_key_id)
+            wav_encrypted = await packager.encrypt_suno_export(
+                wav_plain,
+                subject_id=task_id,
+                variant=variant,
+            )
+            wav_key = web_music_object_key(user_id, task_id, variant, "wav")
+            await storage.upload_bytes(
+                key=wav_key,
+                data=wav_encrypted,
+                content_type=(
+                    GCM_MIME if looks_like_camxora_audio(wav_encrypted) else "audio/wav"
+                ),
+            )
+            await self._pool.execute(
+                f"""
+                UPDATE suno_tasks
+                SET b2_wav_storage_key_{variant} = $2,
+                    b2_wav_uploaded_at_{variant} = NOW(),
+                    updated_at = NOW()
+                WHERE id = $1
+                """,
+                task_id,
+                wav_key,
+            )
+        except Exception as exc:
+            logger.warning(
+                "Full WAV publish failed task=%s variant=%s: %s",
+                task_id,
+                variant,
+                exc,
+            )
 
     async def get_generation(self, user_id: UUID, task_id: UUID) -> dict[str, Any]:
         row = await self._pool.fetchrow(

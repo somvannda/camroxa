@@ -286,6 +286,13 @@ export async function getWebMusicGeneration(id: string): Promise<WebMusicGenerat
   return musicFetch<WebMusicGeneration>(`/api/v3/web-music/generations/${id}`);
 }
 
+export async function unlockWebMusicPreview(id: string): Promise<WebMusicGeneration> {
+  return musicFetch<WebMusicGeneration>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/unlock-preview`,
+    { method: 'POST' },
+  );
+}
+
 export async function updateWebMusicGenerationTitle(
   id: string,
   title: string,

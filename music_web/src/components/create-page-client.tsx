@@ -56,6 +56,7 @@ import {
   listWebMusicWorkspaces,
   fetchWebMusicQuota,
   updateWebMusicGenerationTitle,
+  unlockWebMusicPreview,
   type WebMusicClip,
   type WebMusicGeneration,
   type WebMusicQuota,
@@ -557,6 +558,7 @@ export default function CreatePageClient() {
   const [upgradeHeadline, setUpgradeHeadline] = useState<string | undefined>();
   const [upgradeMessage, setUpgradeMessage] = useState<string | undefined>();
   const [downloadingKeys, setDownloadingKeys] = useState<string[]>([]);
+  const [unlockingKeys, setUnlockingKeys] = useState<string[]>([]);
   const [deletingIds, setDeletingIds] = useState<string[]>([]);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedClipKeys, setSelectedClipKeys] = useState<string[]>([]);
@@ -1021,6 +1023,7 @@ export default function CreatePageClient() {
   ) {
     const isPreview = Boolean(generation.is_preview || clip.is_preview);
     if (isPreview) {
+      const unlocking = unlockingKeys.includes(`${generation.id}:${clip.variant}`);
       return (
         <>
           <AddToPlaylistButton
@@ -1029,16 +1032,30 @@ export default function CreatePageClient() {
             disabled={!clip.ready}
             compact={size === 'sm'}
           />
-          <button
-            type="button"
-            onClick={() => setShowUpgradeModal(true)}
-            title="Previews are play-only. Buy a credit pack to unlock the full track and downloads."
-            className={`inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-amber-300/30 bg-amber-400/10 font-semibold text-amber-200 transition hover:bg-amber-400/20 ${
-              size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
-            }`}
-          >
-            Extend preview
-          </button>
+          {quota?.premium_unlocked ? (
+            <button
+              type="button"
+              onClick={() => void onUnlockPreview(generation, clip)}
+              disabled={unlocking}
+              title="Replace this 60-second preview with the full-length track."
+              className={`inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-emerald-300/30 bg-emerald-400/10 font-semibold text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-50 ${
+                size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
+              }`}
+            >
+              {unlocking ? 'Unlocking…' : 'Unlock full track'}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowUpgradeModal(true)}
+              title="Previews are play-only. Buy a credit pack to unlock the full track and downloads."
+              className={`inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-amber-300/30 bg-amber-400/10 font-semibold text-amber-200 transition hover:bg-amber-400/20 ${
+                size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
+              }`}
+            >
+              Extend preview
+            </button>
+          )}
         </>
       );
     }
@@ -1116,8 +1133,32 @@ export default function CreatePageClient() {
     setSelectedVersion({ song: generation, clip });
   }
 
-  async function saveClipTitle(generation: WebMusicGeneration, clip: WebMusicClip, nextTitle: string) {
+  async function onUnlockPreview(generation: WebMusicGeneration, clip: WebMusicClip) {
+    const key = `${generation.id}:${clip.variant}`;
+    setUnlockingKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
     setCreateError(null);
+    try {
+      const updated = await unlockWebMusicPreview(generation.id);
+      setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setSelectedVersion((prev) => {
+        if (!prev || prev.song.id !== updated.id) return prev;
+        const nextClip = updated.clips.find((item) => item.variant === prev.clip.variant) ?? prev.clip;
+        return { song: updated, clip: nextClip };
+      });
+      void fetchWebMusicQuota().then(setQuota).catch(() => undefined);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not unlock the full track';
+      if (message.toLowerCase().includes('credit pack')) {
+        openPackModal('A credit pack is required', message);
+      } else {
+        setCreateError(message);
+      }
+    } finally {
+      setUnlockingKeys((prev) => prev.filter((item) => item !== key));
+    }
+  }
+
+  async function saveClipTitle(generation: WebMusicGeneration, clip: WebMusicClip, nextTitle: string) {    setCreateError(null);
     try {
       const updated = await updateWebMusicGenerationTitle(generation.id, nextTitle, clip.variant);
       setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));

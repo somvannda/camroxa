@@ -583,6 +583,19 @@ async def update_generation(
     return _generation_response(payload)
 
 
+@router.post(
+    "/generations/{task_id}/unlock-preview",
+    response_model=WebMusicGenerationResponse,
+)
+async def unlock_preview(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicGenerationResponse:
+    payload = await service.unlock_preview(UUID(ctx.user_id), task_id)
+    return _generation_response(payload)
+
+
 @router.delete("/generations/{task_id}", status_code=204)
 async def delete_generation(
     task_id: UUID,
