@@ -201,6 +201,106 @@ async def test_service_rejects_missing_credentials_without_network() -> None:
         await service.create_payment(amount_cents=100, reference_id="ref")
 
 
+@pytest.mark.asyncio
+async def test_chmaba_create_uses_api_v1_path_and_omits_redirect_urls(monkeypatch) -> None:
+    from platform_api.services.shared import chmaba_service as module
+
+    captured: list[tuple[str, str, dict | None, dict | None]] = []
+
+    class _Resp:
+        status_code = 201
+        text = '{"id":"pay_1","status":"pending","checkout_url":"https://pay.chmaba.com/pay/pay_1","qr_string":"00020101021229300012D156000000000510A93FO3230Q31280012","expires_at":"2026-10-21T09:00:00Z"}'
+
+        def json(self):
+            import json
+
+            return json.loads(self.text)
+
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args) -> bool:
+            return False
+
+        async def request(self, method, url, headers=None, json=None):
+            captured.append((method, url, headers, json))
+            return _Resp()
+
+    monkeypatch.setattr(module.httpx, "AsyncClient", _Client)
+
+    service = module.ChmabaService(
+        api_base_url="https://pay.chmaba.com",
+        api_key="ck_live_test",
+        store_id="st_test",
+        webhook_secret="whsec_test",
+    )
+    result = await service.create_payment(
+        amount_cents=550,
+        reference_id="order-1",
+        metadata={"topup_id": "t1"},
+        success_url="https://music.camxora.com/create",
+        cancel_url="https://music.camxora.com/create",
+    )
+
+    method, url, headers, body = captured[0]
+    assert method == "POST"
+    assert url == "https://pay.chmaba.com/api/v1/payments"
+    assert headers["Authorization"] == "Bearer ck_live_test"
+    assert body is not None
+    assert body["amount"] == 5.5, "amount is decimal, never cents"
+    assert body["reference_id"] == "order-1"
+    assert body["idempotency_key"] == "order-1"
+    assert body["store"] == "st_test"
+    assert "success_url" not in body and "cancel_url" not in body
+    assert result["payment_id"] == "pay_1"
+    assert result["qr_string"].startswith("000201")
+
+
+@pytest.mark.asyncio
+async def test_chmaba_status_maps_matched_amount_onto_amount(monkeypatch) -> None:
+    from platform_api.services.shared import chmaba_service as module
+
+    class _Resp:
+        status_code = 200
+        text = '{"payment_public_id":"pay_1","status":"PAID","matched_amount":"5.00","transitioned_to_paid":true}'
+
+        def json(self):
+            import json
+
+            return json.loads(self.text)
+
+    class _Client:
+        def __init__(self, *args, **kwargs) -> None:
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args) -> bool:
+            return False
+
+        async def request(self, method, url, headers=None, json=None):
+            assert url == "https://pay.chmaba.com/api/v1/transactions/check-status/pay_1"
+            return _Resp()
+
+    monkeypatch.setattr(module.httpx, "AsyncClient", _Client)
+
+    service = module.ChmabaService(
+        api_base_url="https://pay.chmaba.com",
+        api_key="ck_live_test",
+        store_id="st_test",
+    )
+    payload = await service.get_payment_status("pay_1")
+
+    assert payload["status"] == "PAID"
+    assert payload["amount"] == "5.00"
+    assert normalize_chmaba_payment_status(payload["status"]) == "paid"
+
+
 def test_fresh_signature_uses_injected_clock() -> None:
     body = b"{}"
     header = _sign(body, "secret", 1_000)

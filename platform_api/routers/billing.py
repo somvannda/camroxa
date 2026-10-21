@@ -2585,6 +2585,16 @@ async def _handle_chmaba_billing_webhook(
         target_status = "paid"
     elif event_type == "payment.reversed":
         target_status = "refunded"
+    elif event_type == "payment.superseded":
+        # A replacement code was minted; the old one can never settle.
+        target_status = "failed"
+    elif event_type == "payment.expired":
+        # Deliberately not terminal: ChmabaPay keeps confirming a late payment
+        # after the code expires and promotes the row to `paid` when it lands,
+        # so the status poll must still be able to reconcile it.
+        return JSONResponse(
+            {"received": True, "fulfilled": False, "reason": "ignored:payment.expired"}
+        )
     else:
         return JSONResponse(
             {

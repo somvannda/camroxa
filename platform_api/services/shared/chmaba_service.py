@@ -201,6 +201,10 @@ class ChmabaService:
 
         ``reference_id`` is echoed back by the provider and is the only field
         used to map a webhook to a local row, so callers must store it.
+
+        ``success_url``/``cancel_url`` are accepted for call-site symmetry but
+        deliberately not sent: ChmabaPay's ``POST /api/v1/payments`` schema has
+        no such fields (redirects are configured on the store).
         """
         config = await self._resolve(db)
         if not config.configured:
@@ -216,15 +220,10 @@ class ChmabaService:
             "store": config.store_id,
             "metadata": {**(metadata or {}), "provider": "chmaba"},
         }
-        # ChmabaPay drives the post-pay UX itself (the KHQR modal polls our own
-        # status route), so redirect URLs are informational only.
-        if success_url:
-            body["success_url"] = success_url
-        if cancel_url:
-            body["cancel_url"] = cancel_url
+        _ = (success_url, cancel_url)  # not part of the provider schema
 
         payload = _flatten(
-            await self._request(config, "/v1/payments", method="POST", body=body)
+            await self._request(config, "/api/v1/payments", method="POST", body=body)
         )
         payment_id = validate_payment_id(str(payload.get("id") or payload.get("payment_id") or ""))
 
@@ -250,7 +249,12 @@ class ChmabaService:
         payment_id: str,
         db: Any | None = None,
     ) -> dict[str, Any]:
-        """Read the authoritative status for a payment id."""
+        """Read the authoritative status for a payment id.
+
+        The provider answers ``PAID | PENDING | FAILED | UNKNOWN`` plus a
+        ``matched_amount`` decimal. ``matched_amount`` is copied onto
+        ``amount`` so the shared amount guard works unchanged.
+        """
         safe_id = validate_payment_id(payment_id)
         config = await self._resolve(db)
         if not config.api_key:
@@ -258,9 +262,11 @@ class ChmabaService:
         payload = _flatten(
             await self._request(
                 config,
-                f"/v1/transactions/check-status/{safe_id}",
+                f"/api/v1/transactions/check-status/{safe_id}",
             )
         )
+        if payload.get("amount") is None and payload.get("matched_amount") is not None:
+            payload["amount"] = payload["matched_amount"]
         return payload
 
     async def verify_webhook_signature_async(

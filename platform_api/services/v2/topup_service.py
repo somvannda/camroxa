@@ -552,6 +552,16 @@ class TopupService:
             await self._mark_topup_terminal(str(row["id"]), target)
             return {"processed": True, "message": f"Top-up marked {target}"}
 
+        if event_type == "payment.superseded":
+            # The code was replaced and can never settle; fail it so a new
+            # checkout is allowed instead of waiting out the pending window.
+            await self._mark_topup_terminal(str(row["id"]), "failed")
+            return {"processed": True, "message": "Top-up marked failed (superseded)"}
+
+        if event_type == "payment.expired":
+            # Not terminal: a late payment still promotes the row to paid.
+            return {"processed": False, "message": "Ignored expired event"}
+
         return {"processed": False, "message": f"Ignored event: {event_type}"}
 
     
