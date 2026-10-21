@@ -7,6 +7,12 @@
 # failures, disk and TLS. Alerts only on a state CHANGE (plus a daily
 # "all systems OK" digest) so a long outage pages once, not every 5 minutes.
 #
+# A single dropped connection must never page: the outbound probes hit
+# Cloudflare-fronted hostnames from this VPS and ~2% of those connections stall
+# for a few seconds (measured 2026-10-21), which used to flip the whole platform
+# to UNHEALTHY on one blip. Every probe therefore retries, and a run has to fail
+# FAIL_STREAK_ALERT times in a row (default 2 = ten minutes) before it alerts.
+#
 # Run standalone:      bash scripts/deploy/platform-healthcheck.sh
 # Send today's digest: bash scripts/deploy/platform-healthcheck.sh --digest-now
 set -uo pipefail
@@ -14,8 +20,12 @@ set -uo pipefail
 REPO="${REPO:-/opt/camxora/repo}"
 ENV_FILE="${ENV_FILE:-${REPO}/platform_api/.env}"
 STATE_FILE="${STATE_FILE:-/opt/camxora/.platform-health.state}"
+FAIL_STREAK_FILE="${FAIL_STREAK_FILE:-/opt/camxora/.platform-health.streak}"
 DIGEST_FILE="${DIGEST_FILE:-/opt/camxora/.platform-health.digest}"
 HEALTHCHECK_STATE="${HEALTHCHECK_STATE:-/opt/camxora/.musicapi-health.state}"
+# Consecutive failing runs required before paging (5-minute cadence).
+FAIL_STREAK_ALERT="${FAIL_STREAK_ALERT:-2}"
+[[ "${FAIL_STREAK_ALERT}" =~ ^[0-9]+$ ]] && [[ "${FAIL_STREAK_ALERT}" -ge 1 ]] || FAIL_STREAK_ALERT=2
 
 log() { echo "[platform-health] $*"; }
 
@@ -66,7 +76,11 @@ done
 # --- public endpoints -------------------------------------------------------
 check_url() {
   local url="$1" name="$2" code
-  code="$(curl -sS -o /dev/null -w '%{http_code}' -m 20 "${url}" 2>/dev/null || true)"
+  # --retry-all-errors makes the retries cover stalled/refused connects and
+  # handshakes too, not just 5xx, so a lost SYN retries instead of paging.
+  code="$(curl -sS -o /dev/null -w '%{http_code}' \
+    --connect-timeout 10 -m 20 --retry 2 --retry-delay 2 --retry-all-errors \
+    "${url}" 2>/dev/null || true)"
   [[ "${code}" == "200" ]] || add_failure "${name} returned HTTP ${code:-no response} (${url})"
 }
 check_url "https://api.camxora.com/health" "api health"
@@ -191,8 +205,13 @@ DISK_PCT="$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')"
 [[ "${DISK_PCT:-0}" -ge 90 ]] && add_failure "disk ${DISK_PCT}% used"
 
 for host in api.camxora.com music.camxora.com admin.camxora.com musicapi.camxora.com; do
-  end="$(echo | timeout 10 openssl s_client -servername "${host}" -connect "${host}:443" 2>/dev/null \
-    | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
+  end=""
+  for attempt in 1 2 3; do
+    end="$(echo | timeout 15 openssl s_client -servername "${host}" -connect "${host}:443" 2>/dev/null \
+      | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
+    [[ -n "${end}" ]] && break
+    [[ "${attempt}" -lt 3 ]] && sleep 2
+  done
   if [[ -n "${end}" ]]; then
     days=$(( ( $(date -d "${end}" +%s) - $(date +%s) ) / 86400 ))
     [[ "${days}" -lt 14 ]] && add_failure "TLS for ${host} expires in ${days} days"
@@ -202,27 +221,39 @@ for host in api.camxora.com music.camxora.com admin.camxora.com musicapi.camxora
 done
 
 # --- state + alerting -------------------------------------------------------
+# Page only once a run has failed FAIL_STREAK_ALERT times in a row: a single
+# stalled outbound handshake must not flip the platform to UNHEALTHY.
+streak="$(cat "${FAIL_STREAK_FILE}" 2>/dev/null || echo 0)"
+[[ "${streak}" =~ ^[0-9]+$ ]] || streak=0
+
 if [[ "${#failures[@]}" -eq 0 ]]; then
   state="ok"
   detail=""
+  streak=0
 else
   state="down"
+  streak=$(( streak + 1 ))
   detail="$(printf '%s; ' "${failures[@]}")"
   for failure in "${failures[@]}"; do log "FAIL: ${failure}"; done
+  if [[ "${streak}" -lt "${FAIL_STREAK_ALERT}" ]]; then
+    log "transient failure ${streak}/${FAIL_STREAK_ALERT}; alert suppressed"
+  fi
 fi
+printf '%s\n' "${streak}" >"${FAIL_STREAK_FILE}" 2>/dev/null || log "WARN: cannot write ${FAIL_STREAK_FILE}"
 
 if [[ "${state}" == "ok" ]]; then
   log "healthy: units, endpoints, DB, Redis, SMTP, email, grants, disk ${DISK_PCT}%, TLS"
 fi
 
 prev="$(cat "${STATE_FILE}" 2>/dev/null || echo unknown)"
-if [[ "${state}" != "${prev}" ]]; then
-  if [[ "${state}" == "down" ]]; then
-    send_alert "🔴 <b>$(hostname) platform UNHEALTHY</b>"$'\n'"${detail}"
-  elif [[ "${prev}" == "down" ]]; then
-    send_alert "🟢 <b>$(hostname) platform RECOVERED</b>"$'\n'"All platform checks are passing."
-  fi
-  printf '%s\n' "${state}" >"${STATE_FILE}" 2>/dev/null || log "WARN: cannot write ${STATE_FILE}"
+if [[ "${state}" == "down" && "${prev}" != "down" && "${streak}" -ge "${FAIL_STREAK_ALERT}" ]]; then
+  send_alert "🔴 <b>$(hostname) platform UNHEALTHY</b>"$'\n'"${detail}"
+  printf '%s\n' "down" >"${STATE_FILE}" 2>/dev/null || log "WARN: cannot write ${STATE_FILE}"
+elif [[ "${state}" == "ok" && "${prev}" == "down" ]]; then
+  send_alert "🟢 <b>$(hostname) platform RECOVERED</b>"$'\n'"All platform checks are passing."
+  printf '%s\n' "ok" >"${STATE_FILE}" 2>/dev/null || log "WARN: cannot write ${STATE_FILE}"
+elif [[ "${state}" == "ok" && "${prev}" != "ok" ]]; then
+  printf '%s\n' "ok" >"${STATE_FILE}" 2>/dev/null || log "WARN: cannot write ${STATE_FILE}"
 fi
 
 # --- daily digest -----------------------------------------------------------
