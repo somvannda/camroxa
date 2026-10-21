@@ -21,8 +21,20 @@ from platform_api.services.v3.generate_charge import map_v1_op_to_v3
 ChargePath = Literal["v3", "v2", "included"]
 
 # Free-plan users may spend the monthly grant on V6-Mini only until they buy a
-# pack in the same calendar month.
+# pack in the same calendar month. Suno/model keys arrive as both `V6_MINI`
+# (UI) and `V6-MINI` (docs), so normalise separators before matching.
 _FREE_MODEL_KEYS = {"V6-MINI", "CHIRP-GOOSE"}
+
+
+def _model_key(model: str | None) -> str:
+    return (
+        str(model or "")
+        .strip()
+        .upper()
+        .replace("_", "-")
+        .replace(" ", "-")
+        .replace(".", "-")
+    )
 
 
 def model_allows_free_grant(
@@ -34,14 +46,14 @@ def model_allows_free_grant(
     """Whether a Free-plan user may use this model with the monthly grant."""
     if not is_free_plan:
         return True
-    key = str(model or "").strip().upper()
+    key = _model_key(model)
     if not key or key in _FREE_MODEL_KEYS:
         return True
     return has_pack_this_month
 
 
 def _premium_label(model: str | None) -> str:
-    key = str(model or "").strip().upper()
+    key = _model_key(model)
     if key in {"V6", "V6-PRO"}:
         return "V6-Pro"
     if key == "V6-WILD":

@@ -47,6 +47,8 @@ def bridge(store: FakeStore) -> WebMusicChargeBridge:
 
 def test_model_allows_free_grant_for_free_plan() -> None:
     assert model_allows_free_grant("V6-MINI", is_free_plan=True, has_pack_this_month=False)
+    assert model_allows_free_grant("V6_MINI", is_free_plan=True, has_pack_this_month=False)
+    assert model_allows_free_grant("v6 mini", is_free_plan=True, has_pack_this_month=False)
     assert model_allows_free_grant("chirp-goose", is_free_plan=True, has_pack_this_month=False)
     assert not model_allows_free_grant("V6", is_free_plan=True, has_pack_this_month=False)
     assert not model_allows_free_grant("V6-WILD", is_free_plan=True, has_pack_this_month=False)
