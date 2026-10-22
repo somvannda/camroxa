@@ -34,6 +34,7 @@ const TYPE_TONES: Record<string, BadgeTone> = {
   spend: "neutral",
   refund: "info",
   referral: "success",
+  promo: "success",
 };
 
 const PAGE_SIZE = 25;
@@ -133,6 +134,8 @@ function TransactionsInner() {
             <option value="adjust">adjust</option>
             <option value="spend">spend</option>
             <option value="refund">refund</option>
+            <option value="referral">referral</option>
+            <option value="promo">promo</option>
           </Select>
         </Field>
         <Button type="submit" variant="secondary">

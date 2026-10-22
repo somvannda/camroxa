@@ -88,6 +88,13 @@ test("a bonus code floors fractional credits", () => {
   assert.equal(result.quote.credits, 1500);
 });
 
+test("a standalone credit code is refused at checkout", () => {
+  const result = computePromoQuote(promo({ kind: "credit", value: 500 }), 5, 1000);
+  assert.equal(result.ok, false);
+  if (result.ok) return;
+  assert.match(result.error, /redeem page/i);
+});
+
 test("generated codes avoid ambiguous characters", () => {
   for (let i = 0; i < 40; i += 1) {
     const code = generatePromoCode();
@@ -110,8 +117,12 @@ test("coercePreset validates and clamps campaign recipes", () => {
   assert.equal(coercePreset({ kind: "percent", value: 10, expiresDays: 3650 })?.expiresDays, 90);
   assert.equal(coercePreset({ kind: "percent", value: 10, expiresDays: 0 })?.expiresDays, 1);
 
-  assert.equal(coercePreset({ kind: "nope", value: 10 }), null);
-  assert.equal(coercePreset({ kind: "percent", value: 0 }), null);
+  assert.deepEqual(coercePreset({ kind: "credit", value: 500 }), {
+    kind: "credit",
+    value: 500,
+    expiresDays: 7,
+  });
+  assert.equal(coercePreset({ kind: "nope", value: 10 }), null);  assert.equal(coercePreset({ kind: "percent", value: 0 }), null);
   assert.equal(coercePreset({ kind: "percent", value: -5 }), null);
   assert.equal(coercePreset({ kind: "percent", value: "abc" }), null);
   assert.equal(coercePreset(null), null);

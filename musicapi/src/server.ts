@@ -71,6 +71,7 @@ import {
   presetToCreateOptions,
   redeemPromo,
   validatePromoForUser,
+  validateStandalonePromo,
 } from "./promo.js";
 import { parseClickToken, parseOpenToken, parseUnsubToken, renderVars } from "./mailTracking.js";
 import { collectClipObjects, extractOwnedAssetIds } from "./clips.js";
@@ -10938,7 +10939,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     apiKeyId?: string,
     txId?: string,
     label = "Purchase",
-    type: "purchase" | "referral" = "purchase",
+    type: "purchase" | "referral" | "promo" = "purchase",
   ): Promise<void> {
     if (apiKeyId) {
       await q(
@@ -10962,14 +10963,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         );
       }
     }
+    // A promo grant is its own ledger type; its label already reads as a
+    // sentence ("Promo code CAMX-ABC234"), so it must not get a "top-up" suffix.
     const description =
       type === "referral"
         ? txId
           ? `${label} (ref: ${txId})`
           : label
-        : txId
-          ? `${label} top-up (ref: ${txId})`
-          : `${label} top-up`;
+        : type === "promo"
+          ? label
+          : txId
+            ? `${label} top-up (ref: ${txId})`
+            : `${label} top-up`;
     await q(
       `INSERT INTO credit_transactions (user_id, amount, type, description) VALUES ($1, $2, $3, $4)`,
       [userId, amount, type, description],
@@ -11966,7 +11971,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         promoCodeId = created.id;
         vars.code = created.code;
         vars.discount_pct = preset.kind === "percent" ? String(preset.value) : "";
-        vars.discount_credits = preset.kind === "credit_bonus" ? String(preset.value) : "";
+        vars.discount_credits =
+          preset.kind === "credit_bonus" || preset.kind === "credit"
+            ? String(preset.value)
+            : "";
         vars.code_expires_days = String(preset.expiresDays);
       }
 
@@ -12201,7 +12209,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!preset) {
       return reply
         .code(400)
-        .send({ error: "kind must be 'percent' or 'credit_bonus' with a positive value." });
+        .send({ error: "kind must be 'percent', 'credit_bonus' or 'credit' with a positive value." });
     }
 
     if (body.mode === "segment") {
@@ -12283,6 +12291,93 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       credits: result.quote.credits,
       discount: result.quote.discount,
     };
+  });
+
+  /**
+   * Redeem a standalone `credit` code: grants balance credits with no purchase.
+   *
+   * The claim is one transaction. The code row is locked FOR UPDATE so two tabs
+   * cannot both take the last redemption slot, and the unique (code_id, user_id)
+   * pair makes a retried request fail instead of paying twice. Checkout codes
+   * (percent / credit_bonus) are refused here — they only apply to a pack
+   * purchase and are validated inside /payments/chmaba/create.
+   */
+  app.post("/me/promo/redeem", async (req, reply) => {
+    const u = requireAuth(req, reply);
+    if (!u) return;
+    const body = (req.body ?? {}) as { code?: unknown };
+    const code = typeof body.code === "string" ? body.code : "";
+
+    // Friendly pre-check; the locked re-read below is what actually decides.
+    const lookup = await validateStandalonePromo(code, u.id);
+    if (!lookup.ok) return reply.code(400).send({ error: lookup.error });
+
+    const result = await withTransaction(async (tx) => {
+      const rows = await tx<{
+        id: string;
+        code: string;
+        kind: string;
+        value: string;
+        user_id: string | null;
+        max_redemptions: number;
+        redeemed_count: number;
+        expires_at: string | null;
+        is_active: boolean;
+      }>(
+        `SELECT id, code, kind, value::text AS value, user_id, max_redemptions,
+                redeemed_count, expires_at::text AS expires_at, is_active
+         FROM promo_codes WHERE id = $1 FOR UPDATE`,
+        [lookup.promo.id],
+      );
+      const row = rows[0];
+      if (!row || row.kind !== "credit" || !row.is_active) {
+        return { ok: false as const, error: "That code is no longer available." };
+      }
+      if (row.user_id && row.user_id !== u.id) {
+        return { ok: false as const, error: "That code does not exist." };
+      }
+      if (row.expires_at && new Date(row.expires_at).getTime() < Date.now()) {
+        return { ok: false as const, error: "That code has expired." };
+      }
+      if (row.redeemed_count >= row.max_redemptions) {
+        return { ok: false as const, error: "That code has already been used." };
+      }
+
+      const credits = Math.floor(Number(row.value) || 0);
+      if (credits <= 0) {
+        return { ok: false as const, error: "That code has no credits to grant." };
+      }
+
+      const claimed = await redeemPromo(tx, {
+        codeId: row.id,
+        userId: u.id,
+        paymentTransactionId: null,
+        discount: 0,
+        creditsGranted: credits,
+      });
+      if (!claimed) {
+        return { ok: false as const, error: "You have already used that code." };
+      }
+
+      await creditUser(
+        tx,
+        u.id,
+        credits,
+        undefined,
+        undefined,
+        `Promo code ${row.code}`,
+        "promo",
+      );
+
+      const total = await tx<{ sum: string }>(
+        "SELECT COALESCE(sum(credits),0)::text AS sum FROM api_keys WHERE user_id = $1",
+        [u.id],
+      );
+      return { ok: true as const, credits, code: row.code, balance: Number(total[0]?.sum ?? 0) };
+    });
+
+    if (!result.ok) return reply.code(400).send({ error: result.error });
+    return result;
   });
 
   return app;

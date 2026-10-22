@@ -82,7 +82,7 @@ export default function MailPromosPage() {
     <div className="space-y-6">
       <PageHeader
         title="Promo codes"
-        description="Percent-off and bonus-credit codes redeemable at checkout. Campaign codes are generated per recipient."
+        description="Percent-off and bonus-credit codes apply at checkout. Credit codes are redeemed for balance credits with no purchase. Campaign codes are generated per recipient."
       />
 
       <Card className="p-5">
@@ -96,9 +96,18 @@ export default function MailPromosPage() {
             <Select value={kind} onChange={(e) => setKind(e.target.value)}>
               <option value="percent">Percent off</option>
               <option value="credit_bonus">Bonus credits</option>
+              <option value="credit">Redeem for credits</option>
             </Select>
           </Field>
-          <Field label={kind === "percent" ? "Percent (1-99)" : "Credits"}>
+          <Field
+            label={
+              kind === "percent"
+                ? "Percent (1-99)"
+                : kind === "credit"
+                  ? "Credits to grant"
+                  : "Bonus credits"
+            }
+          >
             <Input
               required
               type="number"
@@ -170,7 +179,9 @@ export default function MailPromosPage() {
                   <td className="py-2 pr-3">
                     {row.kind === "percent"
                       ? `${Number(row.value)}% off`
-                      : `+${Number(row.value)} credits`}
+                      : row.kind === "credit"
+                        ? `${Number(row.value).toLocaleString()} credits on redeem`
+                        : `+${Number(row.value).toLocaleString()} credits`}
                   </td>
                   <td className="py-2 pr-3 text-xs text-[var(--muted)]">
                     {row.user_id ? "single user" : row.campaign_id ? "campaign" : "public"}
