@@ -308,7 +308,11 @@ export default function MailCampaignsPage() {
           <div className="grid gap-3 sm:grid-cols-3">
             <Field
               label="Promo code (optional)"
-              hint="Needed if the template prints {{code}}. One single-use code per recipient."
+              hint={
+                promoKind === "credit"
+                  ? "One single-use code per recipient. Link it as {{app_url}}/dashboard/redeem?code={{code}}."
+                  : "Needed if the template prints {{code}}. One single-use code per recipient."
+              }
             >
               <Select value={promoKind} onChange={(e) => setPromoKind(e.target.value)}>
                 <option value="">No code</option>

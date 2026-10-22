@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { KhqrModal } from "@/components/billing/khqr-modal";
 
@@ -97,6 +97,54 @@ export default function BillingPage() {
   const [quotes, setQuotes] = useState<Record<string, PromoQuote>>({});
   const [promoBusy, setPromoBusy] = useState(false);
   const [promoError, setPromoError] = useState("");
+  // Campaign mail links land on /dashboard/billing?code=…; only the first load
+  // may auto-apply, otherwise a post-payment reload would replay a used code.
+  const autoApplied = useRef(false);
+
+  /**
+   * Preview a code against every active pack. The server answers per pack
+   * because a percent discount scales with price while a bonus is fixed; both
+   * kinds therefore render on their own card. Checkout recomputes the charge,
+   * so this preview can never reduce what is actually billed.
+   */
+  const applyPromoFor = useCallback(async (rawCode: string, packs: Pack[]) => {
+    const code = rawCode.trim();
+    if (!code) return;
+    if (packs.length === 0) {
+      setPromoError("Packs have not loaded yet — try again in a moment.");
+      return;
+    }
+    setPromoBusy(true);
+    setPromoError("");
+    try {
+      const validated = await Promise.all(
+        packs.map((p) =>
+          apiFetch<PromoQuote>("/me/promo/validate", {
+            method: "POST",
+            body: JSON.stringify({ code, pack_id: p.id }),
+          }),
+        ),
+      );
+      const next: Record<string, PromoQuote> = {};
+      validated.forEach((q, i) => {
+        next[packs[i].id] = q;
+      });
+      const first = validated[0];
+      setQuotes(next);
+      setPromoApplied({
+        code: first?.code ?? code.toUpperCase(),
+        kind: first?.kind ?? "",
+        value: first?.value ?? 0,
+      });
+      setPromoInput(first?.code ?? code.toUpperCase());
+    } catch (e) {
+      setPromoApplied(null);
+      setQuotes({});
+      setPromoError(e instanceof Error ? e.message : "That code could not be applied.");
+    } finally {
+      setPromoBusy(false);
+    }
+  }, []);
 
   const load = useCallback(() => {
     Promise.all([
@@ -108,9 +156,20 @@ export default function BillingPage() {
         setBilling(b);
         setPricing(p.pricing);
         setTransactions(t);
+        // Promo campaign mail links land on /dashboard/billing?code=…; apply the
+        // code once the packs are known, then strip it from the URL so a refresh
+        // or the post-payment reload cannot replay a used code.
+        if (!autoApplied.current) {
+          autoApplied.current = true;
+          const code = new URLSearchParams(window.location.search).get("code")?.trim() ?? "";
+          if (code) {
+            window.history.replaceState({}, "", window.location.pathname);
+            void applyPromoFor(code, b.packs);
+          }
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
-  }, []);
+  }, [applyPromoFor]);
 
   useEffect(() => {
     load();
@@ -180,50 +239,8 @@ export default function BillingPage() {
     }
   }
 
-  /**
-   * Preview a code against every active pack. The server answers per pack
-   * because a percent discount scales with price while a bonus is fixed; both
-   * kinds therefore render on their own card. Checkout recomputes the charge,
-   * so this preview can never reduce what is actually billed.
-   */
-  async function applyPromo() {
-    const code = promoInput.trim();
-    if (!code) return;
-    const packs = billing?.packs ?? [];
-    if (packs.length === 0) {
-      setPromoError("Packs have not loaded yet — try again in a moment.");
-      return;
-    }
-    setPromoBusy(true);
-    setPromoError("");
-    try {
-      const validated = await Promise.all(
-        packs.map((p) =>
-          apiFetch<PromoQuote>("/me/promo/validate", {
-            method: "POST",
-            body: JSON.stringify({ code, pack_id: p.id }),
-          }),
-        ),
-      );
-      const next: Record<string, PromoQuote> = {};
-      validated.forEach((q, i) => {
-        next[packs[i].id] = q;
-      });
-      const first = validated[0];
-      setQuotes(next);
-      setPromoApplied({
-        code: first?.code ?? code.toUpperCase(),
-        kind: first?.kind ?? "",
-        value: first?.value ?? 0,
-      });
-      setPromoInput(first?.code ?? code.toUpperCase());
-    } catch (e) {
-      setPromoApplied(null);
-      setQuotes({});
-      setPromoError(e instanceof Error ? e.message : "That code could not be applied.");
-    } finally {
-      setPromoBusy(false);
-    }
+  function applyPromo() {
+    void applyPromoFor(promoInput, billing?.packs ?? []);
   }
 
   function removePromo() {
