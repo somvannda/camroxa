@@ -70,6 +70,16 @@ interface Template {
   var_count: number;
 }
 
+interface TemplateDetail {
+  id: string;
+  name: string;
+  subject: string;
+  html: string;
+  text: string | null;
+  send_mode: string;
+  locale: string;
+}
+
 interface Automation {
   id: string;
   name: string;
@@ -239,6 +249,55 @@ export default function MailPage() {
     },
     onError: (error) =>
       toast({ title: 'Create failed', description: String(error), variant: 'destructive' }),
+  });
+
+  const [editingTemplate, setEditingTemplate] = useState<string | null>(null);
+  const [tplForm, setTplForm] = useState({
+    name: '',
+    subject: '',
+    html: '',
+    sendMode: 'auto',
+  });
+
+  const templateDetail = useQuery({
+    queryKey: ['mail', 'template', editingTemplate],
+    queryFn: async () =>
+      (await apiClient.get<TemplateDetail>(`/api/v3/mail/templates/${editingTemplate}`)).data,
+    enabled: Boolean(editingTemplate),
+  });
+
+  // Seed the editor once the detail arrives; the form is local state so typing
+  // does not fight a refetch.
+  useEffect(() => {
+    const detail = templateDetail.data;
+    if (!detail) return;
+    setTplForm({
+      name: detail.name,
+      subject: detail.subject,
+      html: detail.html,
+      sendMode: detail.send_mode,
+    });
+  }, [templateDetail.data]);
+
+  const saveTemplate = useMutation({
+    mutationFn: async () =>
+      (
+        await apiClient.put(`/api/v3/mail/templates/${editingTemplate}`, {
+          name: tplForm.name,
+          subject: tplForm.subject,
+          html: tplForm.html,
+          sendMode: tplForm.sendMode,
+          locale: 'en',
+          text: null,
+        })
+      ).data,
+    onSuccess: () => {
+      toast({ title: 'Template saved' });
+      setEditingTemplate(null);
+      void queryClient.invalidateQueries({ queryKey: ['mail', 'templates'] });
+    },
+    onError: (error) =>
+      toast({ title: 'Save failed', description: String(error), variant: 'destructive' }),
   });
 
   const [campaignName, setCampaignName] = useState('');  const [campaignTemplate, setCampaignTemplate] = useState('');
@@ -608,7 +667,68 @@ export default function MailPage() {
           <CardHeader>
             <CardTitle>Templates</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto">
+          <CardContent className="space-y-4 overflow-x-auto">
+            {editingTemplate && (
+              <div className="space-y-3 rounded-lg border border-border p-4">
+                <div className="flex items-center justify-between">
+                  <div className="text-sm font-semibold">Edit template</div>
+                  <Button size="sm" variant="ghost" onClick={() => setEditingTemplate(null)}>
+                    Close
+                  </Button>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input
+                    placeholder="Name"
+                    value={tplForm.name}
+                    onChange={(event) => setTplForm({ ...tplForm, name: event.target.value })}
+                  />
+                  <Input
+                    placeholder="Subject"
+                    value={tplForm.subject}
+                    onChange={(event) => setTplForm({ ...tplForm, subject: event.target.value })}
+                  />
+                </div>
+
+                <textarea
+                  className="min-h-[240px] w-full rounded-md border border-input bg-transparent p-3 font-mono text-xs"
+                  value={tplForm.html}
+                  onChange={(event) => setTplForm({ ...tplForm, html: event.target.value })}
+                />
+
+                <div className="flex flex-wrap items-center gap-3">
+                  <Select
+                    value={tplForm.sendMode}
+                    onValueChange={(value) => setTplForm({ ...tplForm, sendMode: value })}
+                  >
+                    <SelectTrigger className="w-40">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">auto</SelectItem>
+                      <SelectItem value="manual">manual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    disabled={
+                      saveTemplate.isPending || !tplForm.name.trim() || !tplForm.subject.trim()
+                    }
+                    onClick={() => saveTemplate.mutate()}
+                  >
+                    {saveTemplate.isPending ? 'Saving…' : 'Save template'}
+                  </Button>
+                  {templateDetail.isLoading && (
+                    <span className="text-xs text-muted-foreground">Loading…</span>
+                  )}
+                </div>
+
+                <p className="text-xs text-muted-foreground">
+                  Variables are re-extracted on save. Switching to <strong>manual</strong> removes the
+                  template from the automation picker; existing journeys keep sending.
+                </p>
+              </div>
+            )}
+
             {(templates.data?.rows ?? []).length === 0 && (
               <p className="text-sm text-muted-foreground">No templates yet.</p>
             )}
@@ -620,6 +740,7 @@ export default function MailPage() {
                     <TableHead>Subject</TableHead>
                     <TableHead>Mode</TableHead>
                     <TableHead className="text-right">Vars</TableHead>
+                    <TableHead />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -635,6 +756,11 @@ export default function MailPage() {
                         </Badge>
                       </TableCell>
                       <TableCell className="text-right">{row.var_count}</TableCell>
+                      <TableCell className="text-right">
+                        <Button size="sm" variant="ghost" onClick={() => setEditingTemplate(row.id)}>
+                          Edit
+                        </Button>
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
