@@ -17,6 +17,7 @@ from shared.models.web_music import (
 )
 from shared.models.auth import (
     CreateProfileRequest,
+    CreditPack,
     LoginRequest,
     ProfileResponse,
     PublicPlan,
@@ -213,6 +214,26 @@ class PlatformApi:
                 )
             )
         return plans
+
+    def list_credit_packs(self) -> list[CreditPack]:
+        """One-time credit packs from ``GET /topups/packs`` (packs-only billing)."""
+        data = self._client.request("/topups/packs", auth=False, timeout=20.0)
+        raw_packs: list[Any] = []
+        if isinstance(data, dict) and isinstance(data.get("packs"), list):
+            raw_packs = data["packs"]
+        elif isinstance(data, list):
+            raw_packs = data
+        packs: list[CreditPack] = []
+        for item in raw_packs:
+            try:
+                pack = CreditPack.model_validate(item)
+            except ValidationError:
+                continue
+            if pack.price_cents <= 0 or pack.total_credits <= 0:
+                continue
+            packs.append(pack)
+        packs.sort(key=lambda item: (item.display_order, item.price_cents, item.name))
+        return packs
 
     def list_profiles(self) -> list[ProfileResponse]:
         data = self._client.request("/profiles", auth=True, timeout=60.0)
