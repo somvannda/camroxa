@@ -241,22 +241,18 @@ def test_new_profile_starts_inline_draft(qapp: QApplication, monkeypatch) -> Non
     assert view._profile_folder.text() == "fresh-channel"
 
 
-def test_new_profile_blocked_when_plan_slots_exhausted(qapp: QApplication) -> None:
+def test_new_profile_is_not_plan_gated(qapp: QApplication) -> None:
     view = SettingsView(PlatformApi())
     view.show()
     view._on_loaded(_payload())
-    limit = view._profile_limit()
-    assert limit is not None
-    view._profile_usage = limit
+    # Even past any legacy allowance, creation stays available.
+    view._profile_usage = 999
     view._refresh_profile_limit_note()
 
-    assert view._can_create_profile() is False
-    assert not view._new_profile_btn.isEnabled()
-
-    original_key = view._profiles[0].id
-    view._selected_profile_key = original_key
+    assert view._new_profile_btn.isEnabled()
     view._on_new_profile_clicked()
-    assert view._selected_profile_key == original_key
+    assert view._selected_profile_key == "new"
+    assert "999 profiles used." in view._profile_limit_note.text()
 
 
 def test_create_profile_posts_name_only_payload(

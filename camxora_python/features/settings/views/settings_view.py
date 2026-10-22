@@ -2785,49 +2785,20 @@ class SettingsView(QWidget):
         self._update_profile_save_enabled(is_new=is_new, profile=profile)
         self._start_profile_media_cache_download(profile)
 
-    def _profile_limit(self) -> int | None:
-        """Effective profile slot allowance, or None when the server reported no limit.
-
-        ``None`` is treated as "let the API decide" — creation is still attempted
-        and any ``profile-limit-exceeded`` response is surfaced in the footer.
-        """
-        if self._effective_profile_allowance is not None:
-            return self._effective_profile_allowance
-        return self._profile_allowance
-
-    def _can_create_profile(self) -> bool:
-        limit = self._profile_limit()
-        if limit is None:
-            return True
-        return self._profile_usage < limit
-
     def _refresh_profile_limit_note(self) -> None:
-        """Show how many profile slots are used and gate the New Profile button."""
-        limit = self._profile_limit()
-        can_create = self._can_create_profile()
-        self._new_profile_btn.setEnabled(can_create)
-        if limit is None:
-            self._profile_limit_note.setText(f"{self._profile_usage} profiles used.")
-        else:
-            self._profile_limit_note.setText(
-                f"{self._profile_usage} of {limit} profile slots used."
-            )
-        if can_create:
-            self._new_profile_btn.setToolTip(
-                "Create a new channel profile. Only the name is required — add the logo, "
-                "folder, and templates now or later."
-            )
-        else:
-            self._new_profile_btn.setToolTip(
-                "All profile slots on your plan are in use. Delete a profile or add a "
-                "profile slot before creating another."
-            )
+        """Show the profile count. Profiles are not plan-gated."""
+        self._new_profile_btn.setEnabled(True)
+        self._profile_limit_note.setText(f"{self._profile_usage} profiles used.")
+        self._new_profile_btn.setToolTip(
+            "Create a new channel profile. Only the name is required — add the logo, "
+            "folder, and templates now or later."
+        )
 
     def _update_profile_save_enabled(
         self, *, is_new: bool, profile: ProfileResponse | None
     ) -> None:
         if is_new:
-            enabled = bool(self._profile_name.text().strip()) and self._can_create_profile()
+            enabled = bool(self._profile_name.text().strip())
         else:
             enabled = profile is not None
         self._profile_save_btn.setEnabled(enabled)
@@ -3284,12 +3255,6 @@ class SettingsView(QWidget):
 
     def _start_new_profile(self) -> None:
         """Open a blank profile draft so the user can create it in place."""
-        if not self._can_create_profile():
-            self._show_error(
-                "All profile slots on your plan are in use. Delete a profile or add a "
-                "profile slot before creating another."
-            )
-            return
         self._selected_profile_key = "new"
         self._profile_folder_user_edited = False
         self._profile_draft = ProfileDraft()
@@ -3534,12 +3499,6 @@ class SettingsView(QWidget):
         if not name:
             self._show_error("Enter a profile name before creating the profile.")
             self._profile_name.setFocus()
-            return
-        if not self._can_create_profile():
-            self._show_error(
-                "All profile slots on your plan are in use. Delete a profile or add a "
-                "profile slot before creating another."
-            )
             return
         payload = build_profile_payload(self._profile_draft, None)
         payload["name"] = name
