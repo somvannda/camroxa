@@ -19,7 +19,12 @@ export function generatePromoCode(prefix = "CAMX", length = 6): string {
   return `${prefix}-${body}`;
 }
 
-export type PromoKind = "percent" | "credit_bonus";
+/**
+ * percent      — checkout discount on a pack
+ * credit_bonus — extra credits attached to a pack purchase
+ * credit       — standalone balance top-up, redeemed from the dashboard
+ */
+export type PromoKind = "percent" | "credit_bonus" | "credit";
 
 export interface PromoCode {
   id: string;
@@ -43,7 +48,13 @@ export interface PromoPreset {
 export function coercePreset(value: unknown): PromoPreset | null {
   const raw = (value ?? {}) as Record<string, unknown>;
   const kind: PromoKind | null =
-    raw.kind === "percent" ? "percent" : raw.kind === "credit_bonus" ? "credit_bonus" : null;
+    raw.kind === "percent"
+      ? "percent"
+      : raw.kind === "credit_bonus"
+        ? "credit_bonus"
+        : raw.kind === "credit"
+          ? "credit"
+          : null;
   if (!kind) return null;
   const numeric = Number(raw.value);
   if (!Number.isFinite(numeric) || numeric <= 0) return null;
@@ -144,6 +155,15 @@ export function computePromoQuote(
   // NUMERIC comes back from pg as a string; coerce once so arithmetic is honest.
   const value = Number(promo.value) || 0;
 
+  // A standalone code has no price to discount and no pack to attach to, so it
+  // must never be quoted at checkout — the redeem endpoint owns that kind.
+  if (promo.kind === "credit") {
+    return {
+      ok: false,
+      error: "That code is redeemed on the Redeem page, not at checkout.",
+    };
+  }
+
   if (promo.kind === "percent") {
     const discount = Math.round(price * value) / 100;
     const amount = Math.round((price - discount) * 100) / 100;
@@ -178,17 +198,19 @@ export function computePromoQuote(
   };
 }
 
+export type PromoLookup =
+  | { ok: true; promo: PromoCode }
+  | { ok: false; error: string };
+
 /**
- * Validate a code for one user and one pack.
+ * All the checks that do not depend on a pack: existence, ownership, expiry,
+ * active flag and per-user/cap usage. Shared by checkout and standalone redeem
+ * so both paths reject for the same reasons with the same wording.
  *
  * Every rejection is a distinct message on purpose: "already used" and "expired"
  * are what support actually needs to know, and a vague error generates a ticket.
  */
-export async function validatePromoForUser(
-  rawCode: string,
-  userId: string,
-  pack: { price: number; credits: number },
-): Promise<PromoResult> {
+export async function lookupPromoForUser(rawCode: string, userId: string): Promise<PromoLookup> {
   const code = rawCode.trim().toUpperCase();
   if (!code) return { ok: false, error: "Enter a promo code." };
 
@@ -218,24 +240,57 @@ export async function validatePromoForUser(
   );
   if (already) return { ok: false, error: "You have already used that code." };
 
-  return computePromoQuote(promo, pack.price, pack.credits);
+  return { ok: true, promo };
 }
 
 /**
- * Record a redemption. Runs inside the payment transaction's `tx` so the credit
- * grant, the paid status and the redemption commit together. The unique
- * (code_id, user_id) index makes a retry a no-op instead of a double count.
+ * Checkout quote for one user and one pack. Rejects standalone codes because
+ * they are claimed from the Redeem page instead.
+ */
+export async function validatePromoForUser(
+  rawCode: string,
+  userId: string,
+  pack: { price: number; credits: number },
+): Promise<PromoResult> {
+  const lookup = await lookupPromoForUser(rawCode, userId);
+  if (!lookup.ok) return lookup;
+  return computePromoQuote(lookup.promo, pack.price, pack.credits);
+}
+
+/**
+ * Standalone claim check: the code must be a `credit` kind and still claimable.
+ * Checkout codes are rejected here with a pointer to the billing page.
+ */
+export async function validateStandalonePromo(
+  rawCode: string,
+  userId: string,
+): Promise<PromoLookup> {
+  const lookup = await lookupPromoForUser(rawCode, userId);
+  if (!lookup.ok) return lookup;
+  if (lookup.promo.kind !== "credit") {
+    return { ok: false, error: "That code is applied at checkout, not on this page." };
+  }
+  return lookup;
+}
+
+/**
+ * Record a redemption. Runs inside the caller's transaction so the credit grant,
+ * the redemption and the counter all commit together. The unique
+ * (code_id, user_id) index makes a retry a no-op instead of a double count, and
+ * the return value tells the caller whether this call actually claimed it.
+ *
+ * `paymentTransactionId` is null for a standalone claim.
  */
 export async function redeemPromo(
   tx: QueryFn,
   args: {
     codeId: string;
     userId: string;
-    paymentTransactionId: string;
+    paymentTransactionId: string | null;
     discount: number;
     creditsGranted: number;
   },
-): Promise<void> {
+): Promise<boolean> {
   const inserted = await tx<{ id: string }>(
     `INSERT INTO promo_redemptions
        (code_id, user_id, payment_transaction_id, discount_amount, credits_granted)
@@ -244,11 +299,12 @@ export async function redeemPromo(
      RETURNING id`,
     [args.codeId, args.userId, args.paymentTransactionId, args.discount, args.creditsGranted],
   );
-  if (inserted.length === 0) return;
+  if (inserted.length === 0) return false;
   await tx(
     "UPDATE promo_codes SET redeemed_count = redeemed_count + 1 WHERE id = $1",
     [args.codeId],
   );
+  return true;
 }
 
 export interface PromoSummaryRow {
