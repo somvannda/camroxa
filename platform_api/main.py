@@ -143,6 +143,14 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         await run_pending_migrations()
 
+        # Alembic's env.py runs logging.config.fileConfig(), which defaults to
+        # disable_existing_loggers=True and therefore disables every logger
+        # created before the migration — including the request/audit loggers.
+        # That is why no [access] line (and no 5xx) reached the journal for a
+        # week (2026-10-21). env.py now passes disable_existing_loggers=False;
+        # re-asserting here also covers any future reconfiguration.
+        configure_api_logging()
+
         # --- Create asyncpg connection pool ---
         import asyncpg
 

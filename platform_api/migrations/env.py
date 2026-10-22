@@ -20,9 +20,13 @@ config = context.config
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
 
-# Interpret the config file for Python logging
+# Interpret the config file for Python logging.
+# disable_existing_loggers must stay False: this runs during API startup (via
+# run_pending_migrations) *after* configure_api_logging(), and the default
+# (True) silently disables every logger created before it — which killed all
+# request and 5xx logging in production (2026-10-21).
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # No MetaData object for autogenerate (we use raw SQL migrations)
 target_metadata = None
