@@ -70,7 +70,6 @@ from features.settings.widgets.user_owned_prompt_panel import UserOwnedPromptPan
 from shared.models.auth import ProfileResponse, UserMeResponse
 from shared.models.platform import PromptNameOption, YouTubeConnectionResponse
 from shared.services.app_logger import get_app_logger, log_error, log_info, log_warn
-from shared.services.build_config import get_portal_base_url
 from shared.services.ffmpeg_setup import (
     FFMPEG_DOWNLOAD_PAGE_URL,
     FFMPEG_SETUP_INSTRUCTIONS,
@@ -212,6 +211,7 @@ class SettingsView(QWidget):
         self._bg_sample_files: list[str] = []
         self._th_sample_files: list[str] = []
         self._profile_allowance: int | None = None
+        self._effective_profile_allowance: int | None = None
         self._profile_usage = 0
         self._selected_profile_key: str | None = None
         self._selected_description_id: str = ""
@@ -448,6 +448,7 @@ class SettingsView(QWidget):
         if isinstance(me, UserMeResponse):
             self._loaded_user_id = me.id
         self._profile_allowance = getattr(me, "profile_allowance", None)
+        self._effective_profile_allowance = getattr(me, "effective_profile_allowance", None)
         self._profile_usage = getattr(me, "channel_profile_count", len(self._profiles))
 
         if self._selected_profile_key and self._selected_profile_key != "new":
@@ -536,6 +537,9 @@ class SettingsView(QWidget):
         self._structure_options = [item for item in structure_options if isinstance(item, PromptNameOption)]
         self._mood_options = [item for item in mood_options if isinstance(item, PromptNameOption)]
         self._profile_allowance = getattr(me, "profile_allowance", None) if me is not None else None
+        self._effective_profile_allowance = (
+            getattr(me, "effective_profile_allowance", None) if me is not None else None
+        )
         self._profile_usage = getattr(me, "channel_profile_count", len(self._profiles)) if me is not None else len(self._profiles)
         if isinstance(me, UserMeResponse):
             self._loaded_user_id = me.id
@@ -876,14 +880,17 @@ class SettingsView(QWidget):
         self._profile_list.setMinimumHeight(120)
         self._profile_list.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._profile_list.currentRowChanged.connect(self._on_profile_selected)
-        self._new_profile_btn = QPushButton("Create profiles in portal")
+        self._new_profile_btn = QPushButton("New Profile")
         self._new_profile_btn.setToolTip(
-            "New channel profiles are created in the CamXora account portal, not in the desktop app."
+            "Create a new channel profile. Only the name is required — add the logo, "
+            "folder, and templates now or later."
         )
         self._new_profile_btn.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._new_profile_btn.clicked.connect(self._on_new_profile_clicked)
+        self._profile_limit_note = note_box("")
         panel.add_widget(self._profile_search)
         panel.add_widget(self._profile_list, stretch=1)
+        panel.add_widget(self._profile_limit_note)
         panel.add_widget(self._new_profile_btn)
         return panel
 
@@ -2715,12 +2722,13 @@ class SettingsView(QWidget):
 
         is_new = self._selected_profile_key == "new"
         profile = self._selected_profile() if not is_new else None
-        if is_new:
-            self._profile_draft = ProfileDraft()
-        elif profile:
-            self._profile_draft = self._resolve_profile_media_paths(profile, build_profile_draft(profile))
-        else:
-            self._profile_draft = ProfileDraft()
+        if not is_new:
+            if profile:
+                self._profile_draft = self._resolve_profile_media_paths(profile, build_profile_draft(profile))
+            else:
+                self._profile_draft = ProfileDraft()
+        # For a new profile, keep the draft created by _start_new_profile so a
+        # background refresh cannot wipe what the user already typed.
         self._baseline_profile_draft = build_profile_draft(profile)
         # Keep baseline paths aligned with resolved local cache paths for dirty checks.
         self._baseline_profile_draft.logo_path = self._profile_draft.logo_path
@@ -2748,7 +2756,11 @@ class SettingsView(QWidget):
             self._profile_draft.name or ("New profile" if is_new else "No profile selected")
         )
         self._profile_name.setText(self._profile_draft.name)
-        self._profile_folder_user_edited = False
+        self._profile_folder_user_edited = bool(
+            self._profile_draft.folder_name
+            and self._profile_draft.folder_name
+            != slugify_profile_folder_name(self._profile_draft.name)
+        )
         self._profile_folder.setText(self._profile_draft.folder_name)
         self._sync_profile_folder_from_name()
         self._profile_prefix.setText(self._profile_draft.run_prefix)
@@ -2766,14 +2778,59 @@ class SettingsView(QWidget):
 
         self._on_profile_field_changed()
         self._refresh_profile_identity(is_new=is_new, profile=profile)
-        can_create = False
-        self._new_profile_btn.setEnabled(True)
-        self._new_profile_btn.setText("Create profiles in portal")
-        self._profile_cancel_btn.setVisible(False)
-        self._profile_delete_btn.setEnabled(bool(profile))
-        self._profile_save_btn.setText("Save Changes")
-        self._profile_save_btn.setEnabled(bool(profile) and not is_new)
+        self._refresh_profile_limit_note()
+        self._profile_cancel_btn.setVisible(is_new)
+        self._profile_delete_btn.setEnabled(bool(profile) and not is_new)
+        self._profile_save_btn.setText("Create Profile" if is_new else "Save Changes")
+        self._update_profile_save_enabled(is_new=is_new, profile=profile)
         self._start_profile_media_cache_download(profile)
+
+    def _profile_limit(self) -> int | None:
+        """Effective profile slot allowance, or None when the server reported no limit.
+
+        ``None`` is treated as "let the API decide" — creation is still attempted
+        and any ``profile-limit-exceeded`` response is surfaced in the footer.
+        """
+        if self._effective_profile_allowance is not None:
+            return self._effective_profile_allowance
+        return self._profile_allowance
+
+    def _can_create_profile(self) -> bool:
+        limit = self._profile_limit()
+        if limit is None:
+            return True
+        return self._profile_usage < limit
+
+    def _refresh_profile_limit_note(self) -> None:
+        """Show how many profile slots are used and gate the New Profile button."""
+        limit = self._profile_limit()
+        can_create = self._can_create_profile()
+        self._new_profile_btn.setEnabled(can_create)
+        if limit is None:
+            self._profile_limit_note.setText(f"{self._profile_usage} profiles used.")
+        else:
+            self._profile_limit_note.setText(
+                f"{self._profile_usage} of {limit} profile slots used."
+            )
+        if can_create:
+            self._new_profile_btn.setToolTip(
+                "Create a new channel profile. Only the name is required — add the logo, "
+                "folder, and templates now or later."
+            )
+        else:
+            self._new_profile_btn.setToolTip(
+                "All profile slots on your plan are in use. Delete a profile or add a "
+                "profile slot before creating another."
+            )
+
+    def _update_profile_save_enabled(
+        self, *, is_new: bool, profile: ProfileResponse | None
+    ) -> None:
+        if is_new:
+            enabled = bool(self._profile_name.text().strip()) and self._can_create_profile()
+        else:
+            enabled = profile is not None
+        self._profile_save_btn.setEnabled(enabled)
 
     def _refresh_profile_identity(self, *, is_new: bool, profile: ProfileResponse | None) -> None:
         channel_title = self._profile_draft.name or (profile.name if profile else "No profile selected")
@@ -3223,18 +3280,26 @@ class SettingsView(QWidget):
             self._set_selected_profile_id(profile_id)
 
     def _on_new_profile_clicked(self) -> None:
-        portal_url = f"{get_portal_base_url()}/dashboard/profiles"
-        open_external_url(portal_url)
-        QMessageBox.information(
-            self,
-            "Create profiles in portal",
-            "New channel profiles are created in the CamXora account portal.\n\n"
-            f"Open: {portal_url}\n\n"
-            "After onboarding completes, refresh Settings to see new profiles here.",
-        )
+        self._start_new_profile()
 
     def _start_new_profile(self) -> None:
-        self._on_new_profile_clicked()
+        """Open a blank profile draft so the user can create it in place."""
+        if not self._can_create_profile():
+            self._show_error(
+                "All profile slots on your plan are in use. Delete a profile or add a "
+                "profile slot before creating another."
+            )
+            return
+        self._selected_profile_key = "new"
+        self._profile_folder_user_edited = False
+        self._profile_draft = ProfileDraft()
+        self._profile_list.blockSignals(True)
+        self._profile_list.clearSelection()
+        self._profile_list.setCurrentRow(-1)
+        self._profile_list.blockSignals(False)
+        self._bind_profiles_tab()
+        self._refresh_footer()
+        self._profile_name.setFocus()
 
     def _on_clear_local_workspace(self) -> None:
         if self._session is None:
@@ -3268,6 +3333,7 @@ class SettingsView(QWidget):
 
     def _after_profile_deleted(self, profile_id: str) -> None:
         self._profiles = [profile for profile in self._profiles if profile.id != profile_id]
+        self._profile_usage = max(0, self._profile_usage - 1)
         self._selected_profile_key = self._profiles[0].id if self._profiles else None
         self._show_save_success("Profile deleted.")
         self.refresh_data(force=True)
@@ -3307,6 +3373,8 @@ class SettingsView(QWidget):
         )
         self._profile_editor_title.setText(self._profile_draft.name or "New profile")
         self._refresh_profile_identity(is_new=self._selected_profile_key == "new", profile=self._selected_profile())
+        if self._selected_profile_key == "new":
+            self._update_profile_save_enabled(is_new=True, profile=None)
         self._refresh_footer()
 
     def _on_publication_profile_changed(self, index: int) -> None:
@@ -3438,10 +3506,13 @@ class SettingsView(QWidget):
         self._refresh_footer()
 
     def _save_profile(self) -> None:
-        if self._selected_profile_key in (None, "new"):
-            self._on_new_profile_clicked()
+        if self._selected_profile_key == "new":
+            self._create_profile()
             return
         profile = self._selected_profile()
+        if profile is None:
+            self._start_new_profile()
+            return
         payload = build_profile_payload(self._profile_draft, profile)
         worker = SaveProfileWorker(
             self._api,
@@ -3451,8 +3522,63 @@ class SettingsView(QWidget):
         )
         worker.succeeded.connect(self._on_profile_saved)
         worker.failed.connect(self._show_error)
+        worker.finished.connect(self._finish_profile_save_worker)
         worker.start()
         self._save_profile_worker = worker
+
+    def _create_profile(self) -> None:
+        """Create a profile from the current draft; the name is the only required field."""
+        if self._save_profile_worker is not None and self._save_profile_worker.isRunning():
+            return
+        name = self._profile_name.text().strip()
+        if not name:
+            self._show_error("Enter a profile name before creating the profile.")
+            self._profile_name.setFocus()
+            return
+        if not self._can_create_profile():
+            self._show_error(
+                "All profile slots on your plan are in use. Delete a profile or add a "
+                "profile slot before creating another."
+            )
+            return
+        payload = build_profile_payload(self._profile_draft, None)
+        payload["name"] = name
+        worker = SaveProfileWorker(
+            self._api,
+            profile_id=None,
+            payload=payload,
+            parent=self,
+        )
+        worker.succeeded.connect(self._on_profile_created)
+        worker.failed.connect(self._on_profile_create_failed)
+        worker.finished.connect(self._finish_profile_save_worker)
+        self._profile_save_btn.setEnabled(False)
+        self._save_profile_worker = worker
+        worker.start()
+
+    def _finish_profile_save_worker(self) -> None:
+        self._save_profile_worker = None
+
+    def _on_profile_create_failed(self, message: str) -> None:
+        self._show_error(message)
+        self._update_profile_save_enabled(is_new=True, profile=None)
+
+    def _on_profile_created(self, result: object) -> None:
+        profile = self._upsert_profile_response(result)
+        if profile is None:
+            self._show_error(
+                "The profile was created, but the server response could not be read. "
+                "Refresh Settings to see it."
+            )
+            self.refresh_data(force=True)
+            return
+        self._selected_profile_key = profile.id
+        self._profile_usage = max(self._profile_usage + 1, len(self._profiles))
+        self._show_save_success(
+            f'Created profile "{profile.name}". Add a logo, folder, or templates any time.'
+        )
+        log_info(f"Created channel profile {profile.id}.", category="settings")
+        self.refresh_data(force=True)
 
     def _on_profile_saved(self, result: object) -> None:
         profile = self._upsert_profile_response(result)
