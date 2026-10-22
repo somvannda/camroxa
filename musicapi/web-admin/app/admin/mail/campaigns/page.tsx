@@ -314,11 +314,24 @@ export default function MailCampaignsPage() {
                 <option value="">No code</option>
                 <option value="percent">Percent off</option>
                 <option value="credit_bonus">Bonus credits</option>
+                <option value="credit">Redeem for credits</option>
               </Select>
             </Field>
             <Field
-              label={promoKind === "percent" ? "Percent (1-99)" : "Bonus credits"}
-              hint={promoKind === "percent" ? "20 = 20% off the pack price" : "500 = 500 extra credits"}
+              label={
+                promoKind === "percent"
+                  ? "Percent (1-99)"
+                  : promoKind === "credit"
+                    ? "Credits to grant"
+                    : "Bonus credits"
+              }
+              hint={
+                promoKind === "percent"
+                  ? "20 = 20% off the pack price"
+                  : promoKind === "credit"
+                    ? "500 = 500 credits claimed on the site, with no purchase"
+                    : "500 = 500 extra credits on a pack purchase"
+              }
             >
               <Input
                 type="number"

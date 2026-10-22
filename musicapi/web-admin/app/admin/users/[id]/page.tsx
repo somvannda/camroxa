@@ -73,6 +73,7 @@ const TYPE_TONES: Record<string, BadgeTone> = {
   spend: "neutral",
   refund: "info",
   referral: "success",
+  promo: "success",
 };
 
 export default function UserDetailPage() {
