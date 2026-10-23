@@ -191,20 +191,8 @@ class ProfileService:
                 details={"name": name, "user_id": str(user_id)},
             )
 
-        # Check plan limit
-        current_count = await self._profile_repo.count_for_user(user_id)
-        max_allowed = await self._get_profile_limit(user_id)
-
-        if current_count >= max_allowed:
-            raise ValidationError(
-                "Profile limit exceeded.",
-                details={
-                    "current_count": current_count,
-                    "max_allowed": max_allowed,
-                    "upgrade_path": "Purchase additional profile slots",
-                    "error_code": "profile-limit-exceeded",
-                },
-            )
+        # Profiles are no longer plan-gated: packs-only billing removed the
+        # per-plan channel allowance. Name uniqueness above still applies.
 
         # Build the profile domain object
         profile = ChannelProfile(
@@ -228,19 +216,11 @@ class ProfileService:
         return created
 
     async def ensure_profile_capacity(self, user_id: UUID) -> None:
-        """Raise when the user has reached their plan profile allowance."""
-        current_count = await self._profile_repo.count_for_user(user_id)
-        max_allowed = await self._get_profile_limit(user_id)
-        if current_count >= max_allowed:
-            raise ValidationError(
-                "Profile limit exceeded.",
-                details={
-                    "current_count": current_count,
-                    "max_allowed": max_allowed,
-                    "upgrade_path": "Purchase additional profile slots",
-                    "error_code": "profile-limit-exceeded",
-                },
-            )
+        """No-op: profiles are no longer gated by a plan allowance.
+
+        Kept for callers (channel setup) that used to pre-check capacity.
+        """
+        return None
 
     async def require_owned_profile(
         self, user_id: UUID, profile_id: UUID | None

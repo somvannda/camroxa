@@ -42,6 +42,7 @@ class UserMeResponse(BaseModel):
     plan_name: str | None = None
     role: str | None = None
     onboarding_paid: bool = False
+    desktop_access: bool | None = None
     profile_allowance: int | None = None
     profile_addon_slots: int = 0
     profile_addon_pending: int = 0
@@ -165,5 +166,20 @@ class WebMusicSubscriptionPlan(BaseModel):
     features: list[str] = Field(default_factory=list)
     display_order: int = 0
     is_public: bool = True
+
+    model_config = {"extra": "ignore"}
+
+
+class CreditPack(BaseModel):
+    """One-time web-music credit pack from GET /topups/packs."""
+
+    id: str
+    slug: str = ""
+    name: str
+    description: str = ""
+    total_credits: int = 0
+    price_cents: int = 0
+    display_order: int = 0
+    songs_equivalent: int = 0
 
     model_config = {"extra": "ignore"}

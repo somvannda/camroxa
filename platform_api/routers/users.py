@@ -65,6 +65,7 @@ class UserProfileResponse(BaseModel):
     effective_quota_channels: int | None = None
     channel_profile_count: int = 0
     onboarding_paid: bool = False
+    desktop_access: bool = False
     products: list[str] = Field(default_factory=list)
     pending_verification_code: str | None = None
     verification_code_expires_at: datetime | None = None
@@ -386,6 +387,7 @@ def _user_to_response(
     effective_quota_channels: int | None = None,
     channel_profile_count: int = 0,
     onboarding_paid: bool = False,
+    desktop_access: bool = False,
     products: list[str] | None = None,
     music_credits_remaining: int | None = None,
     music_credits_limit: int | None = None,
@@ -420,6 +422,7 @@ def _user_to_response(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
+        desktop_access=desktop_access,
         products=list(products or getattr(user, "products", None) or []),
         pending_verification_code=pending_verification_code,
         verification_code_expires_at=verification_code_expires_at,
@@ -497,6 +500,9 @@ async def get_me(
     from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
 
     onboarding_paid = await user_has_paid_for_onboarding(pool, user_id) or web_plan_paid
+    from platform_api.repositories.license_repo import LicenseRepository
+
+    desktop_access = await LicenseRepository(pool=pool).has_paid_desktop_access(str(user_id))
     avatar_url = await _fetch_avatar_url(pool, user_id)
 
     return _user_to_response(
@@ -511,6 +517,7 @@ async def get_me(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
+        desktop_access=desktop_access,
     )
 
 
@@ -609,6 +616,9 @@ async def update_me(
     from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
 
     onboarding_paid = await user_has_paid_for_onboarding(pool, user_id) or web_plan_paid
+    from platform_api.repositories.license_repo import LicenseRepository
+
+    desktop_access = await LicenseRepository(pool=pool).has_paid_desktop_access(str(user_id))
     avatar_url = await _fetch_avatar_url(pool, user_id)
     return _user_to_response(
         user,
@@ -622,6 +632,7 @@ async def update_me(
         effective_quota_channels=effective_quota_channels,
         channel_profile_count=channel_profile_count,
         onboarding_paid=onboarding_paid,
+        desktop_access=desktop_access,
     )
 
 

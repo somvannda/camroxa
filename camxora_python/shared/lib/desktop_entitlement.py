@@ -8,8 +8,9 @@ from typing import Any
 from shared.models.auth import UserMeResponse
 
 DESKTOP_REQUIRES_PAID_PLAN_MESSAGE = (
-    "Your account does not have a Desktop Studio plan. "
-    "Upgrade in the account portal to Starter, Creator, or Studio, then sign in again."
+    "Your account has no active Desktop Studio credits. "
+    "Buy a credit pack on music.camxora.com, then sign in again. "
+    "Pack credits are valid for 30 days."
 )
 
 DESKTOP_PLAN_REQUIRED_CODE = "DESKTOP_PLAN_REQUIRED"
@@ -28,13 +29,17 @@ def is_paid_catalog_plan_name(name: str | None) -> bool:
 def user_can_use_desktop_studio(me: UserMeResponse) -> bool:
     """True when the account may enter the desktop shell.
 
-    Admins may open the studio without a plan. Paid catalog (Starter /
-    Creator / Studio) and fulfilled desktop checkout (``onboarding_paid``)
-    also qualify. Free daily-credit accounts are blocked.
+    Packs-only billing: the API's ``desktop_access`` flag is authoritative
+    (live pack credits, or a grandfathered paid plan). Older API versions
+    without the flag fall back to ``onboarding_paid`` / plan-name checks.
+    Admins may always open the studio.
     """
     role = str(getattr(me, "role", None) or "").strip().lower()
     if role == "admin":
         return True
+    desktop_access = getattr(me, "desktop_access", None)
+    if desktop_access is not None:
+        return bool(desktop_access)
     if bool(getattr(me, "onboarding_paid", False)):
         return True
     return is_paid_catalog_plan_name(getattr(me, "plan_name", None))

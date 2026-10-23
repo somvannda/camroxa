@@ -1,4 +1,9 @@
-"""Native Upgrade-required dialog — Music web Choose Your Plan UI."""
+"""Native credits-required dialog - web-music credit packs (packs-only billing).
+
+The desktop studio is gated on live credit-pack credits. Subscriptions are no
+longer sold, so this dialog mirrors the music.camxora.com "Buy Credits" modal:
+one-time packs, valid for 30 days from purchase.
+"""
 
 from __future__ import annotations
 
@@ -18,14 +23,17 @@ from PySide6.QtWidgets import (
 )
 
 from shared.lib.desktop_entitlement import DESKTOP_REQUIRES_PAID_PLAN_MESSAGE
-from shared.models.auth import WebMusicSubscriptionPlan
-from shared.services.build_config import get_onboarding_url, get_pricing_url
+from shared.models.auth import CreditPack
+from shared.services.build_config import get_pricing_url
 from shared.services.platform_api import PlatformApi
 
-FREE_DAILY_CREDITS = 50
-FREE_FEATURES = ["Web Create", "Daily credit reset", "Top-up packs"]
-DEFAULT_PAID_FEATURES = ["Web Create", "Desktop studio", "Dual channels", "Top-up packs"]
 CREDITS_PER_SONG = 10
+PACK_VALIDITY_DAYS = 30
+PACK_FEATURES = [
+    f"Valid for {PACK_VALIDITY_DAYS} days from purchase",
+    "Buy again any time",
+    "Instant delivery",
+]
 
 
 def format_subscription_price(cents: int) -> str:
@@ -41,8 +49,8 @@ def credits_to_songs(credits: int, credits_per_generate: float | int | None = No
 
 
 def format_plan_display_name(plan_name: str) -> str:
-    """Match music_web `formatPlanDisplayName`."""
-    trimmed = plan_name.strip()
+    """Match music_web `formatPlanDisplayName` for legacy plan labels."""
+    trimmed = str(plan_name or "").strip()
     pretty = re.search(r"\((monthly|yearly)\)$", trimmed, flags=re.IGNORECASE)
     slug = re.search(r"[-_\s]+(monthly|yearly)$", trimmed, flags=re.IGNORECASE)
     cycle = ((pretty.group(1) if pretty else None) or (slug.group(1) if slug else "")).lower()
@@ -58,20 +66,13 @@ def format_plan_display_name(plan_name: str) -> str:
     return label
 
 
-def calculate_yearly_discount(monthly_cents: int, yearly_cents: int) -> int:
-    yearly_equiv = monthly_cents * 12
-    if yearly_equiv <= 0:
-        return 15
-    return max(0, round(((yearly_equiv - yearly_cents) / yearly_equiv) * 100))
-
-
-def plan_feature_lines(plan: WebMusicSubscriptionPlan) -> list[str]:
-    features = [str(item).strip() for item in (plan.features or []) if str(item).strip()]
-    return features or list(DEFAULT_PAID_FEATURES)
+def pack_feature_lines(pack: CreditPack) -> list[str]:
+    lines = [line.strip() for line in str(pack.description or "").splitlines() if line.strip()]
+    return lines or list(PACK_FEATURES)
 
 
 class UpgradePlansDialog(QDialog):
-    """Native Music-style Choose Your Plan dialog after unpaid desktop login."""
+    """Native Music-style "Buy Credits" dialog after an unpaid desktop login."""
 
     def __init__(
         self,
@@ -81,14 +82,13 @@ class UpgradePlansDialog(QDialog):
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Upgrade required")
+        self.setWindowTitle("Credits required")
         self.setModal(True)
         self.setMinimumWidth(920)
-        self.setMinimumHeight(560)
-        self.resize(980, 600)
+        self.setMinimumHeight(520)
+        self.resize(980, 560)
         self._api = api or PlatformApi()
-        self._plans: list[WebMusicSubscriptionPlan] = []
-        self._billing_cycle = "monthly"
+        self._packs: list[CreditPack] = []
         self._message = (message or DESKTOP_REQUIRES_PAID_PLAN_MESSAGE).strip()
 
         self.setObjectName("upgrade_plans_dialog")
@@ -104,24 +104,24 @@ class UpgradePlansDialog(QDialog):
         gate.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(gate)
 
-        title = QLabel("Choose Your Plan")
+        title = QLabel("Buy Credits")
         title.setObjectName("upgrade_hero_title")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(title)
 
-        subtitle = QLabel("Start creating amazing music with AI")
+        subtitle = QLabel(
+            f"One-time purchase - credits valid for {PACK_VALIDITY_DAYS} days"
+        )
         subtitle.setObjectName("upgrade_hero_subtitle")
         subtitle.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(subtitle)
 
-        root.addWidget(self._build_billing_toggle(), alignment=Qt.AlignmentFlag.AlignCenter)
-
-        self._status = QLabel("Loading plans…")
+        self._status = QLabel("Loading credit packs...")
         self._status.setObjectName("upgrade_status")
         self._status.setAlignment(Qt.AlignmentFlag.AlignCenter)
         root.addWidget(self._status)
 
-        # Fixed 4-up row (no vertical stack) — cards share width equally.
+        # Fixed 4-up row (no vertical stack) - cards share width equally.
         self._cards_host = QWidget()
         self._cards_layout = QHBoxLayout(self._cards_host)
         self._cards_layout.setContentsMargins(0, 0, 0, 0)
@@ -130,7 +130,8 @@ class UpgradePlansDialog(QDialog):
         root.addWidget(self._cards_host, stretch=1)
 
         footer = QLabel(
-            "All paid plans include high-quality audio downloads and commercial usage rights."
+            f"Credits are valid for {PACK_VALIDITY_DAYS} days from purchase. "
+            "Buying another pack resets the 30-day clock."
         )
         footer.setObjectName("upgrade_footer")
         footer.setWordWrap(True)
@@ -147,13 +148,13 @@ class UpgradePlansDialog(QDialog):
         browser_btn.setObjectName("upgrade_secondary_btn")
         browser_btn.clicked.connect(self._open_music_pricing)
         actions.addWidget(browser_btn)
-        portal_btn = QPushButton("Open portal to upgrade")
-        portal_btn.setObjectName("upgrade_primary_btn")
-        portal_btn.clicked.connect(self._open_portal)
-        actions.addWidget(portal_btn)
+        buy_btn = QPushButton("Buy credits on Music")
+        buy_btn.setObjectName("upgrade_primary_btn")
+        buy_btn.clicked.connect(self._open_music_pricing)
+        actions.addWidget(buy_btn)
         root.addLayout(actions)
 
-        self._load_plans()
+        self._load_packs()
 
     def _dialog_qss(self) -> str:
         return """
@@ -176,33 +177,6 @@ class UpgradePlansDialog(QDialog):
             QLabel#upgrade_status, QLabel#upgrade_footer {
                 color: #94a3b8;
                 font-size: 11px;
-            }
-            QFrame#upgrade_billing_toggle {
-                background-color: rgba(255, 255, 255, 0.05);
-                border-radius: 999px;
-                padding: 2px;
-            }
-            QPushButton#upgrade_cycle_btn {
-                background: transparent;
-                border: none;
-                color: #94a3b8;
-                border-radius: 999px;
-                padding: 6px 16px;
-                font-size: 12px;
-                font-weight: 600;
-                min-height: 28px;
-            }
-            QPushButton#upgrade_cycle_btn[active="true"] {
-                background-color: #7c3aed;
-                color: #ffffff;
-            }
-            QLabel#upgrade_save_badge {
-                color: #4ade80;
-                background-color: rgba(74, 222, 128, 0.16);
-                border-radius: 999px;
-                padding: 2px 7px;
-                font-size: 10px;
-                font-weight: 600;
             }
             QFrame#upgrade_plan_card {
                 background-color: rgba(255, 255, 255, 0.04);
@@ -262,10 +236,6 @@ class UpgradePlansDialog(QDialog):
             QPushButton#upgrade_plan_cta:hover {
                 background-color: rgba(255, 255, 255, 0.18);
             }
-            QPushButton#upgrade_plan_cta:disabled {
-                color: rgba(255, 255, 255, 0.55);
-                background-color: rgba(255, 255, 255, 0.08);
-            }
             QPushButton#upgrade_secondary_btn {
                 background-color: #1e293b;
                 border: 1px solid #334155;
@@ -283,14 +253,6 @@ class UpgradePlansDialog(QDialog):
                 min-height: 36px;
                 padding: 6px 12px;
             }
-            QFrame#upgrade_icon_free {
-                background-color: #475569;
-                border-radius: 8px;
-                min-width: 28px;
-                max-width: 28px;
-                min-height: 28px;
-                max-height: 28px;
-            }
             QFrame#upgrade_icon_paid {
                 background-color: #a855f7;
                 border-radius: 8px;
@@ -306,74 +268,21 @@ class UpgradePlansDialog(QDialog):
             }
         """
 
-    def _build_billing_toggle(self) -> QFrame:
-        frame = QFrame()
-        frame.setObjectName("upgrade_billing_toggle")
-        row = QHBoxLayout(frame)
-        row.setContentsMargins(4, 4, 4, 4)
-        row.setSpacing(4)
-
-        self._monthly_btn = QPushButton("Monthly")
-        self._monthly_btn.setObjectName("upgrade_cycle_btn")
-        self._monthly_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._monthly_btn.clicked.connect(lambda: self._set_billing_cycle("monthly"))
-        row.addWidget(self._monthly_btn)
-
-        yearly_wrap = QHBoxLayout()
-        yearly_wrap.setContentsMargins(0, 0, 0, 0)
-        yearly_wrap.setSpacing(6)
-        self._yearly_btn = QPushButton("Yearly")
-        self._yearly_btn.setObjectName("upgrade_cycle_btn")
-        self._yearly_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._yearly_btn.clicked.connect(lambda: self._set_billing_cycle("yearly"))
-        yearly_wrap.addWidget(self._yearly_btn)
-        self._save_badge = QLabel("Save 15%")
-        self._save_badge.setObjectName("upgrade_save_badge")
-        yearly_wrap.addWidget(self._save_badge)
-        row.addLayout(yearly_wrap)
-
-        self._sync_cycle_buttons()
-        return frame
-
-    def _sync_cycle_buttons(self) -> None:
-        self._monthly_btn.setProperty("active", "true" if self._billing_cycle == "monthly" else "false")
-        self._yearly_btn.setProperty("active", "true" if self._billing_cycle == "yearly" else "false")
-        for btn in (self._monthly_btn, self._yearly_btn):
-            btn.style().unpolish(btn)
-            btn.style().polish(btn)
-
-    def _set_billing_cycle(self, cycle: str) -> None:
-        if cycle not in {"monthly", "yearly"} or cycle == self._billing_cycle:
-            return
-        self._billing_cycle = cycle
-        self._sync_cycle_buttons()
-        self._render_cards()
-
-    def _load_plans(self) -> None:
+    def _load_packs(self) -> None:
         try:
-            self._plans = self._api.list_web_music_subscription_plans()
+            self._packs = self._api.list_credit_packs()
         except Exception as exc:
             self._status.setText(
-                f"Unable to load plans ({exc}). Open Music pricing or the account portal."
+                f"Unable to load credit packs ({exc}). Open Music pricing to buy credits."
             )
-            self._plans = []
+            self._packs = []
             self._render_cards()
             return
-        self._update_discount_badge()
-        if not any(p.price_cents > 0 for p in self._plans):
-            self._status.setText("No paid plans are published yet.")
+        if not self._packs:
+            self._status.setText("No credit packs are published yet.")
         else:
             self._status.hide()
         self._render_cards()
-
-    def _update_discount_badge(self) -> None:
-        monthly = [p for p in self._plans if p.billing_cycle == "monthly" and p.price_cents > 0]
-        yearly = [p for p in self._plans if p.billing_cycle == "yearly" and p.price_cents > 0]
-        if monthly and yearly:
-            pct = calculate_yearly_discount(monthly[0].price_cents, yearly[0].price_cents)
-            self._save_badge.setText(f"Save {pct}%")
-        else:
-            self._save_badge.setText("Save 15%")
 
     def _clear_cards(self) -> None:
         while self._cards_layout.count():
@@ -384,20 +293,12 @@ class UpgradePlansDialog(QDialog):
 
     def _render_cards(self) -> None:
         self._clear_cards()
-        cards: list[QFrame] = [self._free_card()]
-        paid = [
-            plan
-            for plan in self._plans
-            if plan.billing_cycle == self._billing_cycle and plan.price_cents > 0
-        ]
-        paid.sort(key=lambda item: (item.display_order, item.price_cents, item.name))
-        cards.extend(self._paid_card(plan) for plan in paid)
-        for card in cards:
-            self._cards_layout.addWidget(card, stretch=1)
+        for pack in self._packs:
+            self._cards_layout.addWidget(self._pack_card(pack), stretch=1)
 
-    def _icon_badge(self, *, paid: bool, glyph: str) -> QFrame:
+    def _icon_badge(self, glyph: str) -> QFrame:
         badge = QFrame()
-        badge.setObjectName("upgrade_icon_paid" if paid else "upgrade_icon_free")
+        badge.setObjectName("upgrade_icon_paid")
         layout = QVBoxLayout(badge)
         layout.setContentsMargins(0, 0, 0, 0)
         label = QLabel(glyph)
@@ -420,64 +321,8 @@ class UpgradePlansDialog(QDialog):
         layout.addWidget(label, stretch=1)
         return row
 
-    def _free_card(self) -> QFrame:
-        card = QFrame()
-        card.setObjectName("upgrade_plan_card")
-        card.setMinimumWidth(160)
-        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
-        layout = QVBoxLayout(card)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(6)
-
-        header = QHBoxLayout()
-        header.setSpacing(8)
-        header.addWidget(self._icon_badge(paid=False, glyph="🎁"))
-        name = QLabel("Free")
-        name.setObjectName("upgrade_plan_name")
-        header.addWidget(name, stretch=1)
-        layout.addLayout(header)
-
-        price_row = QHBoxLayout()
-        price_row.setSpacing(4)
-        price = QLabel("$0")
-        price.setObjectName("upgrade_plan_price")
-        price_row.addWidget(price)
-        suffix = QLabel("/mo")
-        suffix.setObjectName("upgrade_plan_price_suffix")
-        price_row.addWidget(suffix)
-        price_row.addStretch(1)
-        layout.addLayout(price_row)
-
-        credits = QFrame()
-        credits.setObjectName("upgrade_credits_box")
-        credits_layout = QVBoxLayout(credits)
-        credits_layout.setContentsMargins(8, 8, 8, 8)
-        credits_layout.setSpacing(1)
-        credits_label = QLabel("Daily Credits")
-        credits_label.setObjectName("upgrade_credits_label")
-        credits_layout.addWidget(credits_label)
-        credits_value = QLabel(str(FREE_DAILY_CREDITS))
-        credits_value.setObjectName("upgrade_credits_value")
-        credits_layout.addWidget(credits_value)
-        credits_hint = QLabel("Credit reset daily")
-        credits_hint.setObjectName("upgrade_credits_hint")
-        credits_layout.addWidget(credits_hint)
-        layout.addWidget(credits)
-
-        for feature in FREE_FEATURES:
-            layout.addWidget(self._feature_row(feature))
-        layout.addStretch(1)
-
-        cta = QPushButton("Current plan")
-        cta.setObjectName("upgrade_plan_cta")
-        cta.setEnabled(False)
-        layout.addWidget(cta)
-        return card
-
-    def _paid_card(self, plan: WebMusicSubscriptionPlan) -> QFrame:
-        display_name = format_plan_display_name(plan.name)
-        songs = credits_to_songs(plan.monthly_credits, plan.credits_per_generate)
-        cycle_suffix = "/mo" if self._billing_cycle == "monthly" else "/yr"
+    def _pack_card(self, pack: CreditPack) -> QFrame:
+        songs = credits_to_songs(pack.total_credits, CREDITS_PER_SONG)
 
         card = QFrame()
         card.setObjectName("upgrade_plan_card")
@@ -489,8 +334,8 @@ class UpgradePlansDialog(QDialog):
 
         header = QHBoxLayout()
         header.setSpacing(8)
-        header.addWidget(self._icon_badge(paid=True, glyph="✦"))
-        name = QLabel(display_name)
+        header.addWidget(self._icon_badge("✦"))
+        name = QLabel(pack.name)
         name.setObjectName("upgrade_plan_name")
         name.setWordWrap(True)
         header.addWidget(name, stretch=1)
@@ -498,10 +343,10 @@ class UpgradePlansDialog(QDialog):
 
         price_row = QHBoxLayout()
         price_row.setSpacing(4)
-        price = QLabel(format_subscription_price(plan.price_cents))
+        price = QLabel(format_subscription_price(pack.price_cents))
         price.setObjectName("upgrade_plan_price")
         price_row.addWidget(price)
-        suffix = QLabel(cycle_suffix)
+        suffix = QLabel("one-time")
         suffix.setObjectName("upgrade_plan_price_suffix")
         price_row.addWidget(suffix)
         price_row.addStretch(1)
@@ -512,22 +357,22 @@ class UpgradePlansDialog(QDialog):
         credits_layout = QVBoxLayout(credits)
         credits_layout.setContentsMargins(8, 8, 8, 8)
         credits_layout.setSpacing(1)
-        credits_label = QLabel("Monthly Credits")
+        credits_label = QLabel("Credits")
         credits_label.setObjectName("upgrade_credits_label")
         credits_layout.addWidget(credits_label)
-        credits_value = QLabel(f"{int(plan.monthly_credits):,}")
+        credits_value = QLabel(f"{int(pack.total_credits):,}")
         credits_value.setObjectName("upgrade_credits_value")
         credits_layout.addWidget(credits_value)
-        credits_hint = QLabel(f"~ {songs:,} songs/mo")
+        credits_hint = QLabel(f"~ {songs:,} songs")
         credits_hint.setObjectName("upgrade_credits_hint")
         credits_layout.addWidget(credits_hint)
         layout.addWidget(credits)
 
-        for feature in plan_feature_lines(plan):
+        for feature in pack_feature_lines(pack):
             layout.addWidget(self._feature_row(feature))
         layout.addStretch(1)
 
-        cta = QPushButton(f"Get {display_name}")
+        cta = QPushButton(f"Buy {pack.name}")
         cta.setObjectName("upgrade_plan_cta")
         cta.setCursor(Qt.CursorShape.PointingHandCursor)
         cta.clicked.connect(self._open_music_pricing)
@@ -536,7 +381,3 @@ class UpgradePlansDialog(QDialog):
 
     def _open_music_pricing(self) -> None:
         QDesktopServices.openUrl(QUrl(get_pricing_url(embed=False)))
-
-    def _open_portal(self) -> None:
-        QDesktopServices.openUrl(QUrl(get_onboarding_url()))
-        self.accept()

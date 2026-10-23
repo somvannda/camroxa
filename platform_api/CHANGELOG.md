@@ -13,12 +13,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Free-plan web music is now **V6-Mini-only**. `WebMusicChargeBridge.charge()` receives the requested model and rejects V6-Pro / V6-Wild for Free-plan users until a credit pack is purchased in the same calendar month (or the wallet holds more than the monthly grant). Paid plans are unrestricted. Enforced in the V3 charge path before the wallet debit, so every existing Telegram spend report still fires. See `docs/changelog/2026-10-21-web-music-free-model-scope.md`.
 - Free-plan **V6 Pro / V6 Wild previews** on `music.camxora.com`: one 60-second preview per model per billing month, play-only (no MP3/WAV/LRC/SRT), with an Extend-preview upsell. Buying a pack restores full-length tracks. Migration `144_web_music_free_previews`. See `docs/changelog/2026-10-21-web-music-free-previews.md`.
+- `desktop_access` on `GET/PATCH /users/me`: true when the wallet has credits and a live `credit_wallet_lots` pack lot (`remaining_units > 0`, unexpired), or a grandfathered paid license/web subscription. `LicenseRepository.has_paid_desktop_access()` backs the same check for the desktop request gate.
 - `V3BillingStore.expired_lots()` and `V3BillingStore.restamp_live_lots()`; `PACK_CREDIT_VALIDITY` (30 days) in `wallet_sync`. A pack purchase stamps its own lot and re-stamps every other live lot to one shared expiry date (Option B). See `docs/changelog/2026-10-15-packs-only-billing.md`.
 
 ### Changed
 
 - Pack credits now **expire 30 days from purchase**, and lapsed pack lots are clawed back like grants. `expire_unused_grants` is now `expire_lapsed_lots`, and `expired_grant_lots` is now `expired_lots`. The re-stamp only ever extends an expiry, so a prepaid yearly term is never shortened; `daily_grant` lots are excluded. Existing lot expiries are untouched, so grandfathered subscribers keep the term they paid for.
 - Web-music packs re-priced to the retired plan ladder: $5 to 1,000, $10 to 2,300, $20 to 5,500 (new tier), $30 to 8,800. Migration `136_packs_only_billing`.
+- `ProfileService.create_profile()` no longer enforces the retired per-plan channel allowance; `ensure_profile_capacity()` is a no-op. Name uniqueness and the 100-character limit still apply. See `docs/changelog/2026-10-22-desktop-packs-only-gate.md`.
 
 ### Removed
 

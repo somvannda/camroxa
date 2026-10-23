@@ -495,10 +495,14 @@ class LicenseRepository:
         return result is True
 
     async def has_paid_desktop_access(self, user_id: str) -> bool:
-        """True when the user has an active paid license or paid web subscription.
+        """True when the user may use the desktop studio.
 
-        Free ($0) plans cannot use the desktop studio. Hidden $79 and public
-        Starter / Creator / Studio all qualify while the period is unexpired.
+        Packs-only billing: a live credit pack qualifies while the wallet still
+        has credits. Pack lots expire 30 days after purchase (re-stamped on the
+        next purchase), so access ends with the credits.
+
+        Legacy paid licenses and paid web subscriptions still qualify so
+        grandfathered accounts are not locked out.
         """
         result = await self._pool.fetchval(
             """
@@ -519,6 +523,21 @@ class LicenseRepository:
                   AND ws.status = 'active'
                   AND ws.current_period_end > NOW()
                   AND COALESCE(p.price_cents, 0) > 0
+            )
+            OR (
+                COALESCE(
+                    (SELECT balance FROM credit_wallets WHERE user_id = $1),
+                    0
+                ) > 0
+                AND EXISTS(
+                    SELECT 1
+                    FROM credit_wallet_lots lot
+                    WHERE lot.user_id = $1
+                      AND lot.tag = 'pack'
+                      AND lot.remaining_units > 0
+                      AND lot.expires_at IS NOT NULL
+                      AND lot.expires_at > NOW()
+                )
             )
             """,
             UUID(user_id),
