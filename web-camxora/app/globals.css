@@ -1396,7 +1396,8 @@
   .pricing-includes-grid span{display:flex;align-items:flex-start;gap:7px;font-size:10.5px;line-height:1.45;color:var(--muted)}
   .pricing-includes-grid .icon,.pricing-includes-grid .fa-replaced{width:11px!important;height:11px!important;margin-top:2px;color:#86efac;flex:none}
   .pricing-note{display:flex;align-items:center;gap:7px;justify-content:center;margin-top:20px;font-size:10.5px;color:var(--muted2)}
-  .pricing-note a{color:#d8b4fe;text-decoration:underline;text-underline-offset:2px}
+  .pricing-note a{color:inherit;text-decoration:none;transition:color .15s}
+  .pricing-note a:hover{color:#d8b4fe}
   .pricing-note .icon,.pricing-note .fa-replaced{width:11px!important;height:11px!important;flex:none}
   @media(max-width:1200px){.pricing-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:760px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
