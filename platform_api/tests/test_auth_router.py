@@ -550,6 +550,95 @@ class TestLogout:
 
 
 # ---------------------------------------------------------------------------
+# POST /auth/verify-reset-code
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyResetCode:
+    """Tests for POST /api/v1/auth/verify-reset-code."""
+
+    async def test_verify_reset_code_success_does_not_consume_code(
+        self, client: AsyncClient, mock_auth_service: AsyncMock
+    ) -> None:
+        from unittest.mock import patch
+
+        user_id = uuid4()
+        code_id = uuid4()
+        mock_auth_service._user_repo.get_by_email = AsyncMock(
+            return_value=User(
+                id=user_id,
+                email="reset@example.com",
+                display_name="Reset User",
+            )
+        )
+
+        class FakePool:
+            def __init__(self) -> None:
+                self.execute_calls: list[tuple[object, ...]] = []
+
+            async def fetchrow(self, query: str, *args: object):
+                if "FROM email_verifications" in str(query):
+                    return {"id": code_id}
+                return None
+
+            async def execute(self, *args: object, **kwargs: object):
+                self.execute_calls.append(args)
+                return None
+
+        pool = FakePool()
+        with patch("platform_api.dependencies.get_db_pool", return_value=pool):
+            response = await client.post(
+                "/api/v1/auth/verify-reset-code",
+                json={"email": "reset@example.com", "code": "123456"},
+            )
+
+        assert response.status_code == 200
+        assert response.json()["is_verified"] is True
+        assert response.json()["message"] == "Reset code confirmed. Choose a new password."
+        assert pool.execute_calls == []
+
+    async def test_verify_reset_code_rejects_unknown_user(
+        self, client: AsyncClient, mock_auth_service: AsyncMock
+    ) -> None:
+        response = await client.post(
+            "/api/v1/auth/verify-reset-code",
+            json={"email": "missing@example.com", "code": "123456"},
+        )
+
+        assert response.status_code == 422
+        assert "Invalid or expired reset code." in response.text
+
+    async def test_verify_reset_code_rejects_invalid_code(
+        self, client: AsyncClient, mock_auth_service: AsyncMock
+    ) -> None:
+        from unittest.mock import patch
+
+        mock_auth_service._user_repo.get_by_email = AsyncMock(
+            return_value=User(
+                id=uuid4(),
+                email="reset@example.com",
+                display_name="Reset User",
+            )
+        )
+
+        class FakePool:
+            async def fetchrow(self, query: str, *args: object):
+                return None
+
+            async def execute(self, *args: object, **kwargs: object):
+                return None
+
+        with patch("platform_api.dependencies.get_db_pool", return_value=FakePool()):
+            response = await client.post(
+                "/api/v1/auth/verify-reset-code",
+                json={"email": "reset@example.com", "code": "000000"},
+            )
+
+        assert response.status_code == 422
+        assert "Invalid or expired reset code." in response.text
+
+
+# ---------------------------------------------------------------------------
 # POST /auth/verify-email
 # ---------------------------------------------------------------------------
 

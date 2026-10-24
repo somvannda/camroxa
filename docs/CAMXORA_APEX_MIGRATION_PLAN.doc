@@ -1,0 +1,618 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CAMXORA - Apex Migration Plan</title>
+<style>
+  @page { size: A4; margin: 18mm 16mm 18mm 16mm; }
+  body {
+    font-family: Calibri, Arial, sans-serif;
+    font-size: 10.5pt;
+    line-height: 1.42;
+    color: #1f2430;
+    margin: 0;
+    background: #ffffff;
+  }
+  h1, h2, h3, h4 { color: #4c1d95; margin: 0 0 6pt 0; }
+  h1 { font-size: 24pt; line-height: 1.1; letter-spacing: -0.5pt; }
+  h2 { font-size: 16pt; margin-top: 18pt; border-bottom: 1.5pt solid #8b00ff; padding-bottom: 4pt; }
+  h3 { font-size: 12.5pt; margin-top: 14pt; }
+  h4 { font-size: 11pt; margin-top: 10pt; }
+  p { margin: 0 0 7pt 0; }
+  ul, ol { margin: 0 0 8pt 18pt; padding: 0; }
+  li { margin-bottom: 3pt; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0 12pt 0; font-size: 9.5pt; }
+  th { background: #f3e8ff; color: #3b0764; text-align: left; font-weight: bold; }
+  th, td { border: 0.75pt solid #d8cfe8; padding: 5pt 6pt; vertical-align: top; }
+  tr:nth-child(even) td { background: #fcfaff; }
+  .cover { padding-top: 36mm; }
+  .kicker { color: #8b00ff; font-size: 10pt; font-weight: bold; letter-spacing: 1.5pt; text-transform: uppercase; }
+  .subtitle { color: #5f6475; font-size: 13pt; margin: 8pt 0 18pt 0; }
+  .meta td { border: 0; padding: 3pt 8pt 3pt 0; font-size: 10pt; background: #ffffff !important; }
+  .meta td:first-child { color: #6b7280; width: 110pt; }
+  .callout { border-left: 4pt solid #8b00ff; background: #faf5ff; padding: 9pt 12pt; margin: 10pt 0; }
+  .warning { border-left: 4pt solid #b45309; background: #fffbeb; padding: 9pt 12pt; margin: 10pt 0; }
+  .danger { border-left: 4pt solid #dc2626; background: #fef2f2; padding: 9pt 12pt; margin: 10pt 0; }
+  .success { border-left: 4pt solid #16a34a; background: #f0fdf4; padding: 9pt 12pt; margin: 10pt 0; }
+  .small { font-size: 9pt; color: #5f6475; }
+  .mono { font-family: Consolas, monospace; font-size: 9pt; }
+  .tag { display: inline-block; border: 0.75pt solid #c4b5fd; border-radius: 8pt; padding: 1pt 5pt; font-size: 8pt; color: #5b21b6; background: #faf5ff; }
+  .page-break { page-break-before: always; }
+  .check { font-family: Segoe UI Symbol, Arial, sans-serif; }
+  .nowrap { white-space: nowrap; }
+  .center { text-align: center; }
+  .toc td { border: 0; padding: 2pt 0; background: #ffffff !important; font-size: 10pt; }
+  .toc td:first-child { width: 28pt; color: #8b00ff; font-weight: bold; }
+  .kv td:first-child { width: 26%; font-weight: bold; color: #3b0764; }
+  .phase { background: #f8f5ff !important; font-weight: bold; color: #4c1d95; }
+  .muted { color: #6b7280; }
+  .status { font-weight: bold; color: #b45309; }
+</style>
+</head>
+<body>
+
+<div class="cover">
+  <div class="kicker">CAMXORA</div>
+  <h1>Apex Migration Plan</h1>
+  <div class="subtitle">Moving the music platform to camxora.com while keeping music.camxora.com untouched</div>
+
+  <table class="meta">
+    <tr><td>Document</td><td>CAMXORA_APEX_MIGRATION_PLAN.doc</td></tr>
+    <tr><td>Version</td><td>1.0 - Draft for approval</td></tr>
+    <tr><td>Date</td><td>23 October 2026</td></tr>
+    <tr><td>Owner</td><td>Product / Engineering</td></tr>
+    <tr><td>Audience</td><td>Founder, frontend, backend, design, QA, operations</td></tr>
+    <tr><td>Source of truth</td><td>New Camxora templates + current repo audit</td></tr>
+    <tr><td>Status</td><td class="status">Awaiting decision on app base and runtime API</td></tr>
+  </table>
+
+  <div class="callout">
+    <strong>One-line summary:</strong> Build a new apex application from the new templates, run it on
+    <span class="mono">sandbox.camxora.com</span> first, keep <span class="mono">music.camxora.com</span>
+    and <span class="mono">musicapi.camxora.com</span> untouched, and only then switch
+    <span class="mono">camxora.com</span> to the new service with a one-step rollback.
+  </div>
+</div>
+
+<div class="page-break"></div>
+
+<h2>Contents</h2>
+<table class="toc">
+  <tr><td>1</td><td>Executive summary</td></tr>
+  <tr><td>2</td><td>Goals, non-goals, and assumptions</td></tr>
+  <tr><td>3</td><td>Current state - verified</td></tr>
+  <tr><td>4</td><td>Target architecture</td></tr>
+  <tr><td>5</td><td>Non-negotiable guardrails</td></tr>
+  <tr><td>6</td><td>Deliverables and deliverable actions</td></tr>
+  <tr><td>7</td><td>Phases, tasks, and estimates</td></tr>
+  <tr><td>8</td><td>Route map and legacy mapping</td></tr>
+  <tr><td>9</td><td>Environment and sandbox plan</td></tr>
+  <tr><td>10</td><td>Production cutover and rollback</td></tr>
+  <tr><td>11</td><td>QA and launch gates</td></tr>
+  <tr><td>12</td><td>Risks and mitigations</td></tr>
+  <tr><td>13</td><td>Decisions, open questions, and next actions</td></tr>
+</table>
+
+<h2>1. Executive summary</h2>
+<p>
+  The current apex <span class="mono">camxora.com</span> is the marketing website. The music product
+  currently lives at <span class="mono">music.camxora.com</span> and is served by the mature
+  <span class="mono">music_web</span> application. The new Camxora templates are a complete visual and
+  UX redesign of the music platform: listen-first Home, Discover, Create, Library, Charts, Community,
+  artist tools, Studio, Developers, pricing, auth, and legal pages.
+</p>
+<p>
+  The migration should not be a big-bang rewrite of the live music app. It should be a new, separately
+  deployed frontend that uses the new templates, reuses the proven auth/player/streaming logic and
+  existing API, and runs beside the current product until parity is proven.
+</p>
+
+<table>
+  <tr><th>Decision</th><th>Recommendation</th></tr>
+  <tr><td>New app</td><td><span class="mono">web-camxora/</span>, a new Next.js application on port <span class="mono">3103</span>.</td></tr>
+  <tr><td>Visual source</td><td>The new templates from <span class="mono">sample-1</span>. Every visible surface is rebuilt from these templates.</td></tr>
+  <tr><td>Logic source</td><td>Reuse <span class="mono">music_web</span> providers, player engines, auth, streaming, library, playlists, likes, and checkout. Do not copy its old UI.</td></tr>
+  <tr><td>Content source</td><td>Reuse <span class="mono">website/</span> legal, blog, changelog, download, and marketing content, restyled in the new templates.</td></tr>
+  <tr><td>Browser API</td><td>Use <span class="mono">platform_api</span> through a same-origin <span class="mono">/api/v3</span> proxy.</td></tr>
+  <tr><td>Provider API</td><td><span class="mono">musicapi.camxora.com</span> remains the generation provider/API product. Do not touch it.</td></tr>
+  <tr><td>Sandbox</td><td><span class="mono">sandbox.camxora.com</span> points to the new service. Old site remains on <span class="mono">3100</span> for rollback.</td></tr>
+  <tr><td>Production</td><td>Switch only <span class="mono">camxora.com</span> and <span class="mono">www</span> to <span class="mono">3103</span>. Keep <span class="mono">music.camxora.com</span> on <span class="mono">3102</span>.</td></tr>
+  <tr><td>Timeline</td><td>6-8 weeks for the full plan; 3-4 weeks for a limited public beta.</td></tr>
+</table>
+
+<h2>2. Goals, non-goals, and assumptions</h2>
+
+<h3>2.1 Goals</h3>
+<ul>
+  <li>Launch <span class="mono">camxora.com</span> as a listen-first music platform and brand home.</li>
+  <li>Keep <span class="mono">music.camxora.com</span> live and unchanged during the entire build.</li>
+  <li>Use the new templates for every new visible surface, with no legacy UI carried forward.</li>
+  <li>Reuse existing backend behavior, accounts, credits, catalog, playback, and payments.</li>
+  <li>Prove the new app on <span class="mono">sandbox.camxora.com</span> before production.</li>
+  <li>Make the production switch reversible in minutes.</li>
+  <li>Preserve SEO, legal pages, Khmer rendering, and mobile playback quality.</li>
+</ul>
+
+<h3>2.2 Non-goals for v1</h3>
+<ul>
+  <li>Rebuilding <span class="mono">musicapi</span> or its admin console.</li>
+  <li>Changing the live <span class="mono">music.camxora.com</span> code, nginx, DNS, or service.</li>
+  <li>Migrating user accounts or music data to a new database.</li>
+  <li>Replacing the payment provider or billing engine.</li>
+  <li>Cross-subdomain single sign-on across every Camxora host.</li>
+  <li>Retiring the old music app on day one.</li>
+  <li>Native mobile apps or changes to the desktop app binary.</li>
+</ul>
+
+<h3>2.3 Assumptions</h3>
+<ul>
+  <li>The new app runs on the existing sandbox and production VPS; if not, add DNS and TLS 48 hours earlier.</li>
+  <li><span class="mono">platform_api</span> remains the browser-facing API and already supports auth, credits, catalog, streaming, and checkout.</li>
+  <li>The current user portal at <span class="mono">app.camxora.com</span> remains available for billing and API keys during v1.</li>
+  <li>The existing Font Awesome 7.3.1 local package and the original logo are approved assets.</li>
+  <li>One full-time frontend engineer plus part-time design, QA, and ops is available.</li>
+  <li>Production deploy happens only after an explicit approval from the owner.</li>
+</ul>
+
+<div class="page-break"></div>
+
+<h2>3. Current state - verified from the repo</h2>
+
+<table>
+  <tr><th>Host</th><th>Current upstream</th><th>Current application</th><th>Action</th></tr>
+  <tr><td class="mono">camxora.com / www</td><td class="mono">127.0.0.1:3100</td><td><span class="mono">website/</span> marketing</td><td>Leave until cutover, then switch to <span class="mono">3103</span>.</td></tr>
+  <tr><td class="mono">sandbox.camxora.com</td><td class="mono">127.0.0.1:3100</td><td>sandbox website</td><td>Repoint to <span class="mono">3103</span>; keep <span class="mono">3100</span> running.</td></tr>
+  <tr><td class="mono">music.camxora.com</td><td class="mono">127.0.0.1:3102</td><td><span class="mono">music_web/</span></td><td><strong>Freeze. Do not touch.</strong></td></tr>
+  <tr><td class="mono">music.sandbox.camxora.com</td><td class="mono">127.0.0.1:3102</td><td>sandbox music app</td><td>Keep as old-music reference.</td></tr>
+  <tr><td class="mono">app.camxora.com</td><td class="mono">127.0.0.1:3101</td><td>existing user portal</td><td>Keep for billing/API keys in v1.</td></tr>
+  <tr><td class="mono">api.camxora.com</td><td class="mono">127.0.0.1:8100</td><td><span class="mono">platform_api</span></td><td>Keep; browser-facing API.</td></tr>
+  <tr><td class="mono">admin.camxora.com</td><td>existing admin</td><td>legacy admin portal</td><td>Do not touch.</td></tr>
+  <tr><td class="mono">musicapi.camxora.com</td><td>separate</td><td><span class="mono">musicapi</span></td><td><strong>Do not touch.</strong></td></tr>
+  <tr><td class="mono">admin.musicapi.camxora.com</td><td>separate</td><td>musicapi admin</td><td><strong>Do not touch.</strong></td></tr>
+</table>
+
+<div class="callout">
+  <strong>Key finding:</strong> <span class="mono">sandbox.camxora.com</span> already resolves and has TLS.
+  We do not need new DNS for the first stage. We need a new service on <span class="mono">3103</span>
+  and an nginx upstream change for the sandbox vhost.
+</div>
+
+<div class="warning">
+  <strong>Current worktree is not clean.</strong> Branch <span class="mono">feat/web-music-free-monthly</span>
+  has modified Python files and untracked docs/promo. Do not start the apex work there. Create a clean
+  worktree from <span class="mono">main</span> for this migration.
+</div>
+
+<h2>4. Target architecture</h2>
+
+<h3>4.1 Application layers</h3>
+<table>
+  <tr><th>Layer</th><th>Target</th></tr>
+  <tr><td>New apex app</td><td><span class="mono">web-camxora/</span> - Next.js 16, React 19, new Camxora templates.</td></tr>
+  <tr><td>Service</td><td><span class="mono">camxora-web-apex.service</span> on port <span class="mono">3103</span>.</td></tr>
+  <tr><td>Browser API</td><td>Same-origin <span class="mono">/api/v3/*</span> rewrite to <span class="mono">platform_api</span>.</td></tr>
+  <tr><td>Auth</td><td>Existing platform accounts; first-party apex session; no change to old music cookies.</td></tr>
+  <tr><td>Player</td><td>New player UI; reuse <span class="mono">music_web</span> player engines and streaming logic underneath.</td></tr>
+  <tr><td>Content</td><td>New templates; legal/blog/download content migrated from <span class="mono">website/</span>.</td></tr>
+  <tr><td>Provider</td><td><span class="mono">musicapi</span> remains server-side/provider only; no browser calls.</td></tr>
+</table>
+
+<h3>4.2 Reuse strategy</h3>
+<table>
+  <tr><th>Reuse</th><th>Do not reuse</th></tr>
+  <tr><td>Auth provider and session handling.</td><td>Old page JSX and old visual shell.</td></tr>
+  <tr><td>Player engines, streaming helpers, media session, playback fallbacks.</td><td>Old player markup and old CSS.</td></tr>
+  <tr><td>Library, likes, playlists, invites, credits, checkout clients.</td><td>Old card/table styles and old navigation.</td></tr>
+  <tr><td>Pricing, plans, release notes, legal content, blog content.</td><td>Old marketing layout.</td></tr>
+  <tr><td>API contracts and database.</td><td>Hardcoded prototype prices, static pack data, external Unsplash images.</td></tr>
+</table>
+
+<h3>4.3 Host strategy</h3>
+<ul>
+  <li><strong>Local:</strong> new app on <span class="mono">localhost:3103</span>; local platform API; seeded data; no live payments.</li>
+  <li><strong>Sandbox:</strong> <span class="mono">sandbox.camxora.com</span> to new service on <span class="mono">3103</span>; old site remains on <span class="mono">3100</span>; <span class="mono">music.sandbox</span> remains old music.</li>
+  <li><strong>Production:</strong> <span class="mono">camxora.com</span> and <span class="mono">www</span> switch to <span class="mono">3103</span>; <span class="mono">music.camxora.com</span> remains on <span class="mono">3102</span>.</li>
+</ul>
+
+<h2>5. Non-negotiable guardrails</h2>
+<ul>
+  <li>No DNS, nginx, service, or code changes to <span class="mono">music.camxora.com</span>.</li>
+  <li>No changes to <span class="mono">musicapi.camxora.com</span> or its admin.</li>
+  <li>No production deploy until sandbox signoff.</li>
+  <li>No live payment keys on sandbox.</li>
+  <li>No hardcoded credit prices; use the pricing table/API.</li>
+  <li>Dark mode only; no light mode.</li>
+  <li>Original <span class="mono">camxora-logo.svg</span> only.</li>
+  <li>Inter + Niradei, self-hosted; no Google Fonts CDN in production.</li>
+  <li>Font Awesome 7.3.1 local package; no external icon CDN.</li>
+  <li>Primary buttons: <span class="mono">#8B00FF</span>, flat, 10px radius, white text.</li>
+  <li>Header Sign in / Sign up: 96 x 36.</li>
+  <li>Khmer text rendered with Niradei and tested at 390px and 1440px.</li>
+  <li>Images blend into sections at every width; no hard-cut edges.</li>
+  <li>Every new visible surface uses the new templates.</li>
+  <li>One task per branch; one agent per worktree; path-scoped commits.</li>
+</ul>
+
+<div class="page-break"></div>
+
+<h2>6. Deliverables and deliverable actions</h2>
+
+<table>
+  <tr><th>ID</th><th>Deliverable</th><th>Deliverable action</th><th>Acceptance criteria</th></tr>
+  <tr>
+    <td>D0</td><td>Approved foundation</td>
+    <td>Approve the architecture, freeze the scope, create a clean worktree, and produce the route/component inventory.</td>
+    <td>Decision log signed; route map approved; clean branch <span class="mono">feat/camxora-apex</span>; no production changes.</td>
+  </tr>
+  <tr>
+    <td>D1</td><td>Sandbox shell</td>
+    <td>Stand up the new app on <span class="mono">sandbox.camxora.com</span> with the new shell, tokens, player, and login.</td>
+    <td>New home and player load over HTTPS; auth works; old <span class="mono">music.sandbox</span> still works; sandbox is noindex.</td>
+  </tr>
+  <tr>
+    <td>D2</td><td>Listen-first public beta</td>
+    <td>Ship Home, Discover, Charts, Search, Artist, Album, Playlist, 404, and SEO metadata.</td>
+    <td>Browse, search, and play from sandbox; responsive at 390/768/1024/1440/2036; no console errors.</td>
+  </tr>
+  <tr>
+    <td>D3</td><td>Core app beta</td>
+    <td>Ship auth pages, Create, generation states, Library, playlists, likes, credits, pack modal, pricing, and checkout links.</td>
+    <td>Create two versions, deduct credits correctly, save to library, play back, and open checkout in sandbox/test mode.</td>
+  </tr>
+  <tr>
+    <td>D4</td><td>Creator surfaces</td>
+    <td>Ship Community, artist pages, artist dashboard, Publish, and Artist Program.</td>
+    <td>Artist profile, dashboard KPIs, publish flow, and program application work with sandbox data.</td>
+  </tr>
+  <tr>
+    <td>D5</td><td>Products and content</td>
+    <td>Ship Studio/download, Developers, About, Blog, Changelog, Contact, Legal, and footer content.</td>
+    <td>All public routes exist; download uses release API; legal content reviewed; no dead links.</td>
+  </tr>
+  <tr>
+    <td>D6</td><td>Launch-ready build</td>
+    <td>Complete accessibility, performance, SEO, security, analytics, browser/device, and load testing.</td>
+    <td>Launch gates pass; blockers closed; rollback tested; signoff recorded.</td>
+  </tr>
+  <tr>
+    <td>D7</td><td>Production apex</td>
+    <td>Deploy the new service to production, switch <span class="mono">camxora.com</span> and <span class="mono">www</span>, run smoke tests, and monitor.</td>
+    <td>Apex live on <span class="mono">3103</span>; old music untouched; rollback available; 24-hour watch active.</td>
+  </tr>
+  <tr>
+    <td>D8</td><td>Stabilized migration</td>
+    <td>Monitor, hotfix, measure, and decide whether to redirect or keep <span class="mono">music.camxora.com</span>.</td>
+    <td>No P0 incidents; analytics baseline; redirect/retention decision recorded after the agreed window.</td>
+  </tr>
+</table>
+
+<h2>7. Phases, tasks, and estimates</h2>
+
+<p class="small">
+  Estimates are working days for one full-time frontend engineer with part-time design, QA, and ops.
+  Parallel work is possible after D1. Status is "Not started" unless noted.
+</p>
+
+<h3>Phase 0 - Foundation (2-3 days)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P0-01</td><td>Create clean worktree</td><td>New branch <span class="mono">feat/camxora-apex</span> from clean <span class="mono">main</span>; do not use the dirty current branch.</td><td>0.5d</td><td>-</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P0-02</td><td>Architecture decision record</td><td>App base, runtime API, auth, portal role, and old-music policy.</td><td>0.5d</td><td>P0-01</td><td>Product + FE</td><td>Not started</td></tr>
+  <tr><td>P0-03</td><td>Prototype inventory</td><td>List all 35 prototype pages and shared components; map to Next routes.</td><td>0.5d</td><td>P0-01</td><td>FE + Design</td><td>Not started</td></tr>
+  <tr><td>P0-04</td><td>Reuse audit</td><td>Identify <span class="mono">music_web</span> providers, player engines, API clients, and checkout modules.</td><td>0.5d</td><td>P0-01</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P0-05</td><td>Content audit</td><td>Map <span class="mono">website/</span> legal, blog, changelog, download, and marketing pages.</td><td>0.5d</td><td>P0-01</td><td>Product + FE</td><td>Not started</td></tr>
+  <tr><td>P0-06</td><td>Environment matrix</td><td>Local/sandbox/production URLs, env vars, OAuth, Turnstile, CORS, and noindex.</td><td>0.5d</td><td>P0-02</td><td>FE + Ops</td><td>Not started</td></tr>
+  <tr><td>P0-07</td><td>Baseline and backup</td><td>Capture current apex screens/SEO; back up nginx/env/config; record rollback.</td><td>0.5d</td><td>P0-01</td><td>Ops</td><td>Not started</td></tr>
+  <tr><td>P0-08</td><td>Risk and decision log</td><td>Create the live risk register and open-questions list in the repo.</td><td>0.5d</td><td>P0-02</td><td>Product</td><td>Not started</td></tr>
+</table>
+
+<h3>Phase 1 - Sandbox foundation (4-5 days)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P1-01</td><td>Scaffold <span class="mono">web-camxora</span></td><td>Next.js app, TypeScript, lint, typecheck, build, health route.</td><td>0.5d</td><td>P0-02</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P1-02</td><td>Port design tokens</td><td><span class="mono">--bg</span>, <span class="mono">--panel</span>, <span class="mono">--brand</span>, <span class="mono">--play</span>, <span class="mono">--focus</span>, type scale, spacing, radii.</td><td>0.5d</td><td>P1-01</td><td>FE + Design</td><td>Not started</td></tr>
+  <tr><td>P1-03</td><td>Assets</td><td>Original logo, Inter, Niradei, Font Awesome 7.3.1, license notes.</td><td>0.5d</td><td>P1-01</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P1-04</td><td>Shell</td><td>Sidebar, topbar, mobile header, footer, page container, auth states.</td><td>1d</td><td>P1-02</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P1-05</td><td>Player</td><td>New player UI, queue, seek, like, mute, keyboard, mobile mini-player.</td><td>1.5d</td><td>P1-04</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P1-06</td><td>API and auth wiring</td><td>Same-origin <span class="mono">/api/v3</span> proxy, session handling, login/logout, protected-route guard.</td><td>1d</td><td>P1-04</td><td>FE + BE</td><td>Not started</td></tr>
+  <tr><td>P1-07</td><td>Sandbox service</td><td>Systemd <span class="mono">3103</span>, nginx <span class="mono">sandbox.camxora.com</span> upstream, old <span class="mono">3100</span> retained.</td><td>0.5d</td><td>P1-01</td><td>Ops</td><td>Not started</td></tr>
+  <tr><td>P1-08</td><td>Sandbox policy</td><td>Noindex, env badge off, analytics separate/off, test keys only.</td><td>0.5d</td><td>P1-07</td><td>FE + Ops</td><td>Not started</td></tr>
+  <tr><td>P1-09</td><td>Visual harness</td><td>Playwright screenshots at 390/768/1024/1440/2036; console-error check.</td><td>0.5d</td><td>P1-04</td><td>QA</td><td>Not started</td></tr>
+</table>
+
+<h3>Phase 2 - Public listen (5-7 days)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P2-01</td><td>Home</td><td>Hero, continue listening, trending, made-for-you, genres, creators, CTA bands.</td><td>1.5d</td><td>P1-05</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P2-02</td><td>Discover</td><td>Banner, sticky filters, card shelves, new releases, moods, Khmer picks, artists.</td><td>1.5d</td><td>P1-05</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P2-03</td><td>Charts</td><td>Time/region filters, podium, chart rows, preview play, movement labels.</td><td>1d</td><td>P1-05</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P2-04</td><td>Search</td><td>Query, tabs, results, empty/loading states, recent searches.</td><td>0.75d</td><td>P1-06</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P2-05</td><td>Artist / Album / Playlist</td><td>Detail pages, hero, track list, follow/like/save, share, 404.</td><td>1.5d</td><td>P1-05</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P2-06</td><td>SEO</td><td>Metadata, canonical, OG images, sitemap, robots, JSON-LD.</td><td>0.75d</td><td>P2-01</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P2-07</td><td>Public QA</td><td>Responsive, keyboard, no autoplay, broken links, empty states.</td><td>0.5d</td><td>P2-01..05</td><td>QA</td><td>Not started</td></tr>
+</table>
+
+<h3>Phase 3 - Core app (7-10 days)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P3-01</td><td>Auth screens</td><td>Login, signup, forgot, reset, verify, Google, Turnstile, errors.</td><td>1.5d</td><td>P1-06</td><td>FE + BE</td><td>Not started</td></tr>
+  <tr><td>P3-02</td><td>Create</td><td>Tabs, prompt/lyrics, style chips, blueprint, sticky generate dock, progress, A/B versions.</td><td>2d</td><td>P1-05</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P3-03</td><td>Credits</td><td>Balance, pack modal, pricing from API, cost estimate, low-credit state.</td><td>1d</td><td>P1-06</td><td>FE + BE</td><td>Not started</td></tr>
+  <tr><td>P3-04</td><td>Library</td><td>Table/cards, tabs, filters, sort, bulk actions, empty states, play row.</td><td>1.5d</td><td>P1-06</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P3-05</td><td>Playlists and likes</td><td>Create, add/remove, reorder, like, follow, optimistic states.</td><td>1d</td><td>P3-04</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P3-06</td><td>Account and settings</td><td>Profile, plan, usage, API keys link, preferences, sign out.</td><td>1d</td><td>P3-01</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P3-07</td><td>Notifications, invite, redeem</td><td>Menu, list, invite link, redeem code states.</td><td>0.75d</td><td>P3-01</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P3-08</td><td>Pricing and checkout</td><td>Plans, pack modal, checkout redirect, success/cancel, test mode only.</td><td>1d</td><td>P3-03</td><td>FE + BE</td><td>Not started</td></tr>
+  <tr><td>P3-09</td><td>Core flow QA</td><td>Create 2 versions, credits, library, playback, refresh, expired session.</td><td>1d</td><td>P3-01..08</td><td>QA</td><td>Not started</td></tr>
+</table>
+
+<h3>Phase 4 - Creator surfaces (5-7 days)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P4-01</td><td>Community</td><td>Feed, challenges, creator cards, follow states, empty state.</td><td>1.5d</td><td>P2-05</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P4-02</td><td>Artist profile</td><td>Hero, tracks, albums, about, follow, share.</td><td>1d</td><td>P2-05</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P4-03</td><td>Artist dashboard</td><td>KPI cards, charts, top tracks, payouts, date range, table fallback.</td><td>1.5d</td><td>P4-02</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P4-04</td><td>Publish</td><td>Track selection, metadata, cover, visibility, review, success.</td><td>1d</td><td>P3-04</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P4-05</td><td>Artist Program</td><td>Benefits, eligibility, application, status, FAQ.</td><td>0.75d</td><td>P4-02</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P4-06</td><td>Creator QA</td><td>Artist flow, publish, dashboard, program, mobile.</td><td>0.5d</td><td>P4-01..05</td><td>QA</td><td>Not started</td></tr>
+</table>
+
+<h3>Phase 5 - Products and content (4-5 days)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P5-01</td><td>Studio</td><td>Download page, Windows CTA, features, release notes, API-driven download.</td><td>1d</td><td>P1-04</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P5-02</td><td>Developers</td><td>API overview, code sample, links to <span class="mono">musicapi.camxora.com</span>, no API changes.</td><td>0.75d</td><td>P1-04</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P5-03</td><td>About / Blog / Contact</td><td>New templates, content migration, newsletter, contact form.</td><td>1d</td><td>P1-04</td><td>FE + Content</td><td>Not started</td></tr>
+  <tr><td>P5-04</td><td>Legal</td><td>Terms, privacy, cookies, copyright, acceptable use, data deletion.</td><td>1d</td><td>P1-04</td><td>FE + Legal</td><td>Not started</td></tr>
+  <tr><td>P5-05</td><td>Changelog and support</td><td>Release notes, support page, redirects from old website paths.</td><td>0.5d</td><td>P5-03</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P5-06</td><td>Content QA</td><td>Copy review, legal review, no dead links, SEO metadata.</td><td>0.5d</td><td>P5-01..05</td><td>QA + Content</td><td>Not started</td></tr>
+</table>
+
+<h3>Phase 6 - Hardening (5-7 days)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P6-01</td><td>Accessibility</td><td>Contrast, focus, keyboard, reduced motion, labels, error summaries, focus not obscured.</td><td>1.5d</td><td>P2-P5</td><td>FE + QA</td><td>Not started</td></tr>
+  <tr><td>P6-02</td><td>Performance</td><td>Image optimization, local fonts, bundle split, Suspense, CWV, no layout shift.</td><td>1.5d</td><td>P2-P5</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P6-03</td><td>Security</td><td>CSP, cookie flags, CORS, rate limits, auth guard, no secrets in client.</td><td>1d</td><td>P1-06</td><td>FE + Ops</td><td>Not started</td></tr>
+  <tr><td>P6-04</td><td>SEO</td><td>Canonical, sitemap, robots, redirects, structured data, broken-link crawl.</td><td>1d</td><td>P2-06</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P6-05</td><td>Analytics and errors</td><td>Page/play/create/purchase events, error tracking, sandbox separation.</td><td>0.5d</td><td>P1-07</td><td>FE + Ops</td><td>Not started</td></tr>
+  <tr><td>P6-06</td><td>Device/browser matrix</td><td>Chrome, Edge, Firefox, Safari/iOS, Android; 390/768/1024/1440/2036.</td><td>1d</td><td>P2-P5</td><td>QA</td><td>Not started</td></tr>
+  <tr><td>P6-07</td><td>Load and soak</td><td>Public pages, search, playback, create burst, queue behavior.</td><td>0.5d</td><td>P6-02</td><td>QA + Ops</td><td>Not started</td></tr>
+  <tr><td>P6-08</td><td>Bug bash and signoff</td><td>Close blockers, record evidence, approve sandbox.</td><td>1d</td><td>P6-01..07</td><td>All</td><td>Not started</td></tr>
+</table>
+
+<h3>Phase 7 - Production cutover (1-2 days)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P7-01</td><td>Preflight</td><td>Back up nginx/env; verify cert, service, health, rollback command, on-call.</td><td>0.5d</td><td>P6-08</td><td>Ops</td><td>Not started</td></tr>
+  <tr><td>P7-02</td><td>Deploy production <span class="mono">3103</span></td><td>Build and start new service; keep old <span class="mono">3100</span> running.</td><td>0.5d</td><td>P7-01</td><td>Ops</td><td>Not started</td></tr>
+  <tr><td>P7-03</td><td>Switch apex</td><td>Change <span class="mono">camxora.com</span> and <span class="mono">www</span> upstream from <span class="mono">3100</span> to <span class="mono">3103</span>; reload.</td><td>0.25d</td><td>P7-02</td><td>Ops</td><td>Not started</td></tr>
+  <tr><td>P7-04</td><td>Smoke and monitor</td><td>Home, auth, discover, play, create, library, pricing, legal; 24-hour watch.</td><td>0.5d</td><td>P7-03</td><td>All</td><td>Not started</td></tr>
+  <tr><td>P7-05</td><td>Rollback drill</td><td>Verify one-step upstream rollback to <span class="mono">3100</span>.</td><td>0.25d</td><td>P7-02</td><td>Ops</td><td>Not started</td></tr>
+</table>
+
+<h3>Phase 8 - Aftercare (2-4 weeks)</h3>
+<table>
+  <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
+  <tr><td>P8-01</td><td>24h / 7d / 30d monitoring</td><td>Errors, latency, playback failures, auth, payments, support tickets.</td><td>2-4w</td><td>P7-04</td><td>Ops + FE</td><td>Not started</td></tr>
+  <tr><td>P8-02</td><td>Hotfix window</td><td>Fix P1/P2 issues; no scope creep.</td><td>as needed</td><td>P7-04</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P8-03</td><td>Redirect decision</td><td>Keep <span class="mono">music.camxora.com</span> as alias or 301 to apex after agreement.</td><td>0.5d</td><td>P8-01</td><td>Product + Ops</td><td>Not started</td></tr>
+  <tr><td>P8-04</td><td>Retire old website</td><td>After 30 days stable, retire <span class="mono">3100</span> or keep as emergency fallback.</td><td>0.5d</td><td>P8-01</td><td>Ops</td><td>Not started</td></tr>
+  <tr><td>P8-05</td><td>Postmortem</td><td>Document what worked, metrics, follow-ups.</td><td>0.5d</td><td>P8-01</td><td>All</td><td>Not started</td></tr>
+</table>
+
+<h2>8. Route map and legacy mapping</h2>
+
+<h3>8.1 New public routes</h3>
+<table>
+  <tr><th>Prototype</th><th>New route</th><th>Notes</th></tr>
+  <tr><td>index.html</td><td class="mono">/</td><td>Listen-first Home.</td></tr>
+  <tr><td>discover.html</td><td class="mono">/discover</td><td>Sticky filters, banner, shelves.</td></tr>
+  <tr><td>charts.html</td><td class="mono">/charts</td><td>Time/region filters.</td></tr>
+  <tr><td>search.html</td><td class="mono">/search</td><td>Server-rendered query page.</td></tr>
+  <tr><td>artist.html</td><td class="mono">/artist/[id]</td><td>Artist profile.</td></tr>
+  <tr><td>playlist.html</td><td class="mono">/playlists/[id]</td><td>Playlist detail.</td></tr>
+  <tr><td>-</td><td class="mono">/albums/[id]</td><td>Album detail; reuse music_web catalog.</td></tr>
+  <tr><td>studio.html</td><td class="mono">/studio</td><td>Download + features.</td></tr>
+  <tr><td>developers.html</td><td class="mono">/developers</td><td>API marketing; links to musicapi host.</td></tr>
+  <tr><td>artist-program.html</td><td class="mono">/artist-program</td><td>Program landing.</td></tr>
+  <tr><td>pricing.html</td><td class="mono">/pricing</td><td>Plans and packs from API.</td></tr>
+  <tr><td>about.html</td><td class="mono">/about</td><td>Migrate existing content.</td></tr>
+  <tr><td>blog.html</td><td class="mono">/blog</td><td>Reuse blog data.</td></tr>
+  <tr><td>contact.html</td><td class="mono">/contact</td><td>Contact form.</td></tr>
+  <tr><td>legal.html</td><td class="mono">/legal</td><td>Terms, privacy, cookies, copyright, acceptable use, data deletion.</td></tr>
+  <tr><td>-</td><td class="mono">/changelog</td><td>From existing website release notes.</td></tr>
+</table>
+
+<h3>8.2 New app routes</h3>
+<table>
+  <tr><th>Prototype</th><th>New route</th><th>Notes</th></tr>
+  <tr><td>login.html / signup.html</td><td class="mono">/login</td><td>Sign in / create account in one flow or tabs.</td></tr>
+  <tr><td>forgot-password.html / reset-password.html</td><td class="mono">/forgot-password</td><td>Reset flow.</td></tr>
+  <tr><td>verify-email.html</td><td class="mono">/verify-email</td><td>Verification.</td></tr>
+  <tr><td>create.html</td><td class="mono">/create</td><td>Studio-first create flow.</td></tr>
+  <tr><td>library.html</td><td class="mono">/library</td><td>Tracks, albums, playlists, likes.</td></tr>
+  <tr><td>account.html / settings.html</td><td class="mono">/account</td><td>Profile, plan, usage, preferences.</td></tr>
+  <tr><td>notifications.html</td><td class="mono">/notifications</td><td>Notification list.</td></tr>
+  <tr><td>invite.html / redeem.html</td><td class="mono">/invite</td><td>Invite and redeem.</td></tr>
+  <tr><td>checkout.html</td><td class="mono">/checkout</td><td>Sandbox/test only until cutover.</td></tr>
+  <tr><td>community.html</td><td class="mono">/community</td><td>Feed and challenges.</td></tr>
+  <tr><td>artist-dashboard.html</td><td class="mono">/artist-dashboard</td><td>Artist KPIs.</td></tr>
+  <tr><td>publish.html</td><td class="mono">/publish</td><td>Publish a track.</td></tr>
+</table>
+
+<h3>8.3 Legacy mapping - only after cutover approval</h3>
+<table>
+  <tr><th>Old URL</th><th>New URL</th><th>Timing</th></tr>
+  <tr><td class="mono">music.camxora.com/</td><td class="mono">camxora.com/</td><td>After apex stability window.</td></tr>
+  <tr><td class="mono">music.camxora.com/explore</td><td class="mono">/discover</td><td>After cutover.</td></tr>
+  <tr><td class="mono">music.camxora.com/genres</td><td class="mono">/discover</td><td>After cutover.</td></tr>
+  <tr><td class="mono">music.camxora.com/profile</td><td class="mono">/account</td><td>After cutover.</td></tr>
+  <tr><td class="mono">music.camxora.com/register</td><td class="mono">/signup</td><td>After cutover.</td></tr>
+  <tr><td class="mono">music.camxora.com/create</td><td class="mono">/create</td><td>After cutover.</td></tr>
+  <tr><td class="mono">music.camxora.com/library</td><td class="mono">/library</td><td>After cutover.</td></tr>
+  <tr><td class="mono">music.camxora.com/pricing</td><td class="mono">/pricing</td><td>After cutover.</td></tr>
+  <tr><td class="mono">camxora.com/terms</td><td class="mono">/legal#terms</td><td>At apex cutover.</td></tr>
+  <tr><td class="mono">camxora.com/privacy</td><td class="mono">/legal#privacy</td><td>At apex cutover.</td></tr>
+  <tr><td class="mono">camxora.com/cookies</td><td class="mono">/legal#cookies</td><td>At apex cutover.</td></tr>
+  <tr><td class="mono">camxora.com/download</td><td class="mono">/studio</td><td>At apex cutover.</td></tr>
+</table>
+
+<div class="page-break"></div>
+
+<h2>9. Environment and sandbox plan</h2>
+
+<h3>9.1 Environment matrix</h3>
+<table>
+  <tr><th>Setting</th><th>Local</th><th>Sandbox</th><th>Production</th></tr>
+  <tr><td>Site URL</td><td class="mono">http://localhost:3103</td><td class="mono">https://sandbox.camxora.com</td><td class="mono">https://camxora.com</td></tr>
+  <tr><td>API</td><td class="mono">local platform_api</td><td class="mono">https://api.sandbox.camxora.com</td><td class="mono">https://api.camxora.com</td></tr>
+  <tr><td>User portal</td><td class="mono">http://localhost:3001</td><td class="mono">https://app.sandbox.camxora.com</td><td class="mono">https://app.camxora.com</td></tr>
+  <tr><td>Old music</td><td class="mono">http://localhost:3002</td><td class="mono">https://music.sandbox.camxora.com</td><td class="mono">https://music.camxora.com</td></tr>
+  <tr><td>Env flag</td><td class="mono">development</td><td class="mono">sandbox</td><td class="mono">production</td></tr>
+  <tr><td>Turnstile</td><td>dev key</td><td>sandbox hostname</td><td>production hostname</td></tr>
+  <tr><td>OAuth callback</td><td class="mono">/auth/callback</td><td class="mono">sandbox.camxora.com/auth/callback</td><td class="mono">camxora.com/auth/callback</td></tr>
+  <tr><td>Indexing</td><td>noindex</td><td>noindex</td><td>index</td></tr>
+  <tr><td>Payments</td><td>mock/test</td><td>sandbox/test</td><td>live only at cutover</td></tr>
+</table>
+
+<h3>9.2 Sandbox setup actions</h3>
+<ol>
+  <li>Create <span class="mono">web-camxora/</span> and build it on port <span class="mono">3103</span>.</li>
+  <li>Add <span class="mono">camxora-web-apex.service</span> with environment from the sandbox matrix.</li>
+  <li>Repoint the <span class="mono">sandbox.camxora.com</span> nginx block from <span class="mono">3100</span> to <span class="mono">3103</span>.</li>
+  <li>Keep the old <span class="mono">3100</span> service running for rollback.</li>
+  <li>Keep <span class="mono">music.sandbox.camxora.com</span> on <span class="mono">3102</span>.</li>
+  <li>Add <span class="mono">X-Robots-Tag: noindex, nofollow</span> and sandbox robots rules.</li>
+  <li>Add Turnstile hostname and OAuth callback for sandbox.</li>
+  <li>Add CORS origin only if direct API calls remain; prefer same-origin proxy.</li>
+  <li>Set analytics to a sandbox property or disable it.</li>
+  <li>Run smoke tests and capture screenshots.</li>
+</ol>
+
+<h3>9.3 Sandbox acceptance</h3>
+<ul>
+  <li class="check">&#9744; <span class="mono">https://sandbox.camxora.com</span> returns 200 and serves the new shell.</li>
+  <li class="check">&#9744; Login, signup, logout, and session refresh work.</li>
+  <li class="check">&#9744; Home, Discover, Search, Artist, Playlist, Album load.</li>
+  <li class="check">&#9744; Player plays, seeks, queues, likes, and mutes.</li>
+  <li class="check">&#9744; Create two versions, credits deduct, library updates.</li>
+  <li class="check">&#9744; Pricing and checkout are sandbox/test only.</li>
+  <li class="check">&#9744; 390/768/1024/1440/2036 screenshots pass.</li>
+  <li class="check">&#9744; No console errors; no broken links; no external image/font dependencies.</li>
+  <li class="check">&#9744; <span class="mono">music.sandbox.camxora.com</span> still works.</li>
+  <li class="check">&#9744; <span class="mono">music.camxora.com</span> was not touched.</li>
+</ul>
+
+<h2>10. Production cutover and rollback</h2>
+
+<h3>10.1 Cutover sequence</h3>
+<ol>
+  <li>Freeze apex changes; confirm sandbox signoff and launch checklist.</li>
+  <li>Back up current nginx config, environment files, and service state.</li>
+  <li>Deploy <span class="mono">web-camxora</span> to production <span class="mono">3103</span>.</li>
+  <li>Keep the old <span class="mono">3100</span> website service running.</li>
+  <li>Switch <span class="mono">camxora.com</span> and <span class="mono">www</span> upstream to <span class="mono">3103</span>.</li>
+  <li>Reload nginx and purge Cloudflare cache for HTML.</li>
+  <li>Smoke: home, auth, discover, play, create, library, pricing, legal.</li>
+  <li>Monitor errors, latency, auth, playback, and payments for 24 hours.</li>
+</ol>
+
+<h3>10.2 Rollback</h3>
+<div class="danger">
+  <strong>Rollback is an nginx upstream change.</strong> Point <span class="mono">camxora.com</span> and
+  <span class="mono">www</span> back to <span class="mono">127.0.0.1:3100</span>, reload nginx, and purge
+  cache. No database rollback is required. Keep the old service running until aftercare is complete.
+</div>
+<ul>
+  <li>Do not roll back or modify <span class="mono">music.camxora.com</span>.</li>
+  <li>Do not modify <span class="mono">musicapi</span> or its admin.</li>
+  <li>If a backend change is involved, gate it with a feature flag and a separate rollback.</li>
+  <li>Record the exact rollback command and owner before cutover.</li>
+</ul>
+
+<h2>11. QA and launch gates</h2>
+
+<table>
+  <tr><th>Area</th><th>Required checks</th><th>Gate</th></tr>
+  <tr><td>Auth</td><td>Login, signup, Google, logout, reset, verify, expired session, protected route.</td><td>Pass</td></tr>
+  <tr><td>Create</td><td>Prompt, lyrics, style, generate, progress, A/B versions, cancel/retry, credits.</td><td>Pass</td></tr>
+  <tr><td>Player</td><td>Play, pause, seek, queue, like, mute, keyboard, mobile mini-player, no autoplay.</td><td>Pass</td></tr>
+  <tr><td>Library</td><td>Tracks, likes, playlists, filters, empty states, bulk actions.</td><td>Pass</td></tr>
+  <tr><td>Discovery</td><td>Home, Discover, charts, search, artist, album, playlist.</td><td>Pass</td></tr>
+  <tr><td>Pricing</td><td>API prices, pack modal, checkout redirect, no hardcoded values.</td><td>Pass</td></tr>
+  <tr><td>Mobile</td><td>390px, 768px, landscape, touch targets, fixed player and dock.</td><td>Pass</td></tr>
+  <tr><td>Accessibility</td><td>Contrast, focus, keyboard, labels, reduced motion, focus not obscured.</td><td>Pass</td></tr>
+  <tr><td>Performance</td><td>LCP/CLS/INP, image sizes, font loading, no layout shift.</td><td>Pass</td></tr>
+  <tr><td>SEO</td><td>Metadata, canonical, sitemap, robots, structured data, 404, redirects.</td><td>Pass</td></tr>
+  <tr><td>Security</td><td>CSP, cookies, CORS, rate limits, no secrets, auth guard.</td><td>Pass</td></tr>
+  <tr><td>Compatibility</td><td>Chrome, Edge, Firefox, Safari/iOS, Android.</td><td>Pass</td></tr>
+  <tr><td>Regression</td><td>Old <span class="mono">music.camxora.com</span> and <span class="mono">musicapi.camxora.com</span> still return 200.</td><td>Pass</td></tr>
+</table>
+
+<h2>12. Risks and mitigations</h2>
+<table>
+  <tr><th>Risk</th><th>Impact</th><th>Mitigation</th><th>Owner</th></tr>
+  <tr><td>Player rewrite regressions</td><td>High</td><td>Reuse player engines and streaming logic; new UI only; test iOS/Safari early.</td><td>FE + QA</td></tr>
+  <tr><td>Auth/cookie mismatch across hosts</td><td>High</td><td>Host-only apex session in v1; no old-app cookie changes; test login/logout.</td><td>FE + BE</td></tr>
+  <tr><td>Two frontends drift</td><td>Medium</td><td>Freeze <span class="mono">music_web</span>; new app is additive; no shared deploy.</td><td>Ops</td></tr>
+  <tr><td>Wrong API target</td><td>High</td><td>One API client; same-origin proxy; no browser calls to musicapi.</td><td>FE</td></tr>
+  <tr><td>External images/fonts</td><td>Medium</td><td>Owned/B2 assets; local fonts; no Unsplash in production.</td><td>FE + Design</td></tr>
+  <tr><td>SEO duplication</td><td>Medium</td><td>Sandbox noindex; old host untouched; redirects only after approval.</td><td>FE</td></tr>
+  <tr><td>Payment test hits live</td><td>High</td><td>Test keys only; no live checkout on sandbox; review before cutover.</td><td>BE + Ops</td></tr>
+  <tr><td>Production switch mistake</td><td>High</td><td>Nginx-only switch; old <span class="mono">3100</span> running; one-step rollback; backup.</td><td>Ops</td></tr>
+  <tr><td>Scope creep across 35 pages</td><td>High</td><td>Phase gates; MVP route subset; hide unfinished nav entries.</td><td>Product</td></tr>
+  <tr><td>Dirty current branch</td><td>Medium</td><td>New clean worktree from <span class="mono">main</span>; no mixed commits.</td><td>FE</td></tr>
+</table>
+
+<h2>13. Decisions, open questions, and next actions</h2>
+
+<h3>13.1 Decisions required before coding</h3>
+<table>
+  <tr><th>ID</th><th>Decision</th><th>Recommendation</th><th>Owner</th></tr>
+  <tr><td>D-001</td><td>App base</td><td>New <span class="mono">web-camxora/</span> from <span class="mono">music_web</span> + <span class="mono">website</span>.</td><td>Product + FE</td></tr>
+  <tr><td>D-002</td><td>Runtime API</td><td><span class="mono">platform_api</span> <span class="mono">/api/v3</span>; musicapi remains provider.</td><td>Product + BE</td></tr>
+  <tr><td>D-003</td><td>User portal role</td><td>Keep <span class="mono">app.camxora.com</span> for billing/API keys in v1.</td><td>Product</td></tr>
+  <tr><td>D-004</td><td>Auth cookies</td><td>Host-only apex session; no old-app cookie changes.</td><td>FE + BE</td></tr>
+  <tr><td>D-005</td><td>Old music redirect</td><td>Keep as alias for at least 30 days after cutover.</td><td>Product + Ops</td></tr>
+  <tr><td>D-006</td><td>Launch scope</td><td>MVP or full 35-page scope.</td><td>Product</td></tr>
+  <tr><td>D-007</td><td>Analytics</td><td>Separate sandbox property; production property at cutover.</td><td>Product + Ops</td></tr>
+  <tr><td>D-008</td><td>Asset source</td><td>Owned/B2 images; no external Unsplash.</td><td>Design</td></tr>
+</table>
+
+<h3>13.2 Open questions</h3>
+<ul>
+  <li>Is the new app allowed to use <span class="mono">platform_api</span> as the browser API, or must it use <span class="mono">musicapi</span>?</li>
+  <li>Does <span class="mono">app.camxora.com</span> remain the billing/API-key portal after apex launch, or should account pages move into the apex app?</li>
+  <li>Which pages are required for the first public beta?</li>
+  <li>Who owns final legal copy review?</li>
+  <li>Which analytics and error-tracking providers are approved?</li>
+  <li>When should <span class="mono">music.camxora.com</span> redirect to <span class="mono">camxora.com</span>, if ever?</li>
+</ul>
+
+<h3>13.3 Next actions</h3>
+<ol>
+  <li>Approve D-001 and D-002.</li>
+  <li>Create a clean worktree from <span class="mono">main</span> named <span class="mono">feat/camxora-apex</span>.</li>
+  <li>Copy the prototype into the repo as a design reference under <span class="mono">web-camxora/design-reference</span> (not served).</li>
+  <li>Produce the route map and component inventory from this document.</li>
+  <li>Stand up the sandbox service on <span class="mono">3103</span> and repoint only <span class="mono">sandbox.camxora.com</span>.</li>
+  <li>Ship the new shell, player, Home, and Discover to sandbox.</li>
+  <li>Stop at the sandbox checkpoint; do not touch production or <span class="mono">music.camxora.com</span>.</li>
+</ol>
+
+<div class="success">
+  <strong>Definition of success for the first checkpoint:</strong> the new Camxora templates are live on
+  <span class="mono">sandbox.camxora.com</span> with the new shell, player, Home, Discover, and login;
+  <span class="mono">music.camxora.com</span>, <span class="mono">musicapi.camxora.com</span>, and
+  <span class="mono">app.camxora.com</span> are untouched; the nginx rollback is tested.
+</div>
+
+<p class="small">
+  End of document. This plan is a working draft. Update the decision log and task status as the project
+  moves; do not use this document as approval to deploy production.
+</p>
+
+</body>
+</html>

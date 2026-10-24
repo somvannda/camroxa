@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Your Library — Camxora</title>
+<link rel="icon" href="camxora-logo.svg" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="fontawesome/css/all.min.css" />
+<link rel="stylesheet" href="app.css" />
+<style>
+.page{padding-top:96px}
+.page-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:24px}
+.page-head h1{font-size:clamp(28px,3.4vw,40px);line-height:1;letter-spacing:-.045em;font-weight:800}
+.page-head p{color:var(--muted);font-size:14px;line-height:1.7;margin-top:9px;max-width:62ch}
+.page-head .eyebrow{margin-bottom:10px}
+.page-actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.chip-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px}
+.chip2{font-size:12px;color:var(--muted);border:1px solid var(--line);padding:8px 13px;border-radius:999px;transition:.18s}
+.chip2:hover{background:var(--grad);border-color:transparent;color:#fff;box-shadow:var(--glow)}
+.chip2.on{background:var(--grad);border-color:transparent;color:#fff}
+.panel{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid var(--line);border-radius:14px}
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:20px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{font-size:12px;color:var(--muted);padding:10px 14px;border-bottom:2px solid transparent;white-space:nowrap;transition:.18s}
+.tab:hover{color:#fff}
+.tab.on{color:#fff;border-color:var(--purple)}
+@media(max-width:680px){
+  .page{padding-top:88px}
+  .page-head{flex-direction:column;align-items:flex-start}
+}
+
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:26px}
+.stat-card{padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.stat-card b{display:block;font-size:24px;letter-spacing:-.04em}
+.stat-card span{display:block;font-size:11px;color:var(--muted2);margin-top:4px}
+.playlist-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.playlist-card{padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--panel);transition:.2s}
+.playlist-card:hover{transform:translateY(-3px);border-color:rgba(168,85,247,.5);box-shadow:var(--glow)}
+.collage{display:grid;grid-template-columns:1fr 1fr;grid-template-rows:1fr 1fr;gap:2px;border-radius:8px;overflow:hidden;aspect-ratio:16/10}
+.collage img{width:100%;height:100%;object-fit:cover}
+.playlist-card h3{font-size:13px;margin-top:9px}
+.playlist-card p{font-size:10.5px;color:var(--muted2);margin-top:2px}
+.gen-row{display:grid;grid-template-columns:54px 1fr auto auto auto;gap:12px;align-items:center;padding:10px;border:1px solid var(--line);border-radius:10px;background:rgba(7,10,19,.35)}
+.gen-row img{width:54px;height:40px;object-fit:cover;border-radius:6px}
+.gen-row strong{display:block;font-size:12px}
+.gen-row span{display:block;font-size:10.5px;color:var(--muted2);margin-top:2px}
+.pill{font-size:10px;padding:5px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.pill.pub{color:#d8b4fe;border-color:rgba(168,85,247,.4);background:rgba(124,58,237,.12)}
+.pill.priv{color:var(--muted2)}
+.gen-list{display:flex;flex-direction:column;gap:8px}
+.mini-act{font-size:10.5px;border:1px solid var(--line);padding:6px 9px;border-radius:7px;color:var(--muted)}
+.mini-act:hover{background:var(--grad);border-color:transparent;color:#fff}
+@media(max-width:900px){.stats-row{grid-template-columns:1fr 1fr}.playlist-grid{grid-template-columns:1fr}.gen-row{grid-template-columns:46px 1fr auto}.gen-row .mini-act{display:none}}
+</style>
+</head>
+<body data-auth="out">
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <linearGradient id="eq" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#c4b5fd"/><stop offset="1" stop-color="#a855f7"/>
+    </linearGradient>
+    <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M9.5 21v-6h5v6"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 5.3-5.3 2.2 2.2-5.3z"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></symbol>
+    <symbol id="i-library" viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 9h8M8 13h8M8 17h5"/></symbol>
+    <symbol id="i-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 5.2a3.2 3.2 0 0 1 0 5.6"/><path d="M17 14.5a5.5 5.5 0 0 1 3.5 5.5"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M20.5 8.6c0 5-8.5 10.4-8.5 10.4S3.5 13.6 3.5 8.6A4.6 4.6 0 0 1 12 6a4.6 4.6 0 0 1 8.5 2.6z"/></symbol>
+    <symbol id="i-bell" viewBox="0 0 24 24"><path d="M6 9a6 6 0 1 1 12 0c0 5 2 6 2 6H4s2-1 2-6"/><path d="M10 19a2 2 0 0 0 4 0"/></symbol>
+    <symbol id="i-panel" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="14" rx="2"/><path d="M14 5v14"/></symbol>
+    <symbol id="i-chev-r" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></symbol>
+    <symbol id="i-chev-d" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></symbol>
+    <symbol id="i-arrow-r" viewBox="0 0 24 24"><path d="M4 12h16"/><path d="m14 6 6 6-6 6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M8 5.5v13l11-6.5z"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24"><path d="M18 6v12L9 12z"/><path d="M6 5v14"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 6v12l9-6z"/><path d="M18 5v14"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24"><path d="M3 7h3l11 10h4"/><path d="M3 17h3l3-3"/><path d="m17 4 3 3-3 3"/><path d="m17 14 3 3-3 3"/></symbol>
+    <symbol id="i-repeat" viewBox="0 0 24 24"><path d="M17 3l3 3-3 3"/><path d="M20 6H8a4 4 0 0 0-4 4v1"/><path d="M7 21l-3-3 3-3"/><path d="M4 18h12a4 4 0 0 0 4-4v-1"/></symbol>
+    <symbol id="i-volume" viewBox="0 0 24 24"><path d="M4 10v4h3l4 3V7L7 10z"/><path d="M15 9a4 4 0 0 1 0 6"/><path d="M17.5 6.5a8 8 0 0 1 0 11"/></symbol>
+    <symbol id="i-queue" viewBox="0 0 24 24"><path d="M4 6h11M4 12h11M4 18h7"/><path d="M18 10v8"/><circle cx="16" cy="19" r="2"/></symbol>
+    <symbol id="i-text" viewBox="0 0 24 24"><path d="M6 4h9l4 4v12H6z"/><path d="M15 4v4h4"/><path d="M9 12h7M9 16h5"/></symbol>
+    <symbol id="i-lyrics" viewBox="0 0 24 24"><path d="M5 5h14v10H9l-4 4z"/><path d="M9 9h7M9 12h4"/></symbol>
+    <symbol id="i-remix" viewBox="0 0 24 24"><path d="M4 12h3l3-5 4 10 3-5h3"/><circle cx="4" cy="12" r="1"/><circle cx="20" cy="12" r="1"/></symbol>
+    <symbol id="i-mic" viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M6 11a6 6 0 0 0 12 0"/><path d="M12 17v4"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24"><rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/></symbol>
+    <symbol id="i-chev-l" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></symbol>
+    <symbol id="i-music" viewBox="0 0 24 24"><path d="M9 18V5l10-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="16" cy="16" r="3"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="4"/><path d="m10 9 5 3-5 3z"/></symbol>
+    <symbol id="i-calendar" viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="15" rx="3"/><path d="M8 3v4M16 3v4M4 10h16"/><path d="M8 14h3M13 14h3M8 17h3"/></symbol>
+    <symbol id="i-bar" viewBox="0 0 24 24"><path d="M5 20V10M12 20V4M19 20v-7"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24"><path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.1 2.1-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-3v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.1-2.1.1-.1A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.6-1H2.8v-3H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9l-.1-.1 2.1-2.1.1.1a1.7 1.7 0 0 0 1.9.3 1.7 1.7 0 0 0 1-1.6v-.2h3v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1 2.1 2.1-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v3h-.2a1.7 1.7 0 0 0-1.6 1z"/></symbol>
+    <symbol id="i-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="2"/><rect x="14" y="3" width="7" height="7" rx="2"/><rect x="3" y="14" width="7" height="7" rx="2"/><rect x="14" y="14" width="7" height="7" rx="2"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24"><path d="M20 15.5A8.5 8.5 0 0 1 8.5 4 8.5 8.5 0 1 0 20 15.5z"/></symbol>
+    <symbol id="i-login" viewBox="0 0 24 24"><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/><path d="M15 4h5v16h-5"/></symbol>
+    <symbol id="i-user-plus" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M19 8v6M16 11h6"/></symbol>
+  </defs>
+</svg>
+<div class="app">
+  <aside class="sidebar">
+    <a class="brand" href="index.html">
+      <img class="brand-mark" src="camxora-logo.svg" alt="Camxora" />
+      <span class="brand-name">Camxora</span>
+    </a>
+    <div class="side-scroll">
+      <nav class="nav">
+        <a href="index.html"><svg class="icon"><use href="#i-home"/></svg> Home</a><a href="discover.html"><svg class="icon"><use href="#i-compass"/></svg> Discover</a><a href="create.html"><svg class="icon"><use href="#i-plus"/></svg> Create<svg class="icon chev"><use href="#i-chev-r"/></svg></a><a href="charts.html"><svg class="icon"><use href="#i-chart"/></svg> Charts<svg class="icon chev"><use href="#i-chev-r"/></svg></a><a class="active" href="library.html"><svg class="icon"><use href="#i-library"/></svg> Library</a><a href="community.html"><svg class="icon"><use href="#i-users"/></svg> Community<svg class="icon chev"><use href="#i-chev-d"/></svg></a>
+      </nav>
+      <div class="nav-divider"></div>
+      <div class="side-label">Playlists</div>
+      <div class="playlists">
+        <a href="library.html"><svg class="icon"><use href="#i-heart"/></svg> Liked Songs</a><a href="playlist.html"><svg class="icon"><use href="#i-library"/></svg> Chill Vibes</a><a href="playlist.html"><svg class="icon"><use href="#i-library"/></svg> EDM Party<span class="plus">+</span></a><a href="playlist.html"><svg class="icon"><use href="#i-library"/></svg> Khmer Hits</a><a href="playlist.html"><svg class="icon"><use href="#i-library"/></svg> My Playlist</a>
+      </div>
+      <div class="side-label" style="margin-top:10px">Products</div>
+      <div class="side-grid">
+        <a href="studio.html"><svg class="icon"><use href="#i-panel"/></svg> Studio</a><a href="developers.html"><svg class="icon"><use href="#i-queue"/></svg> Music API</a>
+      </div>
+      <div class="side-label" style="margin-top:10px">Rewards</div>
+      <div class="side-grid">
+        <a href="invite.html"><svg class="icon"><use href="#i-users"/></svg> Invite friends</a>
+        <a href="redeem.html"><svg class="icon"><use href="#i-plus"/></svg> Redeem code</a>
+      </div>
+    </div>
+    <div class="side-account signed-in-only">
+      <div class="guest-offer member-credit">
+        <div class="guest-offer-head">
+          <span class="guest-kicker">Your credits</span>
+          <span class="guest-price member-tier">Pro</span>
+        </div>
+        <strong class="guest-amount member-amount">8,420 <small>credits</small></strong>
+        <div class="credit-bar"><i></i></div>
+        <div class="credit-meta"><span>1,000 = $5</span><span>30 days</span></div>
+        <button class="btn btn-primary" type="button" data-modal-open="packs"><svg class="icon"><use href="#i-plus"/></svg> Buy packs</button>
+      </div>
+      <a class="member-profile" href="account.html">
+        <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=100&q=80" alt="Somvannda" />
+        <span class="member-copy"><strong>Somvannda</strong><small>Pro Plan</small></span>
+        <svg class="icon member-arrow"><use href="#i-arrow-r"/></svg>
+      </a>
+    </div>
+    <div class="side-account guest-only">
+      <div class="guest-offer">
+        <div class="guest-offer-head">
+          <span class="guest-kicker">Start creating</span>
+          <span class="guest-price">$5</span>
+        </div>
+        <strong class="guest-amount">1,000 credits</strong>
+        <p>Make your first song. Listening is free.</p>
+        <a class="btn btn-primary" href="signup.html"><svg class="icon"><use href="#i-user-plus"/></svg> Create account</a>
+      </div>
+      <a class="guest-signin-row" href="login.html">
+        <span class="guest-signin-ico"><svg class="icon"><use href="#i-login"/></svg></span>
+        <span class="guest-signin-copy"><strong>Sign in</strong><small>Already have an account?</small></span>
+        <svg class="icon guest-signin-arrow"><use href="#i-arrow-r"/></svg>
+      </a>
+    </div>
+  </aside>
+  <div class="main">
+    <header class="topbar">
+      <a class="mobile-brand" href="index.html">
+        <img src="camxora-logo.svg" alt="" style="width:24px;height:24px;border-radius:6px" />
+        Camxora
+      </a>
+      <form class="search" data-search-form role="search">
+        <svg class="icon"><use href="#i-search"/></svg>
+        <input type="search" name="q" placeholder="Search songs, artists, genres..." aria-label="Search" />
+      </form>
+      <div class="top-actions">
+        <div class="menu-wrap signed-in-only">
+          <button class="icon-btn bell" data-menu="notifications" aria-label="Notifications"><svg class="icon"><use href="#i-bell"/></svg><span class="badge-dot"></span></button>
+          <div class="menu notifications" data-panel="notifications">
+            <div class="menu-head"><strong>Notifications</strong><a href="notifications.html">See all</a></div>
+            <a class="menu-item" href="artist.html"><span class="mi">♪</span><span><b>Kanya published Bassac Moon</b><small>2 hours ago</small></span></a>
+            <a class="menu-item" href="artist-program.html"><span class="mi">★</span><span><b>Artist Program is open</b><small>Yesterday</small></span></a>
+            <a class="menu-item" href="account.html"><span class="mi">+</span><span><b>1,000 credits added</b><small>2 days ago</small></span></a>
+          </div>
+        </div>
+        <div class="menu-wrap signed-in-only">
+          <button class="btn-create" data-menu="create"><svg class="icon" style="width:13px;height:13px"><use href="#i-plus"/></svg> Create Music <svg class="icon chev" style="width:13px;height:13px"><use href="#i-chev-d"/></svg></button>
+          <div class="menu create-menu" data-panel="create">
+            <a href="create.html">Open studio</a>
+            <a href="create.html#text">Text to Song</a>
+            <a href="create.html#lyrics">Lyrics to Song</a>
+            <a href="create.html#remix">Style Remix</a>
+            <a href="create.html#vocal">Vocal Generate</a>
+          </div>
+        </div>
+        <div class="menu-wrap signed-in-only">
+          <button class="account" data-menu="account">
+            <img src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=80&q=80" alt="Somvannda" />
+            <span class="account-text"><strong>Somvannda</strong><small>Pro Plan</small></span>
+            <svg class="icon chev"><use href="#i-chev-d"/></svg>
+          </button>
+          <div class="menu account-menu" data-panel="account">
+            <div class="menu-head"><strong>Somvannda</strong><span>Pro Plan</span></div>
+            <a href="account.html">Profile &amp; plan</a>
+            <a href="artist-dashboard.html">Creator dashboard</a>
+            <a href="library.html">Your library</a>
+            <a href="settings.html">Settings</a>
+            <a href="invite.html">Invite friends</a>
+            <a href="redeem.html">Redeem code</a>
+            <a href="studio.html">Desktop app</a>
+            <button class="menu-signout" data-signout>Sign out</button>
+          </div>
+        </div>
+        <a class="btn btn-ghost guest-only guest-signin header-auth" href="login.html"><svg class="icon"><use href="#i-login"/></svg> Sign in</a>
+        <a class="btn-create guest-only btn-signup header-auth" href="signup.html"><svg class="icon"><use href="#i-user-plus"/></svg> Sign up</a>
+      </div>
+    </header>
+    <div class="content">
+      <div class="page">
+
+<div class="page-head">
+  <div><div class="eyebrow">Your collection</div><h1>Your Library</h1><p>Liked songs, playlists, private generations and downloads — all in one place.</p></div>
+  <a class="btn btn-primary" href="create.html">Create a song</a>
+</div>
+<div class="stats-row">
+  <div class="stat-card"><b>128</b><span>Liked songs</span></div>
+  <div class="stat-card"><b>12</b><span>Playlists</span></div>
+  <div class="stat-card"><b>34</b><span>Generations</span></div>
+  <div class="stat-card"><b>8</b><span>Downloads</span></div>
+</div>
+<div data-tabs>
+  <div class="tabs">
+    <button class="tab on" type="button" data-tab="all">All</button>
+    <button class="tab" type="button" data-tab="liked">Liked</button>
+    <button class="tab" type="button" data-tab="playlists">Playlists</button>
+    <button class="tab" type="button" data-tab="generated">Generated</button>
+    <button class="tab" type="button" data-tab="downloads">Downloads</button>
+  </div>
+
+  <div class="tab-panel" data-panel-tab="all">
+    <div class="sec-head"><h2>Recently played</h2><a href="discover.html">Find more</a></div>
+    <div class="cards">
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Night in Phnom Penh</h3><p>Sochcat AI</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 13K</span><span>4:12</span></div></article>
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Golden Hour</h3><p>Malis</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 1.2M</span><span>3:02</span></div></article>
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Bass Camp 2026</h3><p>Chmnaba Beats</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 87K</span><span>4:30</span></div></article>
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Angkor Dreams</h3><p>Rithy AI</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 79K</span><span>3:12</span></div></article>
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Sunset Vibes</h3><p>Dara AI</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 64K</span><span>4:01</span></div></article>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel-tab="liked" hidden>
+    <div class="cards">
+      <article class="card"><div class="art"><img src="hero.png" alt="" style="object-position:50% 18%" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Bassac Moon</h3><p>Kanya</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 2.4M</span><span>3:24</span></div></article>
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Golden Hour</h3><p>Malis</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 1.2M</span><span>3:02</span></div></article>
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>ស្រីមាស</h3><p>Vannak</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 760K</span><span>4:11</span></div></article>
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Neon Lotus</h3><p>Rithy</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 980K</span><span>2:58</span></div></article>
+      <article class="card"><div class="art"><img src="https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?auto=format&fit=crop&w=600&q=80" alt="" /><button class="play"><svg class="icon"><use href="#i-play"/></svg></button></div><h3>Sunset Vibes</h3><p>Dara AI</p><div class="stats"><span><svg class="icon"><use href="#i-play"/></svg> 64K</span><span>4:01</span></div></article>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel-tab="playlists" hidden>
+    <div class="playlist-grid">
+      <a class="playlist-card" href="playlist.html"><div class="collage"><img src="https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?auto=format&fit=crop&w=400&q=80" alt=""></div><h3>Chill Vibes</h3><p>24 tracks · 1h 12m</p></a>
+      <a class="playlist-card" href="playlist.html"><div class="collage"><img src="https://images.unsplash.com/photo-1519501025264-65ba15a82390?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1470229722913-7c0e2dbbafd3?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1528181304800-259b08848526?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80" alt=""></div><h3>EDM Party</h3><p>18 tracks · 58m</p></a>
+      <a class="playlist-card" href="playlist.html"><div class="collage"><img src="https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1524504388940-b1c1722653e1?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=400&q=80" alt=""><img src="https://images.unsplash.com/photo-1495616811223-4d98c6e9c869?auto=format&fit=crop&w=400&q=80" alt=""></div><h3>Khmer Hits</h3><p>31 tracks · 1h 40m</p></a>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel-tab="generated" hidden>
+    <div class="gen-list">
+      <div class="gen-row"><img src="hero.png" alt="" style="object-position:50% 18%" /><div><strong>Bassac Moon</strong><span>Take 1 · 3:24 · today</span></div><span class="pill priv">Private</span><span class="pill">MP3</span><a class="mini-act" href="publish.html">Publish</a></div>
+      <div class="gen-row"><img src="https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=200&q=80" alt="" /><div><strong>Golden Hour</strong><span>Take 2 · 3:31 · yesterday</span></div><span class="pill priv">Private</span><span class="pill">WAV</span><a class="mini-act" href="publish.html">Publish</a></div>
+      <div class="gen-row"><img src="https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=200&q=80" alt="" /><div><strong>Neon Lotus</strong><span>Published · 87K plays</span></div><span class="pill pub">Published</span><span class="pill">MP3</span><a class="mini-act" href="artist.html">Open</a></div>
+    </div>
+  </div>
+
+  <div class="tab-panel" data-panel-tab="downloads" hidden>
+    <div class="panel" style="padding:14px 18px">
+      <div class="gen-row"><img src="hero.png" alt="" style="object-position:50% 18%" /><div><strong>Bassac Moon</strong><span>MP3 · 320 kbps · 8.2 MB</span></div><span class="pill">Downloaded</span><a class="mini-act" href="#">Open folder</a></div>
+      <div class="gen-row" style="margin-top:8px"><img src="https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=200&q=80" alt="" /><div><strong>Golden Hour</strong><span>WAV · 48 kHz · 52 MB</span></div><span class="pill">Downloaded</span><a class="mini-act" href="#">Open folder</a></div>
+      <div class="gen-row" style="margin-top:8px"><img src="https://images.unsplash.com/photo-1516280440614-37939bbacd81?auto=format&fit=crop&w=200&q=80" alt="" /><div><strong>ស្រីមាស</strong><span>MP3 · 320 kbps · 9.1 MB</span></div><span class="pill">Downloaded</span><a class="mini-act" href="#">Open folder</a></div>
+    </div>
+  </div>
+</div>
+
+      </div>
+<footer class="site-footer">
+        <div class="footer-top">
+          <div class="footer-brand">
+            <a class="footer-logo" href="index.html"><img src="camxora-logo.svg" alt="" /> CAMXORA</a>
+            <p>The home of AI music. Listen to what creators are making, or make the next track everyone plays.</p>
+            <form class="newsletter" onsubmit="return false">
+              <input type="email" placeholder="Your email" aria-label="Email" />
+              <button class="btn btn-primary" type="submit">Subscribe</button>
+            </form>
+            <div class="footer-social"><a href="#">X</a><a href="#">Instagram</a><a href="#">YouTube</a><a href="#">TikTok</a></div>
+          </div>
+          <div class="footer-cols">
+            <div><h4>Product</h4><a href="create.html">Create</a><a href="discover.html">Discover</a><a href="charts.html">Charts</a><a href="library.html">Library</a><a href="account.html">Credits</a><a href="pricing.html">Pricing</a><a href="studio.html">Studio</a><a href="developers.html">Developers</a></div>
+            <div><h4>Creators</h4><a href="community.html">Community</a><a href="create.html">Publish</a><a href="community.html">Challenges</a><a href="artist-program.html">Artist program</a></div>
+            <div><h4>Company</h4><a href="about.html">About</a><a href="blog.html">Blog</a><a href="contact.html">Contact</a></div>
+            <div><h4>Legal</h4><a href="legal.html#terms">Terms</a><a href="legal.html#privacy">Privacy</a><a href="legal.html#copyright">Copyright</a><a href="legal.html#acceptable">Acceptable use</a></div>
+          </div>
+        </div>
+        <div class="footer-bottom">
+          <span>© 2026 Camxora</span>
+          <div><a href="#">ខ្មែរ</a><a href="#">English</a></div>
+        </div>
+      </footer>
+    </div>
+    <div class="player" data-player>
+      <div class="p-now">
+        <img class="cover" data-p-cover src="hero.png" alt="" style="object-position:58% 22%" />
+        <div class="p-info">
+          <div class="p-title-row"><span class="p-eq" aria-hidden="true"><i></i><i></i><i></i></span><strong data-p-title>Phnom Penh Tonight</strong></div>
+          <span data-p-artist>Sochcat AI</span>
+        </div>
+        <button class="p-like" data-p-like type="button" aria-label="Like this track" aria-pressed="false"><svg class="icon"><use href="#i-heart"/></svg></button>
+      </div>
+      <div class="p-center">
+        <div class="p-controls">
+          <button class="pbtn" data-p-shuffle type="button" aria-label="Shuffle" aria-pressed="false"><svg class="icon"><use href="#i-shuffle"/></svg></button>
+          <button class="pbtn" data-p-prev type="button" aria-label="Previous track"><svg class="icon"><use href="#i-prev"/></svg></button>
+          <button class="pbtn play" data-p-toggle type="button" aria-label="Play" aria-pressed="false"><svg class="icon"><use href="#i-play"/></svg></button>
+          <button class="pbtn" data-p-next type="button" aria-label="Next track"><svg class="icon"><use href="#i-next"/></svg></button>
+          <button class="pbtn" data-p-repeat type="button" aria-label="Repeat" aria-pressed="false"><svg class="icon"><use href="#i-repeat"/></svg></button>
+        </div>
+        <div class="p-progress">
+          <span class="p-time" data-p-elapsed>3:28</span>
+          <input class="p-range" data-p-seek type="range" min="0" max="252" value="208" aria-label="Seek" />
+          <span class="p-time" data-p-duration>4:12</span>
+        </div>
+      </div>
+      <div class="p-right">
+        <button class="pbtn" data-p-mute type="button" aria-label="Mute" aria-pressed="false"><svg class="icon"><use href="#i-volume"/></svg></button>
+        <button class="pbtn" data-p-queue type="button" aria-label="Queue" aria-expanded="false" aria-controls="p-queue"><svg class="icon"><use href="#i-queue"/></svg></button>
+      </div>
+      <div class="p-queue-panel" id="p-queue" data-p-queue-panel hidden>
+        <div class="p-queue-head"><strong>Up next</strong><span>3 tracks</span></div>
+        <button class="p-queue-item on" type="button" data-queue-index="0"><img src="hero.png" alt="" /><span><b>Phnom Penh Tonight</b><small>Sochcat AI · 4:12</small></span><span class="p-queue-dur">4:12</span></button>
+        <button class="p-queue-item" type="button" data-queue-index="1"><img src="hero.png" alt="" /><span><b>Bassac Moon</b><small>Kanya · 3:24</small></span><span class="p-queue-dur">3:24</span></button>
+        <button class="p-queue-item" type="button" data-queue-index="2"><img src="https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=120&q=80" alt="" /><span><b>Golden Hour</b><small>Malis · 3:02</small></span><span class="p-queue-dur">3:02</span></button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-backdrop" data-modal-panel="packs" hidden>
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="packs-title">
+    <div class="modal-head">
+      <div><div class="eyebrow">Credits</div><h2 id="packs-title">Buy a pack</h2><p>One-time purchase · valid 30 days</p></div>
+      <button class="icon-btn" type="button" data-modal-close aria-label="Close">✕</button>
+    </div>
+    <div class="pack-grid">
+      <button class="pack-option" type="button" data-price="5" data-credits="1,000"><span class="k">Starter</span><b>$5</b><small>1,000 credits</small></button>
+      <button class="pack-option on" type="button" data-price="10" data-credits="2,300"><span class="k">Creator</span><b>$10</b><small>2,300 credits</small></button>
+      <button class="pack-option" type="button" data-price="20" data-credits="5,500"><span class="k">Studio</span><b>$20</b><small>5,500 credits</small></button>
+    </div>
+    <div class="modal-foot"><span>You pay <b data-pack-total>$10.00</b></span><a class="btn btn-primary" href="checkout.html">Continue to checkout</a></div>
+    <p class="fine">Demo pricing. Payments are handled by the selected provider.</p>
+  </div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

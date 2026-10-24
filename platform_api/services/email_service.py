@@ -11,8 +11,13 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from threading import Lock
+from urllib.parse import quote
 
 from platform_api.config import get_settings
+from platform_api.services.email_templates import (
+    render_password_reset_email,
+    render_verification_email,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -22,61 +27,71 @@ _lock = Lock()
 def _build_verification_email(
     code: str,
     display_name: str,
+    verify_url: str,
+    account_email: str,
     from_name: str,
     from_address: str,
+    logo_url: str,
+    expire_minutes: int = 15,
 ) -> MIMEMultipart:
-    """Build a minimal, clean HTML verification email."""
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8">
-<style>
-  body {{ margin: 0; padding: 0; background: #ffffff; font-family: 'Segoe UI', system-ui, sans-serif; }}
-  .container {{ max-width: 480px; margin: 0 auto; padding: 40px 24px; }}
-  .header {{ text-align: center; margin-bottom: 32px; }}
-  .logo {{ font-size: 28px; font-weight: 800; color: #7466F1; letter-spacing: 2px; }}
-  .subtitle {{ color: #888; font-size: 14px; margin-top: 8px; }}
-  .card {{ background: #0f1629; border-radius: 16px; padding: 32px; text-align: center; border: 1px solid rgba(116,102,241,0.15); }}
-  .greeting {{ color: #eef4ff; font-size: 16px; margin-bottom: 24px; }}
-  .code-label {{ color: rgba(255,255,255,0.5); font-size: 12px; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 8px; }}
-  .code {{ color: #ffffff; font-size: 36px; font-weight: 800; letter-spacing: 8px; padding: 16px 0; }}
-  .divider {{ height: 1px; background: rgba(255,255,255,0.08); margin: 24px 0; }}
-  .note {{ color: rgba(255,255,255,0.45); font-size: 12px; line-height: 1.6; }}
-  .footer {{ text-align: center; margin-top: 32px; color: #aaa; font-size: 11px; }}
-</style>
-</head>
-<body>
-<div class="container">
-  <div class="header">
-    <div class="logo">CAMXORA</div>
-    <div class="subtitle">Music Generation Studio</div>
-  </div>
-  <div class="card">
-    <div class="greeting">Hey {display_name},</div>
-    <div class="code-label">Your verification code</div>
-    <div class="code">{code}</div>
-    <div class="divider"></div>
-    <div class="note">
-      This code expires in 15 minutes.<br>
-      If you didn't create an account, you can safely ignore this email.
-    </div>
-  </div>
-  <div class="footer">
-    &copy; 2026 CAMXORA. All rights reserved.
-  </div>
-</div>
-</body>
-</html>"""
+    """Build the branded account-verification email."""
+    html = render_verification_email(
+        code=code,
+        display_name=display_name,
+        verify_url=verify_url,
+        account_email=account_email,
+        logo_url=logo_url,
+        expire_minutes=expire_minutes,
+    )
 
     msg = MIMEMultipart("alternative")
-    msg["Subject"] = f"Verify your CAMXORA account — {code}"
+    msg["Subject"] = "Verify your CAMXORA account"
     msg["From"] = f"{from_name} <{from_address}>"
     msg["To"] = ""  # Set by caller
     plain = (
         f"Hey {display_name},\n\n"
         f"Your CAMXORA verification code is: {code}\n\n"
-        "This code expires in 15 minutes.\n"
+        f"Verify your email: {verify_url}\n\n"
+        f"This code expires in {expire_minutes} minutes.\n"
         "If you didn't create an account, you can ignore this email.\n"
+    )
+    msg.attach(MIMEText(plain, "plain", "utf-8"))
+    msg.attach(MIMEText(html, "html", "utf-8"))
+    return msg
+
+
+def _build_password_reset_email(
+    code: str,
+    display_name: str,
+    reset_url: str,
+    account_email: str,
+    from_name: str,
+    from_address: str,
+    logo_url: str,
+    expire_minutes: int = 15,
+) -> MIMEMultipart:
+    """Build the branded password-reset email."""
+    html = render_password_reset_email(
+        code=code,
+        display_name=display_name,
+        reset_url=reset_url,
+        account_email=account_email,
+        logo_url=logo_url,
+        expire_minutes=expire_minutes,
+    )
+
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = "Reset your CAMXORA password"
+    msg["From"] = f"{from_name} <{from_address}>"
+    msg["To"] = ""  # Set by caller
+    plain = (
+        f"Hey {display_name},\n\n"
+        "We received a request to reset your CAMXORA password.\n\n"
+        f"Your reset code is: {code}\n"
+        f"Reset your password: {reset_url}\n\n"
+        f"This code expires in {expire_minutes} minutes.\n"
+        "If you didn't request this, you can safely ignore this email.\n"
+        "Your password will not change until the code is used.\n"
     )
     msg.attach(MIMEText(plain, "plain", "utf-8"))
     msg.attach(MIMEText(html, "html", "utf-8"))
@@ -114,21 +129,59 @@ def send_verification_email(
     to_email: str,
     code: str,
     display_name: str = "there",
+    verify_url: str | None = None,
 ) -> bool:
-    """Send a verification code email via SMTP.
+    """Send a branded verification code email via SMTP.
 
     Returns True on success, False on failure.
     """
     settings = get_settings()
+    base_url = settings.frontend_base_url.rstrip("/")
+    if not verify_url:
+        verify_url = f"{base_url}/verify-email?email={quote(to_email)}"
     msg = _build_verification_email(
         code=code,
         display_name=display_name,
+        verify_url=verify_url,
+        account_email=to_email,
         from_name=settings.email_from_name,
         from_address=settings.email_from_address,
+        logo_url=settings.email_logo_url,
+        expire_minutes=settings.email_verification_expire_minutes,
     )
     ok = _send(msg, to_email)
     if ok:
         logger.info("Verification email sent to %s", to_email)
+    return ok
+
+
+def send_password_reset_email(
+    to_email: str,
+    code: str,
+    display_name: str = "there",
+    reset_url: str | None = None,
+) -> bool:
+    """Send a branded password-reset email via SMTP.
+
+    Returns True on success, False on failure.
+    """
+    settings = get_settings()
+    base_url = settings.frontend_base_url.rstrip("/")
+    if not reset_url:
+        reset_url = f"{base_url}/reset-password?email={quote(to_email)}"
+    msg = _build_password_reset_email(
+        code=code,
+        display_name=display_name,
+        reset_url=reset_url,
+        account_email=to_email,
+        from_name=settings.email_from_name,
+        from_address=settings.email_from_address,
+        logo_url=settings.email_logo_url,
+        expire_minutes=settings.email_verification_expire_minutes,
+    )
+    ok = _send(msg, to_email)
+    if ok:
+        logger.info("Password reset email sent to %s", to_email)
     return ok
 
 

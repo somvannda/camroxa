@@ -6,13 +6,17 @@ POST /send-verification, POST /verify-email endpoints.
 
 from __future__ import annotations
 
+import logging
 import random
 import re
+import secrets
 import string
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, Request, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token
 from pydantic import BaseModel, EmailStr, Field
 
 from platform_api.config import get_settings
@@ -48,6 +52,7 @@ from platform_api.services.shared.turnstile_service import TurnstileService
 router = APIRouter(prefix="/auth", tags=["auth"])
 USER_ACCESS_TOKEN_COOKIE_NAME = "camxora_access_token"
 USER_REFRESH_TOKEN_COOKIE_NAME = "camxora_refresh_token"
+REMEMBER_COOKIE_NAME = "camxora_remember"
 ADMIN_ACCESS_TOKEN_COOKIE_NAME = "camxora_admin_access_token"
 ADMIN_REFRESH_TOKEN_COOKIE_NAME = "camxora_admin_refresh_token"
 
@@ -72,6 +77,10 @@ class RegisterRequest(BaseModel):
     invitation_code: str | None = Field(default=None, min_length=1, max_length=64)
     product: str | None = Field(default=None, max_length=32)
     cf_turnstile_response: str | None = Field(default=None, description="Cloudflare Turnstile token")
+
+
+class GoogleLoginRequest(BaseModel):
+    credential: str = Field(..., min_length=20)
 
 
 class SignupModeResponse(BaseModel):
@@ -107,6 +116,23 @@ class VerifyEmailRequest(BaseModel):
 
     email: EmailStr
     code: str = Field(..., min_length=6, max_length=6)
+
+
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+
+class VerifyResetCodeRequest(BaseModel):
+    """Request to validate a password-reset code before choosing a password."""
+
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    code: str = Field(..., min_length=6, max_length=6)
+    new_password: str = Field(..., min_length=8, max_length=128)
 
 
 class VerificationResponse(BaseModel):
@@ -190,6 +216,8 @@ def _set_auth_cookies(
     response: Response,
     token_response: TokenResponse,
     request: Request | None = None,
+    *,
+    remember: bool = False,
 ) -> None:
     settings = get_settings()
     secure = not settings.debug
@@ -209,9 +237,26 @@ def _set_auth_cookies(
         httponly=True,
         secure=secure,
         samesite="lax",
-        max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+        max_age=(settings.refresh_token_expire_days * 24 * 60 * 60) if remember else None,
         path="/",
     )
+    if remember:
+        response.set_cookie(
+            REMEMBER_COOKIE_NAME,
+            "1",
+            httponly=False,
+            secure=secure,
+            samesite="lax",
+            max_age=settings.refresh_token_expire_days * 24 * 60 * 60,
+            path="/",
+        )
+    else:
+        response.delete_cookie(
+            REMEMBER_COOKIE_NAME,
+            path="/",
+            secure=secure,
+            samesite="lax",
+        )
 
 
 def _clear_auth_cookies(response: Response, request: Request | None = None) -> None:
@@ -220,6 +265,7 @@ def _clear_auth_cookies(response: Response, request: Request | None = None) -> N
     access_cookie_name, refresh_cookie_name = _resolve_cookie_names(request)
     response.delete_cookie(access_cookie_name, path="/", httponly=True, secure=secure, samesite="lax")
     response.delete_cookie(refresh_cookie_name, path="/", httponly=True, secure=secure, samesite="lax")
+    response.delete_cookie(REMEMBER_COOKIE_NAME, path="/", secure=secure, samesite="lax")
 
 
 def _turnstile_is_configured() -> bool:
@@ -276,6 +322,8 @@ async def _set_session_for_user(
     user: User,
     response: Response,
     http_request: Request,
+    *,
+    remember: bool = False,
 ) -> None:
     """Issue auth cookies for a user who just registered or re-registered."""
     token_pair = await auth_service.issue_token_pair_for_user(user)
@@ -285,7 +333,21 @@ async def _set_session_for_user(
         token_type="bearer",
         expires_in=token_pair.expires_in,
     )
-    _set_auth_cookies(response, token_response, http_request)
+    _set_auth_cookies(response, token_response, http_request, remember=remember)
+
+
+async def _ensure_welcome_grant(user_id: str) -> None:
+    """Grant any due free-plan period/daily credits immediately."""
+    try:
+        from platform_api.dependencies import get_v3_grant_service
+
+        grants = get_v3_grant_service()
+        await grants.ensure_period_grant(user_id)
+        await grants.ensure_daily_grant(user_id)
+    except Exception:
+        logging.getLogger("platform_api.routers.auth").warning(
+            "Welcome credit grant failed for %s", user_id, exc_info=True
+        )
 
 
 # Type aliases for dependency injection
@@ -504,7 +566,12 @@ async def login(
             expires_in=token_pair.expires_in,
         )
         _log.info("Setting auth cookies...")
-        _set_auth_cookies(response, token_response, http_request)
+        _set_auth_cookies(
+            response,
+            token_response,
+            http_request,
+            remember=bool(request.remember),
+        )
         _log.info("Login successful")
         return token_response
         
@@ -514,6 +581,78 @@ async def login(
     except Exception as e:
         _log.error(f"Unexpected login error: {type(e).__name__}: {e}", exc_info=True)
         raise
+
+
+@router.post(
+    "/google",
+    response_model=UserResponse,
+    summary="Sign in or sign up with a Google ID token",
+)
+async def google_login(
+    request: GoogleLoginRequest,
+    response: Response,
+    http_request: Request,
+    auth_service: AuthServiceDep,
+) -> UserResponse:
+    """Verify a Google Identity Services credential and issue a session.
+
+    The browser obtains a signed ID token from Google Identity Services and
+    posts it here. No client secret is needed; the token audience is checked
+    against GOOGLE_CLIENT_ID.
+    """
+    settings = get_settings()
+    client_id = settings.google_client_id.strip()
+    if not client_id:
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured.")
+
+    try:
+        info = id_token.verify_oauth2_token(
+            request.credential,
+            google_requests.Request(),
+            client_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail="Invalid Google credential.") from exc
+
+    if not bool(info.get("email_verified")):
+        raise HTTPException(status_code=403, detail="Google email is not verified.")
+
+    email = str(info.get("email") or "").strip().lower()
+    if not email:
+        raise HTTPException(status_code=401, detail="Google did not return an email.")
+
+    display_name = str(info.get("name") or email).strip()[:50]
+    user = await auth_service._user_repo.get_by_email(email)
+
+    if user is None:
+        user = User(
+            email=email,
+            password_hash=AuthService.hash_password(secrets.token_urlsafe(32)),
+            display_name=display_name,
+            role=UserRole.USER,
+            status=UserStatus.ACTIVE,
+            email_confirmed=True,
+            products=[PRODUCT_MUSIC_WEB],
+        )
+        user = await auth_service._user_repo.create(user)
+        # The repository currently inserts email_confirmed=false by default.
+        user = await auth_service._user_repo.update(user.id, email_confirmed=True) or user
+    else:
+        if user.status != UserStatus.ACTIVE:
+            raise HTTPException(status_code=403, detail="Account is not active.")
+        if not user.email_confirmed:
+            user = await auth_service._user_repo.update(user.id, email_confirmed=True) or user
+        add_product = getattr(auth_service._user_repo, "add_product", None)
+        if callable(add_product):
+            await add_product(user.id, PRODUCT_MUSIC_WEB)
+
+    await _ensure_welcome_grant(str(user.id))
+    await _set_session_for_user(auth_service, user, response, http_request)
+    return UserResponse(
+        id=str(user.id),
+        email=user.email,
+        display_name=user.display_name,
+    )
 
 
 @router.post(
@@ -633,6 +772,7 @@ async def register(
         if callable(add_product):
             await add_product(existing_user.id, signup_product)
         if refreshed_user is not None:
+            await _ensure_welcome_grant(str(refreshed_user.id))
             await _set_session_for_user(auth_service, refreshed_user, response, http_request)
         return UserResponse(
             id=str(existing_user.id),
@@ -692,6 +832,7 @@ async def register(
             display_name=created_user.display_name or "there",
         )
 
+    await _ensure_welcome_grant(str(created_user.id))
     await _set_session_for_user(auth_service, created_user, response, http_request)
     return UserResponse(
         id=str(created_user.id),
@@ -770,7 +911,12 @@ async def refresh(
         token_type="bearer",
         expires_in=token_pair.expires_in,
     )
-    _set_auth_cookies(response, token_response, http_request)
+    _set_auth_cookies(
+        response,
+        token_response,
+        http_request,
+        remember=http_request.cookies.get(REMEMBER_COOKIE_NAME) == "1",
+    )
     return token_response
 
 
@@ -943,10 +1089,183 @@ async def verify_email(
 
     user = await auth_service._user_repo.get_by_email(request.email)
     if user is not None:
+        await _ensure_welcome_grant(str(user.id))
         await _set_session_for_user(auth_service, user, response, http_request)
 
     return VerificationResponse(
         message="Email verified successfully.",
+        email=request.email,
+        is_verified=True,
+    )
+
+
+@router.post(
+    "/forgot-password",
+    response_model=VerificationResponse,
+    status_code=200,
+    summary="Send a password reset code",
+)
+async def forgot_password(
+    request: ForgotPasswordRequest,
+    auth_service: AuthServiceDep,
+) -> VerificationResponse:
+    """Send a reset code without revealing whether the email exists."""
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.email_service import send_password_reset_email
+
+    user = await auth_service._user_repo.get_by_email(request.email)
+    if user is not None:
+        pool = get_db_pool()
+        await pool.execute(
+            """
+            UPDATE email_verifications SET used = true
+            WHERE user_id = $1 AND purpose = 'password_reset' AND used = false
+            """,
+            user.id,
+        )
+        code = _generate_code()
+        settings = get_settings()
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            minutes=settings.email_verification_expire_minutes
+        )
+        await pool.execute(
+            """
+            INSERT INTO email_verifications (user_id, code, purpose, expires_at)
+            VALUES ($1, $2, 'password_reset', $3)
+            """,
+            user.id,
+            code,
+            expires_at,
+        )
+        send_password_reset_email(
+            to_email=user.email,
+            code=code,
+            display_name=user.display_name or "there",
+        )
+
+    return VerificationResponse(
+        message="If an account exists, a password reset code has been sent.",
+        email=request.email,
+        is_verified=False,
+    )
+
+
+@router.post(
+    "/verify-reset-code",
+    response_model=VerificationResponse,
+    status_code=200,
+    responses={400: {"description": "Invalid or expired reset code"}},
+    summary="Confirm a password reset code",
+)
+async def verify_reset_code(
+    request: VerifyResetCodeRequest,
+    auth_service: AuthServiceDep,
+) -> VerificationResponse:
+    """Validate a reset code without consuming it.
+
+    The code is consumed by /reset-password only after the user chooses a new
+    password. This lets the UI separate code confirmation from password setup.
+    """
+    from platform_api.dependencies import get_db_pool
+
+    user = await auth_service._user_repo.get_by_email(request.email)
+    if user is None:
+        raise ValidationError(
+            message="Invalid or expired reset code.",
+            details={"field": "code"},
+        )
+
+    pool = get_db_pool()
+    code_row = await pool.fetchrow(
+        """
+        SELECT id FROM email_verifications
+        WHERE user_id = $1 AND code = $2 AND purpose = 'password_reset'
+          AND used = false AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        user.id,
+        request.code,
+    )
+    if code_row is None:
+        raise ValidationError(
+            message="Invalid or expired reset code.",
+            details={"field": "code"},
+        )
+
+    return VerificationResponse(
+        message="Reset code confirmed. Choose a new password.",
+        email=request.email,
+        is_verified=True,
+    )
+
+
+@router.post(
+    "/reset-password",
+    response_model=VerificationResponse,
+    status_code=200,
+    responses={400: {"description": "Invalid or expired reset code"}},
+    summary="Reset a password with an email code",
+)
+async def reset_password(
+    request: ResetPasswordRequest,
+    auth_service: AuthServiceDep,
+) -> VerificationResponse:
+    """Consume a reset code and replace the account password."""
+    from platform_api.dependencies import get_db_pool
+
+    errors: list[dict[str, str]] = []
+    password = request.new_password
+    if len(password) < 8:
+        errors.append({"field": "new_password", "message": "Password must be at least 8 characters."})
+    elif len(password) > 128:
+        errors.append({"field": "new_password", "message": "Password must be at most 128 characters."})
+    else:
+        if not _PASSWORD_UPPER_RE.search(password):
+            errors.append({"field": "new_password", "message": "Password must contain an uppercase letter."})
+        if not _PASSWORD_LOWER_RE.search(password):
+            errors.append({"field": "new_password", "message": "Password must contain a lowercase letter."})
+        if not _PASSWORD_DIGIT_RE.search(password):
+            errors.append({"field": "new_password", "message": "Password must contain a digit."})
+    if errors:
+        raise ValidationError(message="Validation failed.", details={"fields": errors})
+
+    user = await auth_service._user_repo.get_by_email(request.email)
+    if user is None:
+        raise ValidationError(
+            message="Invalid or expired reset code.",
+            details={"field": "code"},
+        )
+
+    pool = get_db_pool()
+    code_row = await pool.fetchrow(
+        """
+        SELECT id FROM email_verifications
+        WHERE user_id = $1 AND code = $2 AND purpose = 'password_reset'
+          AND used = false AND expires_at > NOW()
+        ORDER BY created_at DESC LIMIT 1
+        """,
+        user.id,
+        request.code,
+    )
+    if code_row is None:
+        raise ValidationError(
+            message="Invalid or expired reset code.",
+            details={"field": "code"},
+        )
+
+    await pool.execute(
+        "UPDATE email_verifications SET used = true WHERE id = $1",
+        code_row["id"],
+    )
+    await auth_service._user_repo.update(
+        user.id,
+        password_hash=AuthService.hash_password(password),
+        email_confirmed=True,
+    )
+    await auth_service.revoke_tokens(str(user.id))
+
+    return VerificationResponse(
+        message="Password reset successfully. Sign in with your new password.",
         email=request.email,
         is_verified=True,
     )

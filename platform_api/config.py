@@ -147,6 +147,12 @@ class Settings(BaseSettings):
     email_from_name: str = "CAMXORA"
     email_from_address: str = "noreply@camxora.com"
     email_verification_expire_minutes: int = 15
+    # Public origin used in transactional email links. Override locally with
+    # PLATFORM_FRONTEND_BASE_URL=http://localhost:3103.
+    frontend_base_url: str = "https://camxora.com"
+    # Absolute, publicly reachable logo URL. Email clients cannot load files
+    # from the API host, so this must be served by the public frontend/CDN.
+    email_logo_url: str = "https://camxora.com/email/camxora-logo.png"
 
     # --- Backup / User Data Reset ---
     backup_dir: str = "./backups/user_data"
@@ -178,6 +184,14 @@ class Settings(BaseSettings):
 
     # --- Cloudflare Turnstile (Bot Protection) ---
     # These use CLOUDFLARE_* env names (not PLATFORM_*) to match Cloudflare dashboard naming.
+    google_client_id: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "GOOGLE_CLIENT_ID",
+            "PLATFORM_GOOGLE_CLIENT_ID",
+        ),
+    )
+
     cloudflare_turnstile_site_key: str = Field(
         default="",
         validation_alias=AliasChoices(

@@ -195,15 +195,14 @@ class TopupService:
                 "Too many pending top-up checkouts. Complete or wait for one to expire."
             )
         
-        # Check if user has active subscription
+        # Credit packs are standalone products. An active subscription is not
+        # required: web_subscription_id is nullable and the grant trigger only
+        # updates a subscription balance when one is present.
         subscription = await self._db.fetch_one("""
             SELECT id
             FROM web_subscriptions
             WHERE user_id = $1 AND status = 'active'
         """, user_id)
-        
-        if not subscription:
-            raise ValueError("User must have active subscription to purchase top-ups")
         
         # Create pending top-up purchase
         topup_id = await self._db.fetch_val("""
@@ -216,7 +215,7 @@ class TopupService:
             )
             RETURNING id
         """, 
-            user_id, subscription["id"], pack.id,
+            user_id, subscription["id"] if subscription else None, pack.id,
             pack.total_credits, pack.price_cents
         )
         

@@ -101,18 +101,7 @@ class TopupCheckoutStatusResponse(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-@router.get("/packs", response_model=CreditPacksListResponse)
-async def list_packs(service: TopupServiceDep) -> CreditPacksListResponse:
-    """Get all available credit top-up packs.
-    
-    Returns packs sorted by display_order (cheapest to most expensive).
-    Each pack shows:
-    - Credits amount
-    - Price in cents
-    - Songs equivalent (10 credits = 1 generate = 2 songs)
-    """
-    packs = await service.get_credit_packs()
-    
+def _credit_packs_response(packs) -> CreditPacksListResponse:
     return CreditPacksListResponse(
         packs=[
             CreditPackResponse(
@@ -128,6 +117,29 @@ async def list_packs(service: TopupServiceDep) -> CreditPacksListResponse:
             for pack in packs
         ]
     )
+
+
+@router.get("/packs/public", response_model=CreditPacksListResponse)
+async def list_public_packs(service: TopupServiceDep) -> CreditPacksListResponse:
+    """List active credit packs without requiring an account.
+
+    Pricing is public information, so the marketing pricing page can render
+    pack cards before sign-in. Purchasing still requires authentication.
+    """
+    return _credit_packs_response(await service.get_credit_packs())
+
+
+@router.get("/packs", response_model=CreditPacksListResponse)
+async def list_packs(service: TopupServiceDep) -> CreditPacksListResponse:
+    """Get all available credit top-up packs.
+    
+    Returns packs sorted by display_order (cheapest to most expensive).
+    Each pack shows:
+    - Credits amount
+    - Price in cents
+    - Songs equivalent (10 credits = 1 generate = 2 songs)
+    """
+    return _credit_packs_response(await service.get_credit_packs())
 
 
 @router.post("/purchase", response_model=PurchaseTopupResponse, status_code=200)
