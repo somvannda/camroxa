@@ -1441,6 +1441,24 @@
   .chart-row-play{position:static;width:26px;height:26px;background:rgba(255,255,255,.04);border-color:var(--line);box-shadow:none;justify-self:end}
   @media(max-width:900px){.chart-podium{grid-template-columns:1fr 1fr}.chart-podium-card.rank-1{grid-column:1/-1}.chart-table-head,.chart-row{grid-template-columns:34px minmax(0,1fr) minmax(0,.7fr) 34px}.chart-table-head span:nth-child(3),.chart-row .cell{display:none}}
   @media(max-width:560px){.chart-podium{grid-template-columns:1fr}.chart-podium-card.rank-1{grid-column:auto}.chart-podium-card{min-height:190px}}
+
+  /* ---------------- community ---------------- */
+  .challenge{position:relative;border-radius:16px;overflow:hidden;border:1px solid rgba(168,85,247,.35);padding:28px 30px;margin-bottom:26px;background:linear-gradient(120deg,rgba(124,58,237,.3),rgba(168,85,247,.1) 55%,rgba(7,10,19,.6))}
+  .challenge::before{content:"";position:absolute;right:-60px;top:-60px;width:220px;height:220px;border-radius:50%;background:radial-gradient(circle,rgba(196,181,253,.35),transparent 70%)}
+  .challenge-k{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#d8b4fe;position:relative;z-index:1}
+  .challenge h2{font-size:clamp(24px,3vw,36px);letter-spacing:-.04em;margin:10px 0 8px;line-height:1.05;position:relative;z-index:1}
+  .challenge p{color:var(--muted);font-size:13px;line-height:1.7;max-width:50ch;position:relative;z-index:1}
+  .challenge-meta{display:flex;gap:22px;margin-top:16px;flex-wrap:wrap;font-size:11px;color:var(--muted2);position:relative;z-index:1}
+  .challenge-meta b{color:#e9d5ff}
+  .community-guidelines{margin-top:28px;padding:22px}
+  .community-guideline-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+  .community-guideline-grid article{display:flex;align-items:flex-start;gap:10px}
+  .community-guideline-icon{width:26px;height:26px;border-radius:8px;display:grid;place-items:center;flex:none;background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.28);color:#86efac}
+  .community-guideline-icon .icon,.community-guideline-icon .fa-replaced{width:11px!important;height:11px!important}
+  .community-guideline-grid h3{font-size:12.5px;line-height:1.35}
+  .community-guideline-grid p{font-size:10.5px;line-height:1.6;color:var(--muted2);margin-top:4px}
+  @media(max-width:900px){.community-guideline-grid{grid-template-columns:1fr}}
+  @media(max-width:680px){.challenge{padding:22px}}
   .pricing-note .icon,.pricing-note .fa-replaced{width:11px!important;height:11px!important;flex:none}
   @media(max-width:1200px){.pricing-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:760px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
