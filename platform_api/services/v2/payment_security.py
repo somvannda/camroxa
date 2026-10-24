@@ -13,6 +13,8 @@ _PAYMENT_ID_RE = re.compile(r"^[A-Za-z0-9._-]{4,128}$")
 
 ALLOWED_MUSIC_WEB_RETURN_HOSTS = frozenset(
     {
+        "camxora.com",
+        "www.camxora.com",
         "music.camxora.com",
         "music.sandbox.camxora.com",
     }
