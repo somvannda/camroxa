@@ -1409,6 +1409,38 @@
   .search-empty-icon .icon,.search-empty-icon .fa-replaced{width:22px!important;height:22px!important}
   .search-empty h2{font-size:18px;letter-spacing:-.02em}
   .search-empty p{font-size:12px;line-height:1.7;color:var(--muted);max-width:44ch;margin:6px 0 0}
+
+  /* ---------------- charts ---------------- */
+  .chart-podium{display:grid;grid-template-columns:1.2fr 1fr 1fr;gap:12px;margin-bottom:24px}
+  .chart-podium-card{position:relative;min-height:220px;border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;align-items:flex-end;padding:18px;background:var(--panel)}
+  .chart-podium-card.rank-1{min-height:250px;border-color:rgba(168,85,247,.45)}
+  .chart-podium-card img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.62}
+  .chart-podium-card::after{content:"";position:absolute;inset:0;background:linear-gradient(180deg,transparent 15%,rgba(7,10,19,.92))}
+  .chart-podium-copy{position:relative;z-index:2;min-width:0;padding-right:34px}
+  .chart-podium-rank{font-size:10px;letter-spacing:.18em;color:#d8b4fe;font-weight:700}
+  .chart-podium-copy h3{font-size:16px;line-height:1.25;margin-top:5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart-podium-copy p{font-size:11px;color:var(--muted2);margin-top:3px}
+  .chart-podium-plays{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted);margin-top:9px}
+  .chart-podium-plays .icon,.chart-podium-plays .fa-replaced{width:9px!important;height:9px!important}
+  .chart-play,.chart-row-play{position:absolute;right:16px;bottom:16px;z-index:3;width:32px;height:32px;border-radius:50%;display:grid;place-items:center;background:var(--glass-btn);border:1px solid rgba(255,255,255,.28);color:#fff;box-shadow:var(--glass-btn-shadow);transition:.18s}
+  .chart-play:hover,.chart-row-play:hover{filter:brightness(1.12);transform:translateY(-1px)}
+  .chart-play .icon,.chart-row-play .icon{width:11px!important;height:11px!important;margin-left:1px}
+  .chart-table{padding:6px 16px;overflow:hidden}
+  .chart-table-head,.chart-row{display:grid;grid-template-columns:44px minmax(0,1.6fr) minmax(0,.9fr) minmax(0,.7fr) 34px;gap:12px;align-items:center}
+  .chart-table-head{padding:10px 0;border-bottom:1px solid var(--line);font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted2)}
+  .chart-row{padding:10px 0;border-bottom:1px solid var(--line)}
+  .chart-row:last-child{border-bottom:0}
+  .chart-row:hover{background:rgba(124,58,237,.06)}
+  .chart-row .rank{font-size:12px;color:var(--muted2);font-variant-numeric:tabular-nums}
+  .chart-track{display:flex;align-items:center;gap:10px;min-width:0}
+  .chart-track img{width:46px;height:34px;object-fit:cover;border-radius:5px;border:1px solid var(--line2);flex:none}
+  .chart-track h3{font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart-track p{font-size:10px;color:var(--muted2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart-row .cell{font-size:10.5px;color:var(--muted2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .chart-row .plays{font-size:10.5px;color:var(--muted);text-align:right;font-variant-numeric:tabular-nums}
+  .chart-row-play{position:static;width:26px;height:26px;background:rgba(255,255,255,.04);border-color:var(--line);box-shadow:none;justify-self:end}
+  @media(max-width:900px){.chart-podium{grid-template-columns:1fr 1fr}.chart-podium-card.rank-1{grid-column:1/-1}.chart-table-head,.chart-row{grid-template-columns:34px minmax(0,1fr) minmax(0,.7fr) 34px}.chart-table-head span:nth-child(3),.chart-row .cell{display:none}}
+  @media(max-width:560px){.chart-podium{grid-template-columns:1fr}.chart-podium-card.rank-1{grid-column:auto}.chart-podium-card{min-height:190px}}
   .pricing-note .icon,.pricing-note .fa-replaced{width:11px!important;height:11px!important;flex:none}
   @media(max-width:1200px){.pricing-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:760px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
