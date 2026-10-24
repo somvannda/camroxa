@@ -1398,6 +1398,17 @@
   .pricing-note{display:flex;align-items:center;gap:7px;justify-content:center;margin-top:20px;font-size:10.5px;color:var(--muted2)}
   .pricing-note a{color:inherit;text-decoration:none;transition:color .15s}
   .pricing-note a:hover{color:#d8b4fe}
+
+  /* ---------------- search ---------------- */
+  .search-page-form{width:min(640px,100%);height:46px;margin-bottom:24px;border-radius:12px;padding:0 16px}
+  .search-page-form .icon,.search-page-form .fa-replaced{width:17px!important;height:17px!important}
+  .search-suggestions{margin-bottom:24px}
+  .search-suggestions .eyebrow{margin-bottom:10px}
+  .search-empty{display:grid;place-items:center;text-align:center;padding:54px 24px;border:1px dashed var(--line2);border-radius:16px;background:rgba(14,20,36,.45)}
+  .search-empty-icon{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;background:rgba(139,0,255,.14);border:1px solid rgba(139,0,255,.28);color:#d8b4fe;margin-bottom:12px}
+  .search-empty-icon .icon,.search-empty-icon .fa-replaced{width:22px!important;height:22px!important}
+  .search-empty h2{font-size:18px;letter-spacing:-.02em}
+  .search-empty p{font-size:12px;line-height:1.7;color:var(--muted);max-width:44ch;margin:6px 0 0}
   .pricing-note .icon,.pricing-note .fa-replaced{width:11px!important;height:11px!important;flex:none}
   @media(max-width:1200px){.pricing-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:760px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
