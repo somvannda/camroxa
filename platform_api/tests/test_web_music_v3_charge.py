@@ -39,8 +39,8 @@ class FakeV3Billing:
     async def quote(self, *, op: str, user_id, plan_id=None, waive: bool = False):
         return FakeQuote(self.amount_credits)
 
-    async def charge(self, *, user_id, op: str, ref_id=None, waive: bool = False, plan_id=None):
-        self.charges.append({"user_id": user_id, "op": op, "ref_id": ref_id})
+    async def charge(self, *, user_id, op: str, ref_id=None, waive: bool = False, plan_id=None, product=None, model=None):
+        self.charges.append({"user_id": user_id, "op": op, "ref_id": ref_id, "product": product, "model": model})
         if self.fail:
             raise InsufficientCreditsError(
                 "Insufficient credits for this operation.",
@@ -48,8 +48,8 @@ class FakeV3Billing:
             )
         return {"amount_units": credits_to_units(self.amount_credits), "op": op}
 
-    async def refund(self, *, user_id, op: str, amount_credits=None, ref_id=None, absorb: bool = False):
-        self.refunds.append({"user_id": user_id, "op": op, "amount_credits": amount_credits, "ref_id": ref_id})
+    async def refund(self, *, user_id, op: str, amount_credits=None, ref_id=None, absorb: bool = False, product=None):
+        self.refunds.append({"user_id": user_id, "op": op, "amount_credits": amount_credits, "ref_id": ref_id, "product": product})
         return {}
 
 
@@ -147,7 +147,7 @@ async def test_desktop_pro_wallet_is_charged_ten() -> None:
     charged = await bridge.charge(USER_ID, "music", ref_id="res-1")
     assert charged.path == "v3"
     assert charged.amount_credits == 10
-    assert billing.charges == [{"user_id": USER_ID, "op": "music", "ref_id": "res-1"}]
+    assert billing.charges == [{"user_id": USER_ID, "op": "music", "ref_id": "res-1", "product": "web_music", "model": None}]
     assert v2.consumed == []
     assert grant.calls == 1
 
@@ -166,7 +166,7 @@ async def test_paid_web_subscription_uses_v3_wallet() -> None:
     charged = await bridge.charge(USER_ID, "music", ref_id="cutluy")
     assert charged.path == "v3"
     assert charged.amount_credits == 10
-    assert billing.charges == [{"user_id": USER_ID, "op": "music", "ref_id": "cutluy"}]
+    assert billing.charges == [{"user_id": USER_ID, "op": "music", "ref_id": "cutluy", "product": "web_music", "model": None}]
     assert v2.consumed == []
 
 
@@ -207,7 +207,7 @@ async def test_failed_generate_refunds_v3() -> None:
     charged = await bridge.charge(USER_ID, "music", ref_id="fail-1")
     await bridge.refund(USER_ID, charged)
     assert billing.refunds == [
-        {"user_id": USER_ID, "op": "music", "amount_credits": 10.0, "ref_id": "fail-1"}
+        {"user_id": USER_ID, "op": "music", "amount_credits": 10.0, "ref_id": "fail-1", "product": "web_music"}
     ]
 
 
@@ -261,7 +261,7 @@ async def test_reserve_charges_pro_when_flag_on() -> None:
     service._has_paid_web_subscription = AsyncMock(return_value=False)
 
     quota = await service._reserve_daily_slot(USER_ID, reservation_id="r1")
-    assert billing.charges == [{"user_id": USER_ID, "op": "music", "ref_id": "r1"}]
+    assert billing.charges == [{"user_id": USER_ID, "op": "music", "ref_id": "r1", "product": "web_music", "model": None}]
     assert quota["requires_upgrade"] is False
     assert service._open_charges["r1"].path == "v3"
 

@@ -149,6 +149,31 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
     mv "${REPO_BACKUP}/musicapi" "${REPO_DIR}/musicapi"
   fi
   chown -R camxora:camxora "${REPO_DIR}"
+
+  # The checkout was just swapped, so every frontend build artefact is gone.
+  # If anything below fails — npm ci, a Next build, a service reload — the site
+  # is left with no .next/dist and nginx returns 502 (this happened twice on
+  # 2026-10-21). The previous checkout is intact in REPO_BACKUP, so put its
+  # artefacts back rather than leaving production broken.
+  restore_frontends_on_failure() {
+    local rc=$?
+    [[ ${rc} -eq 0 ]] && return 0
+    [[ -z "${REPO_BACKUP}" || ! -d "${REPO_BACKUP}" ]] && return 0
+    log "Deploy failed (exit ${rc}); restoring previous frontend builds from ${REPO_BACKUP}..."
+    local app artefact
+    for app in admin_portal website user_portal music_web; do
+      for artefact in .next dist; do
+        if [[ -d "${REPO_BACKUP}/${app}/${artefact}" && ! -d "${REPO_DIR}/${app}/${artefact}" ]]; then
+          if cp -a "${REPO_BACKUP}/${app}/${artefact}" "${REPO_DIR}/${app}/${artefact}"; then
+            chown -R camxora:camxora "${REPO_DIR}/${app}/${artefact}" || true
+            log "Restored ${app}/${artefact}"
+          fi
+        fi
+      done
+    done
+    systemctl restart camxora-music camxora-api 2>/dev/null || true
+  }
+  trap restore_frontends_on_failure EXIT
 elif [[ ! -d "${REPO_DIR}/.git" ]]; then
   log "Cloning repository..."
   sudo -u camxora -H git clone --branch "${GIT_BRANCH}" "${CLONE_URL}" "${REPO_DIR}"
@@ -173,6 +198,7 @@ PLATFORM_DEBUG=false
 PLATFORM_HOST=127.0.0.1
 PLATFORM_PORT=${API_PORT}
 PLATFORM_DATABASE_URL=postgresql+asyncpg://camxora:${DB_PASSWORD}@127.0.0.1:5432/camxora_platform
+PLATFORM_MUSICAPI_DATABASE_URL=${PLATFORM_MUSICAPI_DATABASE_URL:-}
 PLATFORM_REDIS_URL=redis://127.0.0.1:6379/1
 # Persistent (non-repo) desktop installer storage so deploys never wipe uploads.
 PLATFORM_DESKTOP_RELEASE_STORAGE_PATH=${DESKTOP_RELEASE_STORAGE_DIR}
@@ -187,11 +213,32 @@ PLATFORM_CUTLUY_API_BASE_URL=https://cutluy.com
 PLATFORM_CUTLUY_SECRET_KEY=${PLATFORM_CUTLUY_SECRET_KEY:-}
 PLATFORM_CUTLUY_PAYMENT_LINK_ID=${PLATFORM_CUTLUY_PAYMENT_LINK_ID:-}
 PLATFORM_CUTLUY_WEBHOOK_SECRET=${PLATFORM_CUTLUY_WEBHOOK_SECRET:-}
+PLATFORM_CHMABA_API_BASE_URL=${PLATFORM_CHMABA_API_BASE_URL:-https://pay.chmaba.com}
+PLATFORM_CHMABA_API_KEY=${PLATFORM_CHMABA_API_KEY:-}
+PLATFORM_CHMABA_STORE_ID=${PLATFORM_CHMABA_STORE_ID:-}
+PLATFORM_CHMABA_WEBHOOK_SECRET=${PLATFORM_CHMABA_WEBHOOK_SECRET:-}
 PLATFORM_ENCRYPTION_MASTER_KEY=${PLATFORM_ENCRYPTION_MASTER_KEY}
 PLATFORM_SLAI_API_BASE_URL=https://api.slai.shop
 PLATFORM_TELEGRAM_BOT_TOKEN=${PLATFORM_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}
 PLATFORM_TELEGRAM_CHAT_ID=${PLATFORM_TELEGRAM_CHAT_ID:-${TELEGRAM_CHAT_ID:-}}
 PLATFORM_TELEGRAM_OPS_ENABLED=${PLATFORM_TELEGRAM_OPS_ENABLED:-true}
+PLATFORM_TELEGRAM_POLLER_ENABLED=${PLATFORM_TELEGRAM_POLLER_ENABLED:-true}
+# Transactional email (Resend SMTP relay). Kept here so a full deploy can never
+# silently wipe verification / activation / renewal mail again.
+PLATFORM_SMTP_HOST=${PLATFORM_SMTP_HOST:-}
+PLATFORM_SMTP_PORT=${PLATFORM_SMTP_PORT:-587}
+PLATFORM_SMTP_USER=${PLATFORM_SMTP_USER:-}
+PLATFORM_SMTP_PASSWORD=${PLATFORM_SMTP_PASSWORD:-}
+PLATFORM_SMTP_USE_TLS=${PLATFORM_SMTP_USE_TLS:-true}
+PLATFORM_EMAIL_FROM_NAME=${PLATFORM_EMAIL_FROM_NAME:-Camxora}
+PLATFORM_EMAIL_FROM_ADDRESS=${PLATFORM_EMAIL_FROM_ADDRESS:-noreply@camxora.com}
+# Google sign-in for music web (same OAuth client as musicapi.camxora.com).
+PLATFORM_GOOGLE_CLIENT_ID=${MUSICAPI_GOOGLE_CLIENT_ID:-${PLATFORM_GOOGLE_CLIENT_ID:-}}
+PLATFORM_GOOGLE_CLIENT_SECRET=${MUSICAPI_GOOGLE_CLIENT_SECRET:-${PLATFORM_GOOGLE_CLIENT_SECRET:-}}
+PLATFORM_GOOGLE_REDIRECT_URIS=${PLATFORM_GOOGLE_REDIRECT_URIS:-https://music.camxora.com/auth/callback,https://music.sandbox.camxora.com/auth/callback,http://localhost:3001/auth/callback}
+# Music web: Google is the signup path; existing password users still sign in.
+PLATFORM_MUSIC_WEB_EMAIL_SIGNUP_ENABLED=${PLATFORM_MUSIC_WEB_EMAIL_SIGNUP_ENABLED:-false}
+PLATFORM_MUSIC_WEB_GEO_ENFORCE=${PLATFORM_MUSIC_WEB_GEO_ENFORCE:-false}
 # Cloudflare Turnstile — verifies the music_web login/sign-up tokens server-side.
 CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
 CLOUDFLARE_TURNSTILE_SECRET_KEY=${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
@@ -251,7 +298,11 @@ log "Building music web (public streaming)..."
 sudo -u camxora -H bash -lc "
   set -e
   cd '${REPO_DIR}/music_web'
-  npm ci --no-audit --no-fund
+  npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+  # npm ci removes node_modules before reinstalling; if that is interrupted (or a
+  # concurrent deploy races it) the tree is left empty and 'next build' fails
+  # with 'next: not found'. Fail here, with a clear message, instead.
+  [ -x node_modules/.bin/next ] || { echo 'ERROR: next binary missing after dependency install in music_web'; exit 1; }
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_API_BASE_URL=https://api.camxora.com
 NEXT_PUBLIC_USER_PORTAL_URL=https://app.camxora.com

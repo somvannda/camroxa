@@ -7,6 +7,28 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.4.9] - 2026-10-22
+
+### Added
+
+- **Create channel profiles directly in Settings → Profiles.** "New Profile" opens a blank draft; only the name is required. Logo, cover, folder, templates, and resolution can be filled in now or later and sync on save. No portal redirect or onboarding step.
+- **Buy Credits dialog** for accounts without live pack credits: the four web-music packs (Small/Medium/Pro/Large), credits, songs equivalent, and the 30-day validity copy.
+
+### Changed
+
+- Desktop Studio access is now gated by **live credit-pack credits** (`desktop_access` from `/users/me`) instead of a subscription plan. Access ends when the pack's 30-day term lapses or the credit balance reaches zero. Legacy paid plans still qualify.
+- Profile and membership copy no longer says "Monthly plan"; the workspace shows "Credit pack" / "Profile slots".
+
+### Fixed
+
+- Profile creation is no longer blocked by the retired per-plan channel allowance (`Profile limit exceeded`). Name uniqueness and the 100-character name limit still apply.
+
+## [1.4.8] - 2026-10-18
+
+### Added
+
+- Progress now recovers MP3s that are missing **on this PC** without a right-click. The account-wide pending-download sync is driven by server flags (`downloaded_ok` / `pipeline_complete`), so a track the server already recorded as downloaded — but whose file is absent locally (deleted, moved, or pulled on another device) — was never re-fetched automatically. The Progress page now runs the same per-batch recovery as the row right-click, one channel per 60s tick, with a 10-minute per-channel cooldown. Manual right-click is unchanged. See `docs/changelog/2026-10-18-desktop-auto-missing-mp3.md`.
+
 ## [1.4.7] - 2026-10-05
 
 ### Changed

@@ -8,11 +8,11 @@ const NOW = new Date('2026-08-26T09:00:00.000Z');
 
 describe('formatModelVersionTag', () => {
   it('maps V6 series models', () => {
-    assert.equal(formatModelVersionTag('V6'), 'v6');
-    assert.equal(formatModelVersionTag('v6'), 'v6');
+    assert.equal(formatModelVersionTag('V6'), 'v6 pro');
+    assert.equal(formatModelVersionTag('v6'), 'v6 pro');
     assert.equal(formatModelVersionTag('V6_MINI'), 'v6 mini');
     assert.equal(formatModelVersionTag('V6_WILD'), 'v6 wild');
-    assert.equal(formatModelVersionTag(null), 'v6');
+    assert.equal(formatModelVersionTag(null), 'v6 pro');
   });
 
   it('maps legacy V5 models', () => {

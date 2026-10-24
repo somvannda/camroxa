@@ -173,6 +173,8 @@ export type AdminWebMusicClip = {
   ready: boolean;
   image_url?: string | null;
   duration_seconds?: number | null;
+  is_preview?: boolean;
+  preview_seconds?: number | null;
 };
 
 export type AdminWebMusicGeneration = {
@@ -181,10 +183,13 @@ export type AdminWebMusicGeneration = {
   lyrics: string;
   style: string;
   model: string;
+  model_label?: string;
   instrumental: boolean;
   status: string;
   error_message?: string | null;
   created_at?: string | null;
+  is_preview?: boolean;
+  preview_seconds?: number | null;
   negative_tags?: string | null;
   vocal_gender?: string | null;
   style_weight?: number | null;

@@ -25,11 +25,18 @@ ADMIN_CONTEXT = AuthContext(user_id=str(uuid4()), email="admin@example.com", rol
 class FakeDbPool:
     """Small fake asyncpg pool for `/users/me` enrichment tests."""
 
-    def __init__(self, *, balance=None, license_row=None, profile_row=None, web_plan_row=None) -> None:
+    def __init__(self, *, balance=None, license_row=None, profile_row=None, web_plan_row=None, pack_live=False) -> None:
         self._balance = balance
         self._license_row = license_row
         self._profile_row = profile_row
         self._web_plan_row = web_plan_row
+        self._pack_live = pack_live
+
+    async def fetchval(self, query: str, *args):
+        sql = " ".join(str(query).split()).lower()
+        if "from credit_wallet_lots lot" in sql:
+            return self._pack_live
+        raise AssertionError(f"Unexpected fetchval query: {query}")
 
     async def fetchrow(self, query: str, *args):
         sql = " ".join(str(query).split()).lower()
@@ -231,6 +238,25 @@ class TestGetMe:
         assert data["plan_name"] is None
         assert data["profile_allowance"] is None
         assert data["credit_balance"] == 0
+        assert data["desktop_access"] is False
+
+    async def test_live_pack_credits_enable_desktop_access(
+        self,
+        client: AsyncClient,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            users_router,
+            "get_db_pool",
+            lambda: FakeDbPool(balance={"balance": 230000}, pack_live=True),
+        )
+
+        response = await client.get("/api/v1/users/me")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["desktop_access"] is True
+        assert data["credit_balance"] == 23.0
         assert data["channel_profile_count"] == 0
 
     async def test_recognizes_paid_web_subscription(

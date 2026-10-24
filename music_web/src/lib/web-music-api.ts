@@ -24,6 +24,21 @@ export class MusicApiError extends Error {
 
 export type { WebMusicGenerateInput };
 
+export type WebMusicPreviewModel = {
+  model: string;
+  label: string;
+  limit: number;
+  used: number;
+  remaining: number;
+  seconds: number;
+};
+
+export type WebMusicPreviews = {
+  eligible: boolean;
+  seconds: number;
+  models: WebMusicPreviewModel[];
+};
+
 export type WebMusicQuota = {
   limit: number;
   used: number;
@@ -36,8 +51,11 @@ export type WebMusicQuota = {
   can_download?: boolean;
   daily_free_remaining?: number;
   daily_free_limit?: number;
+  premium_unlocked?: boolean;
+  free_model?: string;
   queue_limit?: number;
   queue_used?: number;
+  previews?: WebMusicPreviews | null;
 };
 
 export type WebMusicClip = {
@@ -50,6 +68,8 @@ export type WebMusicClip = {
   image_url?: string | null;
   duration_seconds?: number | null;
   title?: string;
+  is_preview?: boolean;
+  preview_seconds?: number | null;
 };
 
 export type WebMusicGeneration = {
@@ -58,10 +78,14 @@ export type WebMusicGeneration = {
   lyrics: string;
   style: string;
   model: string;
+  model_label?: string;
   instrumental: boolean;
   status: string;
   error_message?: string | null;
   created_at?: string | null;
+  is_preview?: boolean;
+  unlockable?: boolean;
+  preview_seconds?: number | null;
   negative_tags?: string | null;
   vocal_gender?: string | null;
   style_weight?: number | null;
@@ -226,7 +250,18 @@ export async function generateWebMusicDraft(prompt: string): Promise<{ lyrics: s
 
 export async function generateWebMusic(
   input: WebMusicGenerateInput,
-): Promise<{ task_id: string; status: string; title: string; style: string; quota: WebMusicQuota }> {
+): Promise<{
+  task_id: string;
+  status: string;
+  title: string;
+  style: string;
+  model?: string;
+  model_label?: string;
+  is_preview?: boolean;
+  unlockable?: boolean;
+  preview_seconds?: number | null;
+  quota: WebMusicQuota;
+}> {
   return musicFetch('/api/v3/web-music/generate', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -253,6 +288,13 @@ export async function getWebMusicGeneration(id: string): Promise<WebMusicGenerat
   return musicFetch<WebMusicGeneration>(`/api/v3/web-music/generations/${id}`);
 }
 
+export async function unlockWebMusicPreview(id: string): Promise<WebMusicGeneration> {
+  return musicFetch<WebMusicGeneration>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/unlock-preview`,
+    { method: 'POST' },
+  );
+}
+
 export async function updateWebMusicGenerationTitle(
   id: string,
   title: string,
@@ -265,14 +307,14 @@ export async function updateWebMusicGenerationTitle(
   });
 }
 
-export async function downloadWebMusicClip(id: string, variant: string, filename: string): Promise<void> {
-  const response = await musicAuthFetch(
-    `/api/v3/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
+export async function deleteWebMusicGeneration(id: string): Promise<void> {
+  await musicFetch<void>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}`,
+    { method: 'DELETE' },
   );
-  if (!response.ok) {
-    await rejectResponse(response, 'Download failed');
-  }
-  const blob = await response.blob();
+}
+
+export function saveBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
@@ -283,7 +325,17 @@ export async function downloadWebMusicClip(id: string, variant: string, filename
   URL.revokeObjectURL(url);
 }
 
-export async function downloadWebMusicClipWav(id: string, variant: string, filename: string): Promise<void> {
+export async function fetchWebMusicClipBlob(id: string, variant: string): Promise<Blob> {
+  const response = await musicAuthFetch(
+    `/api/v3/web-music/generations/${id}/download?variant=${encodeURIComponent(variant)}`,
+  );
+  if (!response.ok) {
+    await rejectResponse(response, 'Download failed');
+  }
+  return response.blob();
+}
+
+export async function fetchWebMusicClipWavBlob(id: string, variant: string): Promise<Blob> {
   const maxAttempts = 8;
   let lastError = 'WAV download failed';
   for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
@@ -291,16 +343,7 @@ export async function downloadWebMusicClipWav(id: string, variant: string, filen
       `/api/v3/web-music/generations/${id}/download-wav?variant=${encodeURIComponent(variant)}`,
     );
     if (response.ok) {
-      const blob = await response.blob();
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      URL.revokeObjectURL(url);
-      return;
+      return response.blob();
     }
     const parsed = await readError(response, 'WAV download failed');
     lastError = parsed.message;
@@ -315,25 +358,33 @@ export async function downloadWebMusicClipWav(id: string, variant: string, filen
   throw new Error(lastError);
 }
 
-export async function downloadWebMusicTimedLyrics(
+export async function fetchWebMusicTimedLyricsBlob(
   id: string,
   variant: string,
   format: 'lrc' | 'srt',
-  filename: string,
-): Promise<void> {
+): Promise<Blob> {
   const response = await musicAuthFetch(
     `/api/v3/web-music/generations/${id}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${encodeURIComponent(format)}`,
   );
   if (!response.ok) {
     await rejectResponse(response, 'Timed lyrics download failed');
   }
-  const blob = await response.blob();
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = url;
-  link.download = filename;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
+  return response.blob();
+}
+
+export async function downloadWebMusicClip(id: string, variant: string, filename: string): Promise<void> {
+  saveBlob(await fetchWebMusicClipBlob(id, variant), filename);
+}
+
+export async function downloadWebMusicClipWav(id: string, variant: string, filename: string): Promise<void> {
+  saveBlob(await fetchWebMusicClipWavBlob(id, variant), filename);
+}
+
+export async function downloadWebMusicTimedLyrics(
+  id: string,
+  variant: string,
+  format: 'lrc' | 'srt',
+  filename: string,
+): Promise<void> {
+  saveBlob(await fetchWebMusicTimedLyricsBlob(id, variant, format), filename);
 }

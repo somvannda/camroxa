@@ -143,6 +143,14 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
 
         await run_pending_migrations()
 
+        # Alembic's env.py runs logging.config.fileConfig(), which defaults to
+        # disable_existing_loggers=True and therefore disables every logger
+        # created before the migration — including the request/audit loggers.
+        # That is why no [access] line (and no 5xx) reached the journal for a
+        # week (2026-10-21). env.py now passes disable_existing_loggers=False;
+        # re-asserting here also covers any future reconfiguration.
+        configure_api_logging()
+
         # --- Create asyncpg connection pool ---
         import asyncpg
 
@@ -543,6 +551,15 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Error stopping B2 backfill task: %s", exc)
 
+    try:
+        from platform_api.services.telegram_ops_alert_service import (
+            drain_telegram_ops,
+        )
+
+        await drain_telegram_ops(timeout=4.0)
+    except Exception as exc:
+        logger.warning("Error draining Telegram ops queue: %s", exc)
+
     if redis_conn is not None:
         try:
             await redis_conn.aclose()
@@ -689,6 +706,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     from platform_api.routers import web_music, web_music_licenses
     from platform_api.routers import v2_subscriptions, v2_credits, v2_topups, webhooks_cutluy
     from platform_api.routers import v3_billing
+    from platform_api.routers import invite_program
 
     v1 = settings.api_v1_prefix
     v2 = settings.api_v2_prefix
@@ -701,6 +719,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Health: root probes + same-origin under v1/v3 (admin /health is SPA HTML).
     app.include_router(health.router)
     _mount(health.router, v1, v3)
+
+    # Mail: public tracking/webhook + the admin console API. Mounted on v1 and
+    # v3 like everything else; the public paths are /api/{v}/mail/{o|c|u} and
+    # mail.camxora.com gets an explicit nginx location for /api/mail/.
+    from platform_api.routers import mail as mail_router
+
+    _mount(mail_router.router, v1, v3)
 
     # Former v1 surface — dual-mounted on /api/v1 (temporary) and /api/v3 (canonical).
     _core = (
@@ -752,6 +777,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         web_music.router,
         web_music_licenses.router,
         webhooks_cutluy.router,
+        invite_program.router,
     )
     for router in _core:
         app.include_router(router, prefix=v1)

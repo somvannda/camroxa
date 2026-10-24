@@ -88,6 +88,7 @@ def mock_web_music_service() -> AsyncMock:
     )
     service.generate_draft = AsyncMock(return_value=("[Verse]\nCity lights", "Night Drive"))
     service.generate_styles = AsyncMock(return_value="synthwave, analog synth, 118 BPM")
+    service.delete_generation = AsyncMock(return_value=None)
     return service
 
 
@@ -164,6 +165,12 @@ class TestWebMusicRouter:
         mock_web_music_service.update_generation_title.assert_awaited()
         assert mock_web_music_service.update_generation_title.await_args.kwargs["variant"] == "alt"
         assert mock_web_music_service.update_generation_title.await_args.kwargs["title"] == "Renamed Drive"
+
+    async def test_delete_generation(self, client: AsyncClient, mock_web_music_service: AsyncMock) -> None:
+        task_id = uuid4()
+        response = await client.delete(f"/api/v1/web-music/generations/{task_id}")
+        assert response.status_code == 204
+        mock_web_music_service.delete_generation.assert_awaited()
 
     async def test_get_generation_returns_advanced_settings(self, client: AsyncClient) -> None:
         task_id = uuid4()

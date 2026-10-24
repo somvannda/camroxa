@@ -55,6 +55,52 @@ def _schedule_audio_ingest_after_success(
         service.schedule_suno_streaming_upload(suno_task_id=task_id)
 
 
+async def _release_web_music_preview(
+    pool: Any,
+    *,
+    user_id: str,
+    task_id: UUID,
+) -> None:
+    """Free a preview slot when a preview generation fails upstream."""
+    from platform_api.services.billing_calendar import (
+        billing_month_start,
+        billing_usage_date,
+    )
+
+    try:
+        row = await pool.fetchrow(
+            """
+            UPDATE suno_tasks
+            SET preview_released = TRUE
+            WHERE id = $1 AND user_id = $2
+              AND is_preview = TRUE AND preview_released = FALSE
+            RETURNING model, created_at
+            """,
+            task_id,
+            UUID(user_id),
+        )
+        if row is None:
+            return
+        period = billing_month_start(billing_usage_date(row["created_at"]))
+        await pool.execute(
+            """
+            UPDATE web_music_preview_entitlements
+            SET used = GREATEST(0, used - 1)
+            WHERE user_id = $1 AND period_start = $2 AND model = $3
+            """,
+            UUID(user_id),
+            period,
+            str(row["model"] or "").strip().upper(),
+        )
+    except Exception as exc:
+        logger.warning(
+            "Web music preview slot release failed for task %s user=%s: %s",
+            task_id,
+            user_id,
+            exc,
+        )
+
+
 async def _refund_web_music_generation_on_failure(
     pool: Any,
     *,
@@ -71,6 +117,8 @@ async def _refund_web_music_generation_on_failure(
     ).upper()
     if prior == TaskStatus.FAILED.value:
         return
+
+    await _release_web_music_preview(pool, user_id=user_id, task_id=task_id)
 
     pro = await pool.fetchrow(
         """

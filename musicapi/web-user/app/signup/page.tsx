@@ -7,7 +7,9 @@ export default function SignupPage() {
   const router = useRouter();
 
   useEffect(() => {
-    router.replace("/login");
+    // Keep an invite code attached when forwarding legacy /signup links.
+    const search = typeof window !== "undefined" ? window.location.search : "";
+    router.replace(`/login${search}`);
   }, [router]);
 
   return (

@@ -3,12 +3,14 @@
 import logging
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
+from uuid import UUID
 
 from platform_api.services.shared.cutluy_service import (
     CutLuyService,
     get_cutluy_service,
     normalize_cutluy_payment_status,
 )
+from platform_api.services.billing_provider_service import resolve_active_provider
 from platform_api.services.v2.payment_security import (
     paid_amount_matches,
     sanitize_music_web_return_url,
@@ -66,6 +68,23 @@ class TopupService:
         self._db = db
         self._cutluy = cutluy or get_cutluy_service()
         self._credit_service = credit_service
+
+    async def _payment_provider(self) -> str:
+        """Return the admin-selected KHQR provider, defaulting to CutLuy.
+
+        The panel switch decides which gateway a *new* checkout uses; an
+        in-flight purchase keeps the provider stored on its own row, so flipping
+        the switch never strands a pending payment.
+        """
+        pool = getattr(self._db, "_pool", None)
+        if pool is None:
+            return "cutluy"
+        try:
+            provider = await resolve_active_provider(pool)
+        except Exception:
+            logger.exception("billing provider resolution failed; falling back to CutLuy")
+            return "cutluy"
+        return provider or "cutluy"
     
     # ─── Pack Management ────────────────────────────────────────────────
     
@@ -158,7 +177,7 @@ class TopupService:
             }
         
         Raises:
-            ValueError: If pack not found or user has no subscription
+            ValueError: If pack not found or not purchasable
         """
         # Get pack
         pack = await self.get_pack_by_slug(pack_slug)
@@ -195,47 +214,73 @@ class TopupService:
                 "Too many pending top-up checkouts. Complete or wait for one to expire."
             )
         
-        # Credit packs are standalone products. An active subscription is not
-        # required: web_subscription_id is nullable and the grant trigger only
-        # updates a subscription balance when one is present.
+        # Top-up packs are the only sellable product now, so an active
+        # subscription is no longer required to buy one (it used to gate this
+        # checkout). When the buyer happens to be a grandfathered subscriber we
+        # still link the purchase for reporting; otherwise the FK stays NULL.
         subscription = await self._db.fetch_one("""
             SELECT id
             FROM web_subscriptions
             WHERE user_id = $1 AND status = 'active'
         """, user_id)
-        
+
+        # Resolve the gateway before the row exists so a failed attempt is still
+        # attributed to the provider that refused it.
+        provider = await self._payment_provider()
+
         # Create pending top-up purchase
         topup_id = await self._db.fetch_val("""
             INSERT INTO topup_purchases (
                 user_id, web_subscription_id, credit_pack_id,
                 credits_purchased, amount_paid_cents,
-                payment_status
+                payment_status, payment_provider
             ) VALUES (
-                $1, $2, $3, $4, $5, 'pending'
+                $1, $2, $3, $4, $5, 'pending', $6
             )
             RETURNING id
         """, 
             user_id, subscription["id"] if subscription else None, pack.id,
-            pack.total_credits, pack.price_cents
+            pack.total_credits, pack.price_cents, provider
         )
         
-        # Create CutLuy payment
+        # Create the gateway payment. The provider is resolved once per
+        # checkout and recorded on the row so status polling/webhooks keep
+        # talking to the gateway that actually holds the money.
         try:
-            payment = await self._cutluy.create_topup_payment(
-                user_id=user_id,
-                pack_name=pack.name,
-                amount_cents=pack.price_cents,
-                credits=pack.total_credits,
-                success_url=success_url,
-                cancel_url=cancel_url,
-                metadata={
-                    "type": "topup",
-                    "topup_id": str(topup_id),
-                    "pack_id": str(pack.id),
-                    "credits": pack.total_credits,
-                },
-                db=self._db,
-            )
+            if provider == "chmaba":
+                from platform_api.services.shared.chmaba_service import ChmabaService
+
+                payment = await ChmabaService().create_payment(
+                    amount_cents=int(pack.price_cents),
+                    # The provider echoes `reference_id` back on every webhook,
+                    # so the local top-up id is the stable handle back to this row.
+                    reference_id=str(topup_id),
+                    metadata={
+                        "type": "topup",
+                        "topup_id": str(topup_id),
+                        "pack_id": str(pack.id),
+                        "credits": pack.total_credits,
+                        "user_id": user_id,
+                    },
+                    db=self._db,
+                )
+            else:
+                provider = "cutluy"
+                payment = await self._cutluy.create_topup_payment(
+                    user_id=user_id,
+                    pack_name=pack.name,
+                    amount_cents=pack.price_cents,
+                    credits=pack.total_credits,
+                    success_url=success_url,
+                    cancel_url=cancel_url,
+                    metadata={
+                        "type": "topup",
+                        "topup_id": str(topup_id),
+                        "pack_id": str(pack.id),
+                        "credits": pack.total_credits,
+                    },
+                    db=self._db,
+                )
         except Exception:
             await self._db.execute(
                 """
@@ -248,20 +293,21 @@ class TopupService:
                 topup_id,
             )
             raise
-        
-        # Store external payment ID
+
+        # Store the provider payment id and which gateway minted it.
         await self._db.execute("""
             UPDATE topup_purchases
-            SET external_payment_id = $1
-            WHERE id = $2
-        """, payment["payment_id"], topup_id)
-        
+            SET external_payment_id = $1,
+                payment_provider = $2
+            WHERE id = $3
+        """, payment["payment_id"], provider, topup_id)
+
         logger.info(
-            f"Created topup purchase {topup_id} for user {user_id}: "
+            f"Created topup purchase {topup_id} for user {user_id} via {provider}: "
             f"{pack.total_credits} credits for ${pack.price_cents/100}"
         )
-        
-        return payment
+
+        return {**payment, "provider": provider}
 
     async def get_checkout_status(self, user_id: str, payment_id: str) -> dict[str, Any]:
         """Poll CutLuy and fulfill a web-music top-up checkout for this user."""
@@ -273,7 +319,7 @@ class TopupService:
             """
             SELECT
                 tp.id, tp.payment_status, tp.credits_purchased,
-                tp.amount_paid_cents, cp.name AS pack_name
+                tp.amount_paid_cents, tp.payment_provider, cp.name AS pack_name
             FROM topup_purchases tp
             JOIN credit_packs cp ON tp.credit_pack_id = cp.id
             WHERE tp.user_id = $1
@@ -290,6 +336,7 @@ class TopupService:
         pack_name = row["pack_name"]
         credits = int(row["credits_purchased"] or 0)
         local_status = str(row["payment_status"] or "")
+        provider = str(row.get("payment_provider") or "cutluy")
 
         if local_status == "completed":
             return {
@@ -307,9 +354,19 @@ class TopupService:
             }
 
         try:
-            payload = await self._cutluy.get_payment_status(payment_id, db=self._db)
-        except ValueError:
-            logger.exception("CutLuy status check failed for top-up %s", payment_id)
+            if provider == "chmaba":
+                from platform_api.services.shared.chmaba_service import (
+                    ChmabaService,
+                    normalize_chmaba_payment_status,
+                )
+
+                payload = await ChmabaService().get_payment_status(payment_id, db=self._db)
+                remote = normalize_chmaba_payment_status(payload.get("status"))
+            else:
+                payload = await self._cutluy.get_payment_status(payment_id, db=self._db)
+                remote = normalize_cutluy_payment_status(payload.get("status"))
+        except Exception:
+            logger.exception("%s status check failed for top-up %s", provider, payment_id)
             return {
                 "status": "pending",
                 "fulfilled": False,
@@ -317,7 +374,6 @@ class TopupService:
                 "credits": credits,
             }
 
-        remote = normalize_cutluy_payment_status(payload.get("status"))
         if remote == "paid":
             if not paid_amount_matches(int(row["amount_paid_cents"] or 0), payload):
                 logger.error("Refusing top-up fulfill: amount mismatch for payment %s", payment_id)
@@ -400,11 +456,34 @@ class TopupService:
         from platform_api.services.v3.wallet_sync import sync_topup_pack
         from uuid import UUID
 
-        await sync_topup_pack(
+        credits = int(row.get("credits_purchased") or 0)
+        result = await sync_topup_pack(
             UUID(str(row["user_id"])),
-            int(row.get("credits_purchased") or 0),
+            credits,
             topup_id=str(topup_id),
         )
+        if result and credits > 0:
+            # Referral rewards ride after the pack mint and are idempotent: the
+            # referral row is claimed once, so repeated status polls are safe.
+            try:
+                from platform_api.dependencies import get_db_pool
+                from platform_api.services.invite_program_service import apply_referral_reward
+
+                pool = get_db_pool()
+                async with pool.acquire() as conn:
+                    async with conn.transaction():
+                        await apply_referral_reward(
+                            conn,
+                            invitee_id=UUID(str(row["user_id"])),
+                            purchased_credits=credits,
+                            qualifying_ref=str(topup_id),
+                        )
+            except Exception:
+                logger.exception(
+                    "invite reward failed for topup %s user=%s",
+                    topup_id,
+                    row.get("user_id"),
+                )
 
     async def _mark_topup_terminal(
         self,
@@ -439,6 +518,55 @@ class TopupService:
         )
     
     # ─── Webhook Handling ───────────────────────────────────────────────
+
+    async def settle_chmaba_topup(self, *, event_type: str, topup_id: str) -> dict:
+        """Settle a ChmabaPay event that was bound to a local top-up row.
+
+        ChmabaPay echoes the ``reference_id`` we set at checkout (the local
+        top-up id), so no client-supplied metadata is trusted here. The row's
+        own pending state makes the operation idempotent across webhook
+        retries and a racing status poll.
+        """
+        try:
+            UUID(str(topup_id))
+        except (TypeError, ValueError):
+            return {"processed": False, "message": "Invalid top-up reference"}
+
+        row = await self._db.fetch_one(
+            """
+            SELECT id, payment_status
+            FROM topup_purchases
+            WHERE id = $1
+              AND payment_provider = 'chmaba'
+            """,
+            topup_id,
+        )
+        if not row:
+            return {"processed": False, "message": "No ChmabaPay top-up for this reference"}
+
+        if event_type == "payment.completed":
+            if str(row["payment_status"]) != "pending":
+                return {"processed": True, "message": "Top-up already settled"}
+            await self._fulfill_topup_payment(str(row["id"]))
+            return {"processed": True, "message": "Top-up credited"}
+
+        if event_type in {"payment.reversed", "payment.failed"}:
+            target = "refunded" if event_type == "payment.reversed" else "failed"
+            await self._mark_topup_terminal(str(row["id"]), target)
+            return {"processed": True, "message": f"Top-up marked {target}"}
+
+        if event_type == "payment.superseded":
+            # The code was replaced and can never settle; fail it so a new
+            # checkout is allowed instead of waiting out the pending window.
+            await self._mark_topup_terminal(str(row["id"]), "failed")
+            return {"processed": True, "message": "Top-up marked failed (superseded)"}
+
+        if event_type == "payment.expired":
+            # Not terminal: a late payment still promotes the row to paid.
+            return {"processed": False, "message": "Ignored expired event"}
+
+        return {"processed": False, "message": f"Ignored event: {event_type}"}
+
     
     async def handle_topup_webhook(
         self,

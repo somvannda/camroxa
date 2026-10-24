@@ -7,6 +7,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from platform_api.ai.registry import DEFAULT_SUNO_MUSIC_MODEL, SUNO_MODEL_PATTERN
@@ -19,7 +20,7 @@ from platform_api.services.generation_freeze import (
 )
 from platform_api.services.web_music_service import WebMusicService, content_disposition
 from platform_api.services.audio_origin_proxy import is_missing_range
-from platform_api.exceptions import NotFoundError, QuotaExceededError
+from platform_api.exceptions import NotFoundError, QuotaExceededError, ValidationError
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,23 @@ class WebMusicClipResponse(BaseModel):
     image_url: str | None = None
     duration_seconds: float | None = None
     title: str = ""
+    is_preview: bool = False
+    preview_seconds: int | None = None
+
+
+class WebMusicPreviewModelResponse(BaseModel):
+    model: str
+    label: str
+    limit: int = 1
+    used: int = 0
+    remaining: int = 0
+    seconds: int = 60
+
+
+class WebMusicPreviewsResponse(BaseModel):
+    eligible: bool = False
+    seconds: int = 60
+    models: list[WebMusicPreviewModelResponse] = Field(default_factory=list)
 
 
 class WebMusicQuotaResponse(BaseModel):
@@ -72,8 +90,13 @@ class WebMusicQuotaResponse(BaseModel):
     requires_upgrade: bool = False
     can_download: bool = False
     has_subscription: bool = False
+    credits_remaining: int = 0
+    credits_per_song: int = 10
+    premium_unlocked: bool = False
+    free_model: str = "V6-MINI"
     queue_limit: int = 2
     queue_used: int = 0
+    previews: WebMusicPreviewsResponse | None = None
 
 
 class WebMusicPlaylistResponse(BaseModel):
@@ -218,6 +241,10 @@ class WebMusicGenerateResponse(BaseModel):
     status: str
     title: str
     style: str
+    model: str = DEFAULT_SUNO_MUSIC_MODEL
+    model_label: str = "V6 Pro"
+    is_preview: bool = False
+    preview_seconds: int | None = None
     quota: WebMusicQuotaResponse
 
 
@@ -227,10 +254,14 @@ class WebMusicGenerationResponse(BaseModel):
     lyrics: str = ""
     style: str = ""
     model: str = "V5"
+    model_label: str = "V6 Pro"
     instrumental: bool = False
     status: str
     error_message: str | None = None
     created_at: str | None = None
+    is_preview: bool = False
+    unlockable: bool = False
+    preview_seconds: int | None = None
     negative_tags: str | None = None
     vocal_gender: str | None = None
     style_weight: float | None = None
@@ -255,10 +286,18 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         lyrics=str(payload.get("lyrics") or ""),
         style=str(payload.get("style") or ""),
         model=str(payload.get("model") or "V5"),
+        model_label=str(payload.get("model_label") or payload.get("model") or "V5"),
         instrumental=bool(payload.get("instrumental")),
         status=str(payload.get("status") or "PENDING"),
         error_message=payload.get("error_message"),
         created_at=created_text,
+        is_preview=bool(payload.get("is_preview")),
+        unlockable=bool(payload.get("unlockable")),
+        preview_seconds=(
+            int(payload["preview_seconds"])
+            if payload.get("preview_seconds") is not None
+            else None
+        ),
         negative_tags=payload.get("negative_tags") or None,
         vocal_gender=payload.get("vocal_gender") or None,
         style_weight=_optional_float(payload.get("style_weight")),
@@ -453,10 +492,11 @@ async def generate(
     )
     await enforce_rate_limit(http_request, ctx.user_id)
     # Credit-funded users are gated by their balance, not the per-IP farm cap.
+    credited = await service.has_generation_credits(UUID(ctx.user_id))
     await track_generation_attempt(
         http_request,
         ctx.user_id,
-        credited=await service.has_generation_credits(UUID(ctx.user_id)),
+        credited=credited,
     )
     
     try:
@@ -476,9 +516,10 @@ async def generate(
             audio_weight=body.audio_weight,
             workspace_id=body.workspace_id,
         )
-    except QuotaExceededError as exc:
-        # Track quota exceeded for abuse detection
-        await track_quota_exceeded(http_request, ctx.user_id)
+    except QuotaExceededError:
+        # A paying user hitting a preview/plan limit is not farm abuse.
+        if not credited:
+            await track_quota_exceeded(http_request, ctx.user_id)
         raise
     
     return WebMusicGenerateResponse(
@@ -486,6 +527,14 @@ async def generate(
         status=str(payload["status"]),
         title=str(payload["title"]),
         style=str(payload["style"]),
+        model=str(payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        model_label=str(payload.get("model_label") or payload.get("model") or DEFAULT_SUNO_MUSIC_MODEL),
+        is_preview=bool(payload.get("is_preview")),
+        preview_seconds=(
+            int(payload["preview_seconds"])
+            if payload.get("preview_seconds") is not None
+            else None
+        ),
         quota=WebMusicQuotaResponse(**payload["quota"]),
     )
 
@@ -541,6 +590,41 @@ async def update_generation(
         variant=body.variant,
     )
     return _generation_response(payload)
+
+
+@router.post(
+    "/generations/{task_id}/unlock-preview",
+    response_model=WebMusicGenerationResponse,
+)
+async def unlock_preview(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicGenerationResponse:
+    try:
+        payload = await service.unlock_preview(UUID(ctx.user_id), task_id)
+    except ValidationError as exc:
+        # Old previews created before private masters cannot be recovered.
+        return JSONResponse(
+            status_code=409,
+            content={
+                "error": {
+                    "code": "preview_unlock_unavailable",
+                    "message": exc.message,
+                }
+            },
+        )
+    return _generation_response(payload)
+
+
+@router.delete("/generations/{task_id}", status_code=204)
+async def delete_generation(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> Response:
+    await service.delete_generation(UUID(ctx.user_id), task_id)
+    return Response(status_code=204)
 
 
 @router.get("/generations/{task_id}/download")

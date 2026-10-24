@@ -109,6 +109,50 @@ export async function verifyEmailCode(input: {
   return (await response.json()) as { message: string; is_verified?: boolean };
 }
 
+export async function verifyEmailLink(
+  token: string,
+): Promise<{ message: string; is_verified?: boolean }> {
+  const response = await musicAuthFetch('/api/v3/auth/verify-email-link', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  if (!response.ok) {
+    throw new Error(
+      await readError(response, `This activation link is invalid or has expired (${response.status})`),
+    );
+  }
+  return (await response.json()) as { message: string; is_verified?: boolean };
+}
+
+export async function getGoogleAuthUrl(
+  redirectUri: string,
+): Promise<{ url: string; state: string }> {
+  const response = await musicAuthFetch(
+    `/api/v3/auth/google/url?redirect_uri=${encodeURIComponent(redirectUri)}`,
+    { method: 'GET' },
+  );
+  if (!response.ok) {
+    throw new Error(await readError(response, `Google sign-in unavailable (${response.status})`));
+  }
+  return (await response.json()) as { url: string; state: string };
+}
+
+export async function completeGoogleCallback(input: {
+  code: string;
+  state: string;
+  referral_code?: string;
+}): Promise<void> {
+  const response = await musicAuthFetch('/api/v3/auth/google/callback', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, `Google sign-in failed (${response.status})`));
+  }
+}
+
 export async function fetchMusicUser(): Promise<MusicUser | null> {
   const response = await musicAuthFetch('/api/v3/users/me', { method: 'GET' });
   if (response.status === 401) return null;

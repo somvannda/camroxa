@@ -217,3 +217,83 @@ def test_settings_skips_refresh_when_cache_fresh(qapp: QApplication, monkeypatch
     monkeypatch.setattr(data_workers.SettingsWorkspaceWorker, "start", _track_start)
     view.refresh_data()
     assert started == []
+
+
+def test_new_profile_starts_inline_draft(qapp: QApplication, monkeypatch) -> None:
+    import features.settings.views.settings_view as settings_view_mod
+
+    opened: list[str] = []
+    monkeypatch.setattr(settings_view_mod, "open_external_url", opened.append)
+
+    view = SettingsView(PlatformApi())
+    view.show()
+    view._on_loaded(_payload())
+    view._on_new_profile_clicked()
+
+    assert view._selected_profile_key == "new"
+    assert opened == []
+    assert view._profile_save_btn.text() == "Create Profile"
+    assert not view._profile_save_btn.isEnabled()
+    assert not view._profile_cancel_btn.isHidden()
+
+    view._profile_name.setText("Fresh Channel")
+    assert view._profile_save_btn.isEnabled()
+    assert view._profile_folder.text() == "fresh-channel"
+
+
+def test_new_profile_is_not_plan_gated(qapp: QApplication) -> None:
+    view = SettingsView(PlatformApi())
+    view.show()
+    view._on_loaded(_payload())
+    # Even past any legacy allowance, creation stays available.
+    view._profile_usage = 999
+    view._refresh_profile_limit_note()
+
+    assert view._new_profile_btn.isEnabled()
+    view._on_new_profile_clicked()
+    assert view._selected_profile_key == "new"
+    assert "999 profiles used." in view._profile_limit_note.text()
+
+
+def test_create_profile_posts_name_only_payload(
+    qapp: QApplication, monkeypatch
+) -> None:
+    import features.settings.views.settings_view as settings_view_mod
+
+    captured: dict[str, object] = {}
+
+    class _Signal:
+        def connect(self, *_args: object, **_kwargs: object) -> None:
+            return None
+
+    class _StubWorker:
+        succeeded = _Signal()
+        failed = _Signal()
+        finished = _Signal()
+
+        def __init__(self, api, *, profile_id, payload, parent=None) -> None:  # noqa: ANN001
+            captured["profile_id"] = profile_id
+            captured["payload"] = payload
+
+        def start(self) -> None:
+            captured["started"] = True
+
+    monkeypatch.setattr(settings_view_mod, "SaveProfileWorker", _StubWorker)
+
+    view = SettingsView(PlatformApi())
+    view.show()
+    view._on_loaded(_payload())
+    view._on_new_profile_clicked()
+    view._profile_name.setText("Fresh Channel")
+    view._create_profile()
+
+    assert captured["started"] is True
+    assert captured["profile_id"] is None
+    payload = captured["payload"]
+    assert isinstance(payload, dict)
+    assert payload["name"] == "Fresh Channel"
+    assert payload["folder_name"] == "fresh-channel"
+    # Logo, cover, and other media are only sent once the user fills them in.
+    assert "logo_path" not in payload
+    assert "logo_base64" not in payload
+    assert "cover_images" not in payload

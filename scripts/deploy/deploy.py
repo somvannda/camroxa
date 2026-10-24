@@ -10,6 +10,7 @@ Legacy .deploy/secrets.env is still read as a fallback for sandbox until migrate
 
 from __future__ import annotations
 
+import io
 import os
 import stat
 import subprocess
@@ -42,6 +43,13 @@ _INSECURE_HOST_KEY = os.environ.get("DEPLOY_INSECURE_IGNORE_HOST_KEY", "").strip
 }
 VENV_DIR = Path(__file__).resolve().parent / ".venv"
 DEPLOY_DIRS = ("platform_api", "admin_portal", "website", "user_portal", "music_web", "shared")
+# Single files the systemd timers execute by absolute path. They live outside
+# DEPLOY_DIRS, so without this the healthcheck units start with status 127
+# ("No such file or directory") after every tarball deploy.
+DEPLOY_FILES = (
+    "scripts/deploy/platform-healthcheck.sh",
+    "scripts/deploy/musicapi-healthcheck.sh",
+)
 SKIP_NAMES = {
     "node_modules",
     ".venv",
@@ -366,6 +374,55 @@ def tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
     return tarinfo
 
 
+# Shipped with LF endings regardless of how this checkout stores them.
+# Deploys are packaged from a Windows worktree, and git checks these files out
+# as CRLF, so the archive used to carry CRLF to Linux hosts: on 2026-10-22,
+# 498 of 502 platform_api files on production were CRLF and no longer matched
+# the commit they came from. Python tolerates CRLF, but the drift makes
+# "is prod actually on this commit?" unanswerable without normalizing first.
+TEXT_SUFFIXES = {
+    ".py",
+    ".sh",
+    ".sql",
+    ".json",
+    ".md",
+    ".txt",
+    ".toml",
+    ".cfg",
+    ".ini",
+    ".yml",
+    ".yaml",
+    ".conf",
+    ".ts",
+    ".tsx",
+    ".js",
+    ".jsx",
+    ".mjs",
+    ".cjs",
+    ".css",
+    ".scss",
+    ".html",
+    ".xml",
+    ".svg",
+    ".example",
+}
+
+
+def _archive_bytes(path: Path) -> bytes:
+    data = path.read_bytes()
+    if path.suffix.lower() in TEXT_SUFFIXES and b"\r\n" in data:
+        return data.replace(b"\r\n", b"\n")
+    return data
+
+
+def _add_file(tar: tarfile.TarFile, path: Path, arcname: str) -> None:
+    info = tar.gettarinfo(str(path), arcname=arcname)
+    data = _archive_bytes(path)
+    if info.size != len(data):
+        info.size = len(data)
+    tar.addfile(info, io.BytesIO(data))
+
+
 def build_source_tarball() -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="camxora-deploy-"))
     archive = tmp / "camxora-src.tar.gz"
@@ -375,7 +432,26 @@ def build_source_tarball() -> Path:
             src = REPO_ROOT / name
             if not src.is_dir():
                 raise FileNotFoundError(f"Missing deploy directory: {src}")
-            tar.add(src, arcname=name, filter=tar_filter, recursive=True)
+            # Walk instead of tar.add(recursive=True) so text files can be
+            # written with normalized endings. Skipped directories are pruned
+            # before descending, which is what tar_filter used to achieve.
+            for dirpath, dirnames, filenames in os.walk(src):
+                dirnames[:] = sorted(d for d in dirnames if d not in SKIP_NAMES)
+                for filename in sorted(filenames):
+                    path = Path(dirpath) / filename
+                    arcname = path.relative_to(REPO_ROOT).as_posix()
+                    info = tar_filter(tar.gettarinfo(str(path), arcname=arcname))
+                    if info is None or not info.isfile():
+                        continue
+                    data = _archive_bytes(path)
+                    if info.size != len(data):
+                        info.size = len(data)
+                    tar.addfile(info, io.BytesIO(data))
+        for name in DEPLOY_FILES:
+            src = REPO_ROOT / name
+            if not src.is_file():
+                raise FileNotFoundError(f"Missing deploy file: {src}")
+            _add_file(tar, src, name)
     size_mb = archive.stat().st_size / (1024 * 1024)
     print(f"Source archive ready ({size_mb:.1f} MB)")
     return archive
@@ -432,6 +508,9 @@ def upload_and_run(client, secrets: dict[str, str]) -> int:
         "PLATFORM_CUTLUY_SECRET_KEY",
         "PLATFORM_CUTLUY_PAYMENT_LINK_ID",
         "PLATFORM_CUTLUY_WEBHOOK_SECRET",
+        "PLATFORM_CHMABA_API_KEY",
+        "PLATFORM_CHMABA_STORE_ID",
+        "PLATFORM_CHMABA_WEBHOOK_SECRET",
         "API_WORKERS",
     ]
     exports = ["export SYNC_FROM_LOCAL='1'"]

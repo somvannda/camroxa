@@ -1,0 +1,1563 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CAMXORA — mail templates</title>
+  <style>
+    /* Local copies so the Khmer headline previews in Niradei. The templates
+       themselves point at the public URL; here we use relative paths because the
+       gallery is a local file. */
+    @font-face {
+      font-family: 'Niradei';
+      src: url('fonts/Niradei-Medium.ttf') format('truetype');
+      font-weight: 500;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Niradei';
+      src: url('fonts/Niradei-ExtraBold.ttf') format('truetype');
+      font-weight: 700;
+      font-display: swap;
+    }
+    @font-face {
+      font-family: 'Noto Sans Khmer';
+      src: url('fonts/NotoSansKhmer-khmer.woff2') format('woff2');
+      font-weight: 400 700;
+      font-display: swap;
+    }
+    :root {
+      --bg: #0a0e27;
+      --panel: #0c1230;
+      --border: #1f2547;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --violet: #7466f1;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 32px 20px 64px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    }
+    header { max-width: 980px; margin: 0 auto 20px; }
+    h1 { margin: 0 0 6px; font-size: 22px; }
+    p.lead { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.6; max-width: 760px; }
+    .hint {
+      margin-top: 14px; padding: 10px 14px; border: 1px solid var(--border);
+      border-radius: 8px; background: var(--panel); color: var(--muted);
+      font-size: 12px; line-height: 1.6;
+    }
+    .hint code { color: #c4b5fd; font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+    .tabs { max-width: 980px; margin: 0 auto; }
+    .tabs > input { position: absolute; opacity: 0; pointer-events: none; }
+
+    .tabbar {
+      display: flex; gap: 8px; overflow-x: auto; padding: 4px 0 18px;
+      scrollbar-width: thin;
+    }
+    .tabbar label {
+      flex: 0 0 auto; cursor: pointer; padding: 8px 14px; border-radius: 999px;
+      border: 1px solid var(--border); color: var(--muted); font-size: 13px;
+      white-space: nowrap; user-select: none;
+    }
+    .tabbar label:hover { border-color: var(--violet); color: var(--text); }
+
+    .panels { border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+    .panel { display: none; background: #eef0f4; padding: 20px 16px 32px; }
+    .panel-head {
+      display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline;
+      justify-content: space-between; max-width: 600px; margin: 0 auto 14px;
+      color: #4b5563; font-size: 12px;
+    }
+    .panel-head strong { font-size: 13px; color: #111827; }
+    .panel-head code { font-family: ui-monospace, Menlo, Consolas, monospace; color: #6b7280; }
+
+    /* Center whatever the email body renders, without touching its inline styles. */
+    .panel > table { margin: 0 auto; }
+    .panel > div[style*="display:none"] { display: none !important; }
+
+    #t01:checked ~ .tabbar label[for="t01"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t01:checked ~ .panels #p01 { display: block; }
+    #t02:checked ~ .tabbar label[for="t02"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t02:checked ~ .panels #p02 { display: block; }
+    #t03:checked ~ .tabbar label[for="t03"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t03:checked ~ .panels #p03 { display: block; }
+    #t04:checked ~ .tabbar label[for="t04"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t04:checked ~ .panels #p04 { display: block; }
+    #t05:checked ~ .tabbar label[for="t05"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t05:checked ~ .panels #p05 { display: block; }
+    #t06:checked ~ .tabbar label[for="t06"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t06:checked ~ .panels #p06 { display: block; }
+    #t07:checked ~ .tabbar label[for="t07"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t07:checked ~ .panels #p07 { display: block; }
+    #t08:checked ~ .tabbar label[for="t08"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t08:checked ~ .panels #p08 { display: block; }
+    #t09:checked ~ .tabbar label[for="t09"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t09:checked ~ .panels #p09 { display: block; }
+    #t10:checked ~ .tabbar label[for="t10"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t10:checked ~ .panels #p10 { display: block; }
+    #t11:checked ~ .tabbar label[for="t11"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t11:checked ~ .panels #p11 { display: block; }
+    #t12:checked ~ .tabbar label[for="t12"] { background: var(--violet); border-color: var(--violet); color: #fff; }
+    #t12:checked ~ .panels #p12 { display: block; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>CAMXORA — mail templates</h1>
+    <p class="lead">
+      12 emails, one per tab. Built for real inboxes: 600px table layout, inline styles
+      only, a text wordmark, and a light background that survives dark-mode clients.
+    </p>
+    <div class="hint">
+      Placeholders such as <code>{{first_name}}</code>, <code>{{credits}}</code> and <code>{{code}}</code>
+      appear literally here; at send time they are replaced per recipient.
+    </div>
+  </header>
+
+  <div class="tabs">
+      <input type="radio" name="tpl" id="t01" checked />
+      <input type="radio" name="tpl" id="t02" />
+      <input type="radio" name="tpl" id="t03" />
+      <input type="radio" name="tpl" id="t04" />
+      <input type="radio" name="tpl" id="t05" />
+      <input type="radio" name="tpl" id="t06" />
+      <input type="radio" name="tpl" id="t07" />
+      <input type="radio" name="tpl" id="t08" />
+      <input type="radio" name="tpl" id="t09" />
+      <input type="radio" name="tpl" id="t10" />
+      <input type="radio" name="tpl" id="t11" />
+      <input type="radio" name="tpl" id="t12" />
+
+      <nav class="tabbar">
+      <label for="t01" title="01-welcome.html">Welcome</label>
+      <label for="t02" title="02-never-generated.html">Signed up, never generated</label>
+      <label for="t03" title="03-pack-ladder.html">Pack ladder</label>
+      <label for="t04" title="04-discount.html">Discount</label>
+      <label for="t05" title="05-low-balance.html">Low balance</label>
+      <label for="t06" title="06-winback.html">Win-back</label>
+      <label for="t07" title="07-receipt.html">Receipt</label>
+      <label for="t08" title="08-payment-expired.html">Payment expired</label>
+      <label for="t09" title="09-credits-expiring.html">Credits expiring</label>
+      <label for="t10" title="10-referral.html">Referral</label>
+      <label for="t11" title="11-stems-spotlight.html">Stems spotlight</label>
+      <label for="t12" title="12-seasonal.html">Seasonal</label>
+      </nav>
+
+      <div class="panels">
+      <div class="panel" id="p01">
+        <div class="panel-head">
+          <strong>Welcome</strong>
+          <span>automation · signup + 30m &middot; <code>01-welcome.html</code></span>
+        </div>
+        
+  <!-- Preheader: shown in the inbox preview, hidden in the body. -->
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    You're in. Your first track is three minutes away.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr>
+            <td style="background:#7466F1;height:4px;line-height:4px;font-size:0;">&nbsp;</td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                Welcome, {{first_name}}
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Your account is ready. There is no subscription and nothing to install &mdash;
+                you describe the song you want, and it comes back finished.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td width="28" valign="top" style="font-size:15px;line-height:1.65;color:#7466F1;font-weight:700;">1</td>
+                  <td style="font-size:15px;line-height:1.65;color:#374151;padding-bottom:12px;">
+                    <strong style="color:#111827;">Describe it.</strong>
+                    A mood, a genre, a line of lyrics &mdash; a sentence is enough.
+                  </td>
+                </tr>
+                <tr>
+                  <td width="28" valign="top" style="font-size:15px;line-height:1.65;color:#7466F1;font-weight:700;">2</td>
+                  <td style="font-size:15px;line-height:1.65;color:#374151;padding-bottom:12px;">
+                    <strong style="color:#111827;">Pick the shape.</strong>
+                    Style, vocals, and length. You can extend or remix any result later.
+                  </td>
+                </tr>
+                <tr>
+                  <td width="28" valign="top" style="font-size:15px;line-height:1.65;color:#7466F1;font-weight:700;">3</td>
+                  <td style="font-size:15px;line-height:1.65;color:#374151;">
+                    <strong style="color:#111827;">Download it.</strong>
+                    MP3 is free. Credits cover each generation, at 10 credits per song.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:28px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Make your first song
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Tip: start with a lyric line you already like. It gives the model far more to work with
+                than a single genre name.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                You are receiving this because you created a CAMXORA account.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p02">
+        <div class="panel-head">
+          <strong>Signed up, never generated</strong>
+          <span>automation · no songs after 3d &middot; <code>02-never-generated.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    You signed up but haven't made a song yet. It takes about three minutes.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#7466F1;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                You haven't made a song yet
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; your account is set up, but there are no tracks on it.
+                That's the only thing standing between you and a finished song.
+              </p>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Most people are surprised by how little input it takes. You don't need
+                instruments, a studio, or a producer &mdash; a sentence describing the song is enough
+                to start.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ff;border-radius:10px;">
+                <tr>
+                  <td style="padding:18px 20px;">
+                    <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#7466F1;">
+                      Try this first
+                    </p>
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#374151;font-style:italic;">
+                      &ldquo;Warm indie folk, fingerpicked guitar, close-mic vocals, a little tape hiss.
+                      A song about driving home after a long week.&rdquo;
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0;">
+              <p style="margin:0;font-size:15px;line-height:1.65;color:#374151;">
+                Each generation costs 10 credits, and MP3 download is free. You keep every track
+                you make.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Make a song now
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                If something got in the way &mdash; sign-in, credits, a prompt that produced nothing useful
+                &mdash; reply to this email and tell us what happened.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                You are receiving this because you created a CAMXORA account and have not made a track yet.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p03">
+        <div class="panel-head">
+          <strong>Pack ladder</strong>
+          <span>campaign · active, never paid &middot; <code>03-pack-ladder.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    The $20 pack is 37% more credits per dollar than the smallest one. Here is the maths.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#7466F1;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                Bigger packs cost less per song
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; you have <strong>{{credits}} credits</strong> left. Before you
+                top up, it's worth knowing how the packs are priced, because the difference is not small.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
+                <tr>
+                  <td style="padding:0 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">Pack</td>
+                  <td style="padding:0 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">Credits</td>
+                  <td style="padding:0 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">Songs</td>
+                  <td align="right" style="padding:0 0 8px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">vs&nbsp;$5</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">$5</td>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">1,000</td>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">100</td>
+                  <td align="right" style="padding:12px 0;border-top:1px solid #e5e7eb;color:#9ca3af;">&mdash;</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">$10</td>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">2,300</td>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">230</td>
+                  <td align="right" style="padding:12px 0;border-top:1px solid #e5e7eb;color:#059669;font-weight:600;">+15%</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 0;border-top:1px solid #e5e7eb;background:#f5f3ff;color:#111827;font-weight:700;border-radius:8px 0 0 8px;">$20</td>
+                  <td style="padding:14px 0;border-top:1px solid #e5e7eb;background:#f5f3ff;color:#111827;font-weight:700;">5,500</td>
+                  <td style="padding:14px 0;border-top:1px solid #e5e7eb;background:#f5f3ff;color:#111827;font-weight:700;">550</td>
+                  <td align="right" style="padding:14px 0;border-top:1px solid #e5e7eb;background:#f5f3ff;color:#059669;font-weight:700;border-radius:0 8px 8px 0;">+37%</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">$30</td>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">8,800</td>
+                  <td style="padding:12px 0;border-top:1px solid #e5e7eb;color:#374151;">880</td>
+                  <td align="right" style="padding:12px 0;border-top:1px solid #e5e7eb;color:#059669;font-weight:600;">+47%</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <p style="margin:0;font-size:15px;line-height:1.65;color:#374151;">
+                The <strong>$20 pack</strong> is the sweet spot: 550 songs, and 37% more credits per
+                dollar than the $5 pack &mdash; the same music, roughly $0.036 per song instead of $0.05.
+              </p>
+              <p style="margin:12px 0 0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Above that, the curve flattens. Going from $20 to $30 adds only about 7% more credits
+                per dollar, so $20 is where the value stops climbing steeply.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard/billing" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Get the $20 pack
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Credits never expire while your account is active. One song is 10 credits;
+                stems, remasters and video cost extra and are priced per action.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                You are receiving this because you have a CAMXORA account.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p04">
+        <div class="panel-head">
+          <strong>Discount</strong>
+          <span>campaign · one code per recipient &middot; <code>04-discount.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Your code is inside. It works once and expires in 7 days.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#7466F1;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                20% off your next pack
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; you have <strong>{{credits}} credits</strong> left, and we'd
+                rather you keep creating than stop mid-song. Here is 20% off any credit pack.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center" style="padding:24px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ff;border:1px dashed #a78bfa;border-radius:10px;">
+                <tr>
+                  <td align="center" style="padding:20px;">
+                    <p style="margin:0 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#7c3aed;">
+                      Your code
+                    </p>
+                    <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:24px;font-weight:700;letter-spacing:.12em;color:#111827;">
+                      {{code}}
+                    </p>
+                    <p style="margin:8px 0 0;font-size:12px;color:#6b7280;">
+                      Expires in {{code_expires_days}} days &middot; one use &middot; this account only
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0;">
+              <p style="margin:0 0 10px;font-size:15px;line-height:1.65;color:#374151;">
+                Applied to the packs you actually buy, that looks like:
+              </p>
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$5 &rarr; 1,000 credits</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;font-weight:600;">$4.00</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$10 &rarr; 2,300 credits</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;font-weight:600;">$8.00</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$20 &rarr; 5,500 credits</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;font-weight:600;">$16.00</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$30 &rarr; 8,800 credits</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;font-weight:600;">$24.00</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard/billing?code={{code}}" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Redeem 20% off
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                The code goes in at checkout. If it says the code is invalid, make sure you are signed
+                in to the same account this email was sent to &mdash; codes are issued per person.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                You are receiving this because you have a CAMXORA account.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p05">
+        <div class="panel-head">
+          <strong>Low balance</strong>
+          <span>automation · below user threshold &middot; <code>05-low-balance.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    {{credits}} credits left, about {{songs_left}} songs. Top up before you run out mid-track.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#f59e0b;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                You're running low
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; your balance is <strong>{{credits}} credits</strong>, which is
+                about <strong>{{songs_left}} more songs</strong> at 10 credits each.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#92400e;">
+                      <strong>Why now:</strong> a generation that fails on credits loses the prompt too.
+                      Topping up before you hit zero means your next idea does not have to wait.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$10 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;">2,300 credits &middot; 230 songs</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$20 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;">5,500 credits &middot; 550 songs</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$30 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#111827;">8,800 credits &middot; 880 songs</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard/billing" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Top up credits
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                You set this alert yourself in Settings. You can change the threshold or turn it off
+                at any time.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                Account notice for your CAMXORA balance.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Manage email preferences</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p06">
+        <div class="panel-head">
+          <strong>Win-back</strong>
+          <span>automation · inactive 30d &middot; <code>06-winback.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    A few things changed since you were last here.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#7466F1;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                Still writing?
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; it has been a while since your last session. Nothing is lost:
+                your tracks are still there, and so are your credits.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <p style="margin:0 0 14px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">
+                Since you were last here
+              </p>
+              <p style="margin:0 0 10px;font-size:15px;line-height:1.6;color:#374151;">
+                <strong style="color:#111827;">A newer model.</strong>
+                Cleaner vocals and tighter arrangements, especially on short prompts.
+              </p>
+              <p style="margin:0 0 10px;font-size:15px;line-height:1.6;color:#374151;">
+                <strong style="color:#111827;">Stems.</strong>
+                Pull a track apart into vocals, drums, bass and the rest, then remix it yourself.
+              </p>
+              <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;">
+                <strong style="color:#111827;">Video.</strong>
+                Turn a finished song into a shareable clip without leaving the app.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:10px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#4b5563;">
+                      Pick up where you left off &mdash; your last track is in the dashboard, ready to
+                      extend or remaster.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Open my tracks
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                If you stopped because something did not work the way you expected, reply and tell us
+                &mdash; that feedback is genuinely what gets fixed first.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                You are receiving this because you have a CAMXORA account.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p07">
+        <div class="panel-head">
+          <strong>Receipt</strong>
+          <span>transactional · payment paid &middot; <code>07-receipt.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Your credits are on your account and ready to use.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#059669;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                Payment confirmed
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Thanks {{first_name}} &mdash; your credits are on your account and ready to use.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;background:#f9fafb;border-radius:10px;">
+                <tr>
+                  <td style="padding:14px 18px;color:#6b7280;">Pack</td>
+                  <td align="right" style="padding:14px 18px;color:#111827;font-weight:600;">{{pack_name}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 18px;border-top:1px solid #e5e7eb;color:#6b7280;">Credits added</td>
+                  <td align="right" style="padding:14px 18px;border-top:1px solid #e5e7eb;color:#059669;font-weight:700;">+{{credits_added}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 18px;border-top:1px solid #e5e7eb;color:#6b7280;">Amount paid</td>
+                  <td align="right" style="padding:14px 18px;border-top:1px solid #e5e7eb;color:#111827;font-weight:600;">{{amount_paid}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 18px;border-top:1px solid #e5e7eb;color:#6b7280;">Date</td>
+                  <td align="right" style="padding:14px 18px;border-top:1px solid #e5e7eb;color:#374151;">{{paid_at}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:14px 18px;border-top:1px solid #e5e7eb;color:#6b7280;">Reference</td>
+                  <td align="right" style="padding:14px 18px;border-top:1px solid #e5e7eb;color:#6b7280;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:12px;">{{transaction_ref}}</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <p style="margin:0;font-size:15px;line-height:1.65;color:#374151;">
+                Your new balance is <strong>{{credits}}</strong> credits.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Start creating
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Keep this email as your receipt. If a charge looks wrong, reply within 30 days and we
+                will look at it with you.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                This is a transactional receipt for a purchase on your CAMXORA account, sent regardless
+                of marketing preferences.
+                <a href="{{app_url}}/dashboard/settings" style="color:#6b7280;text-decoration:underline;">Account settings</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p08">
+        <div class="panel-head">
+          <strong>Payment expired</strong>
+          <span>automation · checkout abandoned &middot; <code>08-payment-expired.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    No charge was made. Your pack is still one click away.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#f59e0b;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                Your payment didn't complete
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; you started buying the <strong>{{pack_name}}</strong> pack but the
+                payment expired before it was confirmed. <strong>Nothing was charged.</strong>
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:10px;font-size:14px;border-collapse:collapse;">
+                <tr>
+                  <td style="padding:12px 18px;color:#6b7280;">Pack</td>
+                  <td align="right" style="padding:12px 18px;color:#111827;font-weight:600;">{{pack_name}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;">Credits</td>
+                  <td align="right" style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#374151;">{{pack_credits}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;">Amount</td>
+                  <td align="right" style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#374151;">{{amount}}</td>
+                </tr>
+                <tr>
+                  <td style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#6b7280;">Status</td>
+                  <td align="right" style="padding:12px 18px;border-top:1px solid #e5e7eb;color:#b45309;font-weight:600;">Expired</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <p style="margin:0;font-size:15px;line-height:1.65;color:#374151;">
+                QR payments are only valid for about ten minutes. If you were scanning from a phone and
+                the screen went dark, that is usually all that happened.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard/billing" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Try the payment again
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                If money did leave your account without credits appearing, reply to this email with the
+                time and we will trace it.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                Account notice about a payment you started.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Manage email preferences</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p09">
+        <div class="panel-head">
+          <strong>Credits expiring</strong>
+          <span>automation · lot expires in 5d &middot; <code>09-credits-expiring.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    {{expiring_credits}} credits expire in {{days_left}} days. They cost you nothing to use now.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#f59e0b;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                {{expiring_credits}} credits expire in {{days_left}} days
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; part of your balance has an expiry date, and it is coming up.
+                That is about <strong>{{songs_left}} songs</strong> you have already paid for.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#92400e;">
+                      Using them costs nothing extra. Credits you buy later are added on top and keep
+                      their own dates &mdash; this expiry only applies to the batch that is running out.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">
+                Good things to do with them
+              </p>
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#374151;">Finish the tracks sitting in your drafts.</p>
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#374151;">Make a remaster of the one that almost worked.</p>
+              <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;">Pull stems and rebuild a chorus properly.</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Use my credits
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Your balance and the expiry dates per batch are visible in the dashboard at any time.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                Account notice about your CAMXORA credit balance.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Manage email preferences</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p10">
+        <div class="panel-head">
+          <strong>Referral</strong>
+          <span>campaign · invite program &middot; <code>10-referral.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Your invite code is inside. You both get credited after their first pack.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#7466F1;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                Give a friend credits. Get credits.
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; you have <strong>{{credits}} credits</strong>. Share your invite
+                code and, when your friend buys their first pack, you both get
+                <strong>{{reward_pct}}%</strong> credited back.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center" style="padding:24px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ff;border:1px dashed #a78bfa;border-radius:10px;">
+                <tr>
+                  <td align="center" style="padding:20px;">
+                    <p style="margin:0 0 6px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#7c3aed;">
+                      Your invite code
+                    </p>
+                    <p style="margin:0;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:26px;font-weight:700;letter-spacing:.14em;color:#111827;">
+                      {{referral_code}}
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:24px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td width="24" valign="top" style="font-size:15px;line-height:1.65;color:#7466F1;font-weight:700;">1</td>
+                  <td style="font-size:15px;line-height:1.65;color:#374151;padding-bottom:10px;">
+                    Send them your code, or forward this email.
+                  </td>
+                </tr>
+                <tr>
+                  <td width="24" valign="top" style="font-size:15px;line-height:1.65;color:#7466F1;font-weight:700;">2</td>
+                  <td style="font-size:15px;line-height:1.65;color:#374151;padding-bottom:10px;">
+                    They create an account and enter it before buying.
+                  </td>
+                </tr>
+                <tr>
+                  <td width="24" valign="top" style="font-size:15px;line-height:1.65;color:#7466F1;font-weight:700;">3</td>
+                  <td style="font-size:15px;line-height:1.65;color:#374151;">
+                    Once their first pack is confirmed, both rewards land automatically.
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard/invite" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Share my invite link
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Rewards are only paid after a first real purchase, so sign-ups alone do not mint
+                credits. Codes cannot be used on your own account.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                You are receiving this because you have a CAMXORA account.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p11">
+        <div class="panel-head">
+          <strong>Stems spotlight</strong>
+          <span>campaign · feature adoption &middot; <code>11-stems-spotlight.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    Stems give you the vocals, drums and bass separately. Fix one part instead of starting over.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#7466F1;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                Take a song apart
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; when a track is 90% right, regenerating the whole thing wastes
+                credits and usually loses what worked. Stems let you fix the part that is wrong.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;border-radius:10px;">
+                <tr>
+                  <td style="padding:18px 20px;">
+                    <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">
+                      What you get back
+                    </p>
+                    <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#374151;">Vocals &mdash; clean, on their own track</p>
+                    <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#374151;">Drums and percussion</p>
+                    <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#374151;">Bass</p>
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#374151;">Everything else, together</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">
+                What people actually do with them
+              </p>
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#374151;">
+                Re-cut a vocal with better lyrics, keeping the arrangement you already liked.
+              </p>
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#374151;">
+                Drop the drums for an acoustic version.
+              </p>
+              <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;">
+                Take the instrumental into your own DAW and finish it there.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <p style="margin:0;font-size:14px;line-height:1.65;color:#374151;">
+                Standard stems cost <strong>8 credits</strong>, the advanced split is
+                <strong>12</strong>, and a full multi-stem export is <strong>20</strong>. You have
+                <strong>{{credits}} credits</strong> available.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Open a track
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Pick any finished track, then choose Stems from its menu.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                You are receiving this because you have a CAMXORA account.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      <div class="panel" id="p12">
+        <div class="panel-head">
+          <strong>Seasonal</strong>
+          <span>campaign · Khmer New Year &middot; <code>12-seasonal.html</code></span>
+        </div>
+        
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    A little extra credit for the holiday, on us.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#7466F1;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center" style="padding:24px 32px 0;">
+              <p style="margin:0 0 10px;font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#a855f7;">
+                Khmer New Year
+              </p>
+              <h1 lang="km" style="margin:0;font-size:26px;line-height:1.5;color:#111827;font-weight:700;font-family:'Niradei','Noto Sans Khmer','Khmer OS Battambang','Khmer OS','Leelawadee UI',sans-serif;">
+                រីករាយបុណ្យចូលឆ្នាំថ្មី
+              </h1>
+              <p style="margin:8px 0 0;font-size:15px;line-height:1.6;color:#6b7280;">
+                Happy Khmer New Year, {{first_name}}
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <p style="margin:0;font-size:15px;line-height:1.65;color:#374151;">
+                Whether you are travelling home or staying in the city, the holiday is a good excuse to
+                finish the songs you have been putting off. So we added a little extra to every pack
+                this week.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="center" style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f5f3ff;border-radius:12px;">
+                <tr>
+                  <td align="center" style="padding:22px 20px;">
+                    <p style="margin:0 0 4px;font-size:13px;color:#6b7280;">Every credit pack, this week only</p>
+                    <p style="margin:0;font-size:30px;font-weight:700;color:#7466F1;line-height:1.2;">
+                      +{{bonus_pct}}% bonus credits
+                    </p>
+                    <p style="margin:6px 0 0;font-size:13px;color:#6b7280;">
+                      Added automatically at checkout &mdash; no code needed
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse:collapse;font-size:14px;">
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$5 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">1,000 &rarr; <strong style="color:#059669;">{{bonus_1000}}</strong> credits</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$10 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">2,300 &rarr; <strong style="color:#059669;">{{bonus_2300}}</strong> credits</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$20 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">5,500 &rarr; <strong style="color:#059669;">{{bonus_5500}}</strong> credits</td>
+                </tr>
+                <tr>
+                  <td style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">$30 pack</td>
+                  <td align="right" style="padding:10px 0;border-top:1px solid #e5e7eb;color:#374151;">8,800 &rarr; <strong style="color:#059669;">{{bonus_8800}}</strong> credits</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard/billing" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Get the bonus
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Bonus credits are added to the same batch as the pack you buy, so they carry the same
+                terms. Offer ends {{offer_ends}}.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                You are receiving this because you have a CAMXORA account.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Unsubscribe</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+      </div>
+      </div>
+  </div>
+</body>
+</html>

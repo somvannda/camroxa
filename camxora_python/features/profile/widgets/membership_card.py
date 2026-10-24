@@ -44,14 +44,14 @@ class MembershipCard(StudioPanel):
         self._plan_name.setObjectName("PlanName")
         self._plan_name.setFont(studio_font(14))
         layout.addWidget(self._plan_name)
-        self._plan_subtitle = QLabel("Monthly plan")
+        self._plan_subtitle = QLabel("Credit pack")
         self._plan_subtitle.setObjectName("PlanSubtitle")
         self._plan_subtitle.setFont(studio_font(12))
         layout.addWidget(self._plan_subtitle)
 
         self._plan = _ValueProxy(self._plan_name)
 
-        self._profiles_bar = MembershipMetricBar("Monthly profiles")
+        self._profiles_bar = MembershipMetricBar("Profile slots")
         layout.addWidget(self._profiles_bar)
 
         resources = QGridLayout()
@@ -75,7 +75,7 @@ class MembershipCard(StudioPanel):
     def show_loading(self) -> None:
         self._profiles_bar.set_metric("--", 0)
         self._plan_name.setText("--")
-        self._plan_subtitle.setText("Monthly plan")
+        self._plan_subtitle.setText("Credit pack")
         self._credits.set_value("--")
         self._expiry.set_value("--")
         self._addon_active.set_value("--")

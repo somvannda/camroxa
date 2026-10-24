@@ -53,6 +53,18 @@ interface UserDetail {
     last_activity: string | null;
   };
   transactions: LedgerRow[];
+  invite: {
+    code: string | null;
+    invited: number;
+    rewarded: number;
+    credits_earned: number;
+    referred_by: {
+      email: string;
+      status: string;
+      code: string;
+      created_at: string;
+    } | null;
+  };
 }
 
 const TYPE_TONES: Record<string, BadgeTone> = {
@@ -60,6 +72,8 @@ const TYPE_TONES: Record<string, BadgeTone> = {
   adjust: "warning",
   spend: "neutral",
   refund: "info",
+  referral: "success",
+  promo: "success",
 };
 
 export default function UserDetailPage() {
@@ -150,6 +164,51 @@ export default function UserDetailPage() {
           <div>
             <dt className="text-xs text-[var(--muted)]">Failed requests</dt>
             <dd className="mt-0.5">{num(data.usage.failed)}</dd>
+          </div>
+        </dl>
+      </Card>
+
+      <Card className="space-y-3 p-5">
+        <h2 className="text-sm font-semibold text-[var(--muted)]">Invite program</h2>
+        <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5">
+          <div>
+            <dt className="text-xs text-[var(--muted)]">Invite code</dt>
+            <dd className="mt-0.5 font-mono text-xs">{data.invite.code ?? "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--muted)]">Friends invited</dt>
+            <dd className="mt-0.5">{num(data.invite.invited)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--muted)]">Rewarded</dt>
+            <dd className="mt-0.5">{num(data.invite.rewarded)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--muted)]">Invite credits earned</dt>
+            <dd className="mt-0.5">{num(data.invite.credits_earned)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-[var(--muted)]">Referred by</dt>
+            <dd className="mt-0.5">
+              {data.invite.referred_by ? (
+                <span>
+                  {data.invite.referred_by.email}{" "}
+                  <Badge
+                    tone={
+                      data.invite.referred_by.status === "rewarded"
+                        ? "success"
+                        : data.invite.referred_by.status === "rejected"
+                          ? "danger"
+                          : "warning"
+                    }
+                  >
+                    {data.invite.referred_by.status}
+                  </Badge>
+                </span>
+              ) : (
+                "—"
+              )}
+            </dd>
           </div>
         </dl>
       </Card>

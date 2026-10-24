@@ -2,7 +2,7 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, X } from 'lucide-react';
+import { Check, Copy, Download, FolderOpen, LoaderCircle, Mic2, Music2, Pause, Pencil, Play, Plus, Shuffle, Sparkles, Trash2, X } from 'lucide-react';
 
 import { useAuth } from '@/components/auth-provider';
 import { usePlayer } from '@/components/player-provider';
@@ -24,16 +24,30 @@ import {
   WEB_MUSIC_STYLE_MAX,
 } from '@/components/music-form-ui';
 import { khmerTextClass } from '@/lib/khmer-text';
+import { isFailedStatus } from '@/lib/generation-status';
+import { CoverImage } from '@/components/cover-image';
 
 function clampText(value: string, max: number): string {
   return value.length <= max ? value : value.slice(0, max);
 }
 import {
+  CREATE_COOLDOWN_MS,
+  cooldownMsForAttempt,
+  queueLimitForUser,
+  type WebMusicGenerateInput,
+} from '@/lib/create-submit-queue';
+import {
+  MusicApiError,
   createWebMusicWorkspace,
   updateWebMusicWorkspace,
+  deleteWebMusicGeneration,
   downloadWebMusicClip,
   downloadWebMusicClipWav,
   downloadWebMusicTimedLyrics,
+  fetchWebMusicClipBlob,
+  fetchWebMusicClipWavBlob,
+  fetchWebMusicTimedLyricsBlob,
+  saveBlob,
   generateWebMusic,
   generateWebMusicDraft,
   generateWebMusicStyles,
@@ -42,6 +56,7 @@ import {
   listWebMusicWorkspaces,
   fetchWebMusicQuota,
   updateWebMusicGenerationTitle,
+  unlockWebMusicPreview,
   type WebMusicClip,
   type WebMusicGeneration,
   type WebMusicQuota,
@@ -50,6 +65,7 @@ import {
 import { formatGeneratedTime, formatModelVersionTag } from '@/lib/clip-display';
 import { fetchCreditBalance, fetchSubscriptionPlans, type CreditBalance } from '@/lib/subscription-api';
 import { formatDuration, type StreamTrack } from '@/lib/streaming-api';
+import { createStoreZip, type ZipEntry } from '@/lib/zip-store';
 
 const STYLE_CHIPS = [
   'pop',
@@ -64,6 +80,27 @@ const STYLE_CHIPS = [
   'indie',
 ];
 
+// Songs (generations) loaded per page. Each song renders two version rows
+// (Version 1 / Version 2), so 50 songs = 100 version rows per page.
+// The API caps `limit` at 100 songs/page.
+const WORKSPACE_PAGE_SIZE = 50;
+
+// Poll cadence for songs that are still generating. Kept deliberately relaxed and
+// chunked: each poll is a real server call, and a 20-song batch would otherwise
+// fire a burst of requests every tick.
+const WORKSPACE_POLL_MS = 5000;
+const WORKSPACE_POLL_CHUNK = 5;
+
+// Simple-mode batch sizes. 1 keeps the historical single-song behaviour as the
+// default; 5/10/20 submit that many `POST /web-music/generate` requests in a row
+// (each song returns two versions: Version 1 + Version 2).
+const SIMPLE_SONG_COUNTS = [1, 5, 10, 20] as const;
+type SimpleSongCount = (typeof SIMPLE_SONG_COUNTS)[number];
+
+// Small gap between batch submissions so a burst of 20 POSTs does not trip the
+// per-user `web_music_generate` rate limit (40/60s).
+const BATCH_SUBMIT_GAP_MS = 800;
+
 function clipWaitingLabel(generation: WebMusicGeneration): string {
   return (generation.status || '').toUpperCase() === 'SUCCESS' ? 'Finishing' : 'Waiting';
 }
@@ -74,9 +111,9 @@ function isGeneratingStatus(generation: WebMusicGeneration): boolean {
 }
 
 function isOpenGeneration(item: WebMusicGeneration): boolean {
-  const status = (item.status || '').toLowerCase();
-  if (status === 'failed' || status === 'cancelled') return false;
-  if (status === 'success') {
+  const status = (item.status || '').toUpperCase();
+  if (isFailedStatus(status)) return false;
+  if (status === 'SUCCESS') {
     if (item.clips.some((clip) => !clip.ready)) return true;
     return item.clips.some((clip) => clip.ready && !clip.image_url);
   }
@@ -183,7 +220,9 @@ function ClipReadyLabel({
   createdAt?: string | null;
   className?: string;
 }) {
-  const duration = formatDuration(clip.duration_seconds);
+  const duration = formatDuration(
+    clip.is_preview ? clip.preview_seconds ?? 60 : clip.duration_seconds,
+  );
   const status = clip.ready ? 'Ready' : waitingLabel;
   const generatedTime = formatGeneratedTime(createdAt);
 
@@ -193,6 +232,11 @@ function ClipReadyLabel({
         {duration ? `${duration} · ${status}` : status}
         {generating ? ' · Generating…' : ''}
       </span>
+      {clip.is_preview ? (
+        <span className="shrink-0 rounded-full bg-amber-400/15 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300">
+          Preview
+        </span>
+      ) : null}
       <ModelVersionTag model={model} />
       {generatedTime ? (
         <span className="shrink-0 text-[11px] text-slate-500">· {generatedTime}</span>
@@ -287,6 +331,17 @@ function ClipDownloadBadge({
 
 type DownloadKind = 'mp3' | 'wav' | 'lrc' | 'srt';
 
+const BATCH_FORMAT_OPTIONS: { value: DownloadKind; label: string }[] = [
+  { value: 'mp3', label: 'MP3 audio' },
+  { value: 'wav', label: 'WAV audio' },
+  { value: 'lrc', label: 'LRC lyrics' },
+  { value: 'srt', label: 'SRT subtitles' },
+];
+
+// Beyond this, one in-browser ZIP risks exhausting the tab's memory, so the
+// batch falls back to downloading files one at a time instead.
+const BATCH_ZIP_MAX_BYTES = 400 * 1024 * 1024;
+
 function downloadBusyKey(taskId: string, variant: string, kind: DownloadKind): string {
   return `${taskId}:${variant}:${kind}`;
 }
@@ -345,14 +400,11 @@ function ClipCoverControl({
       aria-label={ready ? (showPause ? 'Pause' : 'Play') : 'Waiting for audio'}
       className={`relative flex ${box} flex-shrink-0 items-center justify-center overflow-hidden bg-violet-500/20 text-fuchsia-100 disabled:cursor-not-allowed`}
     >
-      {clip.image_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={clip.image_url} alt="" className="h-full w-full object-cover" />
-      ) : variant === 'alt' ? (
-        <Mic2 className={icon} />
-      ) : (
-        <Music2 className={icon} />
-      )}
+      <CoverImage
+        src={clip.image_url}
+        className="h-full w-full object-cover"
+        fallback={variant === 'alt' ? <Mic2 className={icon} /> : <Music2 className={icon} />}
+      />
       <span className="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
         {!ready ? (
           <LoaderCircle className={`${icon} animate-spin text-white`} />
@@ -483,6 +535,8 @@ export default function CreatePageClient() {
   const [newWorkspaceName, setNewWorkspaceName] = useState('');
   const [renameWorkspaceName, setRenameWorkspaceName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [simpleSongCount, setSimpleSongCount] = useState<SimpleSongCount>(1);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [generatingDraft, setGeneratingDraft] = useState(false);
   const [lyricsError, setLyricsError] = useState<string | null>(null);
   const [stylesError, setStylesError] = useState<string | null>(null);
@@ -492,12 +546,25 @@ export default function CreatePageClient() {
   const [lyricCredits, setLyricCredits] = useState(0);
   const [musicCredits, setMusicCredits] = useState(0);
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const loadMoreRef = useRef<HTMLDivElement | null>(null);
+  const loadingMoreRef = useRef(false);
   const [selectedVersion, setSelectedVersion] = useState<{
     song: WebMusicGeneration;
     clip: WebMusicClip;
   } | null>(null);
   const [showUpgradeModal, setShowUpgradeModal] = useState(false);
+  const [upgradeHeadline, setUpgradeHeadline] = useState<string | undefined>();
+  const [upgradeMessage, setUpgradeMessage] = useState<string | undefined>();
   const [downloadingKeys, setDownloadingKeys] = useState<string[]>([]);
+  const [unlockingKeys, setUnlockingKeys] = useState<string[]>([]);
+  const [deletingIds, setDeletingIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedClipKeys, setSelectedClipKeys] = useState<string[]>([]);
+  const [batchFormat, setBatchFormat] = useState<DownloadKind>('mp3');
+  const [batchBusy, setBatchBusy] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<{ done: number; total: number } | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -511,11 +578,36 @@ export default function CreatePageClient() {
     }
   }, []);
 
+  function openPackModal(headline: string, message: string) {
+    setUpgradeHeadline(headline);
+    setUpgradeMessage(message);
+    setShowUpgradeModal(true);
+  }
+
+  function closePackModal() {
+    setShowUpgradeModal(false);
+    setUpgradeHeadline(undefined);
+    setUpgradeMessage(undefined);
+  }
+
+  // Free users start on V6 and cannot use a premium model once its preview is
+  // used and no pack is active. Move the selection back to V6-Mini.
+  useEffect(() => {
+    if (quota?.premium_unlocked !== false) return;
+    setModel((current) => {
+      if (current !== 'V6' && current !== 'V6_WILD') return current;
+      const preview = quota?.previews?.eligible
+        ? quota.previews.models.find((item) => item.model === current)
+        : null;
+      return (preview?.remaining ?? 0) > 0 ? current : 'V6_MINI';
+    });
+  }, [quota]);
+
   async function refreshList(workspaceId?: string | null) {
     const resolvedWorkspaceId = workspaceId ?? activeWorkspaceId ?? undefined;
     const [nextQuota, list, workspaceList, nextBalance, nextPlans] = await Promise.all([
       fetchWebMusicQuota(),
-      listWebMusicGenerations(40, 0, resolvedWorkspaceId),
+      listWebMusicGenerations(WORKSPACE_PAGE_SIZE, 0, resolvedWorkspaceId),
       listWebMusicWorkspaces().catch(() => ({ items: [] as WebMusicWorkspace[] })),
       fetchCreditBalance().catch(() => null),
       fetchSubscriptionPlans().catch(() => ({ plans: [] })),
@@ -528,11 +620,44 @@ export default function CreatePageClient() {
     setLyricCredits(Number((priced && priced.lyric_credits) || 0));
     setMusicCredits(Number((priced && priced.music_credits) || 0));
     setItems(list.items);
+    setTotal(Number(list.total ?? list.items.length));
     setWorkspaces(workspaceList.items);
     if (!activeWorkspaceId && workspaceList.items.length) {
       const defaultWorkspace =
         workspaceList.items.find((workspace) => workspace.is_default) ?? workspaceList.items[0];
       setActiveWorkspaceId(defaultWorkspace.id);
+    }
+  }
+
+  async function loadMoreGenerations() {
+    if (loadingMoreRef.current) return;
+    if (items.length >= total) return;
+    if (!activeWorkspaceId) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const list = await listWebMusicGenerations(
+        WORKSPACE_PAGE_SIZE,
+        items.length,
+        activeWorkspaceId,
+      );
+      setTotal(Number(list.total ?? items.length + list.items.length));
+      setItems((prev) => {
+        const seen = new Set(prev.map((item) => item.id));
+        const merged = [...prev];
+        for (const item of list.items) {
+          if (!seen.has(item.id)) {
+            seen.add(item.id);
+            merged.push(item);
+          }
+        }
+        return merged;
+      });
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Unable to load more songs');
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
     }
   }
 
@@ -558,27 +683,76 @@ export default function CreatePageClient() {
 
   useEffect(() => {
     if (!user || !activeWorkspaceId) return;
-    void listWebMusicGenerations(40, 0, activeWorkspaceId)
-      .then((list) => setItems(list.items))
+    setLoadingMore(false);
+    loadingMoreRef.current = false;
+    void listWebMusicGenerations(WORKSPACE_PAGE_SIZE, 0, activeWorkspaceId)
+      .then((list) => {
+        setItems(list.items);
+        setTotal(Number(list.total ?? list.items.length));
+      })
       .catch((err) => {
         setCreateError(err instanceof Error ? err.message : 'Unable to load workspace');
       });
   }, [user, activeWorkspaceId]);
 
+  // Poll only the songs that are still open. The effect is keyed to the set of
+  // open ids (not `items`) so a poll result does not tear down and rebuild the
+  // timer, and requests are chunked so a batch cannot fire them all at once.
+  const openGenerationKey = useMemo(
+    () => items.filter(isOpenGeneration).map((item) => item.id).join(','),
+    [items],
+  );
+
   useEffect(() => {
-    const pending = items.filter(isOpenGeneration);
-    if (!pending.length) return undefined;
-    const timer = window.setInterval(() => {
-      void Promise.all(pending.map((item) => getWebMusicGeneration(item.id)))
-        .then((updated) => {
-          setItems((currentItems) =>
-            currentItems.map((item) => updated.find((row) => row.id === item.id) ?? item),
-          );
-        })
-        .catch(() => undefined);
-    }, 2500);
-    return () => window.clearInterval(timer);
-  }, [items]);
+    if (!openGenerationKey) return undefined;
+    const ids = openGenerationKey.split(',');
+    let cancelled = false;
+
+    const poll = () => {
+      void (async () => {
+        for (let index = 0; index < ids.length && !cancelled; index += WORKSPACE_POLL_CHUNK) {
+          const chunk = ids.slice(index, index + WORKSPACE_POLL_CHUNK);
+          try {
+            const updated = await Promise.all(chunk.map((id) => getWebMusicGeneration(id)));
+            if (cancelled) return;
+            setItems((currentItems) =>
+              currentItems.map((item) => updated.find((row) => row.id === item.id) ?? item),
+            );
+          } catch {
+            /* transient; the next tick retries */
+          }
+        }
+      })();
+    };
+
+    const timer = window.setInterval(poll, WORKSPACE_POLL_MS);
+    poll();
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [openGenerationKey]);
+
+  // Infinite scroll: when the "load more" sentinel nears the viewport, pull the
+  // next page of generations so a workspace with more than one page of songs is
+  // never capped at the first page.
+  useEffect(() => {
+    const node = loadMoreRef.current;
+    if (!node) return undefined;
+    if (!activeWorkspaceId) return undefined;
+    if (items.length >= total) return undefined;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          void loadMoreGenerations();
+        }
+      },
+      { rootMargin: '400px 0px' },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items.length, total, activeWorkspaceId]);
 
   const creditsPerSong = quota?.credits_per_song ?? 10;
   const totalCredits = creditBalance?.total_credits ?? quota?.credits_remaining ?? 0;
@@ -586,7 +760,65 @@ export default function CreatePageClient() {
     quota && (quota.requires_upgrade || totalCredits < creditsPerSong),
   );
   const canDownload = Boolean(quota?.can_download ?? quota?.has_subscription ?? quota?.is_pro);
+  const previewState = quota?.previews ?? null;
+  const selectedPreview =
+    previewState?.eligible
+      ? previewState.models.find((item) => item.model === String(model).toUpperCase()) ?? null
+      : null;
+  const previewRemaining = selectedPreview?.remaining ?? 0;
+  const previewExhausted = Boolean(selectedPreview && previewRemaining <= 0);
+  const lockedPremiumModels = useMemo(() => {
+    if (quota?.premium_unlocked !== false) return [] as MusicModelId[];
+    return (['V6', 'V6_WILD'] as MusicModelId[]).filter((id) => {
+      const preview = previewState?.eligible
+        ? previewState.models.find((item) => item.model === id)
+        : null;
+      return (preview?.remaining ?? 0) <= 0;
+    });
+  }, [quota?.premium_unlocked, previewState]);
   const workspaceQueue = useMemo(() => workspaceReadyTracks(items), [items]);
+
+  const simpleSongOptions = useMemo(
+    () =>
+      SIMPLE_SONG_COUNTS.map((count) => ({
+        value: String(count),
+        label: count === 1 ? '1 song' : `${count} songs · ${count * 2} versions`,
+      })),
+    [],
+  );
+  const batchCount = mode === 'simple' ? simpleSongCount : 1;
+  const requiredCredits = creditsPerSong * batchCount;
+  const hasSubscription = Boolean(quota?.has_subscription || quota?.is_pro);
+  const queueLimit = queueLimitForUser(hasSubscription);
+  const insufficientCredits = totalCredits < requiredCredits;
+  const batchRequiresUpgrade = batchCount > 1 && !hasSubscription;
+  const queueSlotsFree = Math.max(0, queueLimit - (quota?.queue_used ?? 0));
+  const batchOverQueue = batchCount > 1 && batchCount > queueSlotsFree;
+  const batchBlocked = batchCount > 1 && (batchRequiresUpgrade || insufficientCredits);
+
+  const batchWarning = useMemo(() => {
+    if (mode !== 'simple' || batchCount <= 1) return null;
+    if (batchRequiresUpgrade) {
+      return `Batch generation is a Pro feature. Upgrade to Pro or buy a credit pack to create ${batchCount} songs at once.`;
+    }
+    if (insufficientCredits) {
+      return `You need ${requiredCredits} credits to create ${batchCount} songs but have ${totalCredits}. Top up or upgrade to continue.`;
+    }
+    if (batchOverQueue) {
+      return `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`;
+    }
+    return null;
+  }, [
+    mode,
+    batchCount,
+    batchRequiresUpgrade,
+    insufficientCredits,
+    requiredCredits,
+    totalCredits,
+    batchOverQueue,
+    queueSlotsFree,
+    queueLimit,
+  ]);
 
   useEffect(() => {
     const match = findVersionForTrackId(items, current?.id);
@@ -666,11 +898,174 @@ export default function CreatePageClient() {
     return clipReady && !generation.instrumental;
   }
 
+  function clipSelectableFor(generation: WebMusicGeneration, clip: WebMusicClip): boolean {
+    if (!clip.ready) return false;
+    if (generation.is_preview || clip.is_preview) return false;
+    if ((batchFormat === 'lrc' || batchFormat === 'srt') && generation.instrumental) return false;
+    return true;
+  }
+
+  function toggleClipSelection(key: string) {
+    setSelectedClipKeys((prev) =>
+      prev.includes(key) ? prev.filter((item) => item !== key) : [...prev, key],
+    );
+  }
+
+  function selectedBatchItems() {
+    const wanted = new Set(selectedClipKeys);
+    const rows: { generation: WebMusicGeneration; clip: WebMusicClip }[] = [];
+    for (const generation of items) {
+      for (const clip of generationClips(generation)) {
+        if (wanted.has(clipTrackId(generation, clip))) rows.push({ generation, clip });
+      }
+    }
+    return rows;
+  }
+
+  function batchFileName(
+    generation: WebMusicGeneration,
+    clip: WebMusicClip,
+    format: DownloadKind,
+  ): string {
+    const base =
+      clipDisplayTitle(generation, clip)
+        .replace(/[\\/:*?"<>|]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim() || 'camxora-track';
+    const version = clip.variant === 'alt' ? 'V2' : 'V1';
+    return `${base} (${version}).${format}`;
+  }
+
+  async function fetchBatchBlob(
+    generation: WebMusicGeneration,
+    clip: WebMusicClip,
+    format: DownloadKind,
+  ): Promise<Blob> {
+    if (format === 'mp3') return fetchWebMusicClipBlob(generation.id, clip.variant);
+    if (format === 'wav') return fetchWebMusicClipWavBlob(generation.id, clip.variant);
+    return fetchWebMusicTimedLyricsBlob(generation.id, clip.variant, format);
+  }
+
+  async function onBatchDownload() {
+    if (!canDownload) {
+      setShowUpgradeModal(true);
+      return;
+    }
+    const chosen = selectedBatchItems().filter(({ generation, clip }) =>
+      clipSelectableFor(generation, clip),
+    );
+    if (!chosen.length) {
+      setCreateError(`No ready ${batchFormat.toUpperCase()} files in your selection.`);
+      return;
+    }
+    setCreateError(null);
+    setBatchBusy(true);
+    setDownloadProgress({ done: 0, total: chosen.length });
+    try {
+      // Fetch everything before writing anything, so a failure part-way does not
+      // leave a corrupt archive or a partial set of files.
+      const fetched: { generation: WebMusicGeneration; clip: WebMusicClip; blob: Blob }[] = [];
+      for (const row of chosen) {
+        const blob = await fetchBatchBlob(row.generation, row.clip, batchFormat);
+        fetched.push({ ...row, blob });
+        setDownloadProgress({ done: fetched.length, total: chosen.length });
+      }
+
+      const totalBytes = fetched.reduce((sum, row) => sum + row.blob.size, 0);
+      const usedNames = new Set<string>();
+      const uniqueName = (generation: WebMusicGeneration, clip: WebMusicClip) => {
+        const base = batchFileName(generation, clip, batchFormat);
+        let name = base;
+        let counter = 2;
+        while (usedNames.has(name)) {
+          name = base.replace(/(\.[^.]+)$/, ` (${counter})$1`);
+          counter += 1;
+        }
+        usedNames.add(name);
+        return name;
+      };
+
+      if (totalBytes > BATCH_ZIP_MAX_BYTES) {
+        // Too large for one in-browser archive; hand the browser each file.
+        for (const row of fetched) {
+          saveBlob(row.blob, uniqueName(row.generation, row.clip));
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, 150);
+          });
+        }
+        setCreateError(
+          `Archive would be ~${Math.round(totalBytes / (1024 * 1024))} MB, so ${fetched.length} files were saved individually.`,
+        );
+      } else {
+        const entries: ZipEntry[] = [];
+        for (const row of fetched) {
+          entries.push({
+            name: uniqueName(row.generation, row.clip),
+            data: new Uint8Array(await row.blob.arrayBuffer()),
+          });
+        }
+        const stamp = new Date().toISOString().slice(0, 10);
+        saveBlob(createStoreZip(entries), `camxora-${batchFormat}-${stamp}.zip`);
+      }
+      setSelectedClipKeys([]);
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Batch download failed');
+    } finally {
+      setBatchBusy(false);
+      setDownloadProgress(null);
+    }
+  }
+
   function clipDownloadButtons(
     generation: WebMusicGeneration,
     clip: WebMusicClip,
     size: 'sm' | 'md',
   ) {
+    const isPreview = Boolean(generation.is_preview || clip.is_preview);
+    if (isPreview) {
+      const unlocking = unlockingKeys.includes(`${generation.id}:${clip.variant}`);
+      return (
+        <>
+          <AddToPlaylistButton
+            taskId={generation.id}
+            variant={clip.variant}
+            disabled={!clip.ready}
+            compact={size === 'sm'}
+          />
+          {quota?.premium_unlocked ? (
+            generation.unlockable ? (
+              <button
+                type="button"
+                onClick={() => void onUnlockPreview(generation, clip)}
+                disabled={unlocking}
+                title="Replace this 60-second preview with the full-length track."
+                className={`inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-emerald-300/30 bg-emerald-400/10 font-semibold text-emerald-200 transition hover:bg-emerald-400/20 disabled:opacity-50 ${
+                  size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
+                }`}
+              >
+                {unlocking ? 'Unlocking…' : 'Unlock full track'}
+              </button>
+            ) : (
+              <span className="shrink-0 text-[11px] text-slate-500">
+                Preview only · generate a new version
+              </span>
+            )
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowUpgradeModal(true)}
+              title="Previews are play-only. Buy a credit pack to unlock the full track and downloads."
+              className={`inline-flex shrink-0 items-center gap-1 rounded-[7px] border border-amber-300/30 bg-amber-400/10 font-semibold text-amber-200 transition hover:bg-amber-400/20 ${
+                size === 'sm' ? 'h-7 px-2 text-[11px]' : 'h-9 px-3 text-xs'
+              }`}
+            >
+              Extend preview
+            </button>
+          )}
+        </>
+      );
+    }
+
     const timedTitle = (format: 'lrc' | 'srt') => {
       if (!canDownload) return `Upgrade to download ${format.toUpperCase()}`;
       if (generation.instrumental) return 'Timed lyrics not available for instrumentals';
@@ -744,8 +1139,32 @@ export default function CreatePageClient() {
     setSelectedVersion({ song: generation, clip });
   }
 
-  async function saveClipTitle(generation: WebMusicGeneration, clip: WebMusicClip, nextTitle: string) {
+  async function onUnlockPreview(generation: WebMusicGeneration, clip: WebMusicClip) {
+    const key = `${generation.id}:${clip.variant}`;
+    setUnlockingKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
     setCreateError(null);
+    try {
+      const updated = await unlockWebMusicPreview(generation.id);
+      setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+      setSelectedVersion((prev) => {
+        if (!prev || prev.song.id !== updated.id) return prev;
+        const nextClip = updated.clips.find((item) => item.variant === prev.clip.variant) ?? prev.clip;
+        return { song: updated, clip: nextClip };
+      });
+      void fetchWebMusicQuota().then(setQuota).catch(() => undefined);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Could not unlock the full track';
+      if (message.toLowerCase().includes('credit pack')) {
+        openPackModal('A credit pack is required', message);
+      } else {
+        setCreateError(message);
+      }
+    } finally {
+      setUnlockingKeys((prev) => prev.filter((item) => item !== key));
+    }
+  }
+
+  async function saveClipTitle(generation: WebMusicGeneration, clip: WebMusicClip, nextTitle: string) {    setCreateError(null);
     try {
       const updated = await updateWebMusicGenerationTitle(generation.id, nextTitle, clip.variant);
       setItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
@@ -759,13 +1178,49 @@ export default function CreatePageClient() {
     }
   }
 
+  async function onDeleteGeneration(generation: WebMusicGeneration) {
+    // Failed songs were already refunded, so deleting only clears the workspace.
+    const confirmed = window.confirm(
+      `Delete "${generation.title}" permanently from this workspace? This cannot be undone.`,
+    );
+    if (!confirmed) return;
+    setCreateError(null);
+    setDeletingIds((prev) => (prev.includes(generation.id) ? prev : [...prev, generation.id]));
+    try {
+      await deleteWebMusicGeneration(generation.id);
+      setItems((prev) => prev.filter((item) => item.id !== generation.id));
+      setTotal((prev) => Math.max(0, prev - 1));
+      setSelectedVersion((prev) => (prev?.song.id === generation.id ? null : prev));
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : 'Could not delete song');
+    } finally {
+      setDeletingIds((prev) => prev.filter((id) => id !== generation.id));
+    }
+  }
+
   const canCreate = useMemo(() => {
     if (busy || needsUpgrade) return false;
-    if (mode === 'simple') return prompt.trim().length > 0;
+    if (mode === 'simple') {
+      if (batchBlocked) return false;
+      return prompt.trim().length > 0;
+    }
     if (lyricsMode === 'instrumental') return style.trim().length > 0;
     if (lyricsMode === 'prompt') return style.trim().length > 0 && prompt.trim().length > 0;
     return style.trim().length > 0 && lyrics.trim().length > 0;
-  }, [busy, needsUpgrade, mode, prompt, style, lyrics, lyricsMode]);
+  }, [busy, needsUpgrade, mode, prompt, style, lyrics, lyricsMode, batchBlocked]);
+
+  const createActionLabel = useMemo(() => {
+    if (batchProgress) {
+      return `Creating ${Math.min(batchProgress.done + 1, batchProgress.total)} of ${batchProgress.total}…`;
+    }
+    if (busy) return 'Creating…';
+    if (mode === 'simple' && simpleSongCount > 1) {
+      return `Create ${simpleSongCount} songs · ${requiredCredits} credits`;
+    }
+    if (musicCredits > 0) return `Create · ${musicCredits} credits`;
+    if (lyricCredits > 0) return `Create · ${lyricCredits} credits`;
+    return 'Create';
+  }, [batchProgress, busy, mode, simpleSongCount, requiredCredits, musicCredits, lyricCredits]);
 
   function buildLyricDraftPrompt(): string {
     return clampText(prompt.trim() || title.trim() || style.trim() || 'Create a song', WEB_MUSIC_LYRICS_MAX);
@@ -796,66 +1251,132 @@ export default function CreatePageClient() {
     }
   }
 
+  async function submitGeneration(input: WebMusicGenerateInput) {
+    let attempt = 0;
+    for (;;) {
+      try {
+        return await generateWebMusic(input);
+      } catch (err) {
+        const retryable =
+          err instanceof MusicApiError && (err.status === 429 || err.status === 503);
+        attempt += 1;
+        if (!retryable || attempt > 3) throw err;
+        const waitMs =
+          err instanceof MusicApiError
+            ? cooldownMsForAttempt(err.retryAfterSeconds)
+            : CREATE_COOLDOWN_MS;
+        await new Promise((resolve) => {
+          window.setTimeout(resolve, waitMs);
+        });
+      }
+    }
+  }
+
   async function onCreate() {
-    if (needsUpgrade) {
+    if (needsUpgrade || previewExhausted) {
       setShowUpgradeModal(true);
       return;
     }
+    const count = mode === 'simple' ? simpleSongCount : 1;
+    if (count > 1 && batchRequiresUpgrade) {
+      setShowUpgradeModal(true);
+      return;
+    }
+    if (totalCredits < creditsPerSong * count) {
+      setShowUpgradeModal(true);
+      return;
+    }
+
+    const payload: WebMusicGenerateInput = {
+      mode,
+      lyrics: lyricsMode === 'instrumental' ? undefined : lyricsMode === 'prompt' ? prompt : lyrics,
+      style,
+      title,
+      prompt: lyricsMode === 'prompt' ? prompt : mode === 'simple' ? prompt : undefined,
+      instrumental: lyricsMode === 'instrumental',
+      model,
+      negative_tags: negativeTags || undefined,
+      vocal_gender:
+        vocalGender === 'm' || vocalGender === 'f' || vocalGender === 'both' ? vocalGender : undefined,
+      style_weight: styleWeight ?? DEFAULT_SLIDER_VALUE,
+      weirdness_constraint: weirdnessConstraint ?? DEFAULT_SLIDER_VALUE,
+      audio_weight: audioWeight ?? DEFAULT_SLIDER_VALUE,
+      workspace_id: activeWorkspaceId || undefined,
+    };
+
     setBusy(true);
     setCreateError(null);
+    setBatchProgress(count > 1 ? { done: 0, total: count } : null);
+    let createdCount = 0;
     try {
-      const created = await generateWebMusic({
-        mode,
-        lyrics: lyricsMode === 'instrumental' ? undefined : lyricsMode === 'prompt' ? prompt : lyrics,
-        style,
-        title,
-        prompt: lyricsMode === 'prompt' ? prompt : mode === 'simple' ? prompt : undefined,
-        instrumental: lyricsMode === 'instrumental',
-        model,
-        negative_tags: negativeTags || undefined,
-        vocal_gender:
-          vocalGender === 'm' || vocalGender === 'f' || vocalGender === 'both' ? vocalGender : undefined,
-        style_weight: styleWeight ?? DEFAULT_SLIDER_VALUE,
-        weirdness_constraint: weirdnessConstraint ?? DEFAULT_SLIDER_VALUE,
-        audio_weight: audioWeight ?? DEFAULT_SLIDER_VALUE,
-        workspace_id: activeWorkspaceId || undefined,
-      });
-      setQuota(created.quota);
+      for (let index = 0; index < count; index += 1) {
+        if (index > 0) {
+          await new Promise((resolve) => {
+            window.setTimeout(resolve, BATCH_SUBMIT_GAP_MS);
+          });
+        }
+        const created = await submitGeneration(payload);
+        createdCount += 1;
+        setBatchProgress({ done: createdCount, total: count });
+        setQuota(created.quota);
+        const loaded = await getWebMusicGeneration(created.task_id).catch(() => null);
+        const pending: WebMusicGeneration = loaded ?? {
+          id: created.task_id,
+          title: created.title,
+          lyrics,
+          style: created.style,
+          model,
+          model_label: created.model_label,
+          is_preview: created.is_preview,
+          unlockable: created.unlockable,
+          preview_seconds: created.preview_seconds ?? null,
+          instrumental: lyricsMode === 'instrumental',
+          status: created.status,
+          vocal_gender:
+            vocalGender === 'm' || vocalGender === 'f' || vocalGender === 'both' ? vocalGender : null,
+          style_weight: styleWeight ?? DEFAULT_SLIDER_VALUE,
+          weirdness_constraint: weirdnessConstraint ?? DEFAULT_SLIDER_VALUE,
+          audio_weight: audioWeight ?? DEFAULT_SLIDER_VALUE,
+          negative_tags: negativeTags || null,
+          clips: [],
+        };
+        setItems((currentItems) => [
+          pending,
+          ...currentItems.filter((item) => item.id !== pending.id),
+        ]);
+      }
       void fetchCreditBalance()
         .then(setCreditBalance)
         .catch(() => undefined);
-      const loaded = await getWebMusicGeneration(created.task_id).catch(() => null);
-      const pending: WebMusicGeneration = loaded ?? {
-        id: created.task_id,
-        title: created.title,
-        lyrics,
-        style: created.style,
-        model,
-        instrumental: lyricsMode === 'instrumental',
-        status: created.status,
-        vocal_gender:
-          vocalGender === 'm' || vocalGender === 'f' || vocalGender === 'both' ? vocalGender : null,
-        style_weight: styleWeight ?? DEFAULT_SLIDER_VALUE,
-        weirdness_constraint: weirdnessConstraint ?? DEFAULT_SLIDER_VALUE,
-        audio_weight: audioWeight ?? DEFAULT_SLIDER_VALUE,
-        negative_tags: negativeTags || null,
-        clips: [],
-      };
-      setItems((currentItems) => [
-        pending,
-        ...currentItems.filter((item) => item.id !== pending.id),
-      ]);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Create failed';
-      if (message.toLowerCase().includes('insufficient credits')) {
-        setShowUpgradeModal(true);
+      const lowered = message.toLowerCase();
+      const packBlocked =
+        lowered.includes('requires purchased credits') ||
+        lowered.includes('preview is used') ||
+        lowered.includes('preview tracks are play-only');
+      if (lowered.includes('insufficient credits') || packBlocked) {
+        openPackModal(
+          packBlocked ? 'A credit pack is required' : 'You are out of credits',
+          packBlocked
+            ? message
+            : 'Buy a credit pack to keep creating music.',
+        );
       }
-      setCreateError(message);
+      setCreateError(
+        count > 1 && createdCount > 0
+          ? `Created ${createdCount} of ${count} songs, then stopped: ${message}`
+          : message,
+      );
       void fetchWebMusicQuota()
         .then(setQuota)
         .catch(() => undefined);
+      void fetchCreditBalance()
+        .then(setCreditBalance)
+        .catch(() => undefined);
     } finally {
       setBusy(false);
+      setBatchProgress(null);
     }
   }
 
@@ -962,8 +1483,34 @@ export default function CreatePageClient() {
                 </button>
               ))}
             </div>
-            <MusicModelSelect value={model} onChange={setModel} />
+            <MusicModelSelect
+              value={model}
+              onChange={setModel}
+              lockedModels={lockedPremiumModels}
+              onLocked={() =>
+                openPackModal(
+                  'A credit pack is required',
+                  'Your free V6-Pro / V6 Wild preview is used this month. Buy a credit pack to generate full-length tracks and keep using every model.',
+                )
+              }
+            />
           </div>
+
+          {selectedPreview ? (
+            <p
+              className={`rounded-[7px] border px-2.5 py-1.5 text-[11px] leading-snug ${
+                previewExhausted
+                  ? 'border-amber-300/25 bg-amber-400/10 text-amber-200'
+                  : 'border-violet-400/20 bg-violet-500/10 text-violet-200'
+              }`}
+            >
+              {previewExhausted
+                ? `${selectedPreview.label} preview used this month. Buy a credit pack to generate the full-length track.`
+                : `Free ${selectedPreview.label} preview · first ${Math.round(
+                    selectedPreview.seconds / 60,
+                  )} minute · ${previewRemaining} of ${selectedPreview.limit} left this month.`}
+            </p>
+          ) : null}
 
           <MusicPillTabs
             value={featureTab}
@@ -988,20 +1535,66 @@ export default function CreatePageClient() {
 
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-28 pt-1 music-scroll [scrollbar-width:thin]">
         {mode === 'simple' ? (
-          <label className="block space-y-2 text-sm text-slate-200">
-            <span>Song description</span>
-            <div className="space-y-1.5">
-              <textarea
-                value={prompt}
-                onChange={(event) => setPrompt(clampText(event.target.value, WEB_MUSIC_STYLE_MAX))}
-                maxLength={WEB_MUSIC_STYLE_MAX}
-                rows={8}
-                placeholder="A rainy-night synthwave song about leaving the city..."
-                className="min-h-[180px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-violet-400/50 md:text-sm"
+          <div className="space-y-3">
+            <label className="block space-y-2 text-sm text-slate-200">
+              <span>Song description</span>
+              <div className="space-y-1.5">
+                <textarea
+                  value={prompt}
+                  onChange={(event) => setPrompt(clampText(event.target.value, WEB_MUSIC_STYLE_MAX))}
+                  maxLength={WEB_MUSIC_STYLE_MAX}
+                  rows={8}
+                  placeholder="A rainy-night synthwave song about leaving the city..."
+                  className="min-h-[180px] w-full rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-3 text-base text-white outline-none focus:border-violet-400/50 md:text-sm"
+                />
+                <MusicCharCount value={prompt} max={WEB_MUSIC_STYLE_MAX} />
+              </div>
+            </label>
+
+            <div className="flex items-center justify-between gap-3 rounded-[7px] border border-white/10 bg-[rgba(12,14,28,0.72)] px-4 py-3">
+              <div className="min-w-0 text-sm text-slate-200">
+                <span className="inline-flex items-center gap-2">
+                  <Music2 className="h-4 w-4 text-violet-200" />
+                  Songs to generate
+                </span>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  Each song returns 2 versions · {requiredCredits} credits total
+                </p>
+              </div>
+              <MusicSelect
+                value={String(simpleSongCount)}
+                onValueChange={(next) => {
+                  const parsed = Number(next);
+                  if (SIMPLE_SONG_COUNTS.includes(parsed as SimpleSongCount)) {
+                    setSimpleSongCount(parsed as SimpleSongCount);
+                  }
+                }}
+                options={simpleSongOptions}
+                className="h-9 w-[10.5rem] shrink-0 text-xs"
               />
-              <MusicCharCount value={prompt} max={WEB_MUSIC_STYLE_MAX} />
             </div>
-          </label>
+
+            {batchWarning ? (
+              <div
+                className={`flex items-start justify-between gap-3 rounded-[7px] border px-4 py-3 text-xs ${
+                  batchBlocked
+                    ? 'border-rose-400/30 bg-rose-500/10 text-rose-200'
+                    : 'border-amber-400/30 bg-amber-500/10 text-amber-100'
+                }`}
+              >
+                <p className="min-w-0">{batchWarning}</p>
+                {batchBlocked ? (
+                  <button
+                    type="button"
+                    onClick={() => setShowUpgradeModal(true)}
+                    className="shrink-0 rounded-full border border-white/20 bg-white/10 px-3 py-1 font-medium text-white hover:bg-white/20"
+                  >
+                    Upgrade / Top up
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+          </div>
         ) : (
           <div className="space-y-3">
             <MusicCollapsibleSection
@@ -1180,33 +1773,32 @@ export default function CreatePageClient() {
                 />
               </div>
             </MusicCollapsibleSection>
-
-            <div className="overflow-hidden rounded-[7px] border border-white/10 bg-[rgba(12,14,28,0.72)]">
-              <label className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
-                <Music2 className="h-4 w-4 text-violet-200" />
-                <input
-                  value={title}
-                  onChange={(event) => setTitle(event.target.value)}
-                  placeholder="Song Title (Optional)"
-                  className={`w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500 ${khmerTextClass(title)}`}
-                />
-              </label>
-              <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-slate-300">
-                <span className="inline-flex items-center gap-2">
-                  <FolderOpen className="h-4 w-4 text-slate-500" />
-                  Save to...
-                </span>
-                <MusicSelect
-                  value={activeWorkspaceId ?? ''}
-                  onValueChange={setActiveWorkspaceId}
-                  options={workspaceOptions}
-                  placeholder="Select workspace"
-                  className="h-9 max-w-[11rem] text-xs"
-                />
-              </div>
-            </div>
           </div>
         )}
+        <div className="mt-3 overflow-hidden rounded-[7px] border border-white/10 bg-[rgba(12,14,28,0.72)]">
+          <label className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
+            <Music2 className="h-4 w-4 text-violet-200" />
+            <input
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="Song Title (Optional)"
+              className={`w-full bg-transparent text-sm text-white outline-none placeholder:text-slate-500 ${khmerTextClass(title)}`}
+            />
+          </label>
+          <div className="flex items-center justify-between gap-3 px-4 py-3 text-sm text-slate-300">
+            <span className="inline-flex items-center gap-2">
+              <FolderOpen className="h-4 w-4 text-slate-500" />
+              Save to...
+            </span>
+            <MusicSelect
+              value={activeWorkspaceId ?? ''}
+              onValueChange={setActiveWorkspaceId}
+              options={workspaceOptions}
+              placeholder="Select workspace"
+              className="h-9 max-w-[11rem] text-xs"
+            />
+          </div>
+        </div>
         </div>
 
         <MusicFloatingActionBar>
@@ -1232,7 +1824,7 @@ export default function CreatePageClient() {
               className="flex h-12 w-full items-center justify-center gap-2 rounded-[7px] bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-6 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(118,77,255,0.4)] disabled:opacity-50 md:rounded-full md:shadow-[0_18px_44px_rgba(118,77,255,0.38)]"
             >
               <Music2 className="h-4 w-4" />
-              {busy ? 'Creating…' : musicCredits > 0 ? ('Create · ' + String(musicCredits) + ' credits') : lyricCredits > 0 ? ('Create · ' + String(lyricCredits) + ' credits') : 'Create'}
+              {createActionLabel}
             </button>
           )}
           {needsUpgrade ? (
@@ -1349,25 +1941,96 @@ export default function CreatePageClient() {
               </div>
             </div>
           </div>
+
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <label className="inline-flex cursor-pointer items-center gap-2 rounded-[7px] border border-white/10 bg-white/[0.03] px-3 py-2 text-xs font-medium text-slate-300">
+              <input
+                type="checkbox"
+                checked={selectionMode}
+                onChange={(event) => {
+                  const next = event.target.checked;
+                  setSelectionMode(next);
+                  if (!next) setSelectedClipKeys([]);
+                }}
+                className="h-3.5 w-3.5 accent-violet-500"
+              />
+              Select
+            </label>
+
+            {selectionMode ? (
+              <>
+                <span className="text-xs text-slate-400">{selectedClipKeys.length} selected</span>
+                <MusicSelect
+                  value={batchFormat}
+                  onValueChange={(next) => setBatchFormat(next as DownloadKind)}
+                  options={BATCH_FORMAT_OPTIONS}
+                  className="h-9 w-[8.5rem] text-xs"
+                />
+                <button
+                  type="button"
+                  disabled={batchBusy || selectedClipKeys.length === 0}
+                  onClick={() => void onBatchDownload()}
+                  className="inline-flex h-9 items-center gap-1.5 rounded-[7px] border border-violet-400/30 bg-violet-500/10 px-3 text-xs font-medium text-violet-100 transition hover:bg-violet-500/20 disabled:opacity-40"
+                >
+                  {batchBusy ? (
+                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Download className="h-3.5 w-3.5" />
+                  )}
+                  {batchBusy
+                    ? downloadProgress
+                      ? `Preparing ${downloadProgress.done}/${downloadProgress.total}…`
+                      : 'Preparing…'
+                    : `Download ${batchFormat.toUpperCase()} (.zip)`}
+                </button>
+                <button
+                  type="button"
+                  disabled={batchBusy || selectedClipKeys.length === 0}
+                  onClick={() => setSelectedClipKeys([])}
+                  className="inline-flex h-9 items-center rounded-[7px] border border-white/10 px-3 text-xs font-medium text-slate-300 disabled:opacity-40"
+                >
+                  Clear
+                </button>
+              </>
+            ) : null}
+          </div>
           
           {items.length ? (
             <div className="space-y-2 min-w-0 overflow-hidden">
               {items.map((generation) => {
-                if ((generation.status || '').toUpperCase() === 'FAILED') {
+                if (isFailedStatus(generation.status)) {
+                  const deleting = deletingIds.includes(generation.id);
                   return (
                     <div
                       key={generation.id}
-                      className="rounded-xl border border-rose-400/20 bg-rose-500/5 p-3 min-w-0"
+                      className="flex min-w-0 items-start gap-2 rounded-xl border border-rose-400/20 bg-rose-500/5 p-3"
                     >
-                      <div className="flex min-w-0 items-center gap-1.5">
-                        <p className={`truncate font-medium text-white ${khmerTextClass(generation.title)}`}>
-                          {generation.title}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <p className={`truncate font-medium text-white ${khmerTextClass(generation.title)}`}>
+                            {generation.title}
+                          </p>
+                          <ModelVersionTag model={generation.model} />
+                        </div>
+                        <p className="mt-1 text-sm text-rose-300">
+                          {generation.error_message || 'Generation failed.'}
                         </p>
-                        <ModelVersionTag model={generation.model} />
                       </div>
-                      <p className="mt-1 text-sm text-rose-300">
-                        {generation.error_message || 'Generation failed.'}
-                      </p>
+                      <button
+                        type="button"
+                        disabled={deleting}
+                        onClick={() => void onDeleteGeneration(generation)}
+                        title="Delete this song permanently"
+                        aria-label="Delete song"
+                        className="inline-flex shrink-0 items-center gap-1 rounded-lg border border-rose-400/30 bg-rose-500/10 px-2.5 py-1.5 text-xs font-medium text-rose-200 transition hover:bg-rose-500/20 disabled:opacity-50"
+                      >
+                        {deleting ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Trash2 className="h-3.5 w-3.5" />
+                        )}
+                        <span className="hidden sm:inline">{deleting ? 'Removing…' : 'Delete'}</span>
+                      </button>
                     </div>
                   );
                 }
@@ -1389,6 +2052,17 @@ export default function CreatePageClient() {
                           : 'border-white/8 bg-white/[0.03] hover:bg-white/[0.05]'
                       }`}
                     >
+                      {selectionMode ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedClipKeys.includes(clipTrackId(generation, clip))}
+                          disabled={!clipSelectableFor(generation, clip)}
+                          onChange={() => toggleClipSelection(clipTrackId(generation, clip))}
+                          aria-label={`Select ${clipDisplayTitle(generation, clip)} ${clipVersionLabel(clip.variant)}`}
+                          title={clipSelectableFor(generation, clip) ? 'Select for batch download' : 'Not ready'}
+                          className="h-4 w-4 shrink-0 accent-violet-500 disabled:opacity-30"
+                        />
+                      ) : null}
                       <ClipCoverControl
                         clip={clip}
                         variant={clip.variant}
@@ -1434,6 +2108,28 @@ export default function CreatePageClient() {
               </p>
             </div>
           )}
+
+          {items.length ? (
+            <div className="mt-4 flex flex-col items-center gap-2">
+              {items.length < total ? (
+                <>
+                  <div ref={loadMoreRef} aria-hidden="true" className="h-1 w-full" />
+                  <button
+                    type="button"
+                    onClick={() => void loadMoreGenerations()}
+                    disabled={loadingMore}
+                    className="rounded-full border border-white/10 bg-white/[0.04] px-5 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.08] disabled:opacity-50"
+                  >
+                    {loadingMore ? 'Loading…' : `Load more (${items.length} of ${total})`}
+                  </button>
+                </>
+              ) : (
+                <p className="text-xs text-slate-500">
+                  Showing all {total} song{total === 1 ? '' : 's'}
+                </p>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* Right Sidebar - Version Details */}
@@ -1505,6 +2201,14 @@ export default function CreatePageClient() {
                   <span className="text-slate-400">Model</span>
                   <span className="text-white">{formatModelVersionTag(selectedVersion.song.model)}</span>
                 </div>
+                {selectedVersion.song.is_preview ? (
+                  <div className="flex justify-between gap-3">
+                    <span className="text-slate-400">Preview</span>
+                    <span className="text-amber-300">
+                      First {selectedVersion.song.preview_seconds ?? 60}s · play-only
+                    </span>
+                  </div>
+                ) : null}
                 <div className="flex justify-between gap-3">
                   <span className="text-slate-400">Type</span>
                   <span className="text-white">{selectedVersion.song.instrumental ? 'Instrumental' : 'With Vocals'}</span>
@@ -1572,7 +2276,12 @@ export default function CreatePageClient() {
           </div>
         )}
       </section>
-      <UpgradeModal isOpen={showUpgradeModal} onClose={() => setShowUpgradeModal(false)} />
+      <UpgradeModal
+        isOpen={showUpgradeModal}
+        onClose={closePackModal}
+        headline={upgradeHeadline}
+        message={upgradeMessage}
+      />
     </div>
   );
 }

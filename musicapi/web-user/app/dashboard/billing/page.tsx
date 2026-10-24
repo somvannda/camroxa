@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api";
 import { KhqrModal } from "@/components/billing/khqr-modal";
 
@@ -21,6 +21,15 @@ interface PricingRow {
   endpoint: string;
   model: string | null;
   credit_cost: number;
+}
+
+interface PromoQuote {
+  code: string;
+  kind: string;
+  value: number;
+  amount: number;
+  credits: number;
+  discount: number;
 }
 
 interface Checkout {
@@ -80,6 +89,63 @@ export default function BillingPage() {
   const [busyPackId, setBusyPackId] = useState<string | null>(null);
   const [checkout, setCheckout] = useState<Checkout | null>(null);
 
+  // One validated quote per pack: a percent code changes the price of every
+  // pack, a bonus code adds the same credits to each, so both are previewed per
+  // card. The code is re-validated server-side at checkout.
+  const [promoInput, setPromoInput] = useState("");
+  const [promoApplied, setPromoApplied] = useState<{ code: string; kind: string; value: number } | null>(null);
+  const [quotes, setQuotes] = useState<Record<string, PromoQuote>>({});
+  const [promoBusy, setPromoBusy] = useState(false);
+  const [promoError, setPromoError] = useState("");
+  // Campaign mail links land on /dashboard/billing?code=…; only the first load
+  // may auto-apply, otherwise a post-payment reload would replay a used code.
+  const autoApplied = useRef(false);
+
+  /**
+   * Preview a code against every active pack. The server answers per pack
+   * because a percent discount scales with price while a bonus is fixed; both
+   * kinds therefore render on their own card. Checkout recomputes the charge,
+   * so this preview can never reduce what is actually billed.
+   */
+  const applyPromoFor = useCallback(async (rawCode: string, packs: Pack[]) => {
+    const code = rawCode.trim();
+    if (!code) return;
+    if (packs.length === 0) {
+      setPromoError("Packs have not loaded yet — try again in a moment.");
+      return;
+    }
+    setPromoBusy(true);
+    setPromoError("");
+    try {
+      const validated = await Promise.all(
+        packs.map((p) =>
+          apiFetch<PromoQuote>("/me/promo/validate", {
+            method: "POST",
+            body: JSON.stringify({ code, pack_id: p.id }),
+          }),
+        ),
+      );
+      const next: Record<string, PromoQuote> = {};
+      validated.forEach((q, i) => {
+        next[packs[i].id] = q;
+      });
+      const first = validated[0];
+      setQuotes(next);
+      setPromoApplied({
+        code: first?.code ?? code.toUpperCase(),
+        kind: first?.kind ?? "",
+        value: first?.value ?? 0,
+      });
+      setPromoInput(first?.code ?? code.toUpperCase());
+    } catch (e) {
+      setPromoApplied(null);
+      setQuotes({});
+      setPromoError(e instanceof Error ? e.message : "That code could not be applied.");
+    } finally {
+      setPromoBusy(false);
+    }
+  }, []);
+
   const load = useCallback(() => {
     Promise.all([
       apiFetch<Billing>("/me/billing"),
@@ -90,9 +156,20 @@ export default function BillingPage() {
         setBilling(b);
         setPricing(p.pricing);
         setTransactions(t);
+        // Promo campaign mail links land on /dashboard/billing?code=…; apply the
+        // code once the packs are known, then strip it from the URL so a refresh
+        // or the post-payment reload cannot replay a used code.
+        if (!autoApplied.current) {
+          autoApplied.current = true;
+          const code = new URLSearchParams(window.location.search).get("code")?.trim() ?? "";
+          if (code) {
+            window.history.replaceState({}, "", window.location.pathname);
+            void applyPromoFor(code, b.packs);
+          }
+        }
       })
       .catch((e) => setError(e instanceof Error ? e.message : "Failed to load"));
-  }, []);
+  }, [applyPromoFor]);
 
   useEffect(() => {
     load();
@@ -140,7 +217,10 @@ export default function BillingPage() {
     try {
       const session = await apiFetch<Checkout>("/payments/chmaba/create", {
         method: "POST",
-        body: JSON.stringify({ pack_id: pack.id }),
+        body: JSON.stringify({
+          pack_id: pack.id,
+          ...(promoApplied ? { promo_code: promoApplied.code } : {}),
+        }),
       });
       if (session.qr_url) {
         setCheckout(session);
@@ -157,6 +237,17 @@ export default function BillingPage() {
     } finally {
       setBusyPackId(null);
     }
+  }
+
+  function applyPromo() {
+    void applyPromoFor(promoInput, billing?.packs ?? []);
+  }
+
+  function removePromo() {
+    setPromoApplied(null);
+    setQuotes({});
+    setPromoInput("");
+    setPromoError("");
   }
 
   return (
@@ -183,23 +274,102 @@ export default function BillingPage() {
       <div className="glass mt-6 rounded-2xl p-6">
         <h2 className="text-lg font-semibold text-white">Add Credits</h2>
         <p className="mt-1 text-sm text-white/50">Buy credits before you integrate. Top up any time.</p>
-        <div className="mt-5 grid gap-4 md:grid-cols-3">
-          {(billing?.packs ?? []).map((p) => (
-            <div key={p.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
-              <div className="text-2xl font-bold text-white">{p.amount.toLocaleString()}</div>
-              <div className="text-sm text-white/50">credits</div>
-              <div className="mt-4 text-lg font-semibold text-white">
-                {p.currency} {p.price}
-              </div>
+
+        {/* Optional checkout code: a percent discount or bonus credits on a pack. */}
+        <div className="mt-5 rounded-xl border border-white/10 bg-white/[0.02] p-4">
+          <label
+            htmlFor="promo-code"
+            className="text-xs font-semibold uppercase tracking-wide text-white/50"
+          >
+            Promo code
+          </label>
+          <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+            <input
+              id="promo-code"
+              value={promoInput}
+              onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void applyPromo();
+              }}
+              placeholder="CAMX-XXXXXX"
+              autoComplete="off"
+              spellCheck={false}
+              disabled={promoApplied !== null}
+              className="w-full rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 font-mono text-sm uppercase text-white placeholder:text-white/25 outline-none focus:border-[var(--violet)]/60 disabled:opacity-60"
+            />
+            {promoApplied ? (
               <button
-                className="grad-bg mt-4 w-full rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-60"
-                onClick={() => buy(p)}
-                disabled={busyPackId !== null || checkout !== null}
+                type="button"
+                onClick={removePromo}
+                className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2 text-sm font-medium text-white/80 transition hover:bg-white/10"
               >
-                {busyPackId === p.id ? "Starting…" : "Buy Credits"}
+                Remove
               </button>
-            </div>
-          ))}
+            ) : (
+              <button
+                type="button"
+                onClick={() => void applyPromo()}
+                disabled={promoBusy || !promoInput.trim()}
+                className="inline-flex items-center justify-center rounded-lg border border-white/10 bg-white/[0.06] px-4 py-2 text-sm font-semibold text-white transition hover:bg-white/10 disabled:opacity-40"
+              >
+                {promoBusy ? "Checking…" : "Apply"}
+              </button>
+            )}
+          </div>
+          {promoError && <p className="mt-2 text-xs text-red-300">{promoError}</p>}
+          {promoApplied && (
+            <p className="mt-2 text-xs text-[var(--emerald)]">
+              {promoApplied.kind === "percent"
+                ? `${promoApplied.value}% off applied — pack prices below are updated.`
+                : `+${promoApplied.value.toLocaleString()} bonus credits applied to any pack.`}
+            </p>
+          )}
+          <p className="mt-2 text-xs text-white/35">
+            Code that grants credits without a purchase? Redeem it on the{" "}
+            <Link href="/dashboard/redeem" className="text-[var(--violet)] hover:underline">
+              Redeem page
+            </Link>
+            .
+          </p>
+        </div>
+
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          {(billing?.packs ?? []).map((p) => {
+            const quote = promoApplied ? quotes[p.id] : undefined;
+            const bonus = quote ? Math.max(0, quote.credits - p.amount) : 0;
+            return (
+              <div key={p.id} className="rounded-xl border border-white/10 bg-white/[0.02] p-5">
+                <div className="text-2xl font-bold text-white">{p.amount.toLocaleString()}</div>
+                <div className="text-sm text-white/50">credits</div>
+                {bonus > 0 && (
+                  <div className="mt-0.5 text-xs font-semibold text-[var(--emerald)]">
+                    +{bonus.toLocaleString()} bonus
+                  </div>
+                )}
+                <div className="mt-4 text-lg font-semibold text-white">
+                  {quote ? (
+                    <>
+                      <span className="mr-2 text-sm font-normal text-white/40 line-through">
+                        {p.currency} {p.price}
+                      </span>
+                      {p.currency} {quote.amount}
+                    </>
+                  ) : (
+                    <>
+                      {p.currency} {p.price}
+                    </>
+                  )}
+                </div>
+                <button
+                  className="grad-bg mt-4 w-full rounded-lg py-2 text-sm font-semibold text-white disabled:opacity-60"
+                  onClick={() => buy(p)}
+                  disabled={busyPackId !== null || checkout !== null}
+                >
+                  {busyPackId === p.id ? "Starting…" : "Buy Credits"}
+                </button>
+              </div>
+            );
+          })}
           {(!billing || billing.packs.length === 0) && (
             <div className="col-span-3 rounded-xl border border-white/5 p-8 text-center text-sm text-white/50">
               No credit packs available yet.

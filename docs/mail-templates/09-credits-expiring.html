@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="color-scheme" content="light" />
+  <title>Credits expiring soon</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;">
+  <div style="display:none;max-height:0;overflow:hidden;opacity:0;">
+    {{expiring_credits}} credits expire in {{days_left}} days. They cost you nothing to use now.
+  </div>
+
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="width:100%;max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+
+          <tr><td style="background:#f59e0b;height:4px;line-height:4px;font-size:0;">&nbsp;</td></tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <span style="font-size:15px;font-weight:700;letter-spacing:.14em;color:#7466F1;">CAMXORA</span>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:20px 32px 0;">
+              <h1 style="margin:0;font-size:24px;line-height:1.3;color:#111827;font-weight:700;">
+                {{expiring_credits}} credits expire in {{days_left}} days
+              </h1>
+              <p style="margin:12px 0 0;font-size:15px;line-height:1.65;color:#374151;">
+                Hi {{first_name}} &mdash; part of your balance has an expiry date, and it is coming up.
+                That is about <strong>{{songs_left}} songs</strong> you have already paid for.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#92400e;">
+                      Using them costs nothing extra. Credits you buy later are added on top and keep
+                      their own dates &mdash; this expiry only applies to the batch that is running out.
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:22px 32px 0;">
+              <p style="margin:0 0 8px;font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;">
+                Good things to do with them
+              </p>
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#374151;">Finish the tracks sitting in your drafts.</p>
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#374151;">Make a remaster of the one that almost worked.</p>
+              <p style="margin:0;font-size:15px;line-height:1.6;color:#374151;">Pull stems and rebuild a chorus properly.</p>
+            </td>
+          </tr>
+
+          <tr>
+            <td align="left" style="padding:24px 32px 8px;">
+              <table role="presentation" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="background:#7466F1;border-radius:8px;">
+                    <a href="{{app_url}}/dashboard" style="display:inline-block;padding:13px 24px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:8px;">
+                      Use my credits
+                    </a>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:8px 32px 0;">
+              <p style="margin:0;font-size:13px;line-height:1.6;color:#6b7280;">
+                Your balance and the expiry dates per batch are visible in the dashboard at any time.
+              </p>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:28px 32px 0;">
+              <div style="height:1px;background:#e5e7eb;line-height:1px;font-size:0;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <tr>
+            <td style="padding:18px 32px 32px;">
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#6b7280;">
+                Account notice about your CAMXORA credit balance.
+                <a href="{{unsubscribe_url}}" style="color:#6b7280;text-decoration:underline;">Manage email preferences</a>
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

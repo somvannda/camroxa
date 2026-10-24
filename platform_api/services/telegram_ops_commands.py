@@ -7,12 +7,12 @@ import logging
 import os
 from datetime import datetime, timedelta
 from typing import Any
+from uuid import uuid4
 
 import httpx
 
 from platform_api.config import environment_display_label
 from platform_api.services.billing_calendar import BILLING_TIMEZONE
-from platform_api.services.credit_units import units_to_credits
 from platform_api.services.telegram_ops_alert_service import (
     _esc,
     _now_label,
@@ -23,37 +23,40 @@ logger = logging.getLogger(__name__)
 
 _POLLER_STARTED = False
 _I_AM_POLLER = False
+# Unique per process: a lock value lets the holder prove ownership before
+# renewing. `pid` alone is not unique across restarts/reused PIDs.
+_LOCK_VALUE = f"{os.getpid()}:{uuid4().hex}"
+_LOCK_TTL_S = 40
 _LOCK_KEY = "telegram:ops:poller"
 _OFFSET_KEY = "telegram:ops:update_offset"
 _DAILY_SENT_KEY = "telegram:ops:burncredit_daily"
 _DAILY_BURN_HOUR = 22
+_LAST_UPDATE_ID = 0  # in-process offset fallback when Redis is unavailable
 _ALLOWED_COMMANDS = frozenset({"/stats", "/report", "/summary"})
 
 _WINDOW_KEYS = ("today", "yesterday", "d7", "d30")
 _TABLE_HEADERS = ("Today", "Yesterday", "Last 7 Days", "Last 30 Days")
 _BURN_COMMANDS = frozenset({"/burncredit", "/burncredits"})
 _USD_PER_SONG_REQUEST = 0.06
-_PP_DATE = "(created_at AT TIME ZONE 'Asia/Phnom_Penh')::date"
-_PP_TODAY = "(NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date"
+# Phnom Penh calendar-day boundaries as timestamptz. Casting the column
+# (`(created_at AT TIME ZONE …)::date`) made every report a full table scan;
+# range predicates on the raw column can use an index instead.
+_PP_DAY_START = (
+    "(date_trunc('day', NOW() AT TIME ZONE 'Asia/Phnom_Penh') "
+    "AT TIME ZONE 'Asia/Phnom_Penh')"
+)
 
-_COUNT_SQL = """
+
+def _count_sql(*, table: str, where: str = "") -> str:
+    return f"""
 SELECT
+  COUNT(*) FILTER (WHERE created_at >= {_PP_DAY_START})::int AS today,
   COUNT(*) FILTER (
-    WHERE (created_at AT TIME ZONE 'Asia/Phnom_Penh')::date
-      = (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date
-  )::int AS today,
-  COUNT(*) FILTER (
-    WHERE (created_at AT TIME ZONE 'Asia/Phnom_Penh')::date
-      = (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date - 1
+    WHERE created_at >= {_PP_DAY_START} - interval '1 day'
+      AND created_at < {_PP_DAY_START}
   )::int AS yesterday,
-  COUNT(*) FILTER (
-    WHERE (created_at AT TIME ZONE 'Asia/Phnom_Penh')::date
-      > (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date - 7
-  )::int AS d7,
-  COUNT(*) FILTER (
-    WHERE (created_at AT TIME ZONE 'Asia/Phnom_Penh')::date
-      > (NOW() AT TIME ZONE 'Asia/Phnom_Penh')::date - 30
-  )::int AS d30
+  COUNT(*) FILTER (WHERE created_at >= {_PP_DAY_START} - interval '6 days')::int AS d7,
+  COUNT(*) FILTER (WHERE created_at >= {_PP_DAY_START} - interval '29 days')::int AS d30
 FROM {table}
 {where}
 """
@@ -61,45 +64,83 @@ FROM {table}
 
 def _window_agg(expr: str) -> str:
     return f"""
-  {expr} FILTER (WHERE {_PP_DATE} = {_PP_TODAY}) AS today,
-  {expr} FILTER (WHERE {_PP_DATE} = {_PP_TODAY} - 1) AS yesterday,
-  {expr} FILTER (WHERE {_PP_DATE} > {_PP_TODAY} - 7) AS d7,
-  {expr} FILTER (WHERE {_PP_DATE} > {_PP_TODAY} - 30) AS d30
+  {expr} FILTER (WHERE created_at >= {_PP_DAY_START}) AS today,
+  {expr} FILTER (
+    WHERE created_at >= {_PP_DAY_START} - interval '1 day'
+      AND created_at < {_PP_DAY_START}
+  ) AS yesterday,
+  {expr} FILTER (WHERE created_at >= {_PP_DAY_START} - interval '6 days') AS d7,
+  {expr} FILTER (WHERE created_at >= {_PP_DAY_START} - interval '29 days') AS d30
 """
 
 
 def _window_sum(expr: str) -> str:
     """FILTER must attach to the aggregate (SUM), not COALESCE."""
     return f"""
-  COALESCE({expr} FILTER (WHERE {_PP_DATE} = {_PP_TODAY}), 0) AS today,
-  COALESCE({expr} FILTER (WHERE {_PP_DATE} = {_PP_TODAY} - 1), 0) AS yesterday,
-  COALESCE({expr} FILTER (WHERE {_PP_DATE} > {_PP_TODAY} - 7), 0) AS d7,
-  COALESCE({expr} FILTER (WHERE {_PP_DATE} > {_PP_TODAY} - 30), 0) AS d30
+  COALESCE(SUM({expr}) FILTER (WHERE created_at >= {_PP_DAY_START}), 0) AS today,
+  COALESCE(SUM({expr}) FILTER (
+    WHERE created_at >= {_PP_DAY_START} - interval '1 day'
+      AND created_at < {_PP_DAY_START}
+  ), 0) AS yesterday,
+  COALESCE(SUM({expr}) FILTER (WHERE created_at >= {_PP_DAY_START} - interval '6 days'), 0) AS d7,
+  COALESCE(SUM({expr}) FILTER (WHERE created_at >= {_PP_DAY_START} - interval '29 days'), 0) AS d30
 """
 
 
-_WEB_CREDIT_SQL = f"""
-SELECT
-{_window_sum("SUM(-amount)")}
-FROM credit_transactions
-WHERE reason LIKE 'consumed_web_music%'
-   OR reason LIKE 'refunded_web_music%'
-"""
-
-_STUDIO_CREDIT_SQL = f"""
-SELECT
-  (COALESCE(SUM(amount) FILTER (WHERE direction = 'debit' AND {_PP_DATE} = {_PP_TODAY}), 0)
-   - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund' AND {_PP_DATE} = {_PP_TODAY}), 0))::bigint AS today,
-  (COALESCE(SUM(amount) FILTER (WHERE direction = 'debit' AND {_PP_DATE} = {_PP_TODAY} - 1), 0)
-   - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund' AND {_PP_DATE} = {_PP_TODAY} - 1), 0))::bigint AS yesterday,
-  (COALESCE(SUM(amount) FILTER (WHERE direction = 'debit' AND {_PP_DATE} > {_PP_TODAY} - 7), 0)
-   - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund' AND {_PP_DATE} > {_PP_TODAY} - 7), 0))::bigint AS d7,
-  (COALESCE(SUM(amount) FILTER (WHERE direction = 'debit' AND {_PP_DATE} > {_PP_TODAY} - 30), 0)
-   - COALESCE(SUM(amount) FILTER (WHERE direction = 'refund' AND {_PP_DATE} > {_PP_TODAY} - 30), 0))::bigint AS d30
-FROM credit_transactions
-WHERE direction IN ('debit', 'refund')
-  AND COALESCE(reason, '') NOT LIKE 'consumed_web_music%'
-  AND COALESCE(reason, '') NOT LIKE 'refunded_web_music%'
+# `credit_transactions` is written by three generations of code with different
+# sign and scale conventions:
+#   * legacy studio debits — display credits, e.g. "music via suno"
+#   * legacy web debits    — display credits, "consumed_web_music_*"
+#   * v3 debits            — micro-units (1 display credit = 10_000), "v3_*"
+#   * refunds              — mixed, so magnitude is used and direction decides.
+# Attribution uses product metadata when the writer supplied it (web music and
+# desktop now tag `metadata->>'product'`). Historical rows without it fall back
+# to the one provable signal: a v3 music charge whose ref_id is a platform
+# `suno_tasks` row is web music. Other untagged v3 operations
+# (image/lyric/title/album) are used by both products, so they land in
+# `unattributed` rather than being guessed into studio.
+_BURN_SQL = f"""
+WITH classified AS (
+  SELECT
+    ct.direction,
+    ABS(ct.amount)::numeric AS units,
+    ct.created_at,
+    CASE
+      WHEN ct.reason LIKE 'consumed_web_music%'
+        OR ct.reason LIKE 'refunded_web_music%' THEN 'web'
+      WHEN ct.reason LIKE 'v3_%'
+        AND ct.metadata->>'product' = 'web_music' THEN 'web'
+      WHEN ct.reason LIKE 'v3_%'
+        AND ct.metadata->>'product' = 'desktop' THEN 'studio'
+      WHEN ct.reason LIKE 'v3_%'
+        AND EXISTS (
+          SELECT 1 FROM suno_tasks t WHERE t.id::text = ct.ref_id
+        ) THEN 'web'
+      WHEN ct.reason LIKE 'v3_%'
+        AND ct.reason IN ('v3_music', 'v3_refund_music') THEN 'studio'
+      WHEN ct.reason LIKE 'v3_%' THEN 'unattributed'
+      WHEN ct.reason LIKE '% via %' THEN 'studio'
+      ELSE 'unattributed'
+    END AS family,
+    CASE
+      WHEN ct.reason LIKE 'consumed_web_music%'
+        OR ct.reason LIKE 'refunded_web_music%'
+        OR ct.reason LIKE '% via %' THEN 1.0
+      ELSE 10000.0
+    END AS per_credit
+  FROM credit_transactions ct
+  WHERE ct.direction IN ('debit', 'refund')
+    AND ct.created_at >= {_PP_DAY_START} - interval '29 days'
+), burn AS (
+  SELECT
+    family,
+    created_at,
+    (CASE WHEN direction = 'debit' THEN units ELSE -units END) / per_credit AS credits
+  FROM classified
+)
+SELECT family, {_window_sum("credits")}
+FROM burn
+GROUP BY family
 """
 
 
@@ -214,6 +255,7 @@ def format_burncredit_message(
     both_songs: dict[str, int],
     both_credits: dict[str, float],
     headline: str | None = None,
+    unattributed_credits: dict[str, float] | None = None,
 ) -> str:
     if scope == "help":
         return "🔥 <b>BURN CREDIT</b>\n" + _BURN_HELP
@@ -221,11 +263,13 @@ def format_burncredit_message(
         f"🔥 <b>BURN CREDIT</b> · {_esc(env_label)}",
     ]
     if headline:
-        sections.append(_esc(headline))
+        # Callers may pass HTML (bold numbers); plain text is still valid.
+        sections.append(headline)
     sections.extend(
         [
             "Each period: songs generated · credits burned. USD = songs × $0.06 / request.",
             "Asia/Phnom_Penh calendar days. Last 7 / 30 include today.",
+            "Web credits are proven against a web task; shared covers ops used by both products.",
             "",
         ]
     )
@@ -237,6 +281,17 @@ def format_burncredit_message(
         sections.append("")
     if scope in {"all", "both"}:
         sections.append(format_burn_table("Both", both_songs, both_credits))
+        sections.append("")
+    if unattributed_credits and any(
+        float(unattributed_credits.get(key, 0) or 0) for key in _WINDOW_KEYS
+    ):
+        sections.append(
+            "Shared (image/lyric/title or net refunds): "
+            + " · ".join(
+                f"{header} {_fmt_credits(unattributed_credits.get(key, 0))} cr"
+                for header, key in zip(_TABLE_HEADERS, _WINDOW_KEYS)
+            )
+        )
         sections.append("")
     sections.append(f"time: {_esc(_now_label())}")
     sections.append("Reply <code>/burncredit web</code> · <code>studio</code> · <code>both</code>")
@@ -252,12 +307,12 @@ def _row_windows(row: Any | None) -> dict[str, int]:
 async def fetch_ops_stats(pool: Any) -> dict[str, dict[str, int]]:
     """Count new users and suno_tasks (same song metric as admin user details)."""
     users = await pool.fetchrow(
-        _COUNT_SQL.format(
+        _count_sql(
             table="users",
             where="WHERE COALESCE(status, 'active') <> 'deleted' AND COALESCE(role, 'user') = 'user'",
         )
     )
-    songs = await pool.fetchrow(_COUNT_SQL.format(table="suno_tasks", where=""))
+    songs = await pool.fetchrow(_count_sql(table="suno_tasks"))
     return {"users": _row_windows(users), "songs": _row_windows(songs)}
 
 
@@ -273,7 +328,7 @@ def _add_credit_windows(
 
 
 async def fetch_burncredit_stats(pool: Any) -> dict[str, dict[str, dict[str, float]]]:
-    """Songs by suno_tasks.source; web/studio credits from credit_transactions."""
+    """Songs by suno_tasks.source; credits by provable product attribution."""
     web_songs = _row_windows(
         await pool.fetchrow(
             f"SELECT {_window_agg('COUNT(*)')} FROM suno_tasks WHERE source = 'web_music'"
@@ -286,18 +341,140 @@ async def fetch_burncredit_stats(pool: Any) -> dict[str, dict[str, dict[str, flo
             + " FROM suno_tasks WHERE COALESCE(source, 'studio') = 'studio'"
         )
     )
-    web_credit_row = _row_windows(await pool.fetchrow(_WEB_CREDIT_SQL))
-    web_credits = {key: float(web_credit_row[key]) for key in _WINDOW_KEYS}
-    studio_units = _row_windows(await pool.fetchrow(_STUDIO_CREDIT_SQL))
-    studio_credits = {key: units_to_credits(studio_units[key]) for key in _WINDOW_KEYS}
+
+    empty_credits = {key: 0.0 for key in _WINDOW_KEYS}
+    credits = {
+        "web": dict(empty_credits),
+        "studio": dict(empty_credits),
+        "unattributed": dict(empty_credits),
+    }
+    # `fetch` (not `fetchrow`): one row per attribution family. A family absent
+    # from the window keeps its zero row, so formatting is stable.
+    for row in await pool.fetch(_BURN_SQL):
+        family = str(row["family"] or "").strip().lower()
+        if family not in credits:
+            family = "unattributed"
+        credits[family] = {key: float(row[key] or 0) for key in _WINDOW_KEYS}
+
     return {
-        "web": {"songs": web_songs, "credits": web_credits},
-        "studio": {"songs": studio_songs, "credits": studio_credits},
+        "web": {"songs": web_songs, "credits": credits["web"]},
+        "studio": {"songs": studio_songs, "credits": credits["studio"]},
+        "unattributed": {
+            "songs": {key: 0 for key in _WINDOW_KEYS},
+            "credits": credits["unattributed"],
+        },
         "both": {
             "songs": _add_windows(web_songs, studio_songs),
-            "credits": _add_credit_windows(web_credits, studio_credits),
+            "credits": _add_credit_windows(credits["web"], credits["studio"]),
         },
     }
+
+
+async def fetch_platform_revenue(pool: Any) -> dict[str, float]:
+    """Fulfilled platform checkout revenue (cents) for today / last 7 days."""
+    from platform_api.repositories.credit_repo import CreditRepository
+
+    now = datetime.now(BILLING_TIMEZONE)
+    day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    repo = CreditRepository(pool)
+    today = await repo.sum_fulfilled_subscription_revenue(
+        from_date=day_start, to_date=now
+    )
+    week = await repo.sum_fulfilled_subscription_revenue(
+        from_date=day_start - timedelta(days=6), to_date=now
+    )
+    return {
+        "today_cents": float(today.get("subscription_revenue_cents") or 0),
+        "d7_cents": float(week.get("subscription_revenue_cents") or 0),
+        "pack_today_cents": float(today.get("credit_pack_revenue_cents") or 0),
+    }
+
+
+async def fetch_musicapi_revenue(
+    *,
+    dsn: str | None = None,
+    now: datetime | None = None,
+    connect: Any = None,
+) -> dict[str, dict[str, float]]:
+    """Paid musicapi revenue by currency (ChmabaPay / pack purchases).
+
+    Returns ``{}`` when no DSN is configured or the database is unreachable:
+    the daily digest is platform-only by default and must never fail because a
+    cross-product read is unavailable.
+    """
+    if dsn is None:
+        try:
+            from platform_api.config import get_settings
+
+            dsn = (get_settings().musicapi_database_url or "").strip()
+        except Exception:
+            return {}
+    dsn = str(dsn or "").strip()
+    if not dsn:
+        return {}
+    dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
+    current = now or datetime.now(BILLING_TIMEZONE)
+    day_start = current.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = day_start - timedelta(days=6)
+    try:
+        connector = connect
+        if connector is None:
+            import asyncpg
+
+            connector = asyncpg.connect
+        conn = await connector(dsn)
+        try:
+            rows = await conn.fetch(
+                """
+                SELECT currency,
+                       COALESCE(SUM(amount) FILTER (
+                         WHERE paid_at >= $1 AND paid_at < $2
+                       ), 0) AS today,
+                       COALESCE(SUM(amount), 0) AS d7
+                FROM payment_transactions
+                WHERE status = 'paid'
+                  AND paid_at >= $3
+                  AND paid_at < $2
+                GROUP BY currency
+                """,
+                day_start,
+                current,
+                week_start,
+            )
+        finally:
+            await conn.close()
+    except Exception as exc:
+        logger.debug("musicapi revenue unavailable: %s", exc)
+        return {}
+    return {
+        str(row["currency"] or "UNKNOWN").upper(): {
+            "today": float(row["today"] or 0),
+            "d7": float(row["d7"] or 0),
+        }
+        for row in rows
+    }
+
+
+def format_revenue_line(
+    platform: dict[str, float],
+    musicapi: dict[str, dict[str, float]] | None,
+) -> str:
+    parts = [
+        "platform "
+        f"<b>${platform.get('today_cents', 0) / 100:,.2f}</b> "
+        f"(7d ${platform.get('d7_cents', 0) / 100:,.2f})"
+    ]
+    for currency, values in (musicapi or {}).items():
+        today = float(values.get("today") or 0)
+        week = float(values.get("d7") or 0)
+        if currency == "USD":
+            parts.append(f"musicapi <b>${today:,.2f}</b> (7d ${week:,.2f})")
+        else:
+            parts.append(
+                f"musicapi <b>{_esc(currency)} {today:,.0f}</b> "
+                f"(7d {week:,.0f})"
+            )
+    return "revenue today: " + " · ".join(parts)
 
 
 def next_daily_burncredit_at(now: datetime | None = None) -> datetime:
@@ -340,6 +517,16 @@ def start_telegram_ops_command_poller() -> None:
     if _POLLER_STARTED:
         return
     try:
+        from platform_api.config import get_settings
+
+        if not get_settings().telegram_poller_enabled:
+            logger.info(
+                "Telegram ops poller disabled by PLATFORM_TELEGRAM_POLLER_ENABLED."
+            )
+            return
+    except Exception:
+        pass
+    try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         return
@@ -369,7 +556,12 @@ async def _daily_burncredit_loop() -> None:
             last_sent = await _daily_sent_date(_try_redis())
             wait = seconds_until_daily_burncredit_check(last_sent_date=last_sent)
             await asyncio.sleep(wait)
-            await _maybe_send_daily_burncredit()
+            sent = await _maybe_send_daily_burncredit()
+            if not sent and datetime.now(BILLING_TIMEZONE).hour >= _DAILY_BURN_HOUR:
+                # Another worker may hold the claim, or it died mid-send. Retry
+                # soon instead of sleeping until tomorrow (the old bug: a crash
+                # at 22:00 left the claim behind and skipped the day entirely).
+                await asyncio.sleep(60)
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -388,29 +580,35 @@ async def _daily_sent_date(redis: Any | None) -> str | None:
         return None
     try:
         raw = await redis.get(_daily_key(today))
-        return today if raw else None
+        # "sending" is a short in-progress claim, not a completed send.
+        return today if str(raw) in {"1", "b'1'"} else None
     except Exception:
         return None
 
 
-async def _maybe_send_daily_burncredit() -> None:
+async def _maybe_send_daily_burncredit() -> bool:
     now = datetime.now(BILLING_TIMEZONE)
     if now.hour < _DAILY_BURN_HOUR:
-        return
+        return False
     date_iso = now.date().isoformat()
     redis = _try_redis()
     if redis is not None:
         try:
-            acquired = await redis.set(_daily_key(date_iso), "1", nx=True, ex=172800)
+            if str(await redis.get(_daily_key(date_iso))) in {"1", "b'1'"}:
+                return True
+            # Short in-progress claim: a crashed sender retries after 10
+            # minutes instead of blocking the day with a 48h marker.
+            acquired = await redis.set(
+                _daily_key(date_iso), "sending", nx=True, ex=600
+            )
         except Exception:
             acquired = _I_AM_POLLER
         if not acquired:
-            return
+            return False
     elif not _I_AM_POLLER:
-        return
+        return False
     try:
         await _send_daily_burncredit()
-        logger.info("Telegram daily 10 PM burncredit report sent for %s.", date_iso)
     except Exception:
         if redis is not None:
             try:
@@ -418,6 +616,13 @@ async def _maybe_send_daily_burncredit() -> None:
             except Exception:
                 pass
         raise
+    if redis is not None:
+        try:
+            await redis.set(_daily_key(date_iso), "1", ex=172800)
+        except Exception:
+            pass
+    logger.info("Telegram daily 10 PM burncredit report sent for %s.", date_iso)
+    return True
 
 
 async def _send_daily_burncredit() -> None:
@@ -426,7 +631,23 @@ async def _send_daily_burncredit() -> None:
         raise RuntimeError("Telegram ops service is not configured.")
     from platform_api.dependencies import get_db_pool
 
-    stats = await fetch_burncredit_stats(get_db_pool())
+    pool = get_db_pool()
+    stats = await fetch_burncredit_stats(pool)
+    headline: list[str] = ["Daily 10:00 PM report (Asia/Phnom_Penh)"]
+    try:
+        users = (await fetch_ops_stats(pool))["users"]
+        headline.append(
+            f"new users today: <b>{users['today']}</b> · "
+            f"songs today: <b>{stats['both']['songs']['today']}</b>"
+        )
+    except Exception as exc:
+        logger.debug("Daily report user/song line skipped: %s", exc)
+    try:
+        platform_revenue = await fetch_platform_revenue(pool)
+        musicapi_revenue = await fetch_musicapi_revenue()
+        headline.append(format_revenue_line(platform_revenue, musicapi_revenue))
+    except Exception as exc:
+        logger.debug("Daily report revenue line skipped: %s", exc)
     text = format_burncredit_message(
         env_label=environment_display_label(),
         scope="all",
@@ -436,9 +657,10 @@ async def _send_daily_burncredit() -> None:
         studio_credits=stats["studio"]["credits"],
         both_songs=stats["both"]["songs"],
         both_credits=stats["both"]["credits"],
-        headline="Daily 10:00 PM report (Asia/Phnom_Penh)",
+        unattributed_credits=stats["unattributed"]["credits"],
+        headline="\n".join(headline),
     )
-    ok = await service.send_html(text)
+    ok = await service.send_html(text, kind="daily_report")
     if not ok:
         raise RuntimeError("Telegram daily burncredit send failed.")
 
@@ -474,6 +696,11 @@ async def _poll_once() -> None:
             response.status_code,
             (response.text or "")[:200],
         )
+        if response.status_code == 409:
+            # Another process is polling with this token: we no longer own the
+            # leader key, so stop pretending we do (the old sticky flag caused
+            # thousands of conflicts until restart).
+            await _release_leader(redis)
         await asyncio.sleep(5)
         return
     payload = response.json()
@@ -511,11 +738,14 @@ async def _reply_stats(service: Any) -> None:
             users=stats["users"],
             songs=stats["songs"],
         )
-        await service.send_html(text)
+        await service.send_html(text, kind="command")
     except Exception as exc:
         logger.warning("Telegram /stats reply failed: %s", str(exc)[:200])
         try:
-            await service.send_html("Could not load stats right now. Try /stats again in a moment.")
+            await service.send_html(
+                "Could not load stats right now. Try /stats again in a moment.",
+                kind="command",
+            )
         except Exception:
             return
 
@@ -534,7 +764,7 @@ async def _reply_burncredit(service: Any, scope: str) -> None:
                 studio_credits={},
                 both_songs={},
                 both_credits={},
-            ))
+            ), kind="command")
             return
         stats = await fetch_burncredit_stats(get_db_pool())
         text = format_burncredit_message(
@@ -546,13 +776,15 @@ async def _reply_burncredit(service: Any, scope: str) -> None:
             studio_credits=stats["studio"]["credits"],
             both_songs=stats["both"]["songs"],
             both_credits=stats["both"]["credits"],
+            unattributed_credits=stats["unattributed"]["credits"],
         )
-        await service.send_html(text)
+        await service.send_html(text, kind="command")
     except Exception as exc:
         logger.warning("Telegram /burncredit reply failed: %s", str(exc)[:200])
         try:
             await service.send_html(
-                "Could not load credit burn right now. Try /burncredit again in a moment."
+                "Could not load credit burn right now. Try /burncredit again in a moment.",
+                kind="command",
             )
         except Exception:
             return
@@ -570,19 +802,72 @@ def _try_redis() -> Any | None:
 async def _hold_poller_lock(redis: Any | None) -> bool:
     global _I_AM_POLLER
     if redis is None:
+        # No Redis: stay a poller in this process. The offset is also kept in
+        # memory so updates are confirmed instead of being replayed forever.
+        _I_AM_POLLER = True
         return True
     try:
         if _I_AM_POLLER:
-            await redis.expire(_LOCK_KEY, 40)
-            return True
-        acquired = await redis.set(_LOCK_KEY, str(os.getpid()), ex=40, nx=True)
+            if await _renew_leader(redis):
+                return True
+            _I_AM_POLLER = False
+        acquired = await redis.set(
+            _LOCK_KEY, _LOCK_VALUE, ex=_LOCK_TTL_S, nx=True
+        )
         if acquired:
             _I_AM_POLLER = True
             await _register_bot_commands(redis)
             return True
         return False
     except Exception:
-        return True
+        # Redis trouble must fail closed: assuming leadership here is what made
+        # API workers and job workers poll the same bot simultaneously.
+        _I_AM_POLLER = False
+        return False
+
+
+# Compare-and-renew / compare-and-delete keep a stale holder from extending or
+# deleting a lock that now belongs to another process.
+_LOCK_RENEW_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('expire', KEYS[1], ARGV[2]) else return 0 end"
+)
+_LOCK_RELEASE_LUA = (
+    "if redis.call('get', KEYS[1]) == ARGV[1] then "
+    "return redis.call('del', KEYS[1]) else return 0 end"
+)
+
+
+async def _renew_leader(redis: Any) -> bool:
+    try:
+        result = await redis.eval(
+            _LOCK_RENEW_LUA, 1, _LOCK_KEY, _LOCK_VALUE, _LOCK_TTL_S
+        )
+        return bool(result)
+    except Exception:
+        try:
+            current = await redis.get(_LOCK_KEY)
+            if str(current) != _LOCK_VALUE:
+                return False
+            await redis.expire(_LOCK_KEY, _LOCK_TTL_S)
+            return True
+        except Exception:
+            return False
+
+
+async def _release_leader(redis: Any | None) -> None:
+    global _I_AM_POLLER
+    _I_AM_POLLER = False
+    if redis is None:
+        return
+    try:
+        await redis.eval(_LOCK_RELEASE_LUA, 1, _LOCK_KEY, _LOCK_VALUE)
+    except Exception:
+        try:
+            if str(await redis.get(_LOCK_KEY)) == _LOCK_VALUE:
+                await redis.delete(_LOCK_KEY)
+        except Exception:
+            pass
 
 
 async def _register_bot_commands(redis: Any | None) -> None:
@@ -612,16 +897,19 @@ async def _register_bot_commands(redis: Any | None) -> None:
 
 
 async def _read_offset(redis: Any | None) -> int:
+    global _LAST_UPDATE_ID
     if redis is None:
-        return 0
+        return _LAST_UPDATE_ID
     try:
         raw = await redis.get(_OFFSET_KEY)
-        return int(raw or 0)
+        return int(raw or 0) if raw is not None else _LAST_UPDATE_ID
     except Exception:
-        return 0
+        return _LAST_UPDATE_ID
 
 
 async def _write_offset(redis: Any | None, offset: int) -> None:
+    global _LAST_UPDATE_ID
+    _LAST_UPDATE_ID = int(offset)
     if redis is None:
         return
     try:

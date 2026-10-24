@@ -6,9 +6,6 @@ import logging
 import sys
 from typing import Any
 
-_CONFIGURED = False
-
-
 class FlushingStreamHandler(logging.StreamHandler):
     """Stream handler that always flushes so lines appear immediately in dev terminals."""
 
@@ -32,16 +29,21 @@ def emit(category: str, message: str, *args: object, level: int = logging.INFO) 
 
 
 def configure_terminal_logging() -> None:
-    """Upgrade root logging so every platform_api logger flushes to the terminal."""
-    global _CONFIGURED
-    if _CONFIGURED:
-        return
+    """Upgrade root logging so every platform_api logger flushes to the terminal.
 
+    Deliberately idempotent and *re-asserting* rather than a one-shot: another
+    library can re-configure logging at any time, and a logger left ``disabled``
+    (or whose level sits above INFO) swallows every record without raising.
+    That is exactly how the API lost all request/5xx lines in production —
+    the journal held zero ``[access]`` entries for a week while the process
+    looked healthy (2026-10-21).
+    """
     formatter = logging.Formatter(
         fmt="%(asctime)s | %(levelname)-8s | %(name)s | %(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     root = logging.getLogger()
+    root.disabled = False
     root.setLevel(logging.INFO)
 
     replaced = False
@@ -50,7 +52,7 @@ def configure_terminal_logging() -> None:
             stream = handler.stream
             replacement = FlushingStreamHandler(stream)
             replacement.setFormatter(handler.formatter or formatter)
-            replacement.setLevel(handler.level)
+            replacement.setLevel(logging.NOTSET)
             root.handlers[index] = replacement
             replaced = True
             break
@@ -71,9 +73,9 @@ def configure_terminal_logging() -> None:
         "uvicorn.error",
         "uvicorn.access",
     ):
-        logging.getLogger(name).setLevel(logging.INFO)
-
-    _CONFIGURED = True
+        logger = logging.getLogger(name)
+        logger.disabled = False
+        logger.setLevel(logging.INFO)
 
 
 def short_id(value: Any, *, length: int = 8) -> str:

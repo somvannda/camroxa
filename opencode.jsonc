@@ -4,9 +4,11 @@
   // Limit how many agentic iterations each agent can perform.
   // On the final step OpenCode removes tools and forces a text summary, so a
   // run can't loop forever and burn tokens. Tune these per agent as needed.
+  // build.steps matches the Chmaba project (40) so a full feature can be run
+  // end to end instead of stopping to summarize after a dozen steps.
   "agents": {
     "build": {
-      "steps": 12
+      "steps": 40
     },
     "general": {
       "steps": 8
@@ -17,13 +19,15 @@
   },
 
   // Automatically reduce old conversation context so long sessions
-  // don't accumulate a huge (expensive) context window.
+  // don't accumulate a huge (expensive) context window. Values mirror the
+  // Chmaba project: keep.tokens is how much recent detail survives a
+  // compaction, so a feature in flight keeps its exact details.
   "compaction": {
     "auto": true,
     "keep": {
-      "tokens": 12000
+      "tokens": 40000
     },
-    "buffer": 16000
+    "buffer": 20000
   },
 
   // Don't watch noisy/generated folders. Keeps the file watcher quiet and

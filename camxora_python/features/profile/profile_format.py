@@ -62,7 +62,7 @@ def plan_subtitle(plan_name: str | None) -> str:
     if "week" in text:
         return "Weekly plan"
     if text:
-        return "Monthly plan"
+        return "Credit pack"
     return "No active plan"
 
 

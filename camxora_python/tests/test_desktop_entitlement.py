@@ -27,6 +27,18 @@ def _me(**kwargs: object) -> UserMeResponse:
 
 def test_unpaid_user_cannot_use_desktop() -> None:
     assert user_can_use_desktop_studio(_me(onboarding_paid=False)) is False
+    assert user_can_use_desktop_studio(_me(desktop_access=False)) is False
+
+
+def test_pack_access_flag_is_authoritative() -> None:
+    # Packs-only billing: the API decides from live, unexpired pack credits.
+    assert user_can_use_desktop_studio(_me(desktop_access=True)) is True
+    assert (
+        user_can_use_desktop_studio(
+            _me(desktop_access=False, onboarding_paid=True, plan_name="Starter")
+        )
+        is False
+    )
 
 
 def test_paid_user_can_use_desktop() -> None:
@@ -49,9 +61,10 @@ def test_free_plan_cannot_use_desktop() -> None:
 
 
 def test_paid_plan_message_is_user_facing() -> None:
-    assert "upgrade" in DESKTOP_REQUIRES_PAID_PLAN_MESSAGE.lower()
-    assert "desktop" in DESKTOP_REQUIRES_PAID_PLAN_MESSAGE.lower()
-    assert "portal" in DESKTOP_REQUIRES_PAID_PLAN_MESSAGE.lower()
+    message = DESKTOP_REQUIRES_PAID_PLAN_MESSAGE.lower()
+    assert "desktop" in message
+    assert "credit pack" in message
+    assert "30 days" in message
     assert is_desktop_plan_required_message(DESKTOP_REQUIRES_PAID_PLAN_MESSAGE)
 
 

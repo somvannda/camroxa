@@ -41,12 +41,17 @@ from platform_api.repositories.rate_limit_repo import (
 from platform_api.repositories.user_repo import UserRepository
 from platform_api.services.audit_service import AuditService
 from platform_api.services.billing_config_service import (
+    CHMABA_API_BASE_URL_KEY,
+    CHMABA_API_KEY_SETTING,
+    CHMABA_STORE_ID_KEY,
+    CHMABA_WEBHOOK_SECRET_KEY,
     CUTLUY_API_BASE_URL_KEY,
     CUTLUY_PAYMENT_LINK_ID_KEY,
     CUTLUY_SECRET_KEY_SETTING,
     CUTLUY_WEBHOOK_SECRET_KEY,
     mask_secret_value,
     normalize_cutluy_payment_link_id,
+    resolve_chmaba_config,
     resolve_cutluy_config,
 )
 from platform_api.services.credit_units import units_to_credits
@@ -1495,6 +1500,38 @@ class CutluyBillingConfigResponse(BaseModel):
     webhook_secret_source: str | None = None
 
 
+class ChmabaBillingConfigResponse(BaseModel):
+    """Admin view of ChmabaPay credentials without exposing the live key."""
+
+    api_base_url: str
+    store_id: str = ""
+    api_key_configured: bool = False
+    api_key_masked: str = ""
+    api_key_source: str | None = None
+    store_source: str | None = None
+    webhook_secret_configured: bool = False
+    webhook_secret_masked: str = ""
+    webhook_secret_source: str | None = None
+    ready: bool = False
+
+
+class UpdateChmabaBillingConfigRequest(BaseModel):
+    """Update ChmabaPay credentials stored in system_settings."""
+
+    api_base_url: str = Field(default="https://pay.chmaba.com", min_length=8, max_length=255)
+    store_id: str = Field(default="", max_length=255)
+    api_key: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="ChmabaPay live key (ck_live_…). Leave blank to keep the current key.",
+    )
+    webhook_secret: str | None = Field(
+        default=None,
+        max_length=4096,
+        description="ChmabaPay webhook signing secret (whsec_…). Leave blank to keep.",
+    )
+
+
 class UpdateCutluyBillingConfigRequest(BaseModel):
     """Update CutLuy billing credentials stored in system_settings."""
 
@@ -1535,7 +1572,12 @@ async def _upsert_system_setting_value(
 
 
 def _mask_system_setting_value(key: str, value: str) -> str:
-    if key in {CUTLUY_SECRET_KEY_SETTING, CUTLUY_WEBHOOK_SECRET_KEY}:
+    if key in {
+        CUTLUY_SECRET_KEY_SETTING,
+        CUTLUY_WEBHOOK_SECRET_KEY,
+        CHMABA_API_KEY_SETTING,
+        CHMABA_WEBHOOK_SECRET_KEY,
+    }:
         return mask_secret_value(value)
     return value
 
@@ -1773,6 +1815,85 @@ async def update_cutluy_billing_config(
     )
 
 
+def _chmaba_response(config) -> ChmabaBillingConfigResponse:
+    """Build the masked admin view for ChmabaPay credentials."""
+    return ChmabaBillingConfigResponse(
+        api_base_url=config.api_base_url,
+        store_id=config.store_id,
+        api_key_configured=bool(config.api_key),
+        api_key_masked=mask_secret_value(config.api_key),
+        api_key_source=config.api_key_source if config.api_key else None,
+        store_source=config.store_source if config.store_id else None,
+        webhook_secret_configured=bool(config.webhook_secret),
+        webhook_secret_masked=mask_secret_value(config.webhook_secret),
+        webhook_secret_source=(
+            config.webhook_secret_source if config.webhook_secret else None
+        ),
+        ready=config.configured,
+    )
+
+
+@router.get(
+    "/billing/chmaba-config",
+    response_model=ChmabaBillingConfigResponse,
+    summary="Get ChmabaPay billing credentials (Admin)",
+)
+async def get_chmaba_billing_config(ctx: AdminDep) -> ChmabaBillingConfigResponse:
+    """Return ChmabaPay settings for the admin payment tab without the live key."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    return _chmaba_response(await resolve_chmaba_config(pool))
+
+
+@router.put(
+    "/billing/chmaba-config",
+    response_model=ChmabaBillingConfigResponse,
+    summary="Update ChmabaPay billing credentials (Admin)",
+)
+async def update_chmaba_billing_config(
+    request: UpdateChmabaBillingConfigRequest,
+    ctx: AdminDep,
+) -> ChmabaBillingConfigResponse:
+    """Store ChmabaPay credentials in system_settings (no .env edit required)."""
+    from platform_api.dependencies import get_db_pool
+
+    pool = get_db_pool()
+    api_base_url = (
+        request.api_base_url.strip().rstrip("/") or "https://pay.chmaba.com"
+    )
+    store_id = request.store_id.strip()
+
+    await _upsert_system_setting_value(
+        pool,
+        key=CHMABA_API_BASE_URL_KEY,
+        value=api_base_url,
+    )
+    await _upsert_system_setting_value(
+        pool,
+        key=CHMABA_STORE_ID_KEY,
+        value=store_id,
+    )
+
+    api_key_input = (request.api_key or "").strip()
+    if api_key_input:
+        await _upsert_system_setting_value(
+            pool,
+            key=CHMABA_API_KEY_SETTING,
+            value=api_key_input,
+        )
+
+    webhook_input = (request.webhook_secret or "").strip()
+    if webhook_input:
+        await _upsert_system_setting_value(
+            pool,
+            key=CHMABA_WEBHOOK_SECRET_KEY,
+            value=webhook_input,
+        )
+
+    return _chmaba_response(await resolve_chmaba_config(pool))
+
+
 @router.put(
     "/system-settings",
     response_model=SystemSettingEntry,
@@ -1792,6 +1913,14 @@ async def upsert_system_setting(
             raise HTTPException(
                 status_code=400,
                 detail="Use Admin Settings → Payment → CutLuy to update the API secret.",
+            )
+    if request.key in {CHMABA_API_KEY_SETTING, CHMABA_WEBHOOK_SECRET_KEY}:
+        incoming = request.value.strip()
+        masked = mask_secret_value(incoming)
+        if not incoming or incoming == masked or "••••" in incoming:
+            raise HTTPException(
+                status_code=400,
+                detail="Use Admin Settings → Payment → ChmabaPay to update this secret.",
             )
 
     pool = get_db_pool()

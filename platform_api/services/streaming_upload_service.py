@@ -36,6 +36,8 @@ from platform_api.services.suno_audio_resolver import (
 )
 from platform_api.services.audio_package_service import AudioPackageService
 from platform_api.services.audio_packager import GCM_MIME, looks_like_camxora_audio
+from platform_api.services.audio_preview_trim import PreviewTrimError, trim_audio_bytes
+from platform_api.services.web_music_previews import PREVIEW_SECONDS
 from platform_api.services.suno_lrc import looks_like_lrc
 from platform_api.services.web_music_storage_keys import (
     usable_web_music_b2_key,
@@ -916,6 +918,24 @@ class StreamingUploadService:
                 return
 
             data = await download_suno_mp3_bytes(primary_url, fallback_urls=fallback_urls)
+            full_data = await ensure_mp3_duration_header_async(data)
+            if bool(context.get("is_preview")):
+                try:
+                    data = await trim_audio_bytes(
+                        full_data,
+                        seconds=int(context.get("preview_seconds") or PREVIEW_SECONDS),
+                        fmt="mp3",
+                    )
+                except PreviewTrimError as exc:
+                    # Never store the full track for a preview. The on-demand
+                    # fallback trims too, and refuses to serve if it cannot.
+                    logger.error(
+                        "Preview MP3 trim failed task=%s variant=%s: %s",
+                        suno_task_id,
+                        variant,
+                        exc,
+                    )
+                    return
             data = await ensure_mp3_duration_header_async(data)
             storage = StorageService.from_config(config)
             await storage.upload_bytes(key=storage_key, data=data, content_type="audio/mpeg")
@@ -954,6 +974,37 @@ class StreamingUploadService:
                 storage=storage,
                 null_suno_urls=True,
             )
+
+            # Keep the full-length master in a private object. It is never
+            # referenced by playback/download; an unlock copies it over the
+            # served key after a pack purchase.
+            if bool(context.get("is_preview")):
+                try:
+                    full_blob = await AudioPackageService(self._pool).encrypt_suno_export(
+                        full_data,
+                        subject_id=suno_task_id,
+                        variant=variant,
+                    )
+                    full_key = web_music_object_key(user_id, suno_task_id, variant, "full.mp3")
+                    await storage.upload_bytes(
+                        key=full_key,
+                        data=full_blob,
+                        content_type=(
+                            GCM_MIME if looks_like_camxora_audio(full_blob) else "audio/mpeg"
+                        ),
+                    )
+                    await self._pool.execute(
+                        f"UPDATE suno_tasks SET b2_full_storage_key_{variant} = $2, updated_at = NOW() WHERE id = $1",
+                        suno_task_id,
+                        full_key,
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Web music full-master upload failed task=%s variant=%s: %s",
+                        suno_task_id,
+                        variant,
+                        exc,
+                    )
 
             logger.info("Web music MP3 uploaded to B2: task=%s variant=%s key=%s size=%d", 
                        suno_task_id, variant, storage_key, len(data))
@@ -1142,6 +1193,23 @@ class StreamingUploadService:
                     response = await client.get(wav_url)
                     response.raise_for_status()
                     wav_data = response.content
+                full_wav_data = wav_data
+
+                if bool(context.get("is_preview")):
+                    try:
+                        wav_data = await trim_audio_bytes(
+                            wav_data,
+                            seconds=int(context.get("preview_seconds") or PREVIEW_SECONDS),
+                            fmt="wav",
+                        )
+                    except PreviewTrimError as exc:
+                        logger.error(
+                            "Preview WAV trim failed task=%s variant=%s: %s",
+                            suno_task_id,
+                            variant,
+                            exc,
+                        )
+                        return
                 
                 wav_data = await AudioPackageService(self._pool).encrypt_suno_export(
                     wav_data,
@@ -1185,6 +1253,38 @@ class StreamingUploadService:
                 
                 logger.info("Web music WAV uploaded to B2: task=%s variant=%s key=%s size=%d", 
                            suno_task_id, variant, wav_storage_key, len(wav_data))
+
+                if bool(context.get("is_preview")):
+                    try:
+                        full_wav_blob = await AudioPackageService(self._pool).encrypt_suno_export(
+                            full_wav_data,
+                            subject_id=suno_task_id,
+                            variant=variant,
+                        )
+                        full_wav_key = web_music_object_key(
+                            user_id, suno_task_id, variant, "full.wav"
+                        )
+                        await storage.upload_bytes(
+                            key=full_wav_key,
+                            data=full_wav_blob,
+                            content_type=(
+                                GCM_MIME
+                                if looks_like_camxora_audio(full_wav_blob)
+                                else "audio/wav"
+                            ),
+                        )
+                        await self._pool.execute(
+                            f"UPDATE suno_tasks SET b2_full_wav_storage_key_{variant} = $2, updated_at = NOW() WHERE id = $1",
+                            suno_task_id,
+                            full_wav_key,
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Web music full WAV upload failed task=%s variant=%s: %s",
+                            suno_task_id,
+                            variant,
+                            exc,
+                        )
         except Exception as exc:
             logger.warning("Web music WAV B2 upload failed task=%s variant=%s: %s", suno_task_id, variant, exc)
 
@@ -2125,7 +2225,8 @@ class StreamingUploadService:
                         f"jobs retried={stats['jobs_retried']} ok={stats['jobs_succeeded']} "
                         f"failed={stats['jobs_failed']} permanent={stats['permanent']}\n"
                         f"backfilled={stats['backfilled']} backfill_failed={stats['backfill_failed']} "
-                        f"wav={stats['wav_backfilled']} wav_failed={stats['wav_failed']}"
+                        f"wav={stats['wav_backfilled']} wav_failed={stats['wav_failed']}",
+                        kind="backfill_sweep",
                     )
             except Exception:
                 logger.warning("Could not send B2 backfill sweep alert", exc_info=True)

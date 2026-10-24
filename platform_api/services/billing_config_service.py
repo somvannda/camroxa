@@ -12,7 +12,36 @@ CUTLUY_SECRET_KEY_SETTING = "billing.cutluy.secret_key"
 CUTLUY_PAYMENT_LINK_ID_KEY = "billing.cutluy.payment_link_id"
 CUTLUY_WEBHOOK_SECRET_KEY = "billing.cutluy.webhook_secret"
 
+CHMABA_API_BASE_URL_KEY = "billing.chmaba.api_base_url"
+CHMABA_API_KEY_SETTING = "billing.chmaba.api_key"
+CHMABA_STORE_ID_KEY = "billing.chmaba.store_id"
+CHMABA_WEBHOOK_SECRET_KEY = "billing.chmaba.webhook_secret"
+
+DEFAULT_CHMABA_API_BASE_URL = "https://pay.chmaba.com"
+
+_BASE_URL_SUFFIXES = ("/api/v1", "/api", "/v1")
+
+
+def normalize_chmaba_api_base_url(raw: str | None) -> str:
+    """Return the bare gateway origin.
+
+    ChmabaPay's routes live under ``/api/v1`` and the client appends that path
+    itself, so a stored base of ``https://pay.chmaba.com/api`` would produce
+    ``/api/api/v1/payments`` and a 404. Admins often copy the value used by
+    other products, so strip any API suffix instead of trusting the form.
+    """
+    value = (raw or "").strip().rstrip("/")
+    if not value:
+        return DEFAULT_CHMABA_API_BASE_URL
+    lowered = value.lower()
+    for suffix in _BASE_URL_SUFFIXES:
+        if lowered.endswith(suffix):
+            value = value[: -len(suffix)].rstrip("/")
+            break
+    return value or DEFAULT_CHMABA_API_BASE_URL
+
 CutluySecretSource = Literal["database", "environment", "none"]
+ChmabaSecretSource = Literal["database", "environment", "none"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -23,6 +52,24 @@ class CutluyConfig:
     secret_source: CutluySecretSource
     webhook_secret: str = ""
     webhook_secret_source: CutluySecretSource = "none"
+
+
+@dataclass(frozen=True, slots=True)
+class ChmabaConfig:
+    """ChmabaPay credentials — admin DB settings override env vars."""
+
+    api_base_url: str
+    api_key: str
+    store_id: str
+    api_key_source: ChmabaSecretSource
+    webhook_secret: str = ""
+    webhook_secret_source: ChmabaSecretSource = "none"
+    store_source: ChmabaSecretSource = "none"
+
+    @property
+    def configured(self) -> bool:
+        """Checkout needs both the live key and the store pointer."""
+        return bool(self.api_key and self.store_id)
 
 
 async def load_system_setting(pool: Any, key: str) -> str | None:
@@ -84,6 +131,63 @@ async def resolve_cutluy_config(
         secret_source=secret_source,
         webhook_secret=webhook_secret,
         webhook_secret_source=webhook_secret_source,
+    )
+
+
+async def resolve_chmaba_config(
+    pool: Any,
+    *,
+    settings: Settings | None = None,
+) -> ChmabaConfig:
+    """Load ChmabaPay credentials — admin DB settings override env vars."""
+    resolved = settings or get_settings()
+
+    db_api_key = await load_system_setting(pool, CHMABA_API_KEY_SETTING)
+    db_store_id = await load_system_setting(pool, CHMABA_STORE_ID_KEY)
+    db_api_base_url = await load_system_setting(pool, CHMABA_API_BASE_URL_KEY)
+    db_webhook_secret = await load_system_setting(pool, CHMABA_WEBHOOK_SECRET_KEY)
+
+    api_key_source: ChmabaSecretSource = "none"
+    api_key = ""
+    if db_api_key:
+        api_key = db_api_key
+        api_key_source = "database"
+    elif (getattr(resolved, "chmaba_api_key", "") or "").strip():
+        api_key = resolved.chmaba_api_key.strip()
+        api_key_source = "environment"
+
+    store_source: ChmabaSecretSource = "none"
+    store_id = ""
+    if db_store_id:
+        store_id = db_store_id
+        store_source = "database"
+    elif (getattr(resolved, "chmaba_store_id", "") or "").strip():
+        store_id = resolved.chmaba_store_id.strip()
+        store_source = "environment"
+
+    webhook_secret_source: ChmabaSecretSource = "none"
+    webhook_secret = ""
+    if db_webhook_secret:
+        webhook_secret = db_webhook_secret
+        webhook_secret_source = "database"
+    elif (getattr(resolved, "chmaba_webhook_secret", "") or "").strip():
+        webhook_secret = resolved.chmaba_webhook_secret.strip()
+        webhook_secret_source = "environment"
+
+    api_base_url = normalize_chmaba_api_base_url(
+        db_api_base_url
+        or getattr(resolved, "chmaba_api_base_url", "")
+        or DEFAULT_CHMABA_API_BASE_URL
+    )
+
+    return ChmabaConfig(
+        api_base_url=api_base_url,
+        api_key=api_key,
+        store_id=store_id,
+        api_key_source=api_key_source,
+        webhook_secret=webhook_secret,
+        webhook_secret_source=webhook_secret_source,
+        store_source=store_source,
     )
 
 

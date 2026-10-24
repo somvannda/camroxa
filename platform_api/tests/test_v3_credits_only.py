@@ -434,6 +434,20 @@ async def test_charge_and_refund_change_shared_wallet(
 
 
 @pytest.mark.asyncio
+async def test_charge_records_product_metadata(
+    billing: CreditsOnlyBillingService, wallet: FakeWallet
+) -> None:
+    await billing.charge(
+        user_id=USER_ID, op="lyric", product="web_music", model="V6_WILD"
+    )
+    assert wallet.txs[-1]["metadata"]["product"] == "web_music"
+    assert wallet.txs[-1]["metadata"]["model"] == "V6_WILD"
+
+    await billing.refund(user_id=USER_ID, op="lyric", product="web_music")
+    assert wallet.txs[-1]["metadata"]["product"] == "web_music"
+
+
+@pytest.mark.asyncio
 async def test_admin_adjust_visible_on_v3_wallet(store: FakeStore, wallet: FakeWallet) -> None:
     billing = CreditsOnlyBillingService(
         store=store, credit_repo=wallet, pricing_service=FakePricing()
@@ -563,7 +577,7 @@ async def test_v3_routes_and_v1_public_shape_unchanged() -> None:
         return {"granted": False, "reason": "test_noop"}
 
     grants = SimpleNamespace(
-        expire_unused_grants=_expire,
+        expire_lapsed_lots=_expire,
         ensure_daily_grant=_daily,
         ensure_period_grant=_period,
     )

@@ -17,6 +17,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/licenses': 'Subscriptions',
   '/plans': 'Plans',
   '/redeem-codes': 'Redeem Codes',
+  '/mail': 'Mail',
   '/credits': 'Credits',
   '/usage': 'Usage',
   '/user-spent': 'User Spent',

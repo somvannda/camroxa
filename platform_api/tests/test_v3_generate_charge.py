@@ -46,8 +46,8 @@ class FakeV3Billing:
             amount_credits=self.amount_units / 10_000,
         )
 
-    async def charge(self, *, user_id, op: str, ref_id=None, waive: bool = False, plan_id=None):
-        self.charges.append({"user_id": user_id, "op": op, "ref_id": ref_id})
+    async def charge(self, *, user_id, op: str, ref_id=None, waive: bool = False, plan_id=None, product=None, model=None):
+        self.charges.append({"user_id": user_id, "op": op, "ref_id": ref_id, "product": product, "model": model})
         if self.fail:
             raise InsufficientCreditsError(
                 "Insufficient credits for this operation.",
@@ -114,7 +114,7 @@ async def test_check_and_deduct_uses_v3_when_flag_on() -> None:
     service = _service(True, billing)
     charged = await service.check_and_deduct(USER_ID, None, "music", "suno")
     assert charged == credits_to_units(10)
-    assert billing.charges == [{"user_id": USER_ID, "op": "music", "ref_id": None}]
+    assert billing.charges == [{"user_id": USER_ID, "op": "music", "ref_id": None, "product": "desktop", "model": None}]
 
 
 @pytest.mark.asyncio

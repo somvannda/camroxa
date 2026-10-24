@@ -9,6 +9,15 @@
 
 This file is the single picture after the decisions in this thread. Older quota docs (`.kiro/specs/credit-pricing-redesign`, `docs/BILLING_COSTS_SECURITY_LAUNCH_GAPS.md`) describe the model we are retiring.
 
+> **Update — 2026-10-15 (`feat/packs-only-billing`):** Subscriptions are retired on
+> music.camxora.com and **packs are now the only product**. Pack credits **expire 30 days
+> from purchase**, and buying any pack re-stamps the whole wallet to that one date. This
+> supersedes every "top-up / pack never expires" statement in the body below (item **B**,
+> the "Desktop wallet is one pile" note, and the leftover-mint step) — the body is kept as
+> the historical record of the 2026-08-23 cutover. Free daily credits are unchanged. See
+> `platform_api/services/v3/wallet_sync.py` (`PACK_CREDIT_VALIDITY`) and
+> `V3BillingStore.restamp_live_lots`.
+
 ---
 
 ## Progress (keep this current)

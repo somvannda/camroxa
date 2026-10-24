@@ -1,0 +1,271 @@
+#!/usr/bin/env bash
+# Platform-wide health probe with Telegram alerting.
+#
+# Driven by camxora-platform-healthcheck.timer (every 5 minutes). Unlike the
+# musicapi-only probe, this covers the whole stack used by music.camxora.com:
+# systemd units, public endpoints, database/Redis, SMTP login, recent email
+# failures, disk and TLS. Alerts only on a state CHANGE (plus a daily
+# "all systems OK" digest) so a long outage pages once, not every 5 minutes.
+#
+# A single dropped connection must never page: the outbound probes hit
+# Cloudflare-fronted hostnames from this VPS and ~2% of those connections stall
+# for a few seconds (measured 2026-10-21), which used to flip the whole platform
+# to UNHEALTHY on one blip. Every probe therefore retries, and a run has to fail
+# FAIL_STREAK_ALERT times in a row (default 2 = ten minutes) before it alerts.
+#
+# Run standalone:      bash scripts/deploy/platform-healthcheck.sh
+# Send today's digest: bash scripts/deploy/platform-healthcheck.sh --digest-now
+set -uo pipefail
+
+REPO="${REPO:-/opt/camxora/repo}"
+ENV_FILE="${ENV_FILE:-${REPO}/platform_api/.env}"
+STATE_FILE="${STATE_FILE:-/opt/camxora/.platform-health.state}"
+FAIL_STREAK_FILE="${FAIL_STREAK_FILE:-/opt/camxora/.platform-health.streak}"
+DIGEST_FILE="${DIGEST_FILE:-/opt/camxora/.platform-health.digest}"
+HEALTHCHECK_STATE="${HEALTHCHECK_STATE:-/opt/camxora/.musicapi-health.state}"
+# Consecutive failing runs required before paging (5-minute cadence).
+FAIL_STREAK_ALERT="${FAIL_STREAK_ALERT:-2}"
+[[ "${FAIL_STREAK_ALERT}" =~ ^[0-9]+$ ]] && [[ "${FAIL_STREAK_ALERT}" -ge 1 ]] || FAIL_STREAK_ALERT=2
+
+log() { echo "[platform-health] $*"; }
+
+env_key() {
+  local key="$1"
+  [[ -f "${ENV_FILE}" ]] || return 0
+  grep -E "^${key}=" "${ENV_FILE}" 2>/dev/null | tail -n1 | cut -d= -f2- | tr -d '"'
+}
+
+TELEGRAM_BOT_TOKEN="$(env_key PLATFORM_TELEGRAM_BOT_TOKEN)"
+TELEGRAM_CHAT_ID="$(env_key PLATFORM_TELEGRAM_CHAT_ID)"
+DEPLOY_ENV="$(env_key PLATFORM_ENVIRONMENT)"
+DEPLOY_ENV="$(printf '%s' "${DEPLOY_ENV}" | tr '[:upper:]' '[:lower:]')"
+
+send_alert() {
+  local text="$1"
+  log "ALERT: ${text}"
+  if [[ "${DEPLOY_ENV}" != "production" && "${DEPLOY_ENV}" != "prod" ]]; then
+    log "non-production environment (${DEPLOY_ENV:-unknown}); alert not delivered"
+    return 0
+  fi
+  if [[ -z "${TELEGRAM_BOT_TOKEN}" || -z "${TELEGRAM_CHAT_ID}" ]]; then
+    log "no Telegram creds configured; alert not delivered"
+    return 0
+  fi
+  if curl -fsS -m 15 -X POST \
+    "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+    --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
+    --data-urlencode "text=${text}" \
+    --data-urlencode "parse_mode=HTML" \
+    --data-urlencode "disable_web_page_preview=true" >/dev/null; then
+    log "alert delivered"
+  else
+    log "WARN: Telegram send failed"
+  fi
+}
+
+failures=()
+add_failure() { failures+=("$1"); }
+
+# --- systemd units ----------------------------------------------------------
+UNITS=(camxora-api camxora-music camxora-website nginx postgresql redis-server
+       camxora-musicapi camxora-musicapi-web-user camxora-musicapi-web-admin)
+for unit in "${UNITS[@]}"; do
+  systemctl is-active --quiet "${unit}" || add_failure "unit ${unit} is not active"
+done
+
+# --- public endpoints -------------------------------------------------------
+check_url() {
+  local url="$1" name="$2" code
+  # --retry-all-errors makes the retries cover stalled/refused connects and
+  # handshakes too, not just 5xx, so a lost SYN retries instead of paging.
+  code="$(curl -sS -o /dev/null -w '%{http_code}' \
+    --connect-timeout 10 -m 20 --retry 2 --retry-delay 2 --retry-all-errors \
+    "${url}" 2>/dev/null || true)"
+  [[ "${code}" == "200" ]] || add_failure "${name} returned HTTP ${code:-no response} (${url})"
+}
+check_url "https://api.camxora.com/health" "api health"
+check_url "https://music.camxora.com/" "music web"
+check_url "https://admin.camxora.com/" "admin"
+check_url "https://camxora.com/" "website"
+check_url "https://musicapi.camxora.com/health" "musicapi health"
+
+# --- database / redis -------------------------------------------------------
+if command -v pg_isready >/dev/null 2>&1; then
+  pg_isready -q || add_failure "postgres is not accepting connections"
+fi
+if command -v redis-cli >/dev/null 2>&1; then
+  [[ "$(redis-cli ping 2>/dev/null)" == "PONG" ]] || add_failure "redis did not answer PONG"
+fi
+
+# Advisory-lock pileups: a leaked session lock blocks the audio packager and
+# eventually exhausts the API's DB pool (observed 2026-10-20).
+ADV_WAITERS="$(
+  cd "${REPO}" && PYTHONPATH="${REPO}" "${REPO}/platform_api/.venv/bin/python" - <<'PY' 2>/dev/null
+import asyncio, asyncpg
+from platform_api.config import get_settings
+
+async def main():
+    s = get_settings()
+    dsn = s.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    conn = await asyncpg.connect(dsn)
+    try:
+        print(await conn.fetchval(
+            "SELECT count(*) FROM pg_locks WHERE locktype='advisory' AND NOT granted"
+        ))
+    finally:
+        await conn.close()
+
+asyncio.run(main())
+PY
+)"
+if [[ "${ADV_WAITERS}" =~ ^[0-9]+$ ]] && [[ "${ADV_WAITERS}" -ge 15 ]]; then
+  add_failure "${ADV_WAITERS} sessions waiting on advisory locks"
+fi
+
+# --- ops Telegram delivery heartbeat ----------------------------------------
+# The daily 22:00 report guarantees at least one successful post per day. If
+# nothing has landed in 26h, the feed is silently broken (revoked token, wrong
+# chat id, or no process polling) even though every unit says "active".
+TG_AGE_H="$(
+  cd "${REPO}" && PYTHONPATH="${REPO}" "${REPO}/platform_api/.venv/bin/python" - <<'PY' 2>/dev/null
+import asyncio, asyncpg
+from platform_api.config import get_settings
+
+async def main():
+    s = get_settings()
+    dsn = s.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
+    conn = await asyncpg.connect(dsn)
+    try:
+        row = await conn.fetchrow(
+            "SELECT count(*)::int AS n, "
+            "count(*) FILTER (WHERE status = 'sent')::int AS sent_n, "
+            "EXTRACT(EPOCH FROM (NOW() - MAX(created_at) "
+            "  FILTER (WHERE status = 'sent')))::int AS age_s "
+            "FROM telegram_ops_messages"
+        )
+        if row and row["n"]:
+            # Rows exist but none ever landed: the feed is broken outright.
+            print("never" if not row["sent_n"] else int((row["age_s"] or 0) / 3600))
+    finally:
+        await conn.close()
+
+asyncio.run(main())
+PY
+)"
+if [[ "${TG_AGE_H}" == "never" ]]; then
+  add_failure "ops Telegram has no successful delivery yet (see telegram_ops_messages)"
+elif [[ "${TG_AGE_H}" =~ ^[0-9]+$ ]] && [[ "${TG_AGE_H}" -ge 26 ]]; then
+  add_failure "ops Telegram has not delivered for ${TG_AGE_H}h"
+fi
+
+# --- SMTP login (the check that would have caught the Oct 15 outage) --------
+SMTP_OUT="$(
+  cd "${REPO}" && PYTHONPATH="${REPO}" "${REPO}/platform_api/.venv/bin/python" - <<'PY' 2>&1
+import smtplib, ssl, sys
+from platform_api.config import get_settings
+s = get_settings()
+host = (s.smtp_host or "").strip()
+if not host or host.lower() in {"localhost", "127.0.0.1"}:
+    print("SMTP_NOT_CONFIGURED"); sys.exit(2)
+try:
+    srv = smtplib.SMTP(host, s.smtp_port, timeout=12)
+    if s.smtp_use_tls:
+        srv.starttls(context=ssl.create_default_context())
+    if s.smtp_user and s.smtp_password:
+        srv.login(s.smtp_user, s.smtp_password)
+    srv.quit()
+    print("SMTP_OK")
+except Exception as exc:
+    print(f"SMTP_FAIL {type(exc).__name__}: {exc}"); sys.exit(1)
+PY
+)"
+[[ "${SMTP_OUT}" == "SMTP_OK" ]] || add_failure "email delivery broken: ${SMTP_OUT}"
+
+# A few transient failures are normal (typo/invalid recipients). Three or more
+# in ten minutes means real breakage, not one bad address.
+JOURNAL_OK=0
+if journalctl -u camxora-api -n 1 --no-pager >/dev/null 2>&1; then
+  JOURNAL_OK=1
+fi
+if [[ "${JOURNAL_OK}" == "1" ]]; then
+  EMAIL_FAILS="$(journalctl -u camxora-api --since '10 min ago' --no-pager 2>/dev/null | grep -c 'Failed to send email' || true)"
+  [[ "${EMAIL_FAILS:-0}" -ge 3 ]] && add_failure "${EMAIL_FAILS} email send failures in the last 10 minutes"
+fi
+
+# --- maintenance heartbeat --------------------------------------------------
+if [[ -f "${HEALTHCHECK_STATE}" ]]; then
+  grep -q '^ok$' "${HEALTHCHECK_STATE}" 2>/dev/null || add_failure "musicapi healthcheck state is not ok"
+fi
+# The grant-maintenance loop lives inside camxora-api and only logs when it
+# actually grants something, so absence of a recent log is not an outage. The
+# unit-active check above already covers the process; don't false-alarm here.
+
+# --- disk / TLS -------------------------------------------------------------
+DISK_PCT="$(df -P / | awk 'NR==2 {gsub("%","",$5); print $5}')"
+[[ "${DISK_PCT:-0}" -ge 90 ]] && add_failure "disk ${DISK_PCT}% used"
+
+for host in api.camxora.com music.camxora.com admin.camxora.com musicapi.camxora.com; do
+  end=""
+  for attempt in 1 2 3; do
+    end="$(echo | timeout 15 openssl s_client -servername "${host}" -connect "${host}:443" 2>/dev/null \
+      | openssl x509 -noout -enddate 2>/dev/null | cut -d= -f2)"
+    [[ -n "${end}" ]] && break
+    [[ "${attempt}" -lt 3 ]] && sleep 2
+  done
+  if [[ -n "${end}" ]]; then
+    days=$(( ( $(date -d "${end}" +%s) - $(date +%s) ) / 86400 ))
+    [[ "${days}" -lt 14 ]] && add_failure "TLS for ${host} expires in ${days} days"
+  else
+    add_failure "could not read TLS expiry for ${host}"
+  fi
+done
+
+# --- state + alerting -------------------------------------------------------
+# Page only once a run has failed FAIL_STREAK_ALERT times in a row: a single
+# stalled outbound handshake must not flip the platform to UNHEALTHY.
+streak="$(cat "${FAIL_STREAK_FILE}" 2>/dev/null || echo 0)"
+[[ "${streak}" =~ ^[0-9]+$ ]] || streak=0
+
+if [[ "${#failures[@]}" -eq 0 ]]; then
+  state="ok"
+  detail=""
+  streak=0
+else
+  state="down"
+  streak=$(( streak + 1 ))
+  detail="$(printf '%s; ' "${failures[@]}")"
+  for failure in "${failures[@]}"; do log "FAIL: ${failure}"; done
+  if [[ "${streak}" -lt "${FAIL_STREAK_ALERT}" ]]; then
+    log "transient failure ${streak}/${FAIL_STREAK_ALERT}; alert suppressed"
+  fi
+fi
+printf '%s\n' "${streak}" >"${FAIL_STREAK_FILE}" 2>/dev/null || log "WARN: cannot write ${FAIL_STREAK_FILE}"
+
+if [[ "${state}" == "ok" ]]; then
+  log "healthy: units, endpoints, DB, Redis, SMTP, email, grants, disk ${DISK_PCT}%, TLS"
+fi
+
+prev="$(cat "${STATE_FILE}" 2>/dev/null || echo unknown)"
+if [[ "${state}" == "down" && "${prev}" != "down" && "${streak}" -ge "${FAIL_STREAK_ALERT}" ]]; then
+  send_alert "🔴 <b>$(hostname) platform UNHEALTHY</b>"$'\n'"${detail}"
+  printf '%s\n' "down" >"${STATE_FILE}" 2>/dev/null || log "WARN: cannot write ${STATE_FILE}"
+elif [[ "${state}" == "ok" && "${prev}" == "down" ]]; then
+  send_alert "🟢 <b>$(hostname) platform RECOVERED</b>"$'\n'"All platform checks are passing."
+  printf '%s\n' "ok" >"${STATE_FILE}" 2>/dev/null || log "WARN: cannot write ${STATE_FILE}"
+elif [[ "${state}" == "ok" && "${prev}" != "ok" ]]; then
+  printf '%s\n' "ok" >"${STATE_FILE}" 2>/dev/null || log "WARN: cannot write ${STATE_FILE}"
+fi
+
+# --- daily digest -----------------------------------------------------------
+today="$(TZ='Asia/Phnom_Penh' date +%F)"
+sent_day="$(cat "${DIGEST_FILE}" 2>/dev/null || true)"
+if [[ "${1:-}" == "--digest-now" || "${sent_day}" != "${today}" && "$(TZ='Asia/Phnom_Penh' date +%H)" == "09" ]]; then
+  if [[ "${state}" == "ok" ]]; then
+    send_alert "🟢 <b>$(hostname) daily health</b>"$'\n'"All checks passing: units, public endpoints, DB, Redis, SMTP, email, grants, disk (${DISK_PCT}%), TLS."
+  else
+    send_alert "🟠 <b>$(hostname) daily health</b>"$'\n'"${detail}"
+  fi
+  printf '%s\n' "${today}" >"${DIGEST_FILE}" 2>/dev/null || true
+fi
+
+[[ "${state}" == "ok" ]]

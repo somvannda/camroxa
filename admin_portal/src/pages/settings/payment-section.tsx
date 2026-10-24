@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
 
 import {
+  useChmabaBillingConfig,
+  useUpdateChmabaBillingConfig,
+} from '@/hooks/use-billing-chmaba';
+import {
   useCutluyBillingConfig,
   useUpdateCutluyBillingConfig,
 } from '@/hooks/use-billing-cutluy';
@@ -30,7 +34,12 @@ const KHQR_PROVIDERS = [
   {
     id: 'cutluy',
     label: 'CutLuy KHQR',
-    description: 'Production hosted KHQR checkout via CutLuy.',
+    description: 'Hosted KHQR checkout via CutLuy.',
+  },
+  {
+    id: 'chmaba',
+    label: 'ChmabaPay KHQR',
+    description: 'Direct KHQR / ABA PayWay checkout via pay.chmaba.com.',
   },
 ] as const;
 
@@ -49,8 +58,10 @@ function parseEnabled(raw: string | undefined, fallback: boolean) {
 export function PaymentSection() {
   const { data } = useSystemSettings();
   const { data: cutluyConfig, isLoading: cutluyLoading } = useCutluyBillingConfig();
+  const { data: chmabaConfig, isLoading: chmabaLoading } = useChmabaBillingConfig();
   const upsertSetting = useUpsertSetting();
   const updateCutluy = useUpdateCutluyBillingConfig();
+  const updateChmaba = useUpdateChmabaBillingConfig();
 
   const settingsMap = useMemo(() => {
     return new Map((data?.settings ?? []).map((item) => [item.key, item.value]));
@@ -77,6 +88,10 @@ export function PaymentSection() {
   const [cutluyPaymentLinkId, setCutluyPaymentLinkId] = useState('');
   const [cutluySecretKey, setCutluySecretKey] = useState('');
   const [cutluyWebhookSecret, setCutluyWebhookSecret] = useState('');
+  const [chmabaApiBaseUrl, setChmabaApiBaseUrl] = useState('https://pay.chmaba.com');
+  const [chmabaStoreId, setChmabaStoreId] = useState('');
+  const [chmabaApiKey, setChmabaApiKey] = useState('');
+  const [chmabaWebhookSecret, setChmabaWebhookSecret] = useState('');
 
   useEffect(() => {
     setProvider(configuredProvider);
@@ -93,6 +108,14 @@ export function PaymentSection() {
     setCutluySecretKey('');
     setCutluyWebhookSecret('');
   }, [cutluyConfig]);
+
+  useEffect(() => {
+    if (!chmabaConfig) return;
+    setChmabaApiBaseUrl(chmabaConfig.api_base_url || 'https://pay.chmaba.com');
+    setChmabaStoreId(chmabaConfig.store_id || '');
+    setChmabaApiKey('');
+    setChmabaWebhookSecret('');
+  }, [chmabaConfig]);
 
   const saveProvider = () => {
     upsertSetting.mutate(
@@ -136,6 +159,31 @@ export function PaymentSection() {
           toast({
             variant: 'destructive',
             title: 'Failed to save CutLuy credentials',
+            description: error.message,
+          });
+        },
+      },
+    );
+  };
+
+  const saveChmabaConfig = () => {
+    updateChmaba.mutate(
+      {
+        api_base_url: chmabaApiBaseUrl.trim() || 'https://pay.chmaba.com',
+        store_id: chmabaStoreId.trim(),
+        api_key: chmabaApiKey.trim() || undefined,
+        webhook_secret: chmabaWebhookSecret.trim() || undefined,
+      },
+      {
+        onSuccess: () => {
+          setChmabaApiKey('');
+          setChmabaWebhookSecret('');
+          toast({ title: 'ChmabaPay credentials saved' });
+        },
+        onError: (error: Error) => {
+          toast({
+            variant: 'destructive',
+            title: 'Failed to save ChmabaPay credentials',
             description: error.message,
           });
         },
@@ -359,6 +407,127 @@ export function PaymentSection() {
 
       <Card className="border-slate-800 bg-slate-900/50">
         <CardHeader>
+          <CardTitle className="text-lg">ChmabaPay (pay.chmaba.com)</CardTitle>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          <p className="text-xs text-slate-400">
+            Live KHQR / ABA PayWay credentials. Values here override the{' '}
+            <code className="text-slate-200">PLATFORM_CHMABA_*</code> environment variables. There is no
+            sandbox — every key moves real money.
+          </p>
+
+          <div className="rounded-lg border border-amber-900/50 bg-amber-950/30 p-4 text-xs text-slate-300">
+            <div className="font-medium text-amber-100">ChmabaPay store setup</div>
+            <ol className="mt-2 list-decimal space-y-2 pl-5 text-slate-400">
+              <li>
+                In the ChmabaPay dashboard, create (or reuse) a <span className="text-slate-200">store</span>{' '}
+                and copy its <span className="text-slate-200">store id</span> (
+                <code className="text-slate-200">st_…</code>). Payouts go straight to the ABA PayWay link
+                attached to that store.
+              </li>
+              <li>
+                Copy the live API key (<code className="text-slate-200">ck_live_…</code>) and paste it below.
+              </li>
+              <li>
+                Under <span className="text-slate-200">Webhooks</span>, set the URL to{' '}
+                <code className="text-slate-200">https://api.camxora.com/api/v3/billing/webhooks/chmaba</code>{' '}
+                and copy the signing secret (<code className="text-slate-200">whsec_…</code>). One URL handles
+                both plan checkout and music-web credit top-ups.
+              </li>
+              <li>
+                Turn <span className="text-slate-200">ChmabaPay KHQR</span> ON above, choose it as the active
+                provider, then keep CutLuy OFF so a store cannot be charged twice.
+              </li>
+            </ol>
+          </div>
+
+          {chmabaLoading ? (
+            <div className="text-sm text-slate-400">Loading ChmabaPay configuration…</div>
+          ) : (
+            <>
+              <div className="rounded-lg border border-slate-800 bg-slate-950/70 p-4 text-sm text-slate-300">
+                {chmabaConfig?.ready ? (
+                  <span className="text-emerald-300">Checkout is ready: API key and store id are set.</span>
+                ) : (
+                  <span className="text-amber-300">
+                    Not ready yet.
+                    {!chmabaConfig?.api_key_configured ? ' API key missing.' : ''}
+                    {!chmabaConfig?.store_id ? ' Store id missing.' : ''}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid gap-2">
+                <Label>API base URL</Label>
+                <Input
+                  value={chmabaApiBaseUrl}
+                  onChange={(event) => setChmabaApiBaseUrl(event.target.value)}
+                  className="border-slate-700 bg-slate-950 text-slate-100"
+                  placeholder="https://pay.chmaba.com"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Store id</Label>
+                <Input
+                  value={chmabaStoreId}
+                  onChange={(event) => setChmabaStoreId(event.target.value)}
+                  className="border-slate-700 bg-slate-950 text-slate-100"
+                  placeholder="st_…"
+                />
+                {chmabaConfig?.store_source ? (
+                  <p className="text-xs text-slate-500">source: {chmabaConfig.store_source}</p>
+                ) : null}
+              </div>
+
+              <div className="grid gap-2">
+                <Label>API key</Label>
+                <Input
+                  type="password"
+                  value={chmabaApiKey}
+                  onChange={(event) => setChmabaApiKey(event.target.value)}
+                  className="border-slate-700 bg-slate-950 text-slate-100"
+                  placeholder={
+                    chmabaConfig?.api_key_configured
+                      ? `Leave blank to keep the current key (${chmabaConfig.api_key_masked})`
+                      : 'Paste the ChmabaPay live key (ck_live_…)'
+                  }
+                  autoComplete="off"
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Webhook signing secret</Label>
+                <Input
+                  type="password"
+                  value={chmabaWebhookSecret}
+                  onChange={(event) => setChmabaWebhookSecret(event.target.value)}
+                  className="border-slate-700 bg-slate-950 text-slate-100"
+                  placeholder={
+                    chmabaConfig?.webhook_secret_configured
+                      ? `Leave blank to keep the current secret (${chmabaConfig.webhook_secret_masked})`
+                      : 'Paste the whsec_… signing secret'
+                  }
+                  autoComplete="off"
+                />
+                <p className="text-xs text-slate-500">
+                  Required before any webhook is accepted. Until it is set, ChmabaPay deliveries are
+                  rejected and only the status poll can settle a payment.
+                </p>
+              </div>
+
+              <div className="flex justify-end">
+                <Button onClick={saveChmabaConfig} disabled={updateChmaba.isPending}>
+                  {updateChmaba.isPending ? 'Saving…' : 'Save ChmabaPay Credentials'}
+                </Button>
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-800 bg-slate-900/50">
+        <CardHeader>
           <CardTitle className="text-lg">Active Provider</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4">
@@ -413,9 +582,14 @@ export function PaymentSection() {
                 <span className="font-medium text-slate-200">{portalBase}/onboarding</span>
               </li>
               <li>
-                <span className="font-medium text-slate-200">CutLuy (production):</span> users pay on{' '}
+                <span className="font-medium text-slate-200">CutLuy (optional):</span> users pay on{' '}
                 <span className="font-medium text-slate-200">cutluy.com</span>, then CutLuy redirects back
                 using the store success/failure URLs below.
+              </li>
+              <li>
+                <span className="font-medium text-slate-200">ChmabaPay (optional):</span> users scan the KHQR
+                shown in the app; the payment settles into your ABA PayWay link and the webhook credits the
+                account.
               </li>
               <li>
                 <span className="font-medium text-slate-200">CutLuy success redirect:</span>{' '}

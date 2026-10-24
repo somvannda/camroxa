@@ -50,6 +50,7 @@ function GoogleCallbackInner() {
         if (typeof window !== "undefined") {
           localStorage.removeItem("google_auth_redirect");
           localStorage.removeItem("google_auth_state");
+          localStorage.removeItem("camxora_invite_code");
         }
         router.replace(redirectTo);
       } catch (e) {

@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
 
+    # --- Cross-product reporting (Telegram daily digest) ---
+    # Read-only DSN for the musicapi database (ChmabaPay / credit-pack revenue).
+    # Empty keeps the digest platform-only; the daily report omits musicapi.
+    musicapi_database_url: str = ""
+
     # --- JWT / Auth ---
     jwt_secret: str = "change-me-in-production"
     jwt_algorithm: str = "HS256"
@@ -154,6 +159,27 @@ class Settings(BaseSettings):
     # from the API host, so this must be served by the public frontend/CDN.
     email_logo_url: str = "https://camxora.com/email/camxora-logo.png"
 
+    # --- Outbound mail (campaigns, automations) via Resend ---
+    # The SMTP fields above stay for verification codes. Bulk mail goes through
+    # Resend with a delivery ledger, pacing and suppression; see
+    # docs/PLATFORM-MAIL.md. Env names are PLATFORM_RESEND_API_KEY etc.
+    resend_api_key: str = ""
+    resend_webhook_secret: str = ""
+    mail_from_transactional: str = "CAMXORA <no-reply@mail.camxora.com>"
+    mail_from_campaign: str = "CAMXORA <hello@mail.camxora.com>"
+    mail_reply_to: str = ""
+    # Public origin printed inside pixel/click/unsubscribe links. Must reach
+    # this API: /api/mail/{o|c|u}/{token} on mail.camxora.com.
+    mail_public_base_url: str = "https://mail.camxora.com/api/mail"
+    # Where a template's {{app_url}} button sends the customer.
+    mail_app_url: str = "https://music.camxora.com"
+    mail_enabled: bool = True
+    mail_rate_per_second: int = 2
+    mail_max_attempts: int = 3
+    # HMAC key for tracking tokens. Distinct from JWT so a token minted for one
+    # purpose can never authenticate anything else.
+    mail_tracking_secret: str = ""
+
     # --- Backup / User Data Reset ---
     backup_dir: str = "./backups/user_data"
 
@@ -175,23 +201,30 @@ class Settings(BaseSettings):
     # Signing secret from CutLuy Dashboard → Webhooks (distinct from ck_live_…).
     cutluy_webhook_secret: str = ""
 
+    # --- Billing / ChmabaPay ---
+    # ChmabaPay (https://pay.chmaba.com) — KHQR / ABA PayWay. There is no
+    # sandbox: every `ck_live_…` key moves real money. Checkout stays disabled
+    # until `api_key` + `store_id` are set (Admin → Settings → Payment, or the
+    # PLATFORM_CHMABA_* environment variables).
+    chmaba_api_base_url: str = "https://pay.chmaba.com"
+    chmaba_api_key: str = ""
+    chmaba_store_id: str = ""
+    # `whsec_…` used to verify `X-ChmabaPay-Signature` (t=…,v1=… HMAC-SHA256).
+    chmaba_webhook_secret: str = ""
+
     # --- Ops Telegram activity feed ---
     # Empty token/chat_id = disabled. PLATFORM_TELEGRAM_OPS_ENABLED=false
     # kills posts without removing credentials (restart required).
     telegram_bot_token: str = ""
     telegram_chat_id: str = ""
     telegram_ops_enabled: bool = True
+    # Run the getUpdates command poller / daily report in this process. Every
+    # API worker and job worker imports the hooks, so keep this True only on the
+    # API service (or one worker) and set it False elsewhere.
+    telegram_poller_enabled: bool = True
 
     # --- Cloudflare Turnstile (Bot Protection) ---
     # These use CLOUDFLARE_* env names (not PLATFORM_*) to match Cloudflare dashboard naming.
-    google_client_id: str = Field(
-        default="",
-        validation_alias=AliasChoices(
-            "GOOGLE_CLIENT_ID",
-            "PLATFORM_GOOGLE_CLIENT_ID",
-        ),
-    )
-
     cloudflare_turnstile_site_key: str = Field(
         default="",
         validation_alias=AliasChoices(
@@ -237,6 +270,29 @@ class Settings(BaseSettings):
     # Empty = auto (on for sandbox/production, off for local). "true"/"false" override.
     music_web_geo_enforce: str = ""
     music_web_geo_allowed_country: str = "KH"
+
+    # --- Music web signup / sign-in ---
+    # Email+password registration is closed for music web; Google is the signup
+    # path. Password login stays available for existing accounts. Other products
+    # (desktop / studio) keep email registration.
+    music_web_email_signup_enabled: bool = True
+
+    # --- Google OAuth (music web) ---
+    # Reuses the same Google Cloud OAuth client as musicapi.camxora.com. Every
+    # redirect URI used by the browser must be allowlisted here.
+    google_client_id: str = Field(
+        default="",
+        validation_alias=AliasChoices(
+            "GOOGLE_CLIENT_ID",
+            "PLATFORM_GOOGLE_CLIENT_ID",
+        ),
+    )
+    google_client_secret: str = ""
+    google_redirect_uris: str = (
+        "https://music.camxora.com/auth/callback,"
+        "https://music.sandbox.camxora.com/auth/callback,"
+        "http://localhost:3001/auth/callback"
+    )
     # Shared secret the edge proxy (nginx) sets as `X-Origin-Verify`. When set,
     # music-web geo enforcement requires it and fails closed without it, so a
     # direct-to-origin request cannot spoof CF-IPCountry. Unset = legacy behavior

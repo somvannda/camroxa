@@ -13,7 +13,7 @@ export function formatModelVersionTag(model: string | null | undefined): string 
     .replace(/[\s.-]+/g, '_');
   if (key === 'V6_MINI') return 'v6 mini';
   if (key === 'V6_WILD') return 'v6 wild';
-  if (key === 'V6') return 'v6';
+  if (key === 'V6') return 'v6 pro';
   if (key === 'V5_5') return 'v5.5';
   if (key === 'V5') return 'v5';
   return key.toLowerCase().replace(/_/g, ' ') || 'v6';

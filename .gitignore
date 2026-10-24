@@ -96,3 +96,6 @@ scripts/deploy/_probe_*.py
 scripts/deploy/_upload_sample_packs_payload.json
 # Generated image output cache (never commit)
 image_output_cache/
+
+# TypeScript incremental build info
+*.tsbuildinfo

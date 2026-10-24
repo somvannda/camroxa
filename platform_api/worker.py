@@ -125,8 +125,8 @@ async def _bootstrap_connections() -> None:
             install_telegram_ops_hooks,
         )
 
-        install_telegram_ops_hooks()
-        logger.info("Worker Telegram ops hooks installed.")
+        install_telegram_ops_hooks(enable_poller=False)
+        logger.info("Worker Telegram ops hooks installed (poller disabled).")
     except Exception as exc:
         logger.warning("Worker Telegram ops hooks skipped: %s", exc)
 
@@ -134,6 +134,14 @@ async def _bootstrap_connections() -> None:
 async def _shutdown_connections() -> None:
     from platform_api.dependencies import clear_connections, get_db_pool, get_redis
 
+    try:
+        from platform_api.services.telegram_ops_alert_service import (
+            drain_telegram_ops,
+        )
+
+        await drain_telegram_ops(timeout=4.0)
+    except Exception:
+        pass
     try:
         pool = get_db_pool()
         await pool.close()
@@ -370,6 +378,9 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
             signal.signal(sig, lambda *_: _ask_stop())
 
     next_sweep = loop.time() + sweep_interval
+    # Mail tick: drain queued sends and evaluate journeys. Its own cadence, so a
+    # large campaign never slows job pickup.
+    next_mail = loop.time() + 15
 
     while not stop.is_set():
         # Periodic recovery: a hung handler or a dead worker would otherwise
@@ -382,6 +393,25 @@ async def run_worker_loop(*, poll_idle_seconds: float = 1.0) -> None:
                     logger.warning("Periodic sweep requeued %s stale running job(s).", swept)
             except Exception:
                 logger.exception("Periodic stale-job sweep failed; continuing.")
+
+        if loop.time() >= next_mail:
+            next_mail = loop.time() + 15
+            try:
+                from platform_api.dependencies import get_db_pool
+                from platform_api.services.mail import automations as mail_automations
+                from platform_api.services.mail import mailer as mail_sender
+                from platform_api.services.mail import settings_store
+
+                mail_pool = get_db_pool()
+                # Credentials may live in system_settings (set from the portal);
+                # load them once per process before any send is attempted.
+                await settings_store.ensure_loaded(mail_pool)
+                sent = await mail_sender.process_queue(mail_pool, 25)
+                triggered = await mail_automations.run_due(mail_pool)
+                if sent or triggered:
+                    logger.info("mail tick: %s sent, %s queued by journeys", sent, triggered)
+            except Exception:
+                logger.exception("Mail tick failed; continuing.")
 
         try:
             job = await queue.claim_next(worker_id=worker_id, job_types=claim_types)

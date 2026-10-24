@@ -2225,6 +2225,32 @@ def test_derive_batch_status_processing_when_drafts_done_before_suno() -> None:
     assert service._derive_batch_status(batch, counters) == "processing"
 
 
+def test_derive_batch_status_completed_with_all_songs_success() -> None:
+    """All songs suno_success → completed, even after superseded task rows.
+
+    The counters are per song, so a stale failed row or a duplicate success row
+    no longer keeps a finished batch at ``partial``.
+    """
+    batch = Batch(song_count=15, auto_gsuno=True)
+    counters = {
+        "total_songs": 15,
+        "drafts_completed": 15,
+        "drafts_failed": 0,
+        "suno_submitted": 15,
+        "suno_completed": 15,
+        "suno_failed": 0,
+    }
+    service = make_service(
+        batch_repo=AsyncMock(),
+        credit_service=AsyncMock(),
+        pricing_service=AsyncMock(),
+        generation_service=AsyncMock(),
+        profile_repo=AsyncMock(),
+        ai_routing_service=AsyncMock(),
+    )
+    assert service._derive_batch_status(batch, counters) == "completed"
+
+
 @pytest.mark.asyncio
 async def test_build_batch_redownload_plan_ignores_downloaded_flag(
     batch_repo: AsyncMock,

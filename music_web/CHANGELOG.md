@@ -10,8 +10,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- **Subscriptions are retired.** Pricing/upgrade entry points, the `/pricing` plan grid, and the profile plan manager (browse / subscribe / renew) are gone; the profile section is credits-only and `Upgrade to Pro` became **Buy credits**. Grandfathered subscribers keep a read-only plan and can still cancel. See `docs/changelog/2026-10-15-packs-only-billing.md`.
+
+### Changed
+
+- **Simple mode can pick a workspace.** The *Save to…* picker (and the optional song title) used to render in the Advanced form only, so Simple-mode users could not choose where a batch lands without switching tabs. It now sits below both forms; creation already saved to the selected workspace. See `docs/changelog/2026-10-21-web-music-simple-mode-workspace-picker.md`.
+- Credits are sold as **one-time packs only** ($5 / $10 / $20 / $30). Pack credits are valid for **30 days from purchase**, buying again resets the clock on the whole balance, and unused credits expire at that date. `/pricing` is a packs-only page. Also corrects the Free-plan copy: Free is **50 credits per month**, not per day. See `docs/changelog/2026-10-15-packs-only-billing.md`.
+
 ### Fixed
 
+- **Create workspace no longer hides songs past the first page.** The list only ever showed the newest 40 songs, so users with more saw just the first page. It now loads 50 songs (100 version rows) per page and pulls the next page as you scroll, with a **Load more** fallback and a *Showing all N songs* footer. See `docs/changelog/2026-10-13-web-music-workspace-list-pagination.md`.
 - **Login was blocked for everyone** at `music.camxora.com`: the production build shipped the sandbox Turnstile sitekey, so Cloudflare rejected the challenge, the widget showed *"Unable to connect to website"*, and the disabled **Sign in** button never enabled. Production was rebuilt with the correct sitekey and the component no longer falls back to the sandbox key outside local development — a missing key now renders a visible error instead of a broken widget. See `docs/changelog/2026-10-05-music-web-turnstile-login-lockout.md`.
 - The credit card no longer freezes at the plan's monthly pool. A free wallet holding more than its allowance (stacked grants / top-ups) stayed pinned at **50 / 50 credits** while songs (15 credits each) were really being debited. It now reports the authoritative wallet total and labels the top-up portion. See `docs/changelog/2026-10-04-web-music-credit-display-and-refund.md`.
 - Account credit card splits the **wallet balance** into daily / monthly / top-up pots instead of reading stale grant lots, so *Used* / *Remaining* and the top-up line reflect credits actually spent. See `docs/changelog/2026-09-27-web-music-credit-balance-split.md`.
