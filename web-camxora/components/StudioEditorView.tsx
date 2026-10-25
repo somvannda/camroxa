@@ -157,11 +157,14 @@ export function StudioEditorView() {
   const [playing, setPlaying] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioError, setAudioError] = useState("");
+  const [loop, setLoop] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [history, setHistory] = useState<Clip[][]>([]);
   const [future, setFuture] = useState<Clip[][]>([]);
   const dragRef = useRef<DragState | null>(null);
+  const loopRef = useRef(false);
+  const startPlaybackRef = useRef<(from: number) => Promise<void>>(async () => {});
   const playheadRef = useRef(0);
   const timelineDurationRef = useRef(180);
   const audioCtxRef = useRef<AudioContext | null>(null);
@@ -178,6 +181,10 @@ export function StudioEditorView() {
   useEffect(() => {
     playheadRef.current = playhead;
   }, [playhead]);
+
+  useEffect(() => {
+    loopRef.current = loop;
+  }, [loop]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -402,7 +409,11 @@ export function StudioEditorView() {
           setPlayhead(Math.min(timelineDurationRef.current, next));
           if (next >= timelineDurationRef.current) {
             stopSources();
-            setPlaying(false);
+            if (loopRef.current) {
+              window.setTimeout(() => void startPlaybackRef.current(0), 0);
+            } else {
+              setPlaying(false);
+            }
             return;
           }
           rafRef.current = requestAnimationFrame(tick);
@@ -445,7 +456,11 @@ export function StudioEditorView() {
           setPlayhead(Math.min(timelineDurationRef.current, next));
           if (next >= timelineDurationRef.current) {
             stopSources();
-            setPlaying(false);
+            if (loopRef.current) {
+              window.setTimeout(() => void startPlaybackRef.current(0), 0);
+            } else {
+              setPlaying(false);
+            }
             return;
           }
           rafRef.current = requestAnimationFrame(tick);
@@ -461,6 +476,10 @@ export function StudioEditorView() {
     },
     [ensureAudioContext, lanes, loadBuffer, stopSources]
   );
+
+  useEffect(() => {
+    startPlaybackRef.current = startPlayback;
+  }, [startPlayback]);
 
   const seekTo = useCallback(
     (seconds: number) => {
@@ -905,6 +924,16 @@ export function StudioEditorView() {
             <Icon name={audioLoading ? "fa-spinner" : playing ? "fa-pause" : "fa-play"} />
           </button>
           <button type="button" aria-label="Go to end" onClick={() => seekTo(timelineDuration)}><Icon name="fa-forward-step" /></button>
+          <button
+            className={`studio-loop-btn${loop ? " on" : ""}`}
+            type="button"
+            aria-label="Loop arrangement"
+            aria-pressed={loop}
+            title="Loop arrangement"
+            onClick={() => setLoop((value) => !value)}
+          >
+            <Icon name="fa-repeat" />
+          </button>
         </div>
         <div className="studio-transport-right">
           <span className="studio-transport-time">{formatTime(playhead)}</span>

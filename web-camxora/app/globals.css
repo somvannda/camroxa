@@ -1866,6 +1866,8 @@ html{color-scheme:dark}
   .studio-transport-center button:hover{background:rgba(255,255,255,.05);color:#fff}
   .studio-transport-center button.play{width:36px;height:36px;background:var(--glass-btn);color:var(--glass-btn-text);border-color:rgba(255,255,255,.3)}
   .studio-transport-center button:disabled{opacity:.45;cursor:wait}
+  .studio-transport-center .studio-loop-btn{width:30px;height:30px;border-radius:7px}
+  .studio-transport-center .studio-loop-btn.on{background:rgba(139,92,246,.22);border-color:rgba(168,85,247,.45);color:#e9d5ff}
   .studio-transport-center .icon,.studio-transport-center .fa-replaced{font-size:12px!important;width:12px!important;height:12px!important}
   .studio-transport-time{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#d8b4fe;font-size:10.5px}
   .studio-master{display:flex;align-items:center;gap:5px;min-width:150px}
