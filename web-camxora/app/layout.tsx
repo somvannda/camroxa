@@ -4,6 +4,8 @@ import "./globals.css";
 import { AuthProvider } from "@/components/AuthProvider";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://camxora.com"),
+  applicationName: "Camxora",
   title: {
     default: "Camxora — Home",
     template: "%s — Camxora",
@@ -12,6 +14,25 @@ export const metadata: Metadata = {
     "Listen to what creators are making, or make the next track everyone plays.",
   icons: {
     icon: "/camxora-logo.svg",
+  },
+  openGraph: {
+    type: "website",
+    siteName: "Camxora",
+    title: "Camxora — Create. Discover. Enjoy AI Music.",
+    description:
+      "Listen to what creators are making, or make the next track everyone plays.",
+    images: [{ url: "/hero.png", width: 1200, height: 630, alt: "Camxora" }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Camxora — Create. Discover. Enjoy AI Music.",
+    description:
+      "Listen to what creators are making, or make the next track everyone plays.",
+    images: ["/hero.png"],
+  },
+  robots: {
+    index: true,
+    follow: true,
   },
 };
 
