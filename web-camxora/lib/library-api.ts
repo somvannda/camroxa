@@ -8,6 +8,10 @@ export type WebMusicClip = {
   download_url?: string | null;
   duration_seconds?: number | null;
   ready?: boolean;
+  package_status?: string;
+  title?: string;
+  is_preview?: boolean;
+  preview_seconds?: number | null;
 };
 
 export type WebMusicGeneration = {
@@ -27,6 +31,7 @@ export type WebMusicGeneration = {
   weirdness_constraint?: number | null;
   audio_weight?: number | null;
   is_preview?: boolean;
+  unlockable?: boolean;
   preview_seconds?: number | null;
   clips: WebMusicClip[];
 };
