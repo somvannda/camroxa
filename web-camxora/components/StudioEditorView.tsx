@@ -14,7 +14,7 @@ import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
 import { fetchGenerations, type WebMusicClip, type WebMusicGeneration } from "@/lib/library-api";
-import { fetchWebMusicClipBlob } from "@/lib/web-music-api";
+import { fetchWebMusicClipBlob, saveBlob } from "@/lib/web-music-api";
 
 type Clip = {
   id: string;
@@ -112,6 +112,44 @@ function waveformPeaks(lane: Clip, meta: AudioMeta | undefined, index: number): 
   return sliced.length ? sliced : syntheticPeaks(lane, index);
 }
 
+function encodeWav(buffer: AudioBuffer): Blob {
+  const channels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const frames = buffer.length;
+  const bytesPerSample = 2;
+  const dataSize = frames * channels * bytesPerSample;
+  const output = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(output);
+  const writeString = (offset: number, value: string) => {
+    for (let index = 0; index < value.length; index += 1) {
+      view.setUint8(offset + index, value.charCodeAt(index));
+    }
+  };
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * bytesPerSample, true);
+  view.setUint16(32, channels * bytesPerSample, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+  const channelData = Array.from({ length: channels }, (_, channel) => buffer.getChannelData(channel));
+  let offset = 44;
+  for (let frame = 0; frame < frames; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const sample = clamp(channelData[channel][frame], -1, 1);
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += bytesPerSample;
+    }
+  }
+  return new Blob([output], { type: "audio/wav" });
+}
+
 function clipFromGeneration(
   generation: WebMusicGeneration,
   index: number,
@@ -159,6 +197,8 @@ export function StudioEditorView() {
   const [playing, setPlaying] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioError, setAudioError] = useState("");
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
   const [loop, setLoop] = useState(false);
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(60);
@@ -696,6 +736,61 @@ export function StudioEditorView() {
     setSelected(right.id);
   }
 
+  async function exportMix() {
+    if (!lanes.length || exporting) return;
+    setExporting(true);
+    setExportError("");
+    if (playing) {
+      stopSources();
+      setPlaying(false);
+    }
+    try {
+      const duration = lanes.reduce((max, lane) => Math.max(max, lane.start + lane.duration), 0);
+      if (duration <= 0) throw new Error("Add at least one clip before exporting.");
+      const sampleRate = 44100;
+      const offline = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+      const masterGain = offline.createGain();
+      masterGain.gain.value = master / 100;
+      const limiter = offline.createDynamicsCompressor();
+      limiter.threshold.value = -3;
+      limiter.knee.value = 0;
+      limiter.ratio.value = 20;
+      limiter.attack.value = 0.003;
+      limiter.release.value = 0.1;
+      masterGain.connect(limiter);
+      limiter.connect(offline.destination);
+      const anySolo = lanes.some((lane) => lane.solo);
+      const audible = lanes.filter((lane) => !lane.muted && (!anySolo || lane.solo));
+      if (!audible.length) throw new Error("Every track is muted.");
+      const loaded = await Promise.all(
+        audible.map(async (lane) => ({ lane, buffer: await loadBuffer(lane) }))
+      );
+      for (const { lane, buffer } of loaded) {
+        const offset = Math.max(0, Math.min(lane.offset, buffer.duration));
+        const available = Math.max(0, buffer.duration - offset);
+        const length = Math.min(lane.duration, available);
+        if (length <= 0) continue;
+        const source = offline.createBufferSource();
+        source.buffer = buffer;
+        const gain = offline.createGain();
+        const panner = offline.createStereoPanner();
+        gain.gain.value = lane.volume / 100;
+        panner.pan.value = clamp(lane.pan / 50, -1, 1);
+        source.connect(gain);
+        gain.connect(panner);
+        panner.connect(masterGain);
+        source.start(lane.start, offset, length);
+      }
+      const rendered = await offline.startRendering();
+      const safeName = (sessionName || "camxora-mix").replace(/[\\/:*?"<>|]+/g, "-");
+      saveBlob(encodeWav(rendered), `${safeName}.wav`);
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : "Could not export the mix");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function deleteSelected() {
     if (!selectedLane) return;
     commitLanes(lanes.filter((lane) => lane.id !== selectedLane.id));
@@ -759,8 +854,14 @@ export function StudioEditorView() {
             New session
           </button>
           <Link className="btn btn-ghost" href="/create">Create a track</Link>
-          <button className="btn btn-primary" type="button" disabled title="Render engine not connected yet">
-            <Icon name="fa-download" /> Export
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={!lanes.length || exporting}
+            onClick={() => void exportMix()}
+            title="Export a stereo WAV mixdown"
+          >
+            <Icon name={exporting ? "fa-spinner" : "fa-download"} /> {exporting ? "Rendering?" : "Export WAV"}
           </button>
         </div>
       </div>
@@ -1018,7 +1119,7 @@ export function StudioEditorView() {
                 <Icon name="fa-trash" /> Remove from session
               </button>
               <div className="studio-inspector-note">
-                <Icon name="fa-circle-info" /> Preview mix only. Export needs the render engine.
+                <Icon name="fa-circle-info" /> Preview mix. Export creates a stereo WAV of this arrangement.
               </div>
             </>
           )}
@@ -1055,7 +1156,9 @@ export function StudioEditorView() {
         </div>
       </div>
       {audioError ? <p className="studio-audio-error" role="alert">{audioError}</p> : null}
-      {audioLoading ? <p className="studio-audio-status" role="status">Loading studio audio…</p> : null}
+      {exportError ? <p className="studio-audio-error" role="alert">{exportError}</p> : null}
+      {audioLoading ? <p className="studio-audio-status" role="status">Loading studio audio?</p> : null}
+      {exporting ? <p className="studio-audio-status" role="status">Rendering WAV mixdown?</p> : null}
     </div>
   );
 }
