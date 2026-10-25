@@ -1399,6 +1399,31 @@
   .pricing-note a{color:inherit;text-decoration:none;transition:color .15s}
   .pricing-note a:hover{color:#d8b4fe}
 
+  /* Optical centering for Font Awesome glyphs inside button labels. */
+  .btn > .icon,
+  .btn > .fa-replaced,
+  .btn-create > .icon,
+  .btn-create > .fa-replaced,
+  .auth-btn > .icon,
+  .auth-btn > .fa-replaced,
+  .side-buy > .icon,
+  .side-buy > .fa-replaced,
+  .side-create > .icon,
+  .side-create > .fa-replaced,
+  .credit-card .btn > .icon,
+  .credit-card .btn > .fa-replaced,
+  .create-submit .btn > .icon,
+  .create-submit .btn > .fa-replaced,
+  .redeem-row .btn > .icon,
+  .redeem-row .btn > .fa-replaced,
+  .invite-copy-row .btn > .icon,
+  .invite-copy-row .btn > .fa-replaced {
+    position: relative;
+    top: 0.5px;
+    vertical-align: middle;
+    transform: none;
+  }
+
   /* ---------------- search ---------------- */
   .search-page-form{width:min(640px,100%);height:46px;margin-bottom:24px;border-radius:12px;padding:0 16px}
   .search-page-form .icon,.search-page-form .fa-replaced{width:17px!important;height:17px!important}
