@@ -27,6 +27,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `POST /api/v3/subscriptions/purchase` and `POST /api/v3/subscriptions/renewal` now return **410 Gone** (`SubscriptionRetiredError`) instead of opening a CutLuy checkout. `GET /subscriptions/my-subscription` and `POST /subscriptions/cancel` stay live for grandfathered subscribers.
 - The `User must have active subscription to purchase top-ups` gate in `TopupService.purchase_topup`, which would otherwise have blocked every buyer once subscriptions stopped being sold.
 
+### Fixed
+
+- Telegram spend reports badge a Free-plan user who bought a credit pack this month as **PAID**, not **FREE**. A pack unlocks V6-Pro / V6-Wild for the calendar month, so those generations are paid usage; `_user_snapshot()` now treats a completed `topup_purchases` row like a subscription or studio licence. See `docs/changelog/2026-10-25-telegram-paid-pack-badge.md`.
+
 ## [2026-10-18] — Pending-downloads poll stays under the desktop 30s timeout
 
 ### Fixed

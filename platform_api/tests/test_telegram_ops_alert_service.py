@@ -660,3 +660,74 @@ async def test_daily_report_in_progress_claim_retries_later(
     assert await mod._daily_sent_date(redis) is None
     assert await mod._maybe_send_daily_burncredit() is False
 
+
+def test_account_status_counts_a_credit_pack_as_paid() -> None:
+    from platform_api.services.telegram_ops_alert_service import _account_status
+
+    assert (
+        _account_status(
+            has_web_sub=False,
+            has_studio_license=False,
+            has_pack_this_month=False,
+        )
+        == "FREE"
+    )
+    # A one-off pack unlocks premium models for the month, so those spends are
+    # paid usage even though the account is on the Free plan.
+    assert (
+        _account_status(
+            has_web_sub=False,
+            has_studio_license=False,
+            has_pack_this_month=True,
+        )
+        == "PAID"
+    )
+    assert (
+        _account_status(
+            has_web_sub=True,
+            has_studio_license=False,
+            has_pack_this_month=False,
+        )
+        == "PAID"
+    )
+    assert (
+        _account_status(
+            has_web_sub=False,
+            has_studio_license=True,
+            has_pack_this_month=False,
+        )
+        == "PAID"
+    )
+
+
+@pytest.mark.asyncio
+async def test_user_snapshot_marks_pack_buyer_paid(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api import dependencies
+    from platform_api.services import telegram_ops_alert_service as svc
+
+    class _FakePool:
+        async def fetchrow(self, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            return {
+                "email": "pack@example.com",
+                "display_name": "Pack Buyer",
+                "has_studio_license": False,
+                "has_web_sub": False,
+                "has_pack_this_month": True,
+            }
+
+    monkeypatch.setattr(dependencies, "get_db_pool", lambda: _FakePool())
+    svc._SNAPSHOT_CACHE.clear()
+    try:
+        snapshot = await svc._user_snapshot(
+            "9eebdf0a-d9b3-487f-b4ec-fbfab6f17a80"
+        )
+    finally:
+        svc._SNAPSHOT_CACHE.clear()
+
+    assert snapshot["account_status"] == "PAID"
+    assert snapshot["has_pack_this_month"] is True
+    assert snapshot["email"] == "pack@example.com"
+
+
