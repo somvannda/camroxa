@@ -115,7 +115,9 @@ export function CreateStudio() {
         generation,
         ...current.filter((item) => item.id !== generation.id),
       ]);
-      const done = generation.clips?.some((clip) => clip.ready) ?? false;
+      const done =
+        String(generation.status).toLowerCase() === "success" ||
+        (generation.clips?.some((clip) => clip.ready) ?? false);
       if (!done && attempts < 40) {
         window.setTimeout(() => void pollGeneration(id, attempts + 1), 3000);
       } else if (done) {
@@ -131,14 +133,22 @@ export function CreateStudio() {
 
   function playSong(song: WebMusicGeneration) {
     const clip = song.clips?.find((item) => item.ready && item.audio_url) ??
-      song.clips?.find((item) => item.audio_url);
-    if (!clip?.audio_url) return;
+      song.clips?.find((item) => item.audio_url) ??
+      song.clips?.[0];
+    const variant = clip?.variant || "ok";
+    const audioUrl =
+      clip?.audio_url ||
+      (String(song.status).toLowerCase() === "success"
+        ? clip?.download_url ||
+          `/api/v3/web-music/generations/${song.id}/stream/${variant}`
+        : "");
+    if (!audioUrl) return;
     playTrack({
       title: song.title || "Untitled",
       artist: "You",
-      cover: clip.image_url || "/hero.png",
-      duration: Math.max(1, Math.round(clip.duration_seconds || 180)),
-      audioUrl: clip.audio_url,
+      cover: clip?.image_url || "/hero.png",
+      duration: Math.max(1, Math.round(clip?.duration_seconds || 180)),
+      audioUrl,
     });
   }
 
@@ -401,8 +411,11 @@ export function CreateStudio() {
             <div className="create-song-list">
               {songs.map((song) => {
                 const clip = song.clips?.find((item) => item.ready && item.audio_url) ??
-                  song.clips?.find((item) => item.audio_url);
-                const ready = Boolean(clip);
+                  song.clips?.find((item) => item.audio_url) ??
+                  song.clips?.[0];
+                const ready =
+                  Boolean(clip?.audio_url) ||
+                  String(song.status).toLowerCase() === "success";
                 return (
                   <div className="create-song" key={song.id}>
                     <span className="create-song-art"><Icon name="fa-music" /></span>
