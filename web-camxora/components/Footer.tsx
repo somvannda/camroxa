@@ -59,7 +59,7 @@ export function Footer() {
               <h4>Legal</h4>
               <Link href="/legal#terms">Terms</Link>
               <Link href="/legal#privacy">Privacy</Link>
-              <Link href="/legal#privacy">Google API policy</Link>
+              <Link href="/legal#google-api">Google API policy</Link>
               <Link href="/legal#cookies">Cookies</Link>
               <Link href="/legal#copyright">Copyright</Link>
               <Link href="/legal#acceptable">Acceptable use</Link>
