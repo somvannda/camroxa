@@ -72,6 +72,14 @@ export interface Clip {
 export interface BillingInfo {
   total_credits_left?: number;
   subscription_type?: string;
+  /** ISO timestamp of the next charge — absent/null on free plans. */
+  renews_on?: string | null;
+  /** End of the current billing period (normally the same instant as `renews_on`). */
+  period_end?: string | null;
+  /** Billing cadence for a paid plan, e.g. "month" or "year". */
+  period?: string | null;
+  /** True while a paid subscription is paused (renewal skipped). */
+  is_paused?: boolean;
   accessible_features?: Array<{ name?: string }>;
   models?: Array<{
     name?: string;
