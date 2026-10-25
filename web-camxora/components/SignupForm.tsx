@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { Icon } from "@/components/Icon";
 import TurnstileWidget from "@/components/TurnstileWidget";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
@@ -16,8 +16,13 @@ export function SignupForm() {
   const [password, setPassword] = useState("");
   const [token, setToken] = useState("");
   const [turnstileKey, setTurnstileKey] = useState(0);
+  const [referralCode, setReferralCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    setReferralCode(new URLSearchParams(window.location.search).get("ref")?.trim() ?? "");
+  }, []);
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -33,6 +38,7 @@ export function SignupForm() {
         display_name: displayName.trim(),
         email: email.trim(),
         password,
+        referral_code: referralCode || undefined,
         cf_turnstile_response: token,
       });
       window.location.href = `/verify-email?email=${encodeURIComponent(email.trim())}`;

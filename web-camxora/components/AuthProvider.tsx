@@ -38,6 +38,7 @@ type AuthState = {
     password: string;
     display_name: string;
     invitation_code?: string;
+    referral_code?: string;
     cf_turnstile_response?: string;
   }) => Promise<void>;
   logout: () => Promise<void>;

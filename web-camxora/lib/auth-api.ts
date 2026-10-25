@@ -66,6 +66,7 @@ export async function registerMusicUser(input: {
   password: string;
   display_name: string;
   invitation_code?: string;
+  referral_code?: string;
   cf_turnstile_response?: string;
 }): Promise<void> {
   const response = await musicAuthFetch("/api/v3/auth/register", {
