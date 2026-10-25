@@ -112,7 +112,10 @@ export function CreateStudio() {
         : style.trim().length > 0 && lyrics.trim().length > 0;
 
   async function writeLyrics() {
-    const seed = prompt.trim() || title.trim() || style.trim();
+    const seed =
+      (mode === "custom" && lyricsMode === "prompt" ? lyrics.trim() : prompt.trim()) ||
+      title.trim() ||
+      style.trim();
     if (!seed) {
       setError("Add a song description, title, or style first.");
       return;
@@ -186,12 +189,25 @@ export function CreateStudio() {
     setBusy(true);
     setError("");
     setNotice("");
+    let finalLyrics = lyrics.trim();
+    if (mode === "custom" && !instrumental && lyricsMode === "prompt") {
+      try {
+        const draft = await generateLyrics(finalLyrics);
+        finalLyrics = draft.lyrics;
+        setLyrics(draft.lyrics);
+        if (!title.trim() && draft.title) setTitle(draft.title);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Could not write lyrics");
+        setBusy(false);
+        return;
+      }
+    }
     const payload: GenerateSongInput = {
       mode: mode === "simple" ? "simple" : "advanced",
       prompt: mode === "simple" ? prompt.trim() || undefined : undefined,
       title: mode === "custom" ? title.trim() || undefined : undefined,
       style: mode === "custom" ? style.trim() || undefined : undefined,
-      lyrics: mode === "custom" && !instrumental ? lyrics.trim() || undefined : undefined,
+      lyrics: mode === "custom" && !instrumental ? finalLyrics || undefined : undefined,
       instrumental,
       model,
       negative_tags: negativeTags.trim() || undefined,
