@@ -19,6 +19,10 @@ interface Account {
   is_active: boolean;
   created_at: string;
   live_plan: string;
+  /** Paid plan's display name, e.g. "Premier Plan"; null on free plans. */
+  live_plan_name: string | null;
+  /** Monthly list price of that plan in USD, null when unknown/free. */
+  live_plan_price_usd: number | null;
   live_credits: number;
   /** Next Suno charge for a paid plan; null on free plans / failed probe. */
   live_renews_on: string | null;
@@ -403,7 +407,14 @@ export default function AccountsPage() {
                 <tr key={a.id} className="border-t border-[var(--border)]">
                   <td className="px-4 py-3 font-medium">{a.label}</td>
                   <td className="px-4 py-3 capitalize">{a.type}</td>
-                  <td className="px-4 py-3 capitalize">{a.live_plan}</td>
+                  <td className="px-4 py-3 capitalize">
+                    {a.live_plan_name ?? a.live_plan}
+                    {a.live_plan_price_usd != null && (
+                      <span className="ml-1 text-xs normal-case text-[var(--muted)]">
+                        · ${a.live_plan_price_usd}/mo
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 whitespace-nowrap">
                     <RenewalCell iso={a.live_renews_on} stale={a.renews_on_stale} />
                   </td>

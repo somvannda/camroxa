@@ -5,7 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { AccountPool, RoutingPolicy, daysUntilRenewal } from "./pool.js";
+import { AccountPool, RoutingPolicy, daysUntilRenewal, forecastRenewals } from "./pool.js";
 import { SunoClient } from "./client.js";
 import { isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
@@ -6248,6 +6248,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         is_active: row.is_active,
         created_at: row.created_at,
         live_plan: l?.plan ?? row.plan ?? "unknown",
+        // Plan label + monthly list price, so the console can show "Premier
+        // ($30/mo)" and total upcoming renewal spend.
+        live_plan_name: l?.planName ?? null,
+        live_plan_price_usd: l?.monthlyPriceUsd ?? null,
         live_credits: liveCredits,
         // Next Suno charge for a paid plan (`billing/info.renews_on`). When the
         // live probe failed — or the account is disabled and therefore never
@@ -6519,6 +6523,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
     const spentCredits = Number(spent?.sum ?? 0);
+    const renewalForecast = forecastRenewals(live, { withinDays: 30 });
     return {
       users: Number(users?.count ?? 0),
       keys: Number(keys?.count ?? 0),
@@ -6529,6 +6534,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       credits_per_usd: creditsPerUsd,
       accounts: pool.size,
       account_health: accountHealth,
+      // Upcoming subscription spend: what the pool will be charged in the next
+      // 30 days, so an operator can budget renewals without opening Suno.
+      renewal_forecast: {
+        count: renewalForecast.count,
+        monthly_usd: Number(renewalForecast.monthlyUsd.toFixed(2)),
+        unpriced: renewalForecast.unpriced,
+      },
       suno_credits: sunoCredits,
       series: series.map((s) => ({ day: s.day, count: Number(s.count) })),
     };
