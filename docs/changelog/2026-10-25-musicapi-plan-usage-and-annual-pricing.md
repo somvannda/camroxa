@@ -10,8 +10,11 @@ instead of ignoring them.
 ## Product impact
 
 - **Accounts → Credits** shows the remaining balance with a muted
-  `7,270 / 10,000 used` line beneath it for paid accounts. Free accounts are
-  unchanged.
+  `7,270 / 10,000 used` line beneath it for paid accounts. Free accounts report
+  their own (much smaller) allowance — Suno returns `monthly_limit = 100` for
+  them — so they show e.g. `10 / 100 used` rather than a bare balance. That is
+  accurate and intentional; this entry originally said "unchanged", which the
+  live probe disproved (see `musicapi/docs/renewal-routing-proposal.md`).
 - **Dashboard → Renewals 30d** now includes annual plans, normalised to
   `annual / 12`, so a yearly subscriber no longer looks free in the forecast.
 - Plan labels stay as before (`Premier Plan · $30/mo`).
