@@ -18,9 +18,6 @@ const nextConfig: NextConfig = {
   },
   async redirects() {
     return [
-      { source: "/features", destination: "/studio", permanent: false },
-      { source: "/services", destination: "/about", permanent: false },
-      { source: "/download", destination: "/studio", permanent: false },
       { source: "/terms", destination: "/legal#terms", permanent: false },
       { source: "/privacy", destination: "/legal#privacy", permanent: false },
       { source: "/google-api", destination: "/legal#google-api", permanent: false },
