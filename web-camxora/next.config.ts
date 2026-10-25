@@ -20,7 +20,6 @@ const nextConfig: NextConfig = {
     return [
       { source: "/terms", destination: "/legal#terms", permanent: false },
       { source: "/privacy", destination: "/legal#privacy", permanent: false },
-      { source: "/google-api", destination: "/legal#google-api", permanent: false },
       { source: "/cookies", destination: "/legal#cookies", permanent: false },
       { source: "/copyright", destination: "/legal#copyright", permanent: false },
       { source: "/acceptable-use", destination: "/legal#acceptable", permanent: false },
