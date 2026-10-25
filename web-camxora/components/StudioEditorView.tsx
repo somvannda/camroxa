@@ -48,6 +48,8 @@ type StoredSession = {
   bpm?: number;
   zoom?: number;
   master?: number;
+  loopStart?: number;
+  loopEnd?: number;
   lanes?: Clip[];
 };
 
@@ -158,12 +160,17 @@ export function StudioEditorView() {
   const [audioLoading, setAudioLoading] = useState(false);
   const [audioError, setAudioError] = useState("");
   const [loop, setLoop] = useState(false);
+  const [loopStart, setLoopStart] = useState(0);
+  const [loopEnd, setLoopEnd] = useState(60);
   const [loaded, setLoaded] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [history, setHistory] = useState<Clip[][]>([]);
   const [future, setFuture] = useState<Clip[][]>([]);
   const dragRef = useRef<DragState | null>(null);
   const loopRef = useRef(false);
+  const loopStartRef = useRef(0);
+  const loopEndRef = useRef(60);
+  const loopDragRef = useRef<{ which: "start" | "end"; startX: number; start: number; end: number; width: number } | null>(null);
   const startPlaybackRef = useRef<(from: number) => Promise<void>>(async () => {});
   const playheadRef = useRef(0);
   const timelineDurationRef = useRef(180);
@@ -185,6 +192,11 @@ export function StudioEditorView() {
   useEffect(() => {
     loopRef.current = loop;
   }, [loop]);
+
+  useEffect(() => {
+    loopStartRef.current = loopStart;
+    loopEndRef.current = loopEnd;
+  }, [loopStart, loopEnd]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -214,6 +226,8 @@ export function StudioEditorView() {
             if (Number.isFinite(saved.bpm)) setBpm(clamp(Number(saved.bpm), 40, 220));
             if (Number.isFinite(saved.zoom)) setZoom(clamp(Number(saved.zoom), 0.7, 2));
             if (Number.isFinite(saved.master)) setMaster(clamp(Number(saved.master), 0, 100));
+            if (Number.isFinite(saved.loopStart)) setLoopStart(Math.max(0, Number(saved.loopStart)));
+            if (Number.isFinite(saved.loopEnd)) setLoopEnd(Math.max(1, Number(saved.loopEnd)));
           } catch {
             setLanes([]);
           }
@@ -233,12 +247,12 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, zoom, master, lanes };
+      const payload: StoredSession = { name: sessionName, bpm, zoom, master, loopStart, loopEnd, lanes };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, storageKey, sessionName, bpm, zoom, master, lanes]);
+  }, [loaded, user, storageKey, sessionName, bpm, zoom, master, loopStart, loopEnd, lanes]);
 
   const timelineDuration = useMemo(() => {
     const end = lanes.reduce((max, lane) => Math.max(max, lane.start + lane.duration), 0);
@@ -247,6 +261,8 @@ export function StudioEditorView() {
 
   useEffect(() => {
     timelineDurationRef.current = timelineDuration;
+    setLoopEnd((current) => Math.min(current, timelineDuration));
+    setLoopStart((current) => Math.min(current, Math.max(0, timelineDuration - 5)));
   }, [timelineDuration]);
 
   const tickStep = timelineDuration > 300 ? 60 : 30;
@@ -391,6 +407,10 @@ export function StudioEditorView() {
 
   const startPlayback = useCallback(
     async (from: number) => {
+      if (loopRef.current && (from >= loopEndRef.current || from < loopStartRef.current)) {
+        from = loopStartRef.current;
+        setPlayhead(from);
+      }
       const context = ensureAudioContext();
       await context.resume();
       stopSources();
@@ -407,10 +427,10 @@ export function StudioEditorView() {
         const tick = () => {
           const next = from + Math.max(0, context.currentTime - startedAt);
           setPlayhead(Math.min(timelineDurationRef.current, next));
-          if (next >= timelineDurationRef.current) {
+          if (next >= (loopRef.current ? loopEndRef.current : timelineDurationRef.current)) {
             stopSources();
             if (loopRef.current) {
-              window.setTimeout(() => void startPlaybackRef.current(0), 0);
+              window.setTimeout(() => void startPlaybackRef.current(loopStartRef.current), 0);
             } else {
               setPlaying(false);
             }
@@ -454,10 +474,10 @@ export function StudioEditorView() {
         const tick = () => {
           const next = from + Math.max(0, context.currentTime - startAt);
           setPlayhead(Math.min(timelineDurationRef.current, next));
-          if (next >= timelineDurationRef.current) {
+          if (next >= (loopRef.current ? loopEndRef.current : timelineDurationRef.current)) {
             stopSources();
             if (loopRef.current) {
-              window.setTimeout(() => void startPlaybackRef.current(0), 0);
+              window.setTimeout(() => void startPlaybackRef.current(loopStartRef.current), 0);
             } else {
               setPlaying(false);
             }
@@ -526,6 +546,28 @@ export function StudioEditorView() {
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
   }, [commitLanes, lanes, redo, selected, togglePlay, undo]);
+
+  useEffect(() => {
+    const handleLoopMove = (event: PointerEvent) => {
+      const drag = loopDragRef.current;
+      if (!drag || !drag.width) return;
+      const delta = ((event.clientX - drag.startX) / drag.width) * timelineDurationRef.current;
+      if (drag.which === "start") {
+        setLoopStart(clamp(snap(drag.start + delta), 0, drag.end - 5));
+      } else {
+        setLoopEnd(clamp(snap(drag.end + delta), drag.start + 5, timelineDurationRef.current));
+      }
+    };
+    const handleLoopUp = () => {
+      loopDragRef.current = null;
+    };
+    window.addEventListener("pointermove", handleLoopMove);
+    window.addEventListener("pointerup", handleLoopUp);
+    return () => {
+      window.removeEventListener("pointermove", handleLoopMove);
+      window.removeEventListener("pointerup", handleLoopUp);
+    };
+  }, []);
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
@@ -597,6 +639,20 @@ export function StudioEditorView() {
       duration: lane.duration,
       offset: lane.offset,
       trackWidth: track.getBoundingClientRect().width,
+    };
+  }
+
+  function beginLoopDrag(event: ReactPointerEvent, which: "start" | "end") {
+    event.preventDefault();
+    event.stopPropagation();
+    const track = event.currentTarget.closest(".studio-ruler-track") as HTMLElement | null;
+    if (!track) return;
+    loopDragRef.current = {
+      which,
+      startX: event.clientX,
+      start: loopStart,
+      end: loopEnd,
+      width: track.getBoundingClientRect().width,
     };
   }
 
@@ -726,6 +782,28 @@ export function StudioEditorView() {
         <span className="studio-toolbar-divider" />
         <label className="studio-bpm">BPM <input type="number" min={40} max={220} value={bpm} onChange={(event) => setBpm(clamp(Number(event.target.value), 40, 220))} /></label>
         <label className="studio-zoom">Zoom <input type="range" min="0.7" max="2" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
+        <span className="studio-loop-range">
+          <span>Loop</span>
+          <input
+            type="number"
+            min={0}
+            max={Math.max(0, loopEnd - 5)}
+            step={1}
+            value={Math.round(loopStart)}
+            onChange={(event) => setLoopStart(clamp(Number(event.target.value), 0, loopEnd - 5))}
+            aria-label="Loop start in seconds"
+          />
+          <em>?</em>
+          <input
+            type="number"
+            min={loopStart + 5}
+            max={timelineDuration}
+            step={1}
+            value={Math.round(loopEnd)}
+            onChange={(event) => setLoopEnd(clamp(Number(event.target.value), loopStart + 5, timelineDuration))}
+            aria-label="Loop end in seconds"
+          />
+        </span>
         <span className="studio-toolbar-spacer" />
         <span className="studio-time">{formatTime(playhead)} / {formatTime(timelineDuration)}</span>
       </div>
@@ -785,6 +863,25 @@ export function StudioEditorView() {
           <div className="studio-ruler">
             <span className="studio-ruler-gutter" />
             <div className="studio-ruler-track" style={{ zoom } as CSSProperties} onPointerDown={seekFromEvent}>
+              <div
+                className={`studio-loop-bar${loop ? " on" : ""}`}
+                style={{
+                  left: `${(loopStart / timelineDuration) * 100}%`,
+                  width: `${((loopEnd - loopStart) / timelineDuration) * 100}%`,
+                }}
+                onPointerDown={(event) => event.stopPropagation()}
+              >
+                <span
+                  className="studio-loop-handle start"
+                  onPointerDown={(event) => beginLoopDrag(event, "start")}
+                  title="Drag loop start"
+                />
+                <span
+                  className="studio-loop-handle end"
+                  onPointerDown={(event) => beginLoopDrag(event, "end")}
+                  title="Drag loop end"
+                />
+              </div>
               {ticks.map((tick) => (
                 <span key={tick} style={{ left: `${(tick / timelineDuration) * 100}%` }}>
                   {formatTime(tick)}
@@ -794,6 +891,18 @@ export function StudioEditorView() {
             <span />
           </div>
           <div className="studio-lanes" style={{ zoom } as CSSProperties}>
+            <div className="studio-loop-layer" aria-hidden="true">
+              <span />
+              <div className="studio-loop-layer-track">
+                <i
+                  style={{
+                    left: `${(loopStart / timelineDuration) * 100}%`,
+                    width: `${((loopEnd - loopStart) / timelineDuration) * 100}%`,
+                  }}
+                />
+              </div>
+              <span />
+            </div>
             {lanes.map((lane, index) => (
               <div className={`studio-lane${selected === lane.id ? " selected" : ""}`} key={lane.id}>
                 <button className="studio-lane-head" type="button" onClick={() => setSelected(lane.id)}>
@@ -930,6 +1039,7 @@ export function StudioEditorView() {
             aria-label="Loop arrangement"
             aria-pressed={loop}
             title="Loop arrangement"
+            disabled={!lanes.length}
             onClick={() => setLoop((value) => !value)}
           >
             <Icon name="fa-repeat" />
