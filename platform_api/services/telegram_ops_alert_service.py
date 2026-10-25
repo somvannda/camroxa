@@ -456,6 +456,23 @@ async def _runtime_enabled() -> bool:
     return enabled
 
 
+def _account_status(
+    *,
+    has_web_sub: bool,
+    has_studio_license: bool,
+    has_pack_this_month: bool,
+) -> str:
+    """Badge for the ops feed; ``PAID`` for any paying customer.
+
+    A one-off credit pack counts as paid: buying one unlocks the premium
+    web-music models for the month, so those generations are bought with
+    purchased credits, not the Free monthly grant.
+    """
+    if has_web_sub or has_studio_license or has_pack_this_month:
+        return "PAID"
+    return "FREE"
+
+
 async def _user_snapshot(user_id: Any) -> dict[str, Any]:
     snapshot = {
         "email": None,
@@ -463,6 +480,7 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
         "account_status": "FREE",
         "has_web_sub": False,
         "has_studio_license": False,
+        "has_pack_this_month": False,
     }
     if not user_id:
         return snapshot
@@ -476,8 +494,8 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
         from platform_api.dependencies import get_db_pool
 
         pool = get_db_pool()
-        # One round trip instead of three: the web-subscription and licence
-        # probes are EXISTS subselects on the same user row.
+        # One round trip instead of four: the web-subscription, licence and
+        # pack-purchase probes are EXISTS subselects on the same user row.
         row = await pool.fetchrow(
             """
             SELECT u.email,
@@ -491,7 +509,13 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
                      WHERE w.user_id = $2
                        AND w.status = 'active'
                        AND w.current_period_end > NOW()
-                   ) AS has_web_sub
+                   ) AS has_web_sub,
+                   EXISTS(
+                     SELECT 1 FROM topup_purchases t
+                     WHERE t.user_id = u.id
+                       AND t.payment_status = 'completed'
+                       AND COALESCE(t.completed_at, t.created_at) >= date_trunc('month', NOW())
+                   ) AS has_pack_this_month
             FROM users u
             WHERE u.id = $1
             """,
@@ -503,10 +527,11 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
             snapshot["display_name"] = row["display_name"]
             snapshot["has_studio_license"] = bool(row["has_studio_license"])
             snapshot["has_web_sub"] = bool(row["has_web_sub"])
-            snapshot["account_status"] = (
-                "PAID"
-                if snapshot["has_web_sub"] or snapshot["has_studio_license"]
-                else "FREE"
+            snapshot["has_pack_this_month"] = bool(row["has_pack_this_month"])
+            snapshot["account_status"] = _account_status(
+                has_web_sub=snapshot["has_web_sub"],
+                has_studio_license=snapshot["has_studio_license"],
+                has_pack_this_month=snapshot["has_pack_this_month"],
             )
             fresh = True
     except Exception as exc:
