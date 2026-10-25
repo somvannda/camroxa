@@ -23,6 +23,10 @@ export interface AccountHealth {
   planName: string | null;
   /** Monthly list price of the plan in USD; null for free/unknown plans. */
   monthlyPriceUsd: number | null;
+  /** Credits included in one billing period, null on free plans. */
+  monthlyLimit: number | null;
+  /** Credits consumed in the current billing period, null when unknown. */
+  monthlyUsage: number | null;
   /** `billing/info.accessible_features` names (e.g. "studio", "persona"). */
   features: string[];
   /**
@@ -72,8 +76,29 @@ export function daysUntilRenewal(
   return Number.isFinite(ms) ? Math.ceil((ms - now) / 86_400_000) : null;
 }
 
-/** Upcoming-subscription spend across the pool, for the admin dashboard. */
-export interface RenewalForecast {
+/**
+ * Monthly cost of the account's paid plan in USD, or null for a free/unknown
+ * plan.
+ *
+ * Suno lists both a monthly and an annual price for every plan, so the
+ * subscription cadence decides which applies: an annual plan is normalised to
+ * its monthly equivalent (annual / 12) so the renewal forecast stays comparable
+ * month to month. A price of 0 means a free plan, not a paid one. Pure and
+ * exported so the pricing rules can be unit-tested.
+ */
+export function monthlyPlanPriceUsd(
+  info: Pick<BillingInfo, "plan" | "period">,
+): number | null {
+  const monthly = info.plan?.monthly_price_usd;
+  if (typeof monthly === "number" && monthly > 0) return monthly;
+  const annual = info.plan?.annual_price_usd;
+  if (info.period === "year" && typeof annual === "number" && annual > 0) {
+    return Math.round((annual / 12) * 100) / 100;
+  }
+  return null;
+}
+
+/** Upcoming-subscription spend across the pool, for the admin dashboard. */export interface RenewalForecast {
   /** Accounts charging inside the window. */
   count: number;
   /** Their combined monthly list price, in USD. */
@@ -140,6 +165,10 @@ export interface AccountStatus {
   planName: string | null;
   /** Monthly list price of the plan in USD; null for free/unknown plans. */
   monthlyPriceUsd: number | null;
+  /** Credits included in one billing period, null on free plans. */
+  monthlyLimit: number | null;
+  /** Credits consumed in the current billing period, null when unknown. */
+  monthlyUsage: number | null;
 }
 
 /**
@@ -285,6 +314,8 @@ export class AccountPool {
             pauseScheduled: h.pauseScheduled,
             planName: h.planName,
             monthlyPriceUsd: h.monthlyPriceUsd,
+            monthlyLimit: h.monthlyLimit,
+            monthlyUsage: h.monthlyUsage,
           };
         } catch {
           return {
@@ -299,6 +330,8 @@ export class AccountPool {
             pauseScheduled: false,
             planName: null,
             monthlyPriceUsd: null,
+            monthlyLimit: null,
+            monthlyUsage: null,
           };
         }
       }),
@@ -412,13 +445,20 @@ export class AccountPool {
     // Plan catalog entry, used to label the plan and to total upcoming renewal
     // spend. A price of 0 means a free plan, so treat it as "no paid plan".
     const plan = info.plan ?? null;
-    const monthlyPriceUsd =
-      typeof plan?.monthly_price_usd === "number" && plan.monthly_price_usd > 0
-        ? plan.monthly_price_usd
-        : null;
+    const monthlyPriceUsd = monthlyPlanPriceUsd(info);
     const planName =
       monthlyPriceUsd !== null && typeof plan?.name === "string" && plan.name.trim()
         ? plan.name.trim()
+        : null;
+    // Allowance for the current period, so the console can show "6,580 / 10,000
+    // used" next to the remaining balance. Free plans report 0.
+    const monthlyLimit =
+      typeof info.monthly_limit === "number" && info.monthly_limit > 0
+        ? info.monthly_limit
+        : null;
+    const monthlyUsage =
+      monthlyLimit !== null && typeof info.monthly_usage === "number" && info.monthly_usage >= 0
+        ? info.monthly_usage
         : null;
     const health: AccountHealth = {
       credits: info.total_credits_left ?? 0,
@@ -430,6 +470,8 @@ export class AccountPool {
       pauseScheduled: info.is_pause_scheduled === true,
       planName,
       monthlyPriceUsd,
+      monthlyLimit,
+      monthlyUsage,
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
@@ -484,6 +526,8 @@ export class AccountPool {
           pauseScheduled: false,
           planName: null,
           monthlyPriceUsd: null,
+          monthlyLimit: null,
+          monthlyUsage: null,
           features: [],
           catalog: [],
         };

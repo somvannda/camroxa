@@ -6252,6 +6252,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         // ($30/mo)" and total upcoming renewal spend.
         live_plan_name: l?.planName ?? null,
         live_plan_price_usd: l?.monthlyPriceUsd ?? null,
+        // Allowance for the current period ("6,580 / 10,000 used"); null on free
+        // plans or when Suno does not report it.
+        live_monthly_limit: l?.monthlyLimit ?? null,
+        live_monthly_usage: l?.monthlyUsage ?? null,
         live_credits: liveCredits,
         // Next Suno charge for a paid plan (`billing/info.renews_on`). When the
         // live probe failed — or the account is disabled and therefore never

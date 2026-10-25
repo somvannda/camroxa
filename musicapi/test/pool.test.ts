@@ -7,8 +7,15 @@ process.env.JWT_SECRET ??= "unit-test-jwt-secret-0123456789abcdef0123456789";
 process.env.COOKIE_ENCRYPTION_KEY ??=
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-const { orderByLoad, orderForDispatch, belowCreditFloor, parseRenewsOn, daysUntilRenewal, forecastRenewals } =
-  await import("../src/pool.js");
+const {
+  orderByLoad,
+  orderForDispatch,
+  belowCreditFloor,
+  parseRenewsOn,
+  daysUntilRenewal,
+  forecastRenewals,
+  monthlyPlanPriceUsd,
+} = await import("../src/pool.js");
 
 type Client = { account: { id: string; type?: string } };
 
@@ -127,6 +134,41 @@ test("forecastRenewals is empty when the window is disabled", () => {
     monthlyUsd: 0,
     unpriced: 0,
   });
+});
+
+test("monthlyPlanPriceUsd prefers the monthly price", () => {
+  // Premier lists $30/mo and $288/yr; a monthly subscriber is charged $30.
+  assert.equal(
+    monthlyPlanPriceUsd({
+      period: "month",
+      plan: { name: "Premier Plan", monthly_price_usd: 30, annual_price_usd: 288 },
+    }),
+    30,
+  );
+});
+
+test("monthlyPlanPriceUsd normalises an annual plan to its monthly equivalent", () => {
+  assert.equal(
+    monthlyPlanPriceUsd({
+      period: "year",
+      plan: { name: "Premier Plan", annual_price_usd: 288 },
+    }),
+    24,
+  );
+  // Three decimal places are rounded, so the forecast never shows sub-cent noise.
+  assert.equal(
+    monthlyPlanPriceUsd({ period: "year", plan: { annual_price_usd: 100 } }),
+    8.33,
+  );
+});
+
+test("monthlyPlanPriceUsd returns null for free plans and unusable prices", () => {
+  assert.equal(monthlyPlanPriceUsd({}), null);
+  assert.equal(monthlyPlanPriceUsd({ period: "month", plan: null }), null);
+  // A 0 price is a free plan, not a paid one.
+  assert.equal(monthlyPlanPriceUsd({ plan: { monthly_price_usd: 0 } }), null);
+  // An annual price without annual cadence is not a monthly cost.
+  assert.equal(monthlyPlanPriceUsd({ period: "month", plan: { annual_price_usd: 288 } }), null);
 });
 
 const ids = (ordered: Client[]): string[] => ordered.map((c) => c.account.id);

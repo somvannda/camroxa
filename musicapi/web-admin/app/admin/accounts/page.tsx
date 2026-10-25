@@ -10,7 +10,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
-import { dateOnly } from "@/lib/format";
+import { dateOnly, num } from "@/lib/format";
 
 interface Account {
   id: string;
@@ -23,6 +23,10 @@ interface Account {
   live_plan_name: string | null;
   /** Monthly list price of that plan in USD, null when unknown/free. */
   live_plan_price_usd: number | null;
+  /** Credits included per billing period; null on free plans. */
+  live_monthly_limit: number | null;
+  /** Credits used in the current period; null when unknown. */
+  live_monthly_usage: number | null;
   live_credits: number;
   /** Next Suno charge for a paid plan; null on free plans / failed probe. */
   live_renews_on: string | null;
@@ -418,7 +422,14 @@ export default function AccountsPage() {
                   <td className="px-4 py-3 whitespace-nowrap">
                     <RenewalCell iso={a.live_renews_on} stale={a.renews_on_stale} />
                   </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{a.live_credits}</td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {a.live_credits}
+                    {a.live_monthly_limit != null && (
+                      <span className="block text-xs text-[var(--muted)]">
+                        {num(a.live_monthly_usage ?? 0)} / {num(a.live_monthly_limit)} used
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs text-[var(--muted)]">
                     {a.live_models.join(", ") || "—"}
                   </td>
