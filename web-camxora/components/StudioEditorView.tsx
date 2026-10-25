@@ -33,6 +33,8 @@ type Clip = {
   low: number;
   mid: number;
   high: number;
+  delay: number;
+  reverb: number;
   volume: number;
   pan: number;
   muted: boolean;
@@ -210,6 +212,53 @@ function scheduleClipGain(
   }
 }
 
+function makeReverbImpulse(context: BaseAudioContext): AudioBuffer {
+  const seconds = 1.8;
+  const length = Math.max(1, Math.floor(context.sampleRate * seconds));
+  const impulse = context.createBuffer(2, length, context.sampleRate);
+  for (let channel = 0; channel < 2; channel += 1) {
+    const data = impulse.getChannelData(channel);
+    for (let index = 0; index < length; index += 1) {
+      data[index] = (Math.random() * 2 - 1) * Math.pow(1 - index / length, 2.4);
+    }
+  }
+  return impulse;
+}
+
+function connectTrackFx(
+  context: BaseAudioContext,
+  input: AudioNode,
+  master: AudioNode,
+  lane: Clip
+): { delayWet: GainNode; reverbWet: GainNode } {
+  const dry = context.createGain();
+  dry.gain.value = 1;
+  input.connect(dry);
+  dry.connect(master);
+
+  const delay = context.createDelay(1);
+  delay.delayTime.value = 0.28;
+  const feedback = context.createGain();
+  feedback.gain.value = 0.26;
+  const delayWet = context.createGain();
+  delayWet.gain.value = lane.delay / 100;
+  input.connect(delay);
+  delay.connect(feedback);
+  feedback.connect(delay);
+  delay.connect(delayWet);
+  delayWet.connect(master);
+
+  const convolver = context.createConvolver();
+  convolver.buffer = makeReverbImpulse(context);
+  const reverbWet = context.createGain();
+  reverbWet.gain.value = lane.reverb / 100;
+  input.connect(convolver);
+  convolver.connect(reverbWet);
+  reverbWet.connect(master);
+
+  return { delayWet, reverbWet };
+}
+
 function clipFromGeneration(
   generation: WebMusicGeneration,
   index: number,
@@ -239,6 +288,8 @@ function clipFromGeneration(
     low: 0,
     mid: 0,
     high: 0,
+    delay: 0,
+    reverb: 0,
     volume: 80,
     pan: 0,
     muted: false,
@@ -284,7 +335,7 @@ export function StudioEditorView() {
   const masterGainRef = useRef<GainNode | null>(null);
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
-  const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode }>>(new Map());
+  const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; delayWet: GainNode; reverbWet: GainNode }>>(new Map());
   const startedAtRef = useRef(0);
   const startPlayheadRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -334,6 +385,8 @@ export function StudioEditorView() {
                 low: Number.isFinite(lane.low) ? clamp(Number(lane.low), -12, 12) : 0,
                 mid: Number.isFinite(lane.mid) ? clamp(Number(lane.mid), -12, 12) : 0,
                 high: Number.isFinite(lane.high) ? clamp(Number(lane.high), -12, 12) : 0,
+                delay: Number.isFinite(lane.delay) ? clamp(Number(lane.delay), 0, 100) : 0,
+                reverb: Number.isFinite(lane.reverb) ? clamp(Number(lane.reverb), 0, 100) : 0,
               }))
             );
             setSelected(savedLanes[0]?.id ?? null);
@@ -487,6 +540,8 @@ export function StudioEditorView() {
       node.low.gain.value = lane.low;
       node.mid.gain.value = lane.mid;
       node.high.gain.value = lane.high;
+      node.delayWet.gain.value = lane.delay / 100;
+      node.reverbWet.gain.value = lane.reverb / 100;
     }
   }, [lanes, master]);
 
@@ -603,12 +658,12 @@ export function StudioEditorView() {
           mid.connect(high);
           high.connect(gain);
           gain.connect(panner);
-          panner.connect(masterGain);
+          const fx = connectTrackFx(context, panner, masterGain, lane);
           const startWhen = startAt + Math.max(0, lane.start - from);
           scheduleClipGain(gain, lane.volume / 100, lane, from, startWhen, remaining);
           source.start(startWhen, offset, remaining);
           sourcesRef.current.push(source);
-          nodesRef.current.set(lane.id, { gain, panner, low, mid, high });
+          nodesRef.current.set(lane.id, { gain, panner, low, mid, high, ...fx });
         }
         startedAtRef.current = startAt;
         startPlayheadRef.current = from;
@@ -896,7 +951,7 @@ export function StudioEditorView() {
         mid.connect(high);
         high.connect(gain);
         gain.connect(panner);
-        panner.connect(masterGain);
+        connectTrackFx(offline, panner, masterGain, lane);
         scheduleClipGain(gain, lane.volume / 100, lane, lane.start, lane.start, length);
         source.start(lane.start, offset, length);
       }
@@ -1268,6 +1323,18 @@ export function StudioEditorView() {
                 </label>
                 <label>High <b>{selectedLane.high > 0 ? "+" : ""}{selectedLane.high} dB</b>
                   <input type="range" min="-12" max="12" step="0.5" value={selectedLane.high} onChange={(event) => updateLane(selectedLane.id, { high: Number(event.target.value) })} />
+                </label>
+              </div>
+              <div className="studio-eq">
+                <div className="studio-eq-head">
+                  <span>FX sends</span>
+                  <button type="button" onClick={() => updateLane(selectedLane.id, { delay: 0, reverb: 0 })}>Reset</button>
+                </div>
+                <label>Delay <b>{selectedLane.delay}%</b>
+                  <input type="range" min="0" max="100" step="1" value={selectedLane.delay} onChange={(event) => updateLane(selectedLane.id, { delay: Number(event.target.value) })} />
+                </label>
+                <label>Reverb <b>{selectedLane.reverb}%</b>
+                  <input type="range" min="0" max="100" step="1" value={selectedLane.reverb} onChange={(event) => updateLane(selectedLane.id, { reverb: Number(event.target.value) })} />
                 </label>
               </div>
               <div className="studio-inspector-actions">
