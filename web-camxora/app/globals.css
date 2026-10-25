@@ -1753,6 +1753,10 @@ html{color-scheme:dark}
   .studio-session-title input:hover{border-bottom-color:var(--line)}
   .studio-session-title input:focus{border-bottom-color:rgba(168,85,247,.55)}
   .studio-session-title>span{font-size:11px;color:var(--muted2)}
+  .studio-export-group{display:flex;align-items:center;gap:6px}
+  .studio-export-format{height:38px;border:1px solid var(--line);border-radius:7px;background:rgba(7,10,19,.65);color:var(--text);font:inherit;font-size:10px;padding:0 8px;outline:none;cursor:pointer}
+  .studio-export-format:focus{border-color:rgba(168,85,247,.5)}
+  .studio-export-format:disabled{opacity:.5;cursor:wait}
   .studio-toolbar{display:flex;align-items:center;gap:7px;flex-wrap:wrap;padding:9px 12px;border:1px solid var(--line);border-bottom:0;border-radius:12px 12px 0 0;background:rgba(11,15,29,.9)}
   .studio-icon-btn{width:30px;height:30px;border-radius:7px;display:grid;place-items:center;color:var(--muted);background:transparent;border:1px solid transparent;cursor:pointer;transition:background .15s,color .15s,border-color .15s}
   .studio-icon-btn:hover:not(:disabled){background:rgba(255,255,255,.055);border-color:var(--line);color:#fff}

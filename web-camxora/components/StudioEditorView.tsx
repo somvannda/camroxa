@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Mp3Encoder } from "@breezystack/lamejs";
 import {
   useCallback,
   useEffect,
@@ -150,6 +151,36 @@ function encodeWav(buffer: AudioBuffer): Blob {
   return new Blob([output], { type: "audio/wav" });
 }
 
+async function encodeMp3(buffer: AudioBuffer, kbps = 192): Promise<Blob> {
+  const channels = Math.min(2, buffer.numberOfChannels);
+  const encoder = new Mp3Encoder(channels, buffer.sampleRate, kbps);
+  const left = buffer.getChannelData(0);
+  const right = channels > 1 ? buffer.getChannelData(1) : left;
+  const blockSize = 1152;
+  const leftPcm = new Int16Array(blockSize);
+  const rightPcm = new Int16Array(blockSize);
+  const chunks: BlobPart[] = [];
+  let blockIndex = 0;
+  for (let offset = 0; offset < buffer.length; offset += blockSize) {
+    const length = Math.min(blockSize, buffer.length - offset);
+    for (let index = 0; index < length; index += 1) {
+      leftPcm[index] = clamp(left[offset + index], -1, 1) * 0x7fff;
+      if (channels > 1) rightPcm[index] = clamp(right[offset + index], -1, 1) * 0x7fff;
+    }
+    const encoded = channels > 1
+      ? encoder.encodeBuffer(leftPcm, rightPcm)
+      : encoder.encodeBuffer(leftPcm);
+    if (encoded.length) chunks.push(new Uint8Array(encoded));
+    blockIndex += 1;
+    if (blockIndex % 120 === 0) {
+      await new Promise((resolve) => window.setTimeout(resolve, 0));
+    }
+  }
+  const tail = encoder.flush();
+  if (tail.length) chunks.push(new Uint8Array(tail));
+  return new Blob(chunks, { type: "audio/mpeg" });
+}
+
 function clipFromGeneration(
   generation: WebMusicGeneration,
   index: number,
@@ -199,6 +230,7 @@ export function StudioEditorView() {
   const [audioError, setAudioError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [exportFormat, setExportFormat] = useState<"wav" | "mp3">("wav");
   const [loop, setLoop] = useState(false);
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(60);
@@ -783,7 +815,11 @@ export function StudioEditorView() {
       }
       const rendered = await offline.startRendering();
       const safeName = (sessionName || "camxora-mix").replace(/[\\/:*?"<>|]+/g, "-");
-      saveBlob(encodeWav(rendered), `${safeName}.wav`);
+      if (exportFormat === "mp3") {
+        saveBlob(await encodeMp3(rendered), `${safeName}.mp3`);
+      } else {
+        saveBlob(encodeWav(rendered), `${safeName}.wav`);
+      }
     } catch (cause) {
       setExportError(cause instanceof Error ? cause.message : "Could not export the mix");
     } finally {
@@ -854,15 +890,28 @@ export function StudioEditorView() {
             New session
           </button>
           <Link className="btn btn-ghost" href="/create">Create a track</Link>
-          <button
-            className="btn btn-primary"
-            type="button"
-            disabled={!lanes.length || exporting}
-            onClick={() => void exportMix()}
-            title="Export a stereo WAV mixdown"
-          >
-            <Icon name={exporting ? "fa-spinner" : "fa-download"} /> {exporting ? "Rendering?" : "Export WAV"}
-          </button>
+          <div className="studio-export-group">
+            <select
+              className="studio-export-format"
+              value={exportFormat}
+              onChange={(event) => setExportFormat(event.target.value as "wav" | "mp3")}
+              aria-label="Export format"
+              disabled={exporting}
+            >
+              <option value="wav">WAV</option>
+              <option value="mp3">MP3 192k</option>
+            </select>
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={!lanes.length || exporting}
+              onClick={() => void exportMix()}
+              title={`Export a stereo ${exportFormat.toUpperCase()} mixdown`}
+            >
+              <Icon name={exporting ? "fa-spinner" : "fa-download"} />{" "}
+              {exporting ? "Rendering?" : `Export ${exportFormat.toUpperCase()}`}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1119,7 +1168,7 @@ export function StudioEditorView() {
                 <Icon name="fa-trash" /> Remove from session
               </button>
               <div className="studio-inspector-note">
-                <Icon name="fa-circle-info" /> Preview mix. Export creates a stereo WAV of this arrangement.
+                <Icon name="fa-circle-info" /> Preview mix. Export creates a stereo WAV or MP3 mixdown.
               </div>
             </>
           )}
@@ -1158,7 +1207,7 @@ export function StudioEditorView() {
       {audioError ? <p className="studio-audio-error" role="alert">{audioError}</p> : null}
       {exportError ? <p className="studio-audio-error" role="alert">{exportError}</p> : null}
       {audioLoading ? <p className="studio-audio-status" role="status">Loading studio audio?</p> : null}
-      {exporting ? <p className="studio-audio-status" role="status">Rendering WAV mixdown?</p> : null}
+      {exporting ? <p className="studio-audio-status" role="status">Rendering mixdown?</p> : null}
     </div>
   );
 }
