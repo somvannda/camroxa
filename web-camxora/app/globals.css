@@ -1527,6 +1527,43 @@
   .redeem-code-cell{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.08em;color:#e9d5ff!important}
   @media(max-width:900px){.redeem-grid{grid-template-columns:1fr}}
   @media(max-width:560px){.redeem-row{flex-direction:column}.redeem-row .btn{width:100%}}
+
+  /* ---------------- studio ---------------- */
+  .studio-mock{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#0b0f1e;margin-bottom:24px;box-shadow:0 30px 70px rgba(0,0,0,.35)}
+  .mock-bar{height:38px;display:flex;align-items:center;gap:7px;padding:0 14px;border-bottom:1px solid var(--line);background:#0d1224}
+  .mock-bar i{width:8px;height:8px;border-radius:50%;background:#a855f7;opacity:.65}
+  .mock-bar span{margin-left:8px;font-size:10px;color:var(--muted2);font-family:ui-monospace,monospace}
+  .mock-body{display:grid;grid-template-columns:190px 1fr;min-height:380px}
+  .mock-side{border-right:1px solid var(--line);padding:14px;font-size:10px;color:var(--muted2)}
+  .mock-side .side-label{padding:0;margin-bottom:9px}
+  .mock-channel{display:flex;align-items:center;gap:8px;padding:8px;border-radius:7px;background:rgba(255,255,255,.035);margin-bottom:6px;font-size:10.5px;color:var(--muted)}
+  .mock-channel.on{background:var(--glass-soft);color:#fff;border:1px solid rgba(255,255,255,.12)}
+  .mock-channel b{margin-left:auto;font-size:9px;color:#d8b4fe}
+  .mock-main{padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+  .mock-preview{position:relative;flex:1;min-height:230px;border-radius:10px;overflow:hidden;background:#070a13}
+  .mock-preview img{width:100%;height:100%;object-fit:cover;object-position:50% 20%;opacity:.78}
+  .mock-preview .badge{position:absolute;top:10px;left:10px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;background:rgba(7,10,19,.7);border:1px solid var(--line);padding:5px 8px;border-radius:6px;color:#e9d5ff}
+  .mock-timeline{height:54px;display:flex;align-items:flex-end;gap:3px;padding:8px;background:rgba(7,10,19,.6);border:1px solid var(--line);border-radius:8px}
+  .mock-timeline i{flex:1;background:linear-gradient(180deg,#d8b4fe,#7c3aed);border-radius:2px;height:30%}
+  .mock-timeline i:nth-child(2n){height:62%}.mock-timeline i:nth-child(3n){height:44%}
+  .mock-timeline i:nth-child(4n){height:82%}.mock-timeline i:nth-child(5n){height:24%}
+  .mock-timeline i:nth-child(7n){height:94%}.mock-timeline i:nth-child(8n){height:54%}
+  .mock-footer{display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:10px;color:var(--muted2);flex-wrap:wrap}
+  .mock-footer .btn{height:34px;font-size:11px;padding:0 14px}
+  .feature-4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
+  .feature{padding:18px;border:1px solid var(--line);border-radius:12px;background:linear-gradient(180deg,var(--panel2),var(--panel))}
+  .feature-ico{width:38px;height:38px;border-radius:9px;background:var(--glass-purple);border:1px solid var(--glass-line);display:grid;place-items:center;box-shadow:var(--glass-shadow)}
+  .feature-ico .icon,.feature-ico .fa-replaced{width:16px!important;height:16px!important;color:#e9d5ff}
+  .feature h3{font-size:13.5px;margin:11px 0 5px}
+  .feature p{font-size:11px;line-height:1.7;color:var(--muted)}
+  .download-panel{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:24px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(120deg,rgba(124,58,237,.22),var(--panel));flex-wrap:wrap}
+  .download-panel h2{font-size:22px;letter-spacing:-.03em}
+  .download-panel p{font-size:11.5px;color:var(--muted);margin-top:5px;max-width:52ch}
+  .req{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:18px}
+  .req div{font-size:11px;color:var(--muted2);line-height:1.6}
+  .req b{display:block;color:var(--text);font-size:11.5px;margin-bottom:3px}
+  @media(max-width:1000px){.feature-4{grid-template-columns:1fr 1fr}.mock-body{grid-template-columns:150px 1fr}}
+  @media(max-width:680px){.mock-body{grid-template-columns:1fr}.mock-side{display:none}.feature-4{grid-template-columns:1fr}.req{grid-template-columns:1fr}}
   .pricing-note .icon,.pricing-note .fa-replaced{width:11px!important;height:11px!important;flex:none}
   @media(max-width:1200px){.pricing-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:760px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
