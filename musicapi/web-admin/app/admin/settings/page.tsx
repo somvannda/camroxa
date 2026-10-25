@@ -20,6 +20,7 @@ interface BrandSettings {
 interface AlertSettings {
   enabled: boolean;
   low_credits_threshold: number;
+  renewal_warning_days: number;
   captcha_balance_threshold: number;
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
@@ -42,6 +43,8 @@ interface AlertReport {
   alerts: AlertItem[];
   summary: {
     low_credits: number;
+    renewals_soon: number;
+    past_due: number;
     captcha_required: number;
     captcha_balance: number | null;
     failure_rate: number | null;
@@ -396,6 +399,22 @@ export default function SettingsPage() {
               />
             </Field>
             <Field
+              label="Renewal warning (days)"
+              htmlFor="alert-renewal"
+              hint="Alert this many days before a paid Suno subscription renews. 0 disables. Past-due or lapsed subscriptions are always flagged."
+            >
+              <Input
+                id="alert-renewal"
+                type="number"
+                min={0}
+                max={365}
+                value={alerts.renewal_warning_days}
+                onChange={(e) =>
+                  setAlerts({ ...alerts, renewal_warning_days: Number(e.target.value) })
+                }
+              />
+            </Field>
+            <Field
               label="2Captcha balance threshold ($)"
               htmlFor="alert-captcha"
               hint="Alert when the 2Captcha balance falls to this. 0 disables. Captcha accounts with no key are always flagged."
@@ -591,8 +610,10 @@ export default function SettingsPage() {
 
           {report?.enabled && (
             <>
-              <div className="grid grid-cols-2 gap-4 md:grid-cols-6">
+              <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
                 <StatCard label="Low-credit accounts" value={String(s?.low_credits ?? 0)} />
+                <StatCard label="Renewing soon" value={String(s?.renewals_soon ?? 0)} />
+                <StatCard label="Past due" value={String(s?.past_due ?? 0)} />
                 <StatCard label="Captcha accounts" value={String(s?.captcha_required ?? 0)} />
                 <StatCard
                   label="2Captcha balance"

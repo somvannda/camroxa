@@ -7,7 +7,8 @@ process.env.JWT_SECRET ??= "unit-test-jwt-secret-0123456789abcdef0123456789";
 process.env.COOKIE_ENCRYPTION_KEY ??=
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-const { orderByLoad, orderForDispatch, belowCreditFloor } = await import("../src/pool.js");
+const { orderByLoad, orderForDispatch, belowCreditFloor, parseRenewsOn, daysUntilRenewal } =
+  await import("../src/pool.js");
 
 type Client = { account: { id: string; type?: string } };
 
@@ -49,6 +50,50 @@ test("belowCreditFloor never treats an empty account as usable", () => {
   // A floor of 0 (legacy setting) must still exclude exactly-empty accounts.
   assert.equal(belowCreditFloor(0, 0), true);
   assert.equal(belowCreditFloor(1, 0), false);
+});
+
+test("parseRenewsOn prefers renews_on and normalises it to ISO", () => {
+  assert.equal(
+    parseRenewsOn({ renews_on: "2026-11-07T14:43:06Z", period_end: "2026-12-07T14:43:06Z" }),
+    "2026-11-07T14:43:06.000Z",
+  );
+  // Offsets are normalised, so the admin table never renders two zones.
+  assert.equal(
+    parseRenewsOn({ renews_on: "2026-11-07T21:43:06+07:00" }),
+    "2026-11-07T14:43:06.000Z",
+  );
+});
+
+test("parseRenewsOn falls back to period_end when renews_on is missing", () => {
+  assert.equal(
+    parseRenewsOn({ period_end: "2026-11-07T14:43:06Z" }),
+    "2026-11-07T14:43:06.000Z",
+  );
+});
+
+test("parseRenewsOn returns null for free plans and unusable values", () => {
+  // Free accounts carry neither field.
+  assert.equal(parseRenewsOn({}), null);
+  assert.equal(parseRenewsOn({ renews_on: null, period_end: null }), null);
+  assert.equal(parseRenewsOn({ renews_on: "not-a-date", period_end: "   " }), null);
+  // A bad renews_on must not shadow a usable period_end.
+  assert.equal(
+    parseRenewsOn({ renews_on: "garbage", period_end: "2026-11-07T14:43:06Z" }),
+    "2026-11-07T14:43:06.000Z",
+  );
+});
+
+test("daysUntilRenewal rounds up and goes negative once passed", () => {
+  const now = Date.parse("2026-11-01T00:00:00Z");
+  const day = 86_400_000;
+  // Renews in 6 hours -> "1 day" so the warning window is not under-counted.
+  assert.equal(daysUntilRenewal("2026-11-01T06:00:00Z", now), 1);
+  // Exactly 7 days away is inside a 7-day warning window.
+  assert.equal(daysUntilRenewal(new Date(now + 7 * day).toISOString(), now), 7);
+  // Already billed -> negative, which the alert treats as lapsed.
+  assert.equal(daysUntilRenewal(new Date(now - day).toISOString(), now), -1);
+  assert.equal(daysUntilRenewal(null, now), null);
+  assert.equal(daysUntilRenewal("garbage", now), null);
 });
 
 const ids = (ordered: Client[]): string[] => ordered.map((c) => c.account.id);
