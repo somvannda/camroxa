@@ -4,6 +4,7 @@ import {
   createContext,
   useContext,
   useEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -14,6 +15,7 @@ export type Track = {
   cover: string;
   duration: number;
   elapsed?: number;
+  audioUrl?: string;
 };
 
 const defaultTracks: Track[] = [
@@ -69,13 +71,64 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
   const [liked, setLiked] = useState(false);
   const [muted, setMuted] = useState(false);
   const [queueOpen, setQueueOpen] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const currentIndex = tracks.findIndex(
     (track) => track.title === current.title && track.artist === current.artist
   );
 
   useEffect(() => {
-    if (!playing) return;
+    const audio = new Audio();
+    audio.preload = "metadata";
+    audioRef.current = audio;
+    const onTime = () => setElapsed(audio.currentTime);
+    const onEnded = () => setPlaying(false);
+    const onError = () => setPlaying(false);
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("error", onError);
+    return () => {
+      audio.pause();
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("error", onError);
+      audioRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.pause();
+    if (current.audioUrl) {
+      audio.src = current.audioUrl;
+      audio.currentTime = Math.max(0, current.elapsed ?? 0);
+      audio.load();
+      if (playing) {
+        void audio.play().catch(() => setPlaying(false));
+      }
+    } else {
+      audio.removeAttribute("src");
+      audio.load();
+    }
+  }, [current.audioUrl, current.title, current.artist]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !current.audioUrl) return;
+    if (playing) {
+      void audio.play().catch(() => setPlaying(false));
+    } else {
+      audio.pause();
+    }
+  }, [playing, current.audioUrl]);
+
+  useEffect(() => {
+    if (audioRef.current) audioRef.current.muted = muted;
+  }, [muted]);
+
+  useEffect(() => {
+    if (!playing || current.audioUrl) return;
     const timer = window.setInterval(() => {
       setElapsed((value) => {
         if (value + 1 >= current.duration) {
@@ -86,7 +139,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
       });
     }, 1000);
     return () => window.clearInterval(timer);
-  }, [playing, current.duration]);
+  }, [playing, current.audioUrl, current.duration]);
 
   const playTrack = (track: Track) => {
     setTracks((items) =>
@@ -123,6 +176,27 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     loadIndex((base - 1 + tracks.length) % tracks.length);
   };
 
+  const togglePlay = () => {
+    const audio = audioRef.current;
+    if (current.audioUrl && audio) {
+      if (playing) {
+        audio.pause();
+      } else {
+        audio.currentTime = elapsed;
+        void audio.play().catch(() => setPlaying(false));
+      }
+    }
+    setPlaying((value) => !value);
+  };
+
+  const seek = (seconds: number) => {
+    const next = Math.max(0, Math.min(current.duration, seconds));
+    setElapsed(next);
+    if (current.audioUrl && audioRef.current) {
+      audioRef.current.currentTime = next;
+    }
+  };
+
   const value: PlayerContextValue = {
     tracks,
     current,
@@ -134,9 +208,8 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     currentIndex,
     playTrack,
     loadIndex,
-    togglePlay: () => setPlaying((value) => !value),
-    seek: (seconds) =>
-      setElapsed(Math.max(0, Math.min(current.duration, seconds))),
+    togglePlay,
+    seek,
     next,
     previous,
     toggleLike: () => setLiked((value) => !value),

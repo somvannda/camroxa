@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
+import { usePlayer } from "@/components/PlayerProvider";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import {
   fetchGeneration,
@@ -26,6 +27,7 @@ function statusLabel(status: string): string {
 
 export function CreateStudio() {
   const { user, credits, loading, refresh } = useAuth();
+  const { playTrack } = usePlayer();
   const [mode, setMode] = useState<Mode>("simple");
   const [prompt, setPrompt] = useState("");
   const [title, setTitle] = useState("");
@@ -125,6 +127,19 @@ export function CreateStudio() {
         window.setTimeout(() => void pollGeneration(id, attempts + 1), 3000);
       }
     }
+  }
+
+  function playSong(song: WebMusicGeneration) {
+    const clip = song.clips?.find((item) => item.ready && item.audio_url) ??
+      song.clips?.find((item) => item.audio_url);
+    if (!clip?.audio_url) return;
+    playTrack({
+      title: song.title || "Untitled",
+      artist: "You",
+      cover: clip.image_url || "/hero.png",
+      duration: Math.max(1, Math.round(clip.duration_seconds || 180)),
+      audioUrl: clip.audio_url,
+    });
   }
 
   async function onSubmit() {
@@ -384,18 +399,32 @@ export function CreateStudio() {
             </div>
           ) : (
             <div className="create-song-list">
-              {songs.map((song) => (
-                <div className="create-song" key={song.id}>
-                  <span className="create-song-art"><Icon name="fa-music" /></span>
-                  <div>
-                    <b>{song.title || "Untitled"}</b>
-                    <span>{song.style || song.model || "Camxora"}</span>
+              {songs.map((song) => {
+                const clip = song.clips?.find((item) => item.ready && item.audio_url) ??
+                  song.clips?.find((item) => item.audio_url);
+                const ready = Boolean(clip);
+                return (
+                  <div className="create-song" key={song.id}>
+                    <span className="create-song-art"><Icon name="fa-music" /></span>
+                    <div>
+                      <b>{song.title || "Untitled"}</b>
+                      <span>{song.style || song.model || "Camxora"}</span>
+                    </div>
+                    <button
+                      className="create-song-play"
+                      type="button"
+                      aria-label={ready ? `Play ${song.title || "track"}` : "Song not ready"}
+                      onClick={() => playSong(song)}
+                      disabled={!ready}
+                    >
+                      <Icon name="fa-play" />
+                    </button>
+                    <em className={ready ? "ready" : ""}>
+                      {ready ? "Ready" : statusLabel(song.status)}
+                    </em>
                   </div>
-                  <em className={song.clips?.some((clip) => clip.ready) ? "ready" : ""}>
-                    {song.clips?.some((clip) => clip.ready) ? "Ready" : statusLabel(song.status)}
-                  </em>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </aside>

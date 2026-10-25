@@ -4,6 +4,8 @@ export type WebMusicClip = {
   variant: string;
   label?: string;
   image_url?: string | null;
+  audio_url?: string | null;
+  download_url?: string | null;
   duration_seconds?: number | null;
   ready?: boolean;
 };
