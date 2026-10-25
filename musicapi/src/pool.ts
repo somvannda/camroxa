@@ -15,6 +15,10 @@ export interface AccountHealth {
   renewsOn: string | null;
   /** Suno reports the paid subscription's payment as past due. */
   pastDue: boolean;
+  /** The paid subscription is paused, so it will not renew or refresh credits. */
+  paused: boolean;
+  /** The subscription is scheduled to pause at the end of the current period. */
+  pauseScheduled: boolean;
   /** `billing/info.accessible_features` names (e.g. "studio", "persona"). */
   features: string[];
   /**
@@ -83,6 +87,10 @@ export interface AccountStatus {
   renewsOn: string | null;
   /** Suno reports the paid subscription's payment as past due. */
   pastDue: boolean;
+  /** The paid subscription is paused (no renewal, no monthly refresh). */
+  paused: boolean;
+  /** The subscription is scheduled to pause at the end of the period. */
+  pauseScheduled: boolean;
 }
 
 /**
@@ -218,6 +226,8 @@ export class AccountPool {
             captchaRequired,
             renewsOn: h.renewsOn,
             pastDue: h.pastDue,
+            paused: h.paused,
+            pauseScheduled: h.pauseScheduled,
           };
         } catch {
           return {
@@ -228,6 +238,8 @@ export class AccountPool {
             captchaRequired: false,
             renewsOn: null,
             pastDue: false,
+            paused: false,
+            pauseScheduled: false,
           };
         }
       }),
@@ -343,6 +355,8 @@ export class AccountPool {
       plan: typeof subType === "string" ? subType : subType ? "paid" : "free",
       renewsOn: parseRenewsOn(info),
       pastDue: info.is_past_due === true,
+      paused: info.is_paused === true,
+      pauseScheduled: info.is_pause_scheduled === true,
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
@@ -371,6 +385,8 @@ export class AccountPool {
           plan: "unknown",
           renewsOn: null,
           pastDue: false,
+          paused: false,
+          pauseScheduled: false,
           features: [],
           catalog: [],
         };

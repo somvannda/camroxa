@@ -13,6 +13,10 @@ interface AccountHealth {
   healthy: number;
   disabled: number;
   low_credits: number;
+  /** Paid plans with a failed payment. */
+  past_due: number;
+  /** Paid plans paused, or scheduled to pause at the end of the period. */
+  paused: number;
   captcha_required: number;
   /** A 2Captcha key is configured, so captcha requirements are solved automatically. */
   captcha_solver: boolean;
@@ -70,6 +74,8 @@ export default function AdminDashboard() {
   const healthChips: Array<{ label: string; value: number; tone: BadgeTone }> = [
     { label: "Healthy", value: h.healthy, tone: "success" },
     { label: "Low credits", value: h.low_credits, tone: "warning" },
+    { label: "Past due", value: h.past_due, tone: "danger" },
+    { label: "Paused / won't renew", value: h.paused, tone: "warning" },
     h.captcha_solver
       ? { label: "Captcha (auto-solve)", value: h.captcha_required, tone: "info" }
       : { label: "Captcha required", value: h.captcha_required, tone: "warning" },
