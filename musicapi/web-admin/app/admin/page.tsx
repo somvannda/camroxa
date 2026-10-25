@@ -32,6 +32,8 @@ interface Stats {
   credits_per_usd: number;
   accounts: number;
   account_health: AccountHealth;
+  /** Upcoming subscription spend across the pool (next 30 days). */
+  renewal_forecast: { count: number; monthly_usd: number; unpriced: number };
   suno_credits: { total: number; active: number };
   series: { day: string; count: number }[];
 }
@@ -68,6 +70,10 @@ export default function AdminDashboard() {
     { label: "Credits Held", value: num(stats.credits) },
     { label: "Credits Spent", value: num(stats.spent) },
     { label: "Revenue", value: usd(stats.revenue) },
+    {
+      label: `Renewals 30d (${stats.renewal_forecast.count})`,
+      value: usd(stats.renewal_forecast.monthly_usd),
+    },
   ];
 
   const h = stats.account_health;

@@ -7,7 +7,7 @@ process.env.JWT_SECRET ??= "unit-test-jwt-secret-0123456789abcdef0123456789";
 process.env.COOKIE_ENCRYPTION_KEY ??=
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-const { orderByLoad, orderForDispatch, belowCreditFloor, parseRenewsOn, daysUntilRenewal } =
+const { orderByLoad, orderForDispatch, belowCreditFloor, parseRenewsOn, daysUntilRenewal, forecastRenewals } =
   await import("../src/pool.js");
 
 type Client = { account: { id: string; type?: string } };
@@ -94,6 +94,39 @@ test("daysUntilRenewal rounds up and goes negative once passed", () => {
   assert.equal(daysUntilRenewal(new Date(now - day).toISOString(), now), -1);
   assert.equal(daysUntilRenewal(null, now), null);
   assert.equal(daysUntilRenewal("garbage", now), null);
+});
+
+test("forecastRenewals totals only live subscriptions inside the window", () => {
+  const now = Date.parse("2026-10-25T00:00:00Z");
+  const at = (days: number): string => new Date(now + days * 86_400_000).toISOString();
+  const base = { pastDue: false, paused: false, pauseScheduled: false };
+  const forecast = forecastRenewals(
+    [
+      { ...base, renewsOn: at(3), monthlyPriceUsd: 30 },
+      // The window boundary is inclusive.
+      { ...base, renewsOn: at(30), monthlyPriceUsd: 10 },
+      { ...base, renewsOn: at(31), monthlyPriceUsd: 30 },
+      // Already billed.
+      { ...base, renewsOn: at(-1), monthlyPriceUsd: 30 },
+      { ...base, renewsOn: at(5), monthlyPriceUsd: 30, paused: true },
+      { ...base, renewsOn: at(5), monthlyPriceUsd: 30, pauseScheduled: true },
+      { ...base, renewsOn: at(5), monthlyPriceUsd: 30, pastDue: true },
+      // Counted, but flagged so the total is known to be partial.
+      { ...base, renewsOn: at(5), monthlyPriceUsd: null },
+      // Free account: no renewal at all.
+      { ...base, renewsOn: null, monthlyPriceUsd: 30 },
+    ],
+    { withinDays: 30, now },
+  );
+  assert.deepEqual(forecast, { count: 3, monthlyUsd: 40, unpriced: 1 });
+});
+
+test("forecastRenewals is empty when the window is disabled", () => {
+  assert.deepEqual(forecastRenewals([], { withinDays: 0 }), {
+    count: 0,
+    monthlyUsd: 0,
+    unpriced: 0,
+  });
 });
 
 const ids = (ordered: Client[]): string[] => ordered.map((c) => c.account.id);

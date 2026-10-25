@@ -19,6 +19,10 @@ export interface AccountHealth {
   paused: boolean;
   /** The subscription is scheduled to pause at the end of the current period. */
   pauseScheduled: boolean;
+  /** Display name of the paid plan, e.g. "Premier Plan"; null for free plans. */
+  planName: string | null;
+  /** Monthly list price of the plan in USD; null for free/unknown plans. */
+  monthlyPriceUsd: number | null;
   /** `billing/info.accessible_features` names (e.g. "studio", "persona"). */
   features: string[];
   /**
@@ -68,6 +72,47 @@ export function daysUntilRenewal(
   return Number.isFinite(ms) ? Math.ceil((ms - now) / 86_400_000) : null;
 }
 
+/** Upcoming-subscription spend across the pool, for the admin dashboard. */
+export interface RenewalForecast {
+  /** Accounts charging inside the window. */
+  count: number;
+  /** Their combined monthly list price, in USD. */
+  monthlyUsd: number;
+  /** Accounts charging inside the window whose plan price Suno did not report. */
+  unpriced: number;
+}
+
+/**
+ * Total upcoming renewal spend for accounts charging within `withinDays`.
+ *
+ * Only live, active subscriptions count: a paused, pause-scheduled, or past-due
+ * plan will not charge, and a date in the past has already billed. Accounts
+ * with no price are still counted so the operator sees that the total is partial
+ * (`unpriced`). Pure and exported so the forecast can be unit-tested.
+ */
+export function forecastRenewals(
+  statuses: Array<
+    Pick<
+      AccountStatus,
+      "renewsOn" | "pastDue" | "paused" | "pauseScheduled" | "monthlyPriceUsd"
+    >
+  >,
+  opts: { withinDays: number; now?: number },
+): RenewalForecast {
+  const forecast: RenewalForecast = { count: 0, monthlyUsd: 0, unpriced: 0 };
+  if (!(opts.withinDays > 0)) return forecast;
+  const now = opts.now ?? Date.now();
+  for (const status of statuses) {
+    if (!status.renewsOn || status.pastDue || status.paused || status.pauseScheduled) continue;
+    const days = daysUntilRenewal(status.renewsOn, now);
+    if (days === null || days < 0 || days > opts.withinDays) continue;
+    forecast.count += 1;
+    if (status.monthlyPriceUsd === null) forecast.unpriced += 1;
+    else forecast.monthlyUsd += status.monthlyPriceUsd;
+  }
+  return forecast;
+}
+
 /** One selectable model version, aggregated across healthy accounts. */
 export interface ModelInfo {
   key: string;
@@ -91,6 +136,10 @@ export interface AccountStatus {
   paused: boolean;
   /** The subscription is scheduled to pause at the end of the period. */
   pauseScheduled: boolean;
+  /** Display name of the paid plan, e.g. "Premier Plan"; null for free plans. */
+  planName: string | null;
+  /** Monthly list price of the plan in USD; null for free/unknown plans. */
+  monthlyPriceUsd: number | null;
 }
 
 /**
@@ -234,6 +283,8 @@ export class AccountPool {
             pastDue: h.pastDue,
             paused: h.paused,
             pauseScheduled: h.pauseScheduled,
+            planName: h.planName,
+            monthlyPriceUsd: h.monthlyPriceUsd,
           };
         } catch {
           return {
@@ -246,6 +297,8 @@ export class AccountPool {
             pastDue: false,
             paused: false,
             pauseScheduled: false,
+            planName: null,
+            monthlyPriceUsd: null,
           };
         }
       }),
@@ -356,6 +409,17 @@ export class AccountPool {
     const info = await client.billingInfo();
     const subType = info.subscription_type;
     const usable = (info.models ?? []).filter((m) => m.can_use);
+    // Plan catalog entry, used to label the plan and to total upcoming renewal
+    // spend. A price of 0 means a free plan, so treat it as "no paid plan".
+    const plan = info.plan ?? null;
+    const monthlyPriceUsd =
+      typeof plan?.monthly_price_usd === "number" && plan.monthly_price_usd > 0
+        ? plan.monthly_price_usd
+        : null;
+    const planName =
+      monthlyPriceUsd !== null && typeof plan?.name === "string" && plan.name.trim()
+        ? plan.name.trim()
+        : null;
     const health: AccountHealth = {
       credits: info.total_credits_left ?? 0,
       models: usable.map((m) => m.external_key ?? "").filter(Boolean),
@@ -364,6 +428,8 @@ export class AccountPool {
       pastDue: info.is_past_due === true,
       paused: info.is_paused === true,
       pauseScheduled: info.is_pause_scheduled === true,
+      planName,
+      monthlyPriceUsd,
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
@@ -416,6 +482,8 @@ export class AccountPool {
           pastDue: false,
           paused: false,
           pauseScheduled: false,
+          planName: null,
+          monthlyPriceUsd: null,
           features: [],
           catalog: [],
         };
