@@ -1674,6 +1674,18 @@
   .notification-time{font-size:9.5px;color:var(--muted2);white-space:nowrap}
   .notification-copy h3{font-size:13px;line-height:1.35}
   .notification-copy p{font-size:11.5px;line-height:1.65;color:var(--muted);margin-top:4px}
+
+  /* ---------------- playlist detail ---------------- */
+  .playlist-hero{position:relative;border:1px solid var(--line);border-radius:16px;overflow:hidden;min-height:300px;display:flex;align-items:flex-end;padding:28px;background:var(--panel)}
+  .playlist-hero>img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:.55}
+  .playlist-hero::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,rgba(7,10,19,.95),rgba(7,10,19,.55) 55%,rgba(7,10,19,.2))}
+  .playlist-hero-copy{position:relative;z-index:2;max-width:640px}
+  .playlist-hero-copy h1{font-size:clamp(32px,4vw,52px);letter-spacing:-.055em;line-height:1;margin:8px 0 10px}
+  .playlist-hero-copy p{font-size:13px;line-height:1.7;color:var(--muted);max-width:56ch}
+  .playlist-meta{display:flex;gap:16px;flex-wrap:wrap;margin:14px 0 18px;font-size:10.5px;color:var(--muted2)}
+  .playlist-meta span{display:inline-flex;align-items:center;gap:5px}
+  .playlist-meta span+span::before{content:"·";margin-right:10px;color:var(--muted2)}
+  @media(max-width:680px){.playlist-hero{min-height:340px;padding:22px}.playlist-hero::after{background:linear-gradient(180deg,rgba(7,10,19,.35),rgba(7,10,19,.94))}}
   .pricing-note .icon,.pricing-note .fa-replaced{width:11px!important;height:11px!important;flex:none}
   @media(max-width:1200px){.pricing-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
   @media(max-width:760px){.pricing-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
