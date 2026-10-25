@@ -1249,12 +1249,15 @@ class WebMusicService:
                 await release_reservation()
                 raise
 
+        if not instrumental and safe_lyrics.strip().lower() == "[instrumental]":
+            instrumental = True
+
         stored_style_weight = _normalize_slider(style_weight)
         stored_weirdness = _normalize_slider(weirdness_constraint)
         stored_audio_weight = _normalize_slider(audio_weight)
         stored_vocal_gender = (
             vocal_gender.lower()
-            if vocal_gender and vocal_gender.lower() in ("m", "f", "both")
+            if not instrumental and vocal_gender and vocal_gender.lower() in ("m", "f", "both")
             else None
         )
         task_id: UUID | None = None
