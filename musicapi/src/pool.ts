@@ -23,6 +23,10 @@ export interface AccountHealth {
   planName: string | null;
   /** Monthly list price of the plan in USD; null for free/unknown plans. */
   monthlyPriceUsd: number | null;
+  /** Credits included in one billing period, null on free plans. */
+  monthlyLimit: number | null;
+  /** Credits consumed in the current billing period, null when unknown. */
+  monthlyUsage: number | null;
   /** `billing/info.accessible_features` names (e.g. "studio", "persona"). */
   features: string[];
   /**
@@ -161,6 +165,10 @@ export interface AccountStatus {
   planName: string | null;
   /** Monthly list price of the plan in USD; null for free/unknown plans. */
   monthlyPriceUsd: number | null;
+  /** Credits included in one billing period, null on free plans. */
+  monthlyLimit: number | null;
+  /** Credits consumed in the current billing period, null when unknown. */
+  monthlyUsage: number | null;
 }
 
 /**
@@ -306,6 +314,8 @@ export class AccountPool {
             pauseScheduled: h.pauseScheduled,
             planName: h.planName,
             monthlyPriceUsd: h.monthlyPriceUsd,
+            monthlyLimit: h.monthlyLimit,
+            monthlyUsage: h.monthlyUsage,
           };
         } catch {
           return {
@@ -320,6 +330,8 @@ export class AccountPool {
             pauseScheduled: false,
             planName: null,
             monthlyPriceUsd: null,
+            monthlyLimit: null,
+            monthlyUsage: null,
           };
         }
       }),
@@ -438,6 +450,16 @@ export class AccountPool {
       monthlyPriceUsd !== null && typeof plan?.name === "string" && plan.name.trim()
         ? plan.name.trim()
         : null;
+    // Allowance for the current period, so the console can show "6,580 / 10,000
+    // used" next to the remaining balance. Free plans report 0.
+    const monthlyLimit =
+      typeof info.monthly_limit === "number" && info.monthly_limit > 0
+        ? info.monthly_limit
+        : null;
+    const monthlyUsage =
+      monthlyLimit !== null && typeof info.monthly_usage === "number" && info.monthly_usage >= 0
+        ? info.monthly_usage
+        : null;
     const health: AccountHealth = {
       credits: info.total_credits_left ?? 0,
       models: usable.map((m) => m.external_key ?? "").filter(Boolean),
@@ -448,6 +470,8 @@ export class AccountPool {
       pauseScheduled: info.is_pause_scheduled === true,
       planName,
       monthlyPriceUsd,
+      monthlyLimit,
+      monthlyUsage,
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
@@ -502,6 +526,8 @@ export class AccountPool {
           pauseScheduled: false,
           planName: null,
           monthlyPriceUsd: null,
+          monthlyLimit: null,
+          monthlyUsage: null,
           features: [],
           catalog: [],
         };
