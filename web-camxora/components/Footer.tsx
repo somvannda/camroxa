@@ -37,10 +37,10 @@ export function Footer() {
             <div>
               <h4>Product</h4>
               <Link href="/#why-switch">Why Camxora</Link>
-              <Link href="/studio">Features</Link>
-              <Link href="/about">Who it&apos;s for</Link>
+              <Link href="/features">Features</Link>
+              <Link href="/services">Who it&apos;s for</Link>
               <Link href="/pricing">Pricing</Link>
-              <Link href="/studio">Download</Link>
+              <Link href="/download">Download</Link>
             </div>
             <div>
               <h4>Company</h4>
@@ -53,16 +53,16 @@ export function Footer() {
               <h4>Support</h4>
               <Link href="/support">Help Center</Link>
               <Link href="/contact">Contact</Link>
-              <Link href="/legal#deletion">Data deletion</Link>
+              <Link href="/data-deletion">Data deletion</Link>
             </div>
             <div>
               <h4>Legal</h4>
-              <Link href="/legal#terms">Terms</Link>
-              <Link href="/legal#privacy">Privacy</Link>
-              <Link href="/legal#google-api">Google API policy</Link>
-              <Link href="/legal#cookies">Cookies</Link>
-              <Link href="/legal#copyright">Copyright</Link>
-              <Link href="/legal#acceptable">Acceptable use</Link>
+              <Link href="/terms">Terms</Link>
+              <Link href="/privacy">Privacy</Link>
+              <Link href="/google-api">Google API policy</Link>
+              <Link href="/cookies">Cookies</Link>
+              <Link href="/copyright">Copyright</Link>
+              <Link href="/acceptable-use">Acceptable use</Link>
             </div>
           </div>
         </div>

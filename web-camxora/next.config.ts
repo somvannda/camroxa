@@ -16,6 +16,20 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      { source: "/features", destination: "/studio", permanent: false },
+      { source: "/services", destination: "/about", permanent: false },
+      { source: "/download", destination: "/studio", permanent: false },
+      { source: "/terms", destination: "/legal#terms", permanent: false },
+      { source: "/privacy", destination: "/legal#privacy", permanent: false },
+      { source: "/google-api", destination: "/legal#google-api", permanent: false },
+      { source: "/cookies", destination: "/legal#cookies", permanent: false },
+      { source: "/copyright", destination: "/legal#copyright", permanent: false },
+      { source: "/acceptable-use", destination: "/legal#acceptable", permanent: false },
+      { source: "/data-deletion", destination: "/legal#deletion", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;
