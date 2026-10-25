@@ -337,6 +337,10 @@ async def active_suno_key_values(pool: Any, provider: str | None = None) -> list
         return []
     master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()
     if not master_key:
+        from platform_api.config import get_settings
+
+        master_key = (get_settings().encryption_master_key or "").strip()
+    if not master_key:
         return []
     encryption = KeyEncryption(master_key=master_key)
     keys: list[str] = []
