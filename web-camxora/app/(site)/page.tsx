@@ -6,7 +6,7 @@ import { ContinueCard } from "@/components/ContinueCard";
 export default function HomePage() {
   return (
     <>
-      <section className="hero" id="why-switch">
+      <section className="hero">
         <img className="hero-img" src="/hero.png" alt="Singer with headphones in neon light" />
         <div className="hero-copy">
           <div className="eyebrow">AI Music Platform</div>
@@ -198,6 +198,30 @@ export default function HomePage() {
             plays="6.4K"
             time="4:11"
           />
+        </div>
+      </section>
+
+      <section className="why-band" id="why-switch">
+        <div className="why-band-copy">
+          <div className="eyebrow">Why Camxora</div>
+          <h2>No camera. No face. Your music, finished.</h2>
+          <p>
+            One account, one credit balance, and one workflow for lyrics, music,
+            artwork, and video. Camxora keeps the tools out of your way so you can
+            release more.
+          </p>
+          <div className="why-band-points">
+            <span><Icon name="fa-check" /> Dual-channel ready</span>
+            <span><Icon name="fa-check" /> Credits only — no subscription</span>
+            <span><Icon name="fa-check" /> Export YouTube-ready MP4s</span>
+          </div>
+          <div className="page-actions" style={{ marginTop: 18 }}>
+            <Link className="btn btn-primary" href="/features">See features</Link>
+            <Link className="btn btn-ghost" href="/download">Download the app</Link>
+          </div>
+        </div>
+        <div className="why-band-art">
+          <img src="/hero.png" alt="Camxora creator" />
         </div>
       </section>
 
