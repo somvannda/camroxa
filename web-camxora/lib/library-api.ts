@@ -23,6 +23,11 @@ export type WebMusicGeneration = {
   error_message?: string | null;
   negative_tags?: string | null;
   vocal_gender?: string | null;
+  style_weight?: number | null;
+  weirdness_constraint?: number | null;
+  audio_weight?: number | null;
+  is_preview?: boolean;
+  preview_seconds?: number | null;
   clips: WebMusicClip[];
 };
 

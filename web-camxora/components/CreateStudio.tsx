@@ -17,12 +17,68 @@ type Mode = "simple" | "custom";
 type LyricsMode = "write" | "prompt";
 
 const models = [
-  { value: "V6", label: "V6 · best quality" },
-  { value: "V6_MINI", label: "V6 Mini · lower cost" },
+  { value: "V6", label: "V6 Pro" },
+  { value: "V6_MINI", label: "V6 Mini" },
 ];
+
+const styleChips = [
+  "pop",
+  "rock",
+  "hip hop",
+  "electronic",
+  "khmer",
+  "acoustic",
+  "synthwave",
+  "rnb",
+  "jazz",
+  "ambient",
+  "dance",
+  "cinematic",
+];
+
+type FeatureTab = "audio" | "voice" | "inspo" | null;
+type DownloadKind = "lrc" | "srt" | "mp3" | "wav";
 
 function statusLabel(status: string): string {
   return status.replace(/_/g, " ");
+}
+
+function clipVersionLabel(variant?: string | null): string {
+  return variant === "alt" ? "Version 2" : "Version 1";
+}
+
+function clipDownloadUrl(
+  songId: string,
+  variant: string,
+  kind: DownloadKind
+): string {
+  const base = `/api/v3/web-music/generations/${encodeURIComponent(songId)}`;
+  if (kind === "mp3") return `${base}/download?variant=${encodeURIComponent(variant)}`;
+  if (kind === "wav") return `${base}/download-wav?variant=${encodeURIComponent(variant)}`;
+  return `${base}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${kind}`;
+}
+
+function formatDate(value?: string | null): string {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  return new Intl.DateTimeFormat("en", {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(date);
+}
+
+function percent(value?: number | null): string {
+  return `${Math.round((value ?? 0.5) * 100)}%`;
+}
+
+function vocalLabel(value?: string | null): string {
+  if (value === "f") return "Female";
+  if (value === "m") return "Male";
+  if (value === "both") return "Both";
+  return "Not set";
 }
 
 export function CreateStudio() {
@@ -42,6 +98,8 @@ export function CreateStudio() {
   const [weirdness, setWeirdness] = useState(0.5);
   const [audioWeight, setAudioWeight] = useState(0.5);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [featureTab, setFeatureTab] = useState<FeatureTab>(null);
+  const [copied, setCopied] = useState<"style" | "lyrics" | null>(null);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -104,6 +162,32 @@ export function CreateStudio() {
     }
   }
 
+  async function refreshSongs() {
+    try {
+      const items = await fetchGenerations(20);
+      if (!mounted.current) return;
+      setSongs(items);
+      if (selectedId) {
+        const detail = await fetchGeneration(selectedId).catch(() => null);
+        if (detail && mounted.current) setSelectedDetail(detail);
+      }
+    } catch (cause) {
+      if (mounted.current) setError(cause instanceof Error ? cause.message : "Could not refresh songs");
+    }
+  }
+
+  const hasPending = songs.some((song) =>
+    ["pending", "queued", "running"].includes(String(song.status).toLowerCase())
+  );
+
+  useEffect(() => {
+    if (!hasPending) return;
+    const timer = window.setInterval(() => {
+      void refreshSongs();
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [hasPending, selectedId]);
+
   const formReady =
     mode === "simple"
       ? prompt.trim().length > 0
@@ -131,6 +215,29 @@ export function CreateStudio() {
       setError(cause instanceof Error ? cause.message : "Could not write lyrics");
     } finally {
       setWritingLyrics(false);
+    }
+  }
+
+  function appendStyle(chip: string) {
+    setStyle((current) =>
+      current.toLowerCase().includes(chip)
+        ? current
+        : [current.trim(), chip].filter(Boolean).join(", ").slice(0, 1000)
+    );
+  }
+
+  function shuffleStyle() {
+    const picks = [...styleChips].sort(() => Math.random() - 0.5).slice(0, 3);
+    setStyle(picks.join(", "));
+  }
+
+  async function copyText(text: string, kind: "style" | "lyrics") {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(kind);
+      window.setTimeout(() => setCopied(null), 1600);
+    } catch {
+      setError("Copy failed. Select the text and copy it manually.");
     }
   }
 
@@ -269,62 +376,108 @@ export function CreateStudio() {
 
   return (
     <div className="page create-page">
-      <div className="page-head">
-        <div>
-          <div className="eyebrow">Studio</div>
-          <h1>Create.</h1>
-          <p>Describe a song or write the details yourself. Camxora handles the rest.</p>
-        </div>
-        <span className="credit-chip">
-          <Icon name="fa-coins" /> {(credits ?? user.credit_balance ?? 0).toLocaleString()} credits
-        </span>
-      </div>
-
       <div className="create-layout">
         <section className="panel create-card">
-          <div className="create-tabs" role="tablist" aria-label="Creation mode">
-            <button
-              className={mode === "simple" ? "on" : ""}
-              type="button"
-              role="tab"
-              aria-selected={mode === "simple"}
-              onClick={() => setMode("simple")}
-            >
-              Simple
-            </button>
-            <button
-              className={mode === "custom" ? "on" : ""}
-              type="button"
-              role="tab"
-              aria-selected={mode === "custom"}
-              onClick={() => setMode("custom")}
-            >
-              Custom
-            </button>
+          <div className="create-card-top">
+            <div className="create-tabs" role="tablist" aria-label="Creation mode">
+              <button
+                className={mode === "simple" ? "on" : ""}
+                type="button"
+                role="tab"
+                aria-selected={mode === "simple"}
+                onClick={() => setMode("simple")}
+              >
+                Simple
+              </button>
+              <button
+                className={mode === "custom" ? "on" : ""}
+                type="button"
+                role="tab"
+                aria-selected={mode === "custom"}
+                onClick={() => setMode("custom")}
+              >
+                Advanced
+              </button>
+            </div>
+            <label className="create-model-pill">
+              <Icon name="fa-bolt" />
+              <select
+                id="create-model"
+                value={model}
+                onChange={(event) => setModel(event.target.value)}
+                aria-label="Model"
+              >
+                {models.map((item) => (
+                  <option key={item.value} value={item.value}>{item.label}</option>
+                ))}
+              </select>
+              <Icon name="fa-chevron-down" />
+            </label>
           </div>
 
-          {mode === "simple" ? (
-            <div className="field">
-              <label htmlFor="create-prompt">Describe your song</label>
-              <textarea
-                id="create-prompt"
-                className="textarea create-prompt"
-                placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPM?"
-                value={prompt}
-                onChange={(event) => setPrompt(event.target.value)}
-                maxLength={5000}
-              />
-            </div>
+          <div className="create-feature-tabs">
+            {(["audio", "voice", "inspo"] as const).map((tab) => (
+              <button
+                key={tab}
+                type="button"
+                className={featureTab === tab ? "on" : ""}
+                onClick={() => setFeatureTab((current) => (current === tab ? null : tab))}
+              >
+                + {tab}
+              </button>
+            ))}
+          </div>
+          {featureTab ? (
+            <p className="create-feature-note">
+              {featureTab === "audio"
+                ? "Reference audio uploads are coming soon."
+                : featureTab === "voice"
+                  ? "Voice reference uploads are coming soon."
+                  : "Inspiration references are coming soon."}
+            </p>
           ) : null}
 
-          {mode === "custom" ? (
-            <>
-              <div className="create-lyrics-head">
-                <label>Lyrics</label>
-                <div className="create-inline-tabs">
+          <div className="create-card-body">
+            {mode === "simple" ? (
+              <div className="create-field">
+                <div className="create-field-head">
+                  <label htmlFor="create-prompt">Song description</label>
+                  <span>{prompt.length}/5000</span>
+                </div>
+                <textarea
+                  id="create-prompt"
+                  className="textarea create-prompt"
+                  placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPM…"
+                  value={prompt}
+                  onChange={(event) => setPrompt(event.target.value)}
+                  maxLength={5000}
+                  rows={8}
+                />
+              </div>
+            ) : (
+              <>
+                <div className="create-section-head">
+                  <h3>Lyrics</h3>
+                  {lyricsMode === "write" ? (
+                    <button
+                      className="create-auto"
+                      type="button"
+                      onClick={writeLyrics}
+                      disabled={writingLyrics || instrumental}
+                    >
+                      <Icon name="fa-wand-magic-sparkles" />
+                      {writingLyrics ? "Generating…" : "Auto-generate"}
+                    </button>
+                  ) : (
+                    <span className="create-auto-note">Generated on Create</span>
+                  )}
+                </div>
+                <div className="create-lyrics-tabs" role="tablist" aria-label="Lyrics mode">
                   <button
                     className={lyricsMode === "write" ? "on" : ""}
                     type="button"
+                    role="tab"
+                    aria-selected={lyricsMode === "write"}
                     onClick={() => setLyricsMode("write")}
                   >
                     Write
@@ -332,121 +485,140 @@ export function CreateStudio() {
                   <button
                     className={lyricsMode === "prompt" ? "on" : ""}
                     type="button"
+                    role="tab"
+                    aria-selected={lyricsMode === "prompt"}
                     onClick={() => setLyricsMode("prompt")}
                   >
                     Prompt
                   </button>
                 </div>
+                <textarea
+                  className="textarea create-lyrics"
+                  value={lyrics}
+                  onChange={(event) => setLyrics(event.target.value)}
+                  placeholder={
+                    lyricsMode === "write"
+                      ? "Write lyrics, or paste a verse…"
+                      : "Describe the story or feeling you want the lyrics to capture…"
+                  }
+                  disabled={instrumental}
+                  maxLength={5000}
+                  rows={7}
+                />
+                <div className="create-char-row">
+                  <span>{lyrics.length}/5000</span>
+                  {lyricsMode === "write" ? (
+                    <button
+                      className="create-write-link"
+                      type="button"
+                      onClick={writeLyrics}
+                      disabled={writingLyrics || instrumental}
+                    >
+                      {writingLyrics ? "Writing…" : "Write lyrics for me"}
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="create-section-head">
+                  <h3>Styles</h3>
+                  <button className="create-shuffle" type="button" onClick={shuffleStyle}>
+                    <Icon name="fa-shuffle" /> Shuffle
+                  </button>
+                </div>
+                <textarea
+                  id="create-style"
+                  className="textarea create-style"
+                  value={style}
+                  onChange={(event) => setStyle(event.target.value)}
+                  placeholder="urbano, electric guitar, upbeat rock, 128 BPM, eurodance"
+                  maxLength={1000}
+                  rows={4}
+                />
+                <div className="create-chips">
+                  {styleChips.map((chip) => (
+                    <button key={chip} type="button" onClick={() => appendStyle(chip)}>
+                      {chip}
+                    </button>
+                  ))}
+                </div>
+                <div className="create-field create-negative">
+                  <label htmlFor="create-negative">Negative tags (optional)</label>
+                  <input
+                    id="create-negative"
+                    className="input"
+                    value={negativeTags}
+                    onChange={(event) => setNegativeTags(event.target.value)}
+                    placeholder="choir, backing vocals, falsetto"
+                  />
+                </div>
+              </>
+            )}
+
+            <div className="create-option-card">
+              <div>
+                <b>Instrumental</b>
+                <span>No vocals — music only.</span>
               </div>
-              <textarea
-                className="textarea create-lyrics"
-                value={lyrics}
-                onChange={(event) => setLyrics(event.target.value)}
-                placeholder={
-                  lyricsMode === "write"
-                    ? "[Verse]\nWrite your lyrics here?"
-                    : "Describe the story or feeling you want the lyrics to capture?"
-                }
-                disabled={instrumental}
-                maxLength={5000}
-              />
               <button
-                className="create-text-btn"
+                className={`toggle${instrumental ? " on" : ""}`}
                 type="button"
-                onClick={writeLyrics}
-                disabled={writingLyrics || instrumental}
+                role="switch"
+                aria-label="Instrumental"
+                aria-checked={instrumental}
+                onClick={() => setInstrumental((value) => !value)}
               >
-                <Icon name="fa-wand-magic-sparkles" /> {writingLyrics ? "Writing lyrics?" : "Write lyrics for me"}
+                <i />
               </button>
-
-              <div className="create-row">
-                <div className="field">
-                  <label htmlFor="create-style">Style of music</label>
-                  <input
-                    id="create-style"
-                    className="input"
-                    value={style}
-                    onChange={(event) => setStyle(event.target.value)}
-                    placeholder="Khmer pop, acoustic, 72 BPM"
-                    maxLength={1000}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="create-title">Song title</label>
-                  <input
-                    id="create-title"
-                    className="input"
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="Optional"
-                    maxLength={200}
-                  />
-                </div>
-              </div>
-
-            </>
-          ) : null}
-
-          <div className="create-toggle-row">
-            <div>
-              <b>Instrumental</b>
-              <span>No vocals — music only.</span>
             </div>
+
             <button
-              className={`toggle${instrumental ? " on" : ""}`}
+              className="create-advanced-toggle"
               type="button"
-              role="switch"
-              aria-label="Instrumental"
-              aria-checked={instrumental}
-              onClick={() => setInstrumental((value) => !value)}
+              aria-expanded={advancedOpen}
+              onClick={() => setAdvancedOpen((value) => !value)}
             >
-              <i />
+              <Icon name="fa-sliders" />
+              More Options
+              <Icon name={advancedOpen ? "fa-chevron-up" : "fa-chevron-down"} />
             </button>
-          </div>
 
-          <button
-            className="create-advanced-toggle"
-            type="button"
-            aria-expanded={advancedOpen}
-            onClick={() => setAdvancedOpen((value) => !value)}
-          >
-<Icon name="fa-sliders" />
-            Advanced options
-            <Icon name={advancedOpen ? "fa-chevron-up" : "fa-chevron-down"} />
-          </button>
-
-          {advancedOpen ? (
-            <div className="create-advanced">
-              <div className="create-row">
-                <div className="field">
-                  <label htmlFor="create-model">Model</label>
-                  <select id="create-model" className="select" value={model} onChange={(event) => setModel(event.target.value)}>
-                    {models.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="create-vocal">Vocal</label>
-                  <select id="create-vocal" className="select" value={vocalGender} onChange={(event) => setVocalGender(event.target.value as "f" | "m" | "both")}>
+            {advancedOpen ? (
+              <div className="create-advanced">
+                <div className="create-field">
+                  <label htmlFor="create-vocal">Vocal gender</label>
+                  <select
+                    id="create-vocal"
+                    className="select"
+                    value={vocalGender}
+                    onChange={(event) => setVocalGender(event.target.value as "f" | "m" | "both")}
+                  >
                     <option value="f">Female</option>
                     <option value="m">Male</option>
                     <option value="both">Both</option>
                   </select>
                 </div>
+                <div className="create-sliders">
+                  <label>Style influence <b>{Math.round(styleWeight * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={styleWeight} onChange={(event) => setStyleWeight(Number(event.target.value))} /></label>
+                  <label>Weirdness <b>{Math.round(weirdness * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={weirdness} onChange={(event) => setWeirdness(Number(event.target.value))} /></label>
+                  <label>Audio influence <b>{Math.round(audioWeight * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={audioWeight} onChange={(event) => setAudioWeight(Number(event.target.value))} /></label>
+                </div>
               </div>
-              <div className="create-sliders">
-                <label>Style influence <b>{Math.round(styleWeight * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={styleWeight} onChange={(event) => setStyleWeight(Number(event.target.value))} /></label>
-                <label>Weirdness <b>{Math.round(weirdness * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={weirdness} onChange={(event) => setWeirdness(Number(event.target.value))} /></label>
-                <label>Audio influence <b>{Math.round(audioWeight * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={audioWeight} onChange={(event) => setAudioWeight(Number(event.target.value))} /></label>
-              </div>
-              <div className="field">
-                <label htmlFor="create-negative">Exclude styles</label>
-                <input id="create-negative" className="input" value={negativeTags} onChange={(event) => setNegativeTags(event.target.value)} placeholder="e.g. heavy distortion, screaming" />
-              </div>
-            </div>
-          ) : null}
+            ) : null}
 
-          {error ? <p className="fine create-error" role="alert">{error}</p> : null}
-          {notice ? <p className="fine create-notice" role="status">{notice}</p> : null}
+            <label className="create-title-row" htmlFor="create-title">
+              <Icon name="fa-music" />
+              <input
+                id="create-title"
+                value={title}
+                onChange={(event) => setTitle(event.target.value)}
+                placeholder="Song title (optional)"
+                maxLength={200}
+              />
+            </label>
+
+            {error ? <p className="fine create-error" role="alert">{error}</p> : null}
+            {notice ? <p className="fine create-notice" role="status">{notice}</p> : null}
+          </div>
 
           <div className="create-submit">
             <span className="create-cost"><Icon name="fa-coins" /> Uses your credit balance</span>
@@ -456,18 +628,31 @@ export function CreateStudio() {
           </div>
         </section>
 
-        <aside className="panel create-workspace">
-          <div className="sec-head">
-            <h2>Your songs</h2>
-            <Link href="/library">Open library</Link>
+        <section className="panel create-workspace">
+          <div className="create-workspace-head">
+            <div>
+              <p className="create-eyebrow">Workspaces</p>
+              <h2>My Workspace</h2>
+            </div>
+            <div className="create-workspace-actions">
+              <span className="create-song-count">{songs.length} songs</span>
+              <button type="button" onClick={() => void refreshSongs()} aria-label="Refresh songs">
+                <Icon name="fa-rotate" />
+              </button>
+              <Link href="/library">Library</Link>
+            </div>
+          </div>
+          <div className="create-workspace-toolbar">
+            <span><Icon name="fa-layer-group" /> All generations</span>
+            <span>{loadingSongs ? "Loading…" : "Newest first"}</span>
           </div>
           {loadingSongs ? (
             <p className="fine" style={{ textAlign: "left" }}>Loading your songs…</p>
           ) : !songs.length ? (
             <div className="create-empty">
               <span><Icon name="fa-music" /></span>
-              <h3>No songs yet</h3>
-              <p>Your generations will appear here as soon as they start.</p>
+              <h3>Your songs will land here</h3>
+              <p>Write a description or lyrics, then hit Create.</p>
             </div>
           ) : (
             <div className="create-song-list">
@@ -478,6 +663,7 @@ export function CreateStudio() {
                 const ready =
                   Boolean(clip?.audio_url) ||
                   String(song.status).toLowerCase() === "success";
+                const variant = clip?.variant || "ok";
                 return (
                   <div
                     className={`create-song${selectedId === song.id ? " selected" : ""}`}
@@ -492,71 +678,152 @@ export function CreateStudio() {
                       }
                     }}
                   >
-                    <img className="create-song-art" src={clip?.image_url || "/hero.png"} alt="" />
-                    <div>
-                      <b>{song.title || "Untitled"}</b>
-                      <span>{song.style || song.model || "Camxora"}</span>
-                    </div>
                     <button
-                      className="create-song-play"
+                      className={`create-song-cover${ready ? "" : " pending"}`}
                       type="button"
                       aria-label={ready ? `Play ${song.title || "track"}` : "Song not ready"}
                       onClick={(event) => {
                         event.stopPropagation();
-                        playSong(song);
+                        if (ready) playSong(song);
                       }}
                       disabled={!ready}
                     >
-                      <Icon name="fa-play" />
+                      <img src={clip?.image_url || "/hero.png"} alt="" />
+                      <span><Icon name={ready ? "fa-play" : "fa-clock"} /></span>
                     </button>
-                    <em className={ready ? "ready" : ""}>
-                      {ready ? "Ready" : statusLabel(song.status)}
-                    </em>
+                    <div className="create-song-info">
+                      <div className="create-song-title">
+                        <b>{song.title || "Untitled"}</b>
+                        <em>{clipVersionLabel(variant)}</em>
+                      </div>
+                      <span className="create-song-meta">
+                        <i className={ready ? "ready" : ""}>{ready ? "Ready" : statusLabel(song.status)}</i>
+                        {" · "}
+                        {song.model_label || song.model || "V6"}
+                        {" · "}
+                        {formatDate(song.created_at)}
+                      </span>
+                    </div>
+                    <div className="create-song-actions" onClick={(event) => event.stopPropagation()}>
+                      {ready && clip ? (
+                        <>
+                          {!song.instrumental ? (
+                            <>
+                              <a href={clipDownloadUrl(song.id, variant, "lrc")} title="Download LRC">LRC</a>
+                              <a href={clipDownloadUrl(song.id, variant, "srt")} title="Download SRT">SRT</a>
+                            </>
+                          ) : null}
+                          <a href={clip.download_url || clipDownloadUrl(song.id, variant, "mp3")} title="Download MP3">MP3</a>
+                          <a href={clipDownloadUrl(song.id, variant, "wav")} title="Download WAV">WAV</a>
+                        </>
+                      ) : (
+                        <span className="create-song-waiting">Waiting</span>
+                      )}
+                    </div>
                   </div>
                 );
               })}
             </div>
           )}
-        </aside>
+          {songs.length ? (
+            <p className="create-list-foot">Showing all {songs.length} songs</p>
+          ) : null}
+        </section>
 
         <aside className="panel create-inspector">
-          <div className="sec-head">
-            <h2>Details</h2>
-            {selected ? <span className="create-detail-status">{statusLabel(selected.status)}</span> : null}
-          </div>
           {!selected ? (
             <div className="create-inspector-empty">
               <Icon name="fa-circle-info" />
-              <p>Select a song to see its prompt, lyrics, and settings.</p>
+              <p>Select a track to see its settings, style, and lyrics.</p>
             </div>
           ) : detailLoading ? (
             <p className="fine" style={{ textAlign: "left" }}>Loading details…</p>
           ) : (
             <>
-              <img className="create-detail-cover" src={selectedCover} alt="" />
-              <h3>{selected.title || "Untitled"}</h3>
-              <span className="create-detail-sub">{selected.style || selected.model || "Camxora"}</span>
-              <div className="create-detail-block">
-                <label>Prompt / style</label>
-                <p>{selected.style || "—"}</p>
+              <div className="create-detail-head">
+                <img src={selectedCover} alt="" />
+                <div>
+                  <div className="create-detail-title">
+                    <h3>{selected.title || "Untitled"}</h3>
+                    <em>{clipVersionLabel(selectedClip?.variant)}</em>
+                  </div>
+                  <span className="create-detail-sub">
+                    <i className={selectedReady ? "ready" : ""}>{selectedReady ? "Ready" : statusLabel(selected.status)}</i>
+                    {" · "}
+                    {selected.model_label || selected.model || "V6"}
+                    {" · "}
+                    {formatDate(selected.created_at)}
+                  </span>
+                </div>
               </div>
-              <div className="create-detail-block">
-                <label>Lyrics</label>
-                <pre>{selected.instrumental ? "Instrumental" : selected.lyrics || "No lyrics saved."}</pre>
+
+              <div className="create-detail-actions">
+                <button
+                  className="create-action create-action-play"
+                  type="button"
+                  onClick={() => playSong(selected)}
+                  disabled={!selectedReady}
+                  aria-label="Play track"
+                >
+                  <Icon name="fa-play" /> Play
+                </button>
+                {selectedReady && selectedClip ? (
+                  <>
+                    {!selected.instrumental ? (
+                      <>
+                        <a href={clipDownloadUrl(selected.id, selectedClip.variant || "ok", "lrc")} title="Download LRC">LRC</a>
+                        <a href={clipDownloadUrl(selected.id, selectedClip.variant || "ok", "srt")} title="Download SRT">SRT</a>
+                      </>
+                    ) : null}
+                    <a href={selectedClip.download_url || clipDownloadUrl(selected.id, selectedClip.variant || "ok", "mp3")} title="Download MP3">MP3</a>
+                    <a href={clipDownloadUrl(selected.id, selectedClip.variant || "ok", "wav")} title="Download WAV">WAV</a>
+                  </>
+                ) : null}
               </div>
-              <div className="create-detail-meta">
-                <div><span>Model</span><b>{selected.model_label || selected.model || "V6"}</b></div>
-                <div><span>Created</span><b>{selected.created_at ? new Date(selected.created_at).toLocaleDateString() : "—"}</b></div>
-                <div><span>Type</span><b>{selected.instrumental ? "Instrumental" : "Vocal"}</b></div>
+
+              <div className="create-detail-section">
+                <div className="create-detail-label">Settings</div>
+                <div className="create-settings">
+                  <div><span>Model</span><b>{selected.model_label || selected.model || "V6"}</b></div>
+                  <div><span>Type</span><b>{selected.instrumental ? "Instrumental" : "With Vocals"}</b></div>
+                  <div><span>Vocal Gender</span><b>{vocalLabel(selected.vocal_gender)}</b></div>
+                  <div><span>Style Influence</span><b>{percent(selected.style_weight)}</b></div>
+                  <div><span>Weirdness</span><b>{percent(selected.weirdness_constraint)}</b></div>
+                  <div><span>Audio Weight</span><b>{percent(selected.audio_weight)}</b></div>
+                  <div><span>Status</span><b>{selectedReady ? "Ready" : statusLabel(selected.status)}</b></div>
+                </div>
               </div>
-              <button
-                className="btn btn-primary create-detail-play"
-                type="button"
-                onClick={() => playSong(selected)}
-                disabled={!selectedReady}
-              >
-                <Icon name="fa-play" /> {selectedReady ? "Play track" : "Not ready"}
-              </button>
+
+              {selected.negative_tags ? (
+                <div className="create-detail-section">
+                  <div className="create-detail-label">Negative Tags</div>
+                  <div className="create-detail-box">{selected.negative_tags}</div>
+                </div>
+              ) : null}
+
+              <div className="create-detail-section">
+                <div className="create-detail-label-row">
+                  <span className="create-detail-label">Style</span>
+                  <button type="button" className="create-copy" onClick={() => void copyText(selected.style || "", "style")} aria-label="Copy style">
+                    <Icon name={copied === "style" ? "fa-check" : "fa-copy"} />
+                  </button>
+                </div>
+                <div className="create-detail-box">{selected.style || "—"}</div>
+              </div>
+
+              <div className="create-detail-section">
+                <div className="create-detail-label-row">
+                  <span className="create-detail-label">Lyrics</span>
+                  <button type="button" className="create-copy" onClick={() => void copyText(selected.lyrics || "", "lyrics")} aria-label="Copy lyrics">
+                    <Icon name={copied === "lyrics" ? "fa-check" : "fa-copy"} />
+                  </button>
+                </div>
+                <pre className="create-detail-lyrics">{selected.instrumental ? "Instrumental" : selected.lyrics || "No lyrics saved."}</pre>
+              </div>
+
+              <Link className="create-open-studio" href="/studio/editor">
+                <Icon name="fa-table-columns" /> Open in Studio
+              </Link>
             </>
           )}
         </aside>
