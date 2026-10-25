@@ -11,6 +11,8 @@ export interface AccountHealth {
   credits: number;
   models: string[];
   plan: string;
+  /** ISO timestamp of the next subscription charge, or null for free plans. */
+  renewsOn: string | null;
   /** `billing/info.accessible_features` names (e.g. "studio", "persona"). */
   features: string[];
   /**
@@ -38,6 +40,8 @@ export interface AccountStatus {
   credits: number;
   models: string[];
   captchaRequired: boolean;
+  /** Next subscription charge from `billing/info`, null when free/unknown. */
+  renewsOn: string | null;
 }
 
 /**
@@ -165,9 +169,23 @@ export class AccountPool {
         try {
           const h = await this.healthFor(c);
           const captchaRequired = await this.captchaFor(c);
-          return { id: c.account.id, plan: h.plan, credits: h.credits, models: h.models, captchaRequired };
+          return {
+            id: c.account.id,
+            plan: h.plan,
+            credits: h.credits,
+            models: h.models,
+            captchaRequired,
+            renewsOn: h.renewsOn,
+          };
         } catch {
-          return { id: c.account.id, plan: "unknown", credits: 0, models: [], captchaRequired: false };
+          return {
+            id: c.account.id,
+            plan: "unknown",
+            credits: 0,
+            models: [],
+            captchaRequired: false,
+            renewsOn: null,
+          };
         }
       }),
     );
@@ -276,10 +294,17 @@ export class AccountPool {
     const info = await client.billingInfo();
     const subType = info.subscription_type;
     const usable = (info.models ?? []).filter((m) => m.can_use);
+    // `renews_on` is Suno's own next-charge timestamp; `period_end` is the same
+    // instant on current plans and is kept as a fallback for older responses.
+    const renewsOn =
+      (typeof info.renews_on === "string" && info.renews_on) ||
+      (typeof info.period_end === "string" && info.period_end) ||
+      null;
     const health: AccountHealth = {
       credits: info.total_credits_left ?? 0,
       models: usable.map((m) => m.external_key ?? "").filter(Boolean),
       plan: typeof subType === "string" ? subType : subType ? "paid" : "free",
+      renewsOn,
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
@@ -302,7 +327,7 @@ export class AccountPool {
     const existing = this.health.get(id)?.info;
     const info: AccountHealth = existing
       ? { ...existing, credits: 0 }
-      : { credits: 0, models: [], plan: "unknown", features: [], catalog: [] };
+      : { credits: 0, models: [], plan: "unknown", renewsOn: null, features: [], catalog: [] };
     this.health.set(id, { info, updatedAt: Date.now() });
   }
 

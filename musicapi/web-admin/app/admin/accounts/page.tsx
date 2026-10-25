@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
+import { dateOnly } from "@/lib/format";
 
 interface Account {
   id: string;
@@ -19,6 +20,8 @@ interface Account {
   created_at: string;
   live_plan: string;
   live_credits: number;
+  /** Next Suno charge for a paid plan; null on free plans / failed probe. */
+  live_renews_on: string | null;
   live_models: string[];
   health: {
     disabled: boolean;
@@ -53,6 +56,36 @@ function healthBadges(a: Account): { label: string; tone: BadgeTone }[] {
 }
 
 const EMPTY_FORM = { label: "", type: "free", client_cookie: "", device_id: "" };
+
+/** Whole days from today until `iso`; null when the value isn't a valid date. */
+function daysUntil(iso: string): number | null {
+  const target = new Date(iso);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+}
+
+/** Human hint next to the renewal date, flagged when the charge is imminent. */
+function renewalHint(iso: string): { text: string; soon: boolean } {
+  const days = daysUntil(iso);
+  if (days === null) return { text: "", soon: false };
+  if (days === 0) return { text: "today", soon: true };
+  if (days < 0) return { text: `${Math.abs(days)}d ago`, soon: false };
+  return { text: `in ${days}d`, soon: days <= 7 };
+}
+
+function RenewalCell({ iso }: { iso: string | null }) {
+  if (!iso) return <span className="text-[var(--muted)]">—</span>;
+  const hint = renewalHint(iso);
+  return (
+    <span className={hint.soon ? "text-amber-300" : undefined}>
+      {dateOnly(iso)}
+      <span className="ml-1 text-xs text-[var(--muted)]">({hint.text})</span>
+    </span>
+  );
+}
 
 export default function AccountsPage() {
   const toast = useToast();
@@ -327,6 +360,7 @@ export default function AccountsPage() {
                 <th scope="col" className="px-4 py-3">Label</th>
                 <th scope="col" className="px-4 py-3">Type</th>
                 <th scope="col" className="px-4 py-3">Plan</th>
+                <th scope="col" className="px-4 py-3">Renews</th>
                 <th scope="col" className="px-4 py-3 text-right">Credits</th>
                 <th scope="col" className="px-4 py-3">Models</th>
                 <th scope="col" className="px-4 py-3">Status</th>
@@ -339,6 +373,9 @@ export default function AccountsPage() {
                   <td className="px-4 py-3 font-medium">{a.label}</td>
                   <td className="px-4 py-3 capitalize">{a.type}</td>
                   <td className="px-4 py-3 capitalize">{a.live_plan}</td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <RenewalCell iso={a.live_renews_on} />
+                  </td>
                   <td className="px-4 py-3 text-right tabular-nums">{a.live_credits}</td>
                   <td className="px-4 py-3 text-xs text-[var(--muted)]">
                     {a.live_models.join(", ") || "—"}

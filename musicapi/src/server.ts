@@ -6173,6 +6173,9 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         created_at: row.created_at,
         live_plan: l?.plan ?? row.plan ?? "unknown",
         live_credits: liveCredits,
+        // Next Suno charge for a paid plan (`billing/info.renews_on`), null on
+        // free plans or when the live probe failed.
+        live_renews_on: l?.renewsOn ?? null,
         live_models: l?.models ?? [],
         // Operator-facing health flags (REQUIREMENTS §4.2). `low_credits` uses the
         // same threshold as the §4.10 alert so the badge and the alert never disagree.
