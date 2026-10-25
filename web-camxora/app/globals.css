@@ -1730,6 +1730,17 @@
   .publish-note a:hover{text-decoration:underline}
   @media(max-width:900px){.publish-steps{grid-template-columns:1fr 1fr}}
   @media(max-width:560px){.publish-steps{grid-template-columns:1fr}}
+
+  /* ---------------- creator dashboard ---------------- */
+  .dash-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px}
+  .dash-stat{padding:16px;border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+  .dash-stat b{display:block;font-size:24px;letter-spacing:-.05em;color:#e9d5ff}
+  .dash-stat span{display:block;font-size:10.5px;color:var(--muted2);margin-top:4px}
+  .dash-panel{padding:0;overflow:hidden}
+  .dash-panel .sec-head{padding:16px 20px;margin:0;border-bottom:1px solid var(--line)}
+  .dash-table td:first-child{color:var(--text)}
+  @media(max-width:900px){.dash-stats{grid-template-columns:1fr 1fr}}
+  @media(max-width:560px){.dash-stats{grid-template-columns:1fr}}
   @media(max-width:560px){.artist-steps{grid-template-columns:1fr}}
   .pricing-note .icon,.pricing-note .fa-replaced{width:11px!important;height:11px!important;flex:none}
   @media(max-width:1200px){.pricing-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.pricing-pack-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}

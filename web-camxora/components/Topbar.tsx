@@ -86,6 +86,9 @@ export function Topbar() {
                 <Link href="/account" role="menuitem" onClick={() => setAccountOpen(false)}>
                   <Icon name="fa-user" /> Profile &amp; plan
                 </Link>
+                <Link href="/artist-dashboard" role="menuitem" onClick={() => setAccountOpen(false)}>
+                  <Icon name="fa-chart-line" /> Creator dashboard
+                </Link>
                 <Link href="/create" role="menuitem" onClick={() => setAccountOpen(false)}>
                   <Icon name="fa-plus" /> Create a song
                 </Link>
