@@ -28,6 +28,8 @@ type Clip = {
   start: number;
   duration: number;
   offset: number;
+  fadeIn: number;
+  fadeOut: number;
   volume: number;
   pan: number;
   muted: boolean;
@@ -181,6 +183,30 @@ async function encodeMp3(buffer: AudioBuffer, kbps = 192): Promise<Blob> {
   return new Blob(chunks, { type: "audio/mpeg" });
 }
 
+function scheduleClipGain(
+  gain: GainNode,
+  base: number,
+  lane: Clip,
+  from: number,
+  when: number,
+  length: number
+) {
+  const elapsed = Math.max(0, from - lane.start);
+  const fadeIn = Math.min(lane.fadeIn, length / 2);
+  const fadeOut = Math.min(lane.fadeOut, length / 2);
+  if (fadeIn > 0 && elapsed < fadeIn) {
+    const startLevel = base * (elapsed / fadeIn);
+    gain.gain.setValueAtTime(startLevel, when);
+    gain.gain.linearRampToValueAtTime(base, when + (fadeIn - elapsed));
+  } else {
+    gain.gain.setValueAtTime(base, when);
+  }
+  if (fadeOut > 0) {
+    gain.gain.setValueAtTime(base, when + Math.max(0, length - fadeOut));
+    gain.gain.linearRampToValueAtTime(0, when + length);
+  }
+}
+
 function clipFromGeneration(
   generation: WebMusicGeneration,
   index: number,
@@ -205,6 +231,8 @@ function clipFromGeneration(
     start,
     duration: Math.max(12, Math.round(clip?.duration_seconds || 180)),
     offset: 0,
+    fadeIn: 0,
+    fadeOut: 0,
     volume: 80,
     pan: 0,
     muted: false,
@@ -292,7 +320,13 @@ export function StudioEditorView() {
                     Number.isFinite(lane.duration)
                 )
               : [];
-            setLanes(savedLanes);
+            setLanes(
+              savedLanes.map((lane) => ({
+                ...lane,
+                fadeIn: Number.isFinite(lane.fadeIn) ? Math.max(0, Number(lane.fadeIn)) : 0,
+                fadeOut: Number.isFinite(lane.fadeOut) ? Math.max(0, Number(lane.fadeOut)) : 0,
+              }))
+            );
             setSelected(savedLanes[0]?.id ?? null);
             if (saved.name) setSessionName(saved.name);
             if (Number.isFinite(saved.bpm)) setBpm(clamp(Number(saved.bpm), 40, 220));
@@ -449,7 +483,14 @@ export function StudioEditorView() {
     const context = new AudioContext();
     const gain = context.createGain();
     gain.gain.value = master / 100;
-    gain.connect(context.destination);
+    const limiter = context.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.1;
+    gain.connect(limiter);
+    limiter.connect(context.destination);
     audioCtxRef.current = context;
     masterGainRef.current = gain;
     return context;
@@ -531,12 +572,13 @@ export function StudioEditorView() {
           source.buffer = buffer;
           const gain = context.createGain();
           const panner = context.createStereoPanner();
-          gain.gain.value = lane.volume / 100;
           panner.pan.value = clamp(lane.pan / 50, -1, 1);
           source.connect(gain);
           gain.connect(panner);
           panner.connect(masterGain);
-          source.start(startAt + Math.max(0, lane.start - from), offset, remaining);
+          const startWhen = startAt + Math.max(0, lane.start - from);
+          scheduleClipGain(gain, lane.volume / 100, lane, from, startWhen, remaining);
+          source.start(startWhen, offset, remaining);
           sourcesRef.current.push(source);
           nodesRef.current.set(lane.id, { gain, panner });
         }
@@ -756,13 +798,14 @@ export function StudioEditorView() {
     if (!selectedLane) return;
     const local = playhead - selectedLane.start;
     if (local <= MIN_CLIP || local >= selectedLane.duration - MIN_CLIP) return;
-    const left: Clip = { ...selectedLane, duration: local };
+    const left: Clip = { ...selectedLane, duration: local, fadeOut: 0 };
     const right: Clip = {
       ...selectedLane,
       id: makeId(),
       start: playhead,
       duration: selectedLane.duration - local,
       offset: selectedLane.offset + local,
+      fadeIn: 0,
     };
     commitLanes(lanes.flatMap((lane) => (lane.id === selectedLane.id ? [left, right] : [lane])));
     setSelected(right.id);
@@ -806,11 +849,11 @@ export function StudioEditorView() {
         source.buffer = buffer;
         const gain = offline.createGain();
         const panner = offline.createStereoPanner();
-        gain.gain.value = lane.volume / 100;
         panner.pan.value = clamp(lane.pan / 50, -1, 1);
         source.connect(gain);
         gain.connect(panner);
         panner.connect(masterGain);
+        scheduleClipGain(gain, lane.volume / 100, lane, lane.start, lane.start, length);
         source.start(lane.start, offset, length);
       }
       const rendered = await offline.startRendering();
@@ -943,7 +986,7 @@ export function StudioEditorView() {
             onChange={(event) => setLoopStart(clamp(Number(event.target.value), 0, loopEnd - 5))}
             aria-label="Loop start in seconds"
           />
-          <em>?</em>
+          <em>-</em>
           <input
             type="number"
             min={loopStart + 5}
@@ -1086,6 +1129,12 @@ export function StudioEditorView() {
                       <b>{lane.title}</b>
                       <small>{formatTime(lane.duration)}</small>
                     </span>
+                    {lane.fadeIn > 0 ? (
+                      <span className="studio-clip-fade left" style={{ width: `${Math.min(50, (lane.fadeIn / lane.duration) * 100)}%` }} />
+                    ) : null}
+                    {lane.fadeOut > 0 ? (
+                      <span className="studio-clip-fade right" style={{ width: `${Math.min(50, (lane.fadeOut / lane.duration) * 100)}%` }} />
+                    ) : null}
                     <span className="studio-waveform" aria-hidden="true">
                       {waveformPeaks(
                         lane,
@@ -1148,6 +1197,12 @@ export function StudioEditorView() {
                 </label>
                 <label>Length
                   <input type="number" min={MIN_CLIP} step={0.5} value={Number(selectedLane.duration.toFixed(1))} onChange={(event) => updateLane(selectedLane.id, { duration: clamp(Number(event.target.value), MIN_CLIP, timelineDuration - selectedLane.start) })} />
+                </label>
+                <label>Fade in
+                  <input type="number" min={0} max={10} step={0.1} value={Number(selectedLane.fadeIn.toFixed(1))} onChange={(event) => updateLane(selectedLane.id, { fadeIn: clamp(Number(event.target.value), 0, 10) })} />
+                </label>
+                <label>Fade out
+                  <input type="number" min={0} max={10} step={0.1} value={Number(selectedLane.fadeOut.toFixed(1))} onChange={(event) => updateLane(selectedLane.id, { fadeOut: clamp(Number(event.target.value), 0, 10) })} />
                 </label>
               </div>
               <label className="studio-slider">Volume <b>{selectedLane.volume}%</b>
