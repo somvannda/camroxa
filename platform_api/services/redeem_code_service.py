@@ -416,7 +416,7 @@ async def redeem_credit_code(pool: Any, *, code: str, user_id: UUID) -> dict[str
                 FROM redeem_codes rc
                 LEFT JOIN plans p ON p.id = rc.applicable_plan_id
                 WHERE rc.code = $1
-                FOR UPDATE
+                FOR UPDATE OF rc
                 """,
                 normalized_code,
             )
@@ -529,10 +529,42 @@ async def redeem_credit_code(pool: Any, *, code: str, user_id: UUID) -> dict[str
                 redeem_code_id,
             )
 
-    refreshed = await preview_redeem_code(pool, code=normalized_code, user_id=user_id)
-    refreshed["credit_amount"] = display_amount
-    refreshed["new_balance"] = units_to_credits(new_balance)
-    refreshed["message"] = f"{display_amount} credits have been added to your account."
+    max_redemptions = row["max_redemptions"]
+    current_redemptions = int(row["current_redemptions"] or 0) + 1
+    remaining_redemptions = (
+        None
+        if max_redemptions is None
+        else max(0, int(max_redemptions) - current_redemptions)
+    )
+    refreshed = {
+        "id": str(row["id"]),
+        "code": str(row["code"]),
+        "description": row["description"],
+        "reward_type": str(row["reward_type"]),
+        "discount_amount_cents": row["discount_amount_cents"],
+        "discount_percent": row["discount_percent"],
+        "credit_amount": display_amount,
+        "applicable_plan_id": (
+            str(row["applicable_plan_id"]) if row["applicable_plan_id"] is not None else None
+        ),
+        "applicable_plan_name": row["applicable_plan_name"],
+        "max_redemptions": max_redemptions,
+        "current_redemptions": current_redemptions,
+        "remaining_redemptions": remaining_redemptions,
+        "per_user_limit": per_user_limit,
+        "user_redemptions": user_redemptions + 1,
+        "is_active": bool(row["is_active"])
+        and not (max_redemptions is not None and current_redemptions >= int(max_redemptions)),
+        "starts_at": row["starts_at"],
+        "expires_at": row["expires_at"],
+        "applied_discount": False,
+        "base_amount_cents": None,
+        "best_public_amount_cents": None,
+        "final_amount_cents": None,
+        "savings_cents": None,
+        "message": f"{display_amount} credits have been added to your account.",
+        "new_balance": units_to_credits(new_balance),
+    }
 
     from platform_api.services.credit_audit_service import log_wallet_credit_event
 
