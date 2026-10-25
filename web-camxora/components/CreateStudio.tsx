@@ -82,8 +82,7 @@ export function CreateStudio() {
       ? prompt.trim().length > 0
       : instrumental
         ? style.trim().length > 0
-        : style.trim().length > 0 &&
-          (lyricsMode === "prompt" ? prompt.trim().length > 0 : lyrics.trim().length > 0);
+        : style.trim().length > 0 && lyrics.trim().length > 0;
 
   async function writeLyrics() {
     const seed = prompt.trim() || title.trim() || style.trim();
@@ -135,15 +134,10 @@ export function CreateStudio() {
     setNotice("");
     const payload: GenerateSongInput = {
       mode: mode === "simple" ? "simple" : "advanced",
-      prompt: prompt.trim() || undefined,
+      prompt: mode === "simple" ? prompt.trim() || undefined : undefined,
       title: mode === "custom" ? title.trim() || undefined : undefined,
       style: mode === "custom" ? style.trim() || undefined : undefined,
-      lyrics:
-        mode === "custom" && !instrumental && lyricsMode === "write"
-          ? lyrics.trim() || undefined
-          : mode === "custom" && !instrumental && lyricsMode === "prompt"
-            ? prompt.trim() || undefined
-            : undefined,
+      lyrics: mode === "custom" && !instrumental ? lyrics.trim() || undefined : undefined,
       instrumental,
       model,
       negative_tags: negativeTags.trim() || undefined,
@@ -223,47 +217,22 @@ export function CreateStudio() {
             </button>
           </div>
 
-          <div className="field">
-            <label htmlFor="create-prompt">
-              {mode === "simple" ? "Describe your song" : "Song description"}
-            </label>
-            <textarea
-              id="create-prompt"
-              className="textarea create-prompt"
-              placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPM…"
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              maxLength={5000}
-            />
-          </div>
+          {mode === "simple" ? (
+            <div className="field">
+              <label htmlFor="create-prompt">Describe your song</label>
+              <textarea
+                id="create-prompt"
+                className="textarea create-prompt"
+                placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPM?"
+                value={prompt}
+                onChange={(event) => setPrompt(event.target.value)}
+                maxLength={5000}
+              />
+            </div>
+          ) : null}
 
           {mode === "custom" ? (
             <>
-              <div className="create-row">
-                <div className="field">
-                  <label htmlFor="create-title">Song title</label>
-                  <input
-                    id="create-title"
-                    className="input"
-                    value={title}
-                    onChange={(event) => setTitle(event.target.value)}
-                    placeholder="Optional"
-                    maxLength={200}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="create-style">Style of music</label>
-                  <input
-                    id="create-style"
-                    className="input"
-                    value={style}
-                    onChange={(event) => setStyle(event.target.value)}
-                    placeholder="Khmer pop, acoustic, 72 BPM"
-                    maxLength={1000}
-                  />
-                </div>
-              </div>
-
               <div className="create-lyrics-head">
                 <label>Lyrics</label>
                 <div className="create-inline-tabs">
@@ -289,8 +258,8 @@ export function CreateStudio() {
                 onChange={(event) => setLyrics(event.target.value)}
                 placeholder={
                   lyricsMode === "write"
-                    ? "[Verse]\nWrite your lyrics here…"
-                    : "Describe the story or feeling you want the lyrics to capture…"
+                    ? "[Verse]\nWrite your lyrics here?"
+                    : "Describe the story or feeling you want the lyrics to capture?"
                 }
                 disabled={instrumental}
                 maxLength={5000}
@@ -301,8 +270,34 @@ export function CreateStudio() {
                 onClick={writeLyrics}
                 disabled={writingLyrics || instrumental}
               >
-                <Icon name="fa-wand-magic-sparkles" /> {writingLyrics ? "Writing lyrics…" : "Write lyrics for me"}
+                <Icon name="fa-wand-magic-sparkles" /> {writingLyrics ? "Writing lyrics?" : "Write lyrics for me"}
               </button>
+
+              <div className="create-row">
+                <div className="field">
+                  <label htmlFor="create-style">Style of music</label>
+                  <input
+                    id="create-style"
+                    className="input"
+                    value={style}
+                    onChange={(event) => setStyle(event.target.value)}
+                    placeholder="Khmer pop, acoustic, 72 BPM"
+                    maxLength={1000}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="create-title">Song title</label>
+                  <input
+                    id="create-title"
+                    className="input"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Optional"
+                    maxLength={200}
+                  />
+                </div>
+              </div>
+
             </>
           ) : null}
 
@@ -367,9 +362,9 @@ export function CreateStudio() {
           {notice ? <p className="fine create-notice" role="status">{notice}</p> : null}
 
           <div className="create-submit">
-            <span><Icon name="fa-coins" /> Uses your credit balance</span>
+            <span className="create-cost"><Icon name="fa-coins" /> Uses your credit balance</span>
             <button className="btn btn-primary" type="button" onClick={onSubmit} disabled={busy || !formReady}>
-              <Icon name="fa-music" /> {busy ? "Creating…" : "Create song"}
+              <Icon name="fa-music" /> {busy ? "Creating…" : "Create"}
             </button>
           </div>
         </section>

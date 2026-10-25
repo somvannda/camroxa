@@ -1749,6 +1749,7 @@
   .create-text-btn{display:inline-flex;align-items:center;gap:6px;margin-top:7px;border:0;background:none;color:#d8b4fe;font:inherit;font-size:10.5px;cursor:pointer}
   .create-text-btn:disabled{opacity:.5}
   .create-text-btn .icon,.create-text-btn .fa-replaced{width:10px!important;height:10px!important}
+  .create-text-btn + .create-row{margin-top:14px}
   .create-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:14px;margin-top:18px;padding:12px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
   .create-toggle-row b{display:block;font-size:12px}
   .create-toggle-row span{display:block;font-size:10px;color:var(--muted2);margin-top:3px}
@@ -1766,9 +1767,10 @@
   .create-sliders input[type=range]{grid-column:1/-1;width:100%;accent-color:#a855f7}
   .create-error{text-align:left!important;color:#fca5a5!important;margin-top:10px!important}
   .create-notice{text-align:left!important;color:#86efac!important;margin-top:10px!important}
-  .create-submit{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
-  .create-submit>span{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--muted2)}
-  .create-submit>span .icon,.create-submit>span .fa-replaced{width:10px!important;height:10px!important}
+  .create-submit{display:grid;gap:10px;margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+  .create-cost{display:inline-flex;align-items:center;justify-content:center;gap:5px;font-size:10px;color:var(--muted2);text-align:center}
+  .create-cost .icon,.create-cost .fa-replaced{width:10px!important;height:10px!important}
+  .create-submit .btn{width:100%;height:48px;font-size:13px}
   .create-workspace{padding:0;overflow:hidden}
   .create-workspace .sec-head{padding:16px 18px;margin:0;border-bottom:1px solid var(--line)}
   .create-empty{display:grid;place-items:center;text-align:center;padding:42px 20px;color:var(--muted2)}
