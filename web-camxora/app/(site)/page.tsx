@@ -6,7 +6,7 @@ import { ContinueCard } from "@/components/ContinueCard";
 export default function HomePage() {
   return (
     <>
-      <section className="hero">
+      <section className="hero" id="why-switch">
         <img className="hero-img" src="/hero.png" alt="Singer with headphones in neon light" />
         <div className="hero-copy">
           <div className="eyebrow">AI Music Platform</div>

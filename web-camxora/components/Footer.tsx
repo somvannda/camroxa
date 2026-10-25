@@ -36,32 +36,31 @@ export function Footer() {
           <div className="footer-cols">
             <div>
               <h4>Product</h4>
-              <Link href="/create">Create</Link>
-              <Link href="/discover">Discover</Link>
-              <Link href="/charts">Charts</Link>
-              <Link href="/library">Library</Link>
-              <Link href="/account">Credits</Link>
+              <Link href="/#why-switch">Why Camxora</Link>
+              <Link href="/studio">Features</Link>
+              <Link href="/about">Who it&apos;s for</Link>
               <Link href="/pricing">Pricing</Link>
-              <Link href="/studio">Studio</Link>
-              <Link href="/developers">Developers</Link>
-            </div>
-            <div>
-              <h4>Creators</h4>
-              <Link href="/community">Community</Link>
-              <Link href="/create">Publish</Link>
-              <Link href="/community">Challenges</Link>
-              <Link href="/artist-program">Artist program</Link>
+              <Link href="/studio">Download</Link>
             </div>
             <div>
               <h4>Company</h4>
               <Link href="/about">About</Link>
               <Link href="/blog">Blog</Link>
+              <Link href="/changelog">Changelog</Link>
               <Link href="/contact">Contact</Link>
+            </div>
+            <div>
+              <h4>Support</h4>
+              <Link href="/support">Help Center</Link>
+              <Link href="/contact">Contact</Link>
+              <Link href="/legal#deletion">Data deletion</Link>
             </div>
             <div>
               <h4>Legal</h4>
               <Link href="/legal#terms">Terms</Link>
               <Link href="/legal#privacy">Privacy</Link>
+              <Link href="/legal#privacy">Google API policy</Link>
+              <Link href="/legal#cookies">Cookies</Link>
               <Link href="/legal#copyright">Copyright</Link>
               <Link href="/legal#acceptable">Acceptable use</Link>
             </div>
