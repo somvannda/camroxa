@@ -51,10 +51,10 @@ export function Topbar() {
       <div className="top-actions">
         {user ? (
           <>
-            <button className="icon-btn bell" type="button" aria-label="Notifications">
+            <Link className="icon-btn bell" href="/notifications" aria-label="Notifications">
               <Icon name="fa-bell" />
               <span className="badge-dot" />
-            </button>
+            </Link>
 
             <Link className="btn-create signed-in-only" href="/create">
               <Icon name="fa-plus" />
