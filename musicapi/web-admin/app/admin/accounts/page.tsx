@@ -22,6 +22,8 @@ interface Account {
   live_credits: number;
   /** Next Suno charge for a paid plan; null on free plans / failed probe. */
   live_renews_on: string | null;
+  /** True when the date is the last value Suno reported, not a fresh read. */
+  renews_on_stale: boolean;
   live_models: string[];
   health: {
     disabled: boolean;
@@ -91,8 +93,22 @@ function renewalHint(iso: string): { text: string; soon: boolean } {
   return { text: `in ${days}d`, soon: days <= 7 };
 }
 
-function RenewalCell({ iso }: { iso: string | null }) {
+function RenewalCell({ iso, stale }: { iso: string | null; stale: boolean }) {
   if (!iso) return <span className="text-[var(--muted)]">—</span>;
+  // A stored date means the live probe failed (or the account is disabled and
+  // never probed), so show it muted and without the countdown, which would
+  // imply we know the plan still renews.
+  if (stale) {
+    return (
+      <span
+        className="text-[var(--muted)]"
+        title="Last renewal date Suno reported; the live check failed."
+      >
+        {dateOnly(iso)}
+        <span className="ml-1 text-xs">(last seen)</span>
+      </span>
+    );
+  }
   const hint = renewalHint(iso);
   return (
     <span className={hint.soon ? "text-amber-300" : undefined}>
@@ -389,7 +405,7 @@ export default function AccountsPage() {
                   <td className="px-4 py-3 capitalize">{a.type}</td>
                   <td className="px-4 py-3 capitalize">{a.live_plan}</td>
                   <td className="px-4 py-3 whitespace-nowrap">
-                    <RenewalCell iso={a.live_renews_on} />
+                    <RenewalCell iso={a.live_renews_on} stale={a.renews_on_stale} />
                   </td>
                   <td className="px-4 py-3 text-right tabular-nums">{a.live_credits}</td>
                   <td className="px-4 py-3 text-xs text-[var(--muted)]">

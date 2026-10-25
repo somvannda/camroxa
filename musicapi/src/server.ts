@@ -6230,7 +6230,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       credits_left: number | null;
       is_active: boolean;
       created_at: string;
-    }>("SELECT id, label, type, plan, credits_left, is_active, created_at FROM suno_accounts ORDER BY created_at");
+      renews_on: string | null;
+    }>("SELECT id, label, type, plan, credits_left, is_active, created_at, renews_on FROM suno_accounts ORDER BY created_at");
     const [live, thresholds] = await Promise.all([
       pool.listHealth().catch(() => [] as Awaited<ReturnType<AccountPool["listHealth"]>>),
       loadAlertSettings(),
@@ -6239,6 +6240,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const accounts = dbRows.map((row) => {
       const l = liveById.get(row.label);
       const liveCredits = l?.credits ?? row.credits_left ?? 0;
+      const liveRenewsOn = l?.renewsOn ?? null;
       return {
         id: row.id,
         label: row.label,
@@ -6247,9 +6249,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         created_at: row.created_at,
         live_plan: l?.plan ?? row.plan ?? "unknown",
         live_credits: liveCredits,
-        // Next Suno charge for a paid plan (`billing/info.renews_on`), null on
-        // free plans or when the live probe failed.
-        live_renews_on: l?.renewsOn ?? null,
+        // Next Suno charge for a paid plan (`billing/info.renews_on`). When the
+        // live probe failed — or the account is disabled and therefore never
+        // probed — fall back to the last value Suno reported, flagged as stale
+        // so the console never presents an old date as current.
+        live_renews_on: liveRenewsOn ?? row.renews_on ?? null,
+        renews_on_stale: !liveRenewsOn && Boolean(row.renews_on),
         live_models: l?.models ?? [],
         // Operator-facing health flags (REQUIREMENTS §4.2). `low_credits` uses the
         // same threshold as the §4.10 alert so the badge and the alert never disagree.

@@ -185,6 +185,12 @@ export class AccountPool {
    * fresh `billing/info` arrives, because that value already includes the spend.
    */
   private readonly reservedCredits: Map<string, number> = new Map();
+  /**
+   * Renewal date last written to `suno_accounts.renews_on`, keyed by account
+   * label. The health cache refreshes every 30 s; remembering what we already
+   * stored keeps that from turning into a write per account per tick.
+   */
+  private readonly persistedRenewsOn: Map<string, string> = new Map();
 
   constructor(accounts: AccountCreds[] = []) {
     this.clients = accounts.map((a) => this.makeClient(a));
@@ -326,6 +332,7 @@ export class AccountPool {
     this.captcha.clear();
     this.rateLimitedUntil.clear();
     this.reservedCredits.clear();
+    this.persistedRenewsOn.clear();
   }
 
   /**
@@ -361,10 +368,32 @@ export class AccountPool {
       catalog: usable,
     };
     this.health.set(client.account.id, { info: health, updatedAt: Date.now() });
+    this.persistRenewsOn(client.account.id, health.renewsOn);
     // The fresh balance already reflects every settled spend, so any outstanding
     // reservation for this account is now double-counting.
     this.reservedCredits.delete(client.account.id);
     return health;
+  }
+
+  /**
+   * Store the renewal date Suno just reported, so the admin console can still
+   * show it when the next probe fails (expired cookie) or when the account is
+   * disabled and therefore never probed. Best-effort: a failed write costs
+   * nothing but a missing fallback, and a `null` (free plan / omitted field) is
+   * never written over a known date.
+   */
+  private persistRenewsOn(label: string, renewsOn: string | null): void {
+    if (!renewsOn || this.persistedRenewsOn.get(label) === renewsOn) return;
+    void query(
+      "UPDATE suno_accounts SET renews_on = $1 WHERE label = $2 AND renews_on IS DISTINCT FROM $1",
+      [renewsOn, label],
+    )
+      .then(() => {
+        this.persistedRenewsOn.set(label, renewsOn);
+      })
+      .catch(() => {
+        /* best-effort: the live value still renders from the health cache */
+      });
   }
 
   /**
