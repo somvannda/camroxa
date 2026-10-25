@@ -14,9 +14,15 @@ export type WebMusicGeneration = {
   id: string;
   title: string;
   style: string;
+  lyrics?: string | null;
   model?: string;
+  model_label?: string;
+  instrumental?: boolean;
   status: string;
   created_at?: string | null;
+  error_message?: string | null;
+  negative_tags?: string | null;
+  vocal_gender?: string | null;
   clips: WebMusicClip[];
 };
 

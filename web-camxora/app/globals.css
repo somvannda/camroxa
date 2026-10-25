@@ -1865,7 +1865,7 @@
   @media(max-width:560px){.publish-steps{grid-template-columns:1fr}}
 
   /* ---------------- create studio ---------------- */
-  .create-layout{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(280px,.75fr);gap:16px;align-items:start}
+  .create-layout{display:grid;grid-template-columns:1fr 2fr 1fr;gap:12px;align-items:start}
   .create-card{padding:22px}
   .create-tabs{display:inline-flex;gap:4px;padding:4px;border:1px solid var(--line);border-radius:999px;background:rgba(255,255,255,.03);margin-bottom:18px}
   .create-tabs button{height:32px;padding:0 18px;border:0;border-radius:999px;background:transparent;color:var(--muted);font:inherit;font-size:11px;font-weight:600;cursor:pointer}
@@ -1914,8 +1914,27 @@
   .create-song-list{display:grid}
   .create-song{display:flex;align-items:center;gap:10px;padding:12px 18px;border-bottom:1px solid var(--line)}
   .create-song:last-child{border-bottom:0}
-  .create-song-art{width:34px;height:34px;border-radius:7px;display:grid;place-items:center;flex:none;background:rgba(139,0,255,.14);border:1px solid rgba(168,85,247,.2);color:#d8b4fe}
+  .create-song-art{width:34px;height:34px;border-radius:7px;display:grid;place-items:center;flex:none;background:rgba(139,0,255,.14);border:1px solid rgba(168,85,247,.2);color:#d8b4fe;object-fit:cover}
   .create-song-art .icon,.create-song-art .fa-replaced{width:13px!important;height:13px!important}
+  .create-song.selected{background:rgba(139,0,255,.12);box-shadow:inset 2px 0 0 #a855f7}
+  .create-song[role="button"]{cursor:pointer}
+  .create-inspector{padding:0;overflow:hidden}
+  .create-inspector .sec-head{padding:16px 18px;margin:0;border-bottom:1px solid var(--line)}
+  .create-detail-status{font-size:9px;text-transform:capitalize;color:var(--muted2)}
+  .create-inspector-empty{display:grid;place-items:center;text-align:center;padding:40px 18px;color:var(--muted2)}
+  .create-inspector-empty .icon,.create-inspector-empty .fa-replaced{width:18px!important;height:18px!important;color:#d8b4fe}
+  .create-inspector-empty p{font-size:10.5px;line-height:1.6;margin-top:8px;max-width:22ch}
+  .create-detail-cover{width:100%;aspect-ratio:16/10;object-fit:cover;display:block;background:var(--panel2)}
+  .create-inspector>h3{font-size:14px;line-height:1.3;padding:12px 16px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .create-detail-sub{display:block;font-size:10px;line-height:1.5;color:var(--muted2);padding:3px 16px 10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .create-detail-block{padding:2px 16px 10px}
+  .create-detail-block label{display:block;font-size:9px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted2);margin-bottom:4px}
+  .create-detail-block p,.create-detail-block pre{margin:0;font-family:inherit;font-size:10.5px;line-height:1.6;color:var(--muted);white-space:pre-wrap;word-break:break-word;max-height:108px;overflow:auto}
+  .create-detail-block pre{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:9.5px;background:rgba(255,255,255,.025);border:1px solid var(--line);border-radius:6px;padding:7px}
+  .create-detail-meta{display:grid;gap:5px;margin:2px 16px 12px;padding:8px;border:1px solid var(--line);border-radius:7px}
+  .create-detail-meta div{display:flex;justify-content:space-between;gap:8px;font-size:9.5px;color:var(--muted2)}
+  .create-detail-meta b{color:#e9d5ff;font-weight:600;text-align:right}
+  .create-detail-play{width:calc(100% - 32px);margin:0 16px 16px;height:38px;font-size:11px}
   .create-song>div{min-width:0;flex:1}
   .create-song b{display:block;font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .create-song span{display:block;font-size:9.5px;color:var(--muted2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1925,7 +1944,8 @@
   .create-song-play .icon,.create-song-play .fa-replaced{width:10px!important;height:10px!important;margin-left:1px}
   .create-song em{font-size:9px;font-style:normal;color:var(--muted2);text-transform:capitalize;white-space:nowrap}
   .create-song em.ready{color:#86efac}
-  @media(max-width:1000px){.create-layout{grid-template-columns:1fr}.create-workspace{order:-1}}
+  @media(max-width:1000px){.create-layout{grid-template-columns:1fr 2fr}.create-inspector{grid-column:1/-1}}
+  @media(max-width:760px){.create-layout{grid-template-columns:1fr}.create-workspace{order:0}.create-inspector{grid-column:auto}}
   @media(max-width:560px){.create-row{grid-template-columns:1fr}.create-card{padding:18px}}
 
   /* ---------------- creator dashboard ---------------- */

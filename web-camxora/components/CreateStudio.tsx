@@ -44,6 +44,9 @@ export function CreateStudio() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<WebMusicGeneration | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [writingLyrics, setWritingLyrics] = useState(false);
   const [error, setError] = useState("");
@@ -66,7 +69,14 @@ export function CreateStudio() {
     let active = true;
     fetchGenerations(20)
       .then((items) => {
-        if (active) setSongs(items);
+        if (!active) return;
+        setSongs(items);
+        if (items[0]) {
+          void selectSong(items[0].id);
+        } else {
+          setSelectedId(null);
+          setSelectedDetail(null);
+        }
       })
       .catch(() => {
         if (active) setSongs([]);
@@ -78,6 +88,21 @@ export function CreateStudio() {
       active = false;
     };
   }, [loading, user]);
+
+  async function selectSong(id: string) {
+    setSelectedId(id);
+    setDetailLoading(true);
+    try {
+      const detail = await fetchGeneration(id);
+      if (!mounted.current) return;
+      setSelectedDetail(detail);
+      setSongs((current) => current.map((item) => (item.id === detail.id ? detail : item)));
+    } catch {
+      if (mounted.current) setSelectedDetail(songs.find((item) => item.id === id) ?? null);
+    } finally {
+      if (mounted.current) setDetailLoading(false);
+    }
+  }
 
   const formReady =
     mode === "simple"
@@ -115,6 +140,10 @@ export function CreateStudio() {
         generation,
         ...current.filter((item) => item.id !== generation.id),
       ]);
+      setSelectedId((current) => {
+        if (current === generation.id) setSelectedDetail(generation);
+        return current;
+      });
       const done =
         String(generation.status).toLowerCase() === "success" ||
         (generation.clips?.some((clip) => clip.ready) ?? false);
@@ -182,6 +211,8 @@ export function CreateStudio() {
         clips: [],
       };
       setSongs((current) => [pending, ...current.filter((item) => item.id !== pending.id)]);
+      setSelectedId(pending.id);
+      setSelectedDetail(pending);
       setNotice("Generation started. Your song will appear here.");
       void pollGeneration(created.task_id);
       void refresh();
@@ -191,6 +222,20 @@ export function CreateStudio() {
       setBusy(false);
     }
   }
+
+  const selected =
+    selectedDetail?.id === selectedId
+      ? selectedDetail
+      : songs.find((song) => song.id === selectedId) ?? null;
+  const selectedClip =
+    selected?.clips?.find((clip) => clip.ready && clip.audio_url) ??
+    selected?.clips?.find((clip) => clip.audio_url) ??
+    selected?.clips?.[0] ??
+    null;
+  const selectedCover = selectedClip?.image_url || "/hero.png";
+  const selectedReady =
+    Boolean(selectedClip?.audio_url) ||
+    String(selected?.status || "").toLowerCase() === "success";
 
   if (loading || !user) {
     return (
@@ -418,8 +463,20 @@ export function CreateStudio() {
                   Boolean(clip?.audio_url) ||
                   String(song.status).toLowerCase() === "success";
                 return (
-                  <div className="create-song" key={song.id}>
-                    <span className="create-song-art"><Icon name="fa-music" /></span>
+                  <div
+                    className={`create-song${selectedId === song.id ? " selected" : ""}`}
+                    key={song.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => void selectSong(song.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        void selectSong(song.id);
+                      }
+                    }}
+                  >
+                    <img className="create-song-art" src={clip?.image_url || "/hero.png"} alt="" />
                     <div>
                       <b>{song.title || "Untitled"}</b>
                       <span>{song.style || song.model || "Camxora"}</span>
@@ -428,7 +485,10 @@ export function CreateStudio() {
                       className="create-song-play"
                       type="button"
                       aria-label={ready ? `Play ${song.title || "track"}` : "Song not ready"}
-                      onClick={() => playSong(song)}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        playSong(song);
+                      }}
                       disabled={!ready}
                     >
                       <Icon name="fa-play" />
@@ -440,6 +500,48 @@ export function CreateStudio() {
                 );
               })}
             </div>
+          )}
+        </aside>
+
+        <aside className="panel create-inspector">
+          <div className="sec-head">
+            <h2>Details</h2>
+            {selected ? <span className="create-detail-status">{statusLabel(selected.status)}</span> : null}
+          </div>
+          {!selected ? (
+            <div className="create-inspector-empty">
+              <Icon name="fa-circle-info" />
+              <p>Select a song to see its prompt, lyrics, and settings.</p>
+            </div>
+          ) : detailLoading ? (
+            <p className="fine" style={{ textAlign: "left" }}>Loading details…</p>
+          ) : (
+            <>
+              <img className="create-detail-cover" src={selectedCover} alt="" />
+              <h3>{selected.title || "Untitled"}</h3>
+              <span className="create-detail-sub">{selected.style || selected.model || "Camxora"}</span>
+              <div className="create-detail-block">
+                <label>Prompt / style</label>
+                <p>{selected.style || "—"}</p>
+              </div>
+              <div className="create-detail-block">
+                <label>Lyrics</label>
+                <pre>{selected.instrumental ? "Instrumental" : selected.lyrics || "No lyrics saved."}</pre>
+              </div>
+              <div className="create-detail-meta">
+                <div><span>Model</span><b>{selected.model_label || selected.model || "V6"}</b></div>
+                <div><span>Created</span><b>{selected.created_at ? new Date(selected.created_at).toLocaleDateString() : "—"}</b></div>
+                <div><span>Type</span><b>{selected.instrumental ? "Instrumental" : "Vocal"}</b></div>
+              </div>
+              <button
+                className="btn btn-primary create-detail-play"
+                type="button"
+                onClick={() => playSong(selected)}
+                disabled={!selectedReady}
+              >
+                <Icon name="fa-play" /> {selectedReady ? "Play track" : "Not ready"}
+              </button>
+            </>
           )}
         </aside>
       </div>
