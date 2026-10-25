@@ -1771,6 +1771,11 @@ html{color-scheme:dark}
   .studio-library .sec-head,.studio-inspector .sec-head{margin-bottom:12px}
   .studio-library .sec-head h2,.studio-inspector .sec-head h2{font-size:13px;font-weight:600}
   .studio-library .sec-head a{font-size:11px}
+  .studio-library-search{display:flex;align-items:center;gap:6px;height:32px;margin:0 0 9px;padding:0 9px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.025);color:var(--muted2)}
+  .studio-library-search:focus-within{border-color:rgba(168,85,247,.45);box-shadow:0 0 0 3px rgba(139,92,246,.08)}
+  .studio-library-search .icon,.studio-library-search .fa-replaced{font-size:10px!important;width:10px!important;height:10px!important;flex:none}
+  .studio-library-search input{flex:1;min-width:0;border:0;background:transparent;color:var(--text);font:inherit;font-size:10.5px;outline:none}
+  .studio-library-search input::placeholder{color:var(--muted2)}
   .studio-library-list{display:grid;gap:5px}
   .studio-lib-item{display:flex;align-items:center;gap:8px;width:100%;padding:7px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text);text-align:left;cursor:pointer;transition:background .15s,border-color .15s}
   .studio-lib-item:hover{background:rgba(255,255,255,.045);border-color:var(--line)}

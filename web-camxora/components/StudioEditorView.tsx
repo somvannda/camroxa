@@ -51,6 +51,11 @@ type StoredSession = {
   lanes?: Clip[];
 };
 
+type AudioMeta = {
+  peaks: number[];
+  duration: number;
+};
+
 const COLORS = ["#8b5cf6", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899", "#14b8a6"];
 const MIN_CLIP = 3;
 const STORAGE_PREFIX = "camxora-studio-session-v1";
@@ -71,6 +76,38 @@ function makeId(): string {
 function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
+}
+
+function computePeaks(buffer: AudioBuffer, bins = 56): number[] {
+  const channel = buffer.getChannelData(0);
+  const chunk = Math.max(1, Math.floor(channel.length / bins));
+  const peaks: number[] = [];
+  for (let bin = 0; bin < bins; bin += 1) {
+    const start = bin * chunk;
+    const end = Math.min(channel.length, start + chunk);
+    let peak = 0;
+    for (let index = start; index < end; index += 1) {
+      peak = Math.max(peak, Math.abs(channel[index]));
+    }
+    peaks.push(peak);
+  }
+  const maximum = Math.max(0.0001, ...peaks);
+  return peaks.map((value) => Math.max(0.03, Math.pow(value / maximum, 1.6)));
+}
+
+function syntheticPeaks(lane: Clip, index: number, bins = 32): number[] {
+  return Array.from({ length: bins }, (_, bar) => {
+    const value = 18 + ((bar * 17 + lane.title.length * 11 + index * 7) % 72);
+    return value / 100;
+  });
+}
+
+function waveformPeaks(lane: Clip, meta: AudioMeta | undefined, index: number): number[] {
+  if (!meta || !meta.duration) return syntheticPeaks(lane, index);
+  const start = Math.floor((lane.offset / meta.duration) * meta.peaks.length);
+  const end = Math.ceil(((lane.offset + lane.duration) / meta.duration) * meta.peaks.length);
+  const sliced = meta.peaks.slice(Math.max(0, start), Math.max(start + 1, end));
+  return sliced.length ? sliced : syntheticPeaks(lane, index);
 }
 
 function clipFromGeneration(
@@ -109,6 +146,8 @@ export function StudioEditorView() {
   const { playing: mainPlaying, togglePlay: toggleMainPlayer } = usePlayer();
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
   const [lanes, setLanes] = useState<Clip[]>([]);
+  const [audioMeta, setAudioMeta] = useState<Record<string, AudioMeta>>({});
+  const [search, setSearch] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("Untitled session");
   const [bpm, setBpm] = useState(90);
@@ -209,6 +248,14 @@ export function StudioEditorView() {
     for (let time = 0; time <= timelineDuration; time += tickStep) list.push(time);
     return list;
   }, [timelineDuration, tickStep]);
+
+  const filteredItems = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return items;
+    return items.filter((item) =>
+      `${item.title} ${item.style || ""}`.toLowerCase().includes(query)
+    );
+  }, [items, search]);
 
   const selectedLane = lanes.find((lane) => lane.id === selected) ?? null;
   const canSplit = Boolean(
@@ -322,6 +369,14 @@ export function StudioEditorView() {
       const blob = await fetchWebMusicClipBlob(lane.generationId, lane.variant);
       const buffer = await context.decodeAudioData(await blob.arrayBuffer());
       buffersRef.current.set(key, buffer);
+      setAudioMeta((current) =>
+        current[key]
+          ? current
+          : {
+              ...current,
+              [key]: { peaks: computePeaks(buffer), duration: buffer.duration },
+            }
+      );
       return buffer;
     },
     [ensureAudioContext]
@@ -659,15 +714,29 @@ export function StudioEditorView() {
       <div className="studio-work">
         <aside className="studio-library">
           <div className="sec-head"><h2>Library</h2><Link href="/library">All</Link></div>
+          <label className="studio-library-search">
+            <Icon name="fa-magnifying-glass" />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search library"
+              aria-label="Search library"
+            />
+          </label>
           {!items.length ? (
             <div className="studio-library-empty">
               <Icon name="fa-music" />
               <p>No generated tracks yet.</p>
               <Link className="btn btn-ghost" href="/create">Create one</Link>
             </div>
+          ) : !filteredItems.length ? (
+            <div className="studio-library-empty">
+              <Icon name="fa-magnifying-glass" />
+              <p>No tracks match ?{search}?.</p>
+            </div>
           ) : (
             <div className="studio-library-list">
-              {items.map((item) => {
+              {filteredItems.map((item) => {
                 const clip = item.clips?.find((entry) => entry.ready) ?? item.clips?.[0];
                 const added = lanes.some((lane) => lane.generationId === item.id);
                 return (
@@ -740,13 +809,12 @@ export function StudioEditorView() {
                       <small>{formatTime(lane.duration)}</small>
                     </span>
                     <span className="studio-waveform" aria-hidden="true">
-                      {Array.from({ length: 32 }).map((_, bar) => (
-                        <i
-                          key={bar}
-                          style={{
-                            height: `${18 + ((bar * 17 + lane.title.length * 11 + index * 7) % 72)}%`,
-                          }}
-                        />
+                      {waveformPeaks(
+                        lane,
+                        audioMeta[`${lane.generationId}:${lane.variant}`],
+                        index
+                      ).map((peak, bar) => (
+                        <i key={bar} style={{ height: `${Math.max(8, peak * 100)}%` }} />
                       ))}
                     </span>
                     <span
