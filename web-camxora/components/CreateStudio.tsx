@@ -1,28 +1,177 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
+import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
+import {
+  fetchGeneration,
+  generateLyrics,
+  generateSong,
+  type GenerateSongInput,
+} from "@/lib/create-api";
 
-const tabs = [
-  { id: "text", label: "Text to Song" },
-  { id: "lyrics", label: "Lyrics to Song" },
-  { id: "remix", label: "Style Remix" },
-  { id: "vocal", label: "Vocal Generate" },
+type Mode = "simple" | "custom";
+type LyricsMode = "write" | "prompt";
+
+const models = [
+  { value: "V6", label: "V6 · best quality" },
+  { value: "V6_MINI", label: "V6 Mini · lower cost" },
 ];
 
+function statusLabel(status: string): string {
+  return status.replace(/_/g, " ");
+}
+
 export function CreateStudio() {
-  const { user, loading } = useAuth();
-  const [tab, setTab] = useState("text");
+  const { user, credits, loading, refresh } = useAuth();
+  const [mode, setMode] = useState<Mode>("simple");
+  const [prompt, setPrompt] = useState("");
+  const [title, setTitle] = useState("");
+  const [style, setStyle] = useState("");
+  const [lyrics, setLyrics] = useState("");
+  const [lyricsMode, setLyricsMode] = useState<LyricsMode>("write");
+  const [instrumental, setInstrumental] = useState(false);
+  const [model, setModel] = useState("V6");
+  const [vocalGender, setVocalGender] = useState<"f" | "m" | "both">("f");
+  const [negativeTags, setNegativeTags] = useState("");
+  const [styleWeight, setStyleWeight] = useState(0.5);
+  const [weirdness, setWeirdness] = useState(0.5);
+  const [audioWeight, setAudioWeight] = useState(0.5);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
+  const [loadingSongs, setLoadingSongs] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("");
+  const [writingLyrics, setWritingLyrics] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const mounted = useRef(true);
 
   useEffect(() => {
-    if (!loading && !user) {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!user) {
       window.location.href = "/login?next=/create";
+      return;
     }
+    let active = true;
+    fetchGenerations(20)
+      .then((items) => {
+        if (active) setSongs(items);
+      })
+      .catch(() => {
+        if (active) setSongs([]);
+      })
+      .finally(() => {
+        if (active) setLoadingSongs(false);
+      });
+    return () => {
+      active = false;
+    };
   }, [loading, user]);
+
+  const formReady =
+    mode === "simple"
+      ? prompt.trim().length > 0
+      : instrumental
+        ? style.trim().length > 0
+        : style.trim().length > 0 &&
+          (lyricsMode === "prompt" ? prompt.trim().length > 0 : lyrics.trim().length > 0);
+
+  async function writeLyrics() {
+    const seed = prompt.trim() || title.trim() || style.trim();
+    if (!seed) {
+      setError("Add a song description, title, or style first.");
+      return;
+    }
+    setWritingLyrics(true);
+    setError("");
+    try {
+      const draft = await generateLyrics(seed);
+      setLyrics(draft.lyrics);
+      if (!title.trim() && draft.title) setTitle(draft.title);
+      setLyricsMode("write");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not write lyrics");
+    } finally {
+      setWritingLyrics(false);
+    }
+  }
+
+  async function pollGeneration(id: string, attempts = 0) {
+    if (!mounted.current) return;
+    try {
+      const generation = await fetchGeneration(id);
+      if (!mounted.current) return;
+      setSongs((current) => [
+        generation,
+        ...current.filter((item) => item.id !== generation.id),
+      ]);
+      const done = generation.clips?.some((clip) => clip.ready) ?? false;
+      if (!done && attempts < 40) {
+        window.setTimeout(() => void pollGeneration(id, attempts + 1), 3000);
+      } else if (done) {
+        setNotice("Your song is ready.");
+        void refresh();
+      }
+    } catch {
+      if (attempts < 20) {
+        window.setTimeout(() => void pollGeneration(id, attempts + 1), 3000);
+      }
+    }
+  }
+
+  async function onSubmit() {
+    if (busy || !formReady) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    const payload: GenerateSongInput = {
+      mode: mode === "simple" ? "simple" : "advanced",
+      prompt: prompt.trim() || undefined,
+      title: mode === "custom" ? title.trim() || undefined : undefined,
+      style: mode === "custom" ? style.trim() || undefined : undefined,
+      lyrics:
+        mode === "custom" && !instrumental && lyricsMode === "write"
+          ? lyrics.trim() || undefined
+          : mode === "custom" && !instrumental && lyricsMode === "prompt"
+            ? prompt.trim() || undefined
+            : undefined,
+      instrumental,
+      model,
+      negative_tags: negativeTags.trim() || undefined,
+      vocal_gender: instrumental ? undefined : vocalGender,
+      style_weight: styleWeight,
+      weirdness_constraint: weirdness,
+      audio_weight: audioWeight,
+    };
+    try {
+      const created = await generateSong(payload);
+      const pending: WebMusicGeneration = {
+        id: created.task_id,
+        title: created.title || title || "Untitled",
+        style: created.style || style,
+        status: created.status || "pending",
+        created_at: new Date().toISOString(),
+        clips: [],
+      };
+      setSongs((current) => [pending, ...current.filter((item) => item.id !== pending.id)]);
+      setNotice("Generation started. Your song will appear here.");
+      void pollGeneration(created.task_id);
+      void refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not start generation");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   if (loading || !user) {
     return (
@@ -30,7 +179,7 @@ export function CreateStudio() {
         <div className="page-head">
           <div>
             <div className="eyebrow">Studio</div>
-            <h1>Create a song</h1>
+            <h1>Create</h1>
             <p>{loading ? "Checking your session…" : "Redirecting to sign in…"}</p>
           </div>
         </div>
@@ -38,292 +187,223 @@ export function CreateStudio() {
     );
   }
 
-  const generate = () => {
-    if (busy) return;
-    setBusy(true);
-    setStatus("Composing melody, vocal and mix…");
-    window.setTimeout(() => {
-      setBusy(false);
-      setStatus("2 versions ready — preview them below.");
-    }, 2400);
-  };
-
   return (
-    <div className="page">
+    <div className="page create-page">
       <div className="page-head">
         <div>
           <div className="eyebrow">Studio</div>
-          <h1>Create a song</h1>
-          <p>
-            Describe a feeling. Camxora writes the lyric, composes the track and
-            sings it in Khmer, English or Chinese.
-          </p>
+          <h1>Create.</h1>
+          <p>Describe a song or write the details yourself. Camxora handles the rest.</p>
         </div>
-        <div className="page-actions">
-          <Link className="btn btn-ghost" href="/library">
-            Save draft
-          </Link>
-          <span className="credit-chip">
-            <Icon name="fa-microphone" /> 8,420 credits
-          </span>
-        </div>
+        <span className="credit-chip">
+          <Icon name="fa-coins" /> {(credits ?? user.credit_balance ?? 0).toLocaleString()} credits
+        </span>
       </div>
 
-      <div className="tabs" role="tablist" aria-label="Creation mode">
-        {tabs.map((item) => (
-          <button
-            key={item.id}
-            className={`tab${tab === item.id ? " on" : ""}`}
-            type="button"
-            role="tab"
-            aria-selected={tab === item.id}
-            onClick={() => setTab(item.id)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="studio-grid">
-        <div className="panel studio-panel">
-          {tab === "text" && (
-            <>
-              <div className="field">
-                <label htmlFor="prompt">Describe your song</label>
-                <textarea
-                  id="prompt"
-                  className="textarea"
-                  defaultValue="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, soft strings, 72 BPM. Sing in Khmer with an English chorus."
-                />
-              </div>
-              <div className="chip-row">
-                <button className="chip2 on" type="button">Khmer pop</button>
-                <button className="chip2 on" type="button">Ballad</button>
-                <button className="chip2" type="button">Female vocal</button>
-                <button className="chip2" type="button">Acoustic</button>
-                <button className="chip2" type="button">72 BPM</button>
-              </div>
-              <div className="field">
-                <label htmlFor="lyrics">Lyrics (optional)</label>
-                <textarea
-                  id="lyrics"
-                  className="textarea"
-                  style={{ minHeight: 86 }}
-                  defaultValue="[Verse] ពន្លឺថ្ងៃលិចលើទន្លេមេគង្គ / ខ្យល់រំភើបបបូរមាត់អ្នក..."
-                />
-              </div>
-              <div className="row2">
-                <div className="field">
-                  <label htmlFor="vocal">Vocal</label>
-                  <select id="vocal" className="select" defaultValue="Female">
-                    <option>Female</option>
-                    <option>Male</option>
-                    <option>Both</option>
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="weight">Style weight</label>
-                  <input id="weight" className="input" defaultValue="0.65" />
-                </div>
-              </div>
-            </>
-          )}
-
-          {tab === "lyrics" && (
-            <>
-              <div className="field">
-                <label htmlFor="full-lyrics">Your lyrics</label>
-                <textarea
-                  id="full-lyrics"
-                  className="textarea"
-                  style={{ minHeight: 170 }}
-                  defaultValue={"[Verse 1]\nពន្លឺថ្ងៃលិចលើទន្លេមេគង្គ\nខ្យល់រំភើបបបូរមាត់អ្នក\n\n[Chorus]\nHold me like the river holds the light"}
-                />
-              </div>
-              <div className="field">
-                <label htmlFor="style">Style prompt</label>
-                <input
-                  id="style"
-                  className="input"
-                  defaultValue="Khmer ballad, acoustic guitar, soft strings, 72 BPM"
-                />
-              </div>
-            </>
-          )}
-
-          {tab === "remix" && (
-            <>
-              <div className="field">
-                <label htmlFor="source">Source track</label>
-                <select id="source" className="select" defaultValue="Bassac Moon · Take 1">
-                  <option>Bassac Moon · Take 1</option>
-                  <option>Golden Hour</option>
-                  <option>Upload a track…</option>
-                </select>
-              </div>
-              <div className="field">
-                <label htmlFor="remix-style">New style</label>
-                <textarea
-                  id="remix-style"
-                  className="textarea"
-                  defaultValue="Reimagine as a late-night R&B track with warm keys, a slower groove and a female vocal."
-                />
-              </div>
-              <div className="row2">
-                <div className="field">
-                  <label htmlFor="strength">Remix strength</label>
-                  <input id="strength" className="input" defaultValue="0.55" />
-                </div>
-                <div className="field">
-                  <label htmlFor="keep-vocal">Keep vocal</label>
-                  <select id="keep-vocal" className="select" defaultValue="Yes">
-                    <option>Yes</option>
-                    <option>No, instrumental</option>
-                  </select>
-                </div>
-              </div>
-            </>
-          )}
-
-          {tab === "vocal" && (
-            <>
-              <div className="row2">
-                <div className="field">
-                  <label htmlFor="voice">Voice model</label>
-                  <select id="voice" className="select" defaultValue="Camxora Female 01">
-                    <option>Camxora Female 01</option>
-                    <option>Camxora Male 01</option>
-                    <option>My voice</option>
-                  </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="language">Language</label>
-                  <select id="language" className="select" defaultValue="Khmer">
-                    <option>Khmer</option>
-                    <option>English</option>
-                    <option>Chinese</option>
-                  </select>
-                </div>
-              </div>
-              <div className="field">
-                <label>Reference audio</label>
-                <div className="upload">
-                  <b>Drop a vocal reference</b>
-                  <span>MP3 or WAV · 10–60 seconds</span>
-                </div>
-              </div>
-              <div className="field">
-                <label htmlFor="vocal-lyrics">Lyrics</label>
-                <textarea
-                  id="vocal-lyrics"
-                  className="textarea"
-                  style={{ minHeight: 90 }}
-                  defaultValue="[Verse] ស្តាប់សំឡេងខ្ញុំនៅក្នុងខ្យល់..."
-                />
-              </div>
-            </>
-          )}
-        </div>
-
-        <aside className="panel studio-panel studio-side">
-          <div className="field">
-            <label htmlFor="model">Model</label>
-            <select id="model" className="select" defaultValue="V6 · best quality">
-              <option>V6 · best quality</option>
-              <option>V6 Mini · lower cost</option>
-              <option>V5 · legacy</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="side-language">Language</label>
-            <select id="side-language" className="select" defaultValue="Khmer">
-              <option>Khmer</option>
-              <option>English</option>
-              <option>Chinese</option>
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor="versions">Versions</label>
-            <select id="versions" className="select" defaultValue="2 versions">
-              <option>2 versions</option>
-              <option>1 version</option>
-            </select>
+      <div className="create-layout">
+        <section className="panel create-card">
+          <div className="create-tabs" role="tablist" aria-label="Creation mode">
+            <button
+              className={mode === "simple" ? "on" : ""}
+              type="button"
+              role="tab"
+              aria-selected={mode === "simple"}
+              onClick={() => setMode("simple")}
+            >
+              Simple
+            </button>
+            <button
+              className={mode === "custom" ? "on" : ""}
+              type="button"
+              role="tab"
+              aria-selected={mode === "custom"}
+              onClick={() => setMode("custom")}
+            >
+              Custom
+            </button>
           </div>
 
-          <div className="blueprint">
-            <div className="bp-head">
-              <span>Song blueprint</span>
-              <span className="bp-live"><i /> ready</span>
+          <div className="field">
+            <label htmlFor="create-prompt">
+              {mode === "simple" ? "Describe your song" : "Song description"}
+            </label>
+            <textarea
+              id="create-prompt"
+              className="textarea create-prompt"
+              placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPM…"
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              maxLength={5000}
+            />
+          </div>
+
+          {mode === "custom" ? (
+            <>
+              <div className="create-row">
+                <div className="field">
+                  <label htmlFor="create-title">Song title</label>
+                  <input
+                    id="create-title"
+                    className="input"
+                    value={title}
+                    onChange={(event) => setTitle(event.target.value)}
+                    placeholder="Optional"
+                    maxLength={200}
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="create-style">Style of music</label>
+                  <input
+                    id="create-style"
+                    className="input"
+                    value={style}
+                    onChange={(event) => setStyle(event.target.value)}
+                    placeholder="Khmer pop, acoustic, 72 BPM"
+                    maxLength={1000}
+                  />
+                </div>
+              </div>
+
+              <div className="create-lyrics-head">
+                <label>Lyrics</label>
+                <div className="create-inline-tabs">
+                  <button
+                    className={lyricsMode === "write" ? "on" : ""}
+                    type="button"
+                    onClick={() => setLyricsMode("write")}
+                  >
+                    Write
+                  </button>
+                  <button
+                    className={lyricsMode === "prompt" ? "on" : ""}
+                    type="button"
+                    onClick={() => setLyricsMode("prompt")}
+                  >
+                    Prompt
+                  </button>
+                </div>
+              </div>
+              <textarea
+                className="textarea create-lyrics"
+                value={lyrics}
+                onChange={(event) => setLyrics(event.target.value)}
+                placeholder={
+                  lyricsMode === "write"
+                    ? "[Verse]\nWrite your lyrics here…"
+                    : "Describe the story or feeling you want the lyrics to capture…"
+                }
+                disabled={instrumental}
+                maxLength={5000}
+              />
+              <button
+                className="create-text-btn"
+                type="button"
+                onClick={writeLyrics}
+                disabled={writingLyrics || instrumental}
+              >
+                <Icon name="fa-wand-magic-sparkles" /> {writingLyrics ? "Writing lyrics…" : "Write lyrics for me"}
+              </button>
+            </>
+          ) : null}
+
+          <div className="create-toggle-row">
+            <div>
+              <b>Instrumental</b>
+              <span>No vocals — music only.</span>
             </div>
-            <div className="bp-wave" aria-hidden="true">
-              {Array.from({ length: 32 }).map((_, index) => (
-                <i key={index} />
+            <button
+              className={`toggle${instrumental ? " on" : ""}`}
+              type="button"
+              role="switch"
+              aria-checked={instrumental}
+              onClick={() => setInstrumental((value) => !value)}
+            >
+              <i />
+            </button>
+          </div>
+
+          <button
+            className="create-advanced-toggle"
+            type="button"
+            aria-expanded={advancedOpen}
+            onClick={() => setAdvancedOpen((value) => !value)}
+          >
+<Icon name="fa-sliders" />
+            Advanced options
+            <Icon name={advancedOpen ? "fa-chevron-up" : "fa-chevron-down"} />
+          </button>
+
+          {advancedOpen ? (
+            <div className="create-advanced">
+              <div className="create-row">
+                <div className="field">
+                  <label htmlFor="create-model">Model</label>
+                  <select id="create-model" className="select" value={model} onChange={(event) => setModel(event.target.value)}>
+                    {models.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="create-vocal">Vocal</label>
+                  <select id="create-vocal" className="select" value={vocalGender} onChange={(event) => setVocalGender(event.target.value as "f" | "m" | "both")}>
+                    <option value="f">Female</option>
+                    <option value="m">Male</option>
+                    <option value="both">Both</option>
+                  </select>
+                </div>
+              </div>
+              <div className="create-sliders">
+                <label>Style influence <b>{Math.round(styleWeight * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={styleWeight} onChange={(event) => setStyleWeight(Number(event.target.value))} /></label>
+                <label>Weirdness <b>{Math.round(weirdness * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={weirdness} onChange={(event) => setWeirdness(Number(event.target.value))} /></label>
+                <label>Audio influence <b>{Math.round(audioWeight * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={audioWeight} onChange={(event) => setAudioWeight(Number(event.target.value))} /></label>
+              </div>
+              <div className="field">
+                <label htmlFor="create-negative">Exclude styles</label>
+                <input id="create-negative" className="input" value={negativeTags} onChange={(event) => setNegativeTags(event.target.value)} placeholder="e.g. heavy distortion, screaming" />
+              </div>
+            </div>
+          ) : null}
+
+          {error ? <p className="fine create-error" role="alert">{error}</p> : null}
+          {notice ? <p className="fine create-notice" role="status">{notice}</p> : null}
+
+          <div className="create-submit">
+            <span><Icon name="fa-coins" /> Uses your credit balance</span>
+            <button className="btn btn-primary" type="button" onClick={onSubmit} disabled={busy || !formReady}>
+              <Icon name="fa-music" /> {busy ? "Creating…" : "Create song"}
+            </button>
+          </div>
+        </section>
+
+        <aside className="panel create-workspace">
+          <div className="sec-head">
+            <h2>Your songs</h2>
+            <Link href="/library">Open library</Link>
+          </div>
+          {loadingSongs ? (
+            <p className="fine" style={{ textAlign: "left" }}>Loading your songs…</p>
+          ) : !songs.length ? (
+            <div className="create-empty">
+              <span><Icon name="fa-music" /></span>
+              <h3>No songs yet</h3>
+              <p>Your generations will appear here as soon as they start.</p>
+            </div>
+          ) : (
+            <div className="create-song-list">
+              {songs.map((song) => (
+                <div className="create-song" key={song.id}>
+                  <span className="create-song-art"><Icon name="fa-music" /></span>
+                  <div>
+                    <b>{song.title || "Untitled"}</b>
+                    <span>{song.style || song.model || "Camxora"}</span>
+                  </div>
+                  <em className={song.clips?.some((clip) => clip.ready) ? "ready" : ""}>
+                    {song.clips?.some((clip) => clip.ready) ? "Ready" : statusLabel(song.status)}
+                  </em>
+                </div>
               ))}
             </div>
-            <div className="bp-meta">
-              <span>V6</span>
-              <span>Khmer</span>
-              <span>Female</span>
-              <span>72 BPM</span>
-              <span>2 takes</span>
-            </div>
-          </div>
-
-          <p className="fine" style={{ textAlign: "left", marginTop: 6 }}>
-            Private by default. Nothing is published until you say so.
-          </p>
-          <div className="cost">
-            <span>Cost this run</span>
-            <b>10 credits</b>
-          </div>
+          )}
         </aside>
-      </div>
-
-      <div className="create-dock">
-        <div className="dock-copy">
-          <span>Ready to generate</span>
-          <strong>2 versions · Khmer · V6</strong>
-          <small className={status.startsWith("2 versions") ? "is-ready" : ""}>
-            {status}
-          </small>
-        </div>
-        <div className="dock-cost">
-          <span>Cost</span>
-          <b>10 credits</b>
-        </div>
-        <button
-          className={`btn btn-primary${busy ? " is-busy" : ""}`}
-          type="button"
-          onClick={generate}
-          disabled={busy}
-        >
-          {busy ? "Generating 2 versions…" : <>Generate 2 versions <Icon name="fa-arrow-right" /></>}
-        </button>
-      </div>
-
-      <div className="sec-head" style={{ marginTop: 30 }}>
-        <h2>Recent generations</h2>
-        <Link href="/library">Open library</Link>
-      </div>
-      <div className="gen-list">
-        <div className="gen-row">
-          <img src="/hero.png" alt="" style={{ objectPosition: "50% 18%" }} />
-          <div><strong>Bassac Moon</strong><span>Take 1 · 3:24 · just now</span></div>
-          <span className="pill priv">Private</span>
-          <Link className="mini-act" href="/publish">Publish</Link>
-        </div>
-        <div className="gen-row">
-          <img src="https://images.unsplash.com/photo-1461360228754-6e81c478b882?auto=format&fit=crop&w=200&q=80" alt="" />
-          <div><strong>Bassac Moon</strong><span>Take 2 · 3:31 · just now</span></div>
-          <span className="pill priv">Private</span>
-          <Link className="mini-act" href="/publish">Publish</Link>
-        </div>
-        <div className="gen-row">
-          <img src="https://images.unsplash.com/photo-1524368535928-5b5e00ddc76b?auto=format&fit=crop&w=200&q=80" alt="" />
-          <div><strong>Golden Hour</strong><span>Published · 1.2M plays</span></div>
-          <span className="pill pub">Published</span>
-          <Link className="mini-act" href="/artist">Open</Link>
-        </div>
       </div>
     </div>
   );
