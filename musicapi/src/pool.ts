@@ -13,6 +13,8 @@ export interface AccountHealth {
   plan: string;
   /** ISO timestamp of the next subscription charge, or null for free plans. */
   renewsOn: string | null;
+  /** Suno reports the paid subscription's payment as past due. */
+  pastDue: boolean;
   /** `billing/info.accessible_features` names (e.g. "studio", "persona"). */
   features: string[];
   /**
@@ -24,6 +26,43 @@ export interface AccountHealth {
 }
 
 type BillingModel = NonNullable<BillingInfo["models"]>[number];
+
+/**
+ * Next subscription charge from a `billing/info` payload, normalised to ISO, or
+ * null when the account is on a free plan / the payload has no usable date.
+ *
+ * `renews_on` is the documented-for-us field; `period_end` carries the same
+ * instant on current plans and is kept as the fallback, so a rename on Suno's
+ * side degrades to the other field instead of silently blanking the admin
+ * console. Pure and exported so the parsing can be unit-tested without a pool.
+ */
+export function parseRenewsOn(
+  info: Pick<BillingInfo, "renews_on" | "period_end">,
+): string | null {
+  for (const value of [info.renews_on, info.period_end]) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const ms = Date.parse(trimmed);
+    if (Number.isFinite(ms)) return new Date(ms).toISOString();
+  }
+  return null;
+}
+
+/**
+ * Whole days from `now` until an ISO timestamp, rounded up so "renews in six
+ * hours" reads as 1 day instead of 0. Negative once the date has passed. Null
+ * for a missing/unparseable timestamp. Pure and exported so the renewal-alert
+ * window can be unit-tested without a live pool.
+ */
+export function daysUntilRenewal(
+  renewsOn: string | null,
+  now: number = Date.now(),
+): number | null {
+  if (!renewsOn) return null;
+  const ms = Date.parse(renewsOn);
+  return Number.isFinite(ms) ? Math.ceil((ms - now) / 86_400_000) : null;
+}
 
 /** One selectable model version, aggregated across healthy accounts. */
 export interface ModelInfo {
@@ -42,6 +81,8 @@ export interface AccountStatus {
   captchaRequired: boolean;
   /** Next subscription charge from `billing/info`, null when free/unknown. */
   renewsOn: string | null;
+  /** Suno reports the paid subscription's payment as past due. */
+  pastDue: boolean;
 }
 
 /**
@@ -176,6 +217,7 @@ export class AccountPool {
             models: h.models,
             captchaRequired,
             renewsOn: h.renewsOn,
+            pastDue: h.pastDue,
           };
         } catch {
           return {
@@ -185,6 +227,7 @@ export class AccountPool {
             models: [],
             captchaRequired: false,
             renewsOn: null,
+            pastDue: false,
           };
         }
       }),
@@ -294,17 +337,12 @@ export class AccountPool {
     const info = await client.billingInfo();
     const subType = info.subscription_type;
     const usable = (info.models ?? []).filter((m) => m.can_use);
-    // `renews_on` is Suno's own next-charge timestamp; `period_end` is the same
-    // instant on current plans and is kept as a fallback for older responses.
-    const renewsOn =
-      (typeof info.renews_on === "string" && info.renews_on) ||
-      (typeof info.period_end === "string" && info.period_end) ||
-      null;
     const health: AccountHealth = {
       credits: info.total_credits_left ?? 0,
       models: usable.map((m) => m.external_key ?? "").filter(Boolean),
       plan: typeof subType === "string" ? subType : subType ? "paid" : "free",
-      renewsOn,
+      renewsOn: parseRenewsOn(info),
+      pastDue: info.is_past_due === true,
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
@@ -327,7 +365,15 @@ export class AccountPool {
     const existing = this.health.get(id)?.info;
     const info: AccountHealth = existing
       ? { ...existing, credits: 0 }
-      : { credits: 0, models: [], plan: "unknown", renewsOn: null, features: [], catalog: [] };
+      : {
+          credits: 0,
+          models: [],
+          plan: "unknown",
+          renewsOn: null,
+          pastDue: false,
+          features: [],
+          catalog: [],
+        };
     this.health.set(id, { info, updatedAt: Date.now() });
   }
 

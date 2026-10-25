@@ -5,7 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { AccountPool, RoutingPolicy } from "./pool.js";
+import { AccountPool, RoutingPolicy, daysUntilRenewal } from "./pool.js";
 import { SunoClient } from "./client.js";
 import { isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
@@ -172,6 +172,11 @@ export interface BrandSettings {
 export interface AlertSettings {
   enabled: boolean;
   low_credits_threshold: number;
+  /**
+   * Alert when a paid Suno subscription renews within this many days. `0`
+   * disables the check; a past-due/lapsed subscription is always flagged.
+   */
+  renewal_warning_days: number;
   /** Alert when the 2Captcha balance (USD) is at or below this. 0 disables. */
   captcha_balance_threshold: number;
   failure_rate_threshold: number;
@@ -195,6 +200,7 @@ const DEFAULT_BRAND: BrandSettings = {
 const DEFAULT_ALERTS: AlertSettings = {
   enabled: true,
   low_credits_threshold: 50,
+  renewal_warning_days: 7,
   captcha_balance_threshold: 1,
   failure_rate_threshold: 0.25,
   failure_rate_min_requests: 20,
@@ -265,6 +271,12 @@ function coerceAlerts(value: unknown): AlertSettings {
   return {
     enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_ALERTS.enabled,
     low_credits_threshold: clampInt(o.low_credits_threshold, DEFAULT_ALERTS.low_credits_threshold, 0, 1_000_000),
+    renewal_warning_days: clampInt(
+      o.renewal_warning_days,
+      DEFAULT_ALERTS.renewal_warning_days,
+      0,
+      365,
+    ),
     captcha_balance_threshold: clampNumber(
       o.captcha_balance_threshold,
       DEFAULT_ALERTS.captcha_balance_threshold,
@@ -337,6 +349,7 @@ function mergeAlerts(
   }
   const numeric: Array<[keyof AlertSettings, number, number]> = [
     ["low_credits_threshold", 0, 1_000_000],
+    ["renewal_warning_days", 0, 365],
     ["captcha_balance_threshold", 0, 100_000],
     ["failure_rate_threshold", 0, 1],
     ["failure_rate_min_requests", 1, 1_000_000],
@@ -5645,6 +5658,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   type AlertType =
     | "low_credits"
+    | "renewal_soon"
+    | "subscription_past_due"
     | "captcha_no_solver"
     | "captcha_balance"
     | "failure_rate"
@@ -5665,6 +5680,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     alerts: AlertItem[];
     summary: {
       low_credits: number;
+      renewals_soon: number;
+      past_due: number;
       captcha_required: number;
       captcha_balance: number | null;
       failure_rate: number | null;
@@ -5706,6 +5723,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const checkedAt = new Date().toISOString();
     const summary: AlertReport["summary"] = {
       low_credits: 0,
+      renewals_soon: 0,
+      past_due: 0,
       captcha_required: 0,
       captcha_balance: null,
       failure_rate: null,
@@ -5735,7 +5754,58 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       });
     }
 
-    // 2. Captcha: only alert when it actually blocks generation. A funded
+    // 2. Paid Suno subscriptions: warn before the card is charged, and shout if
+    //    a subscription is already past due / lapsed. A lapsed plan stops
+    //    refreshing its monthly credits while routing keeps drawing on the
+    //    remaining balance, so this is what turns a silent capacity cliff into
+    //    a planned top-up. Free accounts carry no `renews_on`, so they never
+    //    fire here.
+    const pastDue = health.filter((h) => h.pastDue);
+    const lapsed = health.filter((h) => {
+      if (h.pastDue) return false;
+      const days = daysUntilRenewal(h.renewsOn);
+      return days !== null && days < 0;
+    });
+    const soon =
+      thresholds.renewal_warning_days > 0
+        ? health.filter((h) => {
+            if (h.pastDue) return false;
+            const days = daysUntilRenewal(h.renewsOn);
+            return days !== null && days >= 0 && days <= thresholds.renewal_warning_days;
+          })
+        : [];
+    summary.renewals_soon = soon.length;
+    summary.past_due = pastDue.length + lapsed.length;
+    if (pastDue.length + lapsed.length > 0) {
+      const affected = [...pastDue, ...lapsed];
+      alerts.push({
+        id: "subscription_past_due",
+        type: "subscription_past_due",
+        severity: "critical",
+        message: `${affected.length} paid Suno account(s) have a past-due or lapsed subscription: ${affected
+          .map((h) => `${h.id} (${h.pastDue ? "past due" : `renewal was ${h.renewsOn?.slice(0, 10)}`})`)
+          .join(", ")}. Their monthly credits will not refresh until the payment is fixed.`,
+        details: {
+          past_due: pastDue.map((h) => ({ id: h.id, renews_on: h.renewsOn })),
+          lapsed: lapsed.map((h) => ({ id: h.id, renews_on: h.renewsOn })),
+        },
+      });
+    }
+    if (soon.length > 0) {
+      alerts.push({
+        id: "renewal_soon",
+        type: "renewal_soon",
+        severity: "warning",
+        message: `${soon.length} paid Suno account(s) renew within ${thresholds.renewal_warning_days} day(s): ${soon
+          .map((h) => `${h.id} (${h.renewsOn?.slice(0, 10)})`)
+          .join(", ")}. Make sure each account's payment method is funded.`,
+        details: {
+          accounts: soon.map((h) => ({ id: h.id, renews_on: h.renewsOn })),
+        },
+      });
+    }
+
+    // 3. Captcha: only alert when it actually blocks generation. A funded
     //    solver makes a captcha challenge a no-op, so the actionable cases are
     //    "accounts need a captcha but no solver is configured" and "the solver
     //    is drained/broken".
@@ -5764,7 +5834,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
 
-    // 3. Failure-rate spike over the configured sliding window. Jobs failed out
+    // 4. Failure-rate spike over the configured sliding window. Jobs failed out
     //    by a deploy/restart (`recoverJobs` -> "Interrupted by server restart.")
     //    are excluded: they are operator-caused, not generation failures, and
     //    would otherwise page ops after every deploy as they sit in the window.
@@ -5837,7 +5907,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
 
-    // 4. Suno concurrency gate backlog: jobs waiting for a slot to free up.
+    // 5. Suno concurrency gate backlog: jobs waiting for a slot to free up.
     const gate = sunoSlots.stats();
     summary.queue_backlog = gate.waiting;
     if (thresholds.queue_backlog_depth > 0 && gate.waiting >= thresholds.queue_backlog_depth) {
