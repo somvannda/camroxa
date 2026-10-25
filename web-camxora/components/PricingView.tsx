@@ -77,8 +77,9 @@ export function PricingView() {
     setBusy(pack.slug);
     setError("");
     try {
-      const checkoutUrl = await purchaseTopup(pack.slug);
-      window.location.assign(checkoutUrl);
+      const checkout = await purchaseTopup(pack.slug);
+      window.sessionStorage.setItem("camxora:checkout-payment", checkout.paymentId);
+      window.location.assign(checkout.checkoutUrl);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not start checkout");
       setBusy(null);

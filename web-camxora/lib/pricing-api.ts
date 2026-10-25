@@ -24,6 +24,11 @@ type CheckoutResponse = {
   qr_string?: string;
 };
 
+export type TopupCheckout = {
+  checkoutUrl: string;
+  paymentId: string;
+};
+
 async function readError(response: Response, fallback: string): Promise<string> {
   try {
     const data = (await response.json()) as {
@@ -85,7 +90,7 @@ export function isAllowedCheckoutUrl(url: string | null | undefined): boolean {
   }
 }
 
-async function readCheckout(response: Response, fallback: string): Promise<string> {
+async function readCheckout(response: Response, fallback: string): Promise<TopupCheckout> {
   if (!response.ok) {
     throw new Error(await readError(response, fallback));
   }
@@ -93,18 +98,18 @@ async function readCheckout(response: Response, fallback: string): Promise<strin
   if (!isAllowedCheckoutUrl(data.checkout_url)) {
     throw new Error("Checkout returned an untrusted payment URL.");
   }
-  return data.checkout_url;
+  return { checkoutUrl: data.checkout_url, paymentId: data.payment_id };
 }
 
-export async function purchaseTopup(packSlug: string): Promise<string> {
+export async function purchaseTopup(packSlug: string): Promise<TopupCheckout> {
   const origin = window.location.origin;
   const response = await musicAuthFetch("/api/v3/topups/purchase", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       pack_slug: packSlug,
-      success_url: `${origin}/pricing`,
-      cancel_url: `${origin}/pricing`,
+      success_url: `${origin}/checkout`,
+      cancel_url: `${origin}/checkout`,
     }),
   });
   return readCheckout(response, "Could not start checkout.");
