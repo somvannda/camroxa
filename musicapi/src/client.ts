@@ -80,6 +80,10 @@ export interface BillingInfo {
   period?: string | null;
   /** True while a paid subscription is paused (renewal skipped). */
   is_paused?: boolean;
+  /** True when the subscription is set to pause at the end of the period. */
+  is_pause_scheduled?: boolean;
+  /** True when the last invoice failed and the plan is behind on payment. */
+  is_past_due?: boolean;
   accessible_features?: Array<{ name?: string }>;
   models?: Array<{
     name?: string;

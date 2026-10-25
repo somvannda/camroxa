@@ -5760,16 +5760,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     //    remaining balance, so this is what turns a silent capacity cliff into
     //    a planned top-up. Free accounts carry no `renews_on`, so they never
     //    fire here.
+    //    Paused / pause-scheduled plans are excluded: their date will not
+    //    charge, and the Accounts page badges already explain why.
+    const stopped = (h: { paused: boolean; pauseScheduled: boolean }): boolean =>
+      h.paused || h.pauseScheduled;
     const pastDue = health.filter((h) => h.pastDue);
     const lapsed = health.filter((h) => {
-      if (h.pastDue) return false;
+      if (h.pastDue || stopped(h)) return false;
       const days = daysUntilRenewal(h.renewsOn);
       return days !== null && days < 0;
     });
     const soon =
       thresholds.renewal_warning_days > 0
         ? health.filter((h) => {
-            if (h.pastDue) return false;
+            if (h.pastDue || stopped(h)) return false;
             const days = daysUntilRenewal(h.renewsOn);
             return days !== null && days >= 0 && days <= thresholds.renewal_warning_days;
           })
@@ -6252,6 +6256,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         health: {
           disabled: !row.is_active,
           low_credits: liveCredits <= thresholds.low_credits_threshold,
+          // A paid plan that is past due / paused / about to pause keeps serving
+          // work from its remaining balance but will not refresh credits, so it
+          // must not be labelled "Healthy" on its own.
+          past_due: l?.pastDue ?? false,
+          paused: l?.paused ?? false,
+          pause_scheduled: l?.pauseScheduled ?? false,
           captcha_required: l?.captchaRequired ?? false,
           // When a solver key is configured, a captcha-required account is still
           // fully usable — the Turnstile is solved automatically at generation
@@ -6463,7 +6473,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     ]);
     const liveByLabel = new Map(live.map((l) => [l.id, l]));
     const captchaSolver = Boolean(config.twoCaptchaKey);
-    const accountHealth = { total: accountRows.length, healthy: 0, disabled: 0, low_credits: 0, captcha_required: 0, captcha_solver: captchaSolver };
+    const accountHealth = {
+      total: accountRows.length,
+      healthy: 0,
+      disabled: 0,
+      low_credits: 0,
+      past_due: 0,
+      paused: 0,
+      captcha_required: 0,
+      captcha_solver: captchaSolver,
+    };
     // Aggregate Suno credit monitor (REQUIREMENTS §4.6): the size of the live
     // credit pool across the configured accounts. `active` sums only enabled
     // accounts — the credits actually available to serve requests right now —
@@ -6479,11 +6498,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!disabled) sunoCredits.active += liveCredits;
       if (disabled) accountHealth.disabled += 1;
       if (lowCredits) accountHealth.low_credits += 1;
+      // Subscription flags mirror the Accounts page: a plan that is past due,
+      // paused, or scheduled to pause will not refresh its credits, so it is
+      // not "healthy" even while it still has a balance to spend.
+      const pastDue = l?.pastDue ?? false;
+      const paused = (l?.paused ?? false) || (l?.pauseScheduled ?? false);
+      if (pastDue) accountHealth.past_due += 1;
+      if (paused) accountHealth.paused += 1;
       if (captcha) accountHealth.captcha_required += 1;
       // A captcha-required account stays healthy when a solver key is configured
       // (solved automatically at generation time). It only counts against health
-      // when there is no solver — i.e. when generation would actually fail.
-      if (!disabled && !lowCredits && (!captcha || captchaSolver)) accountHealth.healthy += 1;
+      // when there is no solver - i.e. when generation would actually fail.
+      if (!disabled && !lowCredits && !pastDue && !paused && (!captcha || captchaSolver)) {
+        accountHealth.healthy += 1;
+      }
     }
     const spentCredits = Number(spent?.sum ?? 0);
     return {

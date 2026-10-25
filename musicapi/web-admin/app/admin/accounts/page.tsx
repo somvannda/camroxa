@@ -26,6 +26,12 @@ interface Account {
   health: {
     disabled: boolean;
     low_credits: boolean;
+    /** Suno reported a failed payment for the paid subscription. */
+    past_due: boolean;
+    /** The paid subscription is paused; it will not renew. */
+    paused: boolean;
+    /** The subscription will pause (stop renewing) at the end of the period. */
+    pause_scheduled: boolean;
     captcha_required: boolean;
     captcha_solver: boolean;
   };
@@ -40,11 +46,20 @@ interface RoutingRule {
 function healthBadges(a: Account): { label: string; tone: BadgeTone }[] {
   const badges: { label: string; tone: BadgeTone }[] = [];
   if (a.health.disabled) badges.push({ label: "Disabled", tone: "danger" });
+  // Subscription problems come before credit ones: a past-due or paused plan
+  // still serves work from its remaining balance but will never refresh it.
+  if (a.health.past_due) badges.push({ label: "Past due", tone: "danger" });
+  if (a.health.paused) {
+    badges.push({ label: "Paused", tone: "warning" });
+  } else if (a.health.pause_scheduled) {
+    badges.push({ label: "Won't renew", tone: "warning" });
+  }
   if (a.health.low_credits) badges.push({ label: "Low credits", tone: "warning" });
   // An enabled, funded account stays healthy even when Suno challenges its
   // captcha — the worker solves it automatically at generation time.
   const captchaBlocks = a.health.captcha_required && !a.health.captcha_solver;
-  if (!a.health.disabled && !a.health.low_credits && !captchaBlocks) {
+  const subscriptionAtRisk = a.health.past_due || a.health.paused || a.health.pause_scheduled;
+  if (!a.health.disabled && !a.health.low_credits && !captchaBlocks && !subscriptionAtRisk) {
     badges.push({ label: "Healthy", tone: "success" });
   }
   if (a.health.captcha_required && a.health.captcha_solver) {
