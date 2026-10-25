@@ -8232,6 +8232,191 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   clipRoute("/v1/music/add-vocals", "add_vocals");
   clipRoute("/v1/music/add-instrumental", "add_instrumental");
 
+  // ---------- Studio projects ------------------------------------------------
+  // Project state is versioned JSON for now: tracks, clips, takes, automation,
+  // mixer state and timeline metadata. Suno edit operations remain the
+  // existing /v1/music/* clip routes and reference the clip ids in this data.
+  const STUDIO_DATA_MAX_BYTES = 2_000_000;
+  const STUDIO_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+  type StudioProjectRow = {
+    id: string;
+    title: string;
+    major_version: number;
+    bpm: number;
+    time_signature: string;
+    data: unknown;
+    created_at: string;
+    updated_at: string;
+  };
+
+  function studioProjectPayload(body: Record<string, unknown>, partial = false): {
+    title: string | null;
+    majorVersion: number | null;
+    bpm: number | null;
+    timeSignature: string | null;
+    data: string | null;
+  } | { error: string } {
+    let title: string | null = null;
+    let majorVersion: number | null = null;
+    let bpm: number | null = null;
+    let timeSignature: string | null = null;
+    let data: string | null = null;
+
+    if (body.title !== undefined) {
+      if (typeof body.title !== "string" || !body.title.trim() || body.title.trim().length > 120) {
+        return { error: "title must be 1-120 characters." };
+      }
+      title = body.title.trim();
+    } else if (!partial) {
+      title = "Untitled Project";
+    }
+
+    if (body.major_version !== undefined) {
+      const value = Number(body.major_version);
+      if (!Number.isInteger(value) || value < 1 || value > 10) {
+        return { error: "major_version must be an integer between 1 and 10." };
+      }
+      majorVersion = value;
+    } else if (!partial) {
+      majorVersion = 2;
+    }
+
+    if (body.bpm !== undefined) {
+      const value = Number(body.bpm);
+      if (!Number.isFinite(value) || value < 20 || value > 300) {
+        return { error: "bpm must be between 20 and 300." };
+      }
+      bpm = Math.round(value);
+    } else if (!partial) {
+      bpm = 120;
+    }
+
+    if (body.time_signature !== undefined) {
+      if (typeof body.time_signature !== "string" || !/^\d{1,2}\/\d{1,2}$/.test(body.time_signature)) {
+        return { error: "time_signature must look like 4/4." };
+      }
+      timeSignature = body.time_signature;
+    } else if (!partial) {
+      timeSignature = "4/4";
+    }
+
+    if (body.data !== undefined) {
+      if (!body.data || typeof body.data !== "object" || Array.isArray(body.data)) {
+        return { error: "data must be a JSON object." };
+      }
+      data = JSON.stringify(body.data);
+      if (Buffer.byteLength(data, "utf8") > STUDIO_DATA_MAX_BYTES) {
+        return { error: "data exceeds 2 MB." };
+      }
+    } else if (!partial) {
+      data = JSON.stringify({ tracks: [], clips: [] });
+    }
+
+    return { title, majorVersion, bpm, timeSignature, data };
+  }
+
+  app.get("/v1/studio/projects", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    const q = req.query as { limit?: string; offset?: string };
+    const limit = Math.min(100, Math.max(1, Number(q.limit) || 40));
+    const offset = Math.max(0, Number(q.offset) || 0);
+    const [items, totalRow] = await Promise.all([
+      query<StudioProjectRow>(
+        `SELECT id, title, major_version, bpm, time_signature, created_at, updated_at
+         FROM studio_projects WHERE user_id = $1
+         ORDER BY updated_at DESC LIMIT $2 OFFSET $3`,
+        [key.user_id, limit, offset],
+      ),
+      queryOne<{ total: string }>(
+        "SELECT count(*)::text AS total FROM studio_projects WHERE user_id = $1",
+        [key.user_id],
+      ),
+    ]);
+    return reply.send({ items, total: Number(totalRow?.total ?? 0), limit, offset });
+  });
+
+  app.post("/v1/studio/projects", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    const payload = studioProjectPayload((req.body ?? {}) as Record<string, unknown>);
+    if ("error" in payload) return reply.code(400).send({ error: payload.error });
+    const row = await queryOne<StudioProjectRow>(
+      `INSERT INTO studio_projects (user_id, title, major_version, bpm, time_signature, data)
+       VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+       RETURNING id, title, major_version, bpm, time_signature, data, created_at, updated_at`,
+      [key.user_id, payload.title, payload.majorVersion, payload.bpm, payload.timeSignature, payload.data],
+    );
+    return reply.code(201).send(row);
+  });
+
+  app.get("/v1/studio/projects/:id", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    const { id } = req.params as { id: string };
+    if (!STUDIO_UUID_RE.test(id)) return reply.code(404).send({ error: "Project not found." });
+    const row = await queryOne<StudioProjectRow>(
+      "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+      [id, key.user_id],
+    );
+    if (!row) return reply.code(404).send({ error: "Project not found." });
+    return reply.send(row);
+  });
+
+  app.patch("/v1/studio/projects/:id", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    const { id } = req.params as { id: string };
+    if (!STUDIO_UUID_RE.test(id)) return reply.code(404).send({ error: "Project not found." });
+    const payload = studioProjectPayload((req.body ?? {}) as Record<string, unknown>, true);
+    if ("error" in payload) return reply.code(400).send({ error: payload.error });
+    const row = await queryOne<StudioProjectRow>(
+      `UPDATE studio_projects SET
+         title = COALESCE($1, title),
+         major_version = COALESCE($2, major_version),
+         bpm = COALESCE($3, bpm),
+         time_signature = COALESCE($4, time_signature),
+         data = COALESCE($5::jsonb, data),
+         updated_at = now()
+       WHERE id = $6 AND user_id = $7
+       RETURNING id, title, major_version, bpm, time_signature, data, created_at, updated_at`,
+      [payload.title, payload.majorVersion, payload.bpm, payload.timeSignature, payload.data, id, key.user_id],
+    );
+    if (!row) return reply.code(404).send({ error: "Project not found." });
+    return reply.send(row);
+  });
+
+  app.delete("/v1/studio/projects/:id", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    const { id } = req.params as { id: string };
+    if (!STUDIO_UUID_RE.test(id)) return reply.code(404).send({ error: "Project not found." });
+    const row = await queryOne<{ id: string }>(
+      "DELETE FROM studio_projects WHERE id = $1 AND user_id = $2 RETURNING id",
+      [id, key.user_id],
+    );
+    if (!row) return reply.code(404).send({ error: "Project not found." });
+    return reply.code(204).send();
+  });
+
+  app.post("/v1/studio/projects/:id/fork", async (req, reply) => {
+    const key = await requireKey(req, reply);
+    if (!key) return;
+    const { id } = req.params as { id: string };
+    if (!STUDIO_UUID_RE.test(id)) return reply.code(404).send({ error: "Project not found." });
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const row = await queryOne<StudioProjectRow>(
+      `INSERT INTO studio_projects (user_id, title, major_version, bpm, time_signature, data)
+       SELECT $1, COALESCE($2, title || ' copy'), major_version, bpm, time_signature, data
+       FROM studio_projects WHERE id = $3 AND user_id = $1
+       RETURNING id, title, major_version, bpm, time_signature, data, created_at, updated_at`,
+      [key.user_id, typeof body.title === "string" && body.title.trim() ? body.title.trim().slice(0, 120) : null, id],
+    );
+    if (!row) return reply.code(404).send({ error: "Project not found." });
+    return reply.code(201).send(row);
+  });
+
   app.post("/v1/music/mashup", async (req, reply) => {
     const key = await requireKey(req, reply);
     if (!key) return;

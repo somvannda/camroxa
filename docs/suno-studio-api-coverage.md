@@ -1,0 +1,350 @@
+# Suno Studio API coverage map
+
+Status: discovery / design. No Suno credentials or raw tokens are stored here.
+
+## 1. What Suno Studio exposes in the UI
+
+Observed in the authenticated Studio 2.0 interface:
+
+- Project create/load
+- Audio track, MIDI track, file upload
+- Record / play / loop / metronome
+- BPM and time signature
+- Timeline, clips, take lanes
+- Clip editor
+- Automation lanes
+- Volume, pan, mute, solo
+- Plugins and plugin presets
+- Playable keyboard / built-in synths
+- Stem separation
+- Extend, cover/remix, add vocals, replace section
+- Ask Studio chat / agent
+- Library
+- Export full project, stems, or ranges
+
+Public Studio 2.0 page also lists:
+
+- MIDI controller support
+- Musical typing, arpeggiator, chord mode
+- Custom effects/plugins
+- Sidechain compression, convolution reverb
+- Audio/stem import
+- BPM, pitch, volume editing
+- Automation curves
+- Advanced stem separation
+- Export songs, stems, selected ranges
+
+## 2. Observed Suno web API families
+
+These are internal Suno web endpoints observed while loading Studio. They are not a documented or stable public API.
+
+```text
+POST /a/api/studio/create-project?title=...&major_version=2
+GET  /a/api/plugins/catalog?include_archived=true
+GET  /a/api/plugins/{id}/presets
+POST /a/api/realtime/token
+GET  /a/api/agent/conversation/{id}
+POST /a/api/user/user_config/
+GET  /a/api/prompts/v2
+GET  /a/api/lyrics-projects
+GET  /a/api/custom-model/shared
+GET  /a/api/billing/info/
+```
+
+Additional project, track, clip, upload, export, plugin, and agent calls are expected as the UI is exercised.
+
+## 3. What our `musicapi` wrapper already contains
+
+Low-level Suno client methods:
+
+```text
+extendMusic
+coverMusic
+stems
+addVocals
+replaceSection
+uploadExtendMusic
+uploadCoverMusic
+createPersona
+generateCoverImage
+stemsDetail
+```
+
+Existing HTTP routes include:
+
+```text
+POST /me/stems
+POST /me/replace-section
+POST /me/persona-create
+POST /me/voice-generate
+POST /me/voice-validate
+POST /me/voice-phrase
+POST /me/voice-record
+POST /me/music/replace-section
+```
+
+Known operation costs in `musicapi`:
+
+```text
+extend: 10
+cover: 10
+stems: 8
+stems_split: 20
+stems_advanced: 12
+upload_extend: 10
+upload_cover: 10
+```
+
+## 3b. Implemented in this branch
+
+### Studio project persistence
+
+```text
+GET    /v1/studio/projects
+POST   /v1/studio/projects
+GET    /v1/studio/projects/{id}
+PATCH  /v1/studio/projects/{id}
+DELETE /v1/studio/projects/{id}
+POST   /v1/studio/projects/{id}/fork
+```
+
+Auth: existing `Authorization: Bearer <musicapi API key>`.
+Storage: `studio_projects` table in the `sunoapi` database, migration
+`0041_studio_projects.sql`. The project arrangement is versioned JSON under
+`data` until track/clip tables are added.
+
+### Existing Suno-backed clip operations
+
+Already available through API-key routes:
+
+```text
+POST /v1/music/extend
+POST /v1/music/cover
+POST /v1/music/stems
+POST /v1/music/remaster
+POST /v1/music/add-vocals
+POST /v1/music/add-instrumental
+POST /v1/music/replace-section
+POST /v1/music/mashup
+POST /v1/music/cover-image
+POST /v1/persona/create
+POST /v1/upload/init
+POST /v1/upload/register
+```
+
+The next required layer is a `platform_api` proxy that authenticates the
+Camxora user, checks ownership and credits, and calls these musicapi routes.
+Studio project ids and clip ids must be linked to the caller's account.
+
+## 4. Architecture decision
+
+```text
+web-camxora Studio
+        |
+        v
+platform_api  -> auth, ownership, credits, plan gates, audit, API keys
+        |
+        v
+musicapi.camxora.com -> Suno key pool, assets, jobs, upstream operations
+        |
+        v
+Suno web/internal APIs
+```
+
+- `musicapi.camxora.com` owns Suno/audio operations.
+- `platform_api` owns user identity, credit pricing, entitlements, and public API keys.
+- Studio must never call Suno directly or receive raw Suno cookies/tokens.
+- Do not expose a raw 1:1 clone of Suno's internal API. Expose a Camxora domain API.
+
+### Scope boundary
+
+In scope:
+
+```text
+Studio projects / tracks / clips / takes
+Studio assets and uploads
+Suno-backed Studio edit operations
+Plugins and presets
+Automation
+Ask Studio agent
+Export jobs
+Realtime collaboration tokens
+```
+
+Out of scope:
+
+```text
+New checkout / pricing pages
+New plans / subscriptions
+Invoices / receipts / top-up flows
+New billing APIs
+```
+
+Billing and access are not new Studio features. They already live in `platform_api`.
+Studio API routes still require the existing service authentication, user ownership,
+credit reservation, rate limits, and audit trail. That is authorization, not a new
+billing product.
+
+## 5. Proposed Camxora Studio API
+
+### Projects
+
+```text
+POST   /v1/studio/projects
+GET    /v1/studio/projects
+GET    /v1/studio/projects/{project_id}
+PATCH  /v1/studio/projects/{project_id}
+DELETE /v1/studio/projects/{project_id}
+POST   /v1/studio/projects/{project_id}/fork
+```
+
+### Tracks, clips, takes
+
+```text
+POST   /v1/studio/projects/{project_id}/tracks
+PATCH  /v1/studio/projects/{project_id}/tracks/{track_id}
+DELETE /v1/studio/projects/{project_id}/tracks/{track_id}
+
+POST   /v1/studio/projects/{project_id}/clips
+PATCH  /v1/studio/projects/{project_id}/clips/{clip_id}
+DELETE /v1/studio/projects/{project_id}/clips/{clip_id}
+
+POST   /v1/studio/projects/{project_id}/clips/{clip_id}/takes
+PATCH  /v1/studio/projects/{project_id}/takes/{take_id}
+```
+
+### Assets and uploads
+
+```text
+POST /v1/studio/uploads/init
+POST /v1/studio/uploads/{upload_id}/complete
+GET  /v1/studio/assets/{asset_id}/signed-url
+```
+
+### Suno-backed edit operations
+
+```text
+POST /v1/studio/clips/{clip_id}/stems
+POST /v1/studio/clips/{clip_id}/extend
+POST /v1/studio/clips/{clip_id}/cover
+POST /v1/studio/clips/{clip_id}/add-vocals
+POST /v1/studio/clips/{clip_id}/replace-section
+GET  /v1/studio/operations/{operation_id}
+GET  /v1/studio/operations/{operation_id}/result
+```
+
+All operations must be queued, idempotent, ownership-checked, credit-priced, and refundable on failure.
+
+### Ask Studio / agent
+
+```text
+POST /v1/studio/agent/conversations
+GET  /v1/studio/agent/conversations/{conversation_id}
+POST /v1/studio/agent/conversations/{conversation_id}/messages
+```
+
+### Plugins, presets, automation
+
+```text
+GET  /v1/studio/plugins
+GET  /v1/studio/plugins/{plugin_id}/presets
+POST /v1/studio/plugins
+PUT  /v1/studio/plugins/{plugin_id}/presets
+PUT  /v1/studio/clips/{clip_id}/automation
+```
+
+### Export
+
+```text
+POST /v1/studio/projects/{project_id}/exports
+GET  /v1/studio/exports/{export_id}
+GET  /v1/studio/exports/{export_id}/download
+```
+
+Export scopes:
+
+```text
+full | stems | range
+formats: wav | mp3
+```
+
+### Realtime / collaboration
+
+```text
+POST /v1/studio/projects/{project_id}/realtime-token
+```
+
+## 6. What should stay client-side
+
+These do not need a Suno operation:
+
+- Waveform rendering
+- Timeline zoom and playhead
+- Local clip drag/trim/split
+- Local mixing, fades, EQ, delay, reverb
+- WAV/MP3 mixdown for the current local arrangement
+- Keyboard/MIDI audition
+- Local undo/redo
+
+If cloud projects are required, their **project state** still needs the project/track/clip API.
+
+## 7. Delivery phases
+
+### Phase 1: Project foundation
+
+- Studio project persistence
+- Track/clip/take CRUD
+- Asset upload and signed URLs
+- Save/load/fork
+- Local Studio switches from localStorage to API-backed projects
+
+### Phase 2: Suno edit operations
+
+- Stems
+- Extend
+- Cover
+- Add vocals
+- Replace section
+- Job polling and result clips
+- Credit pricing, refunds, ownership checks
+
+### Phase 3: Studio production
+
+- Plugin catalog/presets
+- Automation persistence
+- Ask Studio conversations
+- Export jobs (full/stems/range)
+- Realtime tokens/collaboration
+
+### Phase 4: Hardening
+
+- Rate limits
+- Idempotency keys
+- Audit logs
+- Usage caps
+- Failure/refund tests
+- ToS/compliance review
+
+## 8. Legal and security constraints
+
+- Suno Studio’s private web API is undocumented and unstable.
+- Do not expose raw Suno cookies, tokens, or internal 1:1 endpoints.
+- Do not scrape other users’ content.
+- Use only a controlled key pool and test accounts.
+- Do not present cloned Suno endpoints as an official Suno API.
+- Get legal/compliance review before public launch of AI edit operations.
+
+## 9. Immediate next step
+
+Build Phase 1 and Phase 2a (stems) first:
+
+```text
+Studio project save/load
+  -> clip selected
+  -> POST /v1/studio/clips/{id}/stems
+  -> musicapi /me/stems
+  -> poll operation
+  -> add vocals/instrumental stems as new Studio lanes
+```
+
+This gives a real Suno-backed Studio workflow without trying to clone the entire DAW at once.
