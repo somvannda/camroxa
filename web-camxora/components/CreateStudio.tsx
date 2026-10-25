@@ -335,6 +335,7 @@ export function CreateStudio() {
               className={`toggle${instrumental ? " on" : ""}`}
               type="button"
               role="switch"
+              aria-label="Instrumental"
               aria-checked={instrumental}
               onClick={() => setInstrumental((value) => !value)}
             >
