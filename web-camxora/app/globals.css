@@ -1869,6 +1869,14 @@ html{color-scheme:dark}
   .studio-slider{display:grid;grid-template-columns:1fr auto;gap:3px 8px;margin-top:14px;font-size:10px;color:var(--muted2)}
   .studio-slider b{color:#d8b4fe;font-weight:600}
   .studio-slider input{grid-column:1/-1;accent-color:#a855f7;width:100%}
+  .studio-eq{margin-top:12px;padding:9px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.018)}
+  .studio-eq-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px}
+  .studio-eq-head span{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
+  .studio-eq-head button{border:0;background:transparent;color:#c4b5fd;font:inherit;font-size:8.5px;cursor:pointer}
+  .studio-eq-head button:hover{color:#fff}
+  .studio-eq label{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin-top:6px;font-size:9.5px;color:var(--muted2)}
+  .studio-eq label b{color:#d8b4fe;font-weight:500}
+  .studio-eq label input{grid-column:1/-1;width:100%;accent-color:#a855f7}
   .studio-inspector-actions{display:flex;gap:6px;margin-top:10px}
   .studio-inspector-actions button{flex:1;height:30px;border:1px solid var(--line);border-radius:6px;background:rgba(255,255,255,.025);color:var(--muted);font:inherit;font-size:9.5px;cursor:pointer}
   .studio-inspector-actions button:hover:not(:disabled){background:rgba(139,92,246,.14);color:#fff}

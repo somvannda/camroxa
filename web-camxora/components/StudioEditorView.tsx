@@ -30,6 +30,9 @@ type Clip = {
   offset: number;
   fadeIn: number;
   fadeOut: number;
+  low: number;
+  mid: number;
+  high: number;
   volume: number;
   pan: number;
   muted: boolean;
@@ -233,6 +236,9 @@ function clipFromGeneration(
     offset: 0,
     fadeIn: 0,
     fadeOut: 0,
+    low: 0,
+    mid: 0,
+    high: 0,
     volume: 80,
     pan: 0,
     muted: false,
@@ -278,7 +284,7 @@ export function StudioEditorView() {
   const masterGainRef = useRef<GainNode | null>(null);
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
-  const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode }>>(new Map());
+  const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode }>>(new Map());
   const startedAtRef = useRef(0);
   const startPlayheadRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -325,6 +331,9 @@ export function StudioEditorView() {
                 ...lane,
                 fadeIn: Number.isFinite(lane.fadeIn) ? Math.max(0, Number(lane.fadeIn)) : 0,
                 fadeOut: Number.isFinite(lane.fadeOut) ? Math.max(0, Number(lane.fadeOut)) : 0,
+                low: Number.isFinite(lane.low) ? clamp(Number(lane.low), -12, 12) : 0,
+                mid: Number.isFinite(lane.mid) ? clamp(Number(lane.mid), -12, 12) : 0,
+                high: Number.isFinite(lane.high) ? clamp(Number(lane.high), -12, 12) : 0,
               }))
             );
             setSelected(savedLanes[0]?.id ?? null);
@@ -475,6 +484,9 @@ export function StudioEditorView() {
       const silent = lane.muted || (anySolo && !lane.solo);
       node.gain.gain.value = silent ? 0 : lane.volume / 100;
       node.panner.pan.value = clamp(lane.pan / 50, -1, 1);
+      node.low.gain.value = lane.low;
+      node.mid.gain.value = lane.mid;
+      node.high.gain.value = lane.high;
     }
   }, [lanes, master]);
 
@@ -572,15 +584,31 @@ export function StudioEditorView() {
           source.buffer = buffer;
           const gain = context.createGain();
           const panner = context.createStereoPanner();
+          const low = context.createBiquadFilter();
+          const mid = context.createBiquadFilter();
+          const high = context.createBiquadFilter();
+          low.type = "lowshelf";
+          low.frequency.value = 250;
+          low.gain.value = lane.low;
+          mid.type = "peaking";
+          mid.frequency.value = 1000;
+          mid.Q.value = 1;
+          mid.gain.value = lane.mid;
+          high.type = "highshelf";
+          high.frequency.value = 4000;
+          high.gain.value = lane.high;
           panner.pan.value = clamp(lane.pan / 50, -1, 1);
-          source.connect(gain);
+          source.connect(low);
+          low.connect(mid);
+          mid.connect(high);
+          high.connect(gain);
           gain.connect(panner);
           panner.connect(masterGain);
           const startWhen = startAt + Math.max(0, lane.start - from);
           scheduleClipGain(gain, lane.volume / 100, lane, from, startWhen, remaining);
           source.start(startWhen, offset, remaining);
           sourcesRef.current.push(source);
-          nodesRef.current.set(lane.id, { gain, panner });
+          nodesRef.current.set(lane.id, { gain, panner, low, mid, high });
         }
         startedAtRef.current = startAt;
         startPlayheadRef.current = from;
@@ -849,8 +877,24 @@ export function StudioEditorView() {
         source.buffer = buffer;
         const gain = offline.createGain();
         const panner = offline.createStereoPanner();
+        const low = offline.createBiquadFilter();
+        const mid = offline.createBiquadFilter();
+        const high = offline.createBiquadFilter();
+        low.type = "lowshelf";
+        low.frequency.value = 250;
+        low.gain.value = lane.low;
+        mid.type = "peaking";
+        mid.frequency.value = 1000;
+        mid.Q.value = 1;
+        mid.gain.value = lane.mid;
+        high.type = "highshelf";
+        high.frequency.value = 4000;
+        high.gain.value = lane.high;
         panner.pan.value = clamp(lane.pan / 50, -1, 1);
-        source.connect(gain);
+        source.connect(low);
+        low.connect(mid);
+        mid.connect(high);
+        high.connect(gain);
         gain.connect(panner);
         panner.connect(masterGain);
         scheduleClipGain(gain, lane.volume / 100, lane, lane.start, lane.start, length);
@@ -1211,6 +1255,21 @@ export function StudioEditorView() {
               <label className="studio-slider">Pan <b>{selectedLane.pan === 0 ? "C" : selectedLane.pan > 0 ? `R${selectedLane.pan}` : `L${Math.abs(selectedLane.pan)}`}</b>
                 <input type="range" min="-50" max="50" value={selectedLane.pan} onChange={(event) => updateLane(selectedLane.id, { pan: Number(event.target.value) })} />
               </label>
+              <div className="studio-eq">
+                <div className="studio-eq-head">
+                  <span>3-band EQ</span>
+                  <button type="button" onClick={() => updateLane(selectedLane.id, { low: 0, mid: 0, high: 0 })}>Reset</button>
+                </div>
+                <label>Low <b>{selectedLane.low > 0 ? "+" : ""}{selectedLane.low} dB</b>
+                  <input type="range" min="-12" max="12" step="0.5" value={selectedLane.low} onChange={(event) => updateLane(selectedLane.id, { low: Number(event.target.value) })} />
+                </label>
+                <label>Mid <b>{selectedLane.mid > 0 ? "+" : ""}{selectedLane.mid} dB</b>
+                  <input type="range" min="-12" max="12" step="0.5" value={selectedLane.mid} onChange={(event) => updateLane(selectedLane.id, { mid: Number(event.target.value) })} />
+                </label>
+                <label>High <b>{selectedLane.high > 0 ? "+" : ""}{selectedLane.high} dB</b>
+                  <input type="range" min="-12" max="12" step="0.5" value={selectedLane.high} onChange={(event) => updateLane(selectedLane.id, { high: Number(event.target.value) })} />
+                </label>
+              </div>
               <div className="studio-inspector-actions">
                 <button className={selectedLane.muted ? "on" : ""} type="button" onClick={() => updateLane(selectedLane.id, { muted: !selectedLane.muted })}>Mute</button>
                 <button className={selectedLane.solo ? "on" : ""} type="button" onClick={() => updateLane(selectedLane.id, { solo: !selectedLane.solo })}>Solo</button>
