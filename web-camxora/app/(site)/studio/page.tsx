@@ -42,8 +42,8 @@ export default function StudioPage() {
           </p>
         </div>
         <div className="page-actions">
-          <Link className="btn btn-primary" href="/create">
-            <Icon name="fa-play" /> Open web studio
+          <Link className="btn btn-primary" href="/studio/editor">
+            <Icon name="fa-table-columns" /> Open Studio editor
           </Link>
           <a className="btn btn-ghost" href="mailto:support@camxora.com?subject=Camxora%20Studio%20access">
             Get desktop access
