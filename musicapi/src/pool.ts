@@ -72,8 +72,29 @@ export function daysUntilRenewal(
   return Number.isFinite(ms) ? Math.ceil((ms - now) / 86_400_000) : null;
 }
 
-/** Upcoming-subscription spend across the pool, for the admin dashboard. */
-export interface RenewalForecast {
+/**
+ * Monthly cost of the account's paid plan in USD, or null for a free/unknown
+ * plan.
+ *
+ * Suno lists both a monthly and an annual price for every plan, so the
+ * subscription cadence decides which applies: an annual plan is normalised to
+ * its monthly equivalent (annual / 12) so the renewal forecast stays comparable
+ * month to month. A price of 0 means a free plan, not a paid one. Pure and
+ * exported so the pricing rules can be unit-tested.
+ */
+export function monthlyPlanPriceUsd(
+  info: Pick<BillingInfo, "plan" | "period">,
+): number | null {
+  const monthly = info.plan?.monthly_price_usd;
+  if (typeof monthly === "number" && monthly > 0) return monthly;
+  const annual = info.plan?.annual_price_usd;
+  if (info.period === "year" && typeof annual === "number" && annual > 0) {
+    return Math.round((annual / 12) * 100) / 100;
+  }
+  return null;
+}
+
+/** Upcoming-subscription spend across the pool, for the admin dashboard. */export interface RenewalForecast {
   /** Accounts charging inside the window. */
   count: number;
   /** Their combined monthly list price, in USD. */
@@ -412,10 +433,7 @@ export class AccountPool {
     // Plan catalog entry, used to label the plan and to total upcoming renewal
     // spend. A price of 0 means a free plan, so treat it as "no paid plan".
     const plan = info.plan ?? null;
-    const monthlyPriceUsd =
-      typeof plan?.monthly_price_usd === "number" && plan.monthly_price_usd > 0
-        ? plan.monthly_price_usd
-        : null;
+    const monthlyPriceUsd = monthlyPlanPriceUsd(info);
     const planName =
       monthlyPriceUsd !== null && typeof plan?.name === "string" && plan.name.trim()
         ? plan.name.trim()
