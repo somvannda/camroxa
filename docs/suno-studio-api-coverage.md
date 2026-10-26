@@ -263,6 +263,10 @@ addition to search, and hides tracks that do not match the active filter.
 The Studio supports **4/4, 3/4 and 6/8** time signatures. The setting updates
 the bar/beat readout and metronome accents, and is saved with the project.
 
+The snap grid supports **Off / Bar / Beat / 1/8 / 1/16**. Clip drag, trim and
+loop-region edits snap to the selected grid division using the current BPM and
+time signature. The grid choice is saved with the project.
+
 The Inspector is contextual and split into **Clip / Mix / AI** tabs. Clip shows
 timing, volume, pan and MIDI piano roll; Mix shows automation, EQ, sends and
 dynamics; AI shows stem separation and AI edits. The AI tab is only available

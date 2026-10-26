@@ -105,6 +105,7 @@ type StoredSession = {
   name?: string;
   bpm?: number;
   timeSignature?: string;
+  gridDivision?: "off" | "bar" | "beat" | "1/8" | "1/16";
   zoom?: number;
   master?: number;
   loopStart?: number;
@@ -519,6 +520,7 @@ export function StudioEditorView() {
   const [sessionName, setSessionName] = useState("Untitled session");
   const [bpm, setBpm] = useState(90);
   const [timeSignature, setTimeSignature] = useState("4/4");
+  const [gridDivision, setGridDivision] = useState<"off" | "bar" | "beat" | "1/8" | "1/16">("beat");
   const [zoom, setZoom] = useState(1);
   const [master, setMaster] = useState(80);
   const [playhead, setPlayhead] = useState(0);
@@ -744,6 +746,9 @@ export function StudioEditorView() {
     if (["4/4", "3/4", "6/8"].includes(String(saved.timeSignature))) {
       setTimeSignature(String(saved.timeSignature));
     }
+    if (["off", "bar", "beat", "1/8", "1/16"].includes(String(saved.gridDivision))) {
+      setGridDivision(String(saved.gridDivision) as typeof gridDivision);
+    }
     if (Number.isFinite(saved.zoom)) setZoom(clamp(Number(saved.zoom), 0.7, 2));
     if (Number.isFinite(saved.master)) setMaster(clamp(Number(saved.master), 0, 100));
     if (Number.isFinite(saved.loopStart)) setLoopStart(Math.max(0, Number(saved.loopStart)));
@@ -772,6 +777,7 @@ export function StudioEditorView() {
                 name: project.title,
                 bpm: project.bpm,
                 timeSignature: project.time_signature,
+                gridDivision: data.gridDivision as StoredSession["gridDivision"],
                 zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
                 master: Number.isFinite(data.master) ? Number(data.master) : 80,
                 loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
@@ -809,12 +815,12 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, timeSignature, zoom, master, loopStart, loopEnd, lanes };
+      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, lanes };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, zoom, master, loopStart, loopEnd, lanes]);
+  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, lanes]);
 
   useEffect(() => {
     if (!loaded || !user || cloudSaveRef.current) return;
@@ -825,7 +831,7 @@ export function StudioEditorView() {
       setCloudState("saving");
       setCloudError("");
       try {
-        const data: StudioProjectData = { lanes, loopStart, loopEnd, zoom, master };
+        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, zoom, master };
         if (projectId) {
           await updateStudioProject(projectId, {
             title: sessionName,
@@ -853,7 +859,7 @@ export function StudioEditorView() {
       }
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, projectId, sessionName, bpm, timeSignature, zoom, master, loopStart, loopEnd, lanes]);
+  }, [loaded, user, projectId, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, lanes]);
 
   async function openVersions() {
     setVersionsOpen(true);
@@ -903,7 +909,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, loopStart, loopEnd, zoom, master },
+        data: { lanes, gridDivision, loopStart, loopEnd, zoom, master },
       });
       const share = await createStudioProjectShare(projectId, 7);
       setShareUrl(`${window.location.origin}${share.path}`);
@@ -932,7 +938,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, loopStart, loopEnd, zoom, master },
+        data: { lanes, gridDivision, loopStart, loopEnd, zoom, master },
       });
       const created = await createStudioProjectVersion(projectId, versionLabel.trim() || undefined);
       setVersions((current) => [created, ...current]);
@@ -989,6 +995,25 @@ export function StudioEditorView() {
     const beat = Math.floor((playhead % secondsPerBar) / secondsPerBeat) + 1;
     return `${String(bar).padStart(3, "0")}.${beat}.1`;
   }, [bpm, playhead, timeSignature]);
+
+  const snapToGrid = useCallback(
+    (value: number) => {
+      if (gridDivision === "off") return value;
+      const [numerator, denominator] = timeSignature.split("/").map(Number);
+      const beat = (60 / Math.max(40, bpm)) * (4 / Math.max(1, denominator || 4));
+      const bar = beat * Math.max(1, numerator || 4);
+      const step =
+        gridDivision === "bar"
+          ? bar
+          : gridDivision === "beat"
+            ? beat
+            : gridDivision === "1/8"
+              ? beat / 2
+              : beat / 4;
+      return Math.round(value / step) * step;
+    },
+    [bpm, gridDivision, timeSignature]
+  );
 
   const tickStep = timelineDuration > 300 ? 60 : 30;
   const ticks = useMemo(() => {
@@ -1483,9 +1508,9 @@ export function StudioEditorView() {
       if (!drag || !drag.width) return;
       const delta = ((event.clientX - drag.startX) / drag.width) * timelineDurationRef.current;
       if (drag.which === "start") {
-        setLoopStart(clamp(snap(drag.start + delta), 0, drag.end - 5));
+        setLoopStart(clamp(snapToGrid(drag.start + delta), 0, drag.end - 5));
       } else {
-        setLoopEnd(clamp(snap(drag.end + delta), drag.start + 5, timelineDurationRef.current));
+        setLoopEnd(clamp(snapToGrid(drag.end + delta), drag.start + 5, timelineDurationRef.current));
       }
     };
     const handleLoopUp = () => {
@@ -1497,7 +1522,7 @@ export function StudioEditorView() {
       window.removeEventListener("pointermove", handleLoopMove);
       window.removeEventListener("pointerup", handleLoopUp);
     };
-  }, []);
+  }, [snapToGrid]);
 
   useEffect(() => {
     const handleMove = (event: PointerEvent) => {
@@ -1505,7 +1530,7 @@ export function StudioEditorView() {
       if (!drag || !drag.trackWidth) return;
       const deltaSeconds = ((event.clientX - drag.startX) / drag.trackWidth) * timelineDurationRef.current;
       if (drag.mode === "move") {
-        const nextStart = clamp(snap(drag.start + deltaSeconds), 0, timelineDurationRef.current - drag.duration);
+        const nextStart = clamp(snapToGrid(drag.start + deltaSeconds), 0, timelineDurationRef.current - drag.duration);
         setLanes((current) =>
           current.map((lane) => (lane.id === drag.id ? { ...lane, start: nextStart } : lane))
         );
@@ -1514,7 +1539,7 @@ export function StudioEditorView() {
       if (drag.mode === "left") {
         const minStart = Math.max(0, drag.start - drag.offset);
         const nextStart = clamp(
-          snap(drag.start + deltaSeconds),
+          snapToGrid(drag.start + deltaSeconds),
           minStart,
           drag.start + drag.duration - MIN_CLIP
         );
@@ -1534,7 +1559,7 @@ export function StudioEditorView() {
         return;
       }
       const nextDuration = clamp(
-        snap(drag.duration + deltaSeconds),
+        snapToGrid(drag.duration + deltaSeconds),
         MIN_CLIP,
         timelineDurationRef.current - drag.start
       );
@@ -1551,7 +1576,7 @@ export function StudioEditorView() {
       window.removeEventListener("pointermove", handleMove);
       window.removeEventListener("pointerup", handleUp);
     };
-  }, []);
+  }, [snapToGrid]);
 
   function beginDrag(event: ReactPointerEvent, lane: Clip, mode: DragState["mode"]) {
     event.preventDefault();
@@ -2457,6 +2482,15 @@ export function StudioEditorView() {
         </button>
         <span className="studio-toolbar-divider" />
         <label className="studio-bpm">BPM <input type="number" min={40} max={220} value={bpm} onChange={(event) => setBpm(clamp(Number(event.target.value), 40, 220))} /></label>
+        <label className="studio-grid">Grid
+          <select value={gridDivision} onChange={(event) => setGridDivision(event.target.value as typeof gridDivision)} aria-label="Snap grid">
+            <option value="off">Off</option>
+            <option value="bar">Bar</option>
+            <option value="beat">Beat</option>
+            <option value="1/8">1/8</option>
+            <option value="1/16">1/16</option>
+          </select>
+        </label>
         <label className="studio-zoom">Zoom <input type="range" min="0.7" max="2" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
         <span className="studio-loop-range">
           <span>Loop</span>
