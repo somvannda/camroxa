@@ -236,11 +236,12 @@ Local mixdown export supports:
 ```text
 Full mix
 Loop range
-Individual stems
+Stems ZIP (one rendered file per unmuted track)
 ```
 
 Range and stem exports use the same Web Audio graph, fades, EQ, sends and
-master limiter as playback.
+master limiter as playback. Stem files are packaged into one ZIP archive so a
+12-track export is a single browser download.
 
 When storage is configured, musicapi adds `durable_url` to finished clips.
 Studio prefers `durable_url` over Suno `audio_url` and `media_urls`, so playback

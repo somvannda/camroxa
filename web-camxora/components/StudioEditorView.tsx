@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { Mp3Encoder } from "@breezystack/lamejs";
+import JSZip from "jszip";
 import {
   useCallback,
   useEffect,
@@ -1141,19 +1142,23 @@ export function StudioEditorView() {
       const sourceLanes = lanes.filter((lane) => !lane.muted && lane.duration > 0);
       if (!sourceLanes.length) throw new Error("Every track is muted.");
       const safeName = (sessionName || "camxora-mix").replace(/[\\/:*?"<>|]+/g, "-");
-      for (const lane of sourceLanes) {
+      const zip = new JSZip();
+      for (const [index, lane] of sourceLanes.entries()) {
         const rendered = await renderMix({
           start: lane.start,
           end: lane.start + lane.duration,
           laneIds: new Set([lane.id]),
         });
         const safeTitle = (lane.title || "stem").replace(/[\\/:*?"<>|]+/g, "-");
+        const prefix = String(index + 1).padStart(2, "0");
         if (exportFormat === "mp3") {
-          saveBlob(await encodeMp3(rendered), `${safeName}-${safeTitle}.mp3`);
+          zip.file(`${prefix}-${safeTitle}.mp3`, await encodeMp3(rendered));
         } else {
-          saveBlob(encodeWav(rendered), `${safeName}-${safeTitle}.wav`);
+          zip.file(`${prefix}-${safeTitle}.wav`, encodeWav(rendered));
         }
       }
+      const archive = await zip.generateAsync({ type: "blob", compression: "STORE" });
+      saveBlob(archive, `${safeName}-stems.zip`);
     } catch (cause) {
       setExportError(cause instanceof Error ? cause.message : "Could not export stems");
     } finally {
@@ -1416,9 +1421,9 @@ export function StudioEditorView() {
               type="button"
               disabled={!lanes.length || exporting}
               onClick={() => void exportStems()}
-              title="Export each unmuted track as a separate file"
+              title="Export each unmuted track into one ZIP archive"
             >
-              <Icon name="fa-layer-group" /> {exporting ? "Rendering?" : "Stems"}
+              <Icon name="fa-layer-group" /> {exporting ? "Rendering?" : "Stems ZIP"}
             </button>
             <button
               className="btn btn-primary"
