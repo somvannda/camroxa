@@ -940,6 +940,8 @@ export function StudioEditorView() {
   const [midiChordMode, setMidiChordMode] = useState<"off" | "major" | "minor">("off");
   const [midiArpMode, setMidiArpMode] = useState<"off" | "up" | "down">("off");
   const [midiStatus, setMidiStatus] = useState("");
+  const [takesBusy, setTakesBusy] = useState(false);
+  const [takesError, setTakesError] = useState("");
   const [mixClipboard, setMixClipboard] = useState<Partial<Clip> | null>(null);
   const [metronome, setMetronome] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -2891,6 +2893,70 @@ export function StudioEditorView() {
     setSelected(copy.id);
   }
 
+  async function addAlternateTake(lane: Clip) {
+    if (takesBusy) return;
+    if (
+      lane.uploadId ||
+      lane.midiNotes ||
+      (lane.variant !== "ok" && lane.variant !== "alt")
+    ) {
+      setTakesError("Alternate takes are available for original generated clips.");
+      return;
+    }
+    setTakesBusy(true);
+    setTakesError("");
+    try {
+      const generations = await fetchGenerations(100);
+      const generation = generations.find((item) => item.id === lane.generationId);
+      const alternate = generation?.clips.find(
+        (clip) =>
+          clip.variant !== lane.variant &&
+          Boolean(clip.audio_url || clip.download_url)
+      );
+      if (!alternate) {
+        setTakesError("No alternate take was found for this clip.");
+        return;
+      }
+      const existing = lanes.find(
+        (item) =>
+          item.generationId === lane.generationId &&
+          item.variant === alternate.variant
+      );
+      if (existing) {
+        setSelected(existing.id);
+        setTakesError("That alternate take is already in the session.");
+        return;
+      }
+      const copy: Clip = {
+        ...lane,
+        id: makeId(),
+        variant: alternate.variant,
+        title: alternate.title || generation?.title || lane.title,
+        audioUrl: alternate.audio_url || alternate.download_url || lane.audioUrl,
+        image: alternate.image_url || lane.image,
+        duration: Math.max(
+          MIN_CLIP,
+          Number(alternate.duration_seconds || lane.duration)
+        ),
+        offset: 0,
+        start: lane.start,
+        fadeIn: 0,
+        fadeOut: 0,
+        automation: [],
+        panAutomation: [],
+        color: COLORS[lanes.length % COLORS.length],
+      };
+      commitLanes([...lanes, copy]);
+      setSelected(copy.id);
+    } catch (cause) {
+      setTakesError(
+        cause instanceof Error ? cause.message : "Could not load alternate take."
+      );
+    } finally {
+      setTakesBusy(false);
+    }
+  }
+
   function splitLane(lane: Clip, at: number) {
     const local = at - lane.start;
     if (local <= MIN_CLIP || local >= lane.duration - MIN_CLIP) return;
@@ -4387,6 +4453,27 @@ export function StudioEditorView() {
                   />
                 ))}
               </div>
+              {(selectedLane.variant === "ok" || selectedLane.variant === "alt") &&
+              !selectedLane.uploadId &&
+              !selectedLane.midiNotes ? (
+                <div className="studio-take-actions">
+                  <div>
+                    <span>Take {selectedLane.variant === "alt" ? "B" : "A"}</span>
+                    <button
+                      type="button"
+                      onClick={() => void addAlternateTake(selectedLane)}
+                      disabled={takesBusy}
+                    >
+                      <Icon name={takesBusy ? "fa-spinner" : "fa-clone"} /> Add alternate take
+                    </button>
+                  </div>
+                  {takesError ? (
+                    <small className="studio-stem-error">{takesError}</small>
+                  ) : (
+                    <small>Adds the other Suno take as a parallel lane for comping.</small>
+                  )}
+                </div>
+              ) : null}
               <div className="studio-inspector-grid">
                 <label>Start
                   <input type="number" min={0} step={0.5} value={Number(selectedLane.start.toFixed(1))} onChange={(event) => updateLane(selectedLane.id, { start: clamp(Number(event.target.value), 0, timelineDuration - selectedLane.duration) })} />

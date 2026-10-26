@@ -344,10 +344,15 @@ Projects can be exported as `.camxora.json` and imported back into any Studio
 session, including lanes, markers, BPM, time signature, grid, loop, master and
 mix settings.
 
-The Inspector is contextual and split into **Clip / Mix / AI** tabs. Clip shows
-timing, volume, pan and MIDI piano roll; Mix shows automation, EQ, sends and
-dynamics; AI shows stem separation and AI edits. The AI tab is only available
+The Inspector is contextual and split into **Clip / Mix / Lyrics / AI** tabs.
+Clip shows timing, volume, pan, take selection and MIDI piano roll; Mix shows
+automation, EQ, presets, sends and dynamics; Lyrics shows Suno's aligned words;
+AI shows personas, stem separation and AI edits. The AI tab is only available
 for original generated clips.
+
+Original generated clips expose **Take A / Take B** and can add the other Suno
+take as a parallel lane. Both takes remain independent audio clips, so they can
+be trimmed, muted and arranged against each other for manual comping.
 
 Studio keyboard shortcuts:
 
