@@ -561,6 +561,10 @@ export function StudioEditorView() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [cloudState, setCloudState] = useState<"local" | "saving" | "saved" | "error">("local");
   const [cloudError, setCloudError] = useState("");
+  const [projectsOpen, setProjectsOpen] = useState(false);
+  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null }>>([]);
+  const [projectsBusy, setProjectsBusy] = useState(false);
+  const [projectsError, setProjectsError] = useState("");
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versions, setVersions] = useState<StudioProjectVersion[]>([]);
   const [versionsBusy, setVersionsBusy] = useState(false);
@@ -960,6 +964,56 @@ export function StudioEditorView() {
     }, 650);
     return () => window.clearTimeout(timer);
   }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, markers, lanes]);
+
+  async function openProjects() {
+    setProjectsOpen(true);
+    setProjectsError("");
+    setProjectsBusy(true);
+    try {
+      const result = await listStudioProjects(50, 0);
+      setProjectList(result.items);
+    } catch (cause) {
+      setProjectsError(cause instanceof Error ? cause.message : "Could not load projects.");
+    } finally {
+      setProjectsBusy(false);
+    }
+  }
+
+  async function openProject(projectIdToOpen: string) {
+    setProjectsBusy(true);
+    setProjectsError("");
+    try {
+      const project = await getStudioProject(projectIdToOpen);
+      const data = (project.data || {}) as StudioProjectData;
+      applySession(
+        {
+          name: project.title,
+          bpm: project.bpm,
+          timeSignature: project.time_signature,
+          gridDivision: data.gridDivision as StoredSession["gridDivision"],
+          zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
+          master: Number.isFinite(data.master) ? Number(data.master) : 80,
+          loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
+          loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
+          markers: data.markers as TimelineMarker[],
+          lanes: normalizeLanes(data.lanes),
+        },
+        project.id
+      );
+      setSharedToken(null);
+      setSessionName(project.title);
+      setBpm(project.bpm);
+      setTimeSignature(project.time_signature);
+      setCloudState("saved");
+      setProjectsOpen(false);
+      setHistory([]);
+      setFuture([]);
+    } catch (cause) {
+      setProjectsError(cause instanceof Error ? cause.message : "Could not open project.");
+    } finally {
+      setProjectsBusy(false);
+    }
+  }
 
   async function openVersions() {
     setVersionsOpen(true);
@@ -2582,6 +2636,9 @@ export function StudioEditorView() {
             {actionsOpen ? (
               <>
                 <div className="studio-actions-menu">
+                  <button type="button" onClick={() => { setActionsOpen(false); void openProjects(); }}>
+                    <Icon name="fa-folder-open" /> Open project
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -3464,6 +3521,45 @@ export function StudioEditorView() {
                     disabled={versionsBusy}
                   >
                     Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {projectsOpen ? (
+        <div className="studio-modal-backdrop" role="dialog" aria-modal="true" aria-label="Open project">
+          <div className="studio-versions-modal">
+            <div className="studio-versions-head">
+              <div>
+                <h2>Open project</h2>
+                <p>Choose a saved Studio project.</p>
+              </div>
+              <button type="button" aria-label="Close projects" onClick={() => setProjectsOpen(false)}>
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            {projectsError ? <small className="studio-stem-error">{projectsError}</small> : null}
+            <div className="studio-versions-list">
+              {projectsBusy && !projectList.length ? <p>Loading projects…</p> : null}
+              {!projectsBusy && !projectList.length ? <p>No saved projects yet.</p> : null}
+              {projectList.map((project) => (
+                <div className="studio-version-row" key={project.id}>
+                  <div>
+                    <b>{project.title}</b>
+                    <small>
+                      {project.updated_at
+                        ? new Date(project.updated_at).toLocaleString()
+                        : "Saved project"}
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void openProject(project.id)}
+                    disabled={projectsBusy}
+                  >
+                    Open
                   </button>
                 </div>
               ))}

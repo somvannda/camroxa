@@ -271,6 +271,9 @@ The timeline supports named **section markers**. Click the flag button to add a
 section at the playhead, click a marker to seek, double-click to rename, and
 right-click to remove. Markers are saved with the project.
 
+The project menu includes **Open project**, which lists saved cloud projects
+with their update time and loads the selected project into Studio.
+
 The Inspector is contextual and split into **Clip / Mix / AI** tabs. Clip shows
 timing, volume, pan and MIDI piano roll; Mix shows automation, EQ, sends and
 dynamics; AI shows stem separation and AI edits. The AI tab is only available
