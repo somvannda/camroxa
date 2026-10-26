@@ -35,6 +35,12 @@ import {
   type StudioPricing,
 } from "@/lib/studio-api";
 
+type AutomationPoint = {
+  id: string;
+  time: number;
+  value: number;
+};
+
 type Clip = {
   id: string;
   generationId: string;
@@ -48,6 +54,7 @@ type Clip = {
   offset: number;
   fadeIn: number;
   fadeOut: number;
+  automation?: AutomationPoint[];
   audioUrl?: string | null;
   low: number;
   mid: number;
@@ -216,6 +223,20 @@ function scheduleClipGain(
   length: number
 ) {
   const elapsed = Math.max(0, from - lane.start);
+  const automation = (lane.automation ?? [])
+    .filter((point) => point.time <= elapsed + length)
+    .sort((a, b) => a.time - b.time);
+  if (automation.length) {
+    const prior = [...automation].reverse().find((point) => point.time <= elapsed);
+    const first = prior ?? automation[0];
+    gain.gain.setValueAtTime(base * (first.value / 100), when);
+    for (const point of automation) {
+      if (point.time <= elapsed) continue;
+      const at = when + (point.time - elapsed);
+      gain.gain.linearRampToValueAtTime(base * (point.value / 100), Math.max(when + 0.001, at));
+    }
+    return;
+  }
   const fadeIn = Math.min(lane.fadeIn, length / 2);
   const fadeOut = Math.min(lane.fadeOut, length / 2);
   if (fadeIn > 0 && elapsed < fadeIn) {
@@ -304,6 +325,7 @@ function clipFromGeneration(
     offset: 0,
     fadeIn: 0,
     fadeOut: 0,
+    automation: [],
     audioUrl: null,
     low: 0,
     mid: 0,
@@ -425,6 +447,21 @@ export function StudioEditorView() {
         high: Number.isFinite(lane.high) ? clamp(Number(lane.high), -12, 12) : 0,
         delay: Number.isFinite(lane.delay) ? clamp(Number(lane.delay), 0, 100) : 0,
         reverb: Number.isFinite(lane.reverb) ? clamp(Number(lane.reverb), 0, 100) : 0,
+        automation: Array.isArray(lane.automation)
+          ? lane.automation
+              .filter(
+                (point): point is AutomationPoint =>
+                  Boolean(point) &&
+                  Number.isFinite((point as AutomationPoint).time) &&
+                  Number.isFinite((point as AutomationPoint).value)
+              )
+              .map((point) => ({
+                id: String(point.id || makeId()),
+                time: clamp(Number(point.time), 0, lane.duration),
+                value: clamp(Number(point.value), 0, 100),
+              }))
+              .sort((a, b) => a.time - b.time)
+          : [],
       }));
   }
 
@@ -594,6 +631,32 @@ export function StudioEditorView() {
       commitLanes(lanes.map((lane) => (lane.id === id ? { ...lane, ...patch } : lane)));
     },
     [commitLanes, lanes]
+  );
+
+  const addVolumeAutomationPoint = useCallback(() => {
+    if (!selectedLane) return;
+    const time = clamp(playhead - selectedLane.start, 0, selectedLane.duration);
+    const point: AutomationPoint = {
+      id: makeId(),
+      time: Number(time.toFixed(2)),
+      value: selectedLane.volume,
+    };
+    const points = (selectedLane.automation ?? []).filter(
+      (existing) => Math.abs(existing.time - time) > 0.05
+    );
+    updateLane(selectedLane.id, {
+      automation: [...points, point].sort((a, b) => a.time - b.time),
+    });
+  }, [playhead, selectedLane, updateLane]);
+
+  const removeVolumeAutomationPoint = useCallback(
+    (pointId: string) => {
+      if (!selectedLane) return;
+      updateLane(selectedLane.id, {
+        automation: (selectedLane.automation ?? []).filter((point) => point.id !== pointId),
+      });
+    },
+    [selectedLane, updateLane]
   );
 
   const undo = useCallback(() => {
@@ -1011,7 +1074,13 @@ export function StudioEditorView() {
     if (!selectedLane) return;
     const local = playhead - selectedLane.start;
     if (local <= MIN_CLIP || local >= selectedLane.duration - MIN_CLIP) return;
-    const left: Clip = { ...selectedLane, duration: local, fadeOut: 0 };
+    const automation = selectedLane.automation ?? [];
+    const left: Clip = {
+      ...selectedLane,
+      duration: local,
+      fadeOut: 0,
+      automation: automation.filter((point) => point.time <= local),
+    };
     const right: Clip = {
       ...selectedLane,
       id: makeId(),
@@ -1019,6 +1088,9 @@ export function StudioEditorView() {
       duration: selectedLane.duration - local,
       offset: selectedLane.offset + local,
       fadeIn: 0,
+      automation: automation
+        .filter((point) => point.time >= local)
+        .map((point) => ({ ...point, time: point.time - local })),
     };
     commitLanes(lanes.flatMap((lane) => (lane.id === selectedLane.id ? [left, right] : [lane])));
     setSelected(right.id);
@@ -1192,6 +1264,7 @@ export function StudioEditorView() {
         offset: 0,
         fadeIn: 0,
         fadeOut: 0,
+        automation: [],
         audioUrl,
         low: 0,
         mid: 0,
@@ -1297,6 +1370,7 @@ export function StudioEditorView() {
           offset: 0,
           fadeIn: 0,
           fadeOut: 0,
+          automation: [],
           audioUrl:
             clip.durable_url ||
             clip.durableUrl ||
@@ -1692,6 +1766,27 @@ export function StudioEditorView() {
               <label className="studio-slider">Pan <b>{selectedLane.pan === 0 ? "C" : selectedLane.pan > 0 ? `R${selectedLane.pan}` : `L${Math.abs(selectedLane.pan)}`}</b>
                 <input type="range" min="-50" max="50" value={selectedLane.pan} onChange={(event) => updateLane(selectedLane.id, { pan: Number(event.target.value) })} />
               </label>
+              <div className="studio-eq studio-automation">
+                <div className="studio-eq-head">
+                  <span>Volume automation</span>
+                  <button type="button" onClick={addVolumeAutomationPoint}>Add at playhead</button>
+                </div>
+                {(selectedLane.automation ?? []).length ? (
+                  <div className="studio-automation-points">
+                    {(selectedLane.automation ?? []).map((point) => (
+                      <div className="studio-automation-point" key={point.id}>
+                        <span>{point.time.toFixed(1)}s</span>
+                        <b>{Math.round(point.value)}%</b>
+                        <button type="button" aria-label="Remove automation point" onClick={() => removeVolumeAutomationPoint(point.id)}>
+                          <Icon name="fa-xmark" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <small>Add a point at the playhead. Automation overrides fades.</small>
+                )}
+              </div>
               <div className="studio-eq">
                 <div className="studio-eq-head">
                   <span>3-band EQ</span>
