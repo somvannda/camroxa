@@ -335,6 +335,7 @@ export function StudioEditorView() {
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const [exportFormat, setExportFormat] = useState<"wav" | "mp3">("wav");
+  const [exportRange, setExportRange] = useState<"full" | "loop">("full");
   const [loop, setLoop] = useState(false);
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(60);
@@ -1022,6 +1023,82 @@ export function StudioEditorView() {
     setSelected(right.id);
   }
 
+  async function renderMix(options: {
+    start: number;
+    end: number;
+    laneIds?: Set<string>;
+  }): Promise<AudioBuffer> {
+    const { start, end, laneIds } = options;
+    const duration = Math.max(0, end - start);
+    if (duration <= 0) throw new Error("Choose a valid export range.");
+    const sampleRate = 44100;
+    const offline = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
+    const masterGain = offline.createGain();
+    masterGain.gain.value = master / 100;
+    const limiter = offline.createDynamicsCompressor();
+    limiter.threshold.value = -3;
+    limiter.knee.value = 0;
+    limiter.ratio.value = 20;
+    limiter.attack.value = 0.003;
+    limiter.release.value = 0.1;
+    masterGain.connect(limiter);
+    limiter.connect(offline.destination);
+    const anySolo = laneIds ? false : lanes.some((lane) => lane.solo);
+    const audible = lanes.filter(
+      (lane) =>
+        (!laneIds || laneIds.has(lane.id)) &&
+        !lane.muted &&
+        (!anySolo || lane.solo || Boolean(laneIds?.has(lane.id)))
+    );
+    if (!audible.length) throw new Error("Every track is muted.");
+    const loaded = await Promise.all(
+      audible.map(async (lane) => ({ lane, buffer: await loadBuffer(lane) }))
+    );
+    for (const { lane, buffer } of loaded) {
+      const clipStart = Math.max(lane.start, start);
+      const clipEnd = Math.min(lane.start + lane.duration, end);
+      if (clipEnd <= clipStart) continue;
+      const offset = Math.max(0, Math.min(lane.offset + (clipStart - lane.start), buffer.duration));
+      const available = Math.max(0, buffer.duration - offset);
+      const length = Math.min(clipEnd - clipStart, available);
+      if (length <= 0 || offset >= buffer.duration) continue;
+      const source = offline.createBufferSource();
+      source.buffer = buffer;
+      const gain = offline.createGain();
+      const panner = offline.createStereoPanner();
+      const low = offline.createBiquadFilter();
+      const mid = offline.createBiquadFilter();
+      const high = offline.createBiquadFilter();
+      low.type = "lowshelf";
+      low.frequency.value = 250;
+      low.gain.value = lane.low;
+      mid.type = "peaking";
+      mid.frequency.value = 1000;
+      mid.Q.value = 1;
+      mid.gain.value = lane.mid;
+      high.type = "highshelf";
+      high.frequency.value = 4000;
+      high.gain.value = lane.high;
+      panner.pan.value = clamp(lane.pan / 50, -1, 1);
+      source.connect(low);
+      low.connect(mid);
+      mid.connect(high);
+      high.connect(gain);
+      gain.connect(panner);
+      connectTrackFx(offline, panner, masterGain, lane);
+      scheduleClipGain(
+        gain,
+        lane.volume / 100,
+        lane,
+        clipStart,
+        clipStart - start,
+        length
+      );
+      source.start(clipStart - start, offset, length);
+    }
+    return offline.startRendering();
+  }
+
   async function exportMix() {
     if (!lanes.length || exporting) return;
     setExporting(true);
@@ -1031,67 +1108,54 @@ export function StudioEditorView() {
       setPlaying(false);
     }
     try {
-      const duration = lanes.reduce((max, lane) => Math.max(max, lane.start + lane.duration), 0);
-      if (duration <= 0) throw new Error("Add at least one clip before exporting.");
-      const sampleRate = 44100;
-      const offline = new OfflineAudioContext(2, Math.ceil(duration * sampleRate), sampleRate);
-      const masterGain = offline.createGain();
-      masterGain.gain.value = master / 100;
-      const limiter = offline.createDynamicsCompressor();
-      limiter.threshold.value = -3;
-      limiter.knee.value = 0;
-      limiter.ratio.value = 20;
-      limiter.attack.value = 0.003;
-      limiter.release.value = 0.1;
-      masterGain.connect(limiter);
-      limiter.connect(offline.destination);
-      const anySolo = lanes.some((lane) => lane.solo);
-      const audible = lanes.filter((lane) => !lane.muted && (!anySolo || lane.solo));
-      if (!audible.length) throw new Error("Every track is muted.");
-      const loaded = await Promise.all(
-        audible.map(async (lane) => ({ lane, buffer: await loadBuffer(lane) }))
+      const timelineEnd = lanes.reduce(
+        (max, lane) => Math.max(max, lane.start + lane.duration),
+        0
       );
-      for (const { lane, buffer } of loaded) {
-        const offset = Math.max(0, Math.min(lane.offset, buffer.duration));
-        const available = Math.max(0, buffer.duration - offset);
-        const length = Math.min(lane.duration, available);
-        if (length <= 0) continue;
-        const source = offline.createBufferSource();
-        source.buffer = buffer;
-        const gain = offline.createGain();
-        const panner = offline.createStereoPanner();
-        const low = offline.createBiquadFilter();
-        const mid = offline.createBiquadFilter();
-        const high = offline.createBiquadFilter();
-        low.type = "lowshelf";
-        low.frequency.value = 250;
-        low.gain.value = lane.low;
-        mid.type = "peaking";
-        mid.frequency.value = 1000;
-        mid.Q.value = 1;
-        mid.gain.value = lane.mid;
-        high.type = "highshelf";
-        high.frequency.value = 4000;
-        high.gain.value = lane.high;
-        panner.pan.value = clamp(lane.pan / 50, -1, 1);
-        source.connect(low);
-        low.connect(mid);
-        mid.connect(high);
-        high.connect(gain);
-        gain.connect(panner);
-        connectTrackFx(offline, panner, masterGain, lane);
-        scheduleClipGain(gain, lane.volume / 100, lane, lane.start, lane.start, length);
-        source.start(lane.start, offset, length);
-      }
-      const rendered = await offline.startRendering();
+      const start = exportRange === "loop" ? Math.min(loopStart, loopEnd) : 0;
+      const end = exportRange === "loop" ? Math.max(loopStart, loopEnd) : timelineEnd;
+      const rendered = await renderMix({ start, end });
       const safeName = (sessionName || "camxora-mix").replace(/[\\/:*?"<>|]+/g, "-");
+      const suffix = exportRange === "loop" ? "-loop" : "";
       if (exportFormat === "mp3") {
-        saveBlob(await encodeMp3(rendered), `${safeName}.mp3`);
+        saveBlob(await encodeMp3(rendered), `${safeName}${suffix}.mp3`);
       } else {
-        saveBlob(encodeWav(rendered), `${safeName}.wav`);
+        saveBlob(encodeWav(rendered), `${safeName}${suffix}.wav`);
       }
     } catch (cause) {
       setExportError(cause instanceof Error ? cause.message : "Could not export the mix");
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  async function exportStems() {
+    if (!lanes.length || exporting) return;
+    setExporting(true);
+    setExportError("");
+    if (playing) {
+      stopSources();
+      setPlaying(false);
+    }
+    try {
+      const sourceLanes = lanes.filter((lane) => !lane.muted && lane.duration > 0);
+      if (!sourceLanes.length) throw new Error("Every track is muted.");
+      const safeName = (sessionName || "camxora-mix").replace(/[\\/:*?"<>|]+/g, "-");
+      for (const lane of sourceLanes) {
+        const rendered = await renderMix({
+          start: lane.start,
+          end: lane.start + lane.duration,
+          laneIds: new Set([lane.id]),
+        });
+        const safeTitle = (lane.title || "stem").replace(/[\\/:*?"<>|]+/g, "-");
+        if (exportFormat === "mp3") {
+          saveBlob(await encodeMp3(rendered), `${safeName}-${safeTitle}.mp3`);
+        } else {
+          saveBlob(encodeWav(rendered), `${safeName}-${safeTitle}.wav`);
+        }
+      }
+    } catch (cause) {
+      setExportError(cause instanceof Error ? cause.message : "Could not export stems");
     } finally {
       setExporting(false);
     }
@@ -1325,6 +1389,16 @@ export function StudioEditorView() {
           <div className="studio-export-group">
             <select
               className="studio-export-format"
+              value={exportRange}
+              onChange={(event) => setExportRange(event.target.value as "full" | "loop")}
+              aria-label="Export range"
+              disabled={exporting}
+            >
+              <option value="full">Full mix</option>
+              <option value="loop">Loop range</option>
+            </select>
+            <select
+              className="studio-export-format"
               value={exportFormat}
               onChange={(event) => setExportFormat(event.target.value as "wav" | "mp3")}
               aria-label="Export format"
@@ -1333,6 +1407,15 @@ export function StudioEditorView() {
               <option value="wav">WAV</option>
               <option value="mp3">MP3 192k</option>
             </select>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={!lanes.length || exporting}
+              onClick={() => void exportStems()}
+              title="Export each unmuted track as a separate file"
+            >
+              <Icon name="fa-layer-group" /> {exporting ? "Rendering?" : "Stems"}
+            </button>
             <button
               className="btn btn-primary"
               type="button"

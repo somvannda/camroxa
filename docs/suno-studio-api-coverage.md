@@ -231,6 +231,17 @@ The Inspector displays the configured costs next to the Stems and AI edit
 actions, so admin pricing changes are reflected without hardcoding amounts in
 the frontend.
 
+Local mixdown export supports:
+
+```text
+Full mix
+Loop range
+Individual stems
+```
+
+Range and stem exports use the same Web Audio graph, fades, EQ, sends and
+master limiter as playback.
+
 Matching platform routes:
 
 ```text
