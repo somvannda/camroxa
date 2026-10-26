@@ -2791,6 +2791,23 @@ export function StudioEditorView() {
     setSelectedMidiNoteId(note.id);
   }
 
+  function previewMidiPitch(pitch: number) {
+    const context = ensureAudioContext();
+    const master = masterGainRef.current ?? context.destination;
+    const now = context.currentTime;
+    const oscillator = context.createOscillator();
+    oscillator.type = selectedLane?.instrument ?? "triangle";
+    oscillator.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
+    const gain = context.createGain();
+    gain.gain.setValueAtTime(0.0001, now);
+    gain.gain.exponentialRampToValueAtTime(0.18, now + 0.012);
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.55);
+    oscillator.connect(gain);
+    gain.connect(master);
+    oscillator.start(now);
+    oscillator.stop(now + 0.58);
+  }
+
   function updateMidiNote(noteId: string, patch: Partial<MidiNote>) {
     if (!selectedLane?.midiNotes) return;
     invalidateMidi(selectedLane);
@@ -4231,6 +4248,22 @@ export function StudioEditorView() {
                         })}
                       </div>
                     ))}
+                  </div>
+                  <div className="studio-midi-keyboard" aria-label="Playable MIDI keyboard">
+                    {Array.from({ length: 12 }, (_, index) => 60 + index).map((pitch) => {
+                      const black = [1, 3, 6, 8, 10].includes(pitch % 12);
+                      return (
+                        <button
+                          key={pitch}
+                          type="button"
+                          className={black ? "black" : ""}
+                          aria-label={`Play ${midiNoteName(pitch)}`}
+                          onClick={() => previewMidiPitch(pitch)}
+                        >
+                          {midiNoteName(pitch)}
+                        </button>
+                      );
+                    })}
                   </div>
                   {(() => {
                     const note = (selectedLane.midiNotes ?? []).find(

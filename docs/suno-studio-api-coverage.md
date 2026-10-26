@@ -389,7 +389,8 @@ mode adds a major or minor triad on one click, and the arpeggiator can spread
 that triad upward or downward in half-second steps. MIDI export writes the
 resulting notes with the project tempo. Notes are rendered through the same Web
 Audio buffer path, so MIDI tracks support fades, EQ, FX, dynamics, automation
-and export like audio tracks.
+and export like audio tracks. A one-octave playable keyboard below the piano
+roll auditions notes through the same synth and master bus.
 
 The transport includes a BPM-driven metronome with accented downbeats. Click
 scheduling follows the loop range and is monitoring-only; it is not included

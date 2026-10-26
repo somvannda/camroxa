@@ -1887,6 +1887,11 @@ html{color-scheme:dark}
   .studio-midi-head-actions{display:flex;align-items:center;justify-content:flex-end;flex-wrap:wrap;gap:4px}
   .studio-midi-head-actions select{height:20px;border:1px solid var(--line);border-radius:4px;background:#0d1224;color:#cbd5e1;font:inherit;font-size:8px}
   .studio-midi-grid{display:grid;gap:2px;margin-top:5px}
+  .studio-midi-keyboard{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:2px;margin-top:6px}
+  .studio-midi-keyboard button{height:34px;min-width:0;padding:0;border:1px solid #94a3b8;border-radius:3px;background:#e2e8f0;color:#0f172a;font:inherit;font-size:7px;font-weight:600;cursor:pointer}
+  .studio-midi-keyboard button:hover{background:#fff}
+  .studio-midi-keyboard button.black{border-color:#334155;background:#1e293b;color:#cbd5e1}
+  .studio-midi-keyboard button.black:hover{background:#334155;color:#fff}
   .studio-midi-row{display:grid;grid-template-columns:22px repeat(16,1fr);gap:2px;align-items:center}
   .studio-midi-row>span{font-size:7.5px;color:var(--muted2)}
   .studio-midi-row button{height:9px;padding:0;border:1px solid rgba(255,255,255,.06);border-radius:2px;background:rgba(255,255,255,.025);cursor:pointer}
