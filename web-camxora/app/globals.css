@@ -2692,3 +2692,8 @@ html{color-scheme:dark}
   .studio-inspector-tabs button{flex:1;height:25px;border:0;border-radius:4px;background:transparent;color:#64748b;font:inherit;font-size:9px;font-weight:600;cursor:pointer}
   .studio-inspector-tabs button:hover{color:#cbd5e1}
   .studio-inspector-tabs button.active{background:rgba(139,92,246,.14);color:#ddd6fe;box-shadow:inset 0 0 0 1px rgba(168,85,247,.2)}
+
+  .studio-library-filters{display:flex;gap:3px;margin:0 0 9px;overflow-x:auto;scrollbar-width:none}
+  .studio-library-filters button{height:23px;padding:0 7px;border:1px solid rgba(148,163,184,.12);border-radius:4px;background:rgba(255,255,255,.018);color:#64748b;font:inherit;font-size:8px;white-space:nowrap;cursor:pointer}
+  .studio-library-filters button:hover{color:#cbd5e1;border-color:rgba(168,85,247,.28)}
+  .studio-library-filters button.active{background:rgba(139,92,246,.13);border-color:rgba(168,85,247,.3);color:#ddd6fe}

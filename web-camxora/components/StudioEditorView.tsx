@@ -511,6 +511,7 @@ export function StudioEditorView() {
   const [lanes, setLanes] = useState<Clip[]>([]);
   const [audioMeta, setAudioMeta] = useState<Record<string, AudioMeta>>({});
   const [search, setSearch] = useState("");
+  const [libraryFilter, setLibraryFilter] = useState<"all" | "instrumental" | "vocal" | "ready">("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("Untitled session");
   const [bpm, setBpm] = useState(90);
@@ -972,11 +973,19 @@ export function StudioEditorView() {
 
   const filteredItems = useMemo(() => {
     const query = search.trim().toLowerCase();
-    if (!query) return items;
-    return items.filter((item) =>
-      `${item.title} ${item.style || ""}`.toLowerCase().includes(query)
-    );
-  }, [items, search]);
+    return items.filter((item) => {
+      if (libraryFilter === "instrumental" && !item.instrumental) return false;
+      if (libraryFilter === "vocal" && item.instrumental) return false;
+      if (
+        libraryFilter === "ready" &&
+        !item.clips?.some((clip) => clip.ready || clip.audio_url)
+      ) {
+        return false;
+      }
+      if (!query) return true;
+      return `${item.title} ${item.style || ""}`.toLowerCase().includes(query);
+    });
+  }, [items, libraryFilter, search]);
 
   const selectedLane = lanes.find((lane) => lane.id === selected) ?? null;
   const canUseAiEdits = Boolean(
@@ -2450,6 +2459,24 @@ export function StudioEditorView() {
               aria-label="Search library"
             />
           </label>
+          <div className="studio-library-filters" role="group" aria-label="Library filters">
+            {([
+              ["all", "All"],
+              ["instrumental", "Instrumental"],
+              ["vocal", "Vocals"],
+              ["ready", "Ready"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                className={libraryFilter === value ? "active" : ""}
+                type="button"
+                aria-pressed={libraryFilter === value}
+                onClick={() => setLibraryFilter(value)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
           {!items.length ? (
             <div className="studio-library-empty">
               <Icon name="fa-music" />

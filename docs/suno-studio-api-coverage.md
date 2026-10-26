@@ -257,6 +257,9 @@ for the selected clip.
 Right-clicking a clip opens an edit menu with split, duplicate, mute,
 rename-track and remove actions. Double-clicking a track header also renames it.
 
+The Library supports **All / Instrumental / Vocals / Ready** filters in
+addition to search, and hides tracks that do not match the active filter.
+
 The Inspector is contextual and split into **Clip / Mix / AI** tabs. Clip shows
 timing, volume, pan and MIDI piano roll; Mix shows automation, EQ, sends and
 dynamics; AI shows stem separation and AI edits. The AI tab is only available
