@@ -1875,6 +1875,10 @@ html{color-scheme:dark}
   .studio-slider b{color:#d8b4fe;font-weight:600}
   .studio-slider input{grid-column:1/-1;accent-color:#a855f7;width:100%}
   .studio-eq{margin-top:12px;padding:9px;border:1px solid var(--line);border-radius:7px;background:rgba(255,255,255,.018)}
+  .studio-presets .studio-eq-head small{font-size:8px;color:#64748b}
+  .studio-preset-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px}
+  .studio-preset-grid button{height:26px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.025);color:#cbd5e1;font:inherit;font-size:8.5px;cursor:pointer;text-align:left}
+  .studio-preset-grid button:hover{background:rgba(168,85,247,.13);border-color:rgba(168,85,247,.35);color:#fff}
   .studio-eq-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:3px}
   .studio-eq-head span{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
   .studio-eq-head button{border:0;background:transparent;color:#c4b5fd;font:inherit;font-size:8.5px;cursor:pointer}

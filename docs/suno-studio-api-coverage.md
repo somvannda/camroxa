@@ -281,7 +281,9 @@ Each track has a **Dynamics** section with compression and drive/saturation,
 a low-pass **Filter** with cutoff/resonance, plus delay, reverb and chorus
 sends. All are saved with the project and applied to playback and export.
 Drive uses a normalized soft-clip waveshaper before the compressor; chorus uses
-an LFO-modulated delay.
+an LFO-modulated delay. The Mix tab also has one-click plugin presets — Clean,
+Vocal focus, Warm tape, Lo-fi, Wide chorus and Punch — which write the selected
+track's effect settings and are saved with the project.
 
 The transport also exposes master-bus compression, drive/saturation, a master
 3-band EQ popover, and a live master output meter driven by the master bus

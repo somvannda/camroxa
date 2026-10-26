@@ -150,6 +150,105 @@ type AudioMeta = {
 };
 
 const COLORS = ["#8b5cf6", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899", "#14b8a6"];
+
+const MIX_PRESETS: Array<{ id: string; name: string; patch: Partial<Clip> }> = [
+  {
+    id: "clean",
+    name: "Clean",
+    patch: {
+      low: 0,
+      mid: 0,
+      high: 0,
+      delay: 0,
+      reverb: 0,
+      chorus: 0,
+      compressor: 0,
+      drive: 0,
+      filterCutoff: 20000,
+      filterResonance: 0.7,
+    },
+  },
+  {
+    id: "vocal",
+    name: "Vocal focus",
+    patch: {
+      low: -2,
+      mid: 2,
+      high: 1.5,
+      delay: 6,
+      reverb: 12,
+      chorus: 8,
+      compressor: 35,
+      drive: 0,
+      filterCutoff: 16000,
+      filterResonance: 1,
+    },
+  },
+  {
+    id: "warm",
+    name: "Warm tape",
+    patch: {
+      low: 2,
+      mid: -1,
+      high: -2,
+      delay: 8,
+      reverb: 10,
+      chorus: 4,
+      compressor: 20,
+      drive: 18,
+      filterCutoff: 14000,
+      filterResonance: 0.8,
+    },
+  },
+  {
+    id: "lofi",
+    name: "Lo-fi",
+    patch: {
+      low: 1.5,
+      mid: -2,
+      high: -7,
+      delay: 4,
+      reverb: 8,
+      chorus: 18,
+      compressor: 25,
+      drive: 32,
+      filterCutoff: 3600,
+      filterResonance: 2.5,
+    },
+  },
+  {
+    id: "wide",
+    name: "Wide chorus",
+    patch: {
+      low: 0,
+      mid: 0,
+      high: 1,
+      delay: 12,
+      reverb: 18,
+      chorus: 35,
+      compressor: 15,
+      drive: 0,
+      filterCutoff: 20000,
+      filterResonance: 0.7,
+    },
+  },
+  {
+    id: "punch",
+    name: "Punch",
+    patch: {
+      low: 2,
+      mid: 1,
+      high: 1,
+      delay: 0,
+      reverb: 4,
+      chorus: 0,
+      compressor: 55,
+      drive: 12,
+      filterCutoff: 18000,
+      filterResonance: 0.9,
+    },
+  },
+];
 const MIN_CLIP = 3;
 const STORAGE_PREFIX = "camxora-studio-session-v1";
 
@@ -3937,6 +4036,23 @@ export function StudioEditorView() {
               ) : null}
               {activeInspectorTab === "mix" ? (
                 <>
+              <div className="studio-eq studio-presets">
+                <div className="studio-eq-head">
+                  <span>Plugin presets</span>
+                  <small>Selected track</small>
+                </div>
+                <div className="studio-preset-grid">
+                  {MIX_PRESETS.map((preset) => (
+                    <button
+                      key={preset.id}
+                      type="button"
+                      onClick={() => updateLane(selectedLane.id, preset.patch)}
+                    >
+                      {preset.name}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <div className="studio-eq studio-automation">
                 <div className="studio-eq-head">
                   <span>Volume automation</span>
