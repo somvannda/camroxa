@@ -2299,6 +2299,16 @@ export function StudioEditorView() {
     });
   }
 
+  function moveLane(lane: Clip, direction: -1 | 1) {
+    const index = lanes.findIndex((item) => item.id === lane.id);
+    if (index < 0) return;
+    const target = index + direction;
+    if (target < 0 || target >= lanes.length) return;
+    const next = [...lanes];
+    [next[index], next[target]] = [next[target], next[index]];
+    commitLanes(next);
+  }
+
   function renameLane(lane: Clip) {
     const next = window.prompt("Track name", lane.title);
     if (next === null) return;
@@ -3940,6 +3950,7 @@ export function StudioEditorView() {
       {clipMenu ? (() => {
         const lane = lanes.find((item) => item.id === clipMenu.laneId);
         if (!lane) return null;
+        const laneIndex = lanes.findIndex((item) => item.id === lane.id);
         return (
           <div
             className="studio-clip-menu"
@@ -3950,6 +3961,20 @@ export function StudioEditorView() {
             }}
           >
             <div className="studio-clip-menu-head">{lane.title}</div>
+            <button
+              type="button"
+              disabled={laneIndex <= 0}
+              onClick={() => { setClipMenu(null); moveLane(lane, -1); }}
+            >
+              <Icon name="fa-arrow-up" /> Move track up
+            </button>
+            <button
+              type="button"
+              disabled={laneIndex >= lanes.length - 1}
+              onClick={() => { setClipMenu(null); moveLane(lane, 1); }}
+            >
+              <Icon name="fa-arrow-down" /> Move track down
+            </button>
             <button type="button" onClick={() => { setClipMenu(null); splitLane(lane, playhead); }}>
               <Icon name="fa-scissors" /> Split at playhead
             </button>
