@@ -568,6 +568,7 @@ export function StudioEditorView() {
   const [masterMid, setMasterMid] = useState(0);
   const [masterHigh, setMasterHigh] = useState(0);
   const [masterEqOpen, setMasterEqOpen] = useState(false);
+  const [masterMeter, setMasterMeter] = useState(0);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -651,6 +652,8 @@ export function StudioEditorView() {
   const masterLimiterRef = useRef<DynamicsCompressorNode | null>(null);
   const masterEqRef = useRef<{ low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode } | null>(null);
   const masterDriveRef = useRef<WaveShaperNode | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const meterFrameRef = useRef(0);
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sourcesRef = useRef<AudioScheduledSourceNode[]>([]);
   const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; delayWet: GainNode; reverbWet: GainNode }>>(new Map());
@@ -1536,6 +1539,20 @@ export function StudioEditorView() {
     });
   }, [lanes]);
 
+  const updateMeter = useCallback(() => {
+    const analyser = analyserRef.current;
+    if (!analyser) return;
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+    let sum = 0;
+    for (const value of data) {
+      const centered = (value - 128) / 128;
+      sum += centered * centered;
+    }
+    const rms = Math.sqrt(sum / data.length);
+    setMasterMeter(clamp(rms * 3.2, 0, 1));
+  }, []);
+
   const stopSources = useCallback(() => {
     for (const source of sourcesRef.current) {
       try {
@@ -1550,6 +1567,7 @@ export function StudioEditorView() {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
     }
+    setMasterMeter(0);
   }, []);
 
   useEffect(() => {
@@ -1624,12 +1642,16 @@ export function StudioEditorView() {
     low.connect(mid);
     mid.connect(high);
     high.connect(limiter);
-    limiter.connect(context.destination);
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 256;
+    limiter.connect(analyser);
+    analyser.connect(context.destination);
     audioCtxRef.current = context;
     masterGainRef.current = gain;
     masterLimiterRef.current = limiter;
     masterEqRef.current = { low, mid, high };
     masterDriveRef.current = masterShaper;
+    analyserRef.current = analyser;
     return context;
   }, [master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh]);
 
@@ -1749,6 +1771,7 @@ export function StudioEditorView() {
         const tick = () => {
           const next = from + Math.max(0, context.currentTime - startedAt);
           setPlayhead(Math.min(timelineDurationRef.current, next));
+          if (meterFrameRef.current++ % 6 === 0) updateMeter();
           if (next >= (loopRef.current ? loopEndRef.current : timelineDurationRef.current)) {
             stopSources();
             if (loopRef.current) {
@@ -1819,6 +1842,7 @@ export function StudioEditorView() {
         const tick = () => {
           const next = from + Math.max(0, context.currentTime - startAt);
           setPlayhead(Math.min(timelineDurationRef.current, next));
+          if (meterFrameRef.current++ % 6 === 0) updateMeter();
           if (next >= (loopRef.current ? loopEndRef.current : timelineDurationRef.current)) {
             stopSources();
             if (loopRef.current) {
@@ -1839,7 +1863,7 @@ export function StudioEditorView() {
         setAudioLoading(false);
       }
     },
-    [ensureAudioContext, lanes, loadBuffer, scheduleMetronome, stopSources]
+    [ensureAudioContext, lanes, loadBuffer, scheduleMetronome, stopSources, updateMeter]
   );
 
   useEffect(() => {
@@ -3904,6 +3928,10 @@ export function StudioEditorView() {
             <Icon name="fa-compress" />
             <input type="range" min="0" max="100" value={masterCompressor} onChange={(event) => setMasterCompressor(Number(event.target.value))} aria-label="Master compression" />
             <b>{masterCompressor}%</b>
+          </span>
+          <span className="studio-master-meter" aria-label="Master output level">
+            <i style={{ transform: `scaleY(${Math.max(0.04, masterMeter)})` }} />
+            <i style={{ transform: `scaleY(${Math.max(0.04, masterMeter)})` }} />
           </span>
           <button
             className={`studio-master-eq-btn${masterEqOpen ? " on" : ""}`}
