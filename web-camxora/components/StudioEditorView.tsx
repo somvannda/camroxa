@@ -557,6 +557,7 @@ export function StudioEditorView() {
   const [loopEnd, setLoopEnd] = useState(60);
   const [markers, setMarkers] = useState<TimelineMarker[]>([]);
   const [selectedMidiNoteId, setSelectedMidiNoteId] = useState<string | null>(null);
+  const [mixClipboard, setMixClipboard] = useState<Partial<Clip> | null>(null);
   const [metronome, setMetronome] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -2186,6 +2187,45 @@ export function StudioEditorView() {
     if (selectedLane) splitLane(selectedLane, playhead);
   }
 
+  function copyMixSettings(lane: Clip) {
+    setMixClipboard({
+      volume: lane.volume,
+      pan: lane.pan,
+      low: lane.low,
+      mid: lane.mid,
+      high: lane.high,
+      delay: lane.delay,
+      reverb: lane.reverb,
+      chorus: lane.chorus,
+      compressor: lane.compressor,
+      drive: lane.drive,
+      automation: lane.automation ?? [],
+      panAutomation: lane.panAutomation ?? [],
+    });
+  }
+
+  function pasteMixSettings(lane: Clip) {
+    if (!mixClipboard) return;
+    updateLane(lane.id, mixClipboard);
+  }
+
+  function resetMixSettings(lane: Clip) {
+    updateLane(lane.id, {
+      volume: 80,
+      pan: 0,
+      low: 0,
+      mid: 0,
+      high: 0,
+      delay: 0,
+      reverb: 0,
+      chorus: 0,
+      compressor: 0,
+      drive: 0,
+      automation: [],
+      panAutomation: [],
+    });
+  }
+
   function renameLane(lane: Clip) {
     const next = window.prompt("Track name", lane.title);
     if (next === null) return;
@@ -3783,6 +3823,15 @@ export function StudioEditorView() {
             </button>
             <button type="button" onClick={() => { setClipMenu(null); updateLane(lane.id, { muted: !lane.muted }); }}>
               <Icon name={lane.muted ? "fa-volume-high" : "fa-volume-xmark"} /> {lane.muted ? "Unmute" : "Mute"}
+            </button>
+            <button type="button" onClick={() => { setClipMenu(null); copyMixSettings(lane); }}>
+              <Icon name="fa-clipboard" /> Copy mix settings
+            </button>
+            <button type="button" onClick={() => { setClipMenu(null); pasteMixSettings(lane); }} disabled={!mixClipboard}>
+              <Icon name="fa-paste" /> Paste mix settings
+            </button>
+            <button type="button" onClick={() => { setClipMenu(null); resetMixSettings(lane); }}>
+              <Icon name="fa-rotate-left" /> Reset mix
             </button>
             <button type="button" onClick={() => { setClipMenu(null); renameLane(lane); }}>
               <Icon name="fa-pen" /> Rename track
