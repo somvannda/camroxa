@@ -747,6 +747,15 @@ class StudioRemasterRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StudioPersonaRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    styles: str = ""
+    description: str = ""
+    vocal_start_s: float | None = None
+    vocal_end_s: float | None = None
+    variant: Literal["ok", "alt"] = "ok"
+
+
 class StudioReplaceSectionRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     start_s: float
@@ -754,6 +763,7 @@ class StudioReplaceSectionRequest(BaseModel):
     lyrics: str
     prompt: str = ""
     model: str | None = None
+    persona_id: str | None = None
     project_id: UUID | None = None
 
 
@@ -935,8 +945,36 @@ async def request_studio_replace_section(
         lyrics=body.lyrics,
         prompt=body.prompt,
         model=body.model,
+        persona_id=body.persona_id,
         project_id=body.project_id,
     )
+
+
+@router.post("/studio/generations/{task_id}/personas", status_code=202)
+async def create_studio_persona(
+    task_id: UUID,
+    body: StudioPersonaRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.create_studio_persona(
+        UUID(ctx.user_id),
+        task_id,
+        name=body.name,
+        styles=body.styles,
+        description=body.description,
+        vocal_start_s=body.vocal_start_s,
+        vocal_end_s=body.vocal_end_s,
+        variant=body.variant,
+    )
+
+
+@router.get("/studio/personas")
+async def list_studio_personas(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> list[dict]:
+    return await service.list_studio_personas(UUID(ctx.user_id))
 
 
 @router.post("/studio/uploads", status_code=201)

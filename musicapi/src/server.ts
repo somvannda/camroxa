@@ -8637,13 +8637,23 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     const prompt = typeof body.prompt === "string" ? body.prompt : undefined;
     const model = typeof body.model === "string" ? body.model : undefined;
+    const personaId =
+      typeof body.persona_id === "string" ? body.persona_id.trim() : undefined;
     const job = newJob("replace_section");
     job.endpoint = "studio_replace_section";
     job.credits = 0;
     job.prompt = lyrics;
     void runClipJobWithRetry(
       job,
-      (client) => client.replaceSection(clipId, { startS, endS, lyrics, prompt, model }),
+      (client) =>
+        client.replaceSection(clipId, {
+          startS,
+          endS,
+          lyrics,
+          prompt,
+          model,
+          personaId,
+        }),
       { accountId }
     );
     return reply.code(202).send({ job_id: job.id, status: job.status });
@@ -8689,6 +8699,46 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       lyrics,
       aligned_words: alignedWords,
     });
+  });
+
+  app.post("/internal/studio/persona", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!clipId || !name) {
+      return reply.code(400).send({ error: "clip_id and name are required." });
+    }
+    const styles = typeof body.styles === "string" ? body.styles.trim() : undefined;
+    const description =
+      typeof body.description === "string" ? body.description.trim() : undefined;
+    const vocalStartS =
+      typeof body.vocal_start_s === "number" && Number.isFinite(body.vocal_start_s)
+        ? Math.max(0, body.vocal_start_s)
+        : undefined;
+    const vocalEndS =
+      typeof body.vocal_end_s === "number" && Number.isFinite(body.vocal_end_s)
+        ? Math.max(0, body.vocal_end_s)
+        : undefined;
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("persona");
+    job.endpoint = "studio_persona";
+    job.credits = 0;
+    job.prompt = name;
+    void runResultJobWithRetry(
+      job,
+      (client) =>
+        client.createPersona(clipId, name, styles, {
+          vocalStartS,
+          vocalEndS,
+          description,
+        }),
+      { accountId }
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
   app.post("/internal/studio/upload-extend", async (req, reply) => {

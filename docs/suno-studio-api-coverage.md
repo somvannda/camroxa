@@ -178,6 +178,7 @@ POST /internal/studio/mashup
 POST /internal/studio/cover-image
 POST /internal/studio/upload-extend
 POST /internal/studio/upload-cover
+POST /internal/studio/persona
 GET  /internal/studio/lyrics/{clip_id}
 GET  /internal/studio/jobs/{id}
 ```
@@ -225,6 +226,9 @@ AI edits
   Remaster
   Mashup
   Cover art
+  Personas
+    Create from selected clip
+    Apply to Replace section
 Uploaded audio
   Extend upload
   Cover upload
@@ -241,6 +245,12 @@ name so a 12-track operation adds 12 lanes instead of 24.
 Cover art is generated from the selected original clip and the AI prompt, then
 saved on that lane as its artwork. Mashup requires two original generated lanes
 and all source clips must belong to the same Suno account.
+
+Personas are created from the selected original clip and its vocal range, then
+stored per Camxora user with the provider persona id. The AI tab lists ready
+personas and applies the selected one when replacing a section. Persona
+creation itself is not credit-priced; the replace-section operation keeps the
+normal Studio edit price.
 
 Uploaded or recorded lanes expose **Extend upload** and **Cover upload**.
 Platform signs the stored audio URL and sends it to musicapi, which submits the
@@ -482,6 +492,8 @@ POST /api/v3/web-music/studio/mashup
 POST /api/v3/web-music/studio/generations/{task_id}/cover-image
 POST /api/v3/web-music/studio/uploads/{upload_id}/extend
 POST /api/v3/web-music/studio/uploads/{upload_id}/cover
+POST /api/v3/web-music/studio/generations/{task_id}/personas
+GET  /api/v3/web-music/studio/personas
 GET  /api/v3/web-music/studio/generations/{task_id}/lyrics
 GET  /api/v3/web-music/studio/operations/{operation_id}
 ```

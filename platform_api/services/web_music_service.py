@@ -2370,6 +2370,211 @@ class WebMusicService:
         )
         return self._studio_upload_payload(row, url)
 
+    @staticmethod
+    def _extract_provider_persona_id(value: Any) -> str | None:
+        if isinstance(value, dict):
+            for key in ("persona_id", "personaId", "voice_id", "voiceId", "id"):
+                candidate = value.get(key)
+                if isinstance(candidate, (str, int)) and str(candidate).strip():
+                    return str(candidate).strip()
+            for item in value.values():
+                found = WebMusicService._extract_provider_persona_id(item)
+                if found:
+                    return found
+        elif isinstance(value, list):
+            for item in value:
+                found = WebMusicService._extract_provider_persona_id(item)
+                if found:
+                    return found
+        return None
+
+    def _studio_persona_payload(self, row: Any) -> dict[str, Any]:
+        result = row["result_json"] if hasattr(row, "get") else row["result_json"]
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except Exception:
+                result = None
+        return {
+            "id": str(row["id"]),
+            "name": str(row["name"]),
+            "styles": row["styles"],
+            "description": row["description"],
+            "source_task_id": str(row["source_task_id"]) if row["source_task_id"] else None,
+            "source_clip_id": row["source_clip_id"],
+            "provider_persona_id": row["provider_persona_id"],
+            "status": str(row["status"]),
+            "musicapi_job_id": row["musicapi_job_id"],
+            "error_message": row["error_message"],
+            "result": result,
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+
+    async def _refresh_studio_persona(self, row: Any) -> Any:
+        from platform_api.config import get_settings
+
+        status = str(row["status"] or "").lower()
+        job_id = str(row["musicapi_job_id"] or "").strip()
+        if status in ("complete", "error", "failed") or not job_id:
+            return row
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            return row
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    f"{base}/internal/studio/jobs/{job_id}",
+                    headers={"x-internal-token": token},
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except Exception:
+            return row
+        next_status = str(payload.get("status") or status).lower()
+        result = payload.get("result")
+        provider_id = self._extract_provider_persona_id(result)
+        error = payload.get("error")
+        return await self._pool.fetchrow(
+            """
+            UPDATE studio_personas
+            SET status=$2,
+                provider_persona_id=COALESCE($3, provider_persona_id),
+                result_json=$4::jsonb,
+                error_message=$5,
+                updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            row["id"],
+            next_status,
+            provider_id,
+            json.dumps(result) if result is not None else None,
+            str(error) if error else None,
+        )
+
+    async def create_studio_persona(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        name: str,
+        styles: str = "",
+        description: str = "",
+        vocal_start_s: float | None = None,
+        vocal_end_s: float | None = None,
+        variant: str = "ok",
+    ) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        clean_name = str(name or "").strip()[:80]
+        if not clean_name:
+            raise ValidationError("name is required.", details={"field": "name"})
+        provider_clip_id = await self._studio_source_clip(
+            user_id, task_id, variant=variant
+        )
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_personas
+                (user_id, name, styles, description, source_task_id, source_clip_id, status)
+            VALUES ($1, $2, $3, $4, $5, $6, 'queued')
+            RETURNING *
+            """,
+            user_id,
+            clean_name,
+            str(styles or "").strip() or None,
+            str(description or "").strip() or None,
+            task_id,
+            provider_clip_id,
+        )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        body: dict[str, Any] = {
+            "clip_id": provider_clip_id,
+            "name": clean_name,
+            "styles": str(styles or "").strip(),
+            "description": str(description or "").strip(),
+        }
+        if vocal_start_s is not None:
+            body["vocal_start_s"] = max(0.0, float(vocal_start_s))
+        if vocal_end_s is not None:
+            body["vocal_end_s"] = max(0.0, float(vocal_end_s))
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.post(
+                    f"{base}/internal/studio/persona",
+                    headers={"x-internal-token": token},
+                    json=body,
+                )
+                if response.status_code >= 400:
+                    detail = "Studio persona request failed."
+                    try:
+                        detail = str((response.json() or {}).get("error") or detail)
+                    except Exception:
+                        pass
+                    await self._pool.execute(
+                        "UPDATE studio_personas SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                        row["id"],
+                        detail,
+                    )
+                    raise ExternalServiceError(
+                        detail,
+                        is_retryable=False,
+                        details={"provider": "musicapi", "operation": "persona"},
+                    )
+                payload = response.json()
+        except ExternalServiceError:
+            raise
+        except Exception as exc:
+            await self._pool.execute(
+                "UPDATE studio_personas SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                row["id"],
+                str(exc),
+            )
+            raise ExternalServiceError(
+                "Could not reach the Studio persona service.",
+                is_retryable=True,
+                details={"provider": "musicapi", "operation": "persona"},
+            ) from exc
+        updated = await self._pool.fetchrow(
+            """
+            UPDATE studio_personas
+            SET musicapi_job_id=$2, status=$3, updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            row["id"],
+            str(payload.get("job_id") or "") or None,
+            str(payload.get("status") or "queued").lower(),
+        )
+        return self._studio_persona_payload(updated)
+
+    async def list_studio_personas(self, user_id: UUID) -> list[dict[str, Any]]:
+        rows = await self._pool.fetch(
+            """
+            SELECT * FROM studio_personas
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT 100
+            """,
+            user_id,
+        )
+        refreshed: list[Any] = []
+        for row in rows:
+            try:
+                refreshed.append(await self._refresh_studio_persona(row))
+            except Exception:
+                logger.exception("Studio persona refresh failed for %s", row["id"])
+                refreshed.append(row)
+        return [self._studio_persona_payload(row) for row in refreshed]
+
     async def get_studio_lyrics(
         self,
         user_id: UUID,
@@ -3084,6 +3289,7 @@ class WebMusicService:
         lyrics: str,
         prompt: str = "",
         model: str | None = None,
+        persona_id: str | None = None,
         project_id: UUID | None = None,
     ) -> dict[str, Any]:
         if not str(lyrics or "").strip():
@@ -3101,6 +3307,21 @@ class WebMusicService:
         }
         if model:
             body["model"] = model
+        if persona_id:
+            persona = await self._pool.fetchrow(
+                """
+                SELECT id FROM studio_personas
+                WHERE user_id = $1 AND provider_persona_id = $2 AND status = 'complete'
+                """,
+                user_id,
+                str(persona_id),
+            )
+            if persona is None:
+                raise ValidationError(
+                    "The selected persona is not ready.",
+                    details={"field": "persona_id"},
+                )
+            body["persona_id"] = str(persona_id)
         return await self._request_studio_clip_operation(
             user_id,
             task_id,

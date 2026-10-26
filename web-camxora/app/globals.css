@@ -1955,6 +1955,20 @@ html{color-scheme:dark}
   .studio-edit-actions button.studio-edit-replace{display:flex;width:100%;height:27px;margin-top:5px;padding:0 7px;justify-content:flex-start;border:1px solid rgba(248,113,113,.2);background:rgba(248,113,113,.05);color:#fca5a5}
   .studio-edit-actions button.studio-edit-replace:hover:not(:disabled){background:rgba(248,113,113,.12);border-color:rgba(248,113,113,.4);color:#fff}
   .studio-edit-actions small.studio-stem-error{color:#fca5a5}
+  .studio-personas{margin-top:10px;padding:9px;border:1px solid rgba(168,85,247,.2);border-radius:7px;background:rgba(139,92,246,.04)}
+  .studio-persona-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:5px}
+  .studio-persona-head span{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#c4b5fd}
+  .studio-persona-head button{border:0;background:transparent;color:#c4b5fd;font:inherit;font-size:8.5px;cursor:pointer}
+  .studio-persona-head button:hover{color:#fff}
+  .studio-personas select{width:100%;height:27px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.03);color:#e2e8f0;font:inherit;font-size:9px;outline:none}
+  .studio-persona-create{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px;margin-top:5px}
+  .studio-persona-create input{height:27px;min-width:0;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.03);color:#e2e8f0;font:inherit;font-size:9px;outline:none}
+  .studio-persona-create input:focus{border-color:rgba(168,85,247,.45)}
+  .studio-persona-create button{height:27px;padding:0 9px;border:1px solid rgba(168,85,247,.25);border-radius:5px;background:rgba(168,85,247,.12);color:#e9d5ff;font:inherit;font-size:8.5px;cursor:pointer}
+  .studio-persona-create button:hover:not(:disabled){background:rgba(168,85,247,.22);color:#fff}
+  .studio-persona-create button:disabled{opacity:.4;cursor:not-allowed}
+  .studio-personas small{display:block;margin-top:5px;font-size:8.5px;line-height:1.45;color:#94a3b8}
+  .studio-personas small.studio-stem-error{color:#fca5a5}
   .studio-upload-edit-actions{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;padding:8px;border:1px solid rgba(168,85,247,.2);border-radius:7px;background:rgba(139,92,246,.05)}
   .studio-upload-edit-actions>span{grid-column:1/-1;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#c4b5fd}
   .studio-upload-edit-actions button{display:flex;align-items:center;justify-content:flex-start;gap:5px;height:27px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.025);color:#cbd5e1;font:inherit;font-size:8.5px;cursor:pointer;text-align:left;white-space:nowrap;overflow:hidden}

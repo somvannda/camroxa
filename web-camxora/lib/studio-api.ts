@@ -218,6 +218,7 @@ export async function requestStudioReplaceSection(input: {
   lyrics: string;
   prompt?: string;
   model?: string | null;
+  personaId?: string | null;
   projectId?: string | null;
 }): Promise<StudioOperation> {
   return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/replace-section`, {
@@ -230,9 +231,56 @@ export async function requestStudioReplaceSection(input: {
       lyrics: input.lyrics,
       prompt: input.prompt || "",
       model: input.model || undefined,
+      persona_id: input.personaId || undefined,
       project_id: input.projectId || undefined,
     }),
   });
+}
+
+export type StudioPersona = {
+  id: string;
+  name: string;
+  styles?: string | null;
+  description?: string | null;
+  source_task_id?: string | null;
+  source_clip_id?: string | null;
+  provider_persona_id?: string | null;
+  status: string;
+  musicapi_job_id?: string | null;
+  error_message?: string | null;
+  result?: unknown;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export async function createStudioPersona(input: {
+  taskId: string;
+  name: string;
+  styles?: string;
+  description?: string;
+  vocalStartS?: number | null;
+  vocalEndS?: number | null;
+  variant?: string;
+}): Promise<StudioPersona> {
+  return studioJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/personas`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: input.name,
+        styles: input.styles || "",
+        description: input.description || "",
+        vocal_start_s: input.vocalStartS ?? undefined,
+        vocal_end_s: input.vocalEndS ?? undefined,
+        variant: input.variant || "ok",
+      }),
+    }
+  );
+}
+
+export async function listStudioPersonas(): Promise<StudioPersona[]> {
+  return studioJson("/api/v3/web-music/studio/personas");
 }
 
 export type StudioPricing = {

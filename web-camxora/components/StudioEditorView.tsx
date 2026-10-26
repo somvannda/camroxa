@@ -39,6 +39,9 @@ import {
   getStudioOperation,
   getStudioLyrics,
   type StudioLyrics,
+  createStudioPersona,
+  listStudioPersonas,
+  type StudioPersona,
   getStudioPricing,
   type StudioPricing,
   uploadStudioAudio,
@@ -972,6 +975,12 @@ export function StudioEditorView() {
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [lyricsError, setLyricsError] = useState("");
   const lyricsCacheRef = useRef<Map<string, StudioLyrics>>(new Map());
+  const [personas, setPersonas] = useState<StudioPersona[]>([]);
+  const [personasBusy, setPersonasBusy] = useState(false);
+  const [personasError, setPersonasError] = useState("");
+  const [personasStatus, setPersonasStatus] = useState("");
+  const [personaName, setPersonaName] = useState("");
+  const [selectedPersonaId, setSelectedPersonaId] = useState("");
   const [stemsBusy, setStemsBusy] = useState(false);
   const [stemsStatus, setStemsStatus] = useState("");
   const [stemsError, setStemsError] = useState("");
@@ -1034,6 +1043,11 @@ export function StudioEditorView() {
     if (inspectorTab !== "lyrics") return;
     void loadLyrics();
   }, [inspectorTab, selected]);
+
+  useEffect(() => {
+    if (!user) return;
+    void refreshPersonas();
+  }, [user?.id]);
 
   useEffect(() => {
     if (!clipMenu) return;
@@ -3092,6 +3106,58 @@ export function StudioEditorView() {
     }
   }
 
+  async function refreshPersonas() {
+    setPersonasBusy(true);
+    setPersonasError("");
+    try {
+      const next = await listStudioPersonas();
+      setPersonas(next);
+      setSelectedPersonaId((current) => {
+        if (current && next.some((item) => item.provider_persona_id === current && item.status === "complete")) {
+          return current;
+        }
+        return next.find((item) => item.status === "complete" && item.provider_persona_id)?.provider_persona_id ?? "";
+      });
+    } catch (cause) {
+      setPersonasError(cause instanceof Error ? cause.message : "Could not load personas.");
+    } finally {
+      setPersonasBusy(false);
+    }
+  }
+
+  async function createPersonaFromSelected() {
+    if (!selectedLane || personasBusy) return;
+    if (selectedLane.variant !== "ok" && selectedLane.variant !== "alt") {
+      setPersonasError("Select an original generated clip first.");
+      return;
+    }
+    const name = personaName.trim() || `${selectedLane.title} persona`;
+    setPersonasBusy(true);
+    setPersonasError("");
+    setPersonasStatus("Creating persona…");
+    try {
+      const created = await createStudioPersona({
+        taskId: selectedLane.generationId,
+        name,
+        styles: selectedLane.style,
+        description: `Created from ${selectedLane.title}`,
+        vocalStartS: selectedLane.offset,
+        vocalEndS: selectedLane.offset + selectedLane.duration,
+        variant: selectedLane.variant,
+      });
+      setPersonas((current) => [created, ...current]);
+      setPersonaName("");
+      setPersonasStatus("Persona submitted. Refresh shortly to use it.");
+      window.setTimeout(() => void refreshPersonas(), 8000);
+      window.setTimeout(() => void refreshPersonas(), 20000);
+    } catch (cause) {
+      setPersonasError(cause instanceof Error ? cause.message : "Could not create persona.");
+      setPersonasStatus("");
+    } finally {
+      setPersonasBusy(false);
+    }
+  }
+
   async function loadLyrics(force = false) {
     const lane = selectedLane;
     if (!lane) return;
@@ -4404,6 +4470,51 @@ export function StudioEditorView() {
                 {stemsStatus ? <small>{stemsStatus}</small> : null}
                 {stemsError ? <small className="studio-stem-error">{stemsError}</small> : null}
               </div>
+              <div className="studio-personas">
+                <div className="studio-persona-head">
+                  <span>Personas</span>
+                  <button type="button" onClick={() => void refreshPersonas()} disabled={personasBusy}>
+                    {personasBusy ? "Loading…" : "Refresh"}
+                  </button>
+                </div>
+                <select
+                  value={selectedPersonaId}
+                  onChange={(event) => setSelectedPersonaId(event.target.value)}
+                  disabled={personasBusy}
+                  aria-label="Studio persona"
+                >
+                  <option value="">No persona</option>
+                  {personas
+                    .filter((persona) => persona.status === "complete" && persona.provider_persona_id)
+                    .map((persona) => (
+                      <option key={persona.id} value={persona.provider_persona_id ?? ""}>
+                        {persona.name}
+                      </option>
+                    ))}
+                </select>
+                <div className="studio-persona-create">
+                  <input
+                    value={personaName}
+                    onChange={(event) => setPersonaName(event.target.value)}
+                    placeholder="New persona name"
+                    maxLength={80}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void createPersonaFromSelected()}
+                    disabled={
+                      personasBusy ||
+                      !selectedLane ||
+                      (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")
+                    }
+                  >
+                    Create
+                  </button>
+                </div>
+                {personasStatus ? <small>{personasStatus}</small> : null}
+                {personasError ? <small className="studio-stem-error">{personasError}</small> : null}
+                <small>Personas apply when you replace a section.</small>
+              </div>
               <div className="studio-edit-actions">
                 <span>
                   AI edits
@@ -4583,6 +4694,7 @@ export function StudioEditorView() {
                         endS: loop ? loopEnd : selectedLane.start + selectedLane.duration,
                         lyrics: replaceLyrics.trim(),
                         prompt: editPrompt.trim(),
+                        personaId: selectedPersonaId || undefined,
                         projectId,
                       })
                     )
