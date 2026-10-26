@@ -304,6 +304,9 @@ export class SunoClient {
   /** Resolve an hCaptcha token on demand, paying 2Captcha only when required. */
   private async ensureCaptchaToken(provided?: string): Promise<string> {
     if (provided) return provided;
+    // Manual/test escape hatch: a single Turnstile token supplied through env.
+    // Production normally leaves this empty and solves through 2Captcha.
+    if (config.captchaToken) return config.captchaToken;
     try {
       if (await this.captchaRequired()) {
         return this.solveCaptcha();
