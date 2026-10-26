@@ -2740,3 +2740,12 @@ html{color-scheme:dark}
   .studio-project-actions{display:flex;align-items:center;gap:4px}
   .studio-project-actions button.danger{color:#fca5a5;border-color:rgba(248,113,113,.2);background:rgba(248,113,113,.05)}
   .studio-project-actions button.danger:hover:not(:disabled){background:rgba(248,113,113,.14);color:#fecaca}
+
+  .studio-midi-row button.selected{outline:1px solid #f8fafc;outline-offset:1px}
+  .studio-midi-note-editor{display:grid;gap:6px;margin-top:7px;padding:8px;border:1px solid rgba(56,189,248,.18);border-radius:6px;background:rgba(56,189,248,.04)}
+  .studio-midi-note-editor>div{display:flex;align-items:center;justify-content:space-between;font-size:9px;color:#cbd5e1}
+  .studio-midi-note-editor>div span{color:#64748b;font-size:8px}
+  .studio-midi-note-editor label{display:grid;grid-template-columns:42px minmax(0,1fr) 34px;align-items:center;gap:5px;font-size:8px;color:#94a3b8}
+  .studio-midi-note-editor label input{width:100%;height:3px;accent-color:#38bdf8}
+  .studio-midi-note-editor label em{font-style:normal;text-align:right;font-size:8px;color:#7dd3fc}
+  .studio-midi-note-editor>button{display:flex;align-items:center;gap:5px;justify-self:start;height:24px;padding:0 8px;border:1px solid rgba(248,113,113,.2);border-radius:4px;background:rgba(248,113,113,.05);color:#fca5a5;font:inherit;font-size:8px;cursor:pointer}

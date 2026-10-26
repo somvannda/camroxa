@@ -556,6 +556,7 @@ export function StudioEditorView() {
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(60);
   const [markers, setMarkers] = useState<TimelineMarker[]>([]);
+  const [selectedMidiNoteId, setSelectedMidiNoteId] = useState<string | null>(null);
   const [metronome, setMetronome] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -641,6 +642,7 @@ export function StudioEditorView() {
 
   useEffect(() => {
     setInspectorTab("clip");
+    setSelectedMidiNoteId(null);
   }, [selected]);
 
   useEffect(() => {
@@ -2100,20 +2102,39 @@ export function StudioEditorView() {
     const existing = notes.find(
       (note) => Math.abs(note.time - time) < 0.01 && note.pitch === pitch
     );
-    const next = existing
-      ? notes.filter((note) => note.id !== existing.id)
-      : [
-          ...notes,
-          {
-            id: makeId(),
-            time,
-            pitch,
-            duration: 0.45,
-            velocity: 0.8,
-          } satisfies MidiNote,
-        ];
+    if (existing) {
+      setSelectedMidiNoteId(existing.id);
+      return;
+    }
+    const note: MidiNote = {
+      id: makeId(),
+      time,
+      pitch,
+      duration: 0.45,
+      velocity: 0.8,
+    };
     invalidateMidi(selectedLane);
-    updateLane(selectedLane.id, { midiNotes: next });
+    updateLane(selectedLane.id, { midiNotes: [...notes, note] });
+    setSelectedMidiNoteId(note.id);
+  }
+
+  function updateMidiNote(noteId: string, patch: Partial<MidiNote>) {
+    if (!selectedLane?.midiNotes) return;
+    invalidateMidi(selectedLane);
+    updateLane(selectedLane.id, {
+      midiNotes: selectedLane.midiNotes.map((note) =>
+        note.id === noteId ? { ...note, ...patch } : note
+      ),
+    });
+  }
+
+  function deleteMidiNote(noteId: string) {
+    if (!selectedLane?.midiNotes) return;
+    invalidateMidi(selectedLane);
+    updateLane(selectedLane.id, {
+      midiNotes: selectedLane.midiNotes.filter((note) => note.id !== noteId),
+    });
+    setSelectedMidiNoteId(null);
   }
 
   function duplicateLane(lane: Clip) {
@@ -3155,17 +3176,18 @@ export function StudioEditorView() {
                         <span>{midiNoteName(pitch)}</span>
                         {Array.from({ length: 16 }, (_, step) => {
                           const time = step * 0.5;
-                          const active = (selectedLane.midiNotes ?? []).some(
-                            (note) =>
-                              note.pitch === pitch &&
-                              Math.abs(note.time - time) < 0.01
+                          const note = (selectedLane.midiNotes ?? []).find(
+                            (item) =>
+                              item.pitch === pitch &&
+                              Math.abs(item.time - time) < 0.01
                           );
                           return (
                             <button
-                              className={active ? "on" : ""}
+                              className={`${note ? "on" : ""}${note && selectedMidiNoteId === note.id ? " selected" : ""}`}
                               key={step}
                               type="button"
                               aria-label={`${midiNoteName(pitch)} at ${time}s`}
+                              aria-pressed={Boolean(note)}
                               onClick={() => toggleMidiNote(time, pitch)}
                             />
                           );
@@ -3173,6 +3195,55 @@ export function StudioEditorView() {
                       </div>
                     ))}
                   </div>
+                  {(() => {
+                    const note = (selectedLane.midiNotes ?? []).find(
+                      (item) => item.id === selectedMidiNoteId
+                    );
+                    if (!note) return null;
+                    return (
+                      <div className="studio-midi-note-editor">
+                        <div>
+                          <b>{midiNoteName(note.pitch)}</b>
+                          <span>{note.time.toFixed(1)}s</span>
+                        </div>
+                        <label>
+                          Length
+                          <input
+                            type="range"
+                            min="0.05"
+                            max="2"
+                            step="0.05"
+                            value={note.duration}
+                            onChange={(event) =>
+                              updateMidiNote(note.id, {
+                                duration: Number(event.target.value),
+                              })
+                            }
+                          />
+                          <em>{note.duration.toFixed(2)}s</em>
+                        </label>
+                        <label>
+                          Velocity
+                          <input
+                            type="range"
+                            min="0.05"
+                            max="1"
+                            step="0.05"
+                            value={note.velocity}
+                            onChange={(event) =>
+                              updateMidiNote(note.id, {
+                                velocity: Number(event.target.value),
+                              })
+                            }
+                          />
+                          <em>{Math.round(note.velocity * 100)}%</em>
+                        </label>
+                        <button type="button" onClick={() => deleteMidiNote(note.id)}>
+                          <Icon name="fa-trash" /> Delete note
+                        </button>
+                      </div>
+                    );
+                  })()}
                 </div>
               ) : null}
               <div className="studio-inspector-grid">

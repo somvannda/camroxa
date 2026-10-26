@@ -312,9 +312,10 @@ through the same durable upload endpoint and added as a normal track, so it can
 be edited and exported like any imported or generated clip.
 
 A lightweight MIDI instrument track provides a 12×16 piano-roll grid with
-triangle, sine and saw synths. Notes are rendered through the same Web Audio
-buffer path, so MIDI tracks support fades, EQ, FX, dynamics, automation and
-export like audio tracks.
+triangle, sine and saw synths. Click an empty cell to add a note; click an
+existing note to select it and edit its length, velocity or delete it. Notes
+are rendered through the same Web Audio buffer path, so MIDI tracks support
+fades, EQ, FX, dynamics, automation and export like audio tracks.
 
 The transport includes a BPM-driven metronome with accented downbeats. Click
 scheduling follows the loop range and is monitoring-only; it is not included
