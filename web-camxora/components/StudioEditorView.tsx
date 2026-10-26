@@ -930,6 +930,7 @@ export function StudioEditorView() {
   const [markers, setMarkers] = useState<TimelineMarker[]>([]);
   const [selectedMidiNoteId, setSelectedMidiNoteId] = useState<string | null>(null);
   const [midiChordMode, setMidiChordMode] = useState<"off" | "major" | "minor">("off");
+  const [midiArpMode, setMidiArpMode] = useState<"off" | "up" | "down">("off");
   const [mixClipboard, setMixClipboard] = useState<Partial<Clip> | null>(null);
   const [metronome, setMetronome] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -2714,9 +2715,17 @@ export function StudioEditorView() {
       const targets = intervals
         .map((interval) => pitch + interval)
         .filter((target) => target >= 0 && target <= 127);
-      const existing = targets.map((target) =>
+      const ordered = midiArpMode === "down" ? [...targets].reverse() : targets;
+      const step = midiArpMode === "off" ? 0 : 0.5;
+      const desired = ordered.map((target, index) => ({
+        pitch: target,
+        time: Number((time + index * step).toFixed(2)),
+        duration: midiArpMode === "off" ? 0.45 : 0.4,
+      }));
+      const existing = desired.map((item) =>
         notes.find(
-          (note) => Math.abs(note.time - time) < 0.01 && note.pitch === target
+          (note) =>
+            Math.abs(note.time - item.time) < 0.01 && note.pitch === item.pitch
         )
       );
       if (existing.every(Boolean)) {
@@ -2724,13 +2733,13 @@ export function StudioEditorView() {
         return;
       }
       const additions: MidiNote[] = [];
-      targets.forEach((target, index) => {
+      desired.forEach((item, index) => {
         if (existing[index]) return;
         additions.push({
           id: makeId(),
-          time,
-          pitch: target,
-          duration: 0.45,
+          time: item.time,
+          pitch: item.pitch,
+          duration: item.duration,
           velocity: 0.8,
         });
       });
@@ -4151,6 +4160,17 @@ export function StudioEditorView() {
                         <option value="off">Single note</option>
                         <option value="major">Major chord</option>
                         <option value="minor">Minor chord</option>
+                      </select>
+                      <select
+                        value={midiArpMode}
+                        onChange={(event) =>
+                          setMidiArpMode(event.target.value as "off" | "up" | "down")
+                        }
+                        aria-label="MIDI arpeggiator"
+                      >
+                        <option value="off">Arp off</option>
+                        <option value="up">Arp up</option>
+                        <option value="down">Arp down</option>
                       </select>
                       <button
                         type="button"
