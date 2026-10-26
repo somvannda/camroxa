@@ -929,6 +929,7 @@ export function StudioEditorView() {
   const [loopEnd, setLoopEnd] = useState(60);
   const [markers, setMarkers] = useState<TimelineMarker[]>([]);
   const [selectedMidiNoteId, setSelectedMidiNoteId] = useState<string | null>(null);
+  const [midiChordMode, setMidiChordMode] = useState<"off" | "major" | "minor">("off");
   const [mixClipboard, setMixClipboard] = useState<Partial<Clip> | null>(null);
   const [metronome, setMetronome] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -2708,6 +2709,36 @@ export function StudioEditorView() {
   function toggleMidiNote(time: number, pitch: number) {
     if (!selectedLane?.midiNotes) return;
     const notes = selectedLane.midiNotes;
+    if (midiChordMode !== "off") {
+      const intervals = midiChordMode === "major" ? [0, 4, 7] : [0, 3, 7];
+      const targets = intervals
+        .map((interval) => pitch + interval)
+        .filter((target) => target >= 0 && target <= 127);
+      const existing = targets.map((target) =>
+        notes.find(
+          (note) => Math.abs(note.time - time) < 0.01 && note.pitch === target
+        )
+      );
+      if (existing.every(Boolean)) {
+        setSelectedMidiNoteId(existing[0]?.id ?? null);
+        return;
+      }
+      const additions: MidiNote[] = [];
+      targets.forEach((target, index) => {
+        if (existing[index]) return;
+        additions.push({
+          id: makeId(),
+          time,
+          pitch: target,
+          duration: 0.45,
+          velocity: 0.8,
+        });
+      });
+      invalidateMidi(selectedLane);
+      updateLane(selectedLane.id, { midiNotes: [...notes, ...additions] });
+      setSelectedMidiNoteId(additions[0]?.id ?? existing[0]?.id ?? null);
+      return;
+    }
     const existing = notes.find(
       (note) => Math.abs(note.time - time) < 0.01 && note.pitch === pitch
     );
@@ -4109,6 +4140,17 @@ export function StudioEditorView() {
                         <option value="triangle">Triangle</option>
                         <option value="sine">Sine</option>
                         <option value="sawtooth">Saw</option>
+                      </select>
+                      <select
+                        value={midiChordMode}
+                        onChange={(event) =>
+                          setMidiChordMode(event.target.value as "off" | "major" | "minor")
+                        }
+                        aria-label="MIDI chord mode"
+                      >
+                        <option value="off">Single note</option>
+                        <option value="major">Major chord</option>
+                        <option value="minor">Minor chord</option>
                       </select>
                       <button
                         type="button"
