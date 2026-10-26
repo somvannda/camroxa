@@ -343,3 +343,35 @@ export async function createStudioProjectShare(
 export async function getStudioSharedProject(token: string): Promise<StudioProject> {
   return studioJson(`/api/v3/web-music/studio/shares/${encodeURIComponent(token)}`);
 }
+
+export type StudioShareComment = {
+  id: string;
+  author_name: string;
+  body: string;
+  created_at?: string | null;
+};
+
+export async function listStudioShareComments(
+  token: string
+): Promise<{ items: StudioShareComment[] }> {
+  return studioJson(
+    `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}/comments`
+  );
+}
+
+export async function addStudioShareComment(
+  token: string,
+  input: { authorName: string; body: string }
+): Promise<StudioShareComment> {
+  return studioJson(
+    `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}/comments`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        author_name: input.authorName || "Guest",
+        body: input.body,
+      }),
+    }
+  );
+}

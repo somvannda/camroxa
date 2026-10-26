@@ -4,7 +4,13 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
-import { getStudioSharedProject, type StudioProject } from "@/lib/studio-api";
+import {
+  addStudioShareComment,
+  getStudioSharedProject,
+  listStudioShareComments,
+  type StudioProject,
+  type StudioShareComment,
+} from "@/lib/studio-api";
 
 type SharedLane = {
   id?: string;
@@ -24,6 +30,11 @@ export default function SharedStudioPage() {
   const params = useParams<{ token: string }>();
   const token = Array.isArray(params?.token) ? params.token[0] : params?.token;
   const [project, setProject] = useState<StudioProject | null>(null);
+  const [comments, setComments] = useState<StudioShareComment[]>([]);
+  const [authorName, setAuthorName] = useState("");
+  const [commentBody, setCommentBody] = useState("");
+  const [commentBusy, setCommentBusy] = useState(false);
+  const [commentError, setCommentError] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -36,10 +47,35 @@ export default function SharedStudioPage() {
       .catch((cause) => {
         if (alive) setError(cause instanceof Error ? cause.message : "Could not load project.");
       });
+    void listStudioShareComments(token)
+      .then((result) => {
+        if (alive) setComments(result.items);
+      })
+      .catch(() => {
+        /* comments are optional */
+      });
     return () => {
       alive = false;
     };
   }, [token]);
+
+  async function postComment() {
+    if (!token || commentBusy || !commentBody.trim()) return;
+    setCommentBusy(true);
+    setCommentError("");
+    try {
+      const created = await addStudioShareComment(token, {
+        authorName: authorName.trim() || "Guest",
+        body: commentBody.trim(),
+      });
+      setComments((current) => [created, ...current]);
+      setCommentBody("");
+    } catch (cause) {
+      setCommentError(cause instanceof Error ? cause.message : "Could not post comment.");
+    } finally {
+      setCommentBusy(false);
+    }
+  }
 
   const lanes = useMemo<SharedLane[]>(() => {
     const data = project?.data as { lanes?: SharedLane[] } | undefined;
@@ -104,6 +140,52 @@ export default function SharedStudioPage() {
               );
             })}
           </div>
+
+          <section className="shared-studio-comments">
+            <h2>Comments</h2>
+            <div className="shared-studio-comment-form">
+              <input
+                value={authorName}
+                onChange={(event) => setAuthorName(event.target.value)}
+                placeholder="Your name"
+                maxLength={80}
+              />
+              <textarea
+                value={commentBody}
+                onChange={(event) => setCommentBody(event.target.value)}
+                placeholder="Leave feedback on this project?"
+                maxLength={2000}
+                rows={3}
+              />
+              <button
+                type="button"
+                onClick={() => void postComment()}
+                disabled={commentBusy || !commentBody.trim()}
+              >
+                {commentBusy ? "Posting?" : "Post comment"}
+              </button>
+              {commentError ? <small>{commentError}</small> : null}
+            </div>
+            <div className="shared-studio-comment-list">
+              {comments.length ? (
+                comments.map((comment) => (
+                  <article key={comment.id}>
+                    <header>
+                      <b>{comment.author_name}</b>
+                      <span>
+                        {comment.created_at
+                          ? new Date(comment.created_at).toLocaleString()
+                          : ""}
+                      </span>
+                    </header>
+                    <p>{comment.body}</p>
+                  </article>
+                ))
+              ) : (
+                <p className="shared-studio-comment-empty">No comments yet.</p>
+              )}
+            </div>
+          </section>
 
           <footer className="shared-studio-footer">
             <span>Shared from CAMXORA Studio</span>

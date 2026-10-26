@@ -558,6 +558,47 @@ async def create_studio_project_share(
     )
 
 
+class StudioCommentCreateRequest(BaseModel):
+    author_name: str = Field(default="Guest", max_length=80)
+    body: str = Field(min_length=1, max_length=2000)
+
+
+@router.get("/studio/projects/{project_id}/comments")
+async def list_studio_project_comments(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(100, ge=1, le=100),
+) -> dict:
+    return await service.list_studio_project_comments(
+        UUID(ctx.user_id),
+        project_id,
+        limit=limit,
+    )
+
+
+@router.get("/studio/shares/{token}/comments")
+async def list_studio_share_comments(
+    token: str,
+    service: WebMusicServiceDep,
+    limit: int = Query(50, ge=1, le=100),
+) -> dict:
+    return await service.list_studio_share_comments(token, limit=limit)
+
+
+@router.post("/studio/shares/{token}/comments", status_code=201)
+async def add_studio_share_comment(
+    token: str,
+    body: StudioCommentCreateRequest,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.add_studio_share_comment(
+        token,
+        author_name=body.author_name,
+        body=body.body,
+    )
+
+
 @router.get("/studio/shares/{token}")
 async def get_studio_shared_project(
     token: str,

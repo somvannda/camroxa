@@ -1969,6 +1969,109 @@ class WebMusicService:
         payload["read_only"] = True
         return payload
 
+    @staticmethod
+    def _studio_comment_payload(row: Any) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "author_name": str(row["author_name"]),
+            "body": str(row["body"]),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+
+    async def _active_share_project_id(self, token: str) -> UUID:
+        row = await self._pool.fetchrow(
+            """
+            SELECT project_id FROM studio_project_shares
+            WHERE token = $1
+              AND revoked_at IS NULL
+              AND (expires_at IS NULL OR expires_at > now())
+            """,
+            str(token or "").strip(),
+        )
+        if row is None:
+            raise NotFoundError("Shared Studio project not found or expired.")
+        return UUID(str(row["project_id"]))
+
+    async def add_studio_share_comment(
+        self,
+        token: str,
+        *,
+        author_name: str,
+        body: str,
+    ) -> dict[str, Any]:
+        project_id = await self._active_share_project_id(token)
+        safe_name = str(author_name or "").strip()[:80] or "Guest"
+        safe_body = str(body or "").strip()
+        if not safe_body:
+            raise ValidationError("Comment cannot be empty.", details={"field": "body"})
+        if len(safe_body) > 2000:
+            raise ValidationError(
+                "Comment must be 2000 characters or fewer.",
+                details={"field": "body"},
+            )
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_project_comments
+                (project_id, author_name, body)
+            VALUES ($1, $2, $3)
+            RETURNING *
+            """,
+            project_id,
+            safe_name,
+            safe_body,
+        )
+        return self._studio_comment_payload(row)
+
+    async def list_studio_share_comments(
+        self,
+        token: str,
+        *,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        project_id = await self._active_share_project_id(token)
+        safe_limit = max(1, min(int(limit), 100))
+        rows = await self._pool.fetch(
+            """
+            SELECT * FROM studio_project_comments
+            WHERE project_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            project_id,
+            safe_limit,
+        )
+        return {"items": [self._studio_comment_payload(row) for row in rows]}
+
+    async def list_studio_project_comments(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        limit: int = 100,
+    ) -> dict[str, Any]:
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError(
+                "Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        safe_limit = max(1, min(int(limit), 100))
+        rows = await self._pool.fetch(
+            """
+            SELECT * FROM studio_project_comments
+            WHERE project_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            project_id,
+            safe_limit,
+        )
+        return {"items": [self._studio_comment_payload(row) for row in rows]}
+
     def _studio_upload_payload(self, row: Any, url: str) -> dict[str, Any]:
         return {
             "id": str(row["id"]),

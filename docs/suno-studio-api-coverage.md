@@ -290,7 +290,18 @@ GET  /api/v3/web-music/studio/shares/{token}
 ```
 
 Share links expire after 7 days and open `/studio/shared/{token}`, a public
-read-only view of the project title, BPM, tracks and arrangement. Real-time
+read-only view of the project title, BPM, tracks and arrangement.
+
+Share viewers can leave feedback without an account:
+
+```text
+GET  /api/v3/web-music/studio/shares/{token}/comments
+POST /api/v3/web-music/studio/shares/{token}/comments
+
+GET  /api/v3/web-music/studio/projects/{project_id}/comments
+```
+
+Comments are stored against the project and appear on the shared page. Real-time
 co-editing is not included yet.
 
 The Inspector supports per-clip **volume and pan automation** points. Points
