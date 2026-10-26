@@ -2696,6 +2696,213 @@ class WebMusicService:
         )
         return self._studio_operation_payload(updated)
 
+    async def _request_studio_upload_operation(
+        self,
+        user_id: UUID,
+        upload_id: UUID,
+        *,
+        operation_type: str,
+        mode: str,
+        project_id: UUID | None,
+        internal_path: str,
+        internal_body: dict[str, Any],
+        label: str,
+    ) -> dict[str, Any]:
+        from platform_api.config import get_settings
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        upload = await self._pool.fetchrow(
+            "SELECT * FROM studio_uploads WHERE id = $1 AND user_id = $2",
+            upload_id,
+            user_id,
+        )
+        if upload is None:
+            raise NotFoundError(
+                "Studio upload not found.",
+                details={"upload_id": str(upload_id)},
+            )
+        storage_config = await resolve_streaming_storage_config(self._pool)
+        if not storage_config.configured:
+            raise ExternalServiceError(
+                "Studio uploads are not configured for Suno operations.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        audio_url = await StorageService.from_config(storage_config).get_signed_get_url(
+            str(upload["storage_key"])
+        )
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        op = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_operations
+                (user_id, project_id, task_id, variant, provider_clip_id, operation_type, mode, status)
+            VALUES ($1, $2, $3, 'upload', $4, $5, $6, 'queued')
+            RETURNING *
+            """,
+            user_id,
+            project_id,
+            upload_id,
+            str(upload_id),
+            operation_type,
+            mode,
+        )
+        charge_op = "studio_edit"
+        try:
+            charge = await self._web_music_charge_bridge().charge(
+                user_id,
+                charge_op,
+                ref_id=str(op["id"]),
+            )
+        except Exception as exc:
+            await self._pool.execute(
+                "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                op["id"],
+                str(exc),
+            )
+            raise
+        op = await self._pool.fetchrow(
+            """
+            UPDATE studio_operations
+            SET credits_charged=$2, charge_path=$3, charge_op=$4, charge_ref=$5, updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            op["id"],
+            int(charge.amount_credits or 0),
+            str(charge.path),
+            charge_op,
+            str(charge.ref_id or op["id"]),
+        )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        body = {**internal_body, "audio_url": audio_url}
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.post(
+                    f"{base}{internal_path}",
+                    headers={"x-internal-token": token},
+                    json=body,
+                )
+                if response.status_code >= 400:
+                    detail = f"Studio {label} request failed."
+                    try:
+                        detail = str((response.json() or {}).get("error") or detail)
+                    except Exception:
+                        pass
+                    await self._pool.execute(
+                        "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                        op["id"],
+                        detail,
+                    )
+                    try:
+                        await self._refund_studio_operation(user_id, op["id"])
+                    except Exception:
+                        logger.exception("Studio operation refund failed for %s", op["id"])
+                    raise ExternalServiceError(
+                        detail,
+                        is_retryable=False,
+                        details={"provider": "musicapi", "operation": operation_type},
+                    )
+                payload = response.json()
+        except ExternalServiceError:
+            raise
+        except Exception as exc:
+            await self._pool.execute(
+                "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                op["id"],
+                str(exc),
+            )
+            try:
+                await self._refund_studio_operation(user_id, op["id"])
+            except Exception:
+                logger.exception("Studio operation refund failed for %s", op["id"])
+            raise ExternalServiceError(
+                f"Could not reach the Studio {label} service.",
+                is_retryable=True,
+                details={"provider": "musicapi", "operation": operation_type},
+            ) from exc
+        job_id = str(payload.get("job_id") or "")
+        updated = await self._pool.fetchrow(
+            """
+            UPDATE studio_operations
+            SET musicapi_job_id=$2, status=$3, updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            op["id"],
+            job_id or None,
+            str(payload.get("status") or "queued").lower(),
+        )
+        return self._studio_operation_payload(updated)
+
+    async def request_studio_upload_extend(
+        self,
+        user_id: UUID,
+        upload_id: UUID,
+        *,
+        prompt: str = "",
+        continue_at: float | None = None,
+        title: str = "",
+        tags: str = "",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "prompt": prompt.strip(),
+            "title": title.strip(),
+            "tags": tags.strip(),
+        }
+        if continue_at is not None:
+            body["continue_at"] = max(0.0, float(continue_at))
+        return await self._request_studio_upload_operation(
+            user_id,
+            upload_id,
+            operation_type="upload_extend",
+            mode="extend",
+            project_id=project_id,
+            internal_path="/internal/studio/upload-extend",
+            internal_body=body,
+            label="upload extend",
+        )
+
+    async def request_studio_upload_cover(
+        self,
+        user_id: UUID,
+        upload_id: UUID,
+        *,
+        prompt: str = "",
+        cover_start_s: float | None = None,
+        cover_end_s: float | None = None,
+        title: str = "",
+        tags: str = "",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "prompt": prompt.strip(),
+            "title": title.strip(),
+            "tags": tags.strip(),
+        }
+        if cover_start_s is not None:
+            body["cover_start_s"] = max(0.0, float(cover_start_s))
+        if cover_end_s is not None:
+            body["cover_end_s"] = max(0.0, float(cover_end_s))
+        return await self._request_studio_upload_operation(
+            user_id,
+            upload_id,
+            operation_type="upload_cover",
+            mode="cover",
+            project_id=project_id,
+            internal_path="/internal/studio/upload-cover",
+            internal_body=body,
+            label="upload cover",
+        )
+
     async def request_studio_stems(
         self,
         user_id: UUID,

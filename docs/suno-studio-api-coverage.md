@@ -176,6 +176,8 @@ POST /internal/studio/replace-section
 POST /internal/studio/remaster
 POST /internal/studio/mashup
 POST /internal/studio/cover-image
+POST /internal/studio/upload-extend
+POST /internal/studio/upload-cover
 GET  /internal/studio/jobs/{id}
 ```
 
@@ -222,6 +224,9 @@ AI edits
   Remaster
   Mashup
   Cover art
+Uploaded audio
+  Extend upload
+  Cover upload
 ```
 
 Stems results contain two takes per stem. The editor loads one take per stem
@@ -230,6 +235,12 @@ name so a 12-track operation adds 12 lanes instead of 24.
 Cover art is generated from the selected original clip and the AI prompt, then
 saved on that lane as its artwork. Mashup requires two original generated lanes
 and all source clips must belong to the same Suno account.
+
+Uploaded or recorded lanes expose **Extend upload** and **Cover upload**.
+Platform signs the stored audio URL and sends it to musicapi, which submits the
+Suno upload operation. These actions therefore require durable storage whose
+signed URL is reachable by Suno; local-only storage cannot complete them. They
+use the normal Studio edit price.
 
 Studio prices are read from `credit_pricing` through:
 
@@ -451,6 +462,8 @@ POST /api/v3/web-music/studio/generations/{task_id}/replace-section
 POST /api/v3/web-music/studio/generations/{task_id}/remaster
 POST /api/v3/web-music/studio/mashup
 POST /api/v3/web-music/studio/generations/{task_id}/cover-image
+POST /api/v3/web-music/studio/uploads/{upload_id}/extend
+POST /api/v3/web-music/studio/uploads/{upload_id}/cover
 GET  /api/v3/web-music/studio/operations/{operation_id}
 ```
 

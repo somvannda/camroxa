@@ -496,6 +496,50 @@ export async function requestStudioMashup(input: {
   });
 }
 
+export async function requestStudioUploadExtend(input: {
+  uploadId: string;
+  prompt?: string;
+  continueAt?: number | null;
+  title?: string;
+  tags?: string;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/uploads/${encodeURIComponent(input.uploadId)}/extend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt: input.prompt || "",
+      continue_at: input.continueAt ?? undefined,
+      title: input.title || "",
+      tags: input.tags || "",
+      project_id: input.projectId || undefined,
+    }),
+  });
+}
+
+export async function requestStudioUploadCover(input: {
+  uploadId: string;
+  prompt?: string;
+  coverStartS?: number | null;
+  coverEndS?: number | null;
+  title?: string;
+  tags?: string;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/uploads/${encodeURIComponent(input.uploadId)}/cover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt: input.prompt || "",
+      cover_start_s: input.coverStartS ?? undefined,
+      cover_end_s: input.coverEndS ?? undefined,
+      title: input.title || "",
+      tags: input.tags || "",
+      project_id: input.projectId || undefined,
+    }),
+  });
+}
+
 export async function requestStudioCoverImage(input: {
   taskId: string;
   variant: string;

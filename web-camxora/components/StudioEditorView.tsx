@@ -34,6 +34,8 @@ import {
   requestStudioRemaster,
   requestStudioMashup,
   requestStudioCoverImage,
+  requestStudioUploadExtend,
+  requestStudioUploadCover,
   getStudioOperation,
   getStudioPricing,
   type StudioPricing,
@@ -2774,11 +2776,20 @@ export function StudioEditorView() {
   async function runStudioEdit(
     label: string,
     request: () => Promise<StudioOperation>,
-    sourceLane: Clip | null = selectedLane
+    sourceLane: Clip | null = selectedLane,
+    allowUpload = false
   ) {
     if (!sourceLane || editBusy) return;
-    if (sourceLane.variant !== "ok" && sourceLane.variant !== "alt") {
+    if (
+      !allowUpload &&
+      sourceLane.variant !== "ok" &&
+      sourceLane.variant !== "alt"
+    ) {
       setEditError("Select an original version before editing it.");
+      return;
+    }
+    if (allowUpload && !sourceLane.uploadId) {
+      setEditError("Select an uploaded audio clip first.");
       return;
     }
     setEditBusy(true);
@@ -2824,6 +2835,25 @@ export function StudioEditorView() {
       return;
     }
     if (lower.includes("extend")) {
+      if (selectedLane.uploadId) {
+        const uploadId = selectedLane.uploadId;
+        setAiStatus("Extending the uploaded clip…");
+        void runStudioEdit(
+          "Upload extend",
+          () =>
+            requestStudioUploadExtend({
+              uploadId,
+              prompt: command,
+              continueAt: selectedLane.offset + selectedLane.duration,
+              title: selectedLane.title,
+              tags: selectedLane.style,
+              projectId,
+            }),
+          selectedLane,
+          true
+        );
+        return;
+      }
       setAiStatus("Extending the selected clip…");
       void runStudioEdit("Extend", () =>
         requestStudioExtend({
@@ -2836,6 +2866,26 @@ export function StudioEditorView() {
       return;
     }
     if (lower.includes("cover")) {
+      if (selectedLane.uploadId) {
+        const uploadId = selectedLane.uploadId;
+        setAiStatus("Covering the uploaded clip…");
+        void runStudioEdit(
+          "Upload cover",
+          () =>
+            requestStudioUploadCover({
+              uploadId,
+              prompt: command,
+              coverStartS: selectedLane.offset,
+              coverEndS: selectedLane.offset + selectedLane.duration,
+              title: selectedLane.title,
+              tags: selectedLane.style,
+              projectId,
+            }),
+          selectedLane,
+          true
+        );
+        return;
+      }
       setAiStatus("Creating a cover…");
       void runStudioEdit("Cover", () =>
         requestStudioCover({
@@ -4038,6 +4088,60 @@ export function StudioEditorView() {
                     <Icon name="fa-image" /> Cover art
                   </button>
                 </div>
+                {selectedLane.uploadId ? (
+                  <div className="studio-upload-edit-actions">
+                    <span>Uploaded audio</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const uploadId = selectedLane.uploadId;
+                        if (!uploadId) return;
+                        void runStudioEdit(
+                          "Upload extend",
+                          () =>
+                            requestStudioUploadExtend({
+                              uploadId,
+                              prompt: editPrompt.trim(),
+                              continueAt: selectedLane.offset + selectedLane.duration,
+                              title: selectedLane.title,
+                              tags: selectedLane.style,
+                              projectId,
+                            }),
+                          selectedLane,
+                          true
+                        );
+                      }}
+                      disabled={editBusy || stemsBusy}
+                    >
+                      <Icon name="fa-arrow-right-long" /> Extend upload
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const uploadId = selectedLane.uploadId;
+                        if (!uploadId) return;
+                        void runStudioEdit(
+                          "Upload cover",
+                          () =>
+                            requestStudioUploadCover({
+                              uploadId,
+                              prompt: editPrompt.trim(),
+                              coverStartS: selectedLane.offset,
+                              coverEndS: selectedLane.offset + selectedLane.duration,
+                              title: selectedLane.title,
+                              tags: selectedLane.style,
+                              projectId,
+                            }),
+                          selectedLane,
+                          true
+                        );
+                      }}
+                      disabled={editBusy || stemsBusy}
+                    >
+                      <Icon name="fa-compact-disc" /> Cover upload
+                    </button>
+                  </div>
+                ) : null}
                 <textarea
                   value={replaceLyrics}
                   onChange={(event) => setReplaceLyrics(event.target.value)}

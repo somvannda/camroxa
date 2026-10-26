@@ -711,6 +711,23 @@ class StudioPromptRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StudioUploadExtendRequest(BaseModel):
+    prompt: str = ""
+    continue_at: float | None = None
+    title: str = ""
+    tags: str = ""
+    project_id: UUID | None = None
+
+
+class StudioUploadCoverRequest(BaseModel):
+    prompt: str = ""
+    cover_start_s: float | None = None
+    cover_end_s: float | None = None
+    title: str = ""
+    tags: str = ""
+    project_id: UUID | None = None
+
+
 class StudioCoverImageRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     prompt: str
@@ -816,6 +833,43 @@ async def request_studio_cover_image(
         task_id,
         variant=body.variant,
         prompt=body.prompt,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/uploads/{upload_id}/extend", status_code=202)
+async def request_studio_upload_extend(
+    upload_id: UUID,
+    body: StudioUploadExtendRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_upload_extend(
+        UUID(ctx.user_id),
+        upload_id,
+        prompt=body.prompt,
+        continue_at=body.continue_at,
+        title=body.title,
+        tags=body.tags,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/uploads/{upload_id}/cover", status_code=202)
+async def request_studio_upload_cover(
+    upload_id: UUID,
+    body: StudioUploadCoverRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_upload_cover(
+        UUID(ctx.user_id),
+        upload_id,
+        prompt=body.prompt,
+        cover_start_s=body.cover_start_s,
+        cover_end_s=body.cover_end_s,
+        title=body.title,
+        tags=body.tags,
         project_id=body.project_id,
     )
 

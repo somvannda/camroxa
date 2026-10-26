@@ -8649,6 +8649,71 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  app.post("/internal/studio/upload-extend", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const audioUrl = typeof body.audio_url === "string" ? body.audio_url : "";
+    if (!/^https?:\/\//i.test(audioUrl)) {
+      return reply.code(400).send({ error: "audio_url must be an http(s) URL." });
+    }
+    const continueAt =
+      typeof body.continue_at === "number" && Number.isFinite(body.continue_at)
+        ? Math.max(0, body.continue_at)
+        : undefined;
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const tags = typeof body.tags === "string" ? body.tags.trim() : "";
+    const job = newJob("upload_extend");
+    job.endpoint = "studio_upload_extend";
+    job.credits = 0;
+    job.prompt = prompt || undefined;
+    void runClipJobWithRetry(job, (client) =>
+      client.uploadExtendMusic({
+        audioUrl,
+        continueAt,
+        prompt,
+        title,
+        tags,
+      })
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/upload-cover", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const audioUrl = typeof body.audio_url === "string" ? body.audio_url : "";
+    if (!/^https?:\/\//i.test(audioUrl)) {
+      return reply.code(400).send({ error: "audio_url must be an http(s) URL." });
+    }
+    const coverStartS =
+      typeof body.cover_start_s === "number" && Number.isFinite(body.cover_start_s)
+        ? Math.max(0, body.cover_start_s)
+        : undefined;
+    const coverEndS =
+      typeof body.cover_end_s === "number" && Number.isFinite(body.cover_end_s)
+        ? Math.max(0, body.cover_end_s)
+        : undefined;
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const tags = typeof body.tags === "string" ? body.tags.trim() : "";
+    const job = newJob("upload_cover");
+    job.endpoint = "studio_upload_cover";
+    job.credits = 0;
+    job.prompt = prompt || undefined;
+    void runClipJobWithRetry(job, (client) =>
+      client.uploadCoverMusic({
+        audioUrl,
+        coverStartS,
+        coverEndS,
+        prompt,
+        title,
+        tags,
+      })
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
   app.post("/internal/studio/cover-image", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
