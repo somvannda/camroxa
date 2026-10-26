@@ -43,6 +43,14 @@ type AutomationPoint = {
   value: number;
 };
 
+type MidiNote = {
+  id: string;
+  time: number;
+  pitch: number;
+  duration: number;
+  velocity: number;
+};
+
 type Clip = {
   id: string;
   generationId: string;
@@ -60,6 +68,8 @@ type Clip = {
   panAutomation?: AutomationPoint[];
   audioUrl?: string | null;
   uploadId?: string | null;
+  midiNotes?: MidiNote[];
+  instrument?: "sine" | "triangle" | "sawtooth";
   low: number;
   mid: number;
   high: number;
@@ -369,6 +379,45 @@ function connectTrackDynamics(
   compressor.release.value = 0.1;
   input.connect(compressor);
   compressor.connect(output);
+}
+
+async function renderMidiBuffer(
+  notes: MidiNote[],
+  duration: number,
+  instrument: Clip["instrument"]
+): Promise<AudioBuffer> {
+  const sampleRate = 44100;
+  const offline = new OfflineAudioContext(
+    2,
+    Math.max(1, Math.ceil(Math.max(0.1, duration) * sampleRate)),
+    sampleRate
+  );
+  for (const note of notes) {
+    const start = Math.max(0, note.time);
+    const length = Math.max(0.05, note.duration);
+    if (start >= duration) continue;
+    const osc = offline.createOscillator();
+    osc.type = instrument || "triangle";
+    osc.frequency.value = 440 * Math.pow(2, (note.pitch - 69) / 12);
+    const gain = offline.createGain();
+    const velocity = clamp(note.velocity, 0, 1);
+    const attack = 0.01;
+    const release = 0.08;
+    gain.gain.setValueAtTime(0, start);
+    gain.gain.linearRampToValueAtTime(velocity, start + attack);
+    gain.gain.setValueAtTime(velocity, start + Math.max(attack, length));
+    gain.gain.linearRampToValueAtTime(0, start + length + release);
+    osc.connect(gain);
+    gain.connect(offline.destination);
+    osc.start(start);
+    osc.stop(Math.min(duration, start + length + release));
+  }
+  return offline.startRendering();
+}
+
+function midiNoteName(pitch: number): string {
+  const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+  return `${names[((pitch % 12) + 12) % 12]}${Math.floor(pitch / 12) - 1}`;
 }
 
 function clipFromGeneration(
@@ -887,6 +936,26 @@ export function StudioEditorView() {
 
   const loadBuffer = useCallback(
     async (lane: Clip): Promise<AudioBuffer> => {
+      if (lane.midiNotes) {
+        const midiKey = `${lane.generationId}:${lane.variant}`;
+        const cachedMidi = buffersRef.current.get(midiKey);
+        if (cachedMidi) return cachedMidi;
+        const buffer = await renderMidiBuffer(
+          lane.midiNotes,
+          lane.duration,
+          lane.instrument
+        );
+        buffersRef.current.set(midiKey, buffer);
+        setAudioMeta((current) =>
+          current[midiKey]
+            ? current
+            : {
+                ...current,
+                [midiKey]: { peaks: computePeaks(buffer), duration: buffer.duration },
+              }
+        );
+        return buffer;
+      }
       const key = lane.uploadId
         ? `upload:${lane.uploadId}`
         : lane.audioUrl
@@ -1334,6 +1403,79 @@ export function StudioEditorView() {
     } finally {
       setImporting(false);
     }
+  }
+
+  function addMidiTrack() {
+    const id = makeId();
+    const lane: Clip = {
+      id,
+      generationId: `midi:${id}`,
+      variant: "midi",
+      title: "MIDI Instrument",
+      style: "MIDI synth",
+      color: COLORS[lanes.length % COLORS.length],
+      image: null,
+      start: clamp(playhead, 0, Math.max(0, timelineDuration - 8)),
+      duration: 8,
+      offset: 0,
+      fadeIn: 0,
+      fadeOut: 0,
+      automation: [],
+      panAutomation: [],
+      audioUrl: null,
+      midiNotes: [],
+      instrument: "triangle",
+      low: 0,
+      mid: 0,
+      high: 0,
+      delay: 0,
+      reverb: 0,
+      compressor: 0,
+      drive: 0,
+      volume: 80,
+      pan: 0,
+      muted: false,
+      solo: false,
+    };
+    commitLanes([...lanes, lane]);
+    setSelected(lane.id);
+  }
+
+  function midiCacheKey(lane: Clip): string {
+    return `${lane.generationId}:${lane.variant}`;
+  }
+
+  function invalidateMidi(lane: Clip) {
+    const key = midiCacheKey(lane);
+    buffersRef.current.delete(key);
+    setAudioMeta((current) => {
+      if (!current[key]) return current;
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
+  }
+
+  function toggleMidiNote(time: number, pitch: number) {
+    if (!selectedLane?.midiNotes) return;
+    const notes = selectedLane.midiNotes;
+    const existing = notes.find(
+      (note) => Math.abs(note.time - time) < 0.01 && note.pitch === pitch
+    );
+    const next = existing
+      ? notes.filter((note) => note.id !== existing.id)
+      : [
+          ...notes,
+          {
+            id: makeId(),
+            time,
+            pitch,
+            duration: 0.45,
+            velocity: 0.8,
+          } satisfies MidiNote,
+        ];
+    invalidateMidi(selectedLane);
+    updateLane(selectedLane.id, { midiNotes: next });
   }
 
   function duplicateSelected() {
@@ -1790,6 +1932,9 @@ export function StudioEditorView() {
           </button>
           {importError ? <small className="studio-import-error">{importError}</small> : null}
           {recordError ? <small className="studio-import-error">{recordError}</small> : null}
+          <button className="btn btn-ghost" type="button" onClick={addMidiTrack} title="Add a MIDI instrument track">
+            <Icon name="fa-music" /> MIDI
+          </button>
           <div className="studio-export-group">
             <select
               className="studio-export-format"
@@ -2067,6 +2212,62 @@ export function StudioEditorView() {
                 <span style={{ background: selectedLane.color }} />
                 <div><b>{selectedLane.title}</b><small>{selectedLane.style}</small></div>
               </div>
+              {selectedLane.midiNotes ? (
+                <div className="studio-midi">
+                  <div className="studio-eq-head">
+                    <span>Piano roll</span>
+                    <div className="studio-midi-head-actions">
+                      <select
+                        value={selectedLane.instrument ?? "triangle"}
+                        onChange={(event) => {
+                          invalidateMidi(selectedLane);
+                          updateLane(selectedLane.id, {
+                            instrument: event.target.value as Clip["instrument"],
+                          });
+                        }}
+                        aria-label="MIDI instrument"
+                      >
+                        <option value="triangle">Triangle</option>
+                        <option value="sine">Sine</option>
+                        <option value="sawtooth">Saw</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          invalidateMidi(selectedLane);
+                          updateLane(selectedLane.id, { midiNotes: [] });
+                        }}
+                      >
+                        Clear
+                      </button>
+                    </div>
+                  </div>
+                  <div className="studio-midi-grid">
+                    {[71, 70, 69, 68, 67, 66, 65, 64, 63, 62, 61, 60].map((pitch) => (
+                      <div className="studio-midi-row" key={pitch}>
+                        <span>{midiNoteName(pitch)}</span>
+                        {Array.from({ length: 16 }, (_, step) => {
+                          const time = step * 0.5;
+                          const active = (selectedLane.midiNotes ?? []).some(
+                            (note) =>
+                              note.pitch === pitch &&
+                              Math.abs(note.time - time) < 0.01
+                          );
+                          return (
+                            <button
+                              className={active ? "on" : ""}
+                              key={step}
+                              type="button"
+                              aria-label={`${midiNoteName(pitch)} at ${time}s`}
+                              onClick={() => toggleMidiNote(time, pitch)}
+                            />
+                          );
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
               <div className="studio-inspector-grid">
                 <label>Start
                   <input type="number" min={0} step={0.5} value={Number(selectedLane.start.toFixed(1))} onChange={(event) => updateLane(selectedLane.id, { start: clamp(Number(event.target.value), 0, timelineDuration - selectedLane.duration) })} />

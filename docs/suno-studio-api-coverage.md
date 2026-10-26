@@ -262,6 +262,11 @@ Studio also supports microphone recording. A finished recording is uploaded
 through the same durable upload endpoint and added as a normal track, so it can
 be edited and exported like any imported or generated clip.
 
+A lightweight MIDI instrument track provides a 12×16 piano-roll grid with
+triangle, sine and saw synths. Notes are rendered through the same Web Audio
+buffer path, so MIDI tracks support fades, EQ, FX, dynamics, automation and
+export like audio tracks.
+
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume
 automation overrides the clip fades when points are present. Pan automation

@@ -1879,6 +1879,15 @@ html{color-scheme:dark}
   .studio-eq-head span{font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--muted2)}
   .studio-eq-head button{border:0;background:transparent;color:#c4b5fd;font:inherit;font-size:8.5px;cursor:pointer}
   .studio-eq-head button:hover{color:#fff}
+  .studio-midi{margin-top:10px;padding:9px;border:1px solid rgba(14,165,233,.2);border-radius:7px;background:rgba(14,165,233,.04)}
+  .studio-midi-head-actions{display:flex;align-items:center;gap:6px}
+  .studio-midi-head-actions select{height:20px;border:1px solid var(--line);border-radius:4px;background:#0d1224;color:#cbd5e1;font:inherit;font-size:8px}
+  .studio-midi-grid{display:grid;gap:2px;margin-top:5px}
+  .studio-midi-row{display:grid;grid-template-columns:22px repeat(16,1fr);gap:2px;align-items:center}
+  .studio-midi-row>span{font-size:7.5px;color:var(--muted2)}
+  .studio-midi-row button{height:9px;padding:0;border:1px solid rgba(255,255,255,.06);border-radius:2px;background:rgba(255,255,255,.025);cursor:pointer}
+  .studio-midi-row button:hover{border-color:rgba(56,189,248,.4)}
+  .studio-midi-row button.on{background:#38bdf8;border-color:#38bdf8;box-shadow:0 0 5px rgba(56,189,248,.5)}
   .studio-automation small{display:block;margin-top:5px;font-size:8.5px;line-height:1.4;color:var(--muted2)}
   .studio-automation-points{display:grid;gap:4px;margin-top:5px;max-height:110px;overflow:auto}
   .studio-automation-point{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.025);font-size:8.5px;color:#cbd5e1}
