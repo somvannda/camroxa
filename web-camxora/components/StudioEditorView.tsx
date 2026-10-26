@@ -1028,6 +1028,45 @@ export function StudioEditorView() {
     }
   }
 
+  function exportProjectJson() {
+    const payload: StoredSession = {
+      name: sessionName,
+      bpm,
+      timeSignature,
+      gridDivision,
+      zoom,
+      master,
+      masterCompressor,
+      loopStart,
+      loopEnd,
+      markers,
+      lanes,
+    };
+    const safeName = (sessionName || "camxora-project").replace(/[\\/:*?"<>|]+/g, "-");
+    saveBlob(
+      new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" }),
+      `${safeName}.camxora.json`
+    );
+  }
+
+  async function importProjectJson(file: File) {
+    try {
+      const payload = JSON.parse(await file.text()) as StoredSession;
+      if (!Array.isArray(payload.lanes)) {
+        throw new Error("This file does not contain a Studio project.");
+      }
+      applySession(payload, null);
+      setSharedToken(null);
+      setProjectId(null);
+      setCloudState("local");
+      setHistory([]);
+      setFuture([]);
+      setActionsOpen(false);
+    } catch (cause) {
+      setCloudError(cause instanceof Error ? cause.message : "Could not import project.");
+    }
+  }
+
   async function renameProject(project: { id: string; title: string }) {
     const next = window.prompt("Project name", project.title);
     if (next === null) return;
@@ -2755,6 +2794,22 @@ export function StudioEditorView() {
                   <button type="button" onClick={() => { setActionsOpen(false); void openProjects(); }}>
                     <Icon name="fa-folder-open" /> Open project
                   </button>
+                  <button type="button" onClick={() => { setActionsOpen(false); exportProjectJson(); }}>
+                    <Icon name="fa-download" /> Export project
+                  </button>
+                  <label>
+                    <Icon name="fa-upload" /> Import project
+                    <input
+                      type="file"
+                      accept="application/json,.json"
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        if (file) void importProjectJson(file);
+                        event.currentTarget.value = "";
+                      }}
+                      hidden
+                    />
+                  </label>
                   <button
                     type="button"
                     onClick={() => {

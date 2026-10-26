@@ -281,6 +281,10 @@ with their update time and loads the selected project into Studio. Project rows
 also support rename and delete, with deletion clearing the active session when
 the current project is removed.
 
+Projects can be exported as `.camxora.json` and imported back into any Studio
+session, including lanes, markers, BPM, time signature, grid, loop, master and
+mix settings.
+
 The Inspector is contextual and split into **Clip / Mix / AI** tabs. Clip shows
 timing, volume, pan and MIDI piano roll; Mix shows automation, EQ, sends and
 dynamics; AI shows stem separation and AI edits. The AI tab is only available
