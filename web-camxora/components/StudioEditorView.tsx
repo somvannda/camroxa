@@ -63,6 +63,13 @@ type MidiNote = {
   velocity: number;
 };
 
+type TimelineMarker = {
+  id: string;
+  time: number;
+  label: string;
+  color: string;
+};
+
 type Clip = {
   id: string;
   generationId: string;
@@ -115,6 +122,7 @@ type StoredSession = {
   master?: number;
   loopStart?: number;
   loopEnd?: number;
+  markers?: TimelineMarker[];
   lanes?: Clip[];
 };
 
@@ -546,6 +554,7 @@ export function StudioEditorView() {
   const [loop, setLoop] = useState(false);
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(60);
+  const [markers, setMarkers] = useState<TimelineMarker[]>([]);
   const [metronome, setMetronome] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
@@ -766,6 +775,24 @@ export function StudioEditorView() {
     if (Number.isFinite(saved.master)) setMaster(clamp(Number(saved.master), 0, 100));
     if (Number.isFinite(saved.loopStart)) setLoopStart(Math.max(0, Number(saved.loopStart)));
     if (Number.isFinite(saved.loopEnd)) setLoopEnd(Math.max(1, Number(saved.loopEnd)));
+    setMarkers(
+      Array.isArray(saved.markers)
+        ? saved.markers
+            .filter(
+              (marker): marker is TimelineMarker =>
+                Boolean(marker) &&
+                Number.isFinite((marker as TimelineMarker).time) &&
+                typeof (marker as TimelineMarker).label === "string"
+            )
+            .map((marker) => ({
+              id: String(marker.id || makeId()),
+              time: Math.max(0, Number(marker.time)),
+              label: marker.label.slice(0, 80),
+              color: marker.color || "#38bdf8",
+            }))
+            .sort((a, b) => a.time - b.time)
+        : []
+    );
     setProjectId(nextProjectId);
     setCloudState(nextProjectId ? "saved" : "local");
   }
@@ -794,6 +821,7 @@ export function StudioEditorView() {
               master: Number.isFinite(data.master) ? Number(data.master) : 80,
               loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
               loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
+              markers: data.markers as TimelineMarker[],
               lanes: normalizeLanes(data.lanes),
             },
             project.id
@@ -870,12 +898,12 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, lanes };
+      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, markers, lanes };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, lanes]);
+  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, markers, lanes]);
 
   useEffect(() => {
     if (!loaded || !user || cloudSaveRef.current) return;
@@ -887,7 +915,7 @@ export function StudioEditorView() {
       setCloudState("saving");
       setCloudError("");
       try {
-        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, zoom, master };
+        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master };
         if (sharedToken) {
           const saved = await updateStudioSharedProject(sharedToken, {
             title: sessionName,
@@ -931,7 +959,7 @@ export function StudioEditorView() {
       }
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, lanes]);
+  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, markers, lanes]);
 
   async function openVersions() {
     setVersionsOpen(true);
@@ -981,7 +1009,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, gridDivision, loopStart, loopEnd, zoom, master },
+        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master },
       });
       const share = await createStudioProjectShare(projectId, 7, sharePermission);
       setShareUrl(`${window.location.origin}${share.path}`);
@@ -1010,7 +1038,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, gridDivision, loopStart, loopEnd, zoom, master },
+        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master },
       });
       const created = await createStudioProjectVersion(projectId, versionLabel.trim() || undefined);
       setVersions((current) => [created, ...current]);
@@ -1085,6 +1113,7 @@ export function StudioEditorView() {
           master: Number.isFinite(data.master) ? Number(data.master) : 80,
           loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
           loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
+          markers: data.markers as TimelineMarker[],
           lanes: normalizeLanes(data.lanes),
         },
         project.id
@@ -1751,6 +1780,37 @@ export function StudioEditorView() {
       end: loopEnd,
       width: track.getBoundingClientRect().width,
     };
+  }
+
+  function addMarker() {
+    const label = window.prompt("Section name", `Section ${markers.length + 1}`);
+    if (label === null) return;
+    const title = label.trim().slice(0, 80);
+    if (!title) return;
+    const marker: TimelineMarker = {
+      id: makeId(),
+      time: Number(clamp(playhead, 0, timelineDuration).toFixed(2)),
+      label: title,
+      color: COLORS[markers.length % COLORS.length],
+    };
+    setMarkers((current) =>
+      [...current, marker].sort((a, b) => a.time - b.time)
+    );
+  }
+
+  function renameMarker(marker: TimelineMarker) {
+    const label = window.prompt("Section name", marker.label);
+    if (label === null) return;
+    const title = label.trim().slice(0, 80);
+    if (!title) return;
+    setMarkers((current) =>
+      current.map((item) => (item.id === marker.id ? { ...item, label: title } : item))
+    );
+  }
+
+  function removeMarker(marker: TimelineMarker) {
+    if (!window.confirm(`Remove section "${marker.label}"?`)) return;
+    setMarkers((current) => current.filter((item) => item.id !== marker.id));
   }
 
   function addGeneration(item: WebMusicGeneration) {
@@ -2643,6 +2703,9 @@ export function StudioEditorView() {
         <button className="studio-icon-btn" type="button" aria-label="Duplicate clip" onClick={duplicateSelected} disabled={!selectedLane} title="Duplicate clip">
           <Icon name="fa-copy" />
         </button>
+        <button className="studio-icon-btn" type="button" aria-label="Add section marker" onClick={addMarker} title="Add section marker at playhead">
+          <Icon name="fa-flag" />
+        </button>
         <span className="studio-toolbar-divider" />
         <label className="studio-bpm">BPM <input type="number" min={40} max={220} value={bpm} onChange={(event) => setBpm(clamp(Number(event.target.value), 40, 220))} /></label>
         <label className="studio-snap-grid">Grid
@@ -2777,6 +2840,34 @@ export function StudioEditorView() {
                 <span key={tick} style={{ left: `${(tick / timelineDuration) * 100}%` }}>
                   {formatTime(tick)}
                 </span>
+              ))}
+              {markers.map((marker) => (
+                <button
+                  className="studio-marker"
+                  key={marker.id}
+                  type="button"
+                  style={{
+                    left: `${(clamp(marker.time, 0, timelineDuration) / timelineDuration) * 100}%`,
+                    color: marker.color,
+                    borderColor: `${marker.color}66`,
+                  }}
+                  title={`${marker.label} — click to seek, double-click to rename, right-click to remove`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    seekTo(marker.time);
+                  }}
+                  onDoubleClick={(event) => {
+                    event.stopPropagation();
+                    renameMarker(marker);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    removeMarker(marker);
+                  }}
+                >
+                  <span>{marker.label}</span>
+                </button>
               ))}
             </div>
             <span />

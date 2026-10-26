@@ -267,6 +267,10 @@ The snap grid supports **Off / Bar / Beat / 1/8 / 1/16**. Clip drag, trim and
 loop-region edits snap to the selected grid division using the current BPM and
 time signature. The grid choice is saved with the project.
 
+The timeline supports named **section markers**. Click the flag button to add a
+section at the playhead, click a marker to seek, double-click to rename, and
+right-click to remove. Markers are saved with the project.
+
 The Inspector is contextual and split into **Clip / Mix / AI** tabs. Clip shows
 timing, volume, pan and MIDI piano roll; Mix shows automation, EQ, sends and
 dynamics; AI shows stem separation and AI edits. The AI tab is only available
