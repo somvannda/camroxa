@@ -2072,6 +2072,7 @@ class WebMusicService:
     def _studio_comment_payload(row: Any) -> dict[str, Any]:
         return {
             "id": str(row["id"]),
+            "parent_id": str(row["parent_id"]) if row["parent_id"] else None,
             "author_name": str(row["author_name"]),
             "body": str(row["body"]),
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
@@ -2186,6 +2187,7 @@ class WebMusicService:
         *,
         author_name: str,
         body: str,
+        parent_id: UUID | None = None,
     ) -> dict[str, Any]:
         project_id = await self._active_share_project_id(token)
         safe_name = str(author_name or "").strip()[:80] or "Guest"
@@ -2197,16 +2199,31 @@ class WebMusicService:
                 "Comment must be 2000 characters or fewer.",
                 details={"field": "body"},
             )
+        if parent_id is not None:
+            parent = await self._pool.fetchrow(
+                """
+                SELECT id FROM studio_project_comments
+                WHERE id = $1 AND project_id = $2
+                """,
+                parent_id,
+                project_id,
+            )
+            if parent is None:
+                raise ValidationError(
+                    "Reply target was not found.",
+                    details={"field": "parent_id"},
+                )
         row = await self._pool.fetchrow(
             """
             INSERT INTO studio_project_comments
-                (project_id, author_name, body)
-            VALUES ($1, $2, $3)
+                (project_id, author_name, body, parent_id)
+            VALUES ($1, $2, $3, $4)
             RETURNING *
             """,
             project_id,
             safe_name,
             safe_body,
+            parent_id,
         )
         return self._studio_comment_payload(row)
 

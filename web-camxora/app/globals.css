@@ -2653,6 +2653,13 @@ html{color-scheme:dark}
   .shared-studio-comment-list article b{font-size:11px;color:#e2e8f0}
   .shared-studio-comment-list article span{font-size:9px;color:#64748b}
   .shared-studio-comment-list article p{margin:0;font-size:11px;line-height:1.5;color:#cbd5e1;white-space:pre-wrap}
+  .shared-studio-comment-list article.shared-studio-comment-reply{margin-left:20px;border-left:2px solid rgba(139,92,246,.3)}
+  .shared-studio-comment-children{display:grid;gap:6px;margin-top:8px}
+  .shared-studio-comment-reply-button{margin-top:6px;padding:0;border:0;background:transparent;color:#a5b4fc;font:inherit;font-size:9px;cursor:pointer}
+  .shared-studio-comment-reply-button:hover{color:#e0e7ff;text-decoration:underline}
+  .shared-studio-reply-banner{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 8px;border:1px solid rgba(139,92,246,.25);border-radius:6px;background:rgba(139,92,246,.08);font-size:10px;color:#c4b5fd}
+  .shared-studio-reply-banner button{padding:0;border:0;background:transparent;color:#ddd6fe;font:inherit;font-size:9px;cursor:pointer}
+  .shared-studio-reply-banner button:hover{color:#fff;text-decoration:underline}
   .shared-studio-comment-empty{font-size:11px;color:#64748b}
 
   .studio-standalone{min-height:100vh;background:radial-gradient(circle at 50% -20%,rgba(124,58,237,.12),transparent 38%),#05070f;color:var(--text)}
@@ -2748,6 +2755,7 @@ html{color-scheme:dark}
   .studio-project-comment b{font-size:9px;color:#e2e8f0}
   .studio-project-comment span{font-size:8px;color:#64748b}
   .studio-project-comment p{margin:0;font-size:9px;line-height:1.45;color:#cbd5e1;white-space:pre-wrap}
+  .studio-project-comment.reply{margin-left:16px;border-left:2px solid rgba(139,92,246,.3)}
 
   .shared-studio-footer-actions{display:flex;align-items:center;gap:12px}
   .shared-studio-footer-actions button{height:28px;padding:0 10px;border:1px solid rgba(139,92,246,.3);border-radius:5px;background:rgba(139,92,246,.12);color:#ddd6fe;font:inherit;font-size:10px;cursor:pointer}

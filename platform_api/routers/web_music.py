@@ -583,6 +583,7 @@ async def touch_studio_shared_presence(
 class StudioCommentCreateRequest(BaseModel):
     author_name: str = Field(default="Guest", max_length=80)
     body: str = Field(min_length=1, max_length=2000)
+    parent_id: UUID | None = None
 
 
 @router.get("/studio/projects/{project_id}/comments")
@@ -627,6 +628,7 @@ async def add_studio_share_comment(
         token,
         author_name=body.author_name,
         body=body.body,
+        parent_id=body.parent_id,
     )
 
 

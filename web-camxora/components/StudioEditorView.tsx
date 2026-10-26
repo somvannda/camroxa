@@ -5372,7 +5372,10 @@ export function StudioEditorView() {
                 <small>No comments yet. Share the link to collect feedback.</small>
               ) : null}
               {projectComments.map((comment) => (
-                <div className="studio-project-comment" key={comment.id}>
+                <div
+                  className={`studio-project-comment${comment.parent_id ? " reply" : ""}`}
+                  key={comment.id}
+                >
                   <header>
                     <b>{comment.author_name}</b>
                     <span>

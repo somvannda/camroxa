@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import {
@@ -38,6 +38,8 @@ export default function SharedStudioPage() {
   const [commentBody, setCommentBody] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState("");
+  const [replyTo, setReplyTo] = useState<StudioShareComment | null>(null);
+  const commentBodyRef = useRef<HTMLTextAreaElement | null>(null);
   const [forkBusy, setForkBusy] = useState(false);
   const [forkError, setForkError] = useState("");
   const [error, setError] = useState("");
@@ -72,9 +74,11 @@ export default function SharedStudioPage() {
       const created = await addStudioShareComment(token, {
         authorName: authorName.trim() || "Guest",
         body: commentBody.trim(),
+        parentId: replyTo?.id ?? null,
       });
       setComments((current) => [created, ...current]);
       setCommentBody("");
+      setReplyTo(null);
     } catch (cause) {
       setCommentError(cause instanceof Error ? cause.message : "Could not post comment.");
     } finally {
@@ -105,6 +109,52 @@ export default function SharedStudioPage() {
     () => Math.max(1, ...lanes.map((lane) => Number(lane.start ?? 0) + Number(lane.duration ?? 0))),
     [lanes]
   );
+
+  const commentsByParent = useMemo(() => {
+    const map = new Map<string, StudioShareComment[]>();
+    for (const comment of comments) {
+      const key = comment.parent_id ?? "";
+      const group = map.get(key);
+      if (group) group.push(comment);
+      else map.set(key, [comment]);
+    }
+    return map;
+  }, [comments]);
+
+  function renderComment(comment: StudioShareComment, depth = 0): ReactNode {
+    const replies = commentsByParent.get(comment.id) ?? [];
+    return (
+      <article
+        key={comment.id}
+        className={depth ? "shared-studio-comment-reply" : ""}
+      >
+        <header>
+          <b>{comment.author_name}</b>
+          <span>
+            {comment.created_at
+              ? new Date(comment.created_at).toLocaleString()
+              : ""}
+          </span>
+        </header>
+        <p>{comment.body}</p>
+        <button
+          type="button"
+          className="shared-studio-comment-reply-button"
+          onClick={() => {
+            setReplyTo(comment);
+            window.requestAnimationFrame(() => commentBodyRef.current?.focus());
+          }}
+        >
+          Reply
+        </button>
+        {replies.length ? (
+          <div className="shared-studio-comment-children">
+            {replies.map((reply) => renderComment(reply, depth + 1))}
+          </div>
+        ) : null}
+      </article>
+    );
+  }
 
   return (
     <main className="shared-studio-page">
@@ -169,10 +219,25 @@ export default function SharedStudioPage() {
                 placeholder="Your name"
                 maxLength={80}
               />
+              {replyTo ? (
+                <div className="shared-studio-reply-banner">
+                  <span>
+                    Replying to <b>{replyTo.author_name}</b>
+                  </span>
+                  <button type="button" onClick={() => setReplyTo(null)}>
+                    Cancel
+                  </button>
+                </div>
+              ) : null}
               <textarea
+                ref={commentBodyRef}
                 value={commentBody}
                 onChange={(event) => setCommentBody(event.target.value)}
-                placeholder="Leave feedback on this project?"
+                placeholder={
+                  replyTo
+                    ? `Reply to ${replyTo.author_name}…`
+                    : "Leave feedback on this project?"
+                }
                 maxLength={2000}
                 rows={3}
               />
@@ -181,25 +246,15 @@ export default function SharedStudioPage() {
                 onClick={() => void postComment()}
                 disabled={commentBusy || !commentBody.trim()}
               >
-                {commentBusy ? "Posting?" : "Post comment"}
+                {commentBusy ? "Posting?" : replyTo ? "Post reply" : "Post comment"}
               </button>
               {commentError ? <small>{commentError}</small> : null}
             </div>
             <div className="shared-studio-comment-list">
               {comments.length ? (
-                comments.map((comment) => (
-                  <article key={comment.id}>
-                    <header>
-                      <b>{comment.author_name}</b>
-                      <span>
-                        {comment.created_at
-                          ? new Date(comment.created_at).toLocaleString()
-                          : ""}
-                      </span>
-                    </header>
-                    <p>{comment.body}</p>
-                  </article>
-                ))
+                (commentsByParent.get("") ?? []).map((comment) =>
+                  renderComment(comment)
+                )
               ) : (
                 <p className="shared-studio-comment-empty">No comments yet.</p>
               )}

@@ -433,8 +433,10 @@ POST /api/v3/web-music/studio/shares/{token}/comments
 GET  /api/v3/web-music/studio/projects/{project_id}/comments
 ```
 
-Comments are stored against the project and appear on the shared page. The
-project owner can also read them from the Studio **Share** dialog.
+Comments are stored against the project and appear on the shared page. Comment
+replies use `parent_id`, render as nested threads, and can be posted without an
+account. The project owner can read the full thread from the Studio **Share**
+dialog.
 
 Share links can be **View only** or **Can edit**, expire after 1, 7 or 30
 days, and can be revoked immediately by the owner.
