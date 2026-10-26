@@ -2736,3 +2736,7 @@ html{color-scheme:dark}
   .studio-marker{position:absolute;bottom:0;z-index:3;display:flex;align-items:center;height:15px;max-width:90px;padding:0 4px;border:0;border-left:1px solid;border-radius:0 3px 3px 0;background:rgba(5,8,18,.92);font:inherit;font-size:7.5px;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer}
   .studio-marker span{overflow:hidden;text-overflow:ellipsis}
   .studio-marker:hover{background:rgba(30,41,59,.95)}
+
+  .studio-project-actions{display:flex;align-items:center;gap:4px}
+  .studio-project-actions button.danger{color:#fca5a5;border-color:rgba(248,113,113,.2);background:rgba(248,113,113,.05)}
+  .studio-project-actions button.danger:hover:not(:disabled){background:rgba(248,113,113,.14);color:#fecaca}

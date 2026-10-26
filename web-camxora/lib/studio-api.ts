@@ -438,3 +438,13 @@ export async function touchStudioPresence(
     }
   );
 }
+
+export async function deleteStudioProject(id: string): Promise<void> {
+  const response = await musicAuthFetch(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(id)}`,
+    { method: "DELETE" }
+  );
+  if (!response.ok) {
+    throw new Error(await readError(response, `Delete project failed (${response.status})`));
+  }
+}

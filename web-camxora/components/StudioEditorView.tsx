@@ -45,6 +45,7 @@ import {
   listStudioProjectComments,
   getStudioSharedProject,
   updateStudioSharedProject,
+  deleteStudioProject,
   touchStudioPresence,
   type StudioPresence,
 } from "@/lib/studio-api";
@@ -1012,6 +1013,41 @@ export function StudioEditorView() {
       setProjectsError(cause instanceof Error ? cause.message : "Could not open project.");
     } finally {
       setProjectsBusy(false);
+    }
+  }
+
+  async function renameProject(project: { id: string; title: string }) {
+    const next = window.prompt("Project name", project.title);
+    if (next === null) return;
+    const title = next.trim().slice(0, 120);
+    if (!title) return;
+    try {
+      await updateStudioProject(project.id, { title });
+      setProjectList((current) =>
+        current.map((item) => (item.id === project.id ? { ...item, title } : item))
+      );
+      if (projectId === project.id) setSessionName(title);
+    } catch (cause) {
+      setProjectsError(cause instanceof Error ? cause.message : "Could not rename project.");
+    }
+  }
+
+  async function deleteProject(project: { id: string; title: string }) {
+    if (!window.confirm(`Delete \"${project.title}\"? This cannot be undone.`)) return;
+    try {
+      await deleteStudioProject(project.id);
+      setProjectList((current) => current.filter((item) => item.id !== project.id));
+      if (projectId === project.id) {
+        commitLanes([]);
+        setSelected(null);
+        setProjectId(null);
+        setSharedToken(null);
+        setSessionName("Untitled session");
+        setCloudState("local");
+        setPlayhead(0);
+      }
+    } catch (cause) {
+      setProjectsError(cause instanceof Error ? cause.message : "Could not delete project.");
     }
   }
 
@@ -3554,13 +3590,30 @@ export function StudioEditorView() {
                         : "Saved project"}
                     </small>
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => void openProject(project.id)}
-                    disabled={projectsBusy}
-                  >
-                    Open
-                  </button>
+                  <div className="studio-project-actions">
+                    <button
+                      type="button"
+                      onClick={() => void renameProject(project)}
+                      disabled={projectsBusy}
+                    >
+                      Rename
+                    </button>
+                    <button
+                      className="danger"
+                      type="button"
+                      onClick={() => void deleteProject(project)}
+                      disabled={projectsBusy}
+                    >
+                      Delete
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void openProject(project.id)}
+                      disabled={projectsBusy}
+                    >
+                      Open
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
