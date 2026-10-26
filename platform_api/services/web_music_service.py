@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import re
 from datetime import date, datetime, timezone
@@ -1577,6 +1578,165 @@ class WebMusicService:
             "is_default": bool(row["is_default"]),
             "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
         }
+
+    async def list_studio_projects(
+        self,
+        user_id: UUID,
+        *,
+        limit: int = 40,
+        offset: int = 0,
+    ) -> dict[str, Any]:
+        safe_limit = max(1, min(int(limit), 100))
+        safe_offset = max(0, int(offset))
+        rows = await self._pool.fetch(
+            """
+            SELECT id, title, major_version, bpm, time_signature, created_at, updated_at
+            FROM studio_projects
+            WHERE user_id = $1
+            ORDER BY updated_at DESC
+            LIMIT $2 OFFSET $3
+            """,
+            user_id,
+            safe_limit,
+            safe_offset,
+        )
+        total = await self._pool.fetchval(
+            "SELECT count(*) FROM studio_projects WHERE user_id = $1",
+            user_id,
+        )
+        return {
+            "items": [self._studio_project_payload(row, include_data=False) for row in rows],
+            "total": int(total or 0),
+            "limit": safe_limit,
+            "offset": safe_offset,
+        }
+
+    @staticmethod
+    def _studio_project_payload(row: Any, *, include_data: bool = True) -> dict[str, Any]:
+        data = row.get("data") if hasattr(row, "get") else row["data"]
+        if isinstance(data, str):
+            try:
+                data = json.loads(data)
+            except Exception:
+                data = {}
+        payload = {
+            "id": str(row["id"]),
+            "title": str(row["title"]),
+            "major_version": int(row["major_version"]),
+            "bpm": int(row["bpm"]),
+            "time_signature": str(row["time_signature"]),
+            "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
+            "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
+        }
+        if include_data:
+            payload["data"] = data if isinstance(data, dict) else {}
+        return payload
+
+    async def create_studio_project(
+        self,
+        user_id: UUID,
+        *,
+        title: str,
+        major_version: int = 2,
+        bpm: int = 120,
+        time_signature: str = "4/4",
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        safe_title = str(title or "Untitled Project").strip()[:120] or "Untitled Project"
+        safe_bpm = max(20, min(int(bpm), 300))
+        payload = data if isinstance(data, dict) else {"tracks": [], "clips": []}
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_projects
+                (user_id, title, major_version, bpm, time_signature, data)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            RETURNING *
+            """,
+            user_id,
+            safe_title,
+            max(1, min(int(major_version), 10)),
+            safe_bpm,
+            str(time_signature or "4/4"),
+            json.dumps(payload),
+        )
+        return self._studio_project_payload(row)
+
+    async def get_studio_project(self, user_id: UUID, project_id: UUID) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        return self._studio_project_payload(row)
+
+    async def update_studio_project(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        title: str | None = None,
+        major_version: int | None = None,
+        bpm: int | None = None,
+        time_signature: str | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            """
+            UPDATE studio_projects SET
+                title = COALESCE($3, title),
+                major_version = COALESCE($4, major_version),
+                bpm = COALESCE($5, bpm),
+                time_signature = COALESCE($6, time_signature),
+                data = COALESCE($7::jsonb, data),
+                updated_at = now()
+            WHERE id = $1 AND user_id = $2
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+            str(title).strip()[:120] if title is not None and str(title).strip() else None,
+            max(1, min(int(major_version), 10)) if major_version is not None else None,
+            max(20, min(int(bpm), 300)) if bpm is not None else None,
+            str(time_signature) if time_signature is not None else None,
+            json.dumps(data) if isinstance(data, dict) else None,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        return self._studio_project_payload(row)
+
+    async def delete_studio_project(self, user_id: UUID, project_id: UUID) -> None:
+        row = await self._pool.fetchrow(
+            "DELETE FROM studio_projects WHERE id = $1 AND user_id = $2 RETURNING id",
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+
+    async def fork_studio_project(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        title: str | None = None,
+    ) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_projects
+                (user_id, title, major_version, bpm, time_signature, data)
+            SELECT $2, COALESCE($3, title || ' copy'), major_version, bpm, time_signature, data
+            FROM studio_projects WHERE id = $1 AND user_id = $2
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+            str(title).strip()[:120] if title and str(title).strip() else None,
+        )
+        if row is None:
+            raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
+        return self._studio_project_payload(row)
 
     async def list_generations(
         self,

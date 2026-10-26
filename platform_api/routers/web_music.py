@@ -393,6 +393,107 @@ async def update_workspace(
     return WebMusicWorkspaceResponse(**payload)
 
 
+class StudioProjectCreateRequest(BaseModel):
+    title: str = Field(default="Untitled Project", min_length=1, max_length=120)
+    major_version: int = Field(default=2, ge=1, le=10)
+    bpm: int = Field(default=120, ge=20, le=300)
+    time_signature: str = Field(default="4/4", pattern=r"^\d{1,2}/\d{1,2}$")
+    data: dict[str, object] = Field(default_factory=dict)
+
+
+class StudioProjectUpdateRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+    major_version: int | None = Field(default=None, ge=1, le=10)
+    bpm: int | None = Field(default=None, ge=20, le=300)
+    time_signature: str | None = Field(default=None, pattern=r"^\d{1,2}/\d{1,2}$")
+    data: dict[str, object] | None = None
+
+
+class StudioProjectForkRequest(BaseModel):
+    title: str | None = Field(default=None, min_length=1, max_length=120)
+
+
+@router.get("/studio/projects")
+async def list_studio_projects(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(40, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+) -> dict:
+    return await service.list_studio_projects(
+        UUID(ctx.user_id),
+        limit=limit,
+        offset=offset,
+    )
+
+
+@router.post("/studio/projects", status_code=201)
+async def create_studio_project(
+    body: StudioProjectCreateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.create_studio_project(
+        UUID(ctx.user_id),
+        title=body.title,
+        major_version=body.major_version,
+        bpm=body.bpm,
+        time_signature=body.time_signature,
+        data=body.data,
+    )
+
+
+@router.get("/studio/projects/{project_id}")
+async def get_studio_project(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.get_studio_project(UUID(ctx.user_id), project_id)
+
+
+@router.patch("/studio/projects/{project_id}")
+async def update_studio_project(
+    project_id: UUID,
+    body: StudioProjectUpdateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.update_studio_project(
+        UUID(ctx.user_id),
+        project_id,
+        title=body.title,
+        major_version=body.major_version,
+        bpm=body.bpm,
+        time_signature=body.time_signature,
+        data=body.data,
+    )
+
+
+@router.delete("/studio/projects/{project_id}", status_code=204)
+async def delete_studio_project(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> Response:
+    await service.delete_studio_project(UUID(ctx.user_id), project_id)
+    return Response(status_code=204)
+
+
+@router.post("/studio/projects/{project_id}/fork", status_code=201)
+async def fork_studio_project(
+    project_id: UUID,
+    body: StudioProjectForkRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.fork_studio_project(
+        UUID(ctx.user_id),
+        project_id,
+        title=body.title,
+    )
+
+
 @router.get("/quota", response_model=WebMusicQuotaResponse)
 async def get_quota(ctx: CurrentUserDep, service: WebMusicServiceDep) -> WebMusicQuotaResponse:
     return WebMusicQuotaResponse(**await service.usage_today(UUID(ctx.user_id)))

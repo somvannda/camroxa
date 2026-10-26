@@ -132,6 +132,22 @@ POST /v1/upload/init
 POST /v1/upload/register
 ```
 
+### Web cloud save (platform_api)
+
+The logged-in Studio editor now uses the platform API for cloud project state:
+
+```text
+GET    /api/v3/web-music/studio/projects
+POST   /api/v3/web-music/studio/projects
+GET    /api/v3/web-music/studio/projects/{id}
+PATCH  /api/v3/web-music/studio/projects/{id}
+DELETE /api/v3/web-music/studio/projects/{id}
+POST   /api/v3/web-music/studio/projects/{id}/fork
+```
+
+The Studio editor autosaves lanes, loop region, zoom and master volume after 650 ms
+and reloads the newest project on open. Local storage remains the offline fallback.
+
 The next required layer is a `platform_api` proxy that authenticates the
 Camxora user, checks ownership and credits, and calls these musicapi routes.
 Studio project ids and clip ids must be linked to the caller's account.

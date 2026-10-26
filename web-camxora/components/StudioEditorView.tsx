@@ -16,6 +16,13 @@ import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
 import { fetchGenerations, type WebMusicClip, type WebMusicGeneration } from "@/lib/library-api";
 import { fetchWebMusicClipBlob, saveBlob } from "@/lib/web-music-api";
+import {
+  createStudioProject,
+  getStudioProject,
+  listStudioProjects,
+  updateStudioProject,
+  type StudioProjectData,
+} from "@/lib/studio-api";
 
 type Clip = {
   id: string;
@@ -321,6 +328,9 @@ export function StudioEditorView() {
   const [loopEnd, setLoopEnd] = useState(60);
   const [loaded, setLoaded] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [projectId, setProjectId] = useState<string | null>(null);
+  const [cloudState, setCloudState] = useState<"local" | "saving" | "saved" | "error">("local");
+  const [cloudError, setCloudError] = useState("");
   const [history, setHistory] = useState<Clip[][]>([]);
   const [future, setFuture] = useState<Clip[][]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -341,6 +351,7 @@ export function StudioEditorView() {
   const rafRef = useRef<number | null>(null);
 
   const storageKey = user ? `${STORAGE_PREFIX}:${user.id}` : "";
+  const cloudSaveRef = useRef(false);
 
   useEffect(() => {
     playheadRef.current = playhead;
@@ -355,47 +366,81 @@ export function StudioEditorView() {
     loopEndRef.current = loopEnd;
   }, [loopStart, loopEnd]);
 
+  function normalizeLanes(input: unknown): Clip[] {
+    if (!Array.isArray(input)) return [];
+    return input
+      .filter(
+        (lane): lane is Clip =>
+          Boolean(lane) &&
+          typeof lane === "object" &&
+          typeof (lane as Clip).id === "string" &&
+          typeof (lane as Clip).generationId === "string" &&
+          Number.isFinite((lane as Clip).start) &&
+          Number.isFinite((lane as Clip).duration)
+      )
+      .map((lane) => ({
+        ...lane,
+        fadeIn: Number.isFinite(lane.fadeIn) ? Math.max(0, Number(lane.fadeIn)) : 0,
+        fadeOut: Number.isFinite(lane.fadeOut) ? Math.max(0, Number(lane.fadeOut)) : 0,
+        low: Number.isFinite(lane.low) ? clamp(Number(lane.low), -12, 12) : 0,
+        mid: Number.isFinite(lane.mid) ? clamp(Number(lane.mid), -12, 12) : 0,
+        high: Number.isFinite(lane.high) ? clamp(Number(lane.high), -12, 12) : 0,
+        delay: Number.isFinite(lane.delay) ? clamp(Number(lane.delay), 0, 100) : 0,
+        reverb: Number.isFinite(lane.reverb) ? clamp(Number(lane.reverb), 0, 100) : 0,
+      }));
+  }
+
+  function applySession(saved: StoredSession, nextProjectId: string | null) {
+    const savedLanes = normalizeLanes(saved.lanes);
+    setLanes(savedLanes);
+    setSelected(savedLanes[0]?.id ?? null);
+    if (saved.name) setSessionName(saved.name);
+    if (Number.isFinite(saved.bpm)) setBpm(clamp(Number(saved.bpm), 40, 220));
+    if (Number.isFinite(saved.zoom)) setZoom(clamp(Number(saved.zoom), 0.7, 2));
+    if (Number.isFinite(saved.master)) setMaster(clamp(Number(saved.master), 0, 100));
+    if (Number.isFinite(saved.loopStart)) setLoopStart(Math.max(0, Number(saved.loopStart)));
+    if (Number.isFinite(saved.loopEnd)) setLoopEnd(Math.max(1, Number(saved.loopEnd)));
+    setProjectId(nextProjectId);
+    setCloudState(nextProjectId ? "saved" : "local");
+  }
+
   useEffect(() => {
     if (authLoading || !user) return;
     let active = true;
     setLoaded(false);
     fetchGenerations(100)
-      .then((next) => {
+      .then(async (next) => {
         if (!active) return;
         setItems(next);
+        try {
+          const projects = await listStudioProjects(1, 0);
+          const first = projects.items[0];
+          if (first) {
+            const project = await getStudioProject(first.id);
+            if (!active) return;
+            const data = (project.data || {}) as StudioProjectData;
+            applySession(
+              {
+                name: project.title,
+                bpm: project.bpm,
+                zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
+                master: Number.isFinite(data.master) ? Number(data.master) : 80,
+                loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
+                loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
+                lanes: normalizeLanes(data.lanes),
+              },
+              project.id
+            );
+            return;
+          }
+        } catch {
+          /* fall back to local */
+        }
+        if (!active) return;
         const raw = storageKey ? window.localStorage.getItem(storageKey) : null;
         if (raw) {
           try {
-            const saved = JSON.parse(raw) as StoredSession;
-            const savedLanes = Array.isArray(saved.lanes)
-              ? saved.lanes.filter(
-                  (lane) =>
-                    lane &&
-                    typeof lane.id === "string" &&
-                    typeof lane.generationId === "string" &&
-                    Number.isFinite(lane.start) &&
-                    Number.isFinite(lane.duration)
-                )
-              : [];
-            setLanes(
-              savedLanes.map((lane) => ({
-                ...lane,
-                fadeIn: Number.isFinite(lane.fadeIn) ? Math.max(0, Number(lane.fadeIn)) : 0,
-                fadeOut: Number.isFinite(lane.fadeOut) ? Math.max(0, Number(lane.fadeOut)) : 0,
-                low: Number.isFinite(lane.low) ? clamp(Number(lane.low), -12, 12) : 0,
-                mid: Number.isFinite(lane.mid) ? clamp(Number(lane.mid), -12, 12) : 0,
-                high: Number.isFinite(lane.high) ? clamp(Number(lane.high), -12, 12) : 0,
-                delay: Number.isFinite(lane.delay) ? clamp(Number(lane.delay), 0, 100) : 0,
-                reverb: Number.isFinite(lane.reverb) ? clamp(Number(lane.reverb), 0, 100) : 0,
-              }))
-            );
-            setSelected(savedLanes[0]?.id ?? null);
-            if (saved.name) setSessionName(saved.name);
-            if (Number.isFinite(saved.bpm)) setBpm(clamp(Number(saved.bpm), 40, 220));
-            if (Number.isFinite(saved.zoom)) setZoom(clamp(Number(saved.zoom), 0.7, 2));
-            if (Number.isFinite(saved.master)) setMaster(clamp(Number(saved.master), 0, 100));
-            if (Number.isFinite(saved.loopStart)) setLoopStart(Math.max(0, Number(saved.loopStart)));
-            if (Number.isFinite(saved.loopEnd)) setLoopEnd(Math.max(1, Number(saved.loopEnd)));
+            applySession(JSON.parse(raw) as StoredSession, null);
           } catch {
             setLanes([]);
           }
@@ -421,6 +466,45 @@ export function StudioEditorView() {
     }, 350);
     return () => window.clearTimeout(timer);
   }, [loaded, user, storageKey, sessionName, bpm, zoom, master, loopStart, loopEnd, lanes]);
+
+  useEffect(() => {
+    if (!loaded || !user || cloudSaveRef.current) return;
+    if (!lanes.length && sessionName === "Untitled session") return;
+    const timer = window.setTimeout(async () => {
+      if (cloudSaveRef.current) return;
+      cloudSaveRef.current = true;
+      setCloudState("saving");
+      setCloudError("");
+      try {
+        const data: StudioProjectData = { lanes, loopStart, loopEnd, zoom, master };
+        if (projectId) {
+          await updateStudioProject(projectId, {
+            title: sessionName,
+            bpm,
+            time_signature: "4/4",
+            data,
+          });
+        } else {
+          const created = await createStudioProject({
+            title: sessionName,
+            major_version: 2,
+            bpm,
+            time_signature: "4/4",
+            data,
+          });
+          setProjectId(created.id);
+        }
+        setCloudState("saved");
+        setSavedAt(new Date());
+      } catch (cause) {
+        setCloudState("error");
+        setCloudError(cause instanceof Error ? cause.message : "Cloud save failed");
+      } finally {
+        cloudSaveRef.current = false;
+      }
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [loaded, user, projectId, sessionName, bpm, zoom, master, loopStart, loopEnd, lanes]);
 
   const timelineDuration = useMemo(() => {
     const end = lanes.reduce((max, lane) => Math.max(max, lane.start + lane.duration), 0);
@@ -1013,9 +1097,9 @@ export function StudioEditorView() {
             maxLength={80}
           />
           <span>
-            {savedAt ? "Saved locally" : "Local session"} · {lanes.length}{" "}
+            {cloudState === "saving" ? "Saving..." : cloudState === "error" ? "Saved locally - cloud offline" : cloudState === "saved" ? "Saved to cloud" : savedAt ? "Saved locally" : "Local session"} - {lanes.length}{" "}
             {lanes.length === 1 ? "track" : "tracks"}
-            {totalMinutes > 0 ? ` · ${totalMinutes}m arrangement` : ""}
+            {totalMinutes > 0 ? ` - ${totalMinutes}m arrangement` : ""}
           </span>
         </div>
         <div className="page-actions">
@@ -1027,6 +1111,9 @@ export function StudioEditorView() {
               commitLanes([]);
               setSelected(null);
               setPlayhead(0);
+              setProjectId(null);
+              setCloudState("local");
+              setSessionName("Untitled session");
             }}
           >
             New session
@@ -1387,6 +1474,7 @@ export function StudioEditorView() {
       </div>
       {audioError ? <p className="studio-audio-error" role="alert">{audioError}</p> : null}
       {exportError ? <p className="studio-audio-error" role="alert">{exportError}</p> : null}
+      {cloudError ? <p className="studio-audio-error" role="alert">{cloudError}</p> : null}
       {audioLoading ? <p className="studio-audio-status" role="status">Loading studio audio?</p> : null}
       {exporting ? <p className="studio-audio-status" role="status">Rendering mixdown?</p> : null}
     </div>
