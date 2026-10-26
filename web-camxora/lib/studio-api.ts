@@ -242,3 +242,36 @@ export type StudioPricing = {
 export async function getStudioPricing(): Promise<StudioPricing> {
   return studioJson("/api/v3/web-music/studio/pricing");
 }
+
+export type StudioUpload = {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  duration_seconds?: number | null;
+  url: string;
+};
+
+export async function uploadStudioAudio(
+  file: File,
+  durationSeconds?: number | null
+): Promise<StudioUpload> {
+  const form = new FormData();
+  form.append("file", file);
+  if (durationSeconds != null) form.append("duration_seconds", String(durationSeconds));
+  const response = await musicAuthFetch("/api/v3/web-music/studio/uploads", {
+    method: "POST",
+    body: form,
+  });
+  if (!response.ok) {
+    throw new Error(await readError(response, `Upload failed (${response.status})`));
+  }
+  return (await response.json()) as StudioUpload;
+}
+
+export async function getStudioUploadUrl(id: string): Promise<string> {
+  const upload = await studioJson<StudioUpload>(
+    `/api/v3/web-music/studio/uploads/${encodeURIComponent(id)}`
+  );
+  return upload.url;
+}

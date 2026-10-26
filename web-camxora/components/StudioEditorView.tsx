@@ -33,6 +33,8 @@ import {
   getStudioOperation,
   getStudioPricing,
   type StudioPricing,
+  uploadStudioAudio,
+  getStudioUploadUrl,
 } from "@/lib/studio-api";
 
 type AutomationPoint = {
@@ -57,6 +59,7 @@ type Clip = {
   automation?: AutomationPoint[];
   panAutomation?: AutomationPoint[];
   audioUrl?: string | null;
+  uploadId?: string | null;
   low: number;
   mid: number;
   high: number;
@@ -402,6 +405,8 @@ export function StudioEditorView() {
   const [audioError, setAudioError] = useState("");
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
   const [exportFormat, setExportFormat] = useState<"wav" | "mp3">("wav");
   const [exportRange, setExportRange] = useState<"full" | "loop">("full");
   const [loop, setLoop] = useState(false);
@@ -839,14 +844,26 @@ export function StudioEditorView() {
 
   const loadBuffer = useCallback(
     async (lane: Clip): Promise<AudioBuffer> => {
-      const key = lane.audioUrl ? `url:${lane.audioUrl}` : `${lane.generationId}:${lane.variant}`;
+      const key = lane.uploadId
+        ? `upload:${lane.uploadId}`
+        : lane.audioUrl
+          ? `url:${lane.audioUrl}`
+          : `${lane.generationId}:${lane.variant}`;
       const cached = buffersRef.current.get(key);
       if (cached) return cached;
       const context = ensureAudioContext();
+      let sourceUrl = lane.audioUrl || null;
+      if (lane.uploadId) {
+        try {
+          sourceUrl = await getStudioUploadUrl(lane.uploadId);
+        } catch {
+          sourceUrl = lane.audioUrl || null;
+        }
+      }
       let bytes: ArrayBuffer;
-      if (lane.audioUrl) {
-        const response = await fetch(lane.audioUrl, { credentials: "include" });
-        if (!response.ok) throw new Error(`Could not load stem audio (${response.status}).`);
+      if (sourceUrl) {
+        const response = await fetch(sourceUrl, { credentials: "include" });
+        if (!response.ok) throw new Error(`Could not load audio (${response.status}).`);
         bytes = await response.arrayBuffer();
       } else {
         const blob = await fetchWebMusicClipBlob(lane.generationId, lane.variant);
@@ -1146,6 +1163,62 @@ export function StudioEditorView() {
     if (!lane) return;
     commitLanes([...lanes, lane]);
     setSelected(lane.id);
+  }
+
+  async function importAudioFile(file: File) {
+    if (importing) return;
+    if (file.size > 50 * 1024 * 1024) {
+      setImportError("Audio imports are limited to 50 MB.");
+      return;
+    }
+    setImporting(true);
+    setImportError("");
+    try {
+      const bytes = await file.arrayBuffer();
+      const context = ensureAudioContext();
+      const buffer = await context.decodeAudioData(bytes.slice(0));
+      const typedFile =
+        file.type && file.type.startsWith("audio/")
+          ? file
+          : new File([file], file.name, { type: "audio/mpeg" });
+      const upload = await uploadStudioAudio(typedFile, buffer.duration);
+      const duration = Math.max(1, buffer.duration);
+      const title = file.name.replace(/\.[^.]+$/, "") || "Imported audio";
+      const lane: Clip = {
+        id: makeId(),
+        generationId: `upload:${upload.id}`,
+        variant: "upload",
+        title,
+        style: "Imported audio",
+        color: COLORS[lanes.length % COLORS.length],
+        image: null,
+        start: clamp(playhead, 0, Math.max(0, timelineDuration - duration)),
+        duration,
+        offset: 0,
+        fadeIn: 0,
+        fadeOut: 0,
+        automation: [],
+        panAutomation: [],
+        audioUrl: upload.url,
+        uploadId: upload.id,
+        low: 0,
+        mid: 0,
+        high: 0,
+        delay: 0,
+        reverb: 0,
+        compressor: 0,
+        volume: 80,
+        pan: 0,
+        muted: false,
+        solo: false,
+      };
+      commitLanes([...lanes, lane]);
+      setSelected(lane.id);
+    } catch (cause) {
+      setImportError(cause instanceof Error ? cause.message : "Could not import audio.");
+    } finally {
+      setImporting(false);
+    }
   }
 
   function duplicateSelected() {
@@ -1569,6 +1642,22 @@ export function StudioEditorView() {
             New session
           </button>
           <Link className="btn btn-ghost" href="/create">Create a track</Link>
+          <label className="btn btn-ghost studio-import-btn" title="Import an audio file as a Studio track">
+            <Icon name={importing ? "fa-spinner" : "fa-upload"} />
+            {importing ? "Importing…" : "Import audio"}
+            <input
+              type="file"
+              accept="audio/*"
+              disabled={importing}
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) void importAudioFile(file);
+                event.currentTarget.value = "";
+              }}
+              hidden
+            />
+          </label>
+          {importError ? <small className="studio-import-error">{importError}</small> : null}
           <div className="studio-export-group">
             <select
               className="studio-export-format"

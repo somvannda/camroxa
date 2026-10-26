@@ -6,7 +6,7 @@ import logging
 from typing import Annotated, Literal
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, Query, Request, Response
+from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
@@ -626,6 +626,43 @@ async def request_studio_replace_section(
         model=body.model,
         project_id=body.project_id,
     )
+
+
+@router.post("/studio/uploads", status_code=201)
+async def upload_studio_audio(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    file: UploadFile = File(...),
+    duration_seconds: float | None = Form(default=None),
+) -> dict:
+    content_type = str(file.content_type or "").split(";")[0].strip().lower()
+    if not content_type.startswith("audio/"):
+        raise ValidationError(
+            "Only audio files can be imported into Studio.",
+            details={"field": "file"},
+        )
+    data = await file.read()
+    if len(data) > 50 * 1024 * 1024:
+        raise ValidationError(
+            "Studio audio uploads are limited to 50 MB.",
+            details={"field": "file"},
+        )
+    return await service.create_studio_upload(
+        UUID(ctx.user_id),
+        filename=file.filename or "studio-audio",
+        content_type=content_type,
+        data=data,
+        duration_seconds=duration_seconds,
+    )
+
+
+@router.get("/studio/uploads/{upload_id}")
+async def get_studio_audio(
+    upload_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.get_studio_upload(UUID(ctx.user_id), upload_id)
 
 
 @router.get("/studio/pricing")

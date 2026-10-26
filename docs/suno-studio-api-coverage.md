@@ -246,6 +246,17 @@ master limiter as playback. Stem files are packaged into one ZIP archive so a
 Each track has a **Dynamics** compressor control. Compression is saved with
 the project and applied to both playback and export.
 
+Studio supports durable audio import:
+
+```text
+POST /api/v3/web-music/studio/uploads
+GET  /api/v3/web-music/studio/uploads/{upload_id}
+```
+
+Uploads are limited to 50 MB audio files, stored in the platform streaming
+bucket, and referenced by `uploadId` in the project. The editor re-signs the
+URL when loading, so imported tracks survive reloads and URL expiry.
+
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume
 automation overrides the clip fades when points are present. Pan automation

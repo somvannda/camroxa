@@ -1740,6 +1740,116 @@ class WebMusicService:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         return self._studio_project_payload(row)
 
+    def _studio_upload_payload(self, row: Any, url: str) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "filename": str(row["filename"]),
+            "content_type": str(row["content_type"]),
+            "size_bytes": int(row["size_bytes"] or 0),
+            "duration_seconds": (
+                float(row["duration_seconds"])
+                if row["duration_seconds"] is not None
+                else None
+            ),
+            "url": url,
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+
+    async def create_studio_upload(
+        self,
+        user_id: UUID,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        duration_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        if not data:
+            raise ValidationError("The uploaded audio file is empty.")
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Studio uploads are not configured.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        safe_ext = {
+            "audio/mpeg": "mp3",
+            "audio/mp3": "mp3",
+            "audio/wav": "wav",
+            "audio/x-wav": "wav",
+            "audio/webm": "webm",
+            "audio/ogg": "ogg",
+            "audio/mp4": "m4a",
+            "audio/x-m4a": "m4a",
+        }.get(str(content_type or "").split(";")[0].strip().lower(), "audio")
+        upload_id = uuid4()
+        key = f"studio/uploads/{user_id}/{upload_id}.{safe_ext}"
+        try:
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(
+                key=key,
+                data=data,
+                content_type=content_type or "application/octet-stream",
+            )
+            url = await storage.get_signed_get_url(key)
+        except Exception as exc:
+            logger.exception("Studio upload failed for user %s", user_id)
+            raise ExternalServiceError(
+                "Could not store the uploaded audio.",
+                is_retryable=True,
+                details={"provider": "storage"},
+            ) from exc
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_uploads
+                (id, user_id, storage_key, filename, content_type, size_bytes, duration_seconds)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING *
+            """,
+            upload_id,
+            user_id,
+            key,
+            filename[:240] or f"upload.{safe_ext}",
+            content_type or "application/octet-stream",
+            len(data),
+            duration_seconds,
+        )
+        return self._studio_upload_payload(row, url)
+
+    async def get_studio_upload(self, user_id: UUID, upload_id: UUID) -> dict[str, Any]:
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_uploads WHERE id = $1 AND user_id = $2",
+            upload_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError(
+                "Studio upload not found.",
+                details={"upload_id": str(upload_id)},
+            )
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Studio uploads are not configured.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        url = await StorageService.from_config(config).get_signed_get_url(
+            str(row["storage_key"])
+        )
+        return self._studio_upload_payload(row, url)
+
     async def studio_operation_pricing(self, user_id: UUID) -> dict[str, int]:
         bridge = self._web_music_charge_bridge()
         pricing: dict[str, int] = {}
