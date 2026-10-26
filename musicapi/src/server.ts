@@ -1858,6 +1858,28 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return row?.account_id ?? null;
   }
 
+  /** Resolve the owning account for a clip without requiring an API-key user. */
+  async function findAssetAccountAny(assetId: string): Promise<string | null> {
+    if (!assetId) return null;
+    try {
+      const row = await queryOne<{ account_id: string | null }>(
+        "SELECT account_id FROM asset_owners WHERE asset_id = $1 AND account_id IS NOT NULL LIMIT 1",
+        [assetId],
+      );
+      if (row?.account_id) return row.account_id;
+    } catch {
+      /* fall through */
+    }
+    const row = await queryOne<{ account_id: string | null }>(
+      `SELECT account_id FROM jobs
+        WHERE account_id IS NOT NULL
+          AND result_json::text LIKE '%' || $1 || '%'
+        ORDER BY created_at DESC LIMIT 1`,
+      [assetId],
+    ).catch(() => null);
+    return row?.account_id ?? null;
+  }
+
   /** True when the job that produced `assetId` reached a terminal success. */
   async function assetProducedByCompletedJob(assetId: string): Promise<boolean> {
     const row = await queryOne<{ status: string | null }>(
@@ -8458,6 +8480,65 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     );
     if (!row) return reply.code(404).send({ error: "Project not found." });
     return reply.code(201).send(row);
+  });
+
+  function requireInternalToken(req: FastifyRequest, reply: FastifyReply): boolean {
+    const expected = String(process.env.STUDIO_INTERNAL_TOKEN ?? "").trim();
+    const provided = String(req.headers["x-internal-token"] ?? "").trim();
+    if (!expected) {
+      reply.code(503).send({ error: "Studio internal service is not configured." });
+      return false;
+    }
+    if (!provided || provided !== expected) {
+      reply.code(401).send({ error: "Invalid internal service token." });
+      return false;
+    }
+    return true;
+  }
+
+  // Service-to-service Studio operations. platform_api owns the Camxora user,
+  // credits and project authorization; musicapi owns the Suno clip account and
+  // pinned key routing. Never expose this route to browsers.
+  app.post("/internal/studio/stems", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const mode = String(body.mode ?? "vocal").toLowerCase();
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    if (!["vocal", "stems", "advanced"].includes(mode)) {
+      return reply.code(400).send({ error: "mode must be vocal, stems or advanced." });
+    }
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({
+        error: "The source clip's Suno account is not recorded.",
+      });
+    }
+    const job = newJob("stems");
+    job.endpoint = "studio_stems";
+    job.credits = 0;
+    void runClipJobWithRetry(
+      job,
+      (client) => client.stems(clipId, mode as "vocal" | "stems" | "advanced"),
+      { accountId }
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.get("/internal/studio/jobs/:id", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { id } = req.params as { id: string };
+    const job = await getJob(id);
+    if (!job) return reply.code(404).send({ error: "Studio job not found." });
+    return reply.send({
+      job_id: job.id,
+      type: job.type,
+      endpoint: job.endpoint,
+      status: job.status,
+      account_id: job.accountId ?? null,
+      result: job.result ?? null,
+      error: job.error ?? null,
+    });
   });
 
   app.post("/v1/music/mashup", async (req, reply) => {

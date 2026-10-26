@@ -148,6 +148,22 @@ POST   /api/v3/web-music/studio/projects/{id}/fork
 The Studio editor autosaves lanes, loop region, zoom and master volume after 650 ms
 and reloads the newest project on open. Local storage remains the offline fallback.
 
+### Internal Studio stems endpoint
+
+`musicapi` now has a service-to-service endpoint for the first Suno-backed
+Studio operation:
+
+```text
+POST /internal/studio/stems
+GET  /internal/studio/jobs/{id}
+```
+
+Authentication: `x-internal-token` matching `STUDIO_INTERNAL_TOKEN`.
+It is not exposed to browsers. It resolves the clip's owning Suno account from
+`asset_owners`/`jobs`, pins the job to that account, and returns a job id for
+polling. This is the safe bridge for `platform_api` to call after it has
+authenticated the Camxora user and charged credits.
+
 The next required layer is a `platform_api` proxy that authenticates the
 Camxora user, checks ownership and credits, and calls these musicapi routes.
 Studio project ids and clip ids must be linked to the caller's account.
