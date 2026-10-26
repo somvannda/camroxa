@@ -243,8 +243,9 @@ Range and stem exports use the same Web Audio graph, fades, EQ, sends and
 master limiter as playback. Stem files are packaged into one ZIP archive so a
 12-track export is a single browser download.
 
-Each track has a **Dynamics** compressor control. Compression is saved with
-the project and applied to both playback and export.
+Each track has a **Dynamics** section with compression and drive/saturation.
+Both are saved with the project and applied to playback and export. Drive uses
+a normalized soft-clip waveshaper before the compressor.
 
 Studio supports durable audio import:
 

@@ -66,6 +66,7 @@ type Clip = {
   delay: number;
   reverb: number;
   compressor: number;
+  drive: number;
   volume: number;
   pan: number;
   muted: boolean;
@@ -328,6 +329,31 @@ function connectTrackFx(
   return { delayWet, reverbWet };
 }
 
+function connectTrackDrive(
+  context: BaseAudioContext,
+  input: AudioNode,
+  output: AudioNode,
+  lane: Clip
+) {
+  const amount = clamp(lane.drive / 100, 0, 1);
+  if (amount <= 0) {
+    input.connect(output);
+    return;
+  }
+  const shaper = context.createWaveShaper();
+  const samples = 1024;
+  const curve = new Float32Array(samples);
+  const drive = 1 + amount * 24;
+  for (let index = 0; index < samples; index += 1) {
+    const x = (index / (samples - 1)) * 2 - 1;
+    curve[index] = Math.tanh(x * drive);
+  }
+  shaper.curve = curve;
+  shaper.oversample = "4x";
+  input.connect(shaper);
+  shaper.connect(output);
+}
+
 function connectTrackDynamics(
   context: BaseAudioContext,
   input: AudioNode,
@@ -380,6 +406,7 @@ function clipFromGeneration(
     delay: 0,
     reverb: 0,
     compressor: 0,
+    drive: 0,
     volume: 80,
     pan: 0,
     muted: false,
@@ -513,6 +540,7 @@ export function StudioEditorView() {
         delay: Number.isFinite(lane.delay) ? clamp(Number(lane.delay), 0, 100) : 0,
         reverb: Number.isFinite(lane.reverb) ? clamp(Number(lane.reverb), 0, 100) : 0,
         compressor: Number.isFinite(lane.compressor) ? clamp(Number(lane.compressor), 0, 100) : 0,
+        drive: Number.isFinite(lane.drive) ? clamp(Number(lane.drive), 0, 100) : 0,
         automation: Array.isArray(lane.automation)
           ? lane.automation
               .filter(
@@ -970,7 +998,9 @@ export function StudioEditorView() {
           source.connect(low);
           low.connect(mid);
           mid.connect(high);
-          connectTrackDynamics(context, high, gain, lane);
+          const driveOut = context.createGain();
+          connectTrackDrive(context, high, driveOut, lane);
+          connectTrackDynamics(context, driveOut, gain, lane);
           gain.connect(panner);
           const fx = connectTrackFx(context, panner, masterGain, lane);
           const startWhen = startAt + Math.max(0, lane.start - from);
@@ -1291,6 +1321,7 @@ export function StudioEditorView() {
         delay: 0,
         reverb: 0,
         compressor: 0,
+        drive: 0,
         volume: 80,
         pan: 0,
         muted: false,
@@ -1408,7 +1439,9 @@ export function StudioEditorView() {
       source.connect(low);
       low.connect(mid);
       mid.connect(high);
-      connectTrackDynamics(offline, high, gain, lane);
+      const driveOut = offline.createGain();
+      connectTrackDrive(offline, high, driveOut, lane);
+      connectTrackDynamics(offline, driveOut, gain, lane);
       gain.connect(panner);
       connectTrackFx(offline, panner, masterGain, lane);
       scheduleClipGain(
@@ -1526,6 +1559,7 @@ export function StudioEditorView() {
         delay: 0,
         reverb: 0,
         compressor: 0,
+        drive: 0,
         volume: 80,
         pan: 0,
         muted: false,
@@ -1639,6 +1673,7 @@ export function StudioEditorView() {
           delay: 0,
           reverb: 0,
           compressor: 0,
+          drive: 0,
           volume: 80,
           pan: 0,
           muted: false,
@@ -2124,10 +2159,13 @@ export function StudioEditorView() {
               <div className="studio-eq">
                 <div className="studio-eq-head">
                   <span>Dynamics</span>
-                  <button type="button" onClick={() => updateLane(selectedLane.id, { compressor: 0 })}>Reset</button>
+                  <button type="button" onClick={() => updateLane(selectedLane.id, { compressor: 0, drive: 0 })}>Reset</button>
                 </div>
                 <label>Compression <b>{selectedLane.compressor}%</b>
                   <input type="range" min="0" max="100" step="1" value={selectedLane.compressor} onChange={(event) => updateLane(selectedLane.id, { compressor: Number(event.target.value) })} />
+                </label>
+                <label>Drive <b>{selectedLane.drive}%</b>
+                  <input type="range" min="0" max="100" step="1" value={selectedLane.drive} onChange={(event) => updateLane(selectedLane.id, { drive: Number(event.target.value) })} />
                 </label>
               </div>
               <div className="studio-inspector-actions">
