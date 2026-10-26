@@ -2482,7 +2482,7 @@ export function StudioEditorView() {
         </button>
         <span className="studio-toolbar-divider" />
         <label className="studio-bpm">BPM <input type="number" min={40} max={220} value={bpm} onChange={(event) => setBpm(clamp(Number(event.target.value), 40, 220))} /></label>
-        <label className="studio-grid">Grid
+        <label className="studio-snap-grid">Grid
           <select value={gridDivision} onChange={(event) => setGridDivision(event.target.value as typeof gridDivision)} aria-label="Snap grid">
             <option value="off">Off</option>
             <option value="bar">Bar</option>
