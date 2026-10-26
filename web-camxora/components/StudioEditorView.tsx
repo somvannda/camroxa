@@ -564,6 +564,9 @@ export function StudioEditorView() {
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
   const [recording, setRecording] = useState(false);
+  const [countIn, setCountIn] = useState(false);
+  const [countInBusy, setCountInBusy] = useState(false);
+  const [recordCountdown, setRecordCountdown] = useState(0);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [recordError, setRecordError] = useState("");
   const [exportFormat, setExportFormat] = useState<"wav" | "mp3">("wav");
@@ -1991,8 +1994,32 @@ export function StudioEditorView() {
     setSelected(lane.id);
   }
 
+  async function runCountIn() {
+    const context = ensureAudioContext();
+    await context.resume();
+    const beat = 60 / Math.max(40, bpm);
+    const start = context.currentTime + 0.06;
+    for (let index = 0; index < 4; index += 1) {
+      const osc = context.createOscillator();
+      const gain = context.createGain();
+      const when = start + index * beat;
+      osc.frequency.value = index === 0 ? 1600 : 1000;
+      gain.gain.setValueAtTime(0.12, when);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
+      osc.connect(gain);
+      gain.connect(context.destination);
+      osc.start(when);
+      osc.stop(when + 0.06);
+    }
+    for (let index = 4; index > 0; index -= 1) {
+      setRecordCountdown(index);
+      await new Promise((resolve) => window.setTimeout(resolve, beat * 1000));
+    }
+    setRecordCountdown(0);
+  }
+
   async function startRecording() {
-    if (recording || importing) return;
+    if (recording || importing || countInBusy) return;
     if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
       setRecordError("Microphone recording is not supported in this browser.");
       return;
@@ -2034,7 +2061,10 @@ export function StudioEditorView() {
           void importAudioFile(file);
         }
       };
+      setCountInBusy(true);
+      if (countIn) await runCountIn();
       recorder.start(250);
+      setCountInBusy(false);
       setRecording(true);
       setRecordSeconds(0);
       recordTimerRef.current = window.setInterval(
@@ -2044,6 +2074,8 @@ export function StudioEditorView() {
     } catch (cause) {
       recordStreamRef.current?.getTracks().forEach((track) => track.stop());
       recordStreamRef.current = null;
+      setCountInBusy(false);
+      setRecordCountdown(0);
       setRecordError(
         cause instanceof Error ? cause.message : "Could not access the microphone."
       );
@@ -2798,9 +2830,17 @@ export function StudioEditorView() {
           >
             <Icon name="fa-sliders" />
           </button>
-          {recording ? (
-            <button className="btn btn-ghost studio-record-btn recording" type="button" onClick={stopRecording}>
-              <Icon name="fa-stop" /> {String(Math.floor(recordSeconds / 60)).padStart(2, "0")}:{String(recordSeconds % 60).padStart(2, "0")}
+          {recording || countInBusy ? (
+            <button
+              className={`btn btn-ghost studio-record-btn${recording ? " recording" : ""}`}
+              type="button"
+              onClick={recording ? stopRecording : undefined}
+              disabled={countInBusy}
+            >
+              <Icon name={countInBusy ? "fa-hourglass-half" : "fa-stop"} />
+              {countInBusy
+                ? `Count-in ${recordCountdown}`
+                : `${String(Math.floor(recordSeconds / 60)).padStart(2, "0")}:${String(recordSeconds % 60).padStart(2, "0")}`}
             </button>
           ) : null}
           <div className="studio-actions-menu-wrap">
@@ -2875,8 +2915,11 @@ export function StudioEditorView() {
                       hidden
                     />
                   </label>
-                  <button type="button" onClick={() => { setActionsOpen(false); void startRecording(); }}>
+                  <button type="button" disabled={countInBusy} onClick={() => { setActionsOpen(false); void startRecording(); }}>
                     <Icon name="fa-microphone" /> Record
+                  </button>
+                  <button type="button" onClick={() => { setActionsOpen(false); setCountIn((value) => !value); }}>
+                    <Icon name="fa-hourglass-half" /> Count-in: {countIn ? "On" : "Off"}
                   </button>
                   <button type="button" onClick={() => { setActionsOpen(false); addMidiTrack(); }}>
                     <Icon name="fa-music" /> MIDI track

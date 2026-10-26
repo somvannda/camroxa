@@ -326,6 +326,9 @@ Studio also supports microphone recording. A finished recording is uploaded
 through the same durable upload endpoint and added as a normal track, so it can
 be edited and exported like any imported or generated clip.
 
+Recording can use an optional four-beat count-in at the current BPM. The
+transport shows the countdown before capture starts.
+
 A lightweight MIDI instrument track provides a 12×16 piano-roll grid with
 triangle, sine and saw synths. Click an empty cell to add a note; click an
 existing note to select it and edit its length, velocity or delete it. Notes
