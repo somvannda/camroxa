@@ -114,6 +114,8 @@ type Clip = {
   chorus: number;
   compressor: number;
   drive: number;
+  duck?: number;
+  duckRate?: "1/4" | "1/8";
   filterCutoff?: number;
   filterResonance?: number;
   volume: number;
@@ -518,6 +520,36 @@ function schedulePanAutomation(
       clamp(point.value / 50, -1, 1),
       Math.max(when + 0.001, when + (point.time - elapsed))
     );
+  }
+}
+
+function scheduleDucking(
+  gain: GainNode,
+  lane: Clip,
+  from: number,
+  when: number,
+  length: number,
+  bpm: number
+) {
+  const depth = clamp((lane.duck ?? 0) / 100, 0, 1);
+  gain.gain.setValueAtTime(1, when);
+  if (depth <= 0) return;
+  const beats = lane.duckRate === "1/8" ? 0.5 : 1;
+  const interval = (60 / Math.max(40, bpm)) * beats;
+  if (interval <= 0) return;
+  const elapsed = Math.max(0, from - lane.start);
+  const firstIndex = Math.floor(elapsed / interval);
+  const firstTick = firstIndex * interval;
+  for (
+    let tick = firstTick;
+    tick < elapsed + length;
+    tick += interval
+  ) {
+    const at = when + Math.max(0, tick - elapsed);
+    if (at < when) continue;
+    gain.gain.setValueAtTime(1, at);
+    gain.gain.linearRampToValueAtTime(1 - depth, at + 0.04);
+    gain.gain.linearRampToValueAtTime(1, at + interval * 0.65);
   }
 }
 
@@ -1464,6 +1496,8 @@ export function StudioEditorView() {
         chorus: Number.isFinite(lane.chorus) ? clamp(Number(lane.chorus), 0, 100) : 0,
         compressor: Number.isFinite(lane.compressor) ? clamp(Number(lane.compressor), 0, 100) : 0,
         drive: Number.isFinite(lane.drive) ? clamp(Number(lane.drive), 0, 100) : 0,
+        duck: Number.isFinite(lane.duck) ? clamp(Number(lane.duck), 0, 100) : 0,
+        duckRate: lane.duckRate === "1/8" ? "1/8" : "1/4",
         filterCutoff: Number.isFinite(lane.filterCutoff) ? clamp(Number(lane.filterCutoff), 100, 20000) : 20000,
         filterResonance: Number.isFinite(lane.filterResonance) ? clamp(Number(lane.filterResonance), 0.1, 12) : 0.7,
         automation: Array.isArray(lane.automation)
@@ -2608,9 +2642,12 @@ export function StudioEditorView() {
           const driveOut = context.createGain();
           connectTrackDrive(context, chorusOut, driveOut, lane);
           connectTrackDynamics(context, driveOut, gain, lane);
-          gain.connect(panner);
+          const duckGain = context.createGain();
+          gain.connect(duckGain);
+          duckGain.connect(panner);
           const fx = connectTrackFx(context, panner, masterGain, lane);
           scheduleClipGain(gain, lane.volume / 100, lane, from, startWhen, remaining);
+          scheduleDucking(duckGain, lane, from, startWhen, remaining, bpm);
           schedulePanAutomation(panner, lane, from, startWhen, remaining);
           source.start(startWhen, offset, remaining);
           sourcesRef.current.push(source);
@@ -2643,7 +2680,7 @@ export function StudioEditorView() {
         setAudioLoading(false);
       }
     },
-    [ensureAudioContext, lanes, loadBuffer, scheduleMetronome, stopSources, updateMeter]
+    [bpm, ensureAudioContext, lanes, loadBuffer, scheduleMetronome, stopSources, updateMeter]
   );
 
   useEffect(() => {
@@ -3455,6 +3492,8 @@ export function StudioEditorView() {
       chorus: lane.chorus,
       compressor: lane.compressor,
       drive: lane.drive,
+      duck: lane.duck ?? 0,
+      duckRate: lane.duckRate ?? "1/4",
       automation: lane.automation ?? [],
       panAutomation: lane.panAutomation ?? [],
     });
@@ -3486,6 +3525,8 @@ export function StudioEditorView() {
       chorus: 0,
       compressor: 0,
       drive: 0,
+      duck: 0,
+      duckRate: "1/4",
       automation: [],
       panAutomation: [],
     });
@@ -3606,9 +3647,12 @@ export function StudioEditorView() {
       const driveOut = offline.createGain();
       connectTrackDrive(offline, chorusOut, driveOut, lane);
       connectTrackDynamics(offline, driveOut, gain, lane);
-      gain.connect(panner);
+      const duckGain = offline.createGain();
+      gain.connect(duckGain);
+      duckGain.connect(panner);
       connectTrackFx(offline, panner, masterGain, lane);
       scheduleClipGain(gain, lane.volume / 100, lane, clipStart, when, length);
+      scheduleDucking(duckGain, lane, clipStart, when, length, bpm);
       schedulePanAutomation(panner, lane, clipStart, when, length);
       source.start(when, offset, length);
     }
@@ -5177,13 +5221,40 @@ export function StudioEditorView() {
               <div className="studio-eq">
                 <div className="studio-eq-head">
                   <span>Dynamics</span>
-                  <button type="button" onClick={() => updateLane(selectedLane.id, { compressor: 0, drive: 0 })}>Reset</button>
+                  <button type="button" onClick={() => updateLane(selectedLane.id, { compressor: 0, drive: 0, duck: 0, duckRate: "1/4" })}>Reset</button>
                 </div>
                 <label>Compression <b>{selectedLane.compressor}%</b>
                   <input type="range" min="0" max="100" step="1" value={selectedLane.compressor} onChange={(event) => updateLane(selectedLane.id, { compressor: Number(event.target.value) })} />
                 </label>
                 <label>Drive <b>{selectedLane.drive}%</b>
                   <input type="range" min="0" max="100" step="1" value={selectedLane.drive} onChange={(event) => updateLane(selectedLane.id, { drive: Number(event.target.value) })} />
+                </label>
+                <label>Duck <b>{selectedLane.duck ?? 0}%</b>
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={selectedLane.duck ?? 0}
+                    onChange={(event) =>
+                      updateLane(selectedLane.id, {
+                        duck: Number(event.target.value),
+                      })
+                    }
+                  />
+                </label>
+                <label>Duck rate
+                  <select
+                    value={selectedLane.duckRate ?? "1/4"}
+                    onChange={(event) =>
+                      updateLane(selectedLane.id, {
+                        duckRate: event.target.value as Clip["duckRate"],
+                      })
+                    }
+                  >
+                    <option value="1/4">1/4</option>
+                    <option value="1/8">1/8</option>
+                  </select>
                 </label>
               </div>
                 </>

@@ -292,9 +292,10 @@ programs and note events. **Import MIDI** reads format-0/1 files, creates one
 MIDI lane per note-bearing track, converts tempo changes to seconds, and imports
 track names, programs and velocities.
 
-Each track has a **Dynamics** section with compression and drive/saturation,
-a low-pass **Filter** with cutoff/resonance, plus delay, reverb and chorus
-sends. All are saved with the project and applied to playback and export.
+Each track has a **Dynamics** section with compression, drive/saturation and a
+rhythmic **Duck** effect with 1/4 or 1/8 rates, plus a low-pass **Filter** with
+cutoff/resonance and delay, reverb and chorus sends. All are saved with the
+project and applied to playback and export.
 Drive uses a normalized soft-clip waveshaper before the compressor; chorus uses
 an LFO-modulated delay. The Mix tab also has one-click plugin presets — Clean,
 Vocal focus, Warm tape, Lo-fi, Wide chorus and Punch — which write the selected
