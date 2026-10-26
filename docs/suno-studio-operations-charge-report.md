@@ -71,12 +71,12 @@ operation price.
 
 ## Camxora price applied
 
-The implemented price is the measured Suno cost plus **2 credits**:
+The implemented price is:
 
 ```text
-Normal Studio edit          12 credits
-Stems — 2 track             12 credits
-Stems — 12 track            52 credits
+Normal Studio edit          12 credits  (Suno 10 + 2)
+Stems — 2 track             12 credits  (Suno 10 + 2)
+Stems — 12 track            60 credits  (Suno 50 + 10)
 ```
 
 Stored in `credit_pricing` as:
@@ -84,15 +84,20 @@ Stored in `credit_pricing` as:
 ```text
 suno / studio_edit          120000 units (12 credits)
 suno / studio_stems_2       120000 units (12 credits)
-suno / studio_stems_12      520000 units (52 credits)
+suno / studio_stems_12      600000 units (60 credits)
 ```
 
-Charge and refund behavior was verified with a mocked internal Studio service:
+Charge and refund behavior was verified with a mocked internal Studio service.
+The final price conversion was also checked:
 
-- normal edit: charged 12
-- 2-track stems: charged 12
-- 12-track stems: charged 52
-- upstream failure: 12 charged, 12 refunded
+```text
+studio_edit       12.0
+studio_stems_2    12.0
+studio_stems_12   60.0
+```
+
+The earlier full charge-path test ran at 52 credits before the final price was
+set to 60; only the pricing row changed afterward.
 
 ## Caveats
 

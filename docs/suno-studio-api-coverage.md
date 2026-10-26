@@ -233,11 +233,12 @@ Studio operations now charge through the existing credit/ownership gateway:
 ```text
 Normal Studio edit          12 credits
 Stems — 2 track             12 credits
-Stems — 12 track            52 credits
+Stems — 12 track            60 credits
 ```
 
-The price is two credits above the measured Suno charge. Charge and refund paths
-were verified against a mocked internal service.
+Normal edits and 2-track stems are two credits above the measured Suno charge.
+The 12-track stems price is 60 credits, ten above Suno's measured 50-credit
+charge. Charge and refund paths were verified against a mocked internal service.
 
 Measured Suno-side charges are recorded in
 [suno-studio-operations-charge-report.md](suno-studio-operations-charge-report.md).
