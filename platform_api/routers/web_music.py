@@ -560,6 +560,24 @@ async def create_studio_project_share(
     )
 
 
+class StudioPresenceRequest(BaseModel):
+    display_name: str = Field(default="Collaborator", max_length=80)
+
+
+@router.post("/studio/shares/{token}/presence")
+async def touch_studio_shared_presence(
+    token: str,
+    body: StudioPresenceRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.touch_studio_shared_presence(
+        token,
+        UUID(ctx.user_id),
+        display_name=body.display_name,
+    )
+
+
 class StudioCommentCreateRequest(BaseModel):
     author_name: str = Field(default="Guest", max_length=80)
     body: str = Field(min_length=1, max_length=2000)

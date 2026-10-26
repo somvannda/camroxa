@@ -414,3 +414,23 @@ export async function updateStudioSharedProject(
     }
   );
 }
+
+export type StudioPresence = {
+  user_id: string;
+  display_name: string;
+  last_seen?: string | null;
+};
+
+export async function touchStudioPresence(
+  token: string,
+  displayName: string
+): Promise<{ items: StudioPresence[] }> {
+  return studioJson(
+    `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}/presence`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ display_name: displayName }),
+    }
+  );
+}

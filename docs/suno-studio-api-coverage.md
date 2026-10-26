@@ -364,8 +364,16 @@ A signed-in viewer can also fork the shared project into their own Studio:
 POST /api/v3/web-music/studio/shares/{token}/fork
 ```
 
-The fork is a full editable copy with a “(shared copy)” title. Real-time
-co-editing is not included yet.
+The fork is a full editable copy with a “(shared copy)” title.
+
+Editable share sessions report collaborator presence:
+
+```text
+POST /api/v3/web-music/studio/shares/{token}/presence
+```
+
+Active collaborators appear as avatars in the Studio top bar; presence expires
+after 90 seconds. Real-time edit synchronization is still pending.
 
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume

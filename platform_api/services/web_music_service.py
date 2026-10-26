@@ -2083,6 +2083,64 @@ class WebMusicService:
         )
         return self._studio_project_payload(row)
 
+    async def touch_studio_shared_presence(
+        self,
+        token: str,
+        user_id: UUID,
+        *,
+        display_name: str,
+    ) -> dict[str, Any]:
+        share = await self._pool.fetchrow(
+            """
+            SELECT project_id, permission
+            FROM studio_project_shares
+            WHERE token = $1
+              AND revoked_at IS NULL
+              AND (expires_at IS NULL OR expires_at > now())
+            """,
+            str(token or "").strip(),
+        )
+        if share is None:
+            raise NotFoundError("Shared Studio project not found or expired.")
+        if str(share["permission"] or "view") != "edit":
+            raise ForbiddenError("This share link is view-only.")
+        project_id = UUID(str(share["project_id"]))
+        name = str(display_name or "").strip()[:80] or "Collaborator"
+        await self._pool.execute(
+            """
+            INSERT INTO studio_project_presence (project_id, user_id, display_name, last_seen)
+            VALUES ($1, $2, $3, now())
+            ON CONFLICT (project_id, user_id)
+            DO UPDATE SET display_name = EXCLUDED.display_name, last_seen = now()
+            """,
+            project_id,
+            user_id,
+            name,
+        )
+        await self._pool.execute(
+            "DELETE FROM studio_project_presence WHERE project_id = $1 AND last_seen < now() - interval '90 seconds'",
+            project_id,
+        )
+        rows = await self._pool.fetch(
+            """
+            SELECT user_id, display_name, last_seen
+            FROM studio_project_presence
+            WHERE project_id = $1 AND last_seen >= now() - interval '90 seconds'
+            ORDER BY last_seen DESC
+            """,
+            project_id,
+        )
+        return {
+            "items": [
+                {
+                    "user_id": str(row["user_id"]),
+                    "display_name": str(row["display_name"]),
+                    "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
+                }
+                for row in rows
+            ]
+        }
+
     async def add_studio_share_comment(
         self,
         token: str,

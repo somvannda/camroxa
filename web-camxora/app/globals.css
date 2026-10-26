@@ -2723,3 +2723,8 @@ html{color-scheme:dark}
 
   .studio-share-permission{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8}
   .studio-share-permission select{height:28px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:#0b1021;color:#cbd5e1;font:inherit;font-size:9px;text-transform:none;letter-spacing:0}
+
+  .studio-presence{display:flex;align-items:center;gap:2px;margin-right:3px}
+  .studio-presence span{display:grid;place-items:center;width:20px;height:20px;margin-left:-4px;border:1px solid #0b1021;border-radius:50%;background:#4c1d95;color:#ede9fe;font-size:7px;font-weight:700}
+  .studio-presence span:first-child{margin-left:0}
+  .studio-presence em{font-style:normal;font-size:7px;color:#a78bfa;margin-left:2px}

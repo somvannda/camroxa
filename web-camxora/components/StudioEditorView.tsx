@@ -45,6 +45,8 @@ import {
   listStudioProjectComments,
   getStudioSharedProject,
   updateStudioSharedProject,
+  touchStudioPresence,
+  type StudioPresence,
 } from "@/lib/studio-api";
 
 type AutomationPoint = {
@@ -564,6 +566,7 @@ export function StudioEditorView() {
   const [commentsError, setCommentsError] = useState("");
   const [sharePermission, setSharePermission] = useState<"view" | "edit">("view");
   const [sharedToken, setSharedToken] = useState<string | null>(null);
+  const [collaborators, setCollaborators] = useState<StudioPresence[]>([]);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -1024,6 +1027,29 @@ export function StudioEditorView() {
       setVersionsBusy(false);
     }
   }
+
+  useEffect(() => {
+    if (!sharedToken || !user) return;
+    let alive = true;
+    const touch = () => {
+      void touchStudioPresence(
+        sharedToken,
+        user.display_name || user.email || "Collaborator"
+      )
+        .then((result) => {
+          if (alive) setCollaborators(result.items);
+        })
+        .catch(() => {
+          /* presence is best-effort */
+        });
+    };
+    touch();
+    const timer = window.setInterval(touch, 20000);
+    return () => {
+      alive = false;
+      window.clearInterval(timer);
+    };
+  }, [sharedToken, user]);
 
   const timelineDuration = useMemo(() => {
     const end = lanes.reduce((max, lane) => Math.max(max, lane.start + lane.duration), 0);
@@ -2372,6 +2398,19 @@ export function StudioEditorView() {
           </select>
         </div>
         <div className="studio-top-actions">
+          {sharedToken && collaborators.length ? (
+            <div
+              className="studio-presence"
+              title={collaborators.map((person) => person.display_name).join(", ")}
+            >
+              {collaborators.slice(0, 3).map((person) => (
+                <span key={person.user_id}>
+                  {person.display_name.slice(0, 1).toUpperCase()}
+                </span>
+              ))}
+              {collaborators.length > 1 ? <em>{collaborators.length}</em> : null}
+            </div>
+          ) : null}
           <button
             className={`studio-icon-btn${libraryOpen ? " on" : ""}`}
             type="button"
