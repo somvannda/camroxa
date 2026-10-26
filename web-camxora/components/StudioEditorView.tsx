@@ -974,6 +974,9 @@ export function StudioEditorView() {
   }, [items, search]);
 
   const selectedLane = lanes.find((lane) => lane.id === selected) ?? null;
+  const canUseAiEdits = Boolean(
+    selectedLane && (selectedLane.variant === "ok" || selectedLane.variant === "alt")
+  );
   const canSplit = Boolean(
     selectedLane &&
       playhead > selectedLane.start + MIN_CLIP &&
@@ -2806,6 +2809,8 @@ export function StudioEditorView() {
                 <button type="button" onClick={splitSelected} disabled={!canSplit}>Split</button>
                 <button type="button" onClick={duplicateSelected}>Duplicate</button>
               </div>
+              {canUseAiEdits ? (
+                <>
               <div className="studio-stem-actions">
                 <span>Separate stems</span>
                 <div>
@@ -2934,6 +2939,12 @@ export function StudioEditorView() {
                 {editStatus ? <small>{editStatus}</small> : null}
                 {editError ? <small className="studio-stem-error">{editError}</small> : null}
               </div>
+                </>
+              ) : (
+                <div className="studio-ai-unavailable">
+                  <Icon name="fa-circle-info" /> Stem separation and AI edits are available on original generated clips.
+                </div>
+              )}
               <button className="studio-inspector-delete" type="button" onClick={deleteSelected}>
                 <Icon name="fa-trash" /> Remove from session
               </button>

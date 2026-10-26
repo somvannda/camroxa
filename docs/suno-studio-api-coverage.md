@@ -257,6 +257,10 @@ for the selected clip.
 Right-clicking a clip opens an edit menu with split, duplicate, mute,
 rename-track and remove actions. Double-clicking a track header also renames it.
 
+The Inspector is contextual: stem separation and AI edits are shown only for
+original generated clips. MIDI tracks show the piano roll; uploads, stems and
+derived edit clips show the audio controls without the AI section.
+
 Studio keyboard shortcuts:
 
 ```text
