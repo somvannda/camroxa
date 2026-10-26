@@ -57,6 +57,7 @@ import {
   getStudioSharedProject,
   updateStudioSharedProject,
   deleteStudioProject,
+  forkStudioProject,
   touchStudioPresence,
   type StudioPresence,
 } from "@/lib/studio-api";
@@ -1591,6 +1592,22 @@ export function StudioEditorView() {
       setActionsOpen(false);
     } catch (cause) {
       setCloudError(cause instanceof Error ? cause.message : "Could not import project.");
+    }
+  }
+
+  async function duplicateProject(project: { id: string; title: string }) {
+    if (projectsBusy) return;
+    setProjectsBusy(true);
+    setProjectsError("");
+    try {
+      const copy = await forkStudioProject(project.id);
+      setProjectList((current) => [copy, ...current]);
+    } catch (cause) {
+      setProjectsError(
+        cause instanceof Error ? cause.message : "Could not duplicate project."
+      );
+    } finally {
+      setProjectsBusy(false);
     }
   }
 
@@ -5356,6 +5373,13 @@ export function StudioEditorView() {
                       disabled={projectsBusy}
                     >
                       Rename
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void duplicateProject(project)}
+                      disabled={projectsBusy}
+                    >
+                      Duplicate
                     </button>
                     <button
                       className="danger"

@@ -489,6 +489,20 @@ export async function touchStudioPresence(
   );
 }
 
+export async function forkStudioProject(
+  projectId: string,
+  title?: string
+): Promise<StudioProject> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/fork`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title || undefined }),
+    }
+  );
+}
+
 export async function deleteStudioProject(id: string): Promise<void> {
   const response = await musicAuthFetch(
     `/api/v3/web-music/studio/projects/${encodeURIComponent(id)}`,
