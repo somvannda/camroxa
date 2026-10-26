@@ -19,6 +19,7 @@ from fastapi.responses import Response, StreamingResponse
 from platform_api.ai.purposes.vocal_profile import truncate_suno_style
 from platform_api.ai.registry import DEFAULT_SUNO_MUSIC_MODEL, SUNO_MUSIC_MODEL_IDS
 from platform_api.exceptions import (
+    ConflictError,
     ExternalServiceError,
     ForbiddenError,
     NotFoundError,
@@ -1989,6 +1990,7 @@ class WebMusicService:
         bpm: int | None = None,
         time_signature: str | None = None,
         data: dict[str, Any] | None = None,
+        expected_updated_at: datetime | None = None,
     ) -> dict[str, Any]:
         share = await self._pool.fetchrow(
             """
@@ -2004,6 +2006,20 @@ class WebMusicService:
             raise NotFoundError("Shared Studio project not found or expired.")
         if str(share["permission"] or "view") != "edit":
             raise ForbiddenError("This share link is view-only.")
+        if expected_updated_at is not None:
+            current = await self._pool.fetchrow(
+                "SELECT updated_at FROM studio_projects WHERE id = $1",
+                UUID(str(share["project_id"])),
+            )
+            if (
+                current is not None
+                and current["updated_at"] is not None
+                and abs((current["updated_at"] - expected_updated_at).total_seconds()) > 0.001
+            ):
+                raise ConflictError(
+                    "This project changed since you loaded it. Reload before saving.",
+                    details={"project_id": str(share["project_id"])},
+                )
         row = await self._pool.fetchrow(
             """
             UPDATE studio_projects SET

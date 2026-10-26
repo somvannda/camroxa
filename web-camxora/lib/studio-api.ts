@@ -403,6 +403,7 @@ export async function updateStudioSharedProject(
     bpm?: number;
     time_signature?: string;
     data?: StudioProjectData;
+    expectedUpdatedAt?: string | null;
   }
 ): Promise<StudioProject> {
   return studioJson(
@@ -410,7 +411,10 @@ export async function updateStudioSharedProject(
     {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      body: JSON.stringify({
+        ...input,
+        expected_updated_at: input.expectedUpdatedAt || undefined,
+      }),
     }
   );
 }

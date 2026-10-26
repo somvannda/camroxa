@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Annotated, Literal
 from uuid import UUID
 
@@ -407,6 +408,7 @@ class StudioProjectUpdateRequest(BaseModel):
     bpm: int | None = Field(default=None, ge=20, le=300)
     time_signature: str | None = Field(default=None, pattern=r"^\d{1,2}/\d{1,2}$")
     data: dict[str, object] | None = None
+    expected_updated_at: datetime | None = None
 
 
 class StudioProjectForkRequest(BaseModel):
@@ -642,6 +644,7 @@ async def update_studio_shared_project(
         bpm=body.bpm,
         time_signature=body.time_signature,
         data=body.data,
+        expected_updated_at=body.expected_updated_at,
     )
 
 

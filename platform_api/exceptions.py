@@ -246,6 +246,21 @@ class DuplicateError(PlatformAPIError):
         super().__init__(message, details=details)
 
 
+class ConflictError(PlatformAPIError):
+    """The resource changed since the caller loaded it (409)."""
+
+    status_code = 409
+    error_code = "CONFLICT"
+
+    def __init__(
+        self,
+        message: str = "The resource changed since it was loaded.",
+        *,
+        details: dict[str, Any] | None = None,
+    ) -> None:
+        super().__init__(message, details=details)
+
+
 class NotFoundError(PlatformAPIError):
     """Requested resource does not exist (404)."""
 

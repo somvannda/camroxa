@@ -379,6 +379,12 @@ Editable sessions poll for remote changes every 5 seconds. When another
 collaborator saves, a “Collaborator changes are available” banner offers a safe
 reload. This is near-real-time refresh, not conflict-free real-time editing.
 
+Shared saves use optimistic concurrency: the editor sends the project
+`updated_at` it loaded. A stale save is rejected with HTTP 409 and triggers the
+reload banner instead of overwriting a collaborator’s work. The first autosave
+after loading a shared project is suppressed to avoid overwriting newer remote
+state.
+
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume
 automation overrides the clip fades when points are present. Pan automation

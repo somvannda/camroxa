@@ -568,7 +568,8 @@ export function StudioEditorView() {
   const [sharedToken, setSharedToken] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<StudioPresence[]>([]);
   const [remoteChanges, setRemoteChanges] = useState(false);
-  const sharedUpdatedAtRef = useRef(0);
+  const sharedUpdatedAtRef = useRef("");
+  const sharedHydratingRef = useRef(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -797,9 +798,11 @@ export function StudioEditorView() {
             },
             project.id
           );
-          sharedUpdatedAtRef.current = project.updated_at
-            ? Date.parse(project.updated_at) || 0
-            : 0;
+          sharedUpdatedAtRef.current = project.updated_at || "";
+          sharedHydratingRef.current = true;
+          window.setTimeout(() => {
+            sharedHydratingRef.current = false;
+          }, 1000);
           setRemoteChanges(false);
           setSharedToken(shareParam);
           setLoaded(true);
@@ -878,6 +881,7 @@ export function StudioEditorView() {
     if (!loaded || !user || cloudSaveRef.current) return;
     if (!lanes.length && sessionName === "Untitled session") return;
     const timer = window.setTimeout(async () => {
+      if (sharedToken && sharedHydratingRef.current) return;
       if (cloudSaveRef.current) return;
       cloudSaveRef.current = true;
       setCloudState("saving");
@@ -890,9 +894,10 @@ export function StudioEditorView() {
             bpm,
             time_signature: timeSignature,
             data,
+            expectedUpdatedAt: sharedUpdatedAtRef.current || null,
           });
           if (saved.updated_at) {
-            sharedUpdatedAtRef.current = Date.parse(saved.updated_at) || sharedUpdatedAtRef.current;
+            sharedUpdatedAtRef.current = saved.updated_at;
           }
           setRemoteChanges(false);
         } else if (projectId) {
@@ -915,8 +920,12 @@ export function StudioEditorView() {
         setCloudState("saved");
         setSavedAt(new Date());
       } catch (cause) {
+        const message = cause instanceof Error ? cause.message : "Cloud save failed";
         setCloudState("error");
-        setCloudError(cause instanceof Error ? cause.message : "Cloud save failed");
+        setCloudError(message);
+        if (/changed since|conflict/i.test(message)) {
+          setRemoteChanges(true);
+        }
       } finally {
         cloudSaveRef.current = false;
       }
@@ -1080,9 +1089,11 @@ export function StudioEditorView() {
         },
         project.id
       );
-      sharedUpdatedAtRef.current = project.updated_at
-        ? Date.parse(project.updated_at) || 0
-        : 0;
+      sharedUpdatedAtRef.current = project.updated_at || "";
+      sharedHydratingRef.current = true;
+      window.setTimeout(() => {
+        sharedHydratingRef.current = false;
+      }, 1000);
       setRemoteChanges(false);
     } catch {
       /* keep the current session if refresh fails */
@@ -1095,7 +1106,8 @@ export function StudioEditorView() {
       try {
         const project = await getStudioSharedProject(sharedToken);
         const remote = project.updated_at ? Date.parse(project.updated_at) || 0 : 0;
-        if (remote > sharedUpdatedAtRef.current + 750 && !cloudSaveRef.current) {
+        const local = sharedUpdatedAtRef.current ? Date.parse(sharedUpdatedAtRef.current) || 0 : 0;
+        if (remote > local + 750 && !cloudSaveRef.current) {
           setRemoteChanges(true);
         }
       } catch {
