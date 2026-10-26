@@ -567,6 +567,8 @@ export function StudioEditorView() {
   const [sharePermission, setSharePermission] = useState<"view" | "edit">("view");
   const [sharedToken, setSharedToken] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<StudioPresence[]>([]);
+  const [remoteChanges, setRemoteChanges] = useState(false);
+  const sharedUpdatedAtRef = useRef(0);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -795,6 +797,10 @@ export function StudioEditorView() {
             },
             project.id
           );
+          sharedUpdatedAtRef.current = project.updated_at
+            ? Date.parse(project.updated_at) || 0
+            : 0;
+          setRemoteChanges(false);
           setSharedToken(shareParam);
           setLoaded(true);
         })
@@ -879,12 +885,16 @@ export function StudioEditorView() {
       try {
         const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, zoom, master };
         if (sharedToken) {
-          await updateStudioSharedProject(sharedToken, {
+          const saved = await updateStudioSharedProject(sharedToken, {
             title: sessionName,
             bpm,
             time_signature: timeSignature,
             data,
           });
+          if (saved.updated_at) {
+            sharedUpdatedAtRef.current = Date.parse(saved.updated_at) || sharedUpdatedAtRef.current;
+          }
+          setRemoteChanges(false);
         } else if (projectId) {
           await updateStudioProject(projectId, {
             title: sessionName,
@@ -1050,6 +1060,50 @@ export function StudioEditorView() {
       window.clearInterval(timer);
     };
   }, [sharedToken, user]);
+
+  async function reloadSharedProject() {
+    if (!sharedToken) return;
+    try {
+      const project = await getStudioSharedProject(sharedToken);
+      const data = (project.data || {}) as StudioProjectData;
+      applySession(
+        {
+          name: project.title,
+          bpm: project.bpm,
+          timeSignature: project.time_signature,
+          gridDivision: data.gridDivision as StoredSession["gridDivision"],
+          zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
+          master: Number.isFinite(data.master) ? Number(data.master) : 80,
+          loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
+          loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
+          lanes: normalizeLanes(data.lanes),
+        },
+        project.id
+      );
+      sharedUpdatedAtRef.current = project.updated_at
+        ? Date.parse(project.updated_at) || 0
+        : 0;
+      setRemoteChanges(false);
+    } catch {
+      /* keep the current session if refresh fails */
+    }
+  }
+
+  useEffect(() => {
+    if (!sharedToken) return;
+    const timer = window.setInterval(async () => {
+      try {
+        const project = await getStudioSharedProject(sharedToken);
+        const remote = project.updated_at ? Date.parse(project.updated_at) || 0 : 0;
+        if (remote > sharedUpdatedAtRef.current + 750 && !cloudSaveRef.current) {
+          setRemoteChanges(true);
+        }
+      } catch {
+        /* polling is best-effort */
+      }
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [sharedToken]);
 
   const timelineDuration = useMemo(() => {
     const end = lanes.reduce((max, lane) => Math.max(max, lane.start + lane.duration), 0);
@@ -2552,6 +2606,14 @@ export function StudioEditorView() {
         <div className="studio-head-errors">
           {importError ? <small>{importError}</small> : null}
           {recordError ? <small>{recordError}</small> : null}
+        </div>
+      ) : null}
+      {remoteChanges ? (
+        <div className="studio-remote-banner" role="status">
+          <Icon name="fa-arrows-rotate" /> Collaborator changes are available.
+          <button type="button" onClick={() => void reloadSharedProject()}>
+            Reload
+          </button>
         </div>
       ) : null}
 

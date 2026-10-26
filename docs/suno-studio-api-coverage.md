@@ -373,7 +373,11 @@ POST /api/v3/web-music/studio/shares/{token}/presence
 ```
 
 Active collaborators appear as avatars in the Studio top bar; presence expires
-after 90 seconds. Real-time edit synchronization is still pending.
+after 90 seconds.
+
+Editable sessions poll for remote changes every 5 seconds. When another
+collaborator saves, a “Collaborator changes are available” banner offers a safe
+reload. This is near-real-time refresh, not conflict-free real-time editing.
 
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume
