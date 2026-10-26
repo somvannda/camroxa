@@ -121,6 +121,7 @@ type StoredSession = {
   gridDivision?: "off" | "bar" | "beat" | "1/8" | "1/16";
   zoom?: number;
   master?: number;
+  masterCompressor?: number;
   loopStart?: number;
   loopEnd?: number;
   markers?: TimelineMarker[];
@@ -539,6 +540,7 @@ export function StudioEditorView() {
   const [gridDivision, setGridDivision] = useState<"off" | "bar" | "beat" | "1/8" | "1/16">("beat");
   const [zoom, setZoom] = useState(1);
   const [master, setMaster] = useState(80);
+  const [masterCompressor, setMasterCompressor] = useState(0);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -615,6 +617,7 @@ export function StudioEditorView() {
   const timelineDurationRef = useRef(180);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
+  const masterLimiterRef = useRef<DynamicsCompressorNode | null>(null);
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sourcesRef = useRef<AudioScheduledSourceNode[]>([]);
   const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; delayWet: GainNode; reverbWet: GainNode }>>(new Map());
@@ -781,6 +784,9 @@ export function StudioEditorView() {
     }
     if (Number.isFinite(saved.zoom)) setZoom(clamp(Number(saved.zoom), 0.7, 2));
     if (Number.isFinite(saved.master)) setMaster(clamp(Number(saved.master), 0, 100));
+    if (Number.isFinite(saved.masterCompressor)) {
+      setMasterCompressor(clamp(Number(saved.masterCompressor), 0, 100));
+    }
     if (Number.isFinite(saved.loopStart)) setLoopStart(Math.max(0, Number(saved.loopStart)));
     if (Number.isFinite(saved.loopEnd)) setLoopEnd(Math.max(1, Number(saved.loopEnd)));
     setMarkers(
@@ -827,6 +833,7 @@ export function StudioEditorView() {
               gridDivision: data.gridDivision as StoredSession["gridDivision"],
               zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
               master: Number.isFinite(data.master) ? Number(data.master) : 80,
+              masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
               loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
               loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
               markers: data.markers as TimelineMarker[],
@@ -871,6 +878,7 @@ export function StudioEditorView() {
                 gridDivision: data.gridDivision as StoredSession["gridDivision"],
                 zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
                 master: Number.isFinite(data.master) ? Number(data.master) : 80,
+              masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
                 loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
                 loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
                 lanes: normalizeLanes(data.lanes),
@@ -906,12 +914,12 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, markers, lanes };
+      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, loopStart, loopEnd, markers, lanes };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, markers, lanes]);
+  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, loopStart, loopEnd, markers, lanes]);
 
   useEffect(() => {
     if (!loaded || !user || cloudSaveRef.current) return;
@@ -923,7 +931,7 @@ export function StudioEditorView() {
       setCloudState("saving");
       setCloudError("");
       try {
-        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master };
+        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor };
         if (sharedToken) {
           const saved = await updateStudioSharedProject(sharedToken, {
             title: sessionName,
@@ -967,7 +975,7 @@ export function StudioEditorView() {
       }
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, markers, lanes]);
+  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, loopStart, loopEnd, markers, lanes]);
 
   async function openProjects() {
     setProjectsOpen(true);
@@ -997,6 +1005,7 @@ export function StudioEditorView() {
           gridDivision: data.gridDivision as StoredSession["gridDivision"],
           zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
           master: Number.isFinite(data.master) ? Number(data.master) : 80,
+              masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
           loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
           loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
           markers: data.markers as TimelineMarker[],
@@ -1102,7 +1111,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master },
+        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor },
       });
       const share = await createStudioProjectShare(projectId, 7, sharePermission);
       setShareUrl(`${window.location.origin}${share.path}`);
@@ -1131,7 +1140,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master },
+        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor },
       });
       const created = await createStudioProjectVersion(projectId, versionLabel.trim() || undefined);
       setVersions((current) => [created, ...current]);
@@ -1204,6 +1213,7 @@ export function StudioEditorView() {
           gridDivision: data.gridDivision as StoredSession["gridDivision"],
           zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
           master: Number.isFinite(data.master) ? Number(data.master) : 80,
+              masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
           loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
           loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
           markers: data.markers as TimelineMarker[],
@@ -1442,6 +1452,12 @@ export function StudioEditorView() {
 
   useEffect(() => {
     if (masterGainRef.current) masterGainRef.current.gain.value = master / 100;
+    if (masterLimiterRef.current) {
+      const amount = masterCompressor / 100;
+      masterLimiterRef.current.threshold.value = -3 - amount * 12;
+      masterLimiterRef.current.ratio.value = 20;
+      masterLimiterRef.current.knee.value = amount * 6;
+    }
     const anySolo = lanes.some((lane) => lane.solo);
     for (const [id, node] of nodesRef.current.entries()) {
       const lane = lanes.find((item) => item.id === id);
@@ -1455,7 +1471,7 @@ export function StudioEditorView() {
       node.delayWet.gain.value = lane.delay / 100;
       node.reverbWet.gain.value = lane.reverb / 100;
     }
-  }, [lanes, master]);
+  }, [lanes, master, masterCompressor]);
 
   const ensureAudioContext = useCallback((): AudioContext => {
     if (audioCtxRef.current) return audioCtxRef.current;
@@ -1463,8 +1479,9 @@ export function StudioEditorView() {
     const gain = context.createGain();
     gain.gain.value = master / 100;
     const limiter = context.createDynamicsCompressor();
-    limiter.threshold.value = -3;
-    limiter.knee.value = 0;
+    const amount = masterCompressor / 100;
+    limiter.threshold.value = -3 - amount * 12;
+    limiter.knee.value = amount * 6;
     limiter.ratio.value = 20;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.1;
@@ -1472,8 +1489,9 @@ export function StudioEditorView() {
     limiter.connect(context.destination);
     audioCtxRef.current = context;
     masterGainRef.current = gain;
+    masterLimiterRef.current = limiter;
     return context;
-  }, [master]);
+  }, [master, masterCompressor]);
 
   const loadBuffer = useCallback(
     async (lane: Clip): Promise<AudioBuffer> => {
@@ -2246,8 +2264,9 @@ export function StudioEditorView() {
     const masterGain = offline.createGain();
     masterGain.gain.value = master / 100;
     const limiter = offline.createDynamicsCompressor();
-    limiter.threshold.value = -3;
-    limiter.knee.value = 0;
+    const masterAmount = masterCompressor / 100;
+    limiter.threshold.value = -3 - masterAmount * 12;
+    limiter.knee.value = masterAmount * 6;
     limiter.ratio.value = 20;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.1;
@@ -3611,6 +3630,11 @@ export function StudioEditorView() {
             <Icon name="fa-volume-high" />
             <input type="range" min="0" max="100" value={master} onChange={(event) => setMaster(Number(event.target.value))} aria-label="Master volume" />
             <b>{master}%</b>
+          </span>
+          <span className="studio-master-comp" title="Master bus compression">
+            <Icon name="fa-compress" />
+            <input type="range" min="0" max="100" value={masterCompressor} onChange={(event) => setMasterCompressor(Number(event.target.value))} aria-label="Master compression" />
+            <b>{masterCompressor}%</b>
           </span>
         </div>
       </div>
