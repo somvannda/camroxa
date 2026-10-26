@@ -2394,6 +2394,29 @@ class WebMusicService:
             label="remaster",
         )
 
+    async def request_studio_cover_image(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        prompt: str,
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        if not str(prompt or "").strip():
+            raise ValidationError("prompt is required.", details={"field": "prompt"})
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="cover_image",
+            variant=variant,
+            mode="cover_image",
+            project_id=project_id,
+            internal_path="/internal/studio/cover-image",
+            internal_body={"prompt": prompt.strip()},
+            label="cover image",
+        )
+
     async def request_studio_mashup(
         self,
         user_id: UUID,

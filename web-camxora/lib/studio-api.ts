@@ -495,3 +495,20 @@ export async function requestStudioMashup(input: {
     }),
   });
 }
+
+export async function requestStudioCoverImage(input: {
+  taskId: string;
+  variant: string;
+  prompt: string;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/cover-image`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      prompt: input.prompt,
+      project_id: input.projectId || undefined,
+    }),
+  });
+}

@@ -711,6 +711,12 @@ class StudioPromptRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StudioCoverImageRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    prompt: str
+    project_id: UUID | None = None
+
+
 class StudioMashupRequest(BaseModel):
     task_ids: list[UUID] = Field(min_length=2, max_length=4)
     variants: list[Literal["ok", "alt"]] = Field(min_length=2, max_length=4)
@@ -790,6 +796,22 @@ async def request_studio_add_instrumental(
     service: WebMusicServiceDep,
 ) -> dict:
     return await service.request_studio_add_instrumental(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        prompt=body.prompt,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/generations/{task_id}/cover-image", status_code=202)
+async def request_studio_cover_image(
+    task_id: UUID,
+    body: StudioCoverImageRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_cover_image(
         UUID(ctx.user_id),
         task_id,
         variant=body.variant,

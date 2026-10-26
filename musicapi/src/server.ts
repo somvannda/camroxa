@@ -3117,12 +3117,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const accountOpts = { load: accountLoad, maxPerAccount: config.suno.maxConcurrentPerAccount };
 
     await saveJob(job);
+    const pinnedClient = options?.accountId ? pool.get(options.accountId) : null;
+    if (options?.accountId && !pinnedClient) {
+      job.status = "error";
+      job.error = "The Suno account that owns this clip is unavailable.";
+      await finalizeJob(job);
+      return;
+    }
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
-        client = options?.needFeature
+        client = pinnedClient ?? (options?.needFeature
           ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any", accountOpts)
-          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any", accountOpts);
+          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any", accountOpts));
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
         break;
@@ -8637,6 +8644,30 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     void runClipJobWithRetry(
       job,
       (client) => client.replaceSection(clipId, { startS, endS, lyrics, prompt, model }),
+      { accountId }
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/cover-image", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    if (!clipId || !prompt) {
+      return reply.code(400).send({ error: "clip_id and prompt are required." });
+    }
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("cover_image");
+    job.endpoint = "studio_cover_image";
+    job.credits = 0;
+    job.prompt = prompt;
+    void runResultJobWithRetry(
+      job,
+      (client) => client.generateCoverImage(clipId, prompt),
       { accountId }
     );
     return reply.code(202).send({ job_id: job.id, status: job.status });

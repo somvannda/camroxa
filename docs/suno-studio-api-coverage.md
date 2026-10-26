@@ -175,6 +175,7 @@ POST /internal/studio/add-instrumental
 POST /internal/studio/replace-section
 POST /internal/studio/remaster
 POST /internal/studio/mashup
+POST /internal/studio/cover-image
 GET  /internal/studio/jobs/{id}
 ```
 
@@ -219,10 +220,16 @@ AI edits
   Add instrumental
   Replace section
   Remaster
+  Mashup
+  Cover art
 ```
 
 Stems results contain two takes per stem. The editor loads one take per stem
 name so a 12-track operation adds 12 lanes instead of 24.
+
+Cover art is generated from the selected original clip and the AI prompt, then
+saved on that lane as its artwork. Mashup requires two original generated lanes
+and all source clips must belong to the same Suno account.
 
 Studio prices are read from `credit_pricing` through:
 
@@ -443,6 +450,7 @@ POST /api/v3/web-music/studio/generations/{task_id}/add-instrumental
 POST /api/v3/web-music/studio/generations/{task_id}/replace-section
 POST /api/v3/web-music/studio/generations/{task_id}/remaster
 POST /api/v3/web-music/studio/mashup
+POST /api/v3/web-music/studio/generations/{task_id}/cover-image
 GET  /api/v3/web-music/studio/operations/{operation_id}
 ```
 

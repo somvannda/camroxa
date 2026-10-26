@@ -33,6 +33,7 @@ import {
   requestStudioReplaceSection,
   requestStudioRemaster,
   requestStudioMashup,
+  requestStudioCoverImage,
   getStudioOperation,
   getStudioPricing,
   type StudioPricing,
@@ -504,6 +505,34 @@ async function renderMidiBuffer(
 function midiNoteName(pitch: number): string {
   const names = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
   return `${names[((pitch % 12) + 12) % 12]}${Math.floor(pitch / 12) - 1}`;
+}
+
+function findImageUrl(value: unknown, allowAnyHttpUrl = false): string | null {
+  if (typeof value === "string") {
+    if (!/^https?:\/\//i.test(value)) return null;
+    return allowAnyHttpUrl || /image|art|cover|jpg|jpeg|png|webp/i.test(value)
+      ? value
+      : null;
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = findImageUrl(item, allowAnyHttpUrl);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["image_url", "imageUrl", "url", "image_large_url", "imageLargeUrl"]) {
+      const found = findImageUrl(record[key], true);
+      if (found) return found;
+    }
+    for (const item of Object.values(record)) {
+      const found = findImageUrl(item, allowAnyHttpUrl);
+      if (found) return found;
+    }
+  }
+  return null;
 }
 
 function clipFromGeneration(
@@ -2699,6 +2728,49 @@ export function StudioEditorView() {
     });
   }
 
+  async function runCoverImage() {
+    if (!selectedLane || editBusy) return;
+    if (selectedLane.variant !== "ok" && selectedLane.variant !== "alt") {
+      setEditError("Select an original generated clip first.");
+      return;
+    }
+    if (!editPrompt.trim()) {
+      setEditError("Describe the cover art you want first.");
+      return;
+    }
+    setEditBusy(true);
+    setEditError("");
+    setEditStatus("Generating cover art?");
+    try {
+      let operation = await requestStudioCoverImage({
+        taskId: selectedLane.generationId,
+        variant: selectedLane.variant,
+        prompt: editPrompt.trim(),
+        projectId,
+      });
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (["complete", "success", "error", "failed"].includes(operation.status.toLowerCase())) {
+          break;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        operation = await getStudioOperation(operation.id);
+        setEditStatus("Generating cover art?");
+      }
+      if (["error", "failed"].includes(operation.status.toLowerCase())) {
+        throw new Error(operation.error_message || "Cover art generation failed.");
+      }
+      const imageUrl = findImageUrl(operation.result);
+      if (!imageUrl) throw new Error("Cover art generation returned no image.");
+      updateLane(selectedLane.id, { image: imageUrl });
+      setEditStatus("Cover art updated");
+    } catch (cause) {
+      setEditError(cause instanceof Error ? cause.message : "Could not generate cover art.");
+      setEditStatus("");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
   async function runStudioEdit(
     label: string,
     request: () => Promise<StudioOperation>,
@@ -3957,6 +4029,13 @@ export function StudioEditorView() {
                     disabled={editBusy || stemsBusy || lanes.filter((lane) => lane.variant === "ok" || lane.variant === "alt").length < 2}
                   >
                     <Icon name="fa-object-group" /> Mashup
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void runCoverImage()}
+                    disabled={editBusy || stemsBusy || !editPrompt.trim() || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}
+                  >
+                    <Icon name="fa-image" /> Cover art
                   </button>
                 </div>
                 <textarea
