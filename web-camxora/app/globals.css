@@ -2613,3 +2613,15 @@ html{color-scheme:dark}
   .shared-studio-comment-list article span{font-size:9px;color:#64748b}
   .shared-studio-comment-list article p{margin:0;font-size:11px;line-height:1.5;color:#cbd5e1;white-space:pre-wrap}
   .shared-studio-comment-empty{font-size:11px;color:#64748b}
+
+  .studio-standalone{min-height:100vh;background:radial-gradient(circle at 50% -20%,rgba(124,58,237,.12),transparent 38%),#05070f;color:var(--text)}
+  .studio-standalone .studio-editor-page{max-width:none;min-height:100vh;padding:10px 14px 14px}
+  .studio-standalone .studio-editor-head{align-items:center;margin-bottom:10px;padding:2px 2px 8px;border-bottom:1px solid rgba(148,163,184,.1)}
+  .studio-standalone .studio-editor-head .eyebrow{display:none}
+  .studio-standalone .studio-session-title input{font-size:22px;line-height:1.15}
+  .studio-standalone .studio-session-title span{font-size:9px;margin-top:3px}
+  .studio-standalone .studio-session-title{gap:1px}
+  .studio-standalone .studio-work{height:calc(100dvh - 236px);min-height:460px;border-radius:10px}
+  .studio-standalone .studio-toolbar{margin-top:8px}
+  .studio-standalone .studio-transport{margin-top:8px}
+  @media(max-width:800px){.studio-standalone .studio-editor-page{padding:8px}.studio-standalone .studio-work{height:auto;min-height:520px}}
