@@ -696,6 +696,146 @@ function studioLyricsToLines(lyrics: StudioLyrics | null): StudioLyricLine[] {
   return lines;
 }
 
+function midiVlq(value: number): number[] {
+  let buffer = Math.max(0, Math.floor(value)) & 0x7f;
+  const out: number[] = [];
+  let remaining = Math.max(0, Math.floor(value));
+  while ((remaining >>= 7)) {
+    buffer <<= 8;
+    buffer |= (remaining & 0x7f) | 0x80;
+  }
+  while (true) {
+    out.push(buffer & 0xff);
+    if (buffer & 0x80) buffer >>= 8;
+    else break;
+  }
+  return out;
+}
+
+function midiUint16(value: number): number[] {
+  const safe = Math.max(0, Math.min(0xffff, Math.floor(value)));
+  return [(safe >> 8) & 0xff, safe & 0xff];
+}
+
+function midiUint32(value: number): number[] {
+  const safe = Math.max(0, Math.min(0xffffffff, Math.floor(value)));
+  return [
+    (safe >>> 24) & 0xff,
+    (safe >>> 16) & 0xff,
+    (safe >>> 8) & 0xff,
+    safe & 0xff,
+  ];
+}
+
+function midiMeta(type: number, data: number[]): number[] {
+  return [0xff, type, ...midiVlq(data.length), ...data];
+}
+
+function midiTrackChunk(events: Array<{ delta: number; bytes: number[] }>): number[] {
+  const body: number[] = [];
+  for (const event of events) {
+    body.push(...midiVlq(event.delta), ...event.bytes);
+  }
+  return [0x4d, 0x54, 0x72, 0x6b, ...midiUint32(body.length), ...body];
+}
+
+function buildMidiFile(lanes: Clip[], bpm: number, timeSignature: string): Blob {
+  const safeBpm = Math.max(20, Math.min(300, Math.round(bpm || 90)));
+  const ticksPerQuarter = 480;
+  const secondsToTicks = (seconds: number) =>
+    Math.max(0, Math.round((seconds * safeBpm * ticksPerQuarter) / 60));
+  const [numeratorRaw, denominatorRaw] = String(timeSignature || "4/4")
+    .split("/")
+    .map((part) => Number(part));
+  const numerator = Math.max(1, Math.min(32, Math.round(numeratorRaw || 4)));
+  const denominator = Math.max(1, Math.min(32, Math.round(denominatorRaw || 4)));
+  const midiLanes = lanes.filter((lane) => (lane.midiNotes ?? []).length);
+  const encoder = new TextEncoder();
+
+  const header = [
+    0x4d, 0x54, 0x68, 0x64,
+    0x00, 0x00, 0x00, 0x06,
+    0x00, 0x01,
+    ...midiUint16(midiLanes.length + 1),
+    ...midiUint16(ticksPerQuarter),
+  ];
+
+  const tempo = Math.round(60_000_000 / safeBpm);
+  const tempoBytes = [
+    (tempo >> 16) & 0xff,
+    (tempo >> 8) & 0xff,
+    tempo & 0xff,
+  ];
+  const tempoEvents: Array<{ delta: number; bytes: number[] }> = [
+    { delta: 0, bytes: midiMeta(0x51, tempoBytes) },
+    {
+      delta: 0,
+      bytes: midiMeta(0x58, [
+        numerator,
+        Math.max(0, Math.min(7, Math.round(Math.log2(denominator)))),
+        24,
+        8,
+      ]),
+    },
+    {
+      delta: 0,
+      bytes: midiMeta(0x03, Array.from(encoder.encode("Tempo"))),
+    },
+    { delta: 0, bytes: [0xff, 0x2f, 0x00] },
+  ];
+
+  const chunks = [header, midiTrackChunk(tempoEvents)];
+  midiLanes.forEach((lane, index) => {
+    const channel = index >= 9 ? (index + 1) % 16 : index % 16;
+    const program =
+      lane.instrument === "sawtooth" ? 81 : lane.instrument === "sine" ? 80 : 82;
+    const events: Array<{
+      tick: number;
+      kind: 0 | 1;
+      pitch: number;
+      velocity: number;
+    }> = [];
+    for (const note of lane.midiNotes ?? []) {
+      const pitch = Math.max(0, Math.min(127, Math.round(note.pitch)));
+      const onTick = secondsToTicks(lane.start + note.time);
+      const offTick = Math.max(onTick + 1, secondsToTicks(lane.start + note.time + note.duration));
+      events.push({
+        tick: onTick,
+        kind: 1,
+        pitch,
+        velocity: Math.max(1, Math.min(127, Math.round(note.velocity * 127))),
+      });
+      events.push({ tick: offTick, kind: 0, pitch, velocity: 0 });
+    }
+    events.sort((a, b) => a.tick - b.tick || a.kind - b.kind || a.pitch - b.pitch);
+    let previousTick = 0;
+    let lastTick = 0;
+    const encoded: Array<{ delta: number; bytes: number[] }> = [
+      {
+        delta: 0,
+        bytes: midiMeta(0x03, Array.from(encoder.encode(lane.title || `MIDI ${index + 1}`))),
+      },
+      { delta: 0, bytes: [0xc0 | channel, program] },
+    ];
+    for (const event of events) {
+      const delta = Math.max(0, event.tick - previousTick);
+      previousTick = event.tick;
+      lastTick = Math.max(lastTick, event.tick);
+      encoded.push({
+        delta,
+        bytes:
+          event.kind === 1
+            ? [0x90 | channel, event.pitch, event.velocity]
+            : [0x80 | channel, event.pitch, 0],
+      });
+    }
+    encoded.push({ delta: Math.max(0, lastTick - previousTick), bytes: [0xff, 0x2f, 0x00] });
+    chunks.push(midiTrackChunk(encoded));
+  });
+
+  return new Blob([new Uint8Array(chunks.flat())], { type: "audio/midi" });
+}
+
 function clipFromGeneration(
   generation: WebMusicGeneration,
   index: number,
@@ -1319,6 +1459,12 @@ export function StudioEditorView() {
     );
   }
 
+  function exportMidiFile() {
+    if (!hasMidiLanes) return;
+    const safeName = (sessionName || "camxora-midi").replace(/[\\/:*?"<>|]+/g, "-");
+    saveBlob(buildMidiFile(lanes, bpm, timeSignature), `${safeName}.mid`);
+  }
+
   async function importProjectJson(file: File) {
     try {
       const payload = JSON.parse(await file.text()) as StoredSession;
@@ -1656,6 +1802,10 @@ export function StudioEditorView() {
   );
   const activeInspectorTab = inspectorTab === "ai" && !canUseAiEdits ? "clip" : inspectorTab;
   const lyricLines = useMemo(() => studioLyricsToLines(lyrics), [lyrics]);
+  const hasMidiLanes = useMemo(
+    () => lanes.some((lane) => (lane.midiNotes ?? []).length > 0),
+    [lanes]
+  );
   const canSplit = Boolean(
     selectedLane &&
       playhead > selectedLane.start + MIN_CLIP &&
@@ -3489,6 +3639,15 @@ export function StudioEditorView() {
               <option value="wav">WAV</option>
               <option value="mp3">MP3 192k</option>
             </select>
+            <button
+              className="btn btn-ghost studio-export-stems"
+              type="button"
+              disabled={!hasMidiLanes || exporting}
+              onClick={exportMidiFile}
+              title="Export MIDI tracks as a standard MIDI file"
+            >
+              <Icon name="fa-music" /> <span>MIDI</span>
+            </button>
             <button
               className="btn btn-ghost studio-export-stems"
               type="button"

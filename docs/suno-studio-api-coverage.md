@@ -271,11 +271,14 @@ Local mixdown export supports:
 Full mix
 Loop range
 Stems ZIP (one rendered file per unmuted track)
+MIDI (.mid) for MIDI tracks
 ```
 
 Range and stem exports use the same Web Audio graph, fades, EQ, sends and
 master limiter as playback. Stem files are packaged into one ZIP archive so a
-12-track export is a single browser download.
+12-track export is a single browser download. MIDI export writes a standard
+format-1 MIDI file with the project tempo, time signature, track names,
+programs and note events.
 
 Each track has a **Dynamics** section with compression and drive/saturation,
 a low-pass **Filter** with cutoff/resonance, plus delay, reverb and chorus
