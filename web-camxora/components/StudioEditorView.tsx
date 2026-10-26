@@ -62,6 +62,7 @@ type Clip = {
   high: number;
   delay: number;
   reverb: number;
+  compressor: number;
   volume: number;
   pan: number;
   muted: boolean;
@@ -324,6 +325,23 @@ function connectTrackFx(
   return { delayWet, reverbWet };
 }
 
+function connectTrackDynamics(
+  context: BaseAudioContext,
+  input: AudioNode,
+  output: AudioNode,
+  lane: Clip
+) {
+  const amount = clamp(lane.compressor / 100, 0, 1);
+  const compressor = context.createDynamicsCompressor();
+  compressor.threshold.value = -6 - amount * 24;
+  compressor.knee.value = 6;
+  compressor.ratio.value = 1 + amount * 11;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.1;
+  input.connect(compressor);
+  compressor.connect(output);
+}
+
 function clipFromGeneration(
   generation: WebMusicGeneration,
   index: number,
@@ -358,6 +376,7 @@ function clipFromGeneration(
     high: 0,
     delay: 0,
     reverb: 0,
+    compressor: 0,
     volume: 80,
     pan: 0,
     muted: false,
@@ -473,6 +492,7 @@ export function StudioEditorView() {
         high: Number.isFinite(lane.high) ? clamp(Number(lane.high), -12, 12) : 0,
         delay: Number.isFinite(lane.delay) ? clamp(Number(lane.delay), 0, 100) : 0,
         reverb: Number.isFinite(lane.reverb) ? clamp(Number(lane.reverb), 0, 100) : 0,
+        compressor: Number.isFinite(lane.compressor) ? clamp(Number(lane.compressor), 0, 100) : 0,
         automation: Array.isArray(lane.automation)
           ? lane.automation
               .filter(
@@ -918,7 +938,7 @@ export function StudioEditorView() {
           source.connect(low);
           low.connect(mid);
           mid.connect(high);
-          high.connect(gain);
+          connectTrackDynamics(context, high, gain, lane);
           gain.connect(panner);
           const fx = connectTrackFx(context, panner, masterGain, lane);
           const startWhen = startAt + Math.max(0, lane.start - from);
@@ -1231,7 +1251,7 @@ export function StudioEditorView() {
       source.connect(low);
       low.connect(mid);
       mid.connect(high);
-      high.connect(gain);
+      connectTrackDynamics(offline, high, gain, lane);
       gain.connect(panner);
       connectTrackFx(offline, panner, masterGain, lane);
       scheduleClipGain(
@@ -1348,6 +1368,7 @@ export function StudioEditorView() {
         high: 0,
         delay: 0,
         reverb: 0,
+        compressor: 0,
         volume: 80,
         pan: 0,
         muted: false,
@@ -1460,6 +1481,7 @@ export function StudioEditorView() {
           high: 0,
           delay: 0,
           reverb: 0,
+          compressor: 0,
           volume: 80,
           pan: 0,
           muted: false,
@@ -1911,6 +1933,15 @@ export function StudioEditorView() {
                 </label>
                 <label>Reverb <b>{selectedLane.reverb}%</b>
                   <input type="range" min="0" max="100" step="1" value={selectedLane.reverb} onChange={(event) => updateLane(selectedLane.id, { reverb: Number(event.target.value) })} />
+                </label>
+              </div>
+              <div className="studio-eq">
+                <div className="studio-eq-head">
+                  <span>Dynamics</span>
+                  <button type="button" onClick={() => updateLane(selectedLane.id, { compressor: 0 })}>Reset</button>
+                </div>
+                <label>Compression <b>{selectedLane.compressor}%</b>
+                  <input type="range" min="0" max="100" step="1" value={selectedLane.compressor} onChange={(event) => updateLane(selectedLane.id, { compressor: Number(event.target.value) })} />
                 </label>
               </div>
               <div className="studio-inspector-actions">
