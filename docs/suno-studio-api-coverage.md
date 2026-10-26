@@ -173,6 +173,7 @@ POST /internal/studio/cover
 POST /internal/studio/add-vocals
 POST /internal/studio/add-instrumental
 POST /internal/studio/replace-section
+POST /internal/studio/remaster
 GET  /internal/studio/jobs/{id}
 ```
 
@@ -216,6 +217,7 @@ AI edits
   Add vocals
   Add instrumental
   Replace section
+  Remaster
 ```
 
 Stems results contain two takes per stem. The editor loads one take per stem

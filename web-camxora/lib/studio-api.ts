@@ -461,3 +461,20 @@ export async function revokeStudioProjectShare(
     throw new Error(await readError(response, `Revoke share failed (${response.status})`));
   }
 }
+
+export async function requestStudioRemaster(input: {
+  taskId: string;
+  variant: string;
+  model?: string | null;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/remaster`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      model: input.model || undefined,
+      project_id: input.projectId || undefined,
+    }),
+  });
+}

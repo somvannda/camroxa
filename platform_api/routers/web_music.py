@@ -711,6 +711,12 @@ class StudioPromptRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StudioRemasterRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    model: str | None = None
+    project_id: UUID | None = None
+
+
 class StudioReplaceSectionRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     start_s: float
@@ -781,6 +787,22 @@ async def request_studio_add_instrumental(
         task_id,
         variant=body.variant,
         prompt=body.prompt,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/generations/{task_id}/remaster", status_code=202)
+async def request_studio_remaster(
+    task_id: UUID,
+    body: StudioRemasterRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_remaster(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        model=body.model,
         project_id=body.project_id,
     )
 

@@ -2370,6 +2370,30 @@ class WebMusicService:
         )
         return self._studio_upload_payload(row, url)
 
+    async def request_studio_remaster(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        model: str | None = None,
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if model:
+            body["model"] = model
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="remaster",
+            variant=variant,
+            mode="remaster",
+            project_id=project_id,
+            internal_path="/internal/studio/remaster",
+            internal_body=body,
+            label="remaster",
+        )
+
     async def studio_operation_pricing(self, user_id: UUID) -> dict[str, int]:
         bridge = self._web_music_charge_bridge()
         pricing: dict[str, int] = {}

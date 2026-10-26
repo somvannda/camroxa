@@ -8642,6 +8642,23 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  app.post("/internal/studio/remaster", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const model = typeof body.model === "string" ? body.model : undefined;
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("remaster");
+    job.endpoint = "studio_remaster";
+    job.credits = 0;
+    void runClipJobWithRetry(job, (client) => client.remaster(clipId, model), { accountId });
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
   app.get("/internal/studio/jobs/:id", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { id } = req.params as { id: string };

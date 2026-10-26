@@ -31,6 +31,7 @@ import {
   requestStudioAddVocals,
   requestStudioAddInstrumental,
   requestStudioReplaceSection,
+  requestStudioRemaster,
   getStudioOperation,
   getStudioPricing,
   type StudioPricing,
@@ -3881,6 +3882,21 @@ export function StudioEditorView() {
                     disabled={editBusy || stemsBusy || !editPrompt.trim() || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}
                   >
                     <Icon name="fa-guitar" /> Add instrumental
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runStudioEdit("Remaster", () =>
+                        requestStudioRemaster({
+                          taskId: selectedLane.generationId,
+                          variant: selectedLane.variant,
+                          projectId,
+                        })
+                      )
+                    }
+                    disabled={editBusy || stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}
+                  >
+                    <Icon name="fa-wand-sparkles" /> Remaster
                   </button>
                 </div>
                 <textarea
