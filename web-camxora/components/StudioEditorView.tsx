@@ -2463,10 +2463,19 @@ export function StudioEditorView() {
             {lanes.map((lane, index) => (
               <div className={`studio-lane${selected === lane.id ? " selected" : ""}`} key={lane.id}>
                 <button className="studio-lane-head" type="button" onClick={() => setSelected(lane.id)}>
-                  <span className="studio-lane-dot" style={{ background: lane.color }} />
+                  <span className="studio-lane-index" style={{ color: lane.color, borderColor: `${lane.color}66` }}>
+                    {String(index + 1).padStart(2, "0")}
+                  </span>
                   <span className="studio-lane-copy">
                     <b>{lane.title}</b>
-                    <small>Track {index + 1} · {formatTime(lane.start)}</small>
+                    <small>
+                      {lane.midiNotes
+                        ? "MIDI instrument"
+                        : lane.uploadId
+                          ? "Audio recording"
+                          : "Audio track"}{" "}
+                      ? {formatTime(lane.start)}
+                    </small>
                   </span>
                 </button>
                 <div
@@ -2525,6 +2534,11 @@ export function StudioEditorView() {
                 </div>
               </div>
             ))}
+            <div className="studio-add-lane">
+              <button type="button" onClick={() => setActionsOpen(true)}>
+                <Icon name="fa-plus" /> Add track
+              </button>
+            </div>
             {!lanes.length ? (
               <div className="studio-timeline-empty">
                 <Icon name="fa-table-columns" />
