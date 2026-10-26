@@ -246,6 +246,9 @@ When storage is configured, musicapi adds `durable_url` to finished clips.
 Studio prefers `durable_url` over Suno `audio_url` and `media_urls`, so playback
 uses the stored copy instead of an expiring upstream CDN link.
 
+Verified locally with a storage-backed Extend run: the returned `durable_url`
+pointed at the stored MP3, returned HTTP 200, and served `audio/mpeg`.
+
 Matching platform routes:
 
 ```text
