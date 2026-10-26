@@ -953,6 +953,7 @@ export function StudioEditorView() {
   const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null }>>([]);
   const [projectsBusy, setProjectsBusy] = useState(false);
   const [projectsError, setProjectsError] = useState("");
+  const [projectSearch, setProjectSearch] = useState("");
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versions, setVersions] = useState<StudioProjectVersion[]>([]);
   const [versionsBusy, setVersionsBusy] = useState(false);
@@ -1425,6 +1426,7 @@ export function StudioEditorView() {
 
   async function openProjects() {
     setProjectsOpen(true);
+    setProjectSearch("");
     setProjectsError("");
     setProjectsBusy(true);
     try {
@@ -1851,6 +1853,14 @@ export function StudioEditorView() {
     () => lanes.some((lane) => (lane.midiNotes ?? []).length > 0),
     [lanes]
   );
+  const filteredProjects = useMemo(() => {
+    const query = projectSearch.trim().toLowerCase();
+    return query
+      ? projectList.filter((project) =>
+          project.title.toLowerCase().includes(query)
+        )
+      : projectList;
+  }, [projectList, projectSearch]);
   const canSplit = Boolean(
     selectedLane &&
       playhead > selectedLane.start + MIN_CLIP &&
@@ -5212,10 +5222,20 @@ export function StudioEditorView() {
               </button>
             </div>
             {projectsError ? <small className="studio-stem-error">{projectsError}</small> : null}
+            <input
+              className="studio-project-search"
+              value={projectSearch}
+              onChange={(event) => setProjectSearch(event.target.value)}
+              placeholder="Search projects…"
+              aria-label="Search projects"
+            />
             <div className="studio-versions-list">
               {projectsBusy && !projectList.length ? <p>Loading projects…</p> : null}
               {!projectsBusy && !projectList.length ? <p>No saved projects yet.</p> : null}
-              {projectList.map((project) => (
+              {!projectsBusy && projectList.length && !filteredProjects.length ? (
+                <p>No projects match your search.</p>
+              ) : null}
+              {filteredProjects.map((project) => (
                 <div className="studio-version-row" key={project.id}>
                   <div>
                     <b>{project.title}</b>
