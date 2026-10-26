@@ -1018,6 +1018,7 @@ export function StudioEditorView() {
   const [projectsBusy, setProjectsBusy] = useState(false);
   const [projectsError, setProjectsError] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
+  const [projectSort, setProjectSort] = useState<"updated" | "title">("updated");
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versions, setVersions] = useState<StudioProjectVersion[]>([]);
   const [versionsBusy, setVersionsBusy] = useState(false);
@@ -1919,12 +1920,19 @@ export function StudioEditorView() {
   );
   const filteredProjects = useMemo(() => {
     const query = projectSearch.trim().toLowerCase();
-    return query
+    const filtered = query
       ? projectList.filter((project) =>
           project.title.toLowerCase().includes(query)
         )
       : projectList;
-  }, [projectList, projectSearch]);
+    return [...filtered].sort((a, b) => {
+      if (projectSort === "title") return a.title.localeCompare(b.title);
+      return (
+        new Date(b.updated_at ?? 0).getTime() -
+        new Date(a.updated_at ?? 0).getTime()
+      );
+    });
+  }, [projectList, projectSearch, projectSort]);
   const canSplit = Boolean(
     selectedLane &&
       playhead > selectedLane.start + MIN_CLIP &&
@@ -5306,13 +5314,25 @@ export function StudioEditorView() {
               </button>
             </div>
             {projectsError ? <small className="studio-stem-error">{projectsError}</small> : null}
-            <input
-              className="studio-project-search"
-              value={projectSearch}
-              onChange={(event) => setProjectSearch(event.target.value)}
-              placeholder="Search projects…"
-              aria-label="Search projects"
-            />
+            <div className="studio-project-search-row">
+              <input
+                className="studio-project-search"
+                value={projectSearch}
+                onChange={(event) => setProjectSearch(event.target.value)}
+                placeholder="Search projects…"
+                aria-label="Search projects"
+              />
+              <select
+                value={projectSort}
+                onChange={(event) =>
+                  setProjectSort(event.target.value as "updated" | "title")
+                }
+                aria-label="Sort projects"
+              >
+                <option value="updated">Last updated</option>
+                <option value="title">Name</option>
+              </select>
+            </div>
             <div className="studio-versions-list">
               {projectsBusy && !projectList.length ? <p>Loading projects…</p> : null}
               {!projectsBusy && !projectList.length ? <p>No saved projects yet.</p> : null}

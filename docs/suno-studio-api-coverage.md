@@ -339,8 +339,9 @@ with the project and used for the track header, clip border and arrangement bar.
 
 The project menu includes **Open project**, which lists saved cloud projects
 with their update time and loads the selected project into Studio. The list has
-a title search filter, and project rows support rename and delete. Deletion
-clears the active session when the current project is removed.
+a title search filter and can be sorted by last updated or name. Project rows
+support rename and delete; deletion clears the active session when the current
+project is removed.
 
 Projects can be exported as `.camxora.json` and imported back into any Studio
 session, including lanes, markers, BPM, time signature, grid, loop, master and
