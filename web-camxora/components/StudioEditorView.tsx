@@ -496,6 +496,7 @@ export function StudioEditorView() {
   const [loop, setLoop] = useState(false);
   const [loopStart, setLoopStart] = useState(0);
   const [loopEnd, setLoopEnd] = useState(60);
+  const [metronome, setMetronome] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -525,6 +526,7 @@ export function StudioEditorView() {
   const loopRef = useRef(false);
   const loopStartRef = useRef(0);
   const loopEndRef = useRef(60);
+  const metronomeRef = useRef(false);
   const loopDragRef = useRef<{ which: "start" | "end"; startX: number; start: number; end: number; width: number } | null>(null);
   const startPlaybackRef = useRef<(from: number) => Promise<void>>(async () => {});
   const playheadRef = useRef(0);
@@ -532,7 +534,7 @@ export function StudioEditorView() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
-  const sourcesRef = useRef<AudioBufferSourceNode[]>([]);
+  const sourcesRef = useRef<AudioScheduledSourceNode[]>([]);
   const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; delayWet: GainNode; reverbWet: GainNode }>>(new Map());
   const startedAtRef = useRef(0);
   const startPlayheadRef = useRef(0);
@@ -552,6 +554,10 @@ export function StudioEditorView() {
   useEffect(() => {
     loopRef.current = loop;
   }, [loop]);
+
+  useEffect(() => {
+    metronomeRef.current = metronome;
+  }, [metronome]);
 
   useEffect(() => {
     loopStartRef.current = loopStart;
@@ -1111,6 +1117,35 @@ export function StudioEditorView() {
     [ensureAudioContext]
   );
 
+  const scheduleMetronome = useCallback(
+    (context: AudioContext, startAt: number, from: number) => {
+      const masterGain = masterGainRef.current;
+      if (!metronomeRef.current || !masterGain) return;
+      const beat = 60 / Math.max(40, bpm);
+      const end = loopRef.current ? loopEndRef.current : timelineDurationRef.current;
+      let time = Math.ceil((from - 0.0001) / beat) * beat;
+      if (time < from) time += beat;
+      while (time < end) {
+        const when = startAt + (time - from);
+        if (when >= context.currentTime) {
+          const beatIndex = Math.round(time / beat);
+          const osc = context.createOscillator();
+          const gain = context.createGain();
+          osc.frequency.value = beatIndex % 4 === 0 ? 1600 : 1000;
+          gain.gain.setValueAtTime(0.12, when);
+          gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
+          osc.connect(gain);
+          gain.connect(masterGain);
+          osc.start(when);
+          osc.stop(when + 0.06);
+          sourcesRef.current.push(osc);
+        }
+        time += beat;
+      }
+    },
+    [bpm]
+  );
+
   const startPlayback = useCallback(
     async (from: number) => {
       if (loopRef.current && (from >= loopEndRef.current || from < loopStartRef.current)) {
@@ -1128,6 +1163,7 @@ export function StudioEditorView() {
         setAudioLoading(false);
         setPlaying(true);
         const startedAt = context.currentTime + 0.05;
+        scheduleMetronome(context, startedAt, from);
         startedAtRef.current = startedAt;
         startPlayheadRef.current = from;
         const tick = () => {
@@ -1153,6 +1189,7 @@ export function StudioEditorView() {
           audible.map(async (lane) => ({ lane, buffer: await loadBuffer(lane) }))
         );
         const startAt = context.currentTime + 0.06;
+        scheduleMetronome(context, startAt, from);
         const masterGain = masterGainRef.current;
         if (!masterGain) return;
         for (const { lane, buffer } of loaded) {
@@ -1220,7 +1257,7 @@ export function StudioEditorView() {
         setAudioLoading(false);
       }
     },
-    [ensureAudioContext, lanes, loadBuffer, stopSources]
+    [ensureAudioContext, lanes, loadBuffer, scheduleMetronome, stopSources]
   );
 
   useEffect(() => {
@@ -2655,6 +2692,16 @@ export function StudioEditorView() {
             onClick={() => setLoop((value) => !value)}
           >
             <Icon name="fa-repeat" />
+          </button>
+          <button
+            className={`studio-loop-btn${metronome ? " on" : ""}`}
+            type="button"
+            aria-label="Metronome"
+            aria-pressed={metronome}
+            title="Metronome"
+            onClick={() => setMetronome((value) => !value)}
+          >
+            <Icon name="fa-bell" />
           </button>
         </div>
         <div className="studio-transport-right">

@@ -267,6 +267,10 @@ triangle, sine and saw synths. Notes are rendered through the same Web Audio
 buffer path, so MIDI tracks support fades, EQ, FX, dynamics, automation and
 export like audio tracks.
 
+The transport includes a BPM-driven metronome with accented downbeats. Click
+scheduling follows the loop range and is monitoring-only; it is not included
+in exports.
+
 Studio project version history is available from the **Versions** dialog:
 
 ```text
