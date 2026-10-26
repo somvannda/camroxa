@@ -122,6 +122,7 @@ type Clip = {
   pan: number;
   muted: boolean;
   solo: boolean;
+  groupId?: TrackGroupId | null;
 };
 
 type DragState = {
@@ -132,6 +133,14 @@ type DragState = {
   duration: number;
   offset: number;
   trackWidth: number;
+};
+
+type TrackGroupId = "A" | "B" | "C" | "D";
+
+type TrackGroup = {
+  id: TrackGroupId;
+  volume: number;
+  muted: boolean;
 };
 
 type StoredSession = {
@@ -149,6 +158,7 @@ type StoredSession = {
   loopStart?: number;
   loopEnd?: number;
   markers?: TimelineMarker[];
+  groups?: TrackGroup[];
   lanes?: Clip[];
 };
 
@@ -158,6 +168,45 @@ type AudioMeta = {
 };
 
 const COLORS = ["#8b5cf6", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899", "#14b8a6"];
+
+const DEFAULT_GROUPS: TrackGroup[] = [
+  { id: "A", volume: 100, muted: false },
+  { id: "B", volume: 100, muted: false },
+  { id: "C", volume: 100, muted: false },
+  { id: "D", volume: 100, muted: false },
+];
+
+function normalizeGroups(input: unknown): TrackGroup[] {
+  const source = Array.isArray(input) ? input : [];
+  return DEFAULT_GROUPS.map((fallback) => {
+    const match = source.find(
+      (item) =>
+        item &&
+        typeof item === "object" &&
+        (item as TrackGroup).id === fallback.id
+    ) as TrackGroup | undefined;
+    return {
+      id: fallback.id,
+      volume: Number.isFinite(match?.volume)
+        ? clamp(Number(match?.volume), 0, 100)
+        : fallback.volume,
+      muted: Boolean(match?.muted),
+    };
+  });
+}
+
+function applyGroupMix(lanes: Clip[], groups: TrackGroup[]): Clip[] {
+  const byId = new Map(groups.map((group) => [group.id, group]));
+  return lanes.map((lane) => {
+    const group = lane.groupId ? byId.get(lane.groupId) : null;
+    if (!group) return lane;
+    return {
+      ...lane,
+      volume: clamp(lane.volume * (group.volume / 100), 0, 100),
+      muted: lane.muted || group.muted,
+    };
+  });
+}
 
 type MasterPresetPatch = {
   master: number;
@@ -1222,6 +1271,7 @@ export function StudioEditorView() {
   const { playing: mainPlaying, togglePlay: toggleMainPlayer } = usePlayer();
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
   const [lanes, setLanes] = useState<Clip[]>([]);
+  const [groups, setGroups] = useState<TrackGroup[]>(DEFAULT_GROUPS);
   const [audioMeta, setAudioMeta] = useState<Record<string, AudioMeta>>({});
   const [search, setSearch] = useState("");
   const [libraryFilter, setLibraryFilter] = useState<"all" | "instrumental" | "vocal" | "ready">("all");
@@ -1540,6 +1590,7 @@ export function StudioEditorView() {
   function applySession(saved: StoredSession, nextProjectId: string | null) {
     const savedLanes = normalizeLanes(saved.lanes);
     setLanes(savedLanes);
+    setGroups(normalizeGroups(saved.groups));
     setSelected(savedLanes[0]?.id ?? null);
     if (saved.name) setSessionName(saved.name);
     if (Number.isFinite(saved.bpm)) setBpm(clamp(Number(saved.bpm), 40, 220));
@@ -1612,6 +1663,7 @@ export function StudioEditorView() {
               loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
               loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
               markers: data.markers as TimelineMarker[],
+              groups: normalizeGroups(data.groups),
               lanes: normalizeLanes(data.lanes),
             },
             project.id
@@ -1660,6 +1712,7 @@ export function StudioEditorView() {
               masterHigh: Number.isFinite(data.masterHigh) ? Number(data.masterHigh) : 0,
                 loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
                 loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
+                groups: normalizeGroups(data.groups),
                 lanes: normalizeLanes(data.lanes),
               },
               project.id
@@ -1693,12 +1746,12 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, lanes };
+      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, groups, lanes };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, lanes]);
+  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, groups, lanes]);
 
   useEffect(() => {
     if (!loaded || !user || cloudSaveRef.current) return;
@@ -1710,7 +1763,7 @@ export function StudioEditorView() {
       setCloudState("saving");
       setCloudError("");
       try {
-        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh };
+        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, groups, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh };
         if (sharedToken) {
           const saved = await updateStudioSharedProject(sharedToken, {
             title: sessionName,
@@ -1754,7 +1807,7 @@ export function StudioEditorView() {
       }
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, lanes]);
+  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, groups, lanes]);
 
   async function openProjects() {
     setProjectsOpen(true);
@@ -1793,6 +1846,7 @@ export function StudioEditorView() {
           loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
           loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
           markers: data.markers as TimelineMarker[],
+          groups: normalizeGroups(data.groups),
           lanes: normalizeLanes(data.lanes),
         },
         project.id
@@ -1828,6 +1882,7 @@ export function StudioEditorView() {
       loopStart,
       loopEnd,
       markers,
+      groups,
       lanes,
     };
     const safeName = (sessionName || "camxora-project").replace(/[\\/:*?"<>|]+/g, "-");
@@ -1960,7 +2015,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh },
+        data: { lanes, gridDivision, loopStart, loopEnd, markers, groups, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh },
       });
       const share = await createStudioProjectShare(projectId, shareDays, sharePermission);
       setShareId(share.id);
@@ -2002,7 +2057,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh },
+        data: { lanes, gridDivision, loopStart, loopEnd, markers, groups, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh },
       });
       const created = await createStudioProjectVersion(projectId, versionLabel.trim() || undefined);
       setVersions((current) => [created, ...current]);
@@ -2083,6 +2138,7 @@ export function StudioEditorView() {
           loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
           loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
           markers: data.markers as TimelineMarker[],
+          groups: normalizeGroups(data.groups),
           lanes: normalizeLanes(data.lanes),
         },
         project.id
@@ -2394,9 +2450,10 @@ export function StudioEditorView() {
       masterEqRef.current.mid.gain.value = masterMid;
       masterEqRef.current.high.gain.value = masterHigh;
     }
-    const anySolo = lanes.some((lane) => lane.solo);
+    const mixedLanes = applyGroupMix(lanes, groups);
+    const anySolo = mixedLanes.some((lane) => lane.solo);
     for (const [id, node] of nodesRef.current.entries()) {
-      const lane = lanes.find((item) => item.id === id);
+      const lane = mixedLanes.find((item) => item.id === id);
       if (!lane) continue;
       const silent = lane.muted || (anySolo && !lane.solo);
       node.gain.gain.value = silent ? 0 : lane.volume / 100;
@@ -2409,7 +2466,7 @@ export function StudioEditorView() {
       node.delayWet.gain.value = lane.delay / 100;
       node.reverbWet.gain.value = lane.reverb / 100;
     }
-  }, [lanes, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh]);
+  }, [groups, lanes, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh]);
 
   const ensureAudioContext = useCallback((): AudioContext => {
     if (audioCtxRef.current) return audioCtxRef.current;
@@ -2565,8 +2622,11 @@ export function StudioEditorView() {
       stopSources();
       setAudioError("");
       setAudioLoading(true);
-      const anySolo = lanes.some((lane) => lane.solo);
-      const audible = lanes.filter((lane) => !lane.muted && (!anySolo || lane.solo));
+      const mixedLanes = applyGroupMix(lanes, groups);
+      const anySolo = mixedLanes.some((lane) => lane.solo);
+      const audible = mixedLanes.filter(
+        (lane) => !lane.muted && (!anySolo || lane.solo)
+      );
       if (!audible.length) {
         setAudioLoading(false);
         setPlaying(true);
@@ -2680,7 +2740,7 @@ export function StudioEditorView() {
         setAudioLoading(false);
       }
     },
-    [bpm, ensureAudioContext, lanes, loadBuffer, scheduleMetronome, stopSources, updateMeter]
+    [bpm, ensureAudioContext, groups, lanes, loadBuffer, scheduleMetronome, stopSources, updateMeter]
   );
 
   useEffect(() => {
@@ -3513,6 +3573,17 @@ export function StudioEditorView() {
     setMasterHigh(patch.masterHigh);
   }
 
+  function updateGroup(
+    groupId: TrackGroupId,
+    patch: Partial<Pick<TrackGroup, "volume" | "muted">>
+  ) {
+    setGroups((current) =>
+      current.map((group) =>
+        group.id === groupId ? { ...group, ...patch } : group
+      )
+    );
+  }
+
   function resetMixSettings(lane: Clip) {
     updateLane(lane.id, {
       volume: 80,
@@ -3590,8 +3661,9 @@ export function StudioEditorView() {
     masterMidFilter.connect(masterHighFilter);
     masterHighFilter.connect(limiter);
     limiter.connect(offline.destination);
-    const anySolo = laneIds ? false : lanes.some((lane) => lane.solo);
-    const audible = lanes.filter(
+    const mixedLanes = applyGroupMix(lanes, groups);
+    const anySolo = laneIds ? false : mixedLanes.some((lane) => lane.solo);
+    const audible = mixedLanes.filter(
       (lane) =>
         (!laneIds || laneIds.has(lane.id)) &&
         !lane.muted &&
@@ -3698,7 +3770,9 @@ export function StudioEditorView() {
       setPlaying(false);
     }
     try {
-      const sourceLanes = lanes.filter((lane) => !lane.muted && lane.duration > 0);
+      const sourceLanes = applyGroupMix(lanes, groups).filter(
+        (lane) => !lane.muted && lane.duration > 0
+      );
       if (!sourceLanes.length) throw new Error("Every track is muted.");
       const safeName = (sessionName || "camxora-mix").replace(/[\\/:*?"<>|]+/g, "-");
       const zip = new JSZip();
@@ -4991,6 +5065,24 @@ export function StudioEditorView() {
                   />
                 ))}
               </div>
+              <label className="studio-group-select">
+                Group
+                <select
+                  value={selectedLane.groupId ?? ""}
+                  onChange={(event) =>
+                    updateLane(selectedLane.id, {
+                      groupId: (event.target.value || null) as Clip["groupId"],
+                    })
+                  }
+                >
+                  <option value="">None</option>
+                  {groups.map((group) => (
+                    <option key={group.id} value={group.id}>
+                      Group {group.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
               {(selectedLane.variant === "ok" || selectedLane.variant === "alt") &&
               !selectedLane.uploadId &&
               !selectedLane.midiNotes ? (
@@ -5064,6 +5156,39 @@ export function StudioEditorView() {
               ) : null}
               {activeInspectorTab === "mix" ? (
                 <>
+              <div className="studio-eq studio-groups">
+                <div className="studio-eq-head">
+                  <span>Track groups</span>
+                  <small>Volume / mute</small>
+                </div>
+                {groups.map((group) => (
+                  <div className="studio-group-row" key={group.id}>
+                    <span>{group.id}</span>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      step="1"
+                      value={group.volume}
+                      aria-label={`Group ${group.id} volume`}
+                      onChange={(event) =>
+                        updateGroup(group.id, {
+                          volume: Number(event.target.value),
+                        })
+                      }
+                    />
+                    <b>{group.volume}%</b>
+                    <button
+                      className={group.muted ? "on" : ""}
+                      type="button"
+                      aria-label={`Mute group ${group.id}`}
+                      onClick={() => updateGroup(group.id, { muted: !group.muted })}
+                    >
+                      M
+                    </button>
+                  </div>
+                ))}
+              </div>
               <div className="studio-eq studio-presets">
                 <div className="studio-eq-head">
                   <span>Plugin presets</span>
