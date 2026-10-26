@@ -1111,7 +1111,10 @@ export function StudioEditorView() {
           offset: 0,
           fadeIn: 0,
           fadeOut: 0,
-          audioUrl: clip.audio_url || null,
+          audioUrl:
+            clip.audio_url && !clip.audio_url.includes("/forbidden")
+              ? clip.audio_url
+              : clip.media_urls?.find((media) => media.url)?.url || null,
           low: 0,
           mid: 0,
           high: 0,
