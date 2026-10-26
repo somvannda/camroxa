@@ -288,7 +288,9 @@ Range and stem exports use the same Web Audio graph, fades, EQ, sends and
 master limiter as playback. Stem files are packaged into one ZIP archive so a
 12-track export is a single browser download. MIDI export writes a standard
 format-1 MIDI file with the project tempo, time signature, track names,
-programs and note events.
+programs and note events. **Import MIDI** reads format-0/1 files, creates one
+MIDI lane per note-bearing track, converts tempo changes to seconds, and imports
+track names, programs and velocities.
 
 Each track has a **Dynamics** section with compression and drive/saturation,
 a low-pass **Filter** with cutoff/resonance, plus delay, reverb and chorus

@@ -912,6 +912,213 @@ function buildMidiFile(lanes: Clip[], bpm: number, timeSignature: string): Blob 
   return new Blob([new Uint8Array(chunks.flat())], { type: "audio/midi" });
 }
 
+type ParsedMidiNote = {
+  time: number;
+  pitch: number;
+  duration: number;
+  velocity: number;
+};
+
+type ParsedMidiTrack = {
+  name: string;
+  program: number;
+  notes: ParsedMidiNote[];
+};
+
+type ParsedMidiFile = {
+  bpm: number;
+  timeSignature: string;
+  tracks: ParsedMidiTrack[];
+};
+
+function parseMidiFile(buffer: ArrayBuffer): ParsedMidiFile {
+  const bytes = new Uint8Array(buffer);
+  let offset = 0;
+  const fail = (message = "Invalid MIDI file.") => {
+    throw new Error(message);
+  };
+  const u8 = () => {
+    if (offset >= bytes.length) fail();
+    return bytes[offset++] ?? 0;
+  };
+  const u16 = () => (u8() << 8) | u8();
+  const u32 = () =>
+    u8() * 0x1000000 + (u8() << 16) + (u8() << 8) + u8();
+  const readVar = () => {
+    let value = 0;
+    for (let index = 0; index < 4; index += 1) {
+      const byte = u8();
+      value = (value << 7) | (byte & 0x7f);
+      if (!(byte & 0x80)) return value;
+    }
+    fail("Invalid MIDI variable-length value.");
+    return 0;
+  };
+  const ascii = (length: number) =>
+    Array.from({ length }, () => String.fromCharCode(u8())).join("");
+
+  if (ascii(4) !== "MThd") fail("Missing MIDI header.");
+  const headerLength = u32();
+  if (headerLength < 6) fail("Invalid MIDI header length.");
+  const format = u16();
+  if (format === 2) fail("MIDI format 2 is not supported.");
+  const trackCount = u16();
+  const division = u16();
+  if (division & 0x8000) fail("SMPTE MIDI timing is not supported.");
+  if (headerLength > 6) offset += headerLength - 6;
+
+  const tempos: Array<{ tick: number; us: number }> = [];
+  const rawTracks: Array<{
+    name: string;
+    program: number;
+    notes: Array<{
+      startTick: number;
+      endTick: number;
+      pitch: number;
+      velocity: number;
+    }>;
+  }> = [];
+  let timeSignature = "4/4";
+
+  for (let trackIndex = 0; trackIndex < trackCount; trackIndex += 1) {
+    if (offset + 8 > bytes.length || ascii(4) !== "MTrk") {
+      fail("Missing MIDI track chunk.");
+    }
+    const trackLength = u32();
+    const trackEnd = offset + trackLength;
+    if (trackEnd > bytes.length) fail("Truncated MIDI track.");
+
+    let tick = 0;
+    let runningStatus = 0;
+    let name = "";
+    let program = 0;
+    const active = new Map<
+      string,
+      { tick: number; pitch: number; velocity: number }
+    >();
+    const notes: Array<{
+      startTick: number;
+      endTick: number;
+      pitch: number;
+      velocity: number;
+    }> = [];
+
+    while (offset < trackEnd) {
+      tick += readVar();
+      let status = bytes[offset] ?? 0;
+      if (status < 0x80) {
+        status = runningStatus;
+      } else {
+        offset += 1;
+        if (status < 0xf0) runningStatus = status;
+      }
+      if (!status) fail("Missing MIDI running status.");
+
+      if (status === 0xff) {
+        const type = u8();
+        const length = readVar();
+        const data = bytes.slice(offset, offset + length);
+        offset += length;
+        if (type === 0x03) {
+          name = new TextDecoder().decode(data).trim();
+        } else if (type === 0x51 && length >= 3) {
+          tempos.push({
+            tick,
+            us: ((data[0] ?? 0) << 16) | ((data[1] ?? 0) << 8) | (data[2] ?? 0),
+          });
+        } else if (type === 0x58 && length >= 2) {
+          const numerator = data[0] ?? 4;
+          const denominator = Math.max(1, Math.min(32, 2 ** (data[1] ?? 2)));
+          timeSignature = `${numerator}/${denominator}`;
+        }
+        continue;
+      }
+      if (status === 0xf0 || status === 0xf7) {
+        const length = readVar();
+        offset += length;
+        continue;
+      }
+
+      const high = status & 0xf0;
+      const channel = status & 0x0f;
+      const data1 = u8();
+      const data2 = high === 0xc0 || high === 0xd0 ? 0 : u8();
+      if (high === 0xc0) {
+        program = data1;
+      } else if (high === 0x90 && data2 > 0) {
+        active.set(`${channel}:${data1}`, {
+          tick,
+          pitch: data1,
+          velocity: data2,
+        });
+      } else if (high === 0x80 || (high === 0x90 && data2 === 0)) {
+        const key = `${channel}:${data1}`;
+        const started = active.get(key);
+        if (started) {
+          notes.push({
+            startTick: started.tick,
+            endTick: Math.max(tick, started.tick + 1),
+            pitch: started.pitch,
+            velocity: started.velocity,
+          });
+          active.delete(key);
+        }
+      }
+    }
+    offset = trackEnd;
+    if (notes.length) {
+      rawTracks.push({
+        name: name || `MIDI ${trackIndex + 1}`,
+        program,
+        notes,
+      });
+    }
+  }
+
+  if (!tempos.some((tempo) => tempo.tick === 0)) {
+    tempos.push({ tick: 0, us: 500000 });
+  }
+  tempos.sort((a, b) => a.tick - b.tick);
+  const initialTempo =
+    [...tempos].reverse().find((tempo) => tempo.tick === 0)?.us ?? 500000;
+  const safeDivision = Math.max(1, division);
+  const ticksToSeconds = (targetTick: number) => {
+    let seconds = 0;
+    let lastTick = 0;
+    let currentTempo = initialTempo;
+    for (const tempo of tempos) {
+      if (tempo.tick > targetTick) break;
+      seconds += ((tempo.tick - lastTick) * currentTempo) / (safeDivision * 1_000_000);
+      lastTick = tempo.tick;
+      currentTempo = tempo.us;
+    }
+    seconds +=
+      ((targetTick - lastTick) * currentTempo) / (safeDivision * 1_000_000);
+    return seconds;
+  };
+
+  const tracks = rawTracks.map((track) => ({
+    name: track.name,
+    program: track.program,
+    notes: track.notes.map((note) => {
+      const start = ticksToSeconds(note.startTick);
+      const end = ticksToSeconds(note.endTick);
+      return {
+        time: Number(start.toFixed(3)),
+        pitch: note.pitch,
+        duration: Math.max(0.05, Number((end - start).toFixed(3))),
+        velocity: Math.max(0.05, Math.min(1, note.velocity / 127)),
+      };
+    }),
+  }));
+
+  return {
+    bpm: Math.max(20, Math.min(300, Math.round(60_000_000 / initialTempo))),
+    timeSignature,
+    tracks,
+  };
+}
+
 function clipFromGeneration(
   generation: WebMusicGeneration,
   index: number,
@@ -988,6 +1195,8 @@ export function StudioEditorView() {
   const [exportError, setExportError] = useState("");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
+  const [midiImporting, setMidiImporting] = useState(false);
+  const [midiImportError, setMidiImportError] = useState("");
   const [recording, setRecording] = useState(false);
   const [countIn, setCountIn] = useState(false);
   const [countInBusy, setCountInBusy] = useState(false);
@@ -2795,6 +3004,82 @@ export function StudioEditorView() {
     }
   }
 
+  async function importMidiFile(file: File) {
+    if (midiImporting) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setMidiImportError("MIDI imports are limited to 5 MB.");
+      return;
+    }
+    setMidiImporting(true);
+    setMidiImportError("");
+    try {
+      const parsed = parseMidiFile(await file.arrayBuffer());
+      if (!parsed.tracks.length) {
+        throw new Error("The MIDI file contains no note events.");
+      }
+      const baseName = file.name.replace(/\.midi?$/i, "") || "Imported MIDI";
+      const imported = parsed.tracks.map((track, index): Clip => {
+        const midiNotes: MidiNote[] = track.notes.map((note) => ({
+          id: makeId(),
+          time: note.time,
+          pitch: note.pitch,
+          duration: note.duration,
+          velocity: note.velocity,
+        }));
+        const duration = Math.max(
+          4,
+          ...midiNotes.map((note) => note.time + note.duration + 1)
+        );
+        return {
+          id: makeId(),
+          generationId: `midi-import:${makeId()}`,
+          variant: "midi",
+          title: track.name || `${baseName} ${index + 1}`,
+          style: "Imported MIDI",
+          color: COLORS[(lanes.length + index) % COLORS.length],
+          image: null,
+          start: 0,
+          duration,
+          offset: 0,
+          fadeIn: 0,
+          fadeOut: 0,
+          automation: [],
+          panAutomation: [],
+          audioUrl: null,
+          midiNotes,
+          instrument:
+            track.program >= 80
+              ? "sawtooth"
+              : track.program >= 32
+                ? "triangle"
+                : "sine",
+          low: 0,
+          mid: 0,
+          high: 0,
+          delay: 0,
+          reverb: 0,
+          chorus: 0,
+          compressor: 0,
+          drive: 0,
+          volume: 80,
+          pan: 0,
+          muted: false,
+          solo: false,
+        };
+      });
+      commitLanes([...lanes, ...imported]);
+      setSelected(imported[0].id);
+      setBpm(parsed.bpm);
+      setTimeSignature(parsed.timeSignature);
+    } catch (cause) {
+      setMidiImportError(
+        cause instanceof Error ? cause.message : "Could not import MIDI."
+      );
+    } finally {
+      setMidiImporting(false);
+    }
+  }
+
   function addMidiTrack() {
     const id = makeId();
     const lane: Clip = {
@@ -3979,6 +4264,21 @@ export function StudioEditorView() {
                       hidden
                     />
                   </label>
+                  <label>
+                    <Icon name={midiImporting ? "fa-spinner" : "fa-music"} /> Import MIDI
+                    <input
+                      type="file"
+                      accept=".mid,.midi,audio/midi,audio/x-midi"
+                      disabled={midiImporting}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        if (file) void importMidiFile(file);
+                        event.currentTarget.value = "";
+                        setActionsOpen(false);
+                      }}
+                      hidden
+                    />
+                  </label>
                   <button type="button" disabled={countInBusy} onClick={() => { setActionsOpen(false); void startRecording(); }}>
                     <Icon name="fa-microphone" /> Record
                   </button>
@@ -4044,10 +4344,11 @@ export function StudioEditorView() {
           </div>
         </div>
       </div>
-      {importError || recordError ? (
+      {importError || recordError || midiImportError ? (
         <div className="studio-head-errors">
           {importError ? <small>{importError}</small> : null}
           {recordError ? <small>{recordError}</small> : null}
+          {midiImportError ? <small>{midiImportError}</small> : null}
         </div>
       ) : null}
       {remoteChanges ? (
