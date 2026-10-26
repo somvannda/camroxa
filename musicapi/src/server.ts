@@ -1833,6 +1833,31 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return foreign ? "other" : "none";
   }
 
+  /** Resolve the Suno account that produced an owned asset (if recorded). */
+  async function findAssetAccount(
+    userId: string,
+    assetId: string,
+  ): Promise<string | null> {
+    if (!userId || !assetId) return null;
+    try {
+      const row = await queryOne<{ account_id: string | null }>(
+        "SELECT account_id FROM asset_owners WHERE asset_id = $1 AND user_id = $2",
+        [assetId, userId],
+      );
+      if (row?.account_id) return row.account_id;
+    } catch {
+      /* table may be pre-migration; fall through */
+    }
+    const row = await queryOne<{ account_id: string | null }>(
+      `SELECT account_id FROM jobs
+        WHERE user_id = $1 AND account_id IS NOT NULL
+          AND result_json::text LIKE '%' || $2 || '%'
+        ORDER BY created_at DESC LIMIT 1`,
+      [userId, assetId],
+    ).catch(() => null);
+    return row?.account_id ?? null;
+  }
+
   /** True when the job that produced `assetId` reached a terminal success. */
   async function assetProducedByCompletedJob(assetId: string): Promise<boolean> {
     const row = await queryOne<{ status: string | null }>(
@@ -1929,10 +1954,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     for (const assetId of ids) {
       try {
         await query(
-          `INSERT INTO asset_owners (asset_id, user_id, job_id)
-           VALUES ($1, $2, $3)
-           ON CONFLICT (asset_id) DO NOTHING`,
-          [assetId, job.userId, job.id],
+          `INSERT INTO asset_owners (asset_id, user_id, job_id, account_id)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (asset_id) DO UPDATE
+             SET account_id = COALESCE(asset_owners.account_id, EXCLUDED.account_id),
+                 job_id = COALESCE(asset_owners.job_id, EXCLUDED.job_id)`,
+          [assetId, job.userId, job.id, job.accountId ?? null],
         );
       } catch (e) {
         console.error(
@@ -2891,6 +2918,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     policy?: RoutingPolicy;
     /** Prefer an account advertising this capability (e.g. "studio" for Voice). */
     needFeature?: string;
+    /** Pin a derivative to the account that owns its source clip. */
+    accountId?: string | null;
   }
 
   // Detached job workers run outside any request lifecycle. Track them so
@@ -2984,12 +3013,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const accountOpts = { load: accountLoad, maxPerAccount: config.suno.maxConcurrentPerAccount };
 
     await saveJob(job);
+    const pinnedClient = options?.accountId ? pool.get(options.accountId) : null;
+    if (options?.accountId && !pinnedClient) {
+      job.status = "error";
+      job.error = "The Suno account that owns this clip is unavailable.";
+      await finalizeJob(job);
+      return;
+    }
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       let client: SunoClient;
       try {
-        client = options?.needFeature
+        client = pinnedClient ?? (options?.needFeature
           ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any", accountOpts)
-          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any", accountOpts);
+          : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any", accountOpts));
       } catch (e) {
         errors.push(e instanceof Error ? e.message : String(e));
         break;
@@ -8195,6 +8231,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // Generation-flow guard: this derivative must reference an owned, completed clip.
       const flowCheck = await requireOwnedAsset(key.user_id, clipId);
       if (flowCheck !== "ok") return denyFlow(reply, flowCheck);
+      const sourceAccountId = await findAssetAccount(key.user_id, clipId);
+      if (!sourceAccountId) {
+        return reply.code(409).send({
+          error:
+            "The source clip's Suno account is not recorded. Regenerate it or backfill asset ownership before using this operation.",
+        });
+      }
       // Only remaster takes a model; the other clip operations use the
       // account's default, so they stay on the endpoint-wide price.
       const model = type === "remaster" ? (body.model as string) || undefined : undefined;
@@ -8220,7 +8263,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         }
         return client.stems(clipId);
       };
-      void runClipJobWithRetry(job, submitFactory);
+      void runClipJobWithRetry(job, submitFactory, { accountId: sourceAccountId });
       return reply.code(202).send({ job_id: job.id, status: job.status });
     });
   }

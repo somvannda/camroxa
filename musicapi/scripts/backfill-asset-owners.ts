@@ -17,11 +17,13 @@ interface ResultRow {
   id: string;
   user_id: string;
   result_json: unknown;
+  account_id?: string | null;
 }
 
 async function backfillFrom(table: "jobs" | "usage_logs", jobIdColumn: boolean): Promise<number> {
+  const accountColumn = table === "jobs" ? ", account_id" : "";
   const rows = await query<ResultRow>(
-    `SELECT id, user_id, result_json FROM ${table}
+    `SELECT id, user_id, result_json${accountColumn} FROM ${table}
       WHERE user_id IS NOT NULL AND result_json IS NOT NULL`,
   );
   let inserted = 0;
@@ -29,11 +31,13 @@ async function backfillFrom(table: "jobs" | "usage_logs", jobIdColumn: boolean):
     const ids = extractOwnedAssetIds(row.result_json);
     for (const assetId of ids) {
       const written = await query<{ asset_id: string }>(
-        `INSERT INTO asset_owners (asset_id, user_id, job_id)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (asset_id) DO NOTHING
+        `INSERT INTO asset_owners (asset_id, user_id, job_id, account_id)
+         VALUES ($1, $2, $3, $4)
+         ON CONFLICT (asset_id) DO UPDATE
+           SET account_id = COALESCE(asset_owners.account_id, EXCLUDED.account_id),
+               job_id = COALESCE(asset_owners.job_id, EXCLUDED.job_id)
          RETURNING asset_id`,
-        [assetId, row.user_id, jobIdColumn ? row.id : null],
+        [assetId, row.user_id, jobIdColumn ? row.id : null, row.account_id ?? null],
       );
       inserted += written.length;
     }
