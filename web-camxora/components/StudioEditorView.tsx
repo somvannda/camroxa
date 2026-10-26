@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Mp3Encoder } from "@breezystack/lamejs";
 import JSZip from "jszip";
 import {
@@ -42,6 +43,8 @@ import {
   type StudioShareComment,
   createStudioProjectShare,
   listStudioProjectComments,
+  getStudioSharedProject,
+  updateStudioSharedProject,
 } from "@/lib/studio-api";
 
 type AutomationPoint = {
@@ -510,6 +513,8 @@ function clipFromGeneration(
 
 export function StudioEditorView() {
   const { user, loading: authLoading } = useAuth();
+  const searchParams = useSearchParams();
+  const shareParam = searchParams.get("share");
   const { playing: mainPlaying, togglePlay: toggleMainPlayer } = usePlayer();
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
   const [lanes, setLanes] = useState<Clip[]>([]);
@@ -557,6 +562,8 @@ export function StudioEditorView() {
   const [projectComments, setProjectComments] = useState<StudioShareComment[]>([]);
   const [commentsBusy, setCommentsBusy] = useState(false);
   const [commentsError, setCommentsError] = useState("");
+  const [sharePermission, setSharePermission] = useState<"view" | "edit">("view");
+  const [sharedToken, setSharedToken] = useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -761,6 +768,42 @@ export function StudioEditorView() {
     if (authLoading || !user) return;
     let active = true;
     setLoaded(false);
+    if (shareParam) {
+      getStudioSharedProject(shareParam)
+        .then((project) => {
+          if (!active) return;
+          if (project.permission !== "edit") {
+            setCloudError("This share link is view-only. Use the shared preview page instead.");
+            setLoaded(true);
+            return;
+          }
+          const data = (project.data || {}) as StudioProjectData;
+          applySession(
+            {
+              name: project.title,
+              bpm: project.bpm,
+              timeSignature: project.time_signature,
+              gridDivision: data.gridDivision as StoredSession["gridDivision"],
+              zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
+              master: Number.isFinite(data.master) ? Number(data.master) : 80,
+              loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
+              loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
+              lanes: normalizeLanes(data.lanes),
+            },
+            project.id
+          );
+          setSharedToken(shareParam);
+          setLoaded(true);
+        })
+        .catch((cause) => {
+          if (!active) return;
+          setCloudError(cause instanceof Error ? cause.message : "Could not load shared project.");
+          setLoaded(true);
+        });
+      return () => {
+        active = false;
+      };
+    }
     fetchGenerations(100)
       .then(async (next) => {
         if (!active) return;
@@ -810,7 +853,7 @@ export function StudioEditorView() {
     return () => {
       active = false;
     };
-  }, [authLoading, user, storageKey]);
+  }, [authLoading, user, storageKey, shareParam]);
 
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
@@ -832,7 +875,14 @@ export function StudioEditorView() {
       setCloudError("");
       try {
         const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, zoom, master };
-        if (projectId) {
+        if (sharedToken) {
+          await updateStudioSharedProject(sharedToken, {
+            title: sessionName,
+            bpm,
+            time_signature: timeSignature,
+            data,
+          });
+        } else if (projectId) {
           await updateStudioProject(projectId, {
             title: sessionName,
             bpm,
@@ -859,7 +909,7 @@ export function StudioEditorView() {
       }
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, projectId, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, lanes]);
+  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, loopStart, loopEnd, lanes]);
 
   async function openVersions() {
     setVersionsOpen(true);
@@ -911,7 +961,7 @@ export function StudioEditorView() {
         time_signature: timeSignature,
         data: { lanes, gridDivision, loopStart, loopEnd, zoom, master },
       });
-      const share = await createStudioProjectShare(projectId, 7);
+      const share = await createStudioProjectShare(projectId, 7, sharePermission);
       setShareUrl(`${window.location.origin}${share.path}`);
     } catch (cause) {
       setShareError(cause instanceof Error ? cause.message : "Could not create share link.");
@@ -3241,11 +3291,24 @@ export function StudioEditorView() {
                   Open read-only preview <Icon name="fa-arrow-up-right-from-square" />
                 </a>
               </>
-            ) : (
-              <button className="btn btn-primary" type="button" onClick={() => void createShare()} disabled={shareBusy || !projectId}>
-                <Icon name={shareBusy ? "fa-spinner" : "fa-link"} />
-                {shareBusy ? "Creating…" : "Create share link"}
-              </button>
+             ) : (
+              <>
+                <label className="studio-share-permission">
+                  Link access
+                  <select
+                    value={sharePermission}
+                    onChange={(event) => setSharePermission(event.target.value as "view" | "edit")}
+                    disabled={shareBusy}
+                  >
+                    <option value="view">View only</option>
+                    <option value="edit">Can edit</option>
+                  </select>
+                </label>
+                <button className="btn btn-primary" type="button" onClick={() => void createShare()} disabled={shareBusy || !projectId}>
+                  <Icon name={shareBusy ? "fa-spinner" : "fa-link"} />
+                  {shareBusy ? "Creating?" : "Create share link"}
+                </button>
+              </>
             )}
             {shareError ? <small className="studio-stem-error">{shareError}</small> : null}
             <div className="studio-project-comments">

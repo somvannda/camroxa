@@ -16,6 +16,8 @@ export type StudioProject = {
   bpm: number;
   time_signature: string;
   data?: StudioProjectData;
+  permission?: "view" | "edit";
+  read_only?: boolean;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -324,18 +326,20 @@ export type StudioProjectShare = {
   token: string;
   path: string;
   expires_at: string;
+  permission?: "view" | "edit";
 };
 
 export async function createStudioProjectShare(
   projectId: string,
-  expiresDays = 7
+  expiresDays = 7,
+  permission: "view" | "edit" = "view"
 ): Promise<StudioProjectShare> {
   return studioJson(
     `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/shares`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ expires_days: expiresDays }),
+      body: JSON.stringify({ expires_days: expiresDays, permission }),
     }
   );
 }
@@ -389,5 +393,24 @@ export async function forkStudioSharedProject(token: string): Promise<StudioProj
   return studioJson(
     `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}/fork`,
     { method: "POST" }
+  );
+}
+
+export async function updateStudioSharedProject(
+  token: string,
+  input: {
+    title?: string;
+    bpm?: number;
+    time_signature?: string;
+    data?: StudioProjectData;
+  }
+): Promise<StudioProject> {
+  return studioJson(
+    `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
   );
 }

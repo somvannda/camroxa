@@ -344,7 +344,21 @@ GET  /api/v3/web-music/studio/projects/{project_id}/comments
 Comments are stored against the project and appear on the shared page. The
 project owner can also read them from the Studio **Share** dialog.
 
-A signed-in viewer can fork the shared project into their own Studio:
+Share links can be **View only** or **Can edit**.
+
+Editable links load into Studio through:
+
+```text
+/studio/editor?share={token}
+```
+
+and save through:
+
+```text
+PATCH /api/v3/web-music/studio/shares/{token}
+```
+
+A signed-in viewer can also fork the shared project into their own Studio:
 
 ```text
 POST /api/v3/web-music/studio/shares/{token}/fork

@@ -1897,6 +1897,7 @@ class WebMusicService:
         project_id: UUID,
         *,
         expires_days: int = 7,
+        permission: str = "view",
     ) -> dict[str, Any]:
         project = await self._pool.fetchrow(
             "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -1908,6 +1909,12 @@ class WebMusicService:
                 "Studio project not found.",
                 details={"project_id": str(project_id)},
             )
+        safe_permission = str(permission or "view").strip().lower()
+        if safe_permission not in ("view", "edit"):
+            raise ValidationError(
+                "Share permission must be view or edit.",
+                details={"field": "permission"},
+            )
         token = secrets.token_urlsafe(24)
         expires_at = datetime.now(timezone.utc) + timedelta(
             days=max(1, min(int(expires_days), 90))
@@ -1915,20 +1922,22 @@ class WebMusicService:
         row = await self._pool.fetchrow(
             """
             INSERT INTO studio_project_shares
-                (project_id, user_id, token, expires_at)
-            VALUES ($1, $2, $3, $4)
+                (project_id, user_id, token, expires_at, permission)
+            VALUES ($1, $2, $3, $4, $5)
             RETURNING *
             """,
             project_id,
             user_id,
             token,
             expires_at,
+            safe_permission,
         )
         return {
             "id": str(row["id"]),
             "token": token,
             "path": f"/studio/shared/{token}",
             "expires_at": expires_at.isoformat(),
+            "permission": safe_permission,
         }
 
     async def get_studio_shared_project(self, token: str) -> dict[str, Any]:
@@ -1941,6 +1950,7 @@ class WebMusicService:
                 p.bpm,
                 p.time_signature,
                 p.data,
+                s.permission,
                 p.created_at AS project_created_at,
                 p.updated_at AS project_updated_at
             FROM studio_project_shares s
@@ -1966,7 +1976,57 @@ class WebMusicService:
             "updated_at": row["project_updated_at"],
         }
         payload = self._studio_project_payload(project_row)
-        payload["read_only"] = True
+        payload["permission"] = str(row["permission"] or "view")
+        payload["read_only"] = str(row["permission"] or "view") != "edit"
+        return payload
+
+    async def update_studio_shared_project(
+        self,
+        token: str,
+        user_id: UUID,
+        *,
+        title: str | None = None,
+        bpm: int | None = None,
+        time_signature: str | None = None,
+        data: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        share = await self._pool.fetchrow(
+            """
+            SELECT project_id, permission
+            FROM studio_project_shares
+            WHERE token = $1
+              AND revoked_at IS NULL
+              AND (expires_at IS NULL OR expires_at > now())
+            """,
+            str(token or "").strip(),
+        )
+        if share is None:
+            raise NotFoundError("Shared Studio project not found or expired.")
+        if str(share["permission"] or "view") != "edit":
+            raise ForbiddenError("This share link is view-only.")
+        row = await self._pool.fetchrow(
+            """
+            UPDATE studio_projects SET
+                title = COALESCE($2, title),
+                bpm = COALESCE($3, bpm),
+                time_signature = COALESCE($4, time_signature),
+                data = COALESCE($5::jsonb, data),
+                updated_at = now()
+            WHERE id = $1
+            RETURNING *
+            """,
+            UUID(str(share["project_id"])),
+            str(title).strip()[:120] if title is not None and str(title).strip() else None,
+            max(20, min(int(bpm), 300)) if bpm is not None else None,
+            str(time_signature) if time_signature is not None else None,
+            json.dumps(data) if isinstance(data, dict) else None,
+        )
+        if row is None:
+            raise NotFoundError("Shared Studio project not found.")
+        payload = self._studio_project_payload(row)
+        payload["permission"] = "edit"
+        payload["read_only"] = False
+        payload["edited_by"] = str(user_id)
         return payload
 
     @staticmethod

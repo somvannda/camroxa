@@ -209,7 +209,11 @@ export default function SharedStudioPage() {
           <footer className="shared-studio-footer">
             <span>Shared from CAMXORA Studio</span>
             <div className="shared-studio-footer-actions">
-              {user ? (
+              {project.permission === "edit" && user ? (
+                <Link href={`/studio/editor?share=${encodeURIComponent(token || "")}`}>
+                  Open in Studio
+                </Link>
+              ) : user ? (
                 <button type="button" onClick={() => void forkProject()} disabled={forkBusy}>
                   {forkBusy ? "Forking?" : "Fork to Studio"}
                 </button>

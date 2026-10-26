@@ -542,6 +542,7 @@ async def restore_studio_project_version(
 
 class StudioShareCreateRequest(BaseModel):
     expires_days: int = Field(default=7, ge=1, le=90)
+    permission: Literal["view", "edit"] = "view"
 
 
 @router.post("/studio/projects/{project_id}/shares", status_code=201)
@@ -555,6 +556,7 @@ async def create_studio_project_share(
         UUID(ctx.user_id),
         project_id,
         expires_days=body.expires_days,
+        permission=body.permission,
     )
 
 
@@ -605,6 +607,23 @@ async def add_studio_share_comment(
         token,
         author_name=body.author_name,
         body=body.body,
+    )
+
+
+@router.patch("/studio/shares/{token}")
+async def update_studio_shared_project(
+    token: str,
+    body: StudioProjectUpdateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.update_studio_shared_project(
+        token,
+        UUID(ctx.user_id),
+        title=body.title,
+        bpm=body.bpm,
+        time_signature=body.time_signature,
+        data=body.data,
     )
 
 

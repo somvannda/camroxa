@@ -2720,3 +2720,6 @@ html{color-scheme:dark}
   .studio-snap-grid{display:inline-flex;align-items:center;gap:5px;font-size:8px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted2);white-space:nowrap}
   .studio-snap-grid select{height:23px;padding:0 4px;border:1px solid var(--line);border-radius:4px;background:#0b1021;color:#cbd5e1;font:inherit;font-size:8.5px;outline:none}
   .studio-snap-grid select:focus{border-color:rgba(168,85,247,.35)}
+
+  .studio-share-permission{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:8px 0;font-size:9px;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8}
+  .studio-share-permission select{height:28px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:#0b1021;color:#cbd5e1;font:inherit;font-size:9px;text-transform:none;letter-spacing:0}
