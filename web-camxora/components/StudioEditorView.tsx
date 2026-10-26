@@ -939,6 +939,7 @@ export function StudioEditorView() {
   const [selectedMidiNoteId, setSelectedMidiNoteId] = useState<string | null>(null);
   const [midiChordMode, setMidiChordMode] = useState<"off" | "major" | "minor">("off");
   const [midiArpMode, setMidiArpMode] = useState<"off" | "up" | "down">("off");
+  const [midiStatus, setMidiStatus] = useState("");
   const [mixClipboard, setMixClipboard] = useState<Partial<Clip> | null>(null);
   const [metronome, setMetronome] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -1012,6 +1013,8 @@ export function StudioEditorView() {
   const playheadRef = useRef(0);
   const timelineDurationRef = useRef(180);
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const midiAccessRef = useRef<MIDIAccess | null>(null);
+  const midiInstrumentRef = useRef<NonNullable<Clip["instrument"]>>("triangle");
   const masterGainRef = useRef<GainNode | null>(null);
   const masterLimiterRef = useRef<DynamicsCompressorNode | null>(null);
   const masterEqRef = useRef<{ low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode } | null>(null);
@@ -1058,6 +1061,17 @@ export function StudioEditorView() {
     if (!user) return;
     void refreshPersonas();
   }, [user?.id]);
+
+  useEffect(() => {
+    return () => {
+      const access = midiAccessRef.current;
+      if (!access) return;
+      access.onstatechange = null;
+      access.inputs.forEach((input) => {
+        input.onmidimessage = null;
+      });
+    };
+  }, []);
 
   useEffect(() => {
     if (!clipMenu) return;
@@ -1825,6 +1839,7 @@ export function StudioEditorView() {
   }, [items, libraryFilter, search]);
 
   const selectedLane = lanes.find((lane) => lane.id === selected) ?? null;
+  midiInstrumentRef.current = selectedLane?.instrument ?? "triangle";
   const canUseAiEdits = Boolean(
     selectedLane && (selectedLane.variant === "ok" || selectedLane.variant === "alt")
   );
@@ -2791,12 +2806,50 @@ export function StudioEditorView() {
     setSelectedMidiNoteId(note.id);
   }
 
+  async function connectMidiInput() {
+    if (!navigator.requestMIDIAccess) {
+      setMidiStatus("Web MIDI is not available in this browser.");
+      return;
+    }
+    setMidiStatus("Requesting MIDI access…");
+    try {
+      const access = await navigator.requestMIDIAccess();
+      midiAccessRef.current = access;
+      const attach = () => {
+        const names: string[] = [];
+        access.inputs.forEach((input) => {
+          names.push(input.name || "MIDI input");
+          input.onmidimessage = (event) => {
+            if (!event.data || event.data.length < 3) return;
+            const statusByte = event.data[0] ?? 0;
+            const pitch = event.data[1] ?? 0;
+            const velocity = event.data[2] ?? 0;
+            const status = statusByte & 0xf0;
+            if (status === 0x90 && velocity > 0) {
+              previewMidiPitch(pitch);
+            }
+          };
+        });
+        setMidiStatus(
+          names.length
+            ? `MIDI: ${names.join(", ")}`
+            : "MIDI connected — no devices found."
+        );
+      };
+      attach();
+      access.onstatechange = attach;
+    } catch {
+      midiAccessRef.current = null;
+      setMidiStatus("MIDI access was denied or failed.");
+    }
+  }
+
   function previewMidiPitch(pitch: number) {
     const context = ensureAudioContext();
     const master = masterGainRef.current ?? context.destination;
     const now = context.currentTime;
     const oscillator = context.createOscillator();
-    oscillator.type = selectedLane?.instrument ?? "triangle";
+    oscillator.type = midiInstrumentRef.current;
     oscillator.frequency.value = 440 * Math.pow(2, (pitch - 69) / 12);
     const gain = context.createGain();
     gain.gain.setValueAtTime(0.0001, now);
@@ -4264,6 +4317,12 @@ export function StudioEditorView() {
                         </button>
                       );
                     })}
+                  </div>
+                  <div className="studio-midi-connect">
+                    <button type="button" onClick={() => void connectMidiInput()}>
+                      Connect MIDI
+                    </button>
+                    <small>{midiStatus || "Use a connected controller to audition notes."}</small>
                   </div>
                   {(() => {
                     const note = (selectedLane.midiNotes ?? []).find(
