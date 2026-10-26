@@ -164,9 +164,21 @@ It is not exposed to browsers. It resolves the clip's owning Suno account from
 polling. This is the safe bridge for `platform_api` to call after it has
 authenticated the Camxora user and charged credits.
 
-The next required layer is a `platform_api` proxy that authenticates the
-Camxora user, checks ownership and credits, and calls these musicapi routes.
-Studio project ids and clip ids must be linked to the caller's account.
+The same internal service now covers:
+
+```text
+POST /internal/studio/stems
+POST /internal/studio/extend
+POST /internal/studio/cover
+POST /internal/studio/add-vocals
+POST /internal/studio/add-instrumental
+POST /internal/studio/replace-section
+GET  /internal/studio/jobs/{id}
+```
+
+`platform_api` exposes the matching Studio routes and verifies Camxora
+ownership before calling them. Studio project ids and clip ids stay linked to
+the caller's account.
 
 ### Studio Stems API (implemented)
 
@@ -195,11 +207,30 @@ The token must match in both services. It is never sent to the browser.
 The Studio inspector now has:
 
 ```text
-Vocals + instrumental
-Full stems
+Separate stems
+  Vocals + instrumental
+  Full stems
+AI edits
+  Extend
+  Cover
+  Add vocals
+  Add instrumental
 ```
 
-Current implementation does **not** charge a separate stems credit price yet.
+Matching platform routes:
+
+```text
+POST /api/v3/web-music/studio/generations/{task_id}/extend
+POST /api/v3/web-music/studio/generations/{task_id}/cover
+POST /api/v3/web-music/studio/generations/{task_id}/add-vocals
+POST /api/v3/web-music/studio/generations/{task_id}/add-instrumental
+POST /api/v3/web-music/studio/generations/{task_id}/replace-section
+GET  /api/v3/web-music/studio/operations/{operation_id}
+```
+
+Current implementation does **not** charge separate Studio operation prices yet.
+These routes are wired to the existing credit/ownership gateway, but the credit
+amount remains `0` until the operation pricing is added to the `pricing` table.
 
 ## 4. Architecture decision
 

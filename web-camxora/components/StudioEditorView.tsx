@@ -22,7 +22,12 @@ import {
   listStudioProjects,
   updateStudioProject,
   type StudioProjectData,
+  type StudioOperation,
   requestStudioStems,
+  requestStudioExtend,
+  requestStudioCover,
+  requestStudioAddVocals,
+  requestStudioAddInstrumental,
   getStudioOperation,
 } from "@/lib/studio-api";
 
@@ -338,6 +343,10 @@ export function StudioEditorView() {
   const [stemsBusy, setStemsBusy] = useState(false);
   const [stemsStatus, setStemsStatus] = useState("");
   const [stemsError, setStemsError] = useState("");
+  const [editBusy, setEditBusy] = useState(false);
+  const [editStatus, setEditStatus] = useState("");
+  const [editError, setEditError] = useState("");
+  const [editPrompt, setEditPrompt] = useState("");
   const [history, setHistory] = useState<Clip[][]>([]);
   const [future, setFuture] = useState<Clip[][]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -1068,6 +1077,82 @@ export function StudioEditorView() {
     }
   }
 
+  function operationClipsToLanes(
+    clips: NonNullable<StudioOperation["result"]>["clips"],
+    source: Clip,
+    prefix: string
+  ): Clip[] {
+    return (clips ?? []).map((clip, index): Clip => {
+      const id = String(clip.id || makeId());
+      const audioUrl =
+        clip.audio_url && !clip.audio_url.includes("/forbidden")
+          ? clip.audio_url
+          : clip.media_urls?.find((media) => media.url)?.url || null;
+      return {
+        id: makeId(),
+        generationId: source.generationId,
+        variant: `edit-${id}`,
+        title: clip.title || clip.label || `${prefix} ${index + 1}`,
+        style: source.style,
+        color: COLORS[(lanes.length + index) % COLORS.length],
+        image: clip.image_url || source.image,
+        start: source.start,
+        duration: Math.max(12, Math.round(Number(clip.duration_seconds || clip.duration || source.duration))),
+        offset: 0,
+        fadeIn: 0,
+        fadeOut: 0,
+        audioUrl,
+        low: 0,
+        mid: 0,
+        high: 0,
+        delay: 0,
+        reverb: 0,
+        volume: 80,
+        pan: 0,
+        muted: false,
+        solo: false,
+      };
+    });
+  }
+
+  async function runStudioEdit(
+    label: string,
+    request: () => Promise<StudioOperation>
+  ) {
+    if (!selectedLane || editBusy) return;
+    if (selectedLane.variant !== "ok" && selectedLane.variant !== "alt") {
+      setEditError("Select an original version before editing it.");
+      return;
+    }
+    setEditBusy(true);
+    setEditError("");
+    setEditStatus(`Submitting ${label.toLowerCase()}…`);
+    try {
+      let operation = await request();
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (["complete", "success", "error", "failed"].includes(operation.status.toLowerCase())) {
+          break;
+        }
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        operation = await getStudioOperation(operation.id);
+        setEditStatus(`${label} in progress…`);
+      }
+      if (["error", "failed"].includes(operation.status.toLowerCase())) {
+        throw new Error(operation.error_message || `${label} failed.`);
+      }
+      const next = operationClipsToLanes(operation.result?.clips, selectedLane, label);
+      if (!next.length) throw new Error(`${label} returned no clips.`);
+      commitLanes([...lanes, ...next]);
+      setSelected(next[0].id);
+      setEditStatus(`${label} added to the timeline`);
+    } catch (cause) {
+      setEditError(cause instanceof Error ? cause.message : `Could not run ${label}.`);
+      setEditStatus("");
+    } finally {
+      setEditBusy(false);
+    }
+  }
+
   async function separateStems(mode: "vocal" | "stems") {
     if (!selectedLane || stemsBusy) return;
     if (selectedLane.variant !== "ok" && selectedLane.variant !== "alt") {
@@ -1528,6 +1613,83 @@ export function StudioEditorView() {
                 </div>
                 {stemsStatus ? <small>{stemsStatus}</small> : null}
                 {stemsError ? <small className="studio-stem-error">{stemsError}</small> : null}
+              </div>
+              <div className="studio-edit-actions">
+                <span>AI edits</span>
+                <input
+                  value={editPrompt}
+                  onChange={(event) => setEditPrompt(event.target.value)}
+                  placeholder="Describe a cover or vocal change…"
+                  maxLength={500}
+                />
+                <div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runStudioEdit("Extend", () =>
+                        requestStudioExtend({
+                          taskId: selectedLane.generationId,
+                          variant: selectedLane.variant,
+                          continueAt: Math.round(selectedLane.start + selectedLane.duration),
+                          projectId,
+                        })
+                      )
+                    }
+                    disabled={editBusy || stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}
+                  >
+                    <Icon name="fa-arrow-right-long" /> Extend
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runStudioEdit("Cover", () =>
+                        requestStudioCover({
+                          taskId: selectedLane.generationId,
+                          variant: selectedLane.variant,
+                          prompt: editPrompt.trim() || selectedLane.style,
+                          projectId,
+                        })
+                      )
+                    }
+                    disabled={editBusy || stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}
+                  >
+                    <Icon name="fa-repeat" /> Cover
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runStudioEdit("Add vocals", () =>
+                        requestStudioAddVocals({
+                          taskId: selectedLane.generationId,
+                          variant: selectedLane.variant,
+                          prompt: editPrompt.trim(),
+                          projectId,
+                        })
+                      )
+                    }
+                    disabled={editBusy || stemsBusy || !editPrompt.trim() || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}
+                  >
+                    <Icon name="fa-microphone" /> Add vocals
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      void runStudioEdit("Add instrumental", () =>
+                        requestStudioAddInstrumental({
+                          taskId: selectedLane.generationId,
+                          variant: selectedLane.variant,
+                          prompt: editPrompt.trim(),
+                          projectId,
+                        })
+                      )
+                    }
+                    disabled={editBusy || stemsBusy || !editPrompt.trim() || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}
+                  >
+                    <Icon name="fa-guitar" /> Add instrumental
+                  </button>
+                </div>
+                {editStatus ? <small>{editStatus}</small> : null}
+                {editError ? <small className="studio-stem-error">{editError}</small> : null}
               </div>
               <button className="studio-inspector-delete" type="button" onClick={deleteSelected}>
                 <Icon name="fa-trash" /> Remove from session

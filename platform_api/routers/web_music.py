@@ -516,6 +516,118 @@ async def request_studio_stems(
     )
 
 
+class StudioExtendRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    continue_at: float | None = None
+    project_id: UUID | None = None
+
+
+class StudioCoverRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    prompt: str = ""
+    project_id: UUID | None = None
+
+
+class StudioPromptRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    prompt: str
+    project_id: UUID | None = None
+
+
+class StudioReplaceSectionRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    start_s: float
+    end_s: float
+    lyrics: str
+    prompt: str = ""
+    model: str | None = None
+    project_id: UUID | None = None
+
+
+@router.post("/studio/generations/{task_id}/extend", status_code=202)
+async def request_studio_extend(
+    task_id: UUID,
+    body: StudioExtendRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_extend(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        continue_at=body.continue_at,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/generations/{task_id}/cover", status_code=202)
+async def request_studio_cover(
+    task_id: UUID,
+    body: StudioCoverRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_cover(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        prompt=body.prompt,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/generations/{task_id}/add-vocals", status_code=202)
+async def request_studio_add_vocals(
+    task_id: UUID,
+    body: StudioPromptRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_add_vocals(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        prompt=body.prompt,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/generations/{task_id}/add-instrumental", status_code=202)
+async def request_studio_add_instrumental(
+    task_id: UUID,
+    body: StudioPromptRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_add_instrumental(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        prompt=body.prompt,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/generations/{task_id}/replace-section", status_code=202)
+async def request_studio_replace_section(
+    task_id: UUID,
+    body: StudioReplaceSectionRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_replace_section(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        start_s=body.start_s,
+        end_s=body.end_s,
+        lyrics=body.lyrics,
+        prompt=body.prompt,
+        model=body.model,
+        project_id=body.project_id,
+    )
+
+
 @router.get("/studio/operations/{operation_id}")
 async def get_studio_operation(
     operation_id: UUID,

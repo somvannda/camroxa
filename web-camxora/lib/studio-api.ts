@@ -137,3 +137,96 @@ export async function requestStudioStems(input: {
 export async function getStudioOperation(id: string): Promise<StudioOperation> {
   return studioJson(`/api/v3/web-music/studio/operations/${encodeURIComponent(id)}`);
 }
+
+export async function requestStudioExtend(input: {
+  taskId: string;
+  variant: string;
+  continueAt?: number | null;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/extend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      continue_at: input.continueAt ?? undefined,
+      project_id: input.projectId || undefined,
+    }),
+  });
+}
+
+export async function requestStudioCover(input: {
+  taskId: string;
+  variant: string;
+  prompt?: string;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/cover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      prompt: input.prompt || "",
+      project_id: input.projectId || undefined,
+    }),
+  });
+}
+
+export async function requestStudioAddVocals(input: {
+  taskId: string;
+  variant: string;
+  prompt: string;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/add-vocals`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      prompt: input.prompt,
+      project_id: input.projectId || undefined,
+    }),
+  });
+}
+
+export async function requestStudioAddInstrumental(input: {
+  taskId: string;
+  variant: string;
+  prompt: string;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/add-instrumental`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      prompt: input.prompt,
+      project_id: input.projectId || undefined,
+    }),
+  });
+}
+
+export async function requestStudioReplaceSection(input: {
+  taskId: string;
+  variant: string;
+  startS: number;
+  endS: number;
+  lyrics: string;
+  prompt?: string;
+  model?: string | null;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/replace-section`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      start_s: input.startS,
+      end_s: input.endS,
+      lyrics: input.lyrics,
+      prompt: input.prompt || "",
+      model: input.model || undefined,
+      project_id: input.projectId || undefined,
+    }),
+  });
+}

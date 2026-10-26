@@ -1764,21 +1764,15 @@ class WebMusicService:
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
         }
 
-    async def request_studio_stems(
+    async def _studio_source_clip(
         self,
         user_id: UUID,
         task_id: UUID,
         *,
-        variant: str = "ok",
-        mode: str = "vocal",
-        project_id: UUID | None = None,
-    ) -> dict[str, Any]:
-        from platform_api.config import get_settings
-
+        variant: str,
+    ) -> str:
         if variant not in ("ok", "alt"):
             raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
-        if mode not in ("vocal", "stems", "advanced"):
-            raise ValidationError("mode must be vocal, stems or advanced.", details={"field": "mode"})
         row = await self._pool.fetchrow(
             """
             SELECT id, status, audio_id_ok, audio_id_alt
@@ -1791,11 +1785,38 @@ class WebMusicService:
         if row is None:
             raise NotFoundError("Generation not found.", details={"task_id": str(task_id)})
         if str(row["status"] or "").lower() != "success":
-            raise ValidationError("The clip is not ready for stems yet.", details={"field": "status"})
-        provider_clip_id = str(row["audio_id_ok" if variant == "ok" else "audio_id_alt"] or "").strip()
+            raise ValidationError(
+                "The clip is not ready for Studio edits yet.",
+                details={"field": "status"},
+            )
+        provider_clip_id = str(
+            row["audio_id_ok" if variant == "ok" else "audio_id_alt"] or ""
+        ).strip()
         if not provider_clip_id:
-            raise ValidationError("The selected clip has no provider clip id.", details={"field": "variant"})
+            raise ValidationError(
+                "The selected clip has no provider clip id.",
+                details={"field": "variant"},
+            )
+        return provider_clip_id
 
+    async def _request_studio_clip_operation(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        operation_type: str,
+        variant: str,
+        mode: str,
+        project_id: UUID | None,
+        internal_path: str,
+        internal_body: dict[str, Any],
+        label: str,
+    ) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        provider_clip_id = await self._studio_source_clip(
+            user_id, task_id, variant=variant
+        )
         settings = get_settings()
         token = str(settings.studio_internal_token or "").strip()
         if not token:
@@ -1808,7 +1829,7 @@ class WebMusicService:
             """
             INSERT INTO studio_operations
                 (user_id, project_id, task_id, variant, provider_clip_id, operation_type, mode, status)
-            VALUES ($1, $2, $3, $4, $5, 'stems', $6, 'queued')
+            VALUES ($1, $2, $3, $4, $5, $6, $7, 'queued')
             RETURNING *
             """,
             user_id,
@@ -1816,18 +1837,20 @@ class WebMusicService:
             task_id,
             variant,
             provider_clip_id,
+            operation_type,
             mode,
         )
         base = str(settings.suno_api_base_url or "").rstrip("/")
+        body = {**internal_body, "clip_id": provider_clip_id}
         try:
             async with httpx.AsyncClient(timeout=45) as client:
                 response = await client.post(
-                    f"{base}/internal/studio/stems",
+                    f"{base}{internal_path}",
                     headers={"x-internal-token": token},
-                    json={"clip_id": provider_clip_id, "mode": mode},
+                    json=body,
                 )
                 if response.status_code >= 400:
-                    detail = "Studio stems request failed."
+                    detail = f"Studio {label} request failed."
                     try:
                         detail = str((response.json() or {}).get("error") or detail)
                     except Exception:
@@ -1840,7 +1863,7 @@ class WebMusicService:
                     raise ExternalServiceError(
                         detail,
                         is_retryable=False,
-                        details={"provider": "musicapi", "operation": "stems"},
+                        details={"provider": "musicapi", "operation": operation_type},
                     )
                 payload = response.json()
         except ExternalServiceError:
@@ -1852,9 +1875,9 @@ class WebMusicService:
                 str(exc),
             )
             raise ExternalServiceError(
-                "Could not reach the Studio stems service.",
+                f"Could not reach the Studio {label} service.",
                 is_retryable=True,
-                details={"provider": "musicapi", "operation": "stems"},
+                details={"provider": "musicapi", "operation": operation_type},
             ) from exc
         job_id = str(payload.get("job_id") or "")
         updated = await self._pool.fetchrow(
@@ -1868,6 +1891,163 @@ class WebMusicService:
             str(payload.get("status") or "queued").lower(),
         )
         return self._studio_operation_payload(updated)
+
+    async def request_studio_stems(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        mode: str = "vocal",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        if mode not in ("vocal", "stems", "advanced"):
+            raise ValidationError(
+                "mode must be vocal, stems or advanced.",
+                details={"field": "mode"},
+            )
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="stems",
+            variant=variant,
+            mode=mode,
+            project_id=project_id,
+            internal_path="/internal/studio/stems",
+            internal_body={"mode": mode},
+            label="stems",
+        )
+
+    async def request_studio_extend(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        continue_at: float | None = None,
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        body: dict[str, Any] = {}
+        if continue_at is not None:
+            body["continue_at"] = float(continue_at)
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="extend",
+            variant=variant,
+            mode="extend",
+            project_id=project_id,
+            internal_path="/internal/studio/extend",
+            internal_body=body,
+            label="extend",
+        )
+
+    async def request_studio_cover(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        prompt: str = "",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="cover",
+            variant=variant,
+            mode="cover",
+            project_id=project_id,
+            internal_path="/internal/studio/cover",
+            internal_body={"prompt": prompt.strip()},
+            label="cover",
+        )
+
+    async def request_studio_add_vocals(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        prompt: str,
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        if not str(prompt or "").strip():
+            raise ValidationError("prompt is required.", details={"field": "prompt"})
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="add_vocals",
+            variant=variant,
+            mode="add_vocals",
+            project_id=project_id,
+            internal_path="/internal/studio/add-vocals",
+            internal_body={"prompt": prompt.strip()},
+            label="add vocals",
+        )
+
+    async def request_studio_add_instrumental(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        prompt: str,
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        if not str(prompt or "").strip():
+            raise ValidationError("prompt is required.", details={"field": "prompt"})
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="add_instrumental",
+            variant=variant,
+            mode="add_instrumental",
+            project_id=project_id,
+            internal_path="/internal/studio/add-instrumental",
+            internal_body={"prompt": prompt.strip()},
+            label="add instrumental",
+        )
+
+    async def request_studio_replace_section(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        start_s: float,
+        end_s: float,
+        lyrics: str,
+        prompt: str = "",
+        model: str | None = None,
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        if not str(lyrics or "").strip():
+            raise ValidationError("lyrics is required.", details={"field": "lyrics"})
+        if end_s <= start_s or start_s < 0:
+            raise ValidationError(
+                "end_s must be greater than start_s.",
+                details={"field": "end_s"},
+            )
+        body: dict[str, Any] = {
+            "start_s": float(start_s),
+            "end_s": float(end_s),
+            "lyrics": lyrics,
+            "prompt": prompt.strip(),
+        }
+        if model:
+            body["model"] = model
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="replace_section",
+            variant=variant,
+            mode="replace_section",
+            project_id=project_id,
+            internal_path="/internal/studio/replace-section",
+            internal_body=body,
+            label="replace section",
+        )
 
     async def get_studio_operation(self, user_id: UUID, operation_id: UUID) -> dict[str, Any]:
         from platform_api.config import get_settings
@@ -1903,9 +2083,9 @@ class WebMusicService:
                 payload = response.json()
         except Exception as exc:
             raise ExternalServiceError(
-                "Could not poll the Studio stems service.",
+                "Could not poll the Studio operation.",
                 is_retryable=True,
-                details={"provider": "musicapi", "operation": "stems"},
+                details={"provider": "musicapi", "operation": str(row["operation_type"])},
             ) from exc
         status = str(payload.get("status") or row["status"]).lower()
         result = payload.get("result")

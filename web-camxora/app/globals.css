@@ -1891,6 +1891,17 @@ html{color-scheme:dark}
   .studio-stem-actions .icon,.studio-stem-actions .fa-replaced{font-size:9px!important;width:9px!important;height:9px!important}
   .studio-stem-actions small{display:block;margin-top:6px;font-size:9px;line-height:1.4;color:#94a3b8}
   .studio-stem-actions small.studio-stem-error{color:#fca5a5}
+  .studio-edit-actions{margin-top:10px;padding:9px;border:1px solid rgba(14,165,233,.2);border-radius:7px;background:rgba(14,165,233,.04)}
+  .studio-edit-actions>span{display:block;font-size:9px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#7dd3fc;margin-bottom:6px}
+  .studio-edit-actions>input{width:100%;height:27px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.03);color:#e2e8f0;font:inherit;font-size:9px;outline:none}
+  .studio-edit-actions>input:focus{border-color:rgba(56,189,248,.45)}
+  .studio-edit-actions>div{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:5px}
+  .studio-edit-actions button{display:flex;align-items:center;justify-content:flex-start;gap:5px;height:27px;padding:0 7px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.025);color:#cbd5e1;font:inherit;font-size:8.5px;cursor:pointer;text-align:left;white-space:nowrap;overflow:hidden}
+  .studio-edit-actions button:hover:not(:disabled){background:rgba(14,165,233,.13);border-color:rgba(56,189,248,.35);color:#fff}
+  .studio-edit-actions button:disabled{opacity:.4;cursor:not-allowed}
+  .studio-edit-actions .icon,.studio-edit-actions .fa-replaced{font-size:9px!important;width:9px!important;height:9px!important}
+  .studio-edit-actions small{display:block;margin-top:6px;font-size:9px;line-height:1.4;color:#94a3b8}
+  .studio-edit-actions small.studio-stem-error{color:#fca5a5}
   .studio-inspector-delete{display:flex;align-items:center;justify-content:center;gap:5px;width:100%;height:32px;margin-top:10px;border:1px solid rgba(248,113,113,.2);border-radius:6px;background:rgba(248,113,113,.06);color:#fca5a5;font:inherit;font-size:9.5px;cursor:pointer}
   .studio-inspector-delete:hover{background:rgba(248,113,113,.12)}
   .studio-inspector-delete .icon,.studio-inspector-delete .fa-replaced{font-size:9px!important;width:9px!important;height:9px!important}

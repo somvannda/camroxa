@@ -8525,6 +8525,118 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  app.post("/internal/studio/extend", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const continueAt = Number(body.continue_at);
+    const job = newJob("extend");
+    job.endpoint = "studio_extend";
+    job.credits = 0;
+    void runClipJobWithRetry(
+      job,
+      (client) =>
+        client.extendMusic(clipId, {
+          continueAt: Number.isFinite(continueAt) && continueAt > 0 ? continueAt : undefined,
+        }),
+      { accountId }
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/cover", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("cover");
+    job.endpoint = "studio_cover";
+    job.credits = 0;
+    job.prompt = prompt || undefined;
+    void runClipJobWithRetry(job, (client) => client.coverMusic(clipId, prompt), { accountId });
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/add-vocals", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    if (!clipId || !prompt) {
+      return reply.code(400).send({ error: "clip_id and prompt are required." });
+    }
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("add_vocals");
+    job.endpoint = "studio_add_vocals";
+    job.credits = 0;
+    job.prompt = prompt;
+    void runClipJobWithRetry(job, (client) => client.addVocals(clipId, prompt), { accountId });
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/add-instrumental", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    if (!clipId || !prompt) {
+      return reply.code(400).send({ error: "clip_id and prompt are required." });
+    }
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("add_instrumental");
+    job.endpoint = "studio_add_instrumental";
+    job.credits = 0;
+    job.prompt = prompt;
+    void runClipJobWithRetry(job, (client) => client.addInstrumental(clipId, prompt), { accountId });
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/replace-section", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const lyrics = typeof body.lyrics === "string" ? body.lyrics : "";
+    const startS = Number(body.start_s);
+    const endS = Number(body.end_s);
+    if (!clipId || !lyrics || !Number.isFinite(startS) || !Number.isFinite(endS) || endS <= startS) {
+      return reply.code(400).send({
+        error: "clip_id, lyrics, start_s, end_s are required (end_s > start_s).",
+      });
+    }
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const prompt = typeof body.prompt === "string" ? body.prompt : undefined;
+    const model = typeof body.model === "string" ? body.model : undefined;
+    const job = newJob("replace_section");
+    job.endpoint = "studio_replace_section";
+    job.credits = 0;
+    job.prompt = lyrics;
+    void runClipJobWithRetry(
+      job,
+      (client) => client.replaceSection(clipId, { startS, endS, lyrics, prompt, model }),
+      { accountId }
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
   app.get("/internal/studio/jobs/:id", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { id } = req.params as { id: string };
