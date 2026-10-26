@@ -155,6 +155,70 @@ type AudioMeta = {
 
 const COLORS = ["#8b5cf6", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899", "#14b8a6"];
 
+type MasterPresetPatch = {
+  master: number;
+  masterCompressor: number;
+  masterDrive: number;
+  masterLow: number;
+  masterMid: number;
+  masterHigh: number;
+};
+
+const MASTER_PRESETS: Array<{
+  id: string;
+  name: string;
+  patch: MasterPresetPatch;
+}> = [
+  {
+    id: "clean",
+    name: "Clean",
+    patch: {
+      master: 100,
+      masterCompressor: 0,
+      masterDrive: 0,
+      masterLow: 0,
+      masterMid: 0,
+      masterHigh: 0,
+    },
+  },
+  {
+    id: "warm",
+    name: "Warm",
+    patch: {
+      master: 96,
+      masterCompressor: 15,
+      masterDrive: 12,
+      masterLow: 1.5,
+      masterMid: -1,
+      masterHigh: -1,
+    },
+  },
+  {
+    id: "loud",
+    name: "Loud",
+    patch: {
+      master: 92,
+      masterCompressor: 45,
+      masterDrive: 20,
+      masterLow: 1,
+      masterMid: 0,
+      masterHigh: 1,
+    },
+  },
+  {
+    id: "transparent",
+    name: "Transparent",
+    patch: {
+      master: 100,
+      masterCompressor: 8,
+      masterDrive: 0,
+      masterLow: 0,
+      masterMid: 0,
+      masterHigh: 0,
+    },
+  },
+];
+
 const MIX_PRESETS: Array<{ id: string; name: string; patch: Partial<Clip> }> = [
   {
     id: "clean",
@@ -3027,6 +3091,15 @@ export function StudioEditorView() {
     updateLane(lane.id, mixClipboard);
   }
 
+  function applyMasterPreset(patch: MasterPresetPatch) {
+    setMaster(patch.master);
+    setMasterCompressor(patch.masterCompressor);
+    setMasterDrive(patch.masterDrive);
+    setMasterLow(patch.masterLow);
+    setMasterMid(patch.masterMid);
+    setMasterHigh(patch.masterHigh);
+  }
+
   function resetMixSettings(lane: Clip) {
     updateLane(lane.id, {
       volume: 80,
@@ -5110,6 +5183,17 @@ export function StudioEditorView() {
           {masterEqOpen ? (
             <div className="studio-master-eq-popover">
               <span>Master bus</span>
+              <div className="studio-master-presets">
+                {MASTER_PRESETS.map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    onClick={() => applyMasterPreset(preset.patch)}
+                  >
+                    {preset.name}
+                  </button>
+                ))}
+              </div>
               <label>
                 Drive
                 <input type="range" min="0" max="100" step="1" value={masterDrive} onChange={(event) => setMasterDrive(Number(event.target.value))} />

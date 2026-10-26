@@ -300,7 +300,9 @@ track's effect settings and are saved with the project.
 
 The transport also exposes master-bus compression, drive/saturation, a master
 3-band EQ popover, and a live master output meter driven by the master bus
-analyser. Settings are saved with the project and applied to playback/export.
+analyser. Master presets — Clean, Warm, Loud and Transparent — set the master
+volume, compression, drive and EQ in one click. Settings are saved with the
+project and applied to playback/export.
 
 The Studio editor runs in a standalone full-screen shell rather than the
 Camxora site chrome. Its compact top bar shows project status, playhead,
