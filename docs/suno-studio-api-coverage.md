@@ -276,6 +276,9 @@ The timeline supports named **section markers**. Click the flag button to add a
 section at the playhead, click a marker to seek, double-click to rename, and
 right-click to remove. Markers are saved with the project.
 
+Clip fades can be **linear** or **exponential** independently for fade-in and
+fade-out, with the curve applied to playback and export.
+
 The project menu includes **Open project**, which lists saved cloud projects
 with their update time and loads the selected project into Studio. Project rows
 also support rename and delete, with deletion clearing the active session when

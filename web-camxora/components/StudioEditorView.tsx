@@ -84,6 +84,8 @@ type Clip = {
   offset: number;
   fadeIn: number;
   fadeOut: number;
+  fadeInCurve?: "linear" | "exponential";
+  fadeOutCurve?: "linear" | "exponential";
   automation?: AutomationPoint[];
   panAutomation?: AutomationPoint[];
   audioUrl?: string | null;
@@ -282,14 +284,26 @@ function scheduleClipGain(
   const fadeOut = Math.min(lane.fadeOut, length / 2);
   if (fadeIn > 0 && elapsed < fadeIn) {
     const startLevel = base * (elapsed / fadeIn);
-    gain.gain.setValueAtTime(startLevel, when);
-    gain.gain.linearRampToValueAtTime(base, when + (fadeIn - elapsed));
+    if (lane.fadeInCurve === "exponential") {
+      gain.gain.setValueAtTime(Math.max(0.0001, startLevel), when);
+      gain.gain.exponentialRampToValueAtTime(
+        Math.max(0.0001, base),
+        when + (fadeIn - elapsed)
+      );
+    } else {
+      gain.gain.setValueAtTime(startLevel, when);
+      gain.gain.linearRampToValueAtTime(base, when + (fadeIn - elapsed));
+    }
   } else {
     gain.gain.setValueAtTime(base, when);
   }
   if (fadeOut > 0) {
     gain.gain.setValueAtTime(base, when + Math.max(0, length - fadeOut));
-    gain.gain.linearRampToValueAtTime(0, when + length);
+    if (lane.fadeOutCurve === "exponential") {
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + length);
+    } else {
+      gain.gain.linearRampToValueAtTime(0, when + length);
+    }
   }
 }
 
@@ -729,6 +743,8 @@ export function StudioEditorView() {
         ...lane,
         fadeIn: Number.isFinite(lane.fadeIn) ? Math.max(0, Number(lane.fadeIn)) : 0,
         fadeOut: Number.isFinite(lane.fadeOut) ? Math.max(0, Number(lane.fadeOut)) : 0,
+        fadeInCurve: lane.fadeInCurve === "exponential" ? "exponential" : "linear",
+        fadeOutCurve: lane.fadeOutCurve === "exponential" ? "exponential" : "linear",
         low: Number.isFinite(lane.low) ? clamp(Number(lane.low), -12, 12) : 0,
         mid: Number.isFinite(lane.mid) ? clamp(Number(lane.mid), -12, 12) : 0,
         high: Number.isFinite(lane.high) ? clamp(Number(lane.high), -12, 12) : 0,
@@ -3372,6 +3388,34 @@ export function StudioEditorView() {
                 </label>
                 <label>Fade out
                   <input type="number" min={0} max={10} step={0.1} value={Number(selectedLane.fadeOut.toFixed(1))} onChange={(event) => updateLane(selectedLane.id, { fadeOut: clamp(Number(event.target.value), 0, 10) })} />
+                </label>
+              </div>
+              <div className="studio-fade-shapes">
+                <label>Fade in
+                  <select
+                    value={selectedLane.fadeInCurve ?? "linear"}
+                    onChange={(event) =>
+                      updateLane(selectedLane.id, {
+                        fadeInCurve: event.target.value as Clip["fadeInCurve"],
+                      })
+                    }
+                  >
+                    <option value="linear">Linear</option>
+                    <option value="exponential">Exponential</option>
+                  </select>
+                </label>
+                <label>Fade out
+                  <select
+                    value={selectedLane.fadeOutCurve ?? "linear"}
+                    onChange={(event) =>
+                      updateLane(selectedLane.id, {
+                        fadeOutCurve: event.target.value as Clip["fadeOutCurve"],
+                      })
+                    }
+                  >
+                    <option value="linear">Linear</option>
+                    <option value="exponential">Exponential</option>
+                  </select>
                 </label>
               </div>
               <label className="studio-slider">Volume <b>{selectedLane.volume}%</b>

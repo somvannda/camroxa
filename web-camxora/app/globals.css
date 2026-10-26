@@ -2755,3 +2755,7 @@ html{color-scheme:dark}
   .studio-master-comp{display:inline-flex;align-items:center;gap:5px;margin-left:10px;color:#64748b;font-size:8px}
   .studio-master-comp input{width:46px;accent-color:#8b5cf6}
   .studio-master-comp b{color:#94a3b8;font-weight:500;font-variant-numeric:tabular-nums}
+
+  .studio-fade-shapes{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin:6px 0 2px}
+  .studio-fade-shapes label{display:flex;align-items:center;justify-content:space-between;gap:5px;font-size:8px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted2)}
+  .studio-fade-shapes select{height:23px;padding:0 4px;border:1px solid var(--line);border-radius:4px;background:#0b1021;color:#cbd5e1;font:inherit;font-size:8px;text-transform:none;letter-spacing:0}
