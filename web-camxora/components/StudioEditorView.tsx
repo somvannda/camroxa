@@ -1374,11 +1374,43 @@ export function StudioEditorView() {
         event.preventDefault();
         if (event.shiftKey) redo();
         else undo();
+        return;
+      }
+      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        splitSelected();
+      } else if (key === "d") {
+        event.preventDefault();
+        duplicateSelected();
+      } else if (key === "m" && selectedLane) {
+        event.preventDefault();
+        updateLane(selectedLane.id, { muted: !selectedLane.muted });
+      } else if (key === "l") {
+        event.preventDefault();
+        setLoop((value) => !value);
+      } else if (key === "r") {
+        event.preventDefault();
+        if (recording) stopRecording();
+        else void startRecording();
+      } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        const step = event.shiftKey ? 5 : 1;
+        seekTo(clamp(playhead + (event.key === "ArrowRight" ? step : -step), 0, timelineDuration));
+      } else if (event.key === "Home") {
+        event.preventDefault();
+        seekTo(0);
+      } else if (event.key === "End") {
+        event.preventDefault();
+        seekTo(timelineDuration);
+      } else if (event.key === "Escape") {
+        setSelected(null);
       }
     };
     window.addEventListener("keydown", handleKey);
     return () => window.removeEventListener("keydown", handleKey);
-  }, [commitLanes, lanes, redo, selected, togglePlay, undo]);
+  }, [commitLanes, duplicateSelected, lanes, playhead, redo, recording, seekTo, selected, selectedLane, setLoop, splitSelected, startRecording, stopRecording, timelineDuration, togglePlay, undo, updateLane]);
 
   useEffect(() => {
     const handleLoopMove = (event: PointerEvent) => {

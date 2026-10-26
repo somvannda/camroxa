@@ -254,6 +254,21 @@ bar/beat, BPM and time signature, with collapsible Library and Inspector
 panels. A Studio AI prompt bar accepts basic stems/extend/cover/vocal commands
 for the selected clip.
 
+Studio keyboard shortcuts:
+
+```text
+Space       play/pause
+S           split at playhead
+D           duplicate selected clip
+M           mute selected clip
+L           toggle loop
+R           start/stop recording
+← / →       seek 1 second (Shift = 5 seconds)
+Home / End  seek to start/end
+Esc         deselect
+Ctrl/Cmd+Z  undo (Shift = redo)
+```
+
 Studio supports durable audio import:
 
 ```text
