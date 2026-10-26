@@ -28,6 +28,7 @@ import {
   requestStudioCover,
   requestStudioAddVocals,
   requestStudioAddInstrumental,
+  requestStudioReplaceSection,
   getStudioOperation,
 } from "@/lib/studio-api";
 
@@ -347,6 +348,7 @@ export function StudioEditorView() {
   const [editStatus, setEditStatus] = useState("");
   const [editError, setEditError] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
+  const [replaceLyrics, setReplaceLyrics] = useState("");
   const [history, setHistory] = useState<Clip[][]>([]);
   const [future, setFuture] = useState<Clip[][]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -1688,6 +1690,39 @@ export function StudioEditorView() {
                     <Icon name="fa-guitar" /> Add instrumental
                   </button>
                 </div>
+                <textarea
+                  value={replaceLyrics}
+                  onChange={(event) => setReplaceLyrics(event.target.value)}
+                  placeholder="Replacement lyrics for the selected range…"
+                  maxLength={5000}
+                  rows={3}
+                />
+                <button
+                  className="studio-edit-replace"
+                  type="button"
+                  onClick={() =>
+                    void runStudioEdit("Replace section", () =>
+                      requestStudioReplaceSection({
+                        taskId: selectedLane.generationId,
+                        variant: selectedLane.variant,
+                        startS: loop ? loopStart : selectedLane.start,
+                        endS: loop ? loopEnd : selectedLane.start + selectedLane.duration,
+                        lyrics: replaceLyrics.trim(),
+                        prompt: editPrompt.trim(),
+                        projectId,
+                      })
+                    )
+                  }
+                  disabled={
+                    editBusy ||
+                    stemsBusy ||
+                    !replaceLyrics.trim() ||
+                    (selectedLane.variant !== "ok" && selectedLane.variant !== "alt") ||
+                    (loop && loopEnd <= loopStart)
+                  }
+                >
+                  <Icon name="fa-scissors" /> Replace {loop ? `${Math.round(loopStart)}–${Math.round(loopEnd)}s` : "full clip"}
+                </button>
                 {editStatus ? <small>{editStatus}</small> : null}
                 {editError ? <small className="studio-stem-error">{editError}</small> : null}
               </div>
