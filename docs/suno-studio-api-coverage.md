@@ -272,6 +272,9 @@ The snap grid supports **Off / Bar / Beat / 1/8 / 1/16**. Clip drag, trim and
 loop-region edits snap to the selected grid division using the current BPM and
 time signature. The grid choice is saved with the project.
 
+The **Tap** button sets BPM from four or more tap intervals, with a three-second
+reset window.
+
 The timeline supports named **section markers**. Click the flag button to add a
 section at the playhead, click a marker to seek, double-click to rename, and
 right-click to remove. Markers are saved with the project.

@@ -2764,3 +2764,7 @@ html{color-scheme:dark}
   .studio-lane-colors button{width:14px;height:14px;padding:0;border:1px solid rgba(255,255,255,.18);border-radius:50%;cursor:pointer}
   .studio-lane-colors button.active{outline:1px solid #f8fafc;outline-offset:2px}
   .studio-lane-colors button:hover{transform:scale(1.15)}
+
+  .studio-tap-tempo{height:23px;padding:0 8px;border:1px solid rgba(148,163,184,.18);border-radius:4px;background:rgba(255,255,255,.025);color:#94a3b8;font:inherit;font-size:8px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;cursor:pointer}
+  .studio-tap-tempo:hover{border-color:rgba(168,85,247,.35);color:#ddd6fe;background:rgba(139,92,246,.08)}
+  .studio-tap-tempo:active{background:rgba(139,92,246,.18)}

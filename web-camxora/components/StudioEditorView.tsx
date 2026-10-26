@@ -567,6 +567,7 @@ export function StudioEditorView() {
   const [countIn, setCountIn] = useState(false);
   const [countInBusy, setCountInBusy] = useState(false);
   const [recordCountdown, setRecordCountdown] = useState(0);
+  const tapTimesRef = useRef<number[]>([]);
   const [recordSeconds, setRecordSeconds] = useState(0);
   const [recordError, setRecordError] = useState("");
   const [exportFormat, setExportFormat] = useState<"wav" | "mp3">("wav");
@@ -1327,6 +1328,18 @@ export function StudioEditorView() {
     const beat = Math.floor((playhead % secondsPerBar) / secondsPerBeat) + 1;
     return `${String(bar).padStart(3, "0")}.${beat}.1`;
   }, [bpm, playhead, timeSignature]);
+
+  function tapTempo() {
+    const now = performance.now();
+    const taps = tapTimesRef.current.filter((time) => now - time < 3000);
+    taps.push(now);
+    tapTimesRef.current = taps.slice(-8);
+    if (taps.length >= 2) {
+      const intervals = taps.slice(1).map((time, index) => time - taps[index]);
+      const average = intervals.reduce((sum, value) => sum + value, 0) / intervals.length;
+      if (average > 0) setBpm(clamp(Math.round(60000 / average), 40, 220));
+    }
+  }
 
   const snapToGrid = useCallback(
     (value: number) => {
@@ -3005,6 +3018,9 @@ export function StudioEditorView() {
         </button>
         <span className="studio-toolbar-divider" />
         <label className="studio-bpm">BPM <input type="number" min={40} max={220} value={bpm} onChange={(event) => setBpm(clamp(Number(event.target.value), 40, 220))} /></label>
+        <button className="studio-tap-tempo" type="button" onClick={tapTempo} title="Tap four times to set tempo">
+          Tap
+        </button>
         <label className="studio-snap-grid">Grid
           <select value={gridDivision} onChange={(event) => setGridDivision(event.target.value as typeof gridDivision)} aria-label="Snap grid">
             <option value="off">Off</option>
