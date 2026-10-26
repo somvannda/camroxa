@@ -552,6 +552,7 @@ export function StudioEditorView() {
   const [inspectorOpen, setInspectorOpen] = useState(true);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiStatus, setAiStatus] = useState("");
+  const [clipMenu, setClipMenu] = useState<{ x: number; y: number; laneId: string } | null>(null);
   const [stemsBusy, setStemsBusy] = useState(false);
   const [stemsStatus, setStemsStatus] = useState("");
   const [stemsError, setStemsError] = useState("");
@@ -599,6 +600,24 @@ export function StudioEditorView() {
   useEffect(() => {
     metronomeRef.current = metronome;
   }, [metronome]);
+
+  useEffect(() => {
+    if (!clipMenu) return;
+    const close = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".studio-clip-menu")) return;
+      setClipMenu(null);
+    };
+    const key = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setClipMenu(null);
+    };
+    document.addEventListener("pointerdown", close);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("pointerdown", close);
+      document.removeEventListener("keydown", key);
+    };
+  }, [clipMenu]);
 
   useEffect(() => {
     if (!actionsOpen) return;
@@ -1734,37 +1753,35 @@ export function StudioEditorView() {
     updateLane(selectedLane.id, { midiNotes: next });
   }
 
-  function duplicateSelected() {
-    if (!selectedLane) return;
+  function duplicateLane(lane: Clip) {
     const copy: Clip = {
-      ...selectedLane,
+      ...lane,
       id: makeId(),
-      start: clamp(selectedLane.start + 2, 0, timelineDuration - selectedLane.duration),
+      start: clamp(lane.start + 2, 0, timelineDuration - lane.duration),
       color: COLORS[lanes.length % COLORS.length],
     };
     commitLanes([...lanes, copy]);
     setSelected(copy.id);
   }
 
-  function splitSelected() {
-    if (!selectedLane) return;
-    const local = playhead - selectedLane.start;
-    if (local <= MIN_CLIP || local >= selectedLane.duration - MIN_CLIP) return;
-    const automation = selectedLane.automation ?? [];
-    const panAutomation = selectedLane.panAutomation ?? [];
+  function splitLane(lane: Clip, at: number) {
+    const local = at - lane.start;
+    if (local <= MIN_CLIP || local >= lane.duration - MIN_CLIP) return;
+    const automation = lane.automation ?? [];
+    const panAutomation = lane.panAutomation ?? [];
     const left: Clip = {
-      ...selectedLane,
+      ...lane,
       duration: local,
       fadeOut: 0,
       automation: automation.filter((point) => point.time <= local),
       panAutomation: panAutomation.filter((point) => point.time <= local),
     };
     const right: Clip = {
-      ...selectedLane,
+      ...lane,
       id: makeId(),
-      start: playhead,
-      duration: selectedLane.duration - local,
-      offset: selectedLane.offset + local,
+      start: at,
+      duration: lane.duration - local,
+      offset: lane.offset + local,
       fadeIn: 0,
       automation: automation
         .filter((point) => point.time >= local)
@@ -1773,8 +1790,23 @@ export function StudioEditorView() {
         .filter((point) => point.time >= local)
         .map((point) => ({ ...point, time: point.time - local })),
     };
-    commitLanes(lanes.flatMap((lane) => (lane.id === selectedLane.id ? [left, right] : [lane])));
+    commitLanes(lanes.flatMap((item) => (item.id === lane.id ? [left, right] : [item])));
     setSelected(right.id);
+  }
+
+  function duplicateSelected() {
+    if (selectedLane) duplicateLane(selectedLane);
+  }
+
+  function splitSelected() {
+    if (selectedLane) splitLane(selectedLane, playhead);
+  }
+
+  function renameLane(lane: Clip) {
+    const next = window.prompt("Track name", lane.title);
+    if (next === null) return;
+    const title = next.trim().slice(0, 80);
+    if (title) updateLane(lane.id, { title });
   }
 
   async function renderMix(options: {
@@ -2494,7 +2526,7 @@ export function StudioEditorView() {
             </div>
             {lanes.map((lane, index) => (
               <div className={`studio-lane${selected === lane.id ? " selected" : ""}`} key={lane.id}>
-                <button className="studio-lane-head" type="button" onClick={() => setSelected(lane.id)}>
+                <button className="studio-lane-head" type="button" onClick={() => setSelected(lane.id)} onDoubleClick={() => renameLane(lane)} title="Double-click to rename">
                   <span className="studio-lane-index" style={{ color: lane.color, borderColor: `${lane.color}66` }}>
                     {String(index + 1).padStart(2, "0")}
                   </span>
@@ -2528,6 +2560,11 @@ export function StudioEditorView() {
                     }}
                     onPointerDown={(event) => beginDrag(event, lane, "move")}
                     onClick={() => setSelected(lane.id)}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setSelected(lane.id);
+                      setClipMenu({ x: event.clientX, y: event.clientY, laneId: lane.id });
+                    }}
                   >
                     <span className="studio-clip-color" style={{ background: lane.color }} />
                     <span className="studio-clip-copy">
@@ -3064,6 +3101,37 @@ export function StudioEditorView() {
           </div>
         </div>
       ) : null}
+      {clipMenu ? (() => {
+        const lane = lanes.find((item) => item.id === clipMenu.laneId);
+        if (!lane) return null;
+        return (
+          <div
+            className="studio-clip-menu"
+            role="menu"
+            style={{
+              left: Math.min(clipMenu.x, window.innerWidth - 190),
+              top: Math.min(clipMenu.y, window.innerHeight - 230),
+            }}
+          >
+            <div className="studio-clip-menu-head">{lane.title}</div>
+            <button type="button" onClick={() => { setClipMenu(null); splitLane(lane, playhead); }}>
+              <Icon name="fa-scissors" /> Split at playhead
+            </button>
+            <button type="button" onClick={() => { setClipMenu(null); duplicateLane(lane); }}>
+              <Icon name="fa-copy" /> Duplicate
+            </button>
+            <button type="button" onClick={() => { setClipMenu(null); updateLane(lane.id, { muted: !lane.muted }); }}>
+              <Icon name={lane.muted ? "fa-volume-high" : "fa-volume-xmark"} /> {lane.muted ? "Unmute" : "Mute"}
+            </button>
+            <button type="button" onClick={() => { setClipMenu(null); renameLane(lane); }}>
+              <Icon name="fa-pen" /> Rename track
+            </button>
+            <button className="danger" type="button" onClick={() => { setClipMenu(null); commitLanes(lanes.filter((item) => item.id !== lane.id)); }}>
+              <Icon name="fa-trash" /> Remove from session
+            </button>
+          </div>
+        );
+      })() : null}
     </div>
   );
 }

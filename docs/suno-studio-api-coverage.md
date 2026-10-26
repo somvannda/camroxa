@@ -254,6 +254,9 @@ bar/beat, BPM and time signature, with collapsible Library and Inspector
 panels. A Studio AI prompt bar accepts basic stems/extend/cover/vocal commands
 for the selected clip.
 
+Right-clicking a clip opens an edit menu with split, duplicate, mute,
+rename-track and remove actions. Double-clicking a track header also renames it.
+
 Studio keyboard shortcuts:
 
 ```text
