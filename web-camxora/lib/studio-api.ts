@@ -275,3 +275,46 @@ export async function getStudioUploadUrl(id: string): Promise<string> {
   );
   return upload.url;
 }
+
+export type StudioProjectVersion = {
+  id: string;
+  project_id: string;
+  label?: string | null;
+  title: string;
+  bpm: number;
+  time_signature: string;
+  created_at?: string | null;
+};
+
+export async function listStudioProjectVersions(
+  projectId: string,
+  limit = 30
+): Promise<{ items: StudioProjectVersion[]; total: number }> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/versions?limit=${limit}`
+  );
+}
+
+export async function createStudioProjectVersion(
+  projectId: string,
+  label?: string
+): Promise<StudioProjectVersion> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/versions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ label: label || undefined }),
+    }
+  );
+}
+
+export async function restoreStudioProjectVersion(
+  projectId: string,
+  versionId: string
+): Promise<StudioProject> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}/restore`,
+    { method: "POST" }
+  );
+}

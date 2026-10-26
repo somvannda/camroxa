@@ -35,6 +35,10 @@ import {
   type StudioPricing,
   uploadStudioAudio,
   getStudioUploadUrl,
+  listStudioProjectVersions,
+  createStudioProjectVersion,
+  restoreStudioProjectVersion,
+  type StudioProjectVersion,
 } from "@/lib/studio-api";
 
 type AutomationPoint = {
@@ -496,6 +500,11 @@ export function StudioEditorView() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [cloudState, setCloudState] = useState<"local" | "saving" | "saved" | "error">("local");
   const [cloudError, setCloudError] = useState("");
+  const [versionsOpen, setVersionsOpen] = useState(false);
+  const [versions, setVersions] = useState<StudioProjectVersion[]>([]);
+  const [versionsBusy, setVersionsBusy] = useState(false);
+  const [versionsError, setVersionsError] = useState("");
+  const [versionLabel, setVersionLabel] = useState("");
   const [stemsBusy, setStemsBusy] = useState(false);
   const [stemsStatus, setStemsStatus] = useState("");
   const [stemsError, setStemsError] = useState("");
@@ -738,6 +747,70 @@ export function StudioEditorView() {
     }, 650);
     return () => window.clearTimeout(timer);
   }, [loaded, user, projectId, sessionName, bpm, zoom, master, loopStart, loopEnd, lanes]);
+
+  async function openVersions() {
+    setVersionsOpen(true);
+    setVersionsError("");
+    if (!projectId) {
+      setVersions([]);
+      setVersionsError("Save the project to the cloud before creating versions.");
+      return;
+    }
+    setVersionsBusy(true);
+    try {
+      const result = await listStudioProjectVersions(projectId);
+      setVersions(result.items);
+    } catch (cause) {
+      setVersionsError(cause instanceof Error ? cause.message : "Could not load versions.");
+    } finally {
+      setVersionsBusy(false);
+    }
+  }
+
+  async function saveVersion() {
+    if (!projectId || versionsBusy) return;
+    setVersionsBusy(true);
+    setVersionsError("");
+    try {
+      await updateStudioProject(projectId, {
+        title: sessionName,
+        bpm,
+        time_signature: "4/4",
+        data: { lanes, loopStart, loopEnd, zoom, master },
+      });
+      const created = await createStudioProjectVersion(projectId, versionLabel.trim() || undefined);
+      setVersions((current) => [created, ...current]);
+      setVersionLabel("");
+      setCloudState("saved");
+    } catch (cause) {
+      setVersionsError(cause instanceof Error ? cause.message : "Could not save version.");
+    } finally {
+      setVersionsBusy(false);
+    }
+  }
+
+  async function restoreVersion(version: StudioProjectVersion) {
+    if (!projectId || versionsBusy) return;
+    if (!window.confirm(`Restore "${version.label || version.title}"? Current changes will be replaced.`)) {
+      return;
+    }
+    setVersionsBusy(true);
+    setVersionsError("");
+    try {
+      const project = await restoreStudioProjectVersion(projectId, version.id);
+      applySession(project.data as StoredSession, project.id);
+      setSessionName(project.title);
+      setBpm(project.bpm);
+      setCloudState("saved");
+      setVersionsOpen(false);
+      setHistory([]);
+      setFuture([]);
+    } catch (cause) {
+      setVersionsError(cause instanceof Error ? cause.message : "Could not restore version.");
+    } finally {
+      setVersionsBusy(false);
+    }
+  }
 
   const timelineDuration = useMemo(() => {
     const end = lanes.reduce((max, lane) => Math.max(max, lane.start + lane.duration), 0);
@@ -1902,6 +1975,9 @@ export function StudioEditorView() {
           >
             New session
           </button>
+          <button className="btn btn-ghost" type="button" onClick={() => void openVersions()} disabled={versionsBusy}>
+            <Icon name="fa-clock-rotate-left" /> Versions
+          </button>
           <Link className="btn btn-ghost" href="/create">Create a track</Link>
           <label className="btn btn-ghost studio-import-btn" title="Import an audio file as a Studio track">
             <Icon name={importing ? "fa-spinner" : "fa-upload"} />
@@ -2550,6 +2626,62 @@ export function StudioEditorView() {
       {cloudError ? <p className="studio-audio-error" role="alert">{cloudError}</p> : null}
       {audioLoading ? <p className="studio-audio-status" role="status">Loading studio audio?</p> : null}
       {exporting ? <p className="studio-audio-status" role="status">Rendering mixdown?</p> : null}
+      {versionsOpen ? (
+        <div className="studio-modal-backdrop" role="dialog" aria-modal="true" aria-label="Project versions">
+          <div className="studio-versions-modal">
+            <div className="studio-versions-head">
+              <div>
+                <h2>Project versions</h2>
+                <p>Snapshots are stored with the cloud project.</p>
+              </div>
+              <button type="button" aria-label="Close versions" onClick={() => setVersionsOpen(false)}>
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="studio-versions-save">
+              <input
+                value={versionLabel}
+                onChange={(event) => setVersionLabel(event.target.value)}
+                placeholder="Version label (optional)"
+                maxLength={120}
+                disabled={!projectId || versionsBusy}
+              />
+              <button
+                className="btn btn-primary"
+                type="button"
+                onClick={() => void saveVersion()}
+                disabled={!projectId || versionsBusy}
+              >
+                <Icon name="fa-camera" /> Save current
+              </button>
+            </div>
+            {versionsError ? <small className="studio-stem-error">{versionsError}</small> : null}
+            <div className="studio-versions-list">
+              {versionsBusy && !versions.length ? <p>Loading versions…</p> : null}
+              {!versionsBusy && !versions.length ? <p>No versions saved yet.</p> : null}
+              {versions.map((version) => (
+                <div className="studio-version-row" key={version.id}>
+                  <div>
+                    <b>{version.label || version.title}</b>
+                    <small>
+                      {version.created_at
+                        ? new Date(version.created_at).toLocaleString()
+                        : version.title}
+                    </small>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void restoreVersion(version)}
+                    disabled={versionsBusy}
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -267,6 +267,17 @@ triangle, sine and saw synths. Notes are rendered through the same Web Audio
 buffer path, so MIDI tracks support fades, EQ, FX, dynamics, automation and
 export like audio tracks.
 
+Studio project version history is available from the **Versions** dialog:
+
+```text
+GET  /api/v3/web-music/studio/projects/{id}/versions
+POST /api/v3/web-music/studio/projects/{id}/versions
+POST /api/v3/web-music/studio/projects/{id}/versions/{version_id}/restore
+```
+
+Snapshots include lanes, loop, zoom and master settings; the newest 50 are
+retained per project.
+
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume
 automation overrides the clip fades when points are present. Pan automation

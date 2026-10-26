@@ -494,6 +494,52 @@ async def fork_studio_project(
     )
 
 
+class StudioVersionCreateRequest(BaseModel):
+    label: str | None = Field(default=None, max_length=120)
+
+
+@router.get("/studio/projects/{project_id}/versions")
+async def list_studio_project_versions(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(30, ge=1, le=100),
+) -> dict:
+    return await service.list_studio_project_versions(
+        UUID(ctx.user_id),
+        project_id,
+        limit=limit,
+    )
+
+
+@router.post("/studio/projects/{project_id}/versions", status_code=201)
+async def create_studio_project_version(
+    project_id: UUID,
+    body: StudioVersionCreateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.create_studio_project_version(
+        UUID(ctx.user_id),
+        project_id,
+        label=body.label,
+    )
+
+
+@router.post("/studio/projects/{project_id}/versions/{version_id}/restore")
+async def restore_studio_project_version(
+    project_id: UUID,
+    version_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.restore_studio_project_version(
+        UUID(ctx.user_id),
+        project_id,
+        version_id,
+    )
+
+
 class StudioStemsRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     mode: Literal["vocal", "stems", "advanced"] = "vocal"
