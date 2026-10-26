@@ -1764,6 +1764,38 @@ class WebMusicService:
             "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
         }
 
+    @staticmethod
+    def _studio_charge_op(operation_type: str, mode: str) -> str:
+        if operation_type == "stems":
+            return "studio_stems_12" if mode in ("stems", "advanced") else "studio_stems_2"
+        return "studio_edit"
+
+    async def _refund_studio_operation(self, user_id: UUID, operation_id: UUID) -> None:
+        from platform_api.services.v3.web_music_charge import WebMusicCharge
+
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_operations WHERE id = $1 AND user_id = $2",
+            operation_id,
+            user_id,
+        )
+        if row is None or row["refunded_at"] is not None:
+            return
+        amount = int(row["credits_charged"] or 0)
+        path = str(row["charge_path"] or "").strip()
+        if amount <= 0 or not path or path == "included":
+            return
+        charge = WebMusicCharge(
+            path=path,  # type: ignore[arg-type]
+            op=str(row["charge_op"] or self._studio_charge_op(str(row["operation_type"]), str(row["mode"]))),
+            amount_credits=amount,
+            ref_id=str(row["charge_ref"] or row["id"]),
+        )
+        await self._web_music_charge_bridge().refund(user_id, charge)
+        await self._pool.execute(
+            "UPDATE studio_operations SET refunded_at=now(), updated_at=now() WHERE id=$1",
+            operation_id,
+        )
+
     async def _studio_source_clip(
         self,
         user_id: UUID,
@@ -1840,6 +1872,32 @@ class WebMusicService:
             operation_type,
             mode,
         )
+        charge_op = self._studio_charge_op(operation_type, mode)
+        try:
+            charge = await self._web_music_charge_bridge().charge(
+                user_id,
+                charge_op,
+                ref_id=str(op["id"]),
+            )
+        except Exception as exc:
+            await self._pool.execute(
+                "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                op["id"],
+                str(exc),
+            )
+            raise
+        op = await self._pool.fetchrow(
+            """
+            UPDATE studio_operations
+            SET credits_charged=$2, charge_path=$3, charge_op=$4, charge_ref=$5, updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            op["id"],
+            int(charge.amount_credits or 0),
+            str(charge.path),
+            charge_op,
+            str(charge.ref_id or op["id"]),
+        )
         base = str(settings.suno_api_base_url or "").rstrip("/")
         body = {**internal_body, "clip_id": provider_clip_id}
         try:
@@ -1860,6 +1918,10 @@ class WebMusicService:
                         op["id"],
                         detail,
                     )
+                    try:
+                        await self._refund_studio_operation(user_id, op["id"])
+                    except Exception:
+                        logger.exception("Studio operation refund failed for %s", op["id"])
                     raise ExternalServiceError(
                         detail,
                         is_retryable=False,
@@ -1874,6 +1936,10 @@ class WebMusicService:
                 op["id"],
                 str(exc),
             )
+            try:
+                await self._refund_studio_operation(user_id, op["id"])
+            except Exception:
+                logger.exception("Studio operation refund failed for %s", op["id"])
             raise ExternalServiceError(
                 f"Could not reach the Studio {label} service.",
                 is_retryable=True,
@@ -2060,6 +2126,16 @@ class WebMusicService:
         if row is None:
             raise NotFoundError("Studio operation not found.", details={"operation_id": str(operation_id)})
         if str(row["status"]).lower() in ("complete", "error", "failed"):
+            if str(row["status"]).lower() in ("error", "failed"):
+                try:
+                    await self._refund_studio_operation(user_id, operation_id)
+                except Exception:
+                    logger.exception("Studio operation refund failed for %s", operation_id)
+                row = await self._pool.fetchrow(
+                    "SELECT * FROM studio_operations WHERE id = $1 AND user_id = $2",
+                    operation_id,
+                    user_id,
+                )
             return self._studio_operation_payload(row)
         job_id = str(row["musicapi_job_id"] or "").strip()
         if not job_id:
@@ -2104,6 +2180,11 @@ class WebMusicService:
             json.dumps(result) if result is not None else None,
             str(error) if error else None,
         )
+        if status in ("error", "failed"):
+            try:
+                await self._refund_studio_operation(user_id, operation_id)
+            except Exception:
+                logger.exception("Studio operation refund failed for %s", operation_id)
         return self._studio_operation_payload(updated)
 
     async def list_generations(

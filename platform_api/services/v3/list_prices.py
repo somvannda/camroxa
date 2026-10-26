@@ -20,6 +20,9 @@ OP_SCAN_ALIASES: dict[str, tuple[str, ...]] = {
     "image": ("background_image", "thumbnail_image", "image"),
     "video": ("video", "video_manual"),
     "merge": ("video_merge", "merge"),
+    "studio_edit": ("studio_edit",),
+    "studio_stems_2": ("studio_stems_2",),
+    "studio_stems_12": ("studio_stems_12",),
 }
 
 

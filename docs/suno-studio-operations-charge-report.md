@@ -69,6 +69,31 @@ The 12-track Stems operation is five times the cost of the other measured
 operations and should be priced separately rather than sharing a flat Studio
 operation price.
 
+## Camxora price applied
+
+The implemented price is the measured Suno cost plus **2 credits**:
+
+```text
+Normal Studio edit          12 credits
+Stems — 2 track             12 credits
+Stems — 12 track            52 credits
+```
+
+Stored in `credit_pricing` as:
+
+```text
+suno / studio_edit          120000 units (12 credits)
+suno / studio_stems_2       120000 units (12 credits)
+suno / studio_stems_12      520000 units (52 credits)
+```
+
+Charge and refund behavior was verified with a mocked internal Studio service:
+
+- normal edit: charged 12
+- 2-track stems: charged 12
+- 12-track stems: charged 52
+- upstream failure: 12 charged, 12 refunded
+
 ## Caveats
 
 - One Premier account and one plan on one date.

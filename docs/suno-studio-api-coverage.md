@@ -228,9 +228,16 @@ POST /api/v3/web-music/studio/generations/{task_id}/replace-section
 GET  /api/v3/web-music/studio/operations/{operation_id}
 ```
 
-Current implementation does **not** charge separate Studio operation prices yet.
-These routes are wired to the existing credit/ownership gateway, but the credit
-amount remains `0` until the operation pricing is added to the `pricing` table.
+Studio operations now charge through the existing credit/ownership gateway:
+
+```text
+Normal Studio edit          12 credits
+Stems — 2 track             12 credits
+Stems — 12 track            52 credits
+```
+
+The price is two credits above the measured Suno charge. Charge and refund paths
+were verified against a mocked internal service.
 
 Measured Suno-side charges are recorded in
 [suno-studio-operations-charge-report.md](suno-studio-operations-charge-report.md).

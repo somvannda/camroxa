@@ -13,7 +13,10 @@ PLAN_OP_COLUMNS: dict[str, str] = {
     "merge": "merge_credits",
 }
 
-SUPPORTED_OPS = tuple(PLAN_OP_COLUMNS.keys())
+# Studio operations are priced directly from `credit_pricing`; they do not
+# map to a plan column.
+STUDIO_OPS = ("studio_edit", "studio_stems_2", "studio_stems_12")
+SUPPORTED_OPS = (*PLAN_OP_COLUMNS.keys(), *STUDIO_OPS)
 
 # Credits page (credit_pricing) fallbacks. First hit wins.
 PRICING_FALLBACKS: dict[str, tuple[tuple[str, str], ...]] = {
@@ -25,6 +28,9 @@ PRICING_FALLBACKS: dict[str, tuple[tuple[str, str], ...]] = {
     "image": (("fal", "background_image"), ("openai", "background_image")),
     "video": (("local", "video"), ("local", "video_manual")),
     "merge": (("local", "video_merge"), ("local", "merge")),
+    "studio_edit": (("suno", "studio_edit"),),
+    "studio_stems_2": (("suno", "studio_stems_2"),),
+    "studio_stems_12": (("suno", "studio_stems_12"),),
 }
 
 PATCHABLE_PLAN_FIELDS = frozenset(
