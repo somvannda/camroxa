@@ -472,8 +472,9 @@ state.
 
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume
-automation overrides the clip fades when points are present. Pan automation
-uses the same point editor and schedules the stereo panner.
+automation overrides the clip fades when points are present. Each volume point
+can be edited in place and uses a linear or exponential ramp to the next point.
+Pan automation uses the same point editor and schedules the stereo panner.
 
 When storage is configured, musicapi adds `durable_url` to finished clips.
 Studio prefers `durable_url` over Suno `audio_url` and `media_urls`, so playback

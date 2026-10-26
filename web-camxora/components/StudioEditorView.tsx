@@ -65,6 +65,7 @@ type AutomationPoint = {
   id: string;
   time: number;
   value: number;
+  curve?: "linear" | "exponential";
 };
 
 type MidiNote = {
@@ -388,11 +389,18 @@ function scheduleClipGain(
   if (automation.length) {
     const prior = [...automation].reverse().find((point) => point.time <= elapsed);
     const first = prior ?? automation[0];
-    gain.gain.setValueAtTime(base * (first.value / 100), when);
+    let previousValue = base * (first.value / 100);
+    gain.gain.setValueAtTime(previousValue, when);
     for (const point of automation) {
       if (point.time <= elapsed) continue;
-      const at = when + (point.time - elapsed);
-      gain.gain.linearRampToValueAtTime(base * (point.value / 100), Math.max(when + 0.001, at));
+      const at = Math.max(when + 0.001, when + (point.time - elapsed));
+      const nextValue = base * (point.value / 100);
+      if (point.curve === "exponential" && previousValue > 0 && nextValue > 0) {
+        gain.gain.exponentialRampToValueAtTime(nextValue, at);
+      } else {
+        gain.gain.linearRampToValueAtTime(nextValue, at);
+      }
+      previousValue = nextValue;
     }
     return;
   }
@@ -1155,6 +1163,10 @@ export function StudioEditorView() {
                 id: String(point.id || makeId()),
                 time: clamp(Number(point.time), 0, lane.duration),
                 value: clamp(Number(point.value), 0, 100),
+                curve:
+                  (point.curve === "exponential"
+                    ? "exponential"
+                    : "linear") as AutomationPoint["curve"],
               }))
               .sort((a, b) => a.time - b.time)
           : [],
@@ -1868,6 +1880,18 @@ export function StudioEditorView() {
       if (!selectedLane) return;
       updateLane(selectedLane.id, {
         automation: (selectedLane.automation ?? []).filter((point) => point.id !== pointId),
+      });
+    },
+    [selectedLane, updateLane]
+  );
+
+  const updateVolumeAutomationPoint = useCallback(
+    (pointId: string, patch: Partial<AutomationPoint>) => {
+      if (!selectedLane) return;
+      updateLane(selectedLane.id, {
+        automation: (selectedLane.automation ?? []).map((point) =>
+          point.id === pointId ? { ...point, ...patch } : point
+        ),
       });
     },
     [selectedLane, updateLane]
@@ -4350,7 +4374,32 @@ export function StudioEditorView() {
                     {(selectedLane.automation ?? []).map((point) => (
                       <div className="studio-automation-point" key={point.id}>
                         <span>{point.time.toFixed(1)}s</span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="1"
+                          value={point.value}
+                          aria-label={`Volume at ${point.time.toFixed(1)} seconds`}
+                          onChange={(event) =>
+                            updateVolumeAutomationPoint(point.id, {
+                              value: Number(event.target.value),
+                            })
+                          }
+                        />
                         <b>{Math.round(point.value)}%</b>
+                        <select
+                          value={point.curve ?? "linear"}
+                          aria-label={`Curve at ${point.time.toFixed(1)} seconds`}
+                          onChange={(event) =>
+                            updateVolumeAutomationPoint(point.id, {
+                              curve: event.target.value as AutomationPoint["curve"],
+                            })
+                          }
+                        >
+                          <option value="linear">Lin</option>
+                          <option value="exponential">Exp</option>
+                        </select>
                         <button type="button" aria-label="Remove automation point" onClick={() => removeVolumeAutomationPoint(point.id)}>
                           <Icon name="fa-xmark" />
                         </button>

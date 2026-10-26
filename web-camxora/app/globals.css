@@ -1917,8 +1917,10 @@ html{color-scheme:dark}
   .studio-share-open:hover{text-decoration:underline}
   .studio-automation small{display:block;margin-top:5px;font-size:8.5px;line-height:1.4;color:var(--muted2)}
   .studio-automation-points{display:grid;gap:4px;margin-top:5px;max-height:110px;overflow:auto}
-  .studio-automation-point{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:6px;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.025);font-size:8.5px;color:#cbd5e1}
-  .studio-automation-point b{font-weight:600;color:#c4b5fd}
+  .studio-automation-point{display:grid;grid-template-columns:34px minmax(42px,1fr) 28px 44px 18px;align-items:center;gap:4px;padding:4px 6px;border:1px solid var(--line);border-radius:5px;background:rgba(255,255,255,.025);font-size:8.5px;color:#cbd5e1}
+  .studio-automation-point b{font-weight:600;color:#c4b5fd;text-align:right}
+  .studio-automation-point input[type="range"]{width:100%;min-width:0;accent-color:#a855f7}
+  .studio-automation-point select{height:18px;min-width:0;border:1px solid var(--line);border-radius:4px;background:#0d1224;color:#cbd5e1;font:inherit;font-size:7.5px}
   .studio-automation-point button{display:grid;place-items:center;width:18px;height:18px;border:0;border-radius:4px;background:rgba(248,113,113,.08);color:#fca5a5;cursor:pointer}
   .studio-automation-point button:hover{background:rgba(248,113,113,.18)}
   .studio-eq label{display:grid;grid-template-columns:1fr auto;gap:2px 8px;margin-top:6px;font-size:9.5px;color:var(--muted2)}
