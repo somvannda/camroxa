@@ -248,6 +248,12 @@ plus delay, reverb and chorus sends. All are saved with the project and applied
 to playback and export. Drive uses a normalized soft-clip waveshaper before the
 compressor; chorus uses an LFO-modulated delay.
 
+The Studio editor runs in a standalone full-screen shell rather than the
+Camxora site chrome. Its compact top bar shows project status, playhead,
+bar/beat, BPM and time signature, with collapsible Library and Inspector
+panels. A Studio AI prompt bar accepts basic stems/extend/cover/vocal commands
+for the selected clip.
+
 Studio supports durable audio import:
 
 ```text

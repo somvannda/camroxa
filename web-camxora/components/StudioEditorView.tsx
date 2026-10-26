@@ -547,6 +547,11 @@ export function StudioEditorView() {
   const [shareUrl, setShareUrl] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState("");
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [libraryOpen, setLibraryOpen] = useState(true);
+  const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [aiPrompt, setAiPrompt] = useState("");
+  const [aiStatus, setAiStatus] = useState("");
   const [stemsBusy, setStemsBusy] = useState(false);
   const [stemsStatus, setStemsStatus] = useState("");
   const [stemsError, setStemsError] = useState("");
@@ -594,6 +599,24 @@ export function StudioEditorView() {
   useEffect(() => {
     metronomeRef.current = metronome;
   }, [metronome]);
+
+  useEffect(() => {
+    if (!actionsOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest(".studio-actions-menu-wrap")) return;
+      setActionsOpen(false);
+    };
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setActionsOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [actionsOpen]);
 
   useEffect(() => {
     loopStartRef.current = loopStart;
@@ -907,6 +930,14 @@ export function StudioEditorView() {
     setLoopEnd((current) => Math.min(current, timelineDuration));
     setLoopStart((current) => Math.min(current, Math.max(0, timelineDuration - 5)));
   }, [timelineDuration]);
+
+  const barBeat = useMemo(() => {
+    const secondsPerBeat = 60 / Math.max(40, bpm);
+    const secondsPerBar = secondsPerBeat * 4;
+    const bar = Math.floor(playhead / secondsPerBar) + 1;
+    const beat = Math.floor((playhead % secondsPerBar) / secondsPerBeat) + 1;
+    return `${String(bar).padStart(3, "0")}.${beat}.1`;
+  }, [bpm, playhead]);
 
   const tickStep = timelineDuration > 300 ? 60 : 30;
   const ticks = useMemo(() => {
@@ -1938,6 +1969,70 @@ export function StudioEditorView() {
     }
   }
 
+  function runAiCommand() {
+    const command = aiPrompt.trim();
+    if (!command) return;
+    if (!selectedLane) {
+      setAiStatus("Select a clip first, then ask Studio to edit it.");
+      return;
+    }
+    const lower = command.toLowerCase();
+    if (lower.includes("stem")) {
+      setAiStatus("Separating stems…");
+      void separateStems("stems");
+      return;
+    }
+    if (lower.includes("extend")) {
+      setAiStatus("Extending the selected clip…");
+      void runStudioEdit("Extend", () =>
+        requestStudioExtend({
+          taskId: selectedLane.generationId,
+          variant: selectedLane.variant,
+          continueAt: Math.round(selectedLane.start + selectedLane.duration),
+          projectId,
+        })
+      );
+      return;
+    }
+    if (lower.includes("cover")) {
+      setAiStatus("Creating a cover…");
+      void runStudioEdit("Cover", () =>
+        requestStudioCover({
+          taskId: selectedLane.generationId,
+          variant: selectedLane.variant,
+          prompt: command,
+          projectId,
+        })
+      );
+      return;
+    }
+    if (lower.includes("vocal")) {
+      setAiStatus("Adding vocals…");
+      void runStudioEdit("Add vocals", () =>
+        requestStudioAddVocals({
+          taskId: selectedLane.generationId,
+          variant: selectedLane.variant,
+          prompt: command,
+          projectId,
+        })
+      );
+      return;
+    }
+    if (lower.includes("instrumental")) {
+      setAiStatus("Adding instrumental…");
+      void runStudioEdit("Add instrumental", () =>
+        requestStudioAddInstrumental({
+          taskId: selectedLane.generationId,
+          variant: selectedLane.variant,
+          prompt: command,
+          projectId,
+        })
+      );
+      return;
+    }
+    setAiStatus("Try: stems, extend, cover, add vocals, or add instrumental.");
+  }
+
   async function separateStems(mode: "vocal" | "stems") {
     if (!selectedLane || stemsBusy) return;
     if (selectedLane.variant !== "ok" && selectedLane.variant !== "alt") {
@@ -2064,7 +2159,6 @@ export function StudioEditorView() {
     <div className="page studio-editor-page">
       <div className="studio-editor-head">
         <div className="studio-session-title">
-          <div className="eyebrow">Studio</div>
           <input
             value={sessionName}
             onChange={(event) => setSessionName(event.target.value)}
@@ -2077,61 +2171,107 @@ export function StudioEditorView() {
             {totalMinutes > 0 ? ` - ${totalMinutes}m arrangement` : ""}
           </span>
         </div>
-        <div className="page-actions">
+        <div className="studio-top-stats">
+          <span>{formatTime(playhead)}</span>
+          <span>{barBeat}</span>
+          <span>{bpm} BPM</span>
+          <span>4/4</span>
+        </div>
+        <div className="studio-top-actions">
           <button
-            className="btn btn-ghost"
+            className={`studio-icon-btn${libraryOpen ? " on" : ""}`}
             type="button"
+            aria-label="Toggle Library"
+            aria-pressed={libraryOpen}
+            title="Library"
             onClick={() => {
-              if (!window.confirm("Clear this session? This does not delete your songs.")) return;
-              commitLanes([]);
-              setSelected(null);
-              setPlayhead(0);
-              setProjectId(null);
-              setCloudState("local");
-              setSessionName("Untitled session");
+              setActionsOpen(false);
+              setLibraryOpen((value) => !value);
             }}
           >
-            New session
+            <Icon name="fa-table-columns" />
           </button>
-          <button className="btn btn-ghost" type="button" onClick={() => void openVersions()} disabled={versionsBusy}>
-            <Icon name="fa-clock-rotate-left" /> Versions
-          </button>
-          <button className="btn btn-ghost" type="button" onClick={openShare}>
-            <Icon name="fa-share-nodes" /> Share
-          </button>
-          <Link className="btn btn-ghost" href="/create">Create a track</Link>
-          <label className="btn btn-ghost studio-import-btn" title="Import an audio file as a Studio track">
-            <Icon name={importing ? "fa-spinner" : "fa-upload"} />
-            {importing ? "Importing…" : "Import audio"}
-            <input
-              type="file"
-              accept="audio/*"
-              disabled={importing}
-              onChange={(event) => {
-                const file = event.currentTarget.files?.[0];
-                if (file) void importAudioFile(file);
-                event.currentTarget.value = "";
-              }}
-              hidden
-            />
-          </label>
           <button
-            className={`btn btn-ghost studio-record-btn${recording ? " recording" : ""}`}
+            className={`studio-icon-btn${inspectorOpen ? " on" : ""}`}
             type="button"
-            onClick={() => (recording ? stopRecording() : void startRecording())}
-            disabled={importing}
-            title="Record from the microphone"
+            aria-label="Toggle Inspector"
+            aria-pressed={inspectorOpen}
+            title="Inspector"
+            onClick={() => {
+              setActionsOpen(false);
+              setInspectorOpen((value) => !value);
+            }}
           >
-            <Icon name={recording ? "fa-stop" : "fa-microphone"} />
-            {recording
-              ? `Stop ${String(Math.floor(recordSeconds / 60)).padStart(2, "0")}:${String(recordSeconds % 60).padStart(2, "0")}`
-              : "Record"}
+            <Icon name="fa-sliders" />
           </button>
-          {importError ? <small className="studio-import-error">{importError}</small> : null}
-          {recordError ? <small className="studio-import-error">{recordError}</small> : null}
-          <button className="btn btn-ghost" type="button" onClick={addMidiTrack} title="Add a MIDI instrument track">
-            <Icon name="fa-music" /> MIDI
-          </button>
+          {recording ? (
+            <button className="btn btn-ghost studio-record-btn recording" type="button" onClick={stopRecording}>
+              <Icon name="fa-stop" /> {String(Math.floor(recordSeconds / 60)).padStart(2, "0")}:{String(recordSeconds % 60).padStart(2, "0")}
+            </button>
+          ) : null}
+          <div className="studio-actions-menu-wrap">
+            <button
+              className="studio-icon-btn"
+              type="button"
+              aria-label="More project actions"
+              aria-expanded={actionsOpen}
+              title="Project actions"
+              onClick={() => setActionsOpen((value) => !value)}
+            >
+              <Icon name="fa-ellipsis" />
+            </button>
+            {actionsOpen ? (
+              <>
+                <div className="studio-actions-menu">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActionsOpen(false);
+                      if (!window.confirm("Clear this session? This does not delete your songs.")) return;
+                      commitLanes([]);
+                      setSelected(null);
+                      setPlayhead(0);
+                      setProjectId(null);
+                      setCloudState("local");
+                      setSessionName("Untitled session");
+                    }}
+                  >
+                    <Icon name="fa-file-circle-plus" /> New session
+                  </button>
+                  <button type="button" onClick={() => { setActionsOpen(false); void openVersions(); }}>
+                    <Icon name="fa-clock-rotate-left" /> Versions
+                  </button>
+                  <button type="button" onClick={() => { setActionsOpen(false); openShare(); }}>
+                    <Icon name="fa-share-nodes" /> Share
+                  </button>
+                  <Link href="/create" onClick={() => setActionsOpen(false)}>
+                    <Icon name="fa-plus" /> Create a track
+                  </Link>
+                  <label>
+                    <Icon name={importing ? "fa-spinner" : "fa-upload"} /> Import audio
+                    <input
+                      type="file"
+                      accept="audio/*"
+                      disabled={importing}
+                      onChange={(event) => {
+                        const file = event.currentTarget.files?.[0];
+                        if (file) void importAudioFile(file);
+                        event.currentTarget.value = "";
+                        setActionsOpen(false);
+                      }}
+                      hidden
+                    />
+                  </label>
+                  <button type="button" onClick={() => { setActionsOpen(false); void startRecording(); }}>
+                    <Icon name="fa-microphone" /> Record
+                  </button>
+                  <button type="button" onClick={() => { setActionsOpen(false); addMidiTrack(); }}>
+                    <Icon name="fa-music" /> MIDI track
+                  </button>
+                </div>
+              </>
+            ) : null}
+          </div>
           <div className="studio-export-group">
             <select
               className="studio-export-format"
@@ -2154,13 +2294,13 @@ export function StudioEditorView() {
               <option value="mp3">MP3 192k</option>
             </select>
             <button
-              className="btn btn-ghost"
+              className="btn btn-ghost studio-export-stems"
               type="button"
               disabled={!lanes.length || exporting}
               onClick={() => void exportStems()}
               title="Export each unmuted track into one ZIP archive"
             >
-              <Icon name="fa-layer-group" /> {exporting ? "Rendering?" : "Stems ZIP"}
+              <Icon name="fa-layer-group" /> <span>{exporting ? "Rendering?" : "Stems"}</span>
             </button>
             <button
               className="btn btn-primary"
@@ -2175,6 +2315,12 @@ export function StudioEditorView() {
           </div>
         </div>
       </div>
+      {importError || recordError ? (
+        <div className="studio-head-errors">
+          {importError ? <small>{importError}</small> : null}
+          {recordError ? <small>{recordError}</small> : null}
+        </div>
+      ) : null}
 
       <div className="studio-toolbar">
         <button className="studio-icon-btn" type="button" aria-label="Undo" onClick={undo} disabled={!history.length} title="Undo (Ctrl+Z)">
@@ -2219,7 +2365,7 @@ export function StudioEditorView() {
         <span className="studio-time">{formatTime(playhead)} / {formatTime(timelineDuration)}</span>
       </div>
 
-      <div className="studio-work">
+      <div className={`studio-work${libraryOpen ? "" : " library-closed"}${inspectorOpen ? "" : " inspector-closed"}`}>
         <aside className="studio-library">
           <div className="sec-head"><h2>Library</h2><Link href="/library">All</Link></div>
           <label className="studio-library-search">
@@ -2715,6 +2861,28 @@ export function StudioEditorView() {
           )}
         </aside>
       </div>
+
+      <form
+        className="studio-ai-bar"
+        onSubmit={(event) => {
+          event.preventDefault();
+          runAiCommand();
+        }}
+      >
+        <span className="studio-ai-label">
+          <Icon name="fa-wand-magic-sparkles" /> Studio AI <em>BETA</em>
+        </span>
+        <input
+          value={aiPrompt}
+          onChange={(event) => setAiPrompt(event.target.value)}
+          placeholder="Select a clip and ask me to add or change a part…"
+          aria-label="Studio AI prompt"
+        />
+        <button type="submit" disabled={!aiPrompt.trim()} aria-label="Run Studio AI command">
+          <Icon name="fa-arrow-up" />
+        </button>
+        {aiStatus ? <small>{aiStatus}</small> : null}
+      </form>
 
       <div className="studio-transport">
         <span className="studio-transport-left"><Icon name="fa-wave-square" /> {bpm} BPM · 4/4</span>
