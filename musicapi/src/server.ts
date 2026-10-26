@@ -2354,6 +2354,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           item.audioUrl = url;
           item.stream_audio_url = url;
           item.streamAudioUrl = url;
+          // Explicit durable marker for Studio clients. Keep the Suno
+          // media_urls untouched, but make it unambiguous which URL is stored
+          // by musicapi rather than an expiring upstream CDN link.
+          item.durable_url = url;
+          item.durableUrl = url;
         }
       }
       const imageKey = item.image_storage_key;

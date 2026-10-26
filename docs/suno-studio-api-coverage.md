@@ -242,6 +242,10 @@ Individual stems
 Range and stem exports use the same Web Audio graph, fades, EQ, sends and
 master limiter as playback.
 
+When storage is configured, musicapi adds `durable_url` to finished clips.
+Studio prefers `durable_url` over Suno `audio_url` and `media_urls`, so playback
+uses the stored copy instead of an expiring upstream CDN link.
+
 Matching platform routes:
 
 ```text

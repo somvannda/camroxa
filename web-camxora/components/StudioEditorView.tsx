@@ -1169,9 +1169,11 @@ export function StudioEditorView() {
     return (clips ?? []).map((clip, index): Clip => {
       const id = String(clip.id || makeId());
       const audioUrl =
-        clip.audio_url && !clip.audio_url.includes("/forbidden")
+        clip.durable_url ||
+        clip.durableUrl ||
+        (clip.audio_url && !clip.audio_url.includes("/forbidden")
           ? clip.audio_url
-          : clip.media_urls?.find((media) => media.url)?.url || null;
+          : clip.media_urls?.find((media) => media.url)?.url || null);
       return {
         id: makeId(),
         generationId: source.generationId,
@@ -1291,9 +1293,11 @@ export function StudioEditorView() {
           fadeIn: 0,
           fadeOut: 0,
           audioUrl:
-            clip.audio_url && !clip.audio_url.includes("/forbidden")
+            clip.durable_url ||
+            clip.durableUrl ||
+            (clip.audio_url && !clip.audio_url.includes("/forbidden")
               ? clip.audio_url
-              : clip.media_urls?.find((media) => media.url)?.url || null,
+              : clip.media_urls?.find((media) => media.url)?.url || null),
           low: 0,
           mid: 0,
           high: 0,

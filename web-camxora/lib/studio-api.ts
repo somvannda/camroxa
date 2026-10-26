@@ -106,6 +106,8 @@ export type StudioOperation = {
       title?: string;
       label?: string;
       audio_url?: string;
+      durable_url?: string;
+      durableUrl?: string;
       media_urls?: Array<{ url?: string; content_type?: string }>;
       image_url?: string | null;
       duration?: number;
