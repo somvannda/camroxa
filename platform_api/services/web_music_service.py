@@ -1992,6 +1992,37 @@ class WebMusicService:
             raise NotFoundError("Shared Studio project not found or expired.")
         return UUID(str(row["project_id"]))
 
+    async def fork_studio_shared_project(
+        self,
+        user_id: UUID,
+        token: str,
+    ) -> dict[str, Any]:
+        project_id = await self._active_share_project_id(token)
+        project = await self._pool.fetchrow(
+            "SELECT * FROM studio_projects WHERE id = $1",
+            project_id,
+        )
+        if project is None:
+            raise NotFoundError("Shared Studio project not found.")
+        title = f"{str(project['title'])[:105]} (shared copy)"
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_projects
+                (user_id, title, major_version, bpm, time_signature, data)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+            RETURNING *
+            """,
+            user_id,
+            title,
+            int(project["major_version"]),
+            int(project["bpm"]),
+            str(project["time_signature"]),
+            json.dumps(project["data"])
+            if isinstance(project["data"], dict)
+            else project["data"],
+        )
+        return self._studio_project_payload(row)
+
     async def add_studio_share_comment(
         self,
         token: str,

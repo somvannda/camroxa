@@ -384,3 +384,10 @@ export async function listStudioProjectComments(
     `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments?limit=${limit}`
   );
 }
+
+export async function forkStudioSharedProject(token: string): Promise<StudioProject> {
+  return studioJson(
+    `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}/fork`,
+    { method: "POST" }
+  );
+}

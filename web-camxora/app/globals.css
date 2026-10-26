@@ -2707,3 +2707,9 @@ html{color-scheme:dark}
   .studio-project-comment b{font-size:9px;color:#e2e8f0}
   .studio-project-comment span{font-size:8px;color:#64748b}
   .studio-project-comment p{margin:0;font-size:9px;line-height:1.45;color:#cbd5e1;white-space:pre-wrap}
+
+  .shared-studio-footer-actions{display:flex;align-items:center;gap:12px}
+  .shared-studio-footer-actions button{height:28px;padding:0 10px;border:1px solid rgba(139,92,246,.3);border-radius:5px;background:rgba(139,92,246,.12);color:#ddd6fe;font:inherit;font-size:10px;cursor:pointer}
+  .shared-studio-footer-actions button:hover:not(:disabled){background:rgba(139,92,246,.22)}
+  .shared-studio-footer-actions button:disabled{opacity:.45;cursor:not-allowed}
+  .shared-studio-footer>small{display:block;margin-top:6px;color:#fca5a5;font-size:9px}

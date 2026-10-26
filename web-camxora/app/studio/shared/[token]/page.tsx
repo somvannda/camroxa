@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { useAuth } from "@/components/AuthProvider";
 import {
   addStudioShareComment,
+  forkStudioSharedProject,
   getStudioSharedProject,
   listStudioShareComments,
   type StudioProject,
@@ -29,12 +31,15 @@ function formatTime(seconds: number): string {
 export default function SharedStudioPage() {
   const params = useParams<{ token: string }>();
   const token = Array.isArray(params?.token) ? params.token[0] : params?.token;
+  const { user } = useAuth();
   const [project, setProject] = useState<StudioProject | null>(null);
   const [comments, setComments] = useState<StudioShareComment[]>([]);
   const [authorName, setAuthorName] = useState("");
   const [commentBody, setCommentBody] = useState("");
   const [commentBusy, setCommentBusy] = useState(false);
   const [commentError, setCommentError] = useState("");
+  const [forkBusy, setForkBusy] = useState(false);
+  const [forkError, setForkError] = useState("");
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -74,6 +79,20 @@ export default function SharedStudioPage() {
       setCommentError(cause instanceof Error ? cause.message : "Could not post comment.");
     } finally {
       setCommentBusy(false);
+    }
+  }
+
+  async function forkProject() {
+    if (!token || forkBusy) return;
+    setForkBusy(true);
+    setForkError("");
+    try {
+      await forkStudioSharedProject(token);
+      window.location.href = "/studio/editor";
+    } catch (cause) {
+      setForkError(cause instanceof Error ? cause.message : "Could not fork project.");
+    } finally {
+      setForkBusy(false);
     }
   }
 
@@ -189,9 +208,19 @@ export default function SharedStudioPage() {
 
           <footer className="shared-studio-footer">
             <span>Shared from CAMXORA Studio</span>
-            <Link href="/create">
-              Create your own <Icon name="fa-arrow-right" />
-            </Link>
+            <div className="shared-studio-footer-actions">
+              {user ? (
+                <button type="button" onClick={() => void forkProject()} disabled={forkBusy}>
+                  {forkBusy ? "Forking?" : "Fork to Studio"}
+                </button>
+              ) : (
+                <Link href="/login">Sign in to fork</Link>
+              )}
+              <Link href="/create">
+                Create your own <Icon name="fa-arrow-right" />
+              </Link>
+            </div>
+            {forkError ? <small>{forkError}</small> : null}
           </footer>
         </section>
       )}

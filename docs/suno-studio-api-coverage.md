@@ -335,7 +335,15 @@ GET  /api/v3/web-music/studio/projects/{project_id}/comments
 ```
 
 Comments are stored against the project and appear on the shared page. The
-project owner can also read them from the Studio **Share** dialog. Real-time
+project owner can also read them from the Studio **Share** dialog.
+
+A signed-in viewer can fork the shared project into their own Studio:
+
+```text
+POST /api/v3/web-music/studio/shares/{token}/fork
+```
+
+The fork is a full editable copy with a “(shared copy)” title. Real-time
 co-editing is not included yet.
 
 The Inspector supports per-clip **volume and pan automation** points. Points

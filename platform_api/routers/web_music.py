@@ -577,6 +577,15 @@ async def list_studio_project_comments(
     )
 
 
+@router.post("/studio/shares/{token}/fork", status_code=201)
+async def fork_studio_shared_project(
+    token: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.fork_studio_shared_project(UUID(ctx.user_id), token)
+
+
 @router.get("/studio/shares/{token}/comments")
 async def list_studio_share_comments(
     token: str,
