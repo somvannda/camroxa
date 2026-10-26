@@ -553,6 +553,7 @@ export function StudioEditorView() {
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiStatus, setAiStatus] = useState("");
   const [clipMenu, setClipMenu] = useState<{ x: number; y: number; laneId: string } | null>(null);
+  const [inspectorTab, setInspectorTab] = useState<"clip" | "mix" | "ai">("clip");
   const [stemsBusy, setStemsBusy] = useState(false);
   const [stemsStatus, setStemsStatus] = useState("");
   const [stemsError, setStemsError] = useState("");
@@ -600,6 +601,10 @@ export function StudioEditorView() {
   useEffect(() => {
     metronomeRef.current = metronome;
   }, [metronome]);
+
+  useEffect(() => {
+    setInspectorTab("clip");
+  }, [selected]);
 
   useEffect(() => {
     if (!clipMenu) return;
@@ -977,6 +982,7 @@ export function StudioEditorView() {
   const canUseAiEdits = Boolean(
     selectedLane && (selectedLane.variant === "ok" || selectedLane.variant === "alt")
   );
+  const activeInspectorTab = inspectorTab === "ai" && !canUseAiEdits ? "clip" : inspectorTab;
   const canSplit = Boolean(
     selectedLane &&
       playhead > selectedLane.start + MIN_CLIP &&
@@ -2641,6 +2647,33 @@ export function StudioEditorView() {
                 <span style={{ background: selectedLane.color }} />
                 <div><b>{selectedLane.title}</b><small>{selectedLane.style}</small></div>
               </div>
+              <div className="studio-inspector-tabs" role="tablist">
+                {(["clip", "mix"] as const).map((tab) => (
+                  <button
+                    key={tab}
+                    className={activeInspectorTab === tab ? "active" : ""}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeInspectorTab === tab}
+                    onClick={() => setInspectorTab(tab)}
+                  >
+                    {tab === "clip" ? "Clip" : "Mix"}
+                  </button>
+                ))}
+                {canUseAiEdits ? (
+                  <button
+                    className={activeInspectorTab === "ai" ? "active" : ""}
+                    type="button"
+                    role="tab"
+                    aria-selected={activeInspectorTab === "ai"}
+                    onClick={() => setInspectorTab("ai")}
+                  >
+                    AI
+                  </button>
+                ) : null}
+              </div>
+              {activeInspectorTab === "clip" ? (
+                <>
               {selectedLane.midiNotes ? (
                 <div className="studio-midi">
                   <div className="studio-eq-head">
@@ -2717,6 +2750,10 @@ export function StudioEditorView() {
               <label className="studio-slider">Pan <b>{selectedLane.pan === 0 ? "C" : selectedLane.pan > 0 ? `R${selectedLane.pan}` : `L${Math.abs(selectedLane.pan)}`}</b>
                 <input type="range" min="-50" max="50" value={selectedLane.pan} onChange={(event) => updateLane(selectedLane.id, { pan: Number(event.target.value) })} />
               </label>
+                </>
+              ) : null}
+              {activeInspectorTab === "mix" ? (
+                <>
               <div className="studio-eq studio-automation">
                 <div className="studio-eq-head">
                   <span>Volume automation</span>
@@ -2801,6 +2838,8 @@ export function StudioEditorView() {
                   <input type="range" min="0" max="100" step="1" value={selectedLane.drive} onChange={(event) => updateLane(selectedLane.id, { drive: Number(event.target.value) })} />
                 </label>
               </div>
+                </>
+              ) : null}
               <div className="studio-inspector-actions">
                 <button className={selectedLane.muted ? "on" : ""} type="button" onClick={() => updateLane(selectedLane.id, { muted: !selectedLane.muted })}>Mute</button>
                 <button className={selectedLane.solo ? "on" : ""} type="button" onClick={() => updateLane(selectedLane.id, { solo: !selectedLane.solo })}>Solo</button>
@@ -2809,7 +2848,8 @@ export function StudioEditorView() {
                 <button type="button" onClick={splitSelected} disabled={!canSplit}>Split</button>
                 <button type="button" onClick={duplicateSelected}>Duplicate</button>
               </div>
-              {canUseAiEdits ? (
+              {activeInspectorTab === "ai" ? (
+                canUseAiEdits ? (
                 <>
               <div className="studio-stem-actions">
                 <span>Separate stems</span>
@@ -2940,11 +2980,12 @@ export function StudioEditorView() {
                 {editError ? <small className="studio-stem-error">{editError}</small> : null}
               </div>
                 </>
-              ) : (
-                <div className="studio-ai-unavailable">
-                  <Icon name="fa-circle-info" /> Stem separation and AI edits are available on original generated clips.
-                </div>
-              )}
+                ) : (
+                  <div className="studio-ai-unavailable">
+                    <Icon name="fa-circle-info" /> Stem separation and AI edits are available on original generated clips.
+                  </div>
+                )
+              ) : null}
               <button className="studio-inspector-delete" type="button" onClick={deleteSelected}>
                 <Icon name="fa-trash" /> Remove from session
               </button>
