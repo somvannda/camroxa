@@ -334,7 +334,9 @@ section at the playhead, click a marker to seek, double-click to rename, and
 right-click to remove. Markers are saved with the project.
 
 Clip fades can be **linear** or **exponential** independently for fade-in and
-fade-out, with the curve applied to playback and export.
+fade-out, with the curve applied to playback and export. Audio clips also have a
+**Reverse** toggle that plays and exports the selected segment backwards; MIDI
+tracks do not expose it.
 
 Each track has a color palette in the Inspector; the selected color is saved
 with the project and used for the track header, clip border and arrangement bar.

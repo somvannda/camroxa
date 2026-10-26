@@ -103,6 +103,7 @@ type Clip = {
   panAutomation?: AutomationPoint[];
   audioUrl?: string | null;
   uploadId?: string | null;
+  reverse?: boolean;
   midiNotes?: MidiNote[];
   instrument?: "sine" | "triangle" | "sawtooth";
   low: number;
@@ -645,6 +646,25 @@ function connectTrackDynamics(
   compressor.release.value = 0.1;
   input.connect(compressor);
   compressor.connect(output);
+}
+
+function reverseAudioBuffer(
+  context: BaseAudioContext,
+  buffer: AudioBuffer
+): AudioBuffer {
+  const reversed = context.createBuffer(
+    buffer.numberOfChannels,
+    buffer.length,
+    buffer.sampleRate
+  );
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const source = buffer.getChannelData(channel);
+    const target = reversed.getChannelData(channel);
+    for (let index = 0; index < source.length; index += 1) {
+      target[index] = source[source.length - 1 - index] ?? 0;
+    }
+  }
+  return reversed;
 }
 
 async function renderMidiBuffer(
@@ -2425,11 +2445,12 @@ export function StudioEditorView() {
         );
         return buffer;
       }
-      const key = lane.uploadId
+      const baseKey = lane.uploadId
         ? `upload:${lane.uploadId}`
         : lane.audioUrl
           ? `url:${lane.audioUrl}`
           : `${lane.generationId}:${lane.variant}`;
+      const key = lane.reverse ? `${baseKey}:reverse` : baseKey;
       const cached = buffersRef.current.get(key);
       if (cached) return cached;
       const context = ensureAudioContext();
@@ -2450,7 +2471,10 @@ export function StudioEditorView() {
         const blob = await fetchWebMusicClipBlob(lane.generationId, lane.variant);
         bytes = await blob.arrayBuffer();
       }
-      const buffer = await context.decodeAudioData(bytes);
+      const decoded = await context.decodeAudioData(bytes);
+      const buffer = lane.reverse
+        ? reverseAudioBuffer(context, decoded)
+        : decoded;
       buffersRef.current.set(key, buffer);
       setAudioMeta((current) =>
         current[key]
@@ -2546,7 +2570,10 @@ export function StudioEditorView() {
         for (const { lane, buffer } of loaded) {
           if (from >= lane.start + lane.duration) continue;
           const elapsedInClip = from > lane.start ? from - lane.start : 0;
-          const offset = lane.offset + elapsedInClip;
+          const baseOffset = lane.reverse
+            ? Math.max(0, buffer.duration - lane.offset - lane.duration)
+            : lane.offset;
+          const offset = baseOffset + elapsedInClip;
           const remaining = Math.min(lane.duration - elapsedInClip, buffer.duration - offset);
           if (remaining <= 0 || offset >= buffer.duration) continue;
           const source = context.createBufferSource();
@@ -3537,7 +3564,13 @@ export function StudioEditorView() {
       const clipStart = Math.max(lane.start, start);
       const clipEnd = Math.min(lane.start + lane.duration, end);
       if (clipEnd <= clipStart) continue;
-      const offset = Math.max(0, Math.min(lane.offset + (clipStart - lane.start), buffer.duration));
+      const baseOffset = lane.reverse
+        ? Math.max(0, buffer.duration - lane.offset - lane.duration)
+        : lane.offset;
+      const offset = Math.max(
+        0,
+        Math.min(baseOffset + (clipStart - lane.start), buffer.duration)
+      );
       const available = Math.max(0, buffer.duration - offset);
       const length = Math.min(clipEnd - clipStart, available);
       if (length <= 0 || offset >= buffer.duration) continue;
@@ -4652,7 +4685,9 @@ export function StudioEditorView() {
                     <span className="studio-waveform" aria-hidden="true">
                       {waveformPeaks(
                         lane,
-                        audioMeta[`${lane.generationId}:${lane.variant}`],
+                        audioMeta[
+                          `${lane.generationId}:${lane.variant}${lane.reverse ? ":reverse" : ""}`
+                        ],
                         index
                       ).map((peak, bar) => (
                         <i key={bar} style={{ height: `${Math.max(8, peak * 100)}%` }} />
@@ -5196,6 +5231,15 @@ export function StudioEditorView() {
               <div className="studio-inspector-actions">
                 <button className={selectedLane.muted ? "on" : ""} type="button" onClick={() => updateLane(selectedLane.id, { muted: !selectedLane.muted })}>Mute</button>
                 <button className={selectedLane.solo ? "on" : ""} type="button" onClick={() => updateLane(selectedLane.id, { solo: !selectedLane.solo })}>Solo</button>
+                <button
+                  className={selectedLane.reverse ? "on" : ""}
+                  type="button"
+                  disabled={Boolean(selectedLane.midiNotes)}
+                  title="Reverse the audio in this clip"
+                  onClick={() => updateLane(selectedLane.id, { reverse: !selectedLane.reverse })}
+                >
+                  Reverse
+                </button>
               </div>
               <div className="studio-inspector-actions">
                 <button type="button" onClick={splitSelected} disabled={!canSplit}>Split</button>
