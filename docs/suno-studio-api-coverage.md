@@ -232,6 +232,9 @@ Current implementation does **not** charge separate Studio operation prices yet.
 These routes are wired to the existing credit/ownership gateway, but the credit
 amount remains `0` until the operation pricing is added to the `pricing` table.
 
+Measured Suno-side charges are recorded in
+[suno-studio-operations-charge-report.md](suno-studio-operations-charge-report.md).
+
 ## 4. Architecture decision
 
 ```text
