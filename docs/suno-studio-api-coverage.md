@@ -248,9 +248,9 @@ plus delay, reverb and chorus sends. All are saved with the project and applied
 to playback and export. Drive uses a normalized soft-clip waveshaper before the
 compressor; chorus uses an LFO-modulated delay.
 
-The transport also exposes master-bus compression. The setting adjusts the
-master compressor threshold/knee, is saved with the project, and is applied to
-playback and export.
+The transport also exposes master-bus compression and a master 3-band EQ
+popover. Both settings are saved with the project and applied to playback and
+export.
 
 The Studio editor runs in a standalone full-screen shell rather than the
 Camxora site chrome. Its compact top bar shows project status, playhead,

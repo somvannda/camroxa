@@ -124,6 +124,9 @@ type StoredSession = {
   zoom?: number;
   master?: number;
   masterCompressor?: number;
+  masterLow?: number;
+  masterMid?: number;
+  masterHigh?: number;
   loopStart?: number;
   loopEnd?: number;
   markers?: TimelineMarker[];
@@ -555,6 +558,10 @@ export function StudioEditorView() {
   const [zoom, setZoom] = useState(1);
   const [master, setMaster] = useState(80);
   const [masterCompressor, setMasterCompressor] = useState(0);
+  const [masterLow, setMasterLow] = useState(0);
+  const [masterMid, setMasterMid] = useState(0);
+  const [masterHigh, setMasterHigh] = useState(0);
+  const [masterEqOpen, setMasterEqOpen] = useState(false);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -636,6 +643,7 @@ export function StudioEditorView() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const masterLimiterRef = useRef<DynamicsCompressorNode | null>(null);
+  const masterEqRef = useRef<{ low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode } | null>(null);
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sourcesRef = useRef<AudioScheduledSourceNode[]>([]);
   const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; delayWet: GainNode; reverbWet: GainNode }>>(new Map());
@@ -807,6 +815,9 @@ export function StudioEditorView() {
     if (Number.isFinite(saved.masterCompressor)) {
       setMasterCompressor(clamp(Number(saved.masterCompressor), 0, 100));
     }
+    if (Number.isFinite(saved.masterLow)) setMasterLow(clamp(Number(saved.masterLow), -12, 12));
+    if (Number.isFinite(saved.masterMid)) setMasterMid(clamp(Number(saved.masterMid), -12, 12));
+    if (Number.isFinite(saved.masterHigh)) setMasterHigh(clamp(Number(saved.masterHigh), -12, 12));
     if (Number.isFinite(saved.loopStart)) setLoopStart(Math.max(0, Number(saved.loopStart)));
     if (Number.isFinite(saved.loopEnd)) setLoopEnd(Math.max(1, Number(saved.loopEnd)));
     setMarkers(
@@ -854,6 +865,9 @@ export function StudioEditorView() {
               zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
               master: Number.isFinite(data.master) ? Number(data.master) : 80,
               masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
+              masterLow: Number.isFinite(data.masterLow) ? Number(data.masterLow) : 0,
+              masterMid: Number.isFinite(data.masterMid) ? Number(data.masterMid) : 0,
+              masterHigh: Number.isFinite(data.masterHigh) ? Number(data.masterHigh) : 0,
               loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
               loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
               markers: data.markers as TimelineMarker[],
@@ -899,6 +913,9 @@ export function StudioEditorView() {
                 zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
                 master: Number.isFinite(data.master) ? Number(data.master) : 80,
               masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
+              masterLow: Number.isFinite(data.masterLow) ? Number(data.masterLow) : 0,
+              masterMid: Number.isFinite(data.masterMid) ? Number(data.masterMid) : 0,
+              masterHigh: Number.isFinite(data.masterHigh) ? Number(data.masterHigh) : 0,
                 loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
                 loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
                 lanes: normalizeLanes(data.lanes),
@@ -934,12 +951,12 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, loopStart, loopEnd, markers, lanes };
+      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, lanes };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, loopStart, loopEnd, markers, lanes]);
+  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, lanes]);
 
   useEffect(() => {
     if (!loaded || !user || cloudSaveRef.current) return;
@@ -951,7 +968,7 @@ export function StudioEditorView() {
       setCloudState("saving");
       setCloudError("");
       try {
-        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor };
+        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor, masterLow, masterMid, masterHigh };
         if (sharedToken) {
           const saved = await updateStudioSharedProject(sharedToken, {
             title: sessionName,
@@ -995,7 +1012,7 @@ export function StudioEditorView() {
       }
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, loopStart, loopEnd, markers, lanes]);
+  }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, lanes]);
 
   async function openProjects() {
     setProjectsOpen(true);
@@ -1026,6 +1043,9 @@ export function StudioEditorView() {
           zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
           master: Number.isFinite(data.master) ? Number(data.master) : 80,
               masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
+              masterLow: Number.isFinite(data.masterLow) ? Number(data.masterLow) : 0,
+              masterMid: Number.isFinite(data.masterMid) ? Number(data.masterMid) : 0,
+              masterHigh: Number.isFinite(data.masterHigh) ? Number(data.masterHigh) : 0,
           loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
           loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
           markers: data.markers as TimelineMarker[],
@@ -1057,6 +1077,9 @@ export function StudioEditorView() {
       zoom,
       master,
       masterCompressor,
+      masterLow,
+      masterMid,
+      masterHigh,
       loopStart,
       loopEnd,
       markers,
@@ -1170,7 +1193,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor },
+        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor, masterLow, masterMid, masterHigh },
       });
       const share = await createStudioProjectShare(projectId, 7, sharePermission);
       setShareUrl(`${window.location.origin}${share.path}`);
@@ -1199,7 +1222,7 @@ export function StudioEditorView() {
         title: sessionName,
         bpm,
         time_signature: timeSignature,
-        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor },
+        data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor, masterLow, masterMid, masterHigh },
       });
       const created = await createStudioProjectVersion(projectId, versionLabel.trim() || undefined);
       setVersions((current) => [created, ...current]);
@@ -1273,6 +1296,9 @@ export function StudioEditorView() {
           zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
           master: Number.isFinite(data.master) ? Number(data.master) : 80,
               masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
+              masterLow: Number.isFinite(data.masterLow) ? Number(data.masterLow) : 0,
+              masterMid: Number.isFinite(data.masterMid) ? Number(data.masterMid) : 0,
+              masterHigh: Number.isFinite(data.masterHigh) ? Number(data.masterHigh) : 0,
           loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
           loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
           markers: data.markers as TimelineMarker[],
@@ -1529,6 +1555,11 @@ export function StudioEditorView() {
       masterLimiterRef.current.ratio.value = 20;
       masterLimiterRef.current.knee.value = amount * 6;
     }
+    if (masterEqRef.current) {
+      masterEqRef.current.low.gain.value = masterLow;
+      masterEqRef.current.mid.gain.value = masterMid;
+      masterEqRef.current.high.gain.value = masterHigh;
+    }
     const anySolo = lanes.some((lane) => lane.solo);
     for (const [id, node] of nodesRef.current.entries()) {
       const lane = lanes.find((item) => item.id === id);
@@ -1542,13 +1573,26 @@ export function StudioEditorView() {
       node.delayWet.gain.value = lane.delay / 100;
       node.reverbWet.gain.value = lane.reverb / 100;
     }
-  }, [lanes, master, masterCompressor]);
+  }, [lanes, master, masterCompressor, masterLow, masterMid, masterHigh]);
 
   const ensureAudioContext = useCallback((): AudioContext => {
     if (audioCtxRef.current) return audioCtxRef.current;
     const context = new AudioContext();
     const gain = context.createGain();
     gain.gain.value = master / 100;
+    const low = context.createBiquadFilter();
+    low.type = "lowshelf";
+    low.frequency.value = 120;
+    low.gain.value = masterLow;
+    const mid = context.createBiquadFilter();
+    mid.type = "peaking";
+    mid.frequency.value = 1000;
+    mid.Q.value = 0.8;
+    mid.gain.value = masterMid;
+    const high = context.createBiquadFilter();
+    high.type = "highshelf";
+    high.frequency.value = 6000;
+    high.gain.value = masterHigh;
     const limiter = context.createDynamicsCompressor();
     const amount = masterCompressor / 100;
     limiter.threshold.value = -3 - amount * 12;
@@ -1556,13 +1600,17 @@ export function StudioEditorView() {
     limiter.ratio.value = 20;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.1;
-    gain.connect(limiter);
+    gain.connect(low);
+    low.connect(mid);
+    mid.connect(high);
+    high.connect(limiter);
     limiter.connect(context.destination);
     audioCtxRef.current = context;
     masterGainRef.current = gain;
     masterLimiterRef.current = limiter;
+    masterEqRef.current = { low, mid, high };
     return context;
-  }, [master, masterCompressor]);
+  }, [master, masterCompressor, masterLow, masterMid, masterHigh]);
 
   const loadBuffer = useCallback(
     async (lane: Clip): Promise<AudioBuffer> => {
@@ -2380,7 +2428,23 @@ export function StudioEditorView() {
     limiter.ratio.value = 20;
     limiter.attack.value = 0.003;
     limiter.release.value = 0.1;
-    masterGain.connect(limiter);
+    const masterLowFilter = offline.createBiquadFilter();
+    masterLowFilter.type = "lowshelf";
+    masterLowFilter.frequency.value = 120;
+    masterLowFilter.gain.value = masterLow;
+    const masterMidFilter = offline.createBiquadFilter();
+    masterMidFilter.type = "peaking";
+    masterMidFilter.frequency.value = 1000;
+    masterMidFilter.Q.value = 0.8;
+    masterMidFilter.gain.value = masterMid;
+    const masterHighFilter = offline.createBiquadFilter();
+    masterHighFilter.type = "highshelf";
+    masterHighFilter.frequency.value = 6000;
+    masterHighFilter.gain.value = masterHigh;
+    masterGain.connect(masterLowFilter);
+    masterLowFilter.connect(masterMidFilter);
+    masterMidFilter.connect(masterHighFilter);
+    masterHighFilter.connect(limiter);
     limiter.connect(offline.destination);
     const anySolo = laneIds ? false : lanes.some((lane) => lane.solo);
     const audible = lanes.filter(
@@ -3816,6 +3880,48 @@ export function StudioEditorView() {
             <input type="range" min="0" max="100" value={masterCompressor} onChange={(event) => setMasterCompressor(Number(event.target.value))} aria-label="Master compression" />
             <b>{masterCompressor}%</b>
           </span>
+          <button
+            className={`studio-master-eq-btn${masterEqOpen ? " on" : ""}`}
+            type="button"
+            onClick={() => setMasterEqOpen((value) => !value)}
+            aria-expanded={masterEqOpen}
+            title="Master bus EQ"
+          >
+            <Icon name="fa-sliders" /> EQ
+          </button>
+          {masterEqOpen ? (
+            <div className="studio-master-eq-popover">
+              <span>Master bus EQ</span>
+              {([
+                ["Low", masterLow, setMasterLow],
+                ["Mid", masterMid, setMasterMid],
+                ["High", masterHigh, setMasterHigh],
+              ] as const).map(([label, value, setter]) => (
+                <label key={label}>
+                  {label}
+                  <input
+                    type="range"
+                    min="-12"
+                    max="12"
+                    step="0.5"
+                    value={value}
+                    onChange={(event) => setter(Number(event.target.value))}
+                  />
+                  <b>{value > 0 ? "+" : ""}{value} dB</b>
+                </label>
+              ))}
+              <button
+                type="button"
+                onClick={() => {
+                  setMasterLow(0);
+                  setMasterMid(0);
+                  setMasterHigh(0);
+                }}
+              >
+                Reset EQ
+              </button>
+            </div>
+          ) : null}
         </div>
       </div>
       {audioError ? <p className="studio-audio-error" role="alert">{audioError}</p> : null}
