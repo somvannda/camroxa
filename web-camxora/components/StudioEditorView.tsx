@@ -3376,6 +3376,18 @@ export function StudioEditorView() {
                   })()}
                 </div>
               ) : null}
+              <div className="studio-lane-colors" aria-label="Track color">
+                {COLORS.map((color) => (
+                  <button
+                    key={color}
+                    className={selectedLane.color === color ? "active" : ""}
+                    type="button"
+                    style={{ background: color }}
+                    aria-label={`Set track color ${color}`}
+                    onClick={() => updateLane(selectedLane.id, { color })}
+                  />
+                ))}
+              </div>
               <div className="studio-inspector-grid">
                 <label>Start
                   <input type="number" min={0} step={0.5} value={Number(selectedLane.start.toFixed(1))} onChange={(event) => updateLane(selectedLane.id, { start: clamp(Number(event.target.value), 0, timelineDuration - selectedLane.duration) })} />
