@@ -215,7 +215,11 @@ AI edits
   Cover
   Add vocals
   Add instrumental
+  Replace section
 ```
+
+Stems results contain two takes per stem. The editor loads one take per stem
+name so a 12-track operation adds 12 lanes instead of 24.
 
 Matching platform routes:
 

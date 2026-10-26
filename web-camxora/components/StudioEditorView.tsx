@@ -1183,7 +1183,17 @@ export function StudioEditorView() {
       }
       const clips = operation.result?.clips ?? [];
       if (!clips.length) throw new Error("Stem separation returned no clips.");
-      const next = clips.map((clip, index): Clip => {
+      // Suno returns two takes for each stem. One take is enough for a usable
+      // session; otherwise a 12-track job would add 24 lanes at once.
+      const seenStemNames = new Set<string>();
+      const selectedClips = clips.filter((clip) => {
+        const name = String(clip.title || clip.label || clip.id || "").trim().toLowerCase();
+        if (!name) return true;
+        if (seenStemNames.has(name)) return false;
+        seenStemNames.add(name);
+        return true;
+      });
+      const next = selectedClips.map((clip, index): Clip => {
         const id = String(clip.id || makeId());
         return {
           id: makeId(),
@@ -1215,7 +1225,11 @@ export function StudioEditorView() {
       });
       commitLanes([...lanes, ...next]);
       setSelected(next[0].id);
-      setStemsStatus("Stems added to the timeline");
+      setStemsStatus(
+        clips.length > selectedClips.length
+          ? `Stems added — ${selectedClips.length} lanes, one take`
+          : "Stems added to the timeline"
+      );
     } catch (cause) {
       setStemsError(cause instanceof Error ? cause.message : "Could not separate stems.");
       setStemsStatus("");
