@@ -39,7 +39,9 @@ import {
   createStudioProjectVersion,
   restoreStudioProjectVersion,
   type StudioProjectVersion,
+  type StudioShareComment,
   createStudioProjectShare,
+  listStudioProjectComments,
 } from "@/lib/studio-api";
 
 type AutomationPoint = {
@@ -548,6 +550,9 @@ export function StudioEditorView() {
   const [shareUrl, setShareUrl] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState("");
+  const [projectComments, setProjectComments] = useState<StudioShareComment[]>([]);
+  const [commentsBusy, setCommentsBusy] = useState(false);
+  const [commentsError, setCommentsError] = useState("");
   const [actionsOpen, setActionsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
@@ -866,6 +871,18 @@ export function StudioEditorView() {
   function openShare() {
     setShareOpen(true);
     setShareError("");
+    setCommentsError("");
+    if (!projectId) {
+      setProjectComments([]);
+      return;
+    }
+    setCommentsBusy(true);
+    void listStudioProjectComments(projectId)
+      .then((result) => setProjectComments(result.items))
+      .catch((cause) =>
+        setCommentsError(cause instanceof Error ? cause.message : "Could not load comments.")
+      )
+      .finally(() => setCommentsBusy(false));
   }
 
   async function createShare() {
@@ -3177,6 +3194,30 @@ export function StudioEditorView() {
               </button>
             )}
             {shareError ? <small className="studio-stem-error">{shareError}</small> : null}
+            <div className="studio-project-comments">
+              <div className="studio-project-comments-head">
+                <span>Comments</span>
+                <em>{projectComments.length}</em>
+              </div>
+              {commentsBusy ? <small>Loading comments…</small> : null}
+              {commentsError ? <small className="studio-stem-error">{commentsError}</small> : null}
+              {!commentsBusy && !projectComments.length ? (
+                <small>No comments yet. Share the link to collect feedback.</small>
+              ) : null}
+              {projectComments.map((comment) => (
+                <div className="studio-project-comment" key={comment.id}>
+                  <header>
+                    <b>{comment.author_name}</b>
+                    <span>
+                      {comment.created_at
+                        ? new Date(comment.created_at).toLocaleString()
+                        : ""}
+                    </span>
+                  </header>
+                  <p>{comment.body}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}

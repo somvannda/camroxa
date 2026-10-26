@@ -375,3 +375,12 @@ export async function addStudioShareComment(
     }
   );
 }
+
+export async function listStudioProjectComments(
+  projectId: string,
+  limit = 100
+): Promise<{ items: StudioShareComment[] }> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/comments?limit=${limit}`
+  );
+}

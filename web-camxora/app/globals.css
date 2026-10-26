@@ -2697,3 +2697,13 @@ html{color-scheme:dark}
   .studio-library-filters button{height:23px;padding:0 7px;border:1px solid rgba(148,163,184,.12);border-radius:4px;background:rgba(255,255,255,.018);color:#64748b;font:inherit;font-size:8px;white-space:nowrap;cursor:pointer}
   .studio-library-filters button:hover{color:#cbd5e1;border-color:rgba(168,85,247,.28)}
   .studio-library-filters button.active{background:rgba(139,92,246,.13);border-color:rgba(168,85,247,.3);color:#ddd6fe}
+
+  .studio-project-comments{margin-top:14px;padding-top:12px;border-top:1px solid rgba(148,163,184,.12);display:grid;gap:6px}
+  .studio-project-comments-head{display:flex;align-items:center;justify-content:space-between;font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:#c4b5fd}
+  .studio-project-comments-head em{font-style:normal;letter-spacing:0;color:#64748b}
+  .studio-project-comments>small{font-size:8.5px;color:#64748b;line-height:1.4}
+  .studio-project-comment{padding:8px 9px;border:1px solid rgba(148,163,184,.12);border-radius:6px;background:rgba(255,255,255,.018)}
+  .studio-project-comment header{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px}
+  .studio-project-comment b{font-size:9px;color:#e2e8f0}
+  .studio-project-comment span{font-size:8px;color:#64748b}
+  .studio-project-comment p{margin:0;font-size:9px;line-height:1.45;color:#cbd5e1;white-space:pre-wrap}

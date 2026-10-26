@@ -334,7 +334,8 @@ POST /api/v3/web-music/studio/shares/{token}/comments
 GET  /api/v3/web-music/studio/projects/{project_id}/comments
 ```
 
-Comments are stored against the project and appear on the shared page. Real-time
+Comments are stored against the project and appear on the shared page. The
+project owner can also read them from the Studio **Share** dialog. Real-time
 co-editing is not included yet.
 
 The Inspector supports per-clip **volume and pan automation** points. Points
