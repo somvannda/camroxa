@@ -407,6 +407,9 @@ export function StudioEditorView() {
   const [exportError, setExportError] = useState("");
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [recordSeconds, setRecordSeconds] = useState(0);
+  const [recordError, setRecordError] = useState("");
   const [exportFormat, setExportFormat] = useState<"wav" | "mp3">("wav");
   const [exportRange, setExportRange] = useState<"full" | "loop">("full");
   const [loop, setLoop] = useState(false);
@@ -444,6 +447,10 @@ export function StudioEditorView() {
   const startedAtRef = useRef(0);
   const startPlayheadRef = useRef(0);
   const rafRef = useRef<number | null>(null);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordStreamRef = useRef<MediaStream | null>(null);
+  const recordChunksRef = useRef<Blob[]>([]);
+  const recordTimerRef = useRef<number | null>(null);
 
   const storageKey = user ? `${STORAGE_PREFIX}:${user.id}` : "";
   const cloudSaveRef = useRef(false);
@@ -460,6 +467,14 @@ export function StudioEditorView() {
     loopStartRef.current = loopStart;
     loopEndRef.current = loopEnd;
   }, [loopStart, loopEnd]);
+
+  useEffect(() => {
+    return () => {
+      if (recordTimerRef.current !== null) window.clearInterval(recordTimerRef.current);
+      recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recorderRef.current = null;
+    };
+  }, []);
 
   useEffect(() => {
     if (!user) return;
@@ -1165,6 +1180,75 @@ export function StudioEditorView() {
     setSelected(lane.id);
   }
 
+  async function startRecording() {
+    if (recording || importing) return;
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      setRecordError("Microphone recording is not supported in this browser.");
+      return;
+    }
+    setRecordError("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : "audio/webm";
+      const recorder = new MediaRecorder(stream, { mimeType });
+      recordStreamRef.current = stream;
+      recorderRef.current = recorder;
+      recordChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) recordChunksRef.current.push(event.data);
+      };
+      recorder.onerror = () => {
+        setRecordError("Recording failed. Check the microphone permission.");
+        setRecording(false);
+      };
+      recorder.onstop = () => {
+        if (recordTimerRef.current !== null) {
+          window.clearInterval(recordTimerRef.current);
+          recordTimerRef.current = null;
+        }
+        stream.getTracks().forEach((track) => track.stop());
+        recordStreamRef.current = null;
+        setRecording(false);
+        const blob = new Blob(recordChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        recordChunksRef.current = [];
+        if (blob.size > 0) {
+          const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+          const file = new File([blob], `Recording ${stamp}.webm`, {
+            type: blob.type || "audio/webm",
+          });
+          void importAudioFile(file);
+        }
+      };
+      recorder.start(250);
+      setRecording(true);
+      setRecordSeconds(0);
+      recordTimerRef.current = window.setInterval(
+        () => setRecordSeconds((value) => value + 1),
+        1000
+      );
+    } catch (cause) {
+      recordStreamRef.current?.getTracks().forEach((track) => track.stop());
+      recordStreamRef.current = null;
+      setRecordError(
+        cause instanceof Error ? cause.message : "Could not access the microphone."
+      );
+    }
+  }
+
+  function stopRecording() {
+    if (recordTimerRef.current !== null) {
+      window.clearInterval(recordTimerRef.current);
+      recordTimerRef.current = null;
+    }
+    if (recorderRef.current && recorderRef.current.state !== "inactive") {
+      recorderRef.current.stop();
+    }
+  }
+
   async function importAudioFile(file: File) {
     if (importing) return;
     if (file.size > 50 * 1024 * 1024) {
@@ -1657,7 +1741,20 @@ export function StudioEditorView() {
               hidden
             />
           </label>
+          <button
+            className={`btn btn-ghost studio-record-btn${recording ? " recording" : ""}`}
+            type="button"
+            onClick={() => (recording ? stopRecording() : void startRecording())}
+            disabled={importing}
+            title="Record from the microphone"
+          >
+            <Icon name={recording ? "fa-stop" : "fa-microphone"} />
+            {recording
+              ? `Stop ${String(Math.floor(recordSeconds / 60)).padStart(2, "0")}:${String(recordSeconds % 60).padStart(2, "0")}`
+              : "Record"}
+          </button>
           {importError ? <small className="studio-import-error">{importError}</small> : null}
+          {recordError ? <small className="studio-import-error">{recordError}</small> : null}
           <div className="studio-export-group">
             <select
               className="studio-export-format"

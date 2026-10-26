@@ -257,6 +257,10 @@ Uploads are limited to 50 MB audio files, stored in the platform streaming
 bucket, and referenced by `uploadId` in the project. The editor re-signs the
 URL when loading, so imported tracks survive reloads and URL expiry.
 
+Studio also supports microphone recording. A finished recording is uploaded
+through the same durable upload endpoint and added as a normal track, so it can
+be edited and exported like any imported or generated clip.
+
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume
 automation overrides the clip fades when points are present. Pan automation
