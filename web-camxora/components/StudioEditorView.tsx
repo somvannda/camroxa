@@ -80,6 +80,7 @@ type Clip = {
   high: number;
   delay: number;
   reverb: number;
+  chorus: number;
   compressor: number;
   drive: number;
   volume: number;
@@ -369,6 +370,40 @@ function connectTrackDrive(
   shaper.connect(output);
 }
 
+function connectTrackChorus(
+  context: BaseAudioContext,
+  input: AudioNode,
+  output: AudioNode,
+  lane: Clip,
+  when: number,
+  length: number
+) {
+  const amount = clamp(lane.chorus / 100, 0, 1);
+  if (amount <= 0) {
+    input.connect(output);
+    return;
+  }
+  const dry = context.createGain();
+  dry.gain.value = 1;
+  const wet = context.createGain();
+  wet.gain.value = amount * 0.45;
+  const delay = context.createDelay(0.08);
+  delay.delayTime.value = 0.024;
+  const lfo = context.createOscillator();
+  lfo.frequency.value = 0.35 + amount * 0.55;
+  const depth = context.createGain();
+  depth.gain.value = 0.002 + amount * 0.006;
+  lfo.connect(depth);
+  depth.connect(delay.delayTime);
+  input.connect(dry);
+  dry.connect(output);
+  input.connect(delay);
+  delay.connect(wet);
+  wet.connect(output);
+  lfo.start(when);
+  lfo.stop(when + Math.max(0.1, length) + 0.1);
+}
+
 function connectTrackDynamics(
   context: BaseAudioContext,
   input: AudioNode,
@@ -459,6 +494,7 @@ function clipFromGeneration(
     high: 0,
     delay: 0,
     reverb: 0,
+    chorus: 0,
     compressor: 0,
     drive: 0,
     volume: 80,
@@ -608,6 +644,7 @@ export function StudioEditorView() {
         high: Number.isFinite(lane.high) ? clamp(Number(lane.high), -12, 12) : 0,
         delay: Number.isFinite(lane.delay) ? clamp(Number(lane.delay), 0, 100) : 0,
         reverb: Number.isFinite(lane.reverb) ? clamp(Number(lane.reverb), 0, 100) : 0,
+        chorus: Number.isFinite(lane.chorus) ? clamp(Number(lane.chorus), 0, 100) : 0,
         compressor: Number.isFinite(lane.compressor) ? clamp(Number(lane.compressor), 0, 100) : 0,
         drive: Number.isFinite(lane.drive) ? clamp(Number(lane.drive), 0, 100) : 0,
         automation: Array.isArray(lane.automation)
@@ -1219,12 +1256,14 @@ export function StudioEditorView() {
           source.connect(low);
           low.connect(mid);
           mid.connect(high);
+          const startWhen = startAt + Math.max(0, lane.start - from);
+          const chorusOut = context.createGain();
+          connectTrackChorus(context, high, chorusOut, lane, startWhen, remaining);
           const driveOut = context.createGain();
-          connectTrackDrive(context, high, driveOut, lane);
+          connectTrackDrive(context, chorusOut, driveOut, lane);
           connectTrackDynamics(context, driveOut, gain, lane);
           gain.connect(panner);
           const fx = connectTrackFx(context, panner, masterGain, lane);
-          const startWhen = startAt + Math.max(0, lane.start - from);
           scheduleClipGain(gain, lane.volume / 100, lane, from, startWhen, remaining);
           schedulePanAutomation(panner, lane, from, startWhen, remaining);
           source.start(startWhen, offset, remaining);
@@ -1541,6 +1580,7 @@ export function StudioEditorView() {
         high: 0,
         delay: 0,
         reverb: 0,
+        chorus: 0,
         compressor: 0,
         drive: 0,
         volume: 80,
@@ -1582,6 +1622,7 @@ export function StudioEditorView() {
       high: 0,
       delay: 0,
       reverb: 0,
+      chorus: 0,
       compressor: 0,
       drive: 0,
       volume: 80,
@@ -1733,21 +1774,17 @@ export function StudioEditorView() {
       source.connect(low);
       low.connect(mid);
       mid.connect(high);
+      const when = clipStart - start;
+      const chorusOut = offline.createGain();
+      connectTrackChorus(offline, high, chorusOut, lane, when, length);
       const driveOut = offline.createGain();
-      connectTrackDrive(offline, high, driveOut, lane);
+      connectTrackDrive(offline, chorusOut, driveOut, lane);
       connectTrackDynamics(offline, driveOut, gain, lane);
       gain.connect(panner);
       connectTrackFx(offline, panner, masterGain, lane);
-      scheduleClipGain(
-        gain,
-        lane.volume / 100,
-        lane,
-        clipStart,
-        clipStart - start,
-        length
-      );
-      schedulePanAutomation(panner, lane, clipStart, clipStart - start, length);
-      source.start(clipStart - start, offset, length);
+      scheduleClipGain(gain, lane.volume / 100, lane, clipStart, when, length);
+      schedulePanAutomation(panner, lane, clipStart, when, length);
+      source.start(when, offset, length);
     }
     return offline.startRendering();
   }
@@ -1852,6 +1889,7 @@ export function StudioEditorView() {
         high: 0,
         delay: 0,
         reverb: 0,
+        chorus: 0,
         compressor: 0,
         drive: 0,
         volume: 80,
@@ -1966,6 +2004,7 @@ export function StudioEditorView() {
           high: 0,
           delay: 0,
           reverb: 0,
+          chorus: 0,
           compressor: 0,
           drive: 0,
           volume: 80,
@@ -2506,13 +2545,16 @@ export function StudioEditorView() {
               <div className="studio-eq">
                 <div className="studio-eq-head">
                   <span>FX sends</span>
-                  <button type="button" onClick={() => updateLane(selectedLane.id, { delay: 0, reverb: 0 })}>Reset</button>
+                  <button type="button" onClick={() => updateLane(selectedLane.id, { delay: 0, reverb: 0, chorus: 0 })}>Reset</button>
                 </div>
                 <label>Delay <b>{selectedLane.delay}%</b>
                   <input type="range" min="0" max="100" step="1" value={selectedLane.delay} onChange={(event) => updateLane(selectedLane.id, { delay: Number(event.target.value) })} />
                 </label>
                 <label>Reverb <b>{selectedLane.reverb}%</b>
                   <input type="range" min="0" max="100" step="1" value={selectedLane.reverb} onChange={(event) => updateLane(selectedLane.id, { reverb: Number(event.target.value) })} />
+                </label>
+                <label>Chorus <b>{selectedLane.chorus}%</b>
+                  <input type="range" min="0" max="100" step="1" value={selectedLane.chorus} onChange={(event) => updateLane(selectedLane.id, { chorus: Number(event.target.value) })} />
                 </label>
               </div>
               <div className="studio-eq">
