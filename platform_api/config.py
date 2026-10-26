@@ -93,6 +93,8 @@ class Settings(BaseSettings):
     # envelope), so it replaces the legacy upstream `https://apibox.erweima.ai`.
     # Overridable per environment via PLATFORM_SUNO_API_BASE_URL.
     suno_api_base_url: str = "https://musicapi.camxora.com"
+    # Service-to-service bearer for musicapi /internal/studio/* routes.
+    studio_internal_token: str = ""
     suno_callback_base_url: str = ""
     suno_callback_hmac_secret: str = ""
     # Comma-separated IPs allowed when HMAC is not configured (dev/staging only).

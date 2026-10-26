@@ -168,6 +168,39 @@ The next required layer is a `platform_api` proxy that authenticates the
 Camxora user, checks ownership and credits, and calls these musicapi routes.
 Studio project ids and clip ids must be linked to the caller's account.
 
+### Studio Stems API (implemented)
+
+```text
+POST /api/v3/web-music/studio/generations/{task_id}/stems
+GET  /api/v3/web-music/studio/operations/{operation_id}
+```
+
+- `variant`: `ok` or `alt`
+- `mode`: `vocal`, `stems`, or `advanced`
+- Verifies the Camxora user owns the generation
+- Stores a `studio_operations` row
+- Calls `musicapi /internal/studio/stems`
+- Polls the internal job
+- Returns the stem clips
+
+Configuration:
+
+```text
+platform_api: PLATFORM_STUDIO_INTERNAL_TOKEN
+musicapi:     STUDIO_INTERNAL_TOKEN
+```
+
+The token must match in both services. It is never sent to the browser.
+
+The Studio inspector now has:
+
+```text
+Vocals + instrumental
+Full stems
+```
+
+Current implementation does **not** charge a separate stems credit price yet.
+
 ## 4. Architecture decision
 
 ```text

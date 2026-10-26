@@ -22,6 +22,8 @@ import {
   listStudioProjects,
   updateStudioProject,
   type StudioProjectData,
+  requestStudioStems,
+  getStudioOperation,
 } from "@/lib/studio-api";
 
 type Clip = {
@@ -37,6 +39,7 @@ type Clip = {
   offset: number;
   fadeIn: number;
   fadeOut: number;
+  audioUrl?: string | null;
   low: number;
   mid: number;
   high: number;
@@ -292,6 +295,7 @@ function clipFromGeneration(
     offset: 0,
     fadeIn: 0,
     fadeOut: 0,
+    audioUrl: null,
     low: 0,
     mid: 0,
     high: 0,
@@ -331,6 +335,9 @@ export function StudioEditorView() {
   const [projectId, setProjectId] = useState<string | null>(null);
   const [cloudState, setCloudState] = useState<"local" | "saving" | "saved" | "error">("local");
   const [cloudError, setCloudError] = useState("");
+  const [stemsBusy, setStemsBusy] = useState(false);
+  const [stemsStatus, setStemsStatus] = useState("");
+  const [stemsError, setStemsError] = useState("");
   const [history, setHistory] = useState<Clip[][]>([]);
   const [future, setFuture] = useState<Clip[][]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -649,12 +656,20 @@ export function StudioEditorView() {
 
   const loadBuffer = useCallback(
     async (lane: Clip): Promise<AudioBuffer> => {
-      const key = `${lane.generationId}:${lane.variant}`;
+      const key = lane.audioUrl ? `url:${lane.audioUrl}` : `${lane.generationId}:${lane.variant}`;
       const cached = buffersRef.current.get(key);
       if (cached) return cached;
       const context = ensureAudioContext();
-      const blob = await fetchWebMusicClipBlob(lane.generationId, lane.variant);
-      const buffer = await context.decodeAudioData(await blob.arrayBuffer());
+      let bytes: ArrayBuffer;
+      if (lane.audioUrl) {
+        const response = await fetch(lane.audioUrl, { credentials: "include" });
+        if (!response.ok) throw new Error(`Could not load stem audio (${response.status}).`);
+        bytes = await response.arrayBuffer();
+      } else {
+        const blob = await fetchWebMusicClipBlob(lane.generationId, lane.variant);
+        bytes = await blob.arrayBuffer();
+      }
+      const buffer = await context.decodeAudioData(bytes);
       buffersRef.current.set(key, buffer);
       setAudioMeta((current) =>
         current[key]
@@ -1053,6 +1068,72 @@ export function StudioEditorView() {
     }
   }
 
+  async function separateStems(mode: "vocal" | "stems") {
+    if (!selectedLane || stemsBusy) return;
+    if (selectedLane.variant !== "ok" && selectedLane.variant !== "alt") {
+      setStemsError("Select an original version before separating stems.");
+      return;
+    }
+    setStemsBusy(true);
+    setStemsError("");
+    setStemsStatus("Submitting stems?");
+    try {
+      let operation = await requestStudioStems({
+        taskId: selectedLane.generationId,
+        variant: selectedLane.variant,
+        mode,
+        projectId,
+      });
+      setStemsStatus(operation.status === "complete" ? "Stems ready" : "Separating stems?");
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        if (["complete", "success", "error", "failed"].includes(operation.status.toLowerCase())) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        operation = await getStudioOperation(operation.id);
+        setStemsStatus(operation.status === "complete" ? "Stems ready" : "Separating stems?");
+      }
+      if (["error", "failed"].includes(operation.status.toLowerCase())) {
+        throw new Error(operation.error_message || "Stem separation failed.");
+      }
+      const clips = operation.result?.clips ?? [];
+      if (!clips.length) throw new Error("Stem separation returned no clips.");
+      const next = clips.map((clip, index): Clip => {
+        const id = String(clip.id || makeId());
+        return {
+          id: makeId(),
+          generationId: selectedLane.generationId,
+          variant: `stem-${id}`,
+          title: clip.title || clip.label || `${mode === "vocal" ? "Stem" : "Stem"} ${index + 1}`,
+          style: selectedLane.style,
+          color: COLORS[(lanes.length + index) % COLORS.length],
+          image: clip.image_url || selectedLane.image,
+          start: selectedLane.start,
+          duration: Math.max(12, Math.round(Number(clip.duration_seconds || clip.duration || selectedLane.duration))),
+          offset: 0,
+          fadeIn: 0,
+          fadeOut: 0,
+          audioUrl: clip.audio_url || null,
+          low: 0,
+          mid: 0,
+          high: 0,
+          delay: 0,
+          reverb: 0,
+          volume: 80,
+          pan: 0,
+          muted: false,
+          solo: false,
+        };
+      });
+      commitLanes([...lanes, ...next]);
+      setSelected(next[0].id);
+      setStemsStatus("Stems added to the timeline");
+    } catch (cause) {
+      setStemsError(cause instanceof Error ? cause.message : "Could not separate stems.");
+      setStemsStatus("");
+    } finally {
+      setStemsBusy(false);
+    }
+  }
+
   function deleteSelected() {
     if (!selectedLane) return;
     commitLanes(lanes.filter((lane) => lane.id !== selectedLane.id));
@@ -1431,6 +1512,19 @@ export function StudioEditorView() {
               <div className="studio-inspector-actions">
                 <button type="button" onClick={splitSelected} disabled={!canSplit}>Split</button>
                 <button type="button" onClick={duplicateSelected}>Duplicate</button>
+              </div>
+              <div className="studio-stem-actions">
+                <span>Separate stems</span>
+                <div>
+                  <button type="button" onClick={() => void separateStems("vocal")} disabled={stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}>
+                    <Icon name="fa-user" /> Vocals + instrumental
+                  </button>
+                  <button type="button" onClick={() => void separateStems("stems")} disabled={stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}>
+                    <Icon name="fa-layer-group" /> Full stems
+                  </button>
+                </div>
+                {stemsStatus ? <small>{stemsStatus}</small> : null}
+                {stemsError ? <small className="studio-stem-error">{stemsError}</small> : null}
               </div>
               <button className="studio-inspector-delete" type="button" onClick={deleteSelected}>
                 <Icon name="fa-trash" /> Remove from session

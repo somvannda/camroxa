@@ -494,6 +494,37 @@ async def fork_studio_project(
     )
 
 
+class StudioStemsRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    mode: Literal["vocal", "stems", "advanced"] = "vocal"
+    project_id: UUID | None = None
+
+
+@router.post("/studio/generations/{task_id}/stems", status_code=202)
+async def request_studio_stems(
+    task_id: UUID,
+    body: StudioStemsRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_stems(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        mode=body.mode,
+        project_id=body.project_id,
+    )
+
+
+@router.get("/studio/operations/{operation_id}")
+async def get_studio_operation(
+    operation_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.get_studio_operation(UUID(ctx.user_id), operation_id)
+
+
 @router.get("/quota", response_model=WebMusicQuotaResponse)
 async def get_quota(ctx: CurrentUserDep, service: WebMusicServiceDep) -> WebMusicQuotaResponse:
     return WebMusicQuotaResponse(**await service.usage_today(UUID(ctx.user_id)))

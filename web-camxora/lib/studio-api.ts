@@ -89,3 +89,50 @@ export async function updateStudioProject(
     body: JSON.stringify(input),
   });
 }
+
+export type StudioOperation = {
+  id: string;
+  project_id?: string | null;
+  task_id: string;
+  variant: string;
+  provider_clip_id: string;
+  operation_type: string;
+  mode: string;
+  status: string;
+  musicapi_job_id?: string | null;
+  result?: {
+    clips?: Array<{
+      id?: string;
+      title?: string;
+      label?: string;
+      audio_url?: string;
+      image_url?: string | null;
+      duration?: number;
+      duration_seconds?: number | null;
+      [key: string]: unknown;
+    }>;
+  } | null;
+  credits_charged: number;
+  error_message?: string | null;
+};
+
+export async function requestStudioStems(input: {
+  taskId: string;
+  variant: string;
+  mode: "vocal" | "stems" | "advanced";
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/stems`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      variant: input.variant,
+      mode: input.mode,
+      project_id: input.projectId || undefined,
+    }),
+  });
+}
+
+export async function getStudioOperation(id: string): Promise<StudioOperation> {
+  return studioJson(`/api/v3/web-music/studio/operations/${encodeURIComponent(id)}`);
+}

@@ -6,6 +6,8 @@ import asyncio
 import json
 import logging
 import re
+
+import httpx
 from datetime import date, datetime, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
@@ -1737,6 +1739,192 @@ class WebMusicService:
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         return self._studio_project_payload(row)
+
+    def _studio_operation_payload(self, row: Any) -> dict[str, Any]:
+        result = row["result_json"] if hasattr(row, "get") else row["result_json"]
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except Exception:
+                result = None
+        return {
+            "id": str(row["id"]),
+            "project_id": str(row["project_id"]) if row["project_id"] else None,
+            "task_id": str(row["task_id"]),
+            "variant": str(row["variant"]),
+            "provider_clip_id": str(row["provider_clip_id"]),
+            "operation_type": str(row["operation_type"]),
+            "mode": str(row["mode"]),
+            "status": str(row["status"]),
+            "musicapi_job_id": str(row["musicapi_job_id"]) if row["musicapi_job_id"] else None,
+            "result": result,
+            "credits_charged": int(row["credits_charged"] or 0),
+            "error_message": row["error_message"],
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+
+    async def request_studio_stems(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        mode: str = "vocal",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        if variant not in ("ok", "alt"):
+            raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
+        if mode not in ("vocal", "stems", "advanced"):
+            raise ValidationError("mode must be vocal, stems or advanced.", details={"field": "mode"})
+        row = await self._pool.fetchrow(
+            """
+            SELECT id, status, audio_id_ok, audio_id_alt
+            FROM suno_tasks
+            WHERE id = $1 AND user_id = $2
+            """,
+            task_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found.", details={"task_id": str(task_id)})
+        if str(row["status"] or "").lower() != "success":
+            raise ValidationError("The clip is not ready for stems yet.", details={"field": "status"})
+        provider_clip_id = str(row["audio_id_ok" if variant == "ok" else "audio_id_alt"] or "").strip()
+        if not provider_clip_id:
+            raise ValidationError("The selected clip has no provider clip id.", details={"field": "variant"})
+
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        op = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_operations
+                (user_id, project_id, task_id, variant, provider_clip_id, operation_type, mode, status)
+            VALUES ($1, $2, $3, $4, $5, 'stems', $6, 'queued')
+            RETURNING *
+            """,
+            user_id,
+            project_id,
+            task_id,
+            variant,
+            provider_clip_id,
+            mode,
+        )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.post(
+                    f"{base}/internal/studio/stems",
+                    headers={"x-internal-token": token},
+                    json={"clip_id": provider_clip_id, "mode": mode},
+                )
+                if response.status_code >= 400:
+                    detail = "Studio stems request failed."
+                    try:
+                        detail = str((response.json() or {}).get("error") or detail)
+                    except Exception:
+                        pass
+                    await self._pool.execute(
+                        "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                        op["id"],
+                        detail,
+                    )
+                    raise ExternalServiceError(
+                        detail,
+                        is_retryable=False,
+                        details={"provider": "musicapi", "operation": "stems"},
+                    )
+                payload = response.json()
+        except ExternalServiceError:
+            raise
+        except Exception as exc:
+            await self._pool.execute(
+                "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                op["id"],
+                str(exc),
+            )
+            raise ExternalServiceError(
+                "Could not reach the Studio stems service.",
+                is_retryable=True,
+                details={"provider": "musicapi", "operation": "stems"},
+            ) from exc
+        job_id = str(payload.get("job_id") or "")
+        updated = await self._pool.fetchrow(
+            """
+            UPDATE studio_operations
+            SET musicapi_job_id=$2, status=$3, updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            op["id"],
+            job_id or None,
+            str(payload.get("status") or "queued").lower(),
+        )
+        return self._studio_operation_payload(updated)
+
+    async def get_studio_operation(self, user_id: UUID, operation_id: UUID) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_operations WHERE id = $1 AND user_id = $2",
+            operation_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Studio operation not found.", details={"operation_id": str(operation_id)})
+        if str(row["status"]).lower() in ("complete", "error", "failed"):
+            return self._studio_operation_payload(row)
+        job_id = str(row["musicapi_job_id"] or "").strip()
+        if not job_id:
+            return self._studio_operation_payload(row)
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.get(
+                    f"{base}/internal/studio/jobs/{job_id}",
+                    headers={"x-internal-token": token},
+                )
+                response.raise_for_status()
+                payload = response.json()
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Could not poll the Studio stems service.",
+                is_retryable=True,
+                details={"provider": "musicapi", "operation": "stems"},
+            ) from exc
+        status = str(payload.get("status") or row["status"]).lower()
+        result = payload.get("result")
+        error = payload.get("error")
+        updated = await self._pool.fetchrow(
+            """
+            UPDATE studio_operations
+            SET status=$2,
+                result_json=$3::jsonb,
+                error_message=$4,
+                updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            operation_id,
+            status,
+            json.dumps(result) if result is not None else None,
+            str(error) if error else None,
+        )
+        return self._studio_operation_payload(updated)
 
     async def list_generations(
         self,
