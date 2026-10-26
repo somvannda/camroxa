@@ -540,6 +540,32 @@ async def restore_studio_project_version(
     )
 
 
+class StudioShareCreateRequest(BaseModel):
+    expires_days: int = Field(default=7, ge=1, le=90)
+
+
+@router.post("/studio/projects/{project_id}/shares", status_code=201)
+async def create_studio_project_share(
+    project_id: UUID,
+    body: StudioShareCreateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.create_studio_project_share(
+        UUID(ctx.user_id),
+        project_id,
+        expires_days=body.expires_days,
+    )
+
+
+@router.get("/studio/shares/{token}")
+async def get_studio_shared_project(
+    token: str,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.get_studio_shared_project(token)
+
+
 class StudioStemsRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     mode: Literal["vocal", "stems", "advanced"] = "vocal"

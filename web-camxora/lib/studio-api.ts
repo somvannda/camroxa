@@ -318,3 +318,28 @@ export async function restoreStudioProjectVersion(
     { method: "POST" }
   );
 }
+
+export type StudioProjectShare = {
+  id: string;
+  token: string;
+  path: string;
+  expires_at: string;
+};
+
+export async function createStudioProjectShare(
+  projectId: string,
+  expiresDays = 7
+): Promise<StudioProjectShare> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/shares`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expires_days: expiresDays }),
+    }
+  );
+}
+
+export async function getStudioSharedProject(token: string): Promise<StudioProject> {
+  return studioJson(`/api/v3/web-music/studio/shares/${encodeURIComponent(token)}`);
+}

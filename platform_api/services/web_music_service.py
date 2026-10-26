@@ -6,9 +6,10 @@ import asyncio
 import json
 import logging
 import re
+import secrets
 
 import httpx
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
 from urllib.parse import quote
@@ -1889,6 +1890,84 @@ class WebMusicService:
                 details={"project_id": str(project_id)},
             )
         return self._studio_project_payload(row)
+
+    async def create_studio_project_share(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        *,
+        expires_days: int = 7,
+    ) -> dict[str, Any]:
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError(
+                "Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        token = secrets.token_urlsafe(24)
+        expires_at = datetime.now(timezone.utc) + timedelta(
+            days=max(1, min(int(expires_days), 90))
+        )
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_project_shares
+                (project_id, user_id, token, expires_at)
+            VALUES ($1, $2, $3, $4)
+            RETURNING *
+            """,
+            project_id,
+            user_id,
+            token,
+            expires_at,
+        )
+        return {
+            "id": str(row["id"]),
+            "token": token,
+            "path": f"/studio/shared/{token}",
+            "expires_at": expires_at.isoformat(),
+        }
+
+    async def get_studio_shared_project(self, token: str) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            """
+            SELECT
+                p.id AS project_id,
+                p.title,
+                p.major_version,
+                p.bpm,
+                p.time_signature,
+                p.data,
+                p.created_at AS project_created_at,
+                p.updated_at AS project_updated_at
+            FROM studio_project_shares s
+            JOIN studio_projects p ON p.id = s.project_id
+            WHERE s.token = $1
+              AND s.revoked_at IS NULL
+              AND (s.expires_at IS NULL OR s.expires_at > now())
+            """,
+            str(token or "").strip(),
+        )
+        if row is None:
+            raise NotFoundError("Shared Studio project not found or expired.")
+        # The join exposes share and project columns; build from the project
+        # fields without returning the share token in the project payload.
+        project_row = {
+            "id": row["project_id"],
+            "title": row["title"],
+            "major_version": row["major_version"],
+            "bpm": row["bpm"],
+            "time_signature": row["time_signature"],
+            "data": row["data"],
+            "created_at": row["project_created_at"],
+            "updated_at": row["project_updated_at"],
+        }
+        payload = self._studio_project_payload(project_row)
+        payload["read_only"] = True
+        return payload
 
     def _studio_upload_payload(self, row: Any, url: str) -> dict[str, Any]:
         return {

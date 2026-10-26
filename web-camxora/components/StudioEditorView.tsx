@@ -39,6 +39,7 @@ import {
   createStudioProjectVersion,
   restoreStudioProjectVersion,
   type StudioProjectVersion,
+  createStudioProjectShare,
 } from "@/lib/studio-api";
 
 type AutomationPoint = {
@@ -505,6 +506,10 @@ export function StudioEditorView() {
   const [versionsBusy, setVersionsBusy] = useState(false);
   const [versionsError, setVersionsError] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareBusy, setShareBusy] = useState(false);
+  const [shareError, setShareError] = useState("");
   const [stemsBusy, setStemsBusy] = useState(false);
   const [stemsStatus, setStemsStatus] = useState("");
   const [stemsError, setStemsError] = useState("");
@@ -764,6 +769,43 @@ export function StudioEditorView() {
       setVersionsError(cause instanceof Error ? cause.message : "Could not load versions.");
     } finally {
       setVersionsBusy(false);
+    }
+  }
+
+  function openShare() {
+    setShareOpen(true);
+    setShareError("");
+  }
+
+  async function createShare() {
+    if (!projectId || shareBusy) {
+      if (!projectId) setShareError("Save the project to the cloud before sharing.");
+      return;
+    }
+    setShareBusy(true);
+    setShareError("");
+    try {
+      await updateStudioProject(projectId, {
+        title: sessionName,
+        bpm,
+        time_signature: "4/4",
+        data: { lanes, loopStart, loopEnd, zoom, master },
+      });
+      const share = await createStudioProjectShare(projectId, 7);
+      setShareUrl(`${window.location.origin}${share.path}`);
+    } catch (cause) {
+      setShareError(cause instanceof Error ? cause.message : "Could not create share link.");
+    } finally {
+      setShareBusy(false);
+    }
+  }
+
+  async function copyShare() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+    } catch {
+      /* Clipboard may be unavailable on plain HTTP. */
     }
   }
 
@@ -1978,6 +2020,9 @@ export function StudioEditorView() {
           <button className="btn btn-ghost" type="button" onClick={() => void openVersions()} disabled={versionsBusy}>
             <Icon name="fa-clock-rotate-left" /> Versions
           </button>
+          <button className="btn btn-ghost" type="button" onClick={openShare}>
+            <Icon name="fa-share-nodes" /> Share
+          </button>
           <Link className="btn btn-ghost" href="/create">Create a track</Link>
           <label className="btn btn-ghost studio-import-btn" title="Import an audio file as a Studio track">
             <Icon name={importing ? "fa-spinner" : "fa-upload"} />
@@ -2679,6 +2724,40 @@ export function StudioEditorView() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      ) : null}
+      {shareOpen ? (
+        <div className="studio-modal-backdrop" role="dialog" aria-modal="true" aria-label="Share project">
+          <div className="studio-versions-modal studio-share-modal">
+            <div className="studio-versions-head">
+              <div>
+                <h2>Share project</h2>
+                <p>Create a read-only link that expires in 7 days.</p>
+              </div>
+              <button type="button" aria-label="Close share" onClick={() => setShareOpen(false)}>
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            {shareUrl ? (
+              <>
+                <div className="studio-share-link">
+                  <input readOnly value={shareUrl} onFocus={(event) => event.currentTarget.select()} />
+                  <button className="btn btn-primary" type="button" onClick={() => void copyShare()}>
+                    <Icon name="fa-copy" /> Copy
+                  </button>
+                </div>
+                <a className="studio-share-open" href={shareUrl} target="_blank" rel="noreferrer">
+                  Open read-only preview <Icon name="fa-arrow-up-right-from-square" />
+                </a>
+              </>
+            ) : (
+              <button className="btn btn-primary" type="button" onClick={() => void createShare()} disabled={shareBusy || !projectId}>
+                <Icon name={shareBusy ? "fa-spinner" : "fa-link"} />
+                {shareBusy ? "Creating…" : "Create share link"}
+              </button>
+            )}
+            {shareError ? <small className="studio-stem-error">{shareError}</small> : null}
           </div>
         </div>
       ) : null}

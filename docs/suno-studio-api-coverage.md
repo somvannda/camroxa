@@ -278,6 +278,17 @@ POST /api/v3/web-music/studio/projects/{id}/versions/{version_id}/restore
 Snapshots include lanes, loop, zoom and master settings; the newest 50 are
 retained per project.
 
+Read-only Studio sharing is available from the **Share** dialog:
+
+```text
+POST /api/v3/web-music/studio/projects/{id}/shares
+GET  /api/v3/web-music/studio/shares/{token}
+```
+
+Share links expire after 7 days and open `/studio/shared/{token}`, a public
+read-only view of the project title, BPM, tracks and arrangement. Real-time
+co-editing is not included yet.
+
 The Inspector supports per-clip **volume and pan automation** points. Points
 are saved with the project and applied to both playback and export; volume
 automation overrides the clip fades when points are present. Pan automation
