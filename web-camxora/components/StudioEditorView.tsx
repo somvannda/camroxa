@@ -104,6 +104,7 @@ type DragState = {
 type StoredSession = {
   name?: string;
   bpm?: number;
+  timeSignature?: string;
   zoom?: number;
   master?: number;
   loopStart?: number;
@@ -517,6 +518,7 @@ export function StudioEditorView() {
   const [selected, setSelected] = useState<string | null>(null);
   const [sessionName, setSessionName] = useState("Untitled session");
   const [bpm, setBpm] = useState(90);
+  const [timeSignature, setTimeSignature] = useState("4/4");
   const [zoom, setZoom] = useState(1);
   const [master, setMaster] = useState(80);
   const [playhead, setPlayhead] = useState(0);
@@ -739,6 +741,9 @@ export function StudioEditorView() {
     setSelected(savedLanes[0]?.id ?? null);
     if (saved.name) setSessionName(saved.name);
     if (Number.isFinite(saved.bpm)) setBpm(clamp(Number(saved.bpm), 40, 220));
+    if (["4/4", "3/4", "6/8"].includes(String(saved.timeSignature))) {
+      setTimeSignature(String(saved.timeSignature));
+    }
     if (Number.isFinite(saved.zoom)) setZoom(clamp(Number(saved.zoom), 0.7, 2));
     if (Number.isFinite(saved.master)) setMaster(clamp(Number(saved.master), 0, 100));
     if (Number.isFinite(saved.loopStart)) setLoopStart(Math.max(0, Number(saved.loopStart)));
@@ -766,6 +771,7 @@ export function StudioEditorView() {
               {
                 name: project.title,
                 bpm: project.bpm,
+                timeSignature: project.time_signature,
                 zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
                 master: Number.isFinite(data.master) ? Number(data.master) : 80,
                 loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
@@ -803,12 +809,12 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, zoom, master, loopStart, loopEnd, lanes };
+      const payload: StoredSession = { name: sessionName, bpm, timeSignature, zoom, master, loopStart, loopEnd, lanes };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, storageKey, sessionName, bpm, zoom, master, loopStart, loopEnd, lanes]);
+  }, [loaded, user, storageKey, sessionName, bpm, timeSignature, zoom, master, loopStart, loopEnd, lanes]);
 
   useEffect(() => {
     if (!loaded || !user || cloudSaveRef.current) return;
@@ -824,7 +830,7 @@ export function StudioEditorView() {
           await updateStudioProject(projectId, {
             title: sessionName,
             bpm,
-            time_signature: "4/4",
+            time_signature: timeSignature,
             data,
           });
         } else {
@@ -832,7 +838,7 @@ export function StudioEditorView() {
             title: sessionName,
             major_version: 2,
             bpm,
-            time_signature: "4/4",
+            time_signature: timeSignature,
             data,
           });
           setProjectId(created.id);
@@ -847,7 +853,7 @@ export function StudioEditorView() {
       }
     }, 650);
     return () => window.clearTimeout(timer);
-  }, [loaded, user, projectId, sessionName, bpm, zoom, master, loopStart, loopEnd, lanes]);
+  }, [loaded, user, projectId, sessionName, bpm, timeSignature, zoom, master, loopStart, loopEnd, lanes]);
 
   async function openVersions() {
     setVersionsOpen(true);
@@ -896,7 +902,7 @@ export function StudioEditorView() {
       await updateStudioProject(projectId, {
         title: sessionName,
         bpm,
-        time_signature: "4/4",
+        time_signature: timeSignature,
         data: { lanes, loopStart, loopEnd, zoom, master },
       });
       const share = await createStudioProjectShare(projectId, 7);
@@ -925,7 +931,7 @@ export function StudioEditorView() {
       await updateStudioProject(projectId, {
         title: sessionName,
         bpm,
-        time_signature: "4/4",
+        time_signature: timeSignature,
         data: { lanes, loopStart, loopEnd, zoom, master },
       });
       const created = await createStudioProjectVersion(projectId, versionLabel.trim() || undefined);
@@ -951,6 +957,7 @@ export function StudioEditorView() {
       applySession(project.data as StoredSession, project.id);
       setSessionName(project.title);
       setBpm(project.bpm);
+      setTimeSignature(project.time_signature);
       setCloudState("saved");
       setVersionsOpen(false);
       setHistory([]);
@@ -974,12 +981,14 @@ export function StudioEditorView() {
   }, [timelineDuration]);
 
   const barBeat = useMemo(() => {
-    const secondsPerBeat = 60 / Math.max(40, bpm);
-    const secondsPerBar = secondsPerBeat * 4;
+    const [numerator, denominator] = timeSignature.split("/").map(Number);
+    const beatsPerBar = Math.max(1, numerator || 4);
+    const secondsPerBeat = (60 / Math.max(40, bpm)) * (4 / Math.max(1, denominator || 4));
+    const secondsPerBar = secondsPerBeat * beatsPerBar;
     const bar = Math.floor(playhead / secondsPerBar) + 1;
     const beat = Math.floor((playhead % secondsPerBar) / secondsPerBeat) + 1;
     return `${String(bar).padStart(3, "0")}.${beat}.1`;
-  }, [bpm, playhead]);
+  }, [bpm, playhead, timeSignature]);
 
   const tickStep = timelineDuration > 300 ? 60 : 30;
   const ticks = useMemo(() => {
@@ -1243,7 +1252,9 @@ export function StudioEditorView() {
     (context: AudioContext, startAt: number, from: number) => {
       const masterGain = masterGainRef.current;
       if (!metronomeRef.current || !masterGain) return;
-      const beat = 60 / Math.max(40, bpm);
+      const [numerator, denominator] = timeSignature.split("/").map(Number);
+      const beatsPerBar = Math.max(1, numerator || 4);
+      const beat = (60 / Math.max(40, bpm)) * (4 / Math.max(1, denominator || 4));
       const end = loopRef.current ? loopEndRef.current : timelineDurationRef.current;
       let time = Math.ceil((from - 0.0001) / beat) * beat;
       if (time < from) time += beat;
@@ -1253,7 +1264,7 @@ export function StudioEditorView() {
           const beatIndex = Math.round(time / beat);
           const osc = context.createOscillator();
           const gain = context.createGain();
-          osc.frequency.value = beatIndex % 4 === 0 ? 1600 : 1000;
+          osc.frequency.value = beatIndex % beatsPerBar === 0 ? 1600 : 1000;
           gain.gain.setValueAtTime(0.12, when);
           gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.05);
           osc.connect(gain);
@@ -1265,7 +1276,7 @@ export function StudioEditorView() {
         time += beat;
       }
     },
-    [bpm]
+    [bpm, timeSignature]
   );
 
   const startPlayback = useCallback(
@@ -2274,7 +2285,16 @@ export function StudioEditorView() {
           <span>{formatTime(playhead)}</span>
           <span>{barBeat}</span>
           <span>{bpm} BPM</span>
-          <span>4/4</span>
+          <select
+            className="studio-timesig"
+            value={timeSignature}
+            onChange={(event) => setTimeSignature(event.target.value)}
+            aria-label="Time signature"
+          >
+            <option value="4/4">4/4</option>
+            <option value="3/4">3/4</option>
+            <option value="6/8">6/8</option>
+          </select>
         </div>
         <div className="studio-top-actions">
           <button
@@ -3064,7 +3084,7 @@ export function StudioEditorView() {
       </form>
 
       <div className="studio-transport">
-        <span className="studio-transport-left"><Icon name="fa-wave-square" /> {bpm} BPM · 4/4</span>
+        <span className="studio-transport-left"><Icon name="fa-wave-square" /> {bpm} BPM ? {timeSignature}</span>
         <div className="studio-transport-center">
           <button type="button" aria-label="Go to start" onClick={() => seekTo(0)}><Icon name="fa-backward-step" /></button>
           <button className="play" type="button" aria-label={playing ? "Pause" : "Play"} onClick={togglePlay} disabled={audioLoading || !lanes.length}>

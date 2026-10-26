@@ -2713,3 +2713,6 @@ html{color-scheme:dark}
   .shared-studio-footer-actions button:hover:not(:disabled){background:rgba(139,92,246,.22)}
   .shared-studio-footer-actions button:disabled{opacity:.45;cursor:not-allowed}
   .shared-studio-footer>small{display:block;margin-top:6px;color:#fca5a5;font-size:9px}
+
+  .studio-timesig{height:23px;padding:0 5px;border:1px solid rgba(148,163,184,.12);border-radius:5px;background:#0b1021;color:#94a3b8;font:inherit;font-size:9px;outline:none}
+  .studio-timesig:focus{border-color:rgba(168,85,247,.35)}
