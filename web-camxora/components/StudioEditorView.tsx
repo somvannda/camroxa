@@ -1214,6 +1214,7 @@ export function StudioEditorView() {
   const [midiChordMode, setMidiChordMode] = useState<"off" | "major" | "minor">("off");
   const [midiArpMode, setMidiArpMode] = useState<"off" | "up" | "down">("off");
   const [midiStatus, setMidiStatus] = useState("");
+  const [midiRecordArmed, setMidiRecordArmed] = useState(false);
   const [takesBusy, setTakesBusy] = useState(false);
   const [takesError, setTakesError] = useState("");
   const [mixClipboard, setMixClipboard] = useState<Partial<Clip> | null>(null);
@@ -1293,6 +1294,8 @@ export function StudioEditorView() {
   const audioCtxRef = useRef<AudioContext | null>(null);
   const midiAccessRef = useRef<MIDIAccess | null>(null);
   const midiInstrumentRef = useRef<NonNullable<Clip["instrument"]>>("triangle");
+  const midiRecordArmedRef = useRef(false);
+  const selectedLaneRef = useRef<Clip | null>(null);
   const masterGainRef = useRef<GainNode | null>(null);
   const masterLimiterRef = useRef<DynamicsCompressorNode | null>(null);
   const masterEqRef = useRef<{ low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode } | null>(null);
@@ -2135,6 +2138,8 @@ export function StudioEditorView() {
 
   const selectedLane = lanes.find((lane) => lane.id === selected) ?? null;
   midiInstrumentRef.current = selectedLane?.instrument ?? "triangle";
+  selectedLaneRef.current = selectedLane;
+  midiRecordArmedRef.current = midiRecordArmed;
   const canUseAiEdits = Boolean(
     selectedLane && (selectedLane.variant === "ok" || selectedLane.variant === "alt")
   );
@@ -3212,7 +3217,7 @@ export function StudioEditorView() {
             const velocity = event.data[2] ?? 0;
             const status = statusByte & 0xf0;
             if (status === 0x90 && velocity > 0) {
-              previewMidiPitch(pitch);
+              previewMidiPitch(pitch, velocity / 127);
             }
           };
         });
@@ -3230,7 +3235,39 @@ export function StudioEditorView() {
     }
   }
 
-  function previewMidiPitch(pitch: number) {
+  function recordMidiNote(pitch: number, velocity = 0.8) {
+    if (!midiRecordArmedRef.current) return;
+    const lane = selectedLaneRef.current;
+    if (!lane?.midiNotes) {
+      setMidiStatus("Select a MIDI track before recording notes.");
+      return;
+    }
+    const notes = lane.midiNotes;
+    const time = Number(
+      clamp(playheadRef.current - lane.start, 0, lane.duration).toFixed(2)
+    );
+    const existing = notes.find(
+      (note) => Math.abs(note.time - time) < 0.04 && note.pitch === pitch
+    );
+    if (existing) {
+      setSelectedMidiNoteId(existing.id);
+      return;
+    }
+    const note: MidiNote = {
+      id: makeId(),
+      time,
+      pitch,
+      duration: 0.5,
+      velocity: clamp(velocity, 0.05, 1),
+    };
+    invalidateMidi(lane);
+    updateLane(lane.id, { midiNotes: [...notes, note] });
+    setSelectedMidiNoteId(note.id);
+    setMidiStatus(`Recorded ${midiNoteName(pitch)} at ${time.toFixed(2)}s.`);
+  }
+
+  function previewMidiPitch(pitch: number, velocity = 0.8) {
+    recordMidiNote(pitch, velocity);
     const context = ensureAudioContext();
     const master = masterGainRef.current ?? context.destination;
     const now = context.currentTime;
@@ -4797,7 +4834,20 @@ export function StudioEditorView() {
                     <button type="button" onClick={() => void connectMidiInput()}>
                       Connect MIDI
                     </button>
-                    <small>{midiStatus || "Use a connected controller to audition notes."}</small>
+                    <button
+                      className={midiRecordArmed ? "on" : ""}
+                      type="button"
+                      aria-pressed={midiRecordArmed}
+                      onClick={() => setMidiRecordArmed((value) => !value)}
+                    >
+                      {midiRecordArmed ? "Recording MIDI" : "Record MIDI"}
+                    </button>
+                    <small>
+                      {midiStatus ||
+                        (midiRecordArmed
+                          ? "Play the keyboard or controller to write notes at the playhead."
+                          : "Use a connected controller to audition notes.")}
+                    </small>
                   </div>
                   {(() => {
                     const note = (selectedLane.midiNotes ?? []).find(

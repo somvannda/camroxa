@@ -403,7 +403,8 @@ Audio buffer path, so MIDI tracks support fades, EQ, FX, dynamics, automation
 and export like audio tracks. A one-octave playable keyboard below the piano
 roll auditions notes through the same synth and master bus. A **Connect MIDI**
 button requests Web MIDI access and routes connected-controller note-on events
-through the same audition path.
+through the same audition path. **Record MIDI** writes played notes into the
+selected MIDI track at the playhead, using the incoming controller velocity.
 
 The transport includes a BPM-driven metronome with accented downbeats. Click
 scheduling follows the loop range and is monitoring-only; it is not included
