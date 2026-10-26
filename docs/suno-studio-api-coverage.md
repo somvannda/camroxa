@@ -244,9 +244,10 @@ master limiter as playback. Stem files are packaged into one ZIP archive so a
 12-track export is a single browser download.
 
 Each track has a **Dynamics** section with compression and drive/saturation,
-plus delay, reverb and chorus sends. All are saved with the project and applied
-to playback and export. Drive uses a normalized soft-clip waveshaper before the
-compressor; chorus uses an LFO-modulated delay.
+a low-pass **Filter** with cutoff/resonance, plus delay, reverb and chorus
+sends. All are saved with the project and applied to playback and export.
+Drive uses a normalized soft-clip waveshaper before the compressor; chorus uses
+an LFO-modulated delay.
 
 The transport also exposes master-bus compression, drive/saturation, a master
 3-band EQ popover, and a live master output meter driven by the master bus

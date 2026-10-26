@@ -100,6 +100,8 @@ type Clip = {
   chorus: number;
   compressor: number;
   drive: number;
+  filterCutoff?: number;
+  filterResonance?: number;
   volume: number;
   pan: number;
   muted: boolean;
@@ -656,7 +658,7 @@ export function StudioEditorView() {
   const meterFrameRef = useRef(0);
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sourcesRef = useRef<AudioScheduledSourceNode[]>([]);
-  const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; delayWet: GainNode; reverbWet: GainNode }>>(new Map());
+  const nodesRef = useRef<Map<string, { gain: GainNode; panner: StereoPannerNode; low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode; filter: BiquadFilterNode; delayWet: GainNode; reverbWet: GainNode }>>(new Map());
   const startedAtRef = useRef(0);
   const startPlayheadRef = useRef(0);
   const rafRef = useRef<number | null>(null);
@@ -775,6 +777,8 @@ export function StudioEditorView() {
         chorus: Number.isFinite(lane.chorus) ? clamp(Number(lane.chorus), 0, 100) : 0,
         compressor: Number.isFinite(lane.compressor) ? clamp(Number(lane.compressor), 0, 100) : 0,
         drive: Number.isFinite(lane.drive) ? clamp(Number(lane.drive), 0, 100) : 0,
+        filterCutoff: Number.isFinite(lane.filterCutoff) ? clamp(Number(lane.filterCutoff), 100, 20000) : 20000,
+        filterResonance: Number.isFinite(lane.filterResonance) ? clamp(Number(lane.filterResonance), 0.1, 12) : 0.7,
         automation: Array.isArray(lane.automation)
           ? lane.automation
               .filter(
@@ -1604,6 +1608,8 @@ export function StudioEditorView() {
       node.low.gain.value = lane.low;
       node.mid.gain.value = lane.mid;
       node.high.gain.value = lane.high;
+      node.filter.frequency.value = clamp(lane.filterCutoff ?? 20000, 100, 20000);
+      node.filter.Q.value = clamp(lane.filterResonance ?? 0.7, 0.1, 12);
       node.delayWet.gain.value = lane.delay / 100;
       node.reverbWet.gain.value = lane.reverb / 100;
     }
@@ -1823,8 +1829,13 @@ export function StudioEditorView() {
           low.connect(mid);
           mid.connect(high);
           const startWhen = startAt + Math.max(0, lane.start - from);
+          const filter = context.createBiquadFilter();
+          filter.type = "lowpass";
+          filter.frequency.value = clamp(lane.filterCutoff ?? 20000, 100, 20000);
+          filter.Q.value = clamp(lane.filterResonance ?? 0.7, 0.1, 12);
+          high.connect(filter);
           const chorusOut = context.createGain();
-          connectTrackChorus(context, high, chorusOut, lane, startWhen, remaining);
+          connectTrackChorus(context, filter, chorusOut, lane, startWhen, remaining);
           const driveOut = context.createGain();
           connectTrackDrive(context, chorusOut, driveOut, lane);
           connectTrackDynamics(context, driveOut, gain, lane);
@@ -1834,7 +1845,7 @@ export function StudioEditorView() {
           schedulePanAutomation(panner, lane, from, startWhen, remaining);
           source.start(startWhen, offset, remaining);
           sourcesRef.current.push(source);
-          nodesRef.current.set(lane.id, { gain, panner, low, mid, high, ...fx });
+          nodesRef.current.set(lane.id, { gain, panner, low, mid, high, filter, ...fx });
         }
         startedAtRef.current = startAt;
         startPlayheadRef.current = from;
@@ -2536,8 +2547,13 @@ export function StudioEditorView() {
       low.connect(mid);
       mid.connect(high);
       const when = clipStart - start;
+      const filter = offline.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = clamp(lane.filterCutoff ?? 20000, 100, 20000);
+      filter.Q.value = clamp(lane.filterResonance ?? 0.7, 0.1, 12);
+      high.connect(filter);
       const chorusOut = offline.createGain();
-      connectTrackChorus(offline, high, chorusOut, lane, when, length);
+      connectTrackChorus(offline, filter, chorusOut, lane, when, length);
       const driveOut = offline.createGain();
       connectTrackDrive(offline, chorusOut, driveOut, lane);
       connectTrackDynamics(offline, driveOut, gain, lane);
@@ -3677,6 +3693,46 @@ export function StudioEditorView() {
                 </label>
                 <label>High <b>{selectedLane.high > 0 ? "+" : ""}{selectedLane.high} dB</b>
                   <input type="range" min="-12" max="12" step="0.5" value={selectedLane.high} onChange={(event) => updateLane(selectedLane.id, { high: Number(event.target.value) })} />
+                </label>
+              </div>
+              <div className="studio-eq">
+                <div className="studio-eq-head">
+                  <span>Filter</span>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      updateLane(selectedLane.id, {
+                        filterCutoff: 20000,
+                        filterResonance: 0.7,
+                      })
+                    }
+                  >
+                    Reset
+                  </button>
+                </div>
+                <label>Cutoff <b>{Math.round((selectedLane.filterCutoff ?? 20000) / 100) / 10} kHz</b>
+                  <input
+                    type="range"
+                    min="100"
+                    max="20000"
+                    step="100"
+                    value={selectedLane.filterCutoff ?? 20000}
+                    onChange={(event) =>
+                      updateLane(selectedLane.id, { filterCutoff: Number(event.target.value) })
+                    }
+                  />
+                </label>
+                <label>Resonance <b>{(selectedLane.filterResonance ?? 0.7).toFixed(1)}</b>
+                  <input
+                    type="range"
+                    min="0.1"
+                    max="12"
+                    step="0.1"
+                    value={selectedLane.filterResonance ?? 0.7}
+                    onChange={(event) =>
+                      updateLane(selectedLane.id, { filterResonance: Number(event.target.value) })
+                    }
+                  />
                 </label>
               </div>
               <div className="studio-eq">
