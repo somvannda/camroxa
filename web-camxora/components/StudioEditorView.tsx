@@ -37,6 +37,8 @@ import {
   requestStudioUploadExtend,
   requestStudioUploadCover,
   getStudioOperation,
+  getStudioLyrics,
+  type StudioLyrics,
   getStudioPricing,
   type StudioPricing,
   uploadStudioAudio,
@@ -537,6 +539,64 @@ function findImageUrl(value: unknown, allowAnyHttpUrl = false): string | null {
   return null;
 }
 
+type StudioLyricLine = {
+  start: number;
+  end: number;
+  text: string;
+};
+
+function studioLyricsToLines(lyrics: StudioLyrics | null): StudioLyricLine[] {
+  if (!lyrics) return [];
+  const words: Array<{ word: string; start: number; end: number }> = [];
+  for (const item of lyrics.aligned_words ?? []) {
+    const word = String(item.word ?? item.text ?? "").trim();
+    const start = Number(item.start_s ?? item.start);
+    const end = Number(item.end_s ?? item.end);
+    if (!word || !Number.isFinite(start)) continue;
+    words.push({
+      word,
+      start,
+      end: Number.isFinite(end) ? end : start,
+    });
+  }
+  if (!words.length) {
+    return String(lyrics.lyrics || "")
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean)
+      .map((text) => ({ start: 0, end: 0, text }));
+  }
+  const lines: StudioLyricLine[] = [];
+  let current: Array<{ word: string; start: number; end: number }> = [];
+  const flush = () => {
+    if (!current.length) return;
+    let text = "";
+    for (const item of current) {
+      const separator = !text
+        ? ""
+        : /^[.,!?;:)\]}%]/.test(item.word)
+          ? ""
+          : " ";
+      text += `${separator}${item.word}`;
+    }
+    lines.push({
+      start: current[0].start,
+      end: current[current.length - 1].end,
+      text: text.trim(),
+    });
+    current = [];
+  };
+  for (const word of words) {
+    const previous = current[current.length - 1];
+    if (previous && (word.start - previous.end > 1.2 || current.length >= 12)) {
+      flush();
+    }
+    current.push(word);
+  }
+  flush();
+  return lines;
+}
+
 function clipFromGeneration(
   generation: WebMusicGeneration,
   index: number,
@@ -668,7 +728,11 @@ export function StudioEditorView() {
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiStatus, setAiStatus] = useState("");
   const [clipMenu, setClipMenu] = useState<{ x: number; y: number; laneId: string } | null>(null);
-  const [inspectorTab, setInspectorTab] = useState<"clip" | "mix" | "ai">("clip");
+  const [inspectorTab, setInspectorTab] = useState<"clip" | "mix" | "lyrics" | "ai">("clip");
+  const [lyrics, setLyrics] = useState<StudioLyrics | null>(null);
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [lyricsError, setLyricsError] = useState("");
+  const lyricsCacheRef = useRef<Map<string, StudioLyrics>>(new Map());
   const [stemsBusy, setStemsBusy] = useState(false);
   const [stemsStatus, setStemsStatus] = useState("");
   const [stemsError, setStemsError] = useState("");
@@ -726,6 +790,11 @@ export function StudioEditorView() {
     setInspectorTab("clip");
     setSelectedMidiNoteId(null);
   }, [selected]);
+
+  useEffect(() => {
+    if (inspectorTab !== "lyrics") return;
+    void loadLyrics();
+  }, [inspectorTab, selected]);
 
   useEffect(() => {
     if (!clipMenu) return;
@@ -1487,6 +1556,7 @@ export function StudioEditorView() {
     selectedLane && (selectedLane.variant === "ok" || selectedLane.variant === "alt")
   );
   const activeInspectorTab = inspectorTab === "ai" && !canUseAiEdits ? "clip" : inspectorTab;
+  const lyricLines = useMemo(() => studioLyricsToLines(lyrics), [lyrics]);
   const canSplit = Boolean(
     selectedLane &&
       playhead > selectedLane.start + MIN_CLIP &&
@@ -2773,6 +2843,43 @@ export function StudioEditorView() {
     }
   }
 
+  async function loadLyrics(force = false) {
+    const lane = selectedLane;
+    if (!lane) return;
+    if (lane.uploadId) {
+      setLyrics(null);
+      setLyricsError("Lyrics are available for generated clips, not uploaded audio.");
+      return;
+    }
+    if (lane.variant !== "ok" && lane.variant !== "alt") {
+      setLyrics(null);
+      setLyricsError("Select an original generated clip to load its lyrics.");
+      return;
+    }
+    const key = `${lane.generationId}:${lane.variant}`;
+    const cached = lyricsCacheRef.current.get(key);
+    if (cached && !force) {
+      setLyrics(cached);
+      setLyricsError("");
+      return;
+    }
+    setLyricsLoading(true);
+    setLyricsError("");
+    try {
+      const payload = await getStudioLyrics({
+        taskId: lane.generationId,
+        variant: lane.variant,
+      });
+      lyricsCacheRef.current.set(key, payload);
+      setLyrics(payload);
+    } catch (cause) {
+      setLyrics(null);
+      setLyricsError(cause instanceof Error ? cause.message : "Could not load lyrics.");
+    } finally {
+      setLyricsLoading(false);
+    }
+  }
+
   async function runStudioEdit(
     label: string,
     request: () => Promise<StudioOperation>,
@@ -3634,7 +3741,7 @@ export function StudioEditorView() {
                 <div><b>{selectedLane.title}</b><small>{selectedLane.style}</small></div>
               </div>
               <div className="studio-inspector-tabs" role="tablist">
-                {(["clip", "mix"] as const).map((tab) => (
+                {(["clip", "mix", "lyrics"] as const).map((tab) => (
                   <button
                     key={tab}
                     className={activeInspectorTab === tab ? "active" : ""}
@@ -3643,7 +3750,7 @@ export function StudioEditorView() {
                     aria-selected={activeInspectorTab === tab}
                     onClick={() => setInspectorTab(tab)}
                   >
-                    {tab === "clip" ? "Clip" : "Mix"}
+                    {tab === "clip" ? "Clip" : tab === "mix" ? "Mix" : "Lyrics"}
                   </button>
                 ))}
                 {canUseAiEdits ? (
@@ -3955,6 +4062,46 @@ export function StudioEditorView() {
                 </label>
               </div>
                 </>
+              ) : null}
+              {activeInspectorTab === "lyrics" ? (
+                <div className="studio-lyrics">
+                  <div className="studio-eq-head">
+                    <span>Lyrics</span>
+                    <button
+                      type="button"
+                      onClick={() => void loadLyrics(true)}
+                      disabled={lyricsLoading}
+                    >
+                      {lyricsLoading ? "Loading…" : "Refresh"}
+                    </button>
+                  </div>
+                  {lyricsError ? (
+                    <small className="studio-stem-error">{lyricsError}</small>
+                  ) : null}
+                  {!lyricsLoading && !lyricsError && lyricLines.length ? (
+                    <div className="studio-lyric-lines">
+                      {lyricLines.map((line, index) => (
+                        <button
+                          type="button"
+                          className="studio-lyric-line"
+                          key={`${index}-${line.start}`}
+                          onClick={() =>
+                            seekTo(
+                              selectedLane.start +
+                                Math.max(0, line.start - selectedLane.offset)
+                            )
+                          }
+                        >
+                          <span>{formatTime(line.start)}</span>
+                          <p>{line.text}</p>
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+                  {!lyricsLoading && !lyricsError && !lyricLines.length ? (
+                    <small>No lyrics were found for this clip.</small>
+                  ) : null}
+                </div>
               ) : null}
               <div className="studio-inspector-actions">
                 <button className={selectedLane.muted ? "on" : ""} type="button" onClick={() => updateLane(selectedLane.id, { muted: !selectedLane.muted })}>Mute</button>

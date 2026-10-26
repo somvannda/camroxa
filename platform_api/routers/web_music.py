@@ -821,6 +821,20 @@ async def request_studio_add_instrumental(
     )
 
 
+@router.get("/studio/generations/{task_id}/lyrics")
+async def get_studio_lyrics(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    variant: Literal["ok", "alt"] = "ok",
+) -> dict:
+    return await service.get_studio_lyrics(
+        UUID(ctx.user_id),
+        task_id,
+        variant=variant,
+    )
+
+
 @router.post("/studio/generations/{task_id}/cover-image", status_code=202)
 async def request_studio_cover_image(
     task_id: UUID,

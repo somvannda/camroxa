@@ -2370,6 +2370,59 @@ class WebMusicService:
         )
         return self._studio_upload_payload(row, url)
 
+    async def get_studio_lyrics(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+    ) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        provider_clip_id = await self._studio_source_clip(
+            user_id, task_id, variant=variant
+        )
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.get(
+                    f"{base}/internal/studio/lyrics/{provider_clip_id}",
+                    headers={"x-internal-token": token},
+                )
+                if response.status_code >= 400:
+                    detail = "Studio lyrics request failed."
+                    try:
+                        detail = str((response.json() or {}).get("error") or detail)
+                    except Exception:
+                        pass
+                    raise ExternalServiceError(
+                        detail,
+                        is_retryable=False,
+                        details={"provider": "musicapi", "operation": "lyrics"},
+                    )
+                payload = response.json()
+        except ExternalServiceError:
+            raise
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Could not load Studio lyrics.",
+                is_retryable=True,
+                details={"provider": "musicapi", "operation": "lyrics"},
+            ) from exc
+        return {
+            "clip_id": str(payload.get("clip_id") or provider_clip_id),
+            "lyrics": str(payload.get("lyrics") or ""),
+            "aligned_words": payload.get("aligned_words") or [],
+        }
+
     async def request_studio_remaster(
         self,
         user_id: UUID,

@@ -8649,6 +8649,48 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  app.get("/internal/studio/lyrics/:clip_id", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const clipId = (req.params as { clip_id?: string }).clip_id ?? "";
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const client = pool.get(accountId);
+    if (!client) {
+      return reply.code(409).send({ error: "The source clip's Suno account is unavailable." });
+    }
+    let alignedWords: Array<Record<string, unknown>> = [];
+    try {
+      alignedWords = await client.getAlignedLyrics(clipId);
+    } catch {
+      alignedWords = [];
+    }
+    let lyrics = "";
+    try {
+      const detail = (await client.lyricsDetail(clipId)) as Record<string, unknown> | null;
+      if (detail && typeof detail === "object") {
+        if (typeof detail.lyrics === "string") {
+          lyrics = detail.lyrics;
+        } else {
+          const metadata = detail.metadata;
+          if (metadata && typeof metadata === "object") {
+            const prompt = (metadata as Record<string, unknown>).prompt;
+            if (typeof prompt === "string") lyrics = prompt;
+          }
+        }
+      }
+    } catch {
+      lyrics = "";
+    }
+    return reply.send({
+      clip_id: clipId,
+      lyrics,
+      aligned_words: alignedWords,
+    });
+  });
+
   app.post("/internal/studio/upload-extend", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;

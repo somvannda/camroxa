@@ -496,6 +496,30 @@ export async function requestStudioMashup(input: {
   });
 }
 
+export type StudioLyricWord = {
+  word?: string;
+  text?: string;
+  start_s?: number;
+  end_s?: number;
+  start?: number;
+  end?: number;
+};
+
+export type StudioLyrics = {
+  clip_id: string;
+  lyrics: string;
+  aligned_words: StudioLyricWord[];
+};
+
+export async function getStudioLyrics(input: {
+  taskId: string;
+  variant: string;
+}): Promise<StudioLyrics> {
+  return studioJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(input.taskId)}/lyrics?variant=${encodeURIComponent(input.variant)}`
+  );
+}
+
 export async function requestStudioUploadExtend(input: {
   uploadId: string;
   prompt?: string;

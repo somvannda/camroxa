@@ -178,6 +178,7 @@ POST /internal/studio/mashup
 POST /internal/studio/cover-image
 POST /internal/studio/upload-extend
 POST /internal/studio/upload-cover
+GET  /internal/studio/lyrics/{clip_id}
 GET  /internal/studio/jobs/{id}
 ```
 
@@ -227,6 +228,11 @@ AI edits
 Uploaded audio
   Extend upload
   Cover upload
+Inspector tabs
+  Clip
+  Mix
+  Lyrics
+  AI
 ```
 
 Stems results contain two takes per stem. The editor loads one take per stem
@@ -241,6 +247,13 @@ Platform signs the stored audio URL and sends it to musicapi, which submits the
 Suno upload operation. These actions therefore require durable storage whose
 signed URL is reachable by Suno; local-only storage cannot complete them. They
 use the normal Studio edit price.
+
+The **Lyrics** inspector tab loads Suno's word-level aligned lyrics for the
+selected original generated clip. Words are grouped into readable lines, and
+clicking a line seeks the timeline to that moment. When Suno has no alignment,
+the clip's plain lyrics are shown without timestamps. Uploaded audio and edit
+results have no generated-lyrics source, so the tab reports that lyrics are
+unavailable rather than fabricating timestamps.
 
 Studio prices are read from `credit_pricing` through:
 
@@ -464,6 +477,7 @@ POST /api/v3/web-music/studio/mashup
 POST /api/v3/web-music/studio/generations/{task_id}/cover-image
 POST /api/v3/web-music/studio/uploads/{upload_id}/extend
 POST /api/v3/web-music/studio/uploads/{upload_id}/cover
+GET  /api/v3/web-music/studio/generations/{task_id}/lyrics
 GET  /api/v3/web-music/studio/operations/{operation_id}
 ```
 
