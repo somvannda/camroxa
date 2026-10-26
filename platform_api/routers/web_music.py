@@ -628,6 +628,14 @@ async def request_studio_replace_section(
     )
 
 
+@router.get("/studio/pricing")
+async def get_studio_pricing(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.studio_operation_pricing(UUID(ctx.user_id))
+
+
 @router.get("/studio/operations/{operation_id}")
 async def get_studio_operation(
     operation_id: UUID,

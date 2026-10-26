@@ -30,6 +30,8 @@ import {
   requestStudioAddInstrumental,
   requestStudioReplaceSection,
   getStudioOperation,
+  getStudioPricing,
+  type StudioPricing,
 } from "@/lib/studio-api";
 
 type Clip = {
@@ -349,6 +351,7 @@ export function StudioEditorView() {
   const [editError, setEditError] = useState("");
   const [editPrompt, setEditPrompt] = useState("");
   const [replaceLyrics, setReplaceLyrics] = useState("");
+  const [studioPricing, setStudioPricing] = useState<StudioPricing | null>(null);
   const [history, setHistory] = useState<Clip[][]>([]);
   const [future, setFuture] = useState<Clip[][]>([]);
   const dragRef = useRef<DragState | null>(null);
@@ -383,6 +386,21 @@ export function StudioEditorView() {
     loopStartRef.current = loopStart;
     loopEndRef.current = loopEnd;
   }, [loopStart, loopEnd]);
+
+  useEffect(() => {
+    if (!user) return;
+    let alive = true;
+    void getStudioPricing()
+      .then((pricing) => {
+        if (alive) setStudioPricing(pricing);
+      })
+      .catch(() => {
+        if (alive) setStudioPricing(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [user]);
 
   function normalizeLanes(input: unknown): Clip[] {
     if (!Array.isArray(input)) return [];
@@ -1622,16 +1640,21 @@ export function StudioEditorView() {
                 <div>
                   <button type="button" onClick={() => void separateStems("vocal")} disabled={stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}>
                     <Icon name="fa-user" /> Vocals + instrumental
+                    {studioPricing ? <em>· {studioPricing.stems_2} cr</em> : null}
                   </button>
                   <button type="button" onClick={() => void separateStems("stems")} disabled={stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}>
                     <Icon name="fa-layer-group" /> Full stems
+                    {studioPricing ? <em>· {studioPricing.stems_12} cr</em> : null}
                   </button>
                 </div>
                 {stemsStatus ? <small>{stemsStatus}</small> : null}
                 {stemsError ? <small className="studio-stem-error">{stemsError}</small> : null}
               </div>
               <div className="studio-edit-actions">
-                <span>AI edits</span>
+                <span>
+                  AI edits
+                  {studioPricing ? <em> · {studioPricing.edit} cr each</em> : null}
+                </span>
                 <input
                   value={editPrompt}
                   onChange={(event) => setEditPrompt(event.target.value)}

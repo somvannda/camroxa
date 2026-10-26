@@ -1740,6 +1740,18 @@ class WebMusicService:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
         return self._studio_project_payload(row)
 
+    async def studio_operation_pricing(self, user_id: UUID) -> dict[str, int]:
+        bridge = self._web_music_charge_bridge()
+        pricing: dict[str, int] = {}
+        for key, op in (
+            ("edit", "studio_edit"),
+            ("stems_2", "studio_stems_2"),
+            ("stems_12", "studio_stems_12"),
+        ):
+            _op, amount, _quote = await bridge.quote_credits(user_id, op)
+            pricing[key] = int(amount)
+        return pricing
+
     def _studio_operation_payload(self, row: Any) -> dict[str, Any]:
         result = row["result_json"] if hasattr(row, "get") else row["result_json"]
         if isinstance(result, str):

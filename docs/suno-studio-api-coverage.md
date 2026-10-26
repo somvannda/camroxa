@@ -221,6 +221,16 @@ AI edits
 Stems results contain two takes per stem. The editor loads one take per stem
 name so a 12-track operation adds 12 lanes instead of 24.
 
+Studio prices are read from `credit_pricing` through:
+
+```text
+GET /api/v3/web-music/studio/pricing
+```
+
+The Inspector displays the configured costs next to the Stems and AI edit
+actions, so admin pricing changes are reflected without hardcoding amounts in
+the frontend.
+
 Matching platform routes:
 
 ```text

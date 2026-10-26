@@ -230,3 +230,13 @@ export async function requestStudioReplaceSection(input: {
     }),
   });
 }
+
+export type StudioPricing = {
+  edit: number;
+  stems_2: number;
+  stems_12: number;
+};
+
+export async function getStudioPricing(): Promise<StudioPricing> {
+  return studioJson("/api/v3/web-music/studio/pricing");
+}
