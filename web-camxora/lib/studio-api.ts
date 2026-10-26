@@ -478,3 +478,20 @@ export async function requestStudioRemaster(input: {
     }),
   });
 }
+
+export async function requestStudioMashup(input: {
+  clips: Array<{ taskId: string; variant: string }>;
+  prompt?: string;
+  projectId?: string | null;
+}): Promise<StudioOperation> {
+  return studioJson("/api/v3/web-music/studio/mashup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      task_ids: input.clips.map((clip) => clip.taskId),
+      variants: input.clips.map((clip) => clip.variant),
+      prompt: input.prompt || "",
+      project_id: input.projectId || undefined,
+    }),
+  });
+}

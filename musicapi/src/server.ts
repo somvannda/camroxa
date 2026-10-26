@@ -8642,6 +8642,32 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  app.post("/internal/studio/mashup", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipIds = Array.isArray(body.clip_ids)
+      ? body.clip_ids.filter((value): value is string => typeof value === "string" && Boolean(value))
+      : [];
+    const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    if (clipIds.length < 2) {
+      return reply.code(400).send({ error: "clip_ids must contain at least two clip ids." });
+    }
+    const accounts = await Promise.all(clipIds.map((clipId) => findAssetAccountAny(clipId)));
+    if (accounts.some((account) => !account)) {
+      return reply.code(409).send({ error: "A source clip's Suno account is not recorded." });
+    }
+    const [accountId] = accounts as string[];
+    if (accounts.some((account) => account !== accountId)) {
+      return reply.code(409).send({ error: "Mashup clips must belong to the same Suno account." });
+    }
+    const job = newJob("mashup");
+    job.endpoint = "studio_mashup";
+    job.credits = 0;
+    job.prompt = prompt || undefined;
+    void runClipJobWithRetry(job, (client) => client.mashup(clipIds, prompt), { accountId });
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
   app.post("/internal/studio/remaster", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;

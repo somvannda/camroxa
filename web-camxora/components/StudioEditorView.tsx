@@ -32,6 +32,7 @@ import {
   requestStudioAddInstrumental,
   requestStudioReplaceSection,
   requestStudioRemaster,
+  requestStudioMashup,
   getStudioOperation,
   getStudioPricing,
   type StudioPricing,
@@ -621,6 +622,10 @@ export function StudioEditorView() {
   const [sharePermission, setSharePermission] = useState<"view" | "edit">("view");
   const [shareDays, setShareDays] = useState(7);
   const [shareId, setShareId] = useState<string | null>(null);
+  const [mashupOpen, setMashupOpen] = useState(false);
+  const [mashupSelection, setMashupSelection] = useState<string[]>([]);
+  const [mashupPrompt, setMashupPrompt] = useState("");
+  const [mashupError, setMashupError] = useState("");
   const [sharedToken, setSharedToken] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<StudioPresence[]>([]);
   const [remoteChanges, setRemoteChanges] = useState(false);
@@ -2696,10 +2701,11 @@ export function StudioEditorView() {
 
   async function runStudioEdit(
     label: string,
-    request: () => Promise<StudioOperation>
+    request: () => Promise<StudioOperation>,
+    sourceLane: Clip | null = selectedLane
   ) {
-    if (!selectedLane || editBusy) return;
-    if (selectedLane.variant !== "ok" && selectedLane.variant !== "alt") {
+    if (!sourceLane || editBusy) return;
+    if (sourceLane.variant !== "ok" && sourceLane.variant !== "alt") {
       setEditError("Select an original version before editing it.");
       return;
     }
@@ -2719,7 +2725,7 @@ export function StudioEditorView() {
       if (["error", "failed"].includes(operation.status.toLowerCase())) {
         throw new Error(operation.error_message || `${label} failed.`);
       }
-      const next = operationClipsToLanes(operation.result?.clips, selectedLane, label);
+      const next = operationClipsToLanes(operation.result?.clips, sourceLane, label);
       if (!next.length) throw new Error(`${label} returned no clips.`);
       commitLanes([...lanes, ...next]);
       setSelected(next[0].id);
@@ -2794,6 +2800,53 @@ export function StudioEditorView() {
       return;
     }
     setAiStatus("Try: stems, extend, cover, add vocals, or add instrumental.");
+  }
+
+  function openMashup() {
+    const eligible = lanes.filter(
+      (lane) => lane.variant === "ok" || lane.variant === "alt"
+    );
+    if (eligible.length < 2) {
+      setMashupError("Add at least two original generated tracks to mash up.");
+      setMashupOpen(true);
+      return;
+    }
+    setMashupSelection(eligible.slice(0, 2).map((lane) => lane.id));
+    setMashupPrompt("");
+    setMashupError("");
+    setMashupOpen(true);
+  }
+
+  function toggleMashupLane(laneId: string) {
+    setMashupSelection((current) => {
+      if (current.includes(laneId)) return current.filter((id) => id !== laneId);
+      if (current.length >= 2) return current;
+      return [...current, laneId];
+    });
+  }
+
+  async function createMashup() {
+    const selectedClips = lanes.filter((lane) =>
+      mashupSelection.includes(lane.id)
+    );
+    if (selectedClips.length < 2) {
+      setMashupError("Select exactly two original generated tracks.");
+      return;
+    }
+    setMashupOpen(false);
+    await runStudioEdit(
+      "Mashup",
+      () =>
+        requestStudioMashup({
+          clips: selectedClips.map((lane) => ({
+            taskId: lane.generationId,
+            variant: lane.variant,
+          })),
+          prompt: mashupPrompt.trim(),
+          projectId,
+        }),
+      selectedClips[0]
+    );
   }
 
   async function separateStems(mode: "vocal" | "stems") {
@@ -3898,6 +3951,13 @@ export function StudioEditorView() {
                   >
                     <Icon name="fa-wand-sparkles" /> Remaster
                   </button>
+                  <button
+                    type="button"
+                    onClick={openMashup}
+                    disabled={editBusy || stemsBusy || lanes.filter((lane) => lane.variant === "ok" || lane.variant === "alt").length < 2}
+                  >
+                    <Icon name="fa-object-group" /> Mashup
+                  </button>
                 </div>
                 <textarea
                   value={replaceLyrics}
@@ -4185,6 +4245,51 @@ export function StudioEditorView() {
                 </div>
               ))}
             </div>
+          </div>
+        </div>
+      ) : null}
+      {mashupOpen ? (
+        <div className="studio-modal-backdrop" role="dialog" aria-modal="true" aria-label="Mashup">
+          <div className="studio-versions-modal">
+            <div className="studio-versions-head">
+              <div>
+                <h2>Mashup</h2>
+                <p>Select two original generated tracks.</p>
+              </div>
+              <button type="button" aria-label="Close mashup" onClick={() => setMashupOpen(false)}>
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="studio-mashup-list">
+              {lanes.filter((lane) => lane.variant === "ok" || lane.variant === "alt").map((lane) => (
+                <label key={lane.id} className="studio-mashup-row">
+                  <input
+                    type="checkbox"
+                    checked={mashupSelection.includes(lane.id)}
+                    onChange={() => toggleMashupLane(lane.id)}
+                  />
+                  <span style={{ background: lane.color }} />
+                  <b>{lane.title}</b>
+                  <small>{lane.style}</small>
+                </label>
+              ))}
+            </div>
+            <textarea
+              className="studio-mashup-prompt"
+              value={mashupPrompt}
+              onChange={(event) => setMashupPrompt(event.target.value)}
+              placeholder="Optional mashup direction…"
+              rows={2}
+            />
+            {mashupError ? <small className="studio-stem-error">{mashupError}</small> : null}
+            <button
+              className="btn btn-primary"
+              type="button"
+              onClick={() => void createMashup()}
+              disabled={mashupSelection.length !== 2 || editBusy}
+            >
+              <Icon name="fa-object-group" /> Create mashup
+            </button>
           </div>
         </div>
       ) : null}

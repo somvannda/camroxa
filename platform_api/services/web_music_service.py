@@ -2394,6 +2394,55 @@ class WebMusicService:
             label="remaster",
         )
 
+    async def request_studio_mashup(
+        self,
+        user_id: UUID,
+        task_ids: list[UUID],
+        *,
+        variants: list[str],
+        prompt: str = "",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        if len(task_ids) < 2:
+            raise ValidationError("Select at least two clips for a mashup.")
+        if len(variants) != len(task_ids):
+            raise ValidationError("A variant is required for each mashup clip.")
+        primary_variant = variants[0]
+        primary_clip_id = await self._studio_source_clip(
+            user_id, task_ids[0], variant=primary_variant
+        )
+        clip_ids = [primary_clip_id]
+        for index, task_id in enumerate(task_ids[1:], start=1):
+            variant = variants[index]
+            if variant not in ("ok", "alt"):
+                raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
+            row = await self._pool.fetchrow(
+                "SELECT status, audio_id_ok, audio_id_alt FROM suno_tasks WHERE id = $1 AND user_id = $2",
+                task_id,
+                user_id,
+            )
+            if row is None:
+                raise NotFoundError("Generation not found.", details={"task_id": str(task_id)})
+            if str(row["status"] or "").lower() != "success":
+                raise ValidationError("A mashup clip is not ready yet.")
+            clip_id = str(
+                row["audio_id_ok" if variant == "ok" else "audio_id_alt"] or ""
+            ).strip()
+            if not clip_id:
+                raise ValidationError("A mashup clip has no provider clip id.")
+            clip_ids.append(clip_id)
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_ids[0],
+            operation_type="mashup",
+            variant=primary_variant,
+            mode="mashup",
+            project_id=project_id,
+            internal_path="/internal/studio/mashup",
+            internal_body={"clip_ids": clip_ids, "prompt": prompt.strip()},
+            label="mashup",
+        )
+
     async def studio_operation_pricing(self, user_id: UUID) -> dict[str, int]:
         bridge = self._web_music_charge_bridge()
         pricing: dict[str, int] = {}

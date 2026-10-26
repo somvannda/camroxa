@@ -711,6 +711,13 @@ class StudioPromptRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StudioMashupRequest(BaseModel):
+    task_ids: list[UUID] = Field(min_length=2, max_length=4)
+    variants: list[Literal["ok", "alt"]] = Field(min_length=2, max_length=4)
+    prompt: str = ""
+    project_id: UUID | None = None
+
+
 class StudioRemasterRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     model: str | None = None
@@ -786,6 +793,21 @@ async def request_studio_add_instrumental(
         UUID(ctx.user_id),
         task_id,
         variant=body.variant,
+        prompt=body.prompt,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/mashup", status_code=202)
+async def request_studio_mashup(
+    body: StudioMashupRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_mashup(
+        UUID(ctx.user_id),
+        body.task_ids,
+        variants=list(body.variants),
         prompt=body.prompt,
         project_id=body.project_id,
     )

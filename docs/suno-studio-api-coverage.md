@@ -174,6 +174,7 @@ POST /internal/studio/add-vocals
 POST /internal/studio/add-instrumental
 POST /internal/studio/replace-section
 POST /internal/studio/remaster
+POST /internal/studio/mashup
 GET  /internal/studio/jobs/{id}
 ```
 
@@ -440,6 +441,8 @@ POST /api/v3/web-music/studio/generations/{task_id}/cover
 POST /api/v3/web-music/studio/generations/{task_id}/add-vocals
 POST /api/v3/web-music/studio/generations/{task_id}/add-instrumental
 POST /api/v3/web-music/studio/generations/{task_id}/replace-section
+POST /api/v3/web-music/studio/generations/{task_id}/remaster
+POST /api/v3/web-music/studio/mashup
 GET  /api/v3/web-music/studio/operations/{operation_id}
 ```
 
