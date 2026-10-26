@@ -42,6 +42,7 @@ import {
   type StudioProjectVersion,
   type StudioShareComment,
   createStudioProjectShare,
+  revokeStudioProjectShare,
   listStudioProjectComments,
   getStudioSharedProject,
   updateStudioSharedProject,
@@ -617,6 +618,8 @@ export function StudioEditorView() {
   const [commentsBusy, setCommentsBusy] = useState(false);
   const [commentsError, setCommentsError] = useState("");
   const [sharePermission, setSharePermission] = useState<"view" | "edit">("view");
+  const [shareDays, setShareDays] = useState(7);
+  const [shareId, setShareId] = useState<string | null>(null);
   const [sharedToken, setSharedToken] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<StudioPresence[]>([]);
   const [remoteChanges, setRemoteChanges] = useState(false);
@@ -1214,7 +1217,8 @@ export function StudioEditorView() {
         time_signature: timeSignature,
         data: { lanes, gridDivision, loopStart, loopEnd, markers, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh },
       });
-      const share = await createStudioProjectShare(projectId, 7, sharePermission);
+      const share = await createStudioProjectShare(projectId, shareDays, sharePermission);
+      setShareId(share.id);
       setShareUrl(`${window.location.origin}${share.path}`);
     } catch (cause) {
       setShareError(cause instanceof Error ? cause.message : "Could not create share link.");
@@ -1229,6 +1233,18 @@ export function StudioEditorView() {
       await navigator.clipboard.writeText(shareUrl);
     } catch {
       /* Clipboard may be unavailable on plain HTTP. */
+    }
+  }
+
+  async function revokeShare() {
+    if (!projectId || !shareId) return;
+    if (!window.confirm("Revoke this share link? Anyone using it will lose access.")) return;
+    try {
+      await revokeStudioProjectShare(projectId, shareId);
+      setShareUrl("");
+      setShareId(null);
+    } catch (cause) {
+      setShareError(cause instanceof Error ? cause.message : "Could not revoke share link.");
     }
   }
 
@@ -4176,9 +4192,14 @@ export function StudioEditorView() {
                     <Icon name="fa-copy" /> Copy
                   </button>
                 </div>
-                <a className="studio-share-open" href={shareUrl} target="_blank" rel="noreferrer">
-                  Open read-only preview <Icon name="fa-arrow-up-right-from-square" />
-                </a>
+                <div className="studio-share-link-actions">
+                  <a className="studio-share-open" href={shareUrl} target="_blank" rel="noreferrer">
+                    Open preview <Icon name="fa-arrow-up-right-from-square" />
+                  </a>
+                  <button className="studio-share-revoke" type="button" onClick={() => void revokeShare()}>
+                    Revoke link
+                  </button>
+                </div>
               </>
              ) : (
               <>
@@ -4191,6 +4212,18 @@ export function StudioEditorView() {
                   >
                     <option value="view">View only</option>
                     <option value="edit">Can edit</option>
+                  </select>
+                </label>
+                <label className="studio-share-permission">
+                  Expires
+                  <select
+                    value={shareDays}
+                    onChange={(event) => setShareDays(Number(event.target.value))}
+                    disabled={shareBusy}
+                  >
+                    <option value={1}>1 day</option>
+                    <option value={7}>7 days</option>
+                    <option value={30}>30 days</option>
                   </select>
                 </label>
                 <button className="btn btn-primary" type="button" onClick={() => void createShare()} disabled={shareBusy || !projectId}>

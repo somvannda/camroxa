@@ -448,3 +448,16 @@ export async function deleteStudioProject(id: string): Promise<void> {
     throw new Error(await readError(response, `Delete project failed (${response.status})`));
   }
 }
+
+export async function revokeStudioProjectShare(
+  projectId: string,
+  shareId: string
+): Promise<void> {
+  const response = await musicAuthFetch(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/shares/${encodeURIComponent(shareId)}`,
+    { method: "DELETE" }
+  );
+  if (!response.ok) {
+    throw new Error(await readError(response, `Revoke share failed (${response.status})`));
+  }
+}

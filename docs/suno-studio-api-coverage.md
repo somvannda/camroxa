@@ -376,7 +376,8 @@ GET  /api/v3/web-music/studio/projects/{project_id}/comments
 Comments are stored against the project and appear on the shared page. The
 project owner can also read them from the Studio **Share** dialog.
 
-Share links can be **View only** or **Can edit**.
+Share links can be **View only** or **Can edit**, expire after 1, 7 or 30
+days, and can be revoked immediately by the owner.
 
 Editable links load into Studio through:
 

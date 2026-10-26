@@ -630,6 +630,21 @@ async def add_studio_share_comment(
     )
 
 
+@router.delete("/studio/projects/{project_id}/shares/{share_id}", status_code=204)
+async def revoke_studio_project_share(
+    project_id: UUID,
+    share_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> Response:
+    await service.revoke_studio_project_share(
+        UUID(ctx.user_id),
+        project_id,
+        share_id,
+    )
+    return Response(status_code=204)
+
+
 @router.patch("/studio/shares/{token}")
 async def update_studio_shared_project(
     token: str,

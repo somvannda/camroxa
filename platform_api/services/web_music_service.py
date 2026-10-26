@@ -1941,6 +1941,29 @@ class WebMusicService:
             "permission": safe_permission,
         }
 
+    async def revoke_studio_project_share(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+        share_id: UUID,
+    ) -> None:
+        row = await self._pool.fetchrow(
+            """
+            UPDATE studio_project_shares
+            SET revoked_at = now()
+            WHERE id = $1 AND project_id = $2 AND user_id = $3
+            RETURNING id
+            """,
+            share_id,
+            project_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError(
+                "Studio share not found.",
+                details={"share_id": str(share_id)},
+            )
+
     async def get_studio_shared_project(self, token: str) -> dict[str, Any]:
         row = await self._pool.fetchrow(
             """
