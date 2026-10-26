@@ -55,6 +55,7 @@ type Clip = {
   fadeIn: number;
   fadeOut: number;
   automation?: AutomationPoint[];
+  panAutomation?: AutomationPoint[];
   audioUrl?: string | null;
   low: number;
   mid: number;
@@ -252,6 +253,30 @@ function scheduleClipGain(
   }
 }
 
+function schedulePanAutomation(
+  panner: StereoPannerNode,
+  lane: Clip,
+  from: number,
+  when: number,
+  length: number
+) {
+  const elapsed = Math.max(0, from - lane.start);
+  const points = (lane.panAutomation ?? [])
+    .filter((point) => point.time <= elapsed + length)
+    .sort((a, b) => a.time - b.time);
+  if (!points.length) return;
+  const prior = [...points].reverse().find((point) => point.time <= elapsed);
+  const first = prior ?? points[0];
+  panner.pan.setValueAtTime(clamp(first.value / 50, -1, 1), when);
+  for (const point of points) {
+    if (point.time <= elapsed) continue;
+    panner.pan.linearRampToValueAtTime(
+      clamp(point.value / 50, -1, 1),
+      Math.max(when + 0.001, when + (point.time - elapsed))
+    );
+  }
+}
+
 function makeReverbImpulse(context: BaseAudioContext): AudioBuffer {
   const seconds = 1.8;
   const length = Math.max(1, Math.floor(context.sampleRate * seconds));
@@ -326,6 +351,7 @@ function clipFromGeneration(
     fadeIn: 0,
     fadeOut: 0,
     automation: [],
+    panAutomation: [],
     audioUrl: null,
     low: 0,
     mid: 0,
@@ -459,6 +485,21 @@ export function StudioEditorView() {
                 id: String(point.id || makeId()),
                 time: clamp(Number(point.time), 0, lane.duration),
                 value: clamp(Number(point.value), 0, 100),
+              }))
+              .sort((a, b) => a.time - b.time)
+          : [],
+        panAutomation: Array.isArray(lane.panAutomation)
+          ? lane.panAutomation
+              .filter(
+                (point): point is AutomationPoint =>
+                  Boolean(point) &&
+                  Number.isFinite((point as AutomationPoint).time) &&
+                  Number.isFinite((point as AutomationPoint).value)
+              )
+              .map((point) => ({
+                id: String(point.id || makeId()),
+                time: clamp(Number(point.time), 0, lane.duration),
+                value: clamp(Number(point.value), -50, 50),
               }))
               .sort((a, b) => a.time - b.time)
           : [],
@@ -659,6 +700,34 @@ export function StudioEditorView() {
     [selectedLane, updateLane]
   );
 
+  const addPanAutomationPoint = useCallback(() => {
+    if (!selectedLane) return;
+    const time = clamp(playhead - selectedLane.start, 0, selectedLane.duration);
+    const point: AutomationPoint = {
+      id: makeId(),
+      time: Number(time.toFixed(2)),
+      value: selectedLane.pan,
+    };
+    const points = (selectedLane.panAutomation ?? []).filter(
+      (existing) => Math.abs(existing.time - time) > 0.05
+    );
+    updateLane(selectedLane.id, {
+      panAutomation: [...points, point].sort((a, b) => a.time - b.time),
+    });
+  }, [playhead, selectedLane, updateLane]);
+
+  const removePanAutomationPoint = useCallback(
+    (pointId: string) => {
+      if (!selectedLane) return;
+      updateLane(selectedLane.id, {
+        panAutomation: (selectedLane.panAutomation ?? []).filter(
+          (point) => point.id !== pointId
+        ),
+      });
+    },
+    [selectedLane, updateLane]
+  );
+
   const undo = useCallback(() => {
     setHistory((current) => {
       const previous = current[current.length - 1];
@@ -854,6 +923,7 @@ export function StudioEditorView() {
           const fx = connectTrackFx(context, panner, masterGain, lane);
           const startWhen = startAt + Math.max(0, lane.start - from);
           scheduleClipGain(gain, lane.volume / 100, lane, from, startWhen, remaining);
+          schedulePanAutomation(panner, lane, from, startWhen, remaining);
           source.start(startWhen, offset, remaining);
           sourcesRef.current.push(source);
           nodesRef.current.set(lane.id, { gain, panner, low, mid, high, ...fx });
@@ -1075,11 +1145,13 @@ export function StudioEditorView() {
     const local = playhead - selectedLane.start;
     if (local <= MIN_CLIP || local >= selectedLane.duration - MIN_CLIP) return;
     const automation = selectedLane.automation ?? [];
+    const panAutomation = selectedLane.panAutomation ?? [];
     const left: Clip = {
       ...selectedLane,
       duration: local,
       fadeOut: 0,
       automation: automation.filter((point) => point.time <= local),
+      panAutomation: panAutomation.filter((point) => point.time <= local),
     };
     const right: Clip = {
       ...selectedLane,
@@ -1089,6 +1161,9 @@ export function StudioEditorView() {
       offset: selectedLane.offset + local,
       fadeIn: 0,
       automation: automation
+        .filter((point) => point.time >= local)
+        .map((point) => ({ ...point, time: point.time - local })),
+      panAutomation: panAutomation
         .filter((point) => point.time >= local)
         .map((point) => ({ ...point, time: point.time - local })),
     };
@@ -1167,6 +1242,7 @@ export function StudioEditorView() {
         clipStart - start,
         length
       );
+      schedulePanAutomation(panner, lane, clipStart, clipStart - start, length);
       source.start(clipStart - start, offset, length);
     }
     return offline.startRendering();
@@ -1265,6 +1341,7 @@ export function StudioEditorView() {
         fadeIn: 0,
         fadeOut: 0,
         automation: [],
+        panAutomation: [],
         audioUrl,
         low: 0,
         mid: 0,
@@ -1371,6 +1448,7 @@ export function StudioEditorView() {
           fadeIn: 0,
           fadeOut: 0,
           automation: [],
+          panAutomation: [],
           audioUrl:
             clip.durable_url ||
             clip.durableUrl ||
@@ -1785,6 +1863,27 @@ export function StudioEditorView() {
                   </div>
                 ) : (
                   <small>Add a point at the playhead. Automation overrides fades.</small>
+                )}
+              </div>
+              <div className="studio-eq studio-automation">
+                <div className="studio-eq-head">
+                  <span>Pan automation</span>
+                  <button type="button" onClick={addPanAutomationPoint}>Add at playhead</button>
+                </div>
+                {(selectedLane.panAutomation ?? []).length ? (
+                  <div className="studio-automation-points">
+                    {(selectedLane.panAutomation ?? []).map((point) => (
+                      <div className="studio-automation-point" key={point.id}>
+                        <span>{point.time.toFixed(1)}s</span>
+                        <b>{point.value === 0 ? "C" : point.value > 0 ? `R${Math.round(point.value)}` : `L${Math.round(Math.abs(point.value))}`}</b>
+                        <button type="button" aria-label="Remove pan automation point" onClick={() => removePanAutomationPoint(point.id)}>
+                          <Icon name="fa-xmark" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <small>Add a point at the playhead to automate stereo position.</small>
                 )}
               </div>
               <div className="studio-eq">

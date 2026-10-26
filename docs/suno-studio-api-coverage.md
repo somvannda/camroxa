@@ -243,9 +243,10 @@ Range and stem exports use the same Web Audio graph, fades, EQ, sends and
 master limiter as playback. Stem files are packaged into one ZIP archive so a
 12-track export is a single browser download.
 
-The Inspector supports per-clip **volume automation** points. Points are saved
-with the project and applied to both playback and export; automation overrides
-the clip fades when points are present.
+The Inspector supports per-clip **volume and pan automation** points. Points
+are saved with the project and applied to both playback and export; volume
+automation overrides the clip fades when points are present. Pan automation
+uses the same point editor and schedules the stereo panner.
 
 When storage is configured, musicapi adds `durable_url` to finished clips.
 Studio prefers `durable_url` over Suno `audio_url` and `media_urls`, so playback
