@@ -853,9 +853,9 @@ class SunoClient:
         callback = str(callback_url or "").strip()
         if not callback:
             if self._callback_base_url:
-                callback = f"{self._callback_base_url}/api/v3/callbacks/suno"
+                callback = f"{self._callback_base_url}/api/v1/callbacks/suno"
             else:
-                callback = "https://localhost/api/v3/callbacks/suno"
+                callback = "https://localhost/api/v1/callbacks/suno"
 
         # Instrumentals have no lyrics; several resellers (incl. Camxora's
         # musicapi) reject custom-mode requests whose ``prompt``/lyrics are both
@@ -1023,7 +1023,7 @@ class SunoClient:
             "prompt": str(prompt or "").strip()[:200],
             "callBackUrl": callback_url
             or (
-                f"{self._callback_base_url}/api/v3/callbacks/suno-lyrics"
+                f"{self._callback_base_url}/api/v1/callbacks/suno-lyrics"
                 if self._callback_base_url
                 else "https://localhost/callbacks/suno-lyrics"
             ),
