@@ -1895,6 +1895,7 @@ html{color-scheme:dark}
   .studio-midi-head-actions select{height:20px;border:1px solid var(--line);border-radius:4px;background:#0d1224;color:#cbd5e1;font:inherit;font-size:8px}
   .studio-midi-head-actions button{height:20px;padding:0 5px;border:1px solid var(--line);border-radius:4px;background:rgba(255,255,255,.025);color:#cbd5e1;font:inherit;font-size:8px;cursor:pointer}
   .studio-midi-head-actions button:hover{background:rgba(168,85,247,.14);color:#fff}
+  .studio-midi-octave{font-size:7.5px;color:#c4b5fd;white-space:nowrap}
   .studio-midi-grid{display:grid;gap:2px;margin-top:5px}
   .studio-midi-keyboard{display:grid;grid-template-columns:repeat(12,minmax(0,1fr));gap:2px;margin-top:6px}
   .studio-midi-keyboard button{height:34px;min-width:0;padding:0;border:1px solid #94a3b8;border-radius:3px;background:#e2e8f0;color:#0f172a;font:inherit;font-size:7px;font-weight:600;cursor:pointer}

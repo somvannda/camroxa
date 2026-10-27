@@ -1346,6 +1346,7 @@ export function StudioEditorView() {
   const [midiChordMode, setMidiChordMode] = useState<"off" | "major" | "minor">("off");
   const [midiArpMode, setMidiArpMode] = useState<"off" | "up" | "down">("off");
   const [midiStatus, setMidiStatus] = useState("");
+  const [midiViewOctave, setMidiViewOctave] = useState(4);
   const [midiRecordArmed, setMidiRecordArmed] = useState(false);
   const [takesBusy, setTakesBusy] = useState(false);
   const [takesError, setTakesError] = useState("");
@@ -5320,6 +5321,25 @@ export function StudioEditorView() {
                   <div className="studio-eq-head">
                     <span>Piano roll</span>
                     <div className="studio-midi-head-actions">
+                      <button
+                        type="button"
+                        aria-label="MIDI octave down"
+                        onClick={() =>
+                          setMidiViewOctave((value) => Math.max(1, value - 1))
+                        }
+                      >
+                        −
+                      </button>
+                      <span className="studio-midi-octave">Oct {midiViewOctave}</span>
+                      <button
+                        type="button"
+                        aria-label="MIDI octave up"
+                        onClick={() =>
+                          setMidiViewOctave((value) => Math.min(8, value + 1))
+                        }
+                      >
+                        +
+                      </button>
                       <select
                         value={selectedLane.instrument ?? "triangle"}
                         onChange={(event) => {
@@ -5385,7 +5405,10 @@ export function StudioEditorView() {
                     </div>
                   </div>
                   <div className="studio-midi-grid">
-                    {[71, 70, 69, 68, 67, 66, 65, 64, 63, 62, 61, 60].map((pitch) => (
+                    {Array.from(
+                      { length: 12 },
+                      (_, index) => (midiViewOctave + 1) * 12 + 11 - index
+                    ).map((pitch) => (
                       <div className="studio-midi-row" key={pitch}>
                         <span>{midiNoteName(pitch)}</span>
                         {Array.from({ length: 16 }, (_, step) => {
