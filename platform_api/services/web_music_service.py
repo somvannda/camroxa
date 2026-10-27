@@ -2923,6 +2923,17 @@ class WebMusicService:
         try:
             storage_config = await resolve_streaming_storage_config(self._pool)
             storage_configured = bool(storage_config.configured)
+            # Presence of a bucket and keys is not evidence they work: a
+            # truncated or wrong-scoped B2 key still reported storage: true
+            # while every upload failed. Probe with a real authenticated call.
+            if storage_configured:
+                from platform_api.services.storage_service import StorageService
+
+                try:
+                    await StorageService.from_config(storage_config).probe()
+                except Exception as exc:
+                    storage_configured = False
+                    storage_error = f"storage_probe_failed: {exc}"
         except Exception as exc:
             storage_error = str(exc)
         internal_token = bool(str(settings.studio_internal_token or "").strip())

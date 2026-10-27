@@ -63,6 +63,37 @@ class StorageService:
         await asyncio.to_thread(_put)
         return normalized_key
 
+    async def probe(self) -> None:
+        """Verify the stored credential can actually reach the bucket.
+
+        Readiness used to treat "bucket and keys present" as healthy, so a
+        truncated or wrong-scoped key still reported ``storage: true`` while
+        every upload failed. This performs a real authenticated call with short
+        timeouts, and raises on failure so the caller can mark readiness down.
+        """
+
+        def _head() -> None:
+            import boto3
+            from botocore.config import Config
+
+            client = boto3.client(
+                "s3",
+                endpoint_url=self._config.endpoint,
+                aws_access_key_id=self._config.key_id,
+                aws_secret_access_key=self._config.application_key,
+                region_name=self._config.region,
+                config=Config(
+                    signature_version="s3v4",
+                    s3={"addressing_style": "path"},
+                    connect_timeout=5,
+                    read_timeout=5,
+                    retries={"max_attempts": 1},
+                ),
+            )
+            client.head_bucket(Bucket=self._config.bucket)
+
+        await asyncio.to_thread(_head)
+
     async def get_signed_get_url(self, key: str, *, cache_bust: bool = False) -> str:
         normalized_key = key.lstrip("/")
         if self._config.cdn_base_url:

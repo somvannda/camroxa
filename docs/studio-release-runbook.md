@@ -481,6 +481,13 @@ Findings:
   Backblaze application key authorised for `camroxa-song-storage` and store it
   in `system_settings.streaming.b2.key_id` / `.application_key`. The
   experiment was reverted; no credential change was left in place.
+
+  Fixed: readiness now calls `StorageService.probe()` (an authenticated
+  `HeadBucket` with 5s timeouts) instead of trusting that a bucket and keys are
+  merely present, and reports `storage: false` with
+  `storage_probe_failed: ... Forbidden` whenever the credential is rejected.
+  The bucket therefore needs `ListBucket`/bucket-read permission for the key,
+  not just write.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
