@@ -460,13 +460,27 @@ Findings:
   empty, so word timestamps are not produced and the UI falls back to plain
   lyrics. Aligned lyrics remain unproven and need the timestamped-lyrics
   provider configuration checked before the matrix can claim them.
-- Uploaded-audio Extend/Cover could not be exercised: `POST /studio/uploads`
-  fails 502 `Could not store the uploaded audio.` The platform's B2 client
-  raises a TLS error against `s3.us-east-005.backblazeb2.com` for bucket
-  `camroxa-song-storage` (`EOF occurred in violation of protocol`), while
-  musicapi's own bucket `productions-camxora-song` works on the same host. This
-  is platform storage configuration/network, not Studio logic; verify the
-  bucket and endpoint before relying on uploads in sandbox.
+- Uploaded-audio Extend/Cover could not be exercised, and the cause is a
+  credential defect rather than a network fault. `POST /studio/uploads` fails
+  502 `Could not store the uploaded audio.` with botocore surfacing
+  `SSLEOFError: EOF occurred in violation of protocol`, but that error is
+  misleading: raw TLS to `s3.us-east-005.backblazeb2.com` succeeds (TLSv1.3),
+  anonymous HTTP returns 403 as expected, and a signed request eventually
+  reports the truth.
+
+  `system_settings.streaming.b2.key_id` is `16ad00876f4d` (12 chars) — a
+  truncated fragment of the real 25-char key id `00516ad00876f4d0000000003`.
+  A signed request with it returns
+  `ClientError: InvalidAccessKeyId: Malformed Access Key Id`. Substituting the
+  full key id and secret from musicapi's working config yields
+  `AccessDenied: not entitled`, because that key is scoped to
+  `productions-camxora-song`, not to the platform's `camroxa-song-storage`.
+
+  So the platform has no valid credential for its own bucket: the stored pair
+  is a truncated copy of a different bucket's key. Ops must provision a
+  Backblaze application key authorised for `camroxa-song-storage` and store it
+  in `system_settings.streaming.b2.key_id` / `.application_key`. The
+  experiment was reverted; no credential change was left in place.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
