@@ -443,11 +443,22 @@ Findings:
 - Suno enforces per-account clip ownership: an operation on a clip owned by a
   different Suno account returns `403 permission_denied`. Do not backfill
   `asset_owners` to force a clip onto an account; the provider rejects it.
-- `remaster` is a reproducible defect locally: the submit is accepted and
-  charged, then `pollClips` (`musicapi/src/client.ts`, 300s ceiling) never sees
-  the returned ids reach a terminal state, so the operation errors at ~306s and
-  is refunded. Investigate in sandbox by logging the returned clip ids and
-  comparing them with `/api/feed/?ids=`.
+- `remaster` is a reproducible defect locally, root cause confirmed:
+  `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
+  the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
+  `chirp-goose` — `chirp-flounder` does not exist for it. The account's
+  `remaster_model_types` is a single entry, `chirp-halibut`, with
+  `can_use: false` and `free_remasters_remaining: 0`, so the account is not
+  entitled to remaster at all. Suno accepts the submit (202) but never
+  processes, and `pollClips` (`musicapi/src/client.ts`, 300s ceiling) burns the
+  full window before erroring and refunding.
+
+  Two fixes needed, neither a provider bug in Studio's own logic:
+  1. stop hardcoding `chirp-flounder`; use the account's remaster model
+     (or the configured default) instead of a model it cannot use;
+  2. pre-flight the entitlement so an unentitled account fails fast with a
+     clear message, instead of charging, waiting five minutes and refunding.
+
 
 
 ### Defect 1 — live generation cannot run locally
