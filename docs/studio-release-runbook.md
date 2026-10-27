@@ -467,6 +467,12 @@ Findings:
   `getAlignedLyrics` only special-cases 404, an authentication failure is
   indistinguishable from "this clip has no alignment". A 401 should surface as
   an error rather than silently degrading to plain lyrics.
+
+  Fixed: the internal lyrics route no longer swallows the error. A clip with no
+  alignment still returns `[]` (404), but any other failure now returns 502 with
+  `Could not load aligned lyrics from Suno.` plus the underlying detail.
+  Verified by seeding a bogus credential: 502 `Account acct-1: no active Clerk
+  session.` instead of a silent empty list.
 - Uploaded-audio Extend/Cover could not be exercised, and the cause is a
   credential defect rather than a network fault. `POST /studio/uploads` fails
   502 `Could not store the uploaded audio.` with botocore surfacing

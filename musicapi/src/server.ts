@@ -8674,8 +8674,17 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     let alignedWords: Array<Record<string, unknown>> = [];
     try {
       alignedWords = await client.getAlignedLyrics(clipId);
-    } catch {
-      alignedWords = [];
+    } catch (err) {
+      // Never degrade a credential or transport failure into an empty word
+      // list. Doing so made an expired account look exactly like "this clip
+      // has no alignment", which hid real auth failures. A clip that genuinely
+      // has no alignment returns [] from getAlignedLyrics (404) and does not
+      // reach here.
+      req.log.warn({ err, clipId }, "aligned lyrics lookup failed");
+      return reply.code(502).send({
+        error: "Could not load aligned lyrics from Suno.",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     }
     let lyrics = "";
     try {
