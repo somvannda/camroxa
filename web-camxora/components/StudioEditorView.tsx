@@ -107,6 +107,7 @@ type Clip = {
   audioUrl?: string | null;
   uploadId?: string | null;
   reverse?: boolean;
+  speed?: number;
   midiNotes?: MidiNote[];
   instrument?: "sine" | "triangle" | "sawtooth";
   low: number;
@@ -1581,6 +1582,7 @@ export function StudioEditorView() {
         drive: Number.isFinite(lane.drive) ? clamp(Number(lane.drive), 0, 100) : 0,
         duck: Number.isFinite(lane.duck) ? clamp(Number(lane.duck), 0, 100) : 0,
         duckRate: lane.duckRate === "1/8" ? "1/8" : "1/4",
+        speed: Number.isFinite(lane.speed) ? clamp(Number(lane.speed), 0.5, 2) : 1,
         filterCutoff: Number.isFinite(lane.filterCutoff) ? clamp(Number(lane.filterCutoff), 100, 20000) : 20000,
         filterResonance: Number.isFinite(lane.filterResonance) ? clamp(Number(lane.filterResonance), 0.1, 12) : 0.7,
         automation: Array.isArray(lane.automation)
@@ -2914,6 +2916,8 @@ export function StudioEditorView() {
           if (remaining <= 0 || offset >= buffer.duration) continue;
           const source = context.createBufferSource();
           source.buffer = buffer;
+          const speed = clamp(lane.speed ?? 1, 0.5, 2);
+          source.playbackRate.value = speed;
           const gain = context.createGain();
           const panner = context.createStereoPanner();
           const low = context.createBiquadFilter();
@@ -2955,7 +2959,11 @@ export function StudioEditorView() {
           scheduleClipGain(gain, lane.volume / 100, lane, from, startWhen, remaining);
           scheduleDucking(duckGain, lane, from, startWhen, remaining, bpm);
           schedulePanAutomation(panner, lane, from, startWhen, remaining);
-          source.start(startWhen, offset, remaining);
+          source.start(
+            startWhen,
+            offset,
+            Math.min(Math.max(0, buffer.duration - offset), remaining * speed)
+          );
           sourcesRef.current.push(source);
           nodesRef.current.set(lane.id, { gain, panner, low, mid, high, filter, ...fx });
         }
@@ -3935,6 +3943,8 @@ export function StudioEditorView() {
       if (length <= 0 || offset >= buffer.duration) continue;
       const source = offline.createBufferSource();
       source.buffer = buffer;
+      const speed = clamp(lane.speed ?? 1, 0.5, 2);
+      source.playbackRate.value = speed;
       const gain = offline.createGain();
       const panner = offline.createStereoPanner();
       const low = offline.createBiquadFilter();
@@ -3972,7 +3982,11 @@ export function StudioEditorView() {
       scheduleClipGain(gain, lane.volume / 100, lane, clipStart, when, length);
       scheduleDucking(duckGain, lane, clipStart, when, length, bpm);
       schedulePanAutomation(panner, lane, clipStart, when, length);
-      source.start(when, offset, length);
+      source.start(
+        when,
+        offset,
+        Math.min(available, length * speed)
+      );
     }
     return offline.startRendering();
   }
@@ -5404,6 +5418,25 @@ export function StudioEditorView() {
                   </select>
                 </label>
               </div>
+              <label
+                className="studio-slider studio-speed"
+                title="Varispeed changes both tempo and pitch."
+              >
+                Speed <b>{Math.round((selectedLane.speed ?? 1) * 100)}%</b>
+                <input
+                  type="range"
+                  min="50"
+                  max="200"
+                  step="1"
+                  value={Math.round((selectedLane.speed ?? 1) * 100)}
+                  disabled={Boolean(selectedLane.midiNotes)}
+                  onChange={(event) =>
+                    updateLane(selectedLane.id, {
+                      speed: Number(event.target.value) / 100,
+                    })
+                  }
+                />
+              </label>
               <label className="studio-slider">Volume <b>{selectedLane.volume}%</b>
                 <input type="range" min="0" max="100" value={selectedLane.volume} onChange={(event) => updateLane(selectedLane.id, { volume: Number(event.target.value) })} />
               </label>

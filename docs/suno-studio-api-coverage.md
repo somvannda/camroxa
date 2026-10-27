@@ -351,8 +351,9 @@ right-click to remove. Markers are saved with the project.
 
 Clip fades can be **linear** or **exponential** independently for fade-in and
 fade-out, with the curve applied to playback and export. Audio clips also have a
-**Reverse** toggle that plays and exports the selected segment backwards; MIDI
-tracks do not expose it.
+**Reverse** toggle that plays and exports the selected segment backwards, plus a
+50–200% **Speed** varispeed control (which changes pitch as well as tempo).
+MIDI tracks do not expose either control.
 
 Each track has a color palette in the Inspector; the selected color is saved
 with the project and used for the track header, clip border and arrangement bar.
