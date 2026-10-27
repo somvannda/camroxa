@@ -2871,6 +2871,8 @@ html{color-scheme:dark}
 
   .studio-master-meter{display:inline-flex;align-items:flex-end;gap:2px;height:20px;margin-left:7px}
   .studio-master-meter i{display:block;width:3px;height:100%;border-radius:1px;background:linear-gradient(180deg,#22c55e,#84cc16 60%,#f59e0b);transform-origin:bottom;transition:transform .06s linear;opacity:.85}
+  .studio-master-spectrum{display:inline-flex;align-items:flex-end;gap:1px;width:58px;height:20px;margin-left:6px}
+  .studio-master-spectrum i{display:block;flex:1;min-width:0;border-radius:1px;background:linear-gradient(180deg,#a855f7,#38bdf8);opacity:.8;transition:height .08s linear}
 
   .studio-share-link-actions{display:flex;align-items:center;justify-content:space-between;gap:10px}
   .studio-share-revoke{height:25px;padding:0 8px;border:1px solid rgba(248,113,113,.2);border-radius:4px;background:rgba(248,113,113,.05);color:#fca5a5;font:inherit;font-size:8.5px;cursor:pointer}

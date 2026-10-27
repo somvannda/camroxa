@@ -1312,6 +1312,9 @@ export function StudioEditorView() {
   const [masterHigh, setMasterHigh] = useState(0);
   const [masterEqOpen, setMasterEqOpen] = useState(false);
   const [masterMeter, setMasterMeter] = useState(0);
+  const [masterSpectrum, setMasterSpectrum] = useState<number[]>(
+    Array.from({ length: 12 }, () => 0)
+  );
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -2490,6 +2493,17 @@ export function StudioEditorView() {
     }
     const rms = Math.sqrt(sum / data.length);
     setMasterMeter(clamp(rms * 3.2, 0, 1));
+    const frequency = new Uint8Array(analyser.frequencyBinCount);
+    analyser.getByteFrequencyData(frequency);
+    const bars = 12;
+    const next = Array.from({ length: bars }, (_, index) => {
+      const start = Math.floor((index * frequency.length) / bars);
+      const end = Math.max(start + 1, Math.floor(((index + 1) * frequency.length) / bars));
+      let total = 0;
+      for (let i = start; i < end; i += 1) total += frequency[i] ?? 0;
+      return clamp(total / Math.max(1, end - start) / 220, 0, 1);
+    });
+    setMasterSpectrum(next);
   }, []);
 
   const stopSources = useCallback(() => {
@@ -5902,6 +5916,14 @@ export function StudioEditorView() {
           <span className="studio-master-meter" aria-label="Master output level">
             <i style={{ transform: `scaleY(${Math.max(0.04, masterMeter)})` }} />
             <i style={{ transform: `scaleY(${Math.max(0.04, masterMeter)})` }} />
+          </span>
+          <span className="studio-master-spectrum" aria-label="Master frequency spectrum">
+            {masterSpectrum.map((value, index) => (
+              <i
+                key={index}
+                style={{ height: `${Math.max(8, value * 100)}%` }}
+              />
+            ))}
           </span>
           <button
             className={`studio-master-eq-btn${masterEqOpen ? " on" : ""}`}
