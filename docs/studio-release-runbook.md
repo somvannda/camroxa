@@ -525,9 +525,25 @@ Findings:
   - `upload_cover` submits `task: "cover_infill"` to `/api/generate/v2-web/`
     and gets `404 Not found`, i.e. that task/path combination does not exist.
 
-  That experiment was reverted (no behaviour changed). The next step is to
-  capture a real upload-extend request from Suno's own web UI and mirror its
-  exact task name and payload nesting rather than inferring it from 422 locs.
+  Root cause confirmed by probing Suno directly with a fake clip id (validation
+  fails on the clip, not the shape, so no credits are spent):
+
+  - the `params` wrapper is wrong: `params.prompt` is reported missing even when
+    set, while the **flat top-level** shape (`task`, `prompt`,
+    `continue_clip_id`, `continue_at`, `cover_clip_id`, ...) validates and only
+    fails with `403 permission_denied` on the fake clip;
+  - `cover_infill` is a valid task only with flat clip ids — nested under
+    `params` it returns "continue_clip_id is required", and an unknown task
+    falls back to a 422 listing the accepted task names.
+
+  Fixed accordingly in `uploadExtendMusic` / `uploadCoverMusic`, and the URL
+  path now registers the audio through Suno's upload handshake
+  (`registerAudioFromUrl`) because Suno needs a Suno-side clip id, not a URL.
+
+  End-to-end verification is still blocked: that handshake requires a captcha
+  solve, so both operations now fail with
+  `TWOCAPTCHA_KEY is required to solve captcha.` and refund. The payload fix
+  itself is evidenced by the probes above, not by a completed run.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and

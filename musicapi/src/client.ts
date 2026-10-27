@@ -607,6 +607,27 @@ export class SunoClient {
    *   - audioUrl:    public URL pointing to an audio file (forward-compatibility wrapper)
    * Internally submits task: upload_extend with the params wrapper confirmed via 422.
    */
+  /**
+   * Register audio from a URL with Suno and return a Suno-side clip id.
+   *
+   * Suno will not accept an arbitrary URL as a clip root — passing one straight
+   * into `cover_clip_id`/`continue_clip_id` fails — so the bytes must be pushed
+   * through its upload handshake first.
+   */
+  private async registerAudioFromUrl(audioUrl: string): Promise<string> {
+    const res = await fetch(audioUrl, { signal: AbortSignal.timeout(60_000) });
+    if (!res.ok) throw new Error(`audio download failed (${res.status}).`);
+    let ext = "mp3";
+    try {
+      const m = new URL(audioUrl).pathname.toLowerCase().match(/\.(wav|mp3|flac|m4a|ogg)$/);
+      if (m) ext = m[1];
+    } catch {
+      /* keep default */
+    }
+    const bytes = Buffer.from(await res.arrayBuffer());
+    return this.uploadAudio(bytes, ext, "file_upload");
+  }
+
   async uploadExtendMusic(params: {
     uploadedClipId?: string;
     audioUrl?: string;
@@ -615,20 +636,22 @@ export class SunoClient {
     title?: string;
     tags?: string;
   }): Promise<Clip[]> {
-    const continueClipId = params.uploadedClipId ?? params.audioUrl ?? "";
+    const continueClipId =
+      params.uploadedClipId ??
+      (params.audioUrl ? await this.registerAudioFromUrl(params.audioUrl) : "");
     if (!continueClipId) throw new Error("uploadedClipId or audioUrl is required for upload_extend.");
+    // Flat top-level fields: a `params` wrapper is rejected (422 on
+    // body.params.prompt) even though earlier probes suggested otherwise.
     return this.submitClips("/api/generate/v2-web/", {
       task: "upload_extend",
       generation_type: "TEXT",
       mv: config.model,
-      params: {
-        prompt: params.prompt ?? "",
-        continue_clip_id: continueClipId,
-        continue_at: params.continueAt ?? 170,
-        continued_aligned_prompt: params.prompt ?? "",
-        title: params.title ?? "",
-        tags: params.tags ?? "",
-      },
+      prompt: params.prompt ?? "",
+      continue_clip_id: continueClipId,
+      continue_at: params.continueAt ?? 170,
+      continued_aligned_prompt: params.prompt ?? "",
+      title: params.title ?? "",
+      tags: params.tags ?? "",
       override_fields: ["prompt"],
       make_instrumental: false,
       transaction_uuid: randomUUID(),
@@ -648,15 +671,18 @@ export class SunoClient {
     title?: string;
     tags?: string;
   }): Promise<Clip[]> {
-    const coverClipId = params.uploadedClipId ?? params.audioUrl ?? "";
+    const coverClipId =
+      params.uploadedClipId ??
+      (params.audioUrl ? await this.registerAudioFromUrl(params.audioUrl) : "");
     if (!coverClipId) throw new Error("uploadedClipId or audioUrl is required for upload_cover.");
+    // `cover_infill` with flat top-level clip ids validates; nesting them under
+    // `params` returns "continue_clip_id is required".
     return this.submitClips("/api/generate/v2-web/", {
       task: "cover_infill",
       generation_type: "TEXT",
       mv: config.model,
       prompt: params.prompt ?? "",
       make_instrumental: false,
-      // Pydantic `loc` names the model, so these are flat top-level fields.
       cover_clip_id: coverClipId,
       continue_clip_id: coverClipId,
       cover_start_s: params.coverStartS ?? null,
