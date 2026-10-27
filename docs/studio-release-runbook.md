@@ -456,10 +456,17 @@ Findings:
   (an earlier note in this file claimed otherwise and was wrong). Minor wart
   only: the id returned by POST is not pollable as a studio operation, so a
   caller must re-list to observe progress.
-- `lyrics` returns 200 with the full text (648 chars) but `aligned_words` is
-  empty, so word timestamps are not produced and the UI falls back to plain
-  lyrics. Aligned lyrics remain unproven and need the timestamped-lyrics
-  provider configuration checked before the matrix can claim them.
+- `lyrics` works: with a live credential it returns the full text (648 chars)
+  **and** 97 word-level timestamps (`start_s`/`end_s`/`p_align`) from Suno's
+  `/api/gen/{clip}/aligned_lyrics`. An earlier note here reported `aligned_words`
+  as empty and called it a defect; that was wrong — the seeded JWT had expired,
+  `getAlignedLyrics` got a 401, and the caller in `server.ts` catches every
+  exception and falls back to `[]`.
+
+  Genuine (minor) robustness gap: because the caller swallows all errors and
+  `getAlignedLyrics` only special-cases 404, an authentication failure is
+  indistinguishable from "this clip has no alignment". A 401 should surface as
+  an error rather than silently degrading to plain lyrics.
 - Uploaded-audio Extend/Cover could not be exercised, and the cause is a
   credential defect rather than a network fault. `POST /studio/uploads` fails
   502 `Could not store the uploaded audio.` with botocore surfacing
