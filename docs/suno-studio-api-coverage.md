@@ -469,7 +469,8 @@ change banner also has an optional **Auto-apply** toggle that reloads remote
 changes when playback is stopped and the local project is saved. Presence now
 includes each collaborator's playhead and selected lane; the timeline renders
 coloured playhead cursors with initials, and shared track headers show compact
-initials badges for collaborators selecting that track.
+initials badges for collaborators selecting that track. Clicking a collaborator
+avatar seeks the local playhead to their current position.
 
 Share viewers can leave feedback without an account:
 

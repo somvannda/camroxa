@@ -4739,9 +4739,24 @@ export function StudioEditorView() {
               title={collaborators.map((person) => person.display_name).join(", ")}
             >
               {collaborators.slice(0, 3).map((person) => (
-                <span key={person.user_id}>
+                <button
+                  key={person.user_id}
+                  type="button"
+                  title={
+                    typeof person.playhead_seconds === "number"
+                      ? `${person.display_name} at ${formatTime(person.playhead_seconds)}`
+                      : person.display_name
+                  }
+                  aria-label={`Jump to ${person.display_name}'s playhead`}
+                  disabled={typeof person.playhead_seconds !== "number"}
+                  onClick={() => {
+                    if (typeof person.playhead_seconds === "number") {
+                      seekTo(person.playhead_seconds);
+                    }
+                  }}
+                >
                   {person.display_name.slice(0, 1).toUpperCase()}
-                </span>
+                </button>
               ))}
               {collaborators.length > 1 ? <em>{collaborators.length}</em> : null}
             </div>
