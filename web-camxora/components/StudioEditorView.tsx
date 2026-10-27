@@ -1388,6 +1388,7 @@ export function StudioEditorView() {
   const [actionsOpen, setActionsOpen] = useState(false);
   const [libraryOpen, setLibraryOpen] = useState(true);
   const [inspectorOpen, setInspectorOpen] = useState(true);
+  const [mixerOpen, setMixerOpen] = useState(false);
   const [aiPrompt, setAiPrompt] = useState("");
   const [aiStatus, setAiStatus] = useState("");
   const [clipMenu, setClipMenu] = useState<{ x: number; y: number; laneId: string } | null>(null);
@@ -4497,6 +4498,18 @@ export function StudioEditorView() {
           >
             <Icon name="fa-sliders" />
           </button>
+          <button
+            className="studio-icon-btn"
+            type="button"
+            aria-label="Toggle Mixer"
+            title="Mixer"
+            onClick={() => {
+              setActionsOpen(false);
+              setMixerOpen((value) => !value);
+            }}
+          >
+            <Icon name="fa-layer-group" />
+          </button>
           {recording || countInBusy ? (
             <button
               className={`btn btn-ghost studio-record-btn${recording ? " recording" : ""}`}
@@ -6216,6 +6229,136 @@ export function StudioEditorView() {
             >
               <Icon name="fa-object-group" /> Create mashup
             </button>
+          </div>
+        </div>
+      ) : null}
+      {mixerOpen ? (
+        <div
+          className="studio-mixer-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Mixer"
+          onClick={() => setMixerOpen(false)}
+        >
+          <div className="studio-mixer" onClick={(event) => event.stopPropagation()}>
+            <div className="studio-mixer-head">
+              <div>
+                <h2>Mixer</h2>
+                <p>{lanes.length} tracks · master output</p>
+              </div>
+              <button type="button" aria-label="Close mixer" onClick={() => setMixerOpen(false)}>
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            {lanes.length ? (
+              <div className="studio-mixer-strips">
+                {lanes.map((lane) => {
+                  const groupName = groups.find((group) => group.id === lane.groupId)?.name;
+                  return (
+                    <div
+                      className={`studio-mixer-strip${selected === lane.id ? " selected" : ""}`}
+                      key={lane.id}
+                    >
+                      <button
+                        className="studio-mixer-strip-head"
+                        type="button"
+                        onClick={() => setSelected(lane.id)}
+                      >
+                        <i style={{ background: lane.color }} />
+                        <b>{lane.title}</b>
+                        <small>{groupName || "No group"}</small>
+                      </button>
+                      <label>
+                        Volume <b>{lane.volume}%</b>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={lane.volume}
+                          aria-label={`Volume for ${lane.title}`}
+                          onChange={(event) =>
+                            updateLane(lane.id, { volume: Number(event.target.value) })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Pan <b>{lane.pan === 0 ? "C" : lane.pan > 0 ? `R${lane.pan}` : `L${Math.abs(lane.pan)}`}</b>
+                        <input
+                          type="range"
+                          min="-50"
+                          max="50"
+                          value={lane.pan}
+                          aria-label={`Pan for ${lane.title}`}
+                          onChange={(event) =>
+                            updateLane(lane.id, { pan: Number(event.target.value) })
+                          }
+                        />
+                      </label>
+                      <div className="studio-mixer-strip-actions">
+                        <button
+                          className={lane.muted ? "on" : ""}
+                          type="button"
+                          aria-label={`Mute ${lane.title}`}
+                          onClick={() => updateLane(lane.id, { muted: !lane.muted })}
+                        >
+                          M
+                        </button>
+                        <button
+                          className={lane.solo ? "solo" : ""}
+                          type="button"
+                          aria-label={`Solo ${lane.title}`}
+                          onClick={() => updateLane(lane.id, { solo: !lane.solo })}
+                        >
+                          S
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+                <div className="studio-mixer-strip studio-mixer-master">
+                  <div className="studio-mixer-strip-head">
+                    <i />
+                    <b>Master</b>
+                    <small>Output</small>
+                  </div>
+                  <label>
+                    Volume <b>{master}%</b>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={master}
+                      aria-label="Mixer master volume"
+                      onChange={(event) => setMaster(Number(event.target.value))}
+                    />
+                  </label>
+                  <label>
+                    Compression <b>{masterCompressor}%</b>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={masterCompressor}
+                      aria-label="Mixer master compression"
+                      onChange={(event) => setMasterCompressor(Number(event.target.value))}
+                    />
+                  </label>
+                  <label>
+                    Drive <b>{masterDrive}%</b>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={masterDrive}
+                      aria-label="Mixer master drive"
+                      onChange={(event) => setMasterDrive(Number(event.target.value))}
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : (
+              <p className="studio-mixer-empty">Add a track to open the mixer.</p>
+            )}
           </div>
         </div>
       ) : null}

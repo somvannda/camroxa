@@ -369,6 +369,10 @@ Projects can be exported as `.camxora.json` and imported back into any Studio
 session, including lanes, markers, BPM, time signature, grid, loop, master and
 mix settings.
 
+The top bar also opens a full **Mixer** view with one channel strip per track,
+including volume, pan, mute, solo and group name, plus a master strip for
+output volume, compression and drive.
+
 The Inspector is contextual and split into **Clip / Mix / Lyrics / AI** tabs.
 Clip shows timing, volume, pan, take selection and MIDI piano roll; Mix shows
 automation, EQ, presets, sends and dynamics; Lyrics shows Suno's aligned words;
