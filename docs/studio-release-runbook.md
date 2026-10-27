@@ -448,6 +448,17 @@ Findings:
   `TWOCAPTCHA_KEY is required to solve captcha.` and refunded: those endpoints
   are captcha-gated, so a 2Captcha key is required in any environment that
   runs them. Configuration gap, not a code defect.
+- `personas` is captcha-gated too (its musicapi job errored with the same
+  `TWOCAPTCHA_KEY` message), but the platform still returns 202 and writes a
+  `studio_personas` row with `provider_persona_id = null`. Nothing surfaces the
+  upstream failure and the row is not pollable as a studio operation, so the
+  user is shown a persona that cannot be used. Defect: propagate the musicapi
+  job status into the persona (and fail the request) instead of returning 202
+  unconditionally.
+- `lyrics` returns 200 with the full text (648 chars) but `aligned_words` is
+  empty, so word timestamps are not produced and the UI falls back to plain
+  lyrics. Aligned lyrics remain unproven and need the timestamped-lyrics
+  provider configuration checked before the matrix can claim them.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
