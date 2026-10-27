@@ -459,6 +459,12 @@ Findings:
   2. pre-flight the entitlement so an unentitled account fails fast with a
      clear message, instead of charging, waiting five minutes and refunding.
 
+  Both fixed in `client.remaster`: it now reads `remaster_model_types`, picks a
+  usable model (preferring the account default), and throws
+  "This Suno account is not entitled to remaster (no usable remaster model)."
+  when none can be used. Verified: the same call now errors in 3s instead of
+  306s with a zero net credit delta.
+
 
 
 ### Defect 1 — live generation cannot run locally

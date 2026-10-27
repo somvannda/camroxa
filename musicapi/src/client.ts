@@ -73,6 +73,14 @@ export interface BillingInfo {
   total_credits_left?: number;
   subscription_type?: string;
   accessible_features?: Array<{ name?: string }>;
+  /** Models the account may use for remaster, with the entitlement flag. */
+  remaster_model_types?: Array<{
+    external_key?: string;
+    name?: string;
+    can_use?: boolean;
+    is_default_model?: boolean;
+  }>;
+  free_remasters_remaining?: number;
   models?: Array<{
     name?: string;
     external_key?: string;
@@ -474,12 +482,35 @@ export class SunoClient {
     });
   }
 
-  /** Remaster a clip with a different model. */
+  /**
+   * Remaster a clip with a different model.
+   *
+   * The model must come from the account's own `remaster_model_types`. The
+   * previous hardcoded fallback (`chirp-flounder`) does not exist for current
+   * accounts, so Suno accepted the submit but never processed it and the job
+   * sat until the poll ceiling. Checking entitlement up front also fails fast
+   * for accounts whose only remaster model has `can_use: false`, instead of
+   * charging the user and burning five minutes before refunding.
+   */
   async remaster(clipId: string, model?: string): Promise<Clip[]> {
+    let chosen = normalizeModel(model);
+    if (!chosen) {
+      const info = await this.billingInfo();
+      const usable = (info.remaster_model_types ?? []).filter(
+        (m): m is { external_key: string; can_use?: boolean; is_default_model?: boolean } =>
+          Boolean(m.can_use && m.external_key),
+      );
+      if (usable.length === 0) {
+        throw new Error(
+          "This Suno account is not entitled to remaster (no usable remaster model).",
+        );
+      }
+      chosen = (usable.find((m) => m.is_default_model) ?? usable[0]).external_key;
+    }
     const token = await this.ensureCaptchaToken();
     const payload: Record<string, unknown> = {
       clip_id: clipId,
-      model_name: normalizeModel(model) ?? "chirp-flounder",
+      model_name: chosen,
       variation_category: "normal",
     };
     if (token) payload.token = token;
