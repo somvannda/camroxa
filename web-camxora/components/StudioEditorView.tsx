@@ -6568,6 +6568,24 @@ export function StudioEditorView() {
                     <b>Master</b>
                     <small>Output</small>
                   </div>
+                  <span className="studio-mixer-level" aria-label="Mixer master level">
+                    <i
+                      style={{
+                        transform: `scaleX(${Math.max(0.03, masterMeter)})`,
+                      }}
+                    />
+                  </span>
+                  <span
+                    className="studio-mixer-spectrum"
+                    aria-label="Mixer master spectrum"
+                  >
+                    {masterSpectrum.map((value, index) => (
+                      <i
+                        key={index}
+                        style={{ height: `${Math.max(8, value * 100)}%` }}
+                      />
+                    ))}
+                  </span>
                   <label>
                     Volume <b>{master}%</b>
                     <input

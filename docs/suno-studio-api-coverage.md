@@ -374,7 +374,8 @@ mix settings.
 
 The top bar also opens a full **Mixer** view with one channel strip per track,
 including live level meter, volume, pan, mute, solo and group name, plus a
-master strip for output volume, compression and drive.
+master strip for output volume, compression, drive, output level meter and
+12-band spectrum.
 
 The Inspector is contextual and split into **Clip / Mix / Lyrics / AI** tabs.
 Clip shows timing, volume, pan, take selection and MIDI piano roll; Mix shows
