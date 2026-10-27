@@ -553,8 +553,12 @@ Findings:
   `Suno did not return a processed clip id for the uploaded audio.` (refunded).
 
   Remaining work: determine what a completed audio upload actually yields as a
-  clip root (an upload-session id is not one), then use that for
-  `cover_clip_id` / `continue_clip_id`.
+  clip root. Probed directly: the upload does reach `status: complete`, and its
+  status object only ever exposes `{id, status, title, copyright_muted}` — no
+  clip id. Using the upload id (or the session id) as `cover_clip_id` returns
+  `404 Not found`, so neither is a usable clip root. Suno must surface the
+  processed upload somewhere else (its library/feed); that mapping is the last
+  unknown for uploaded-audio Extend/Cover.
 
   Additional evidence from the browser session: submitting the flat shape with a
   **real owned clip** returns `422 token_validation_failed` rather than a shape
