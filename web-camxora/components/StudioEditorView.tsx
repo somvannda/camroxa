@@ -412,6 +412,17 @@ function makeId(): string {
   return `clip-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function personInitials(name: string): string {
+  return (
+    name
+      .split(/\s+/)
+      .map((part) => part[0] ?? "")
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "?"
+  );
+}
+
 function formatTime(seconds: number): string {
   const total = Math.max(0, Math.floor(seconds));
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
@@ -5169,13 +5180,7 @@ export function StudioEditorView() {
                     typeof person.playhead_seconds === "number"
                 )
                 .map((person, index) => {
-                  const initials =
-                    person.display_name
-                      .split(/\s+/)
-                      .map((part) => part[0] ?? "")
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase() || "?";
+                  const initials = personInitials(person.display_name);
                   const left = clamp(
                     ((person.playhead_seconds ?? 0) / Math.max(1, timelineDuration)) *
                       100,
@@ -5212,7 +5217,13 @@ export function StudioEditorView() {
                 </button>
               </div>
             ))}
-            {visibleLanes.map((lane, index) => (
+            {visibleLanes.map((lane, index) => {
+              const laneCollaborators = collaborators.filter(
+                (person) =>
+                  person.user_id !== user?.id &&
+                  person.selected_lane_id === lane.id
+              );
+              return (
               <div className={`studio-lane${selected === lane.id ? " selected" : ""}`} key={lane.id}>
                 <button className="studio-lane-head" type="button" onClick={() => setSelected(lane.id)} onDoubleClick={() => renameLane(lane)} title="Double-click to rename">
                   <span className="studio-lane-index" style={{ color: lane.color, borderColor: `${lane.color}66` }}>
@@ -5229,6 +5240,21 @@ export function StudioEditorView() {
                       ? {formatTime(lane.start)}
                     </small>
                   </span>
+                  {laneCollaborators.length ? (
+                    <span className="studio-lane-collabs" aria-label="Collaborators on this track">
+                      {laneCollaborators.slice(0, 3).map((person, personIndex) => (
+                        <i
+                          key={person.user_id}
+                          style={{
+                            background: COLORS[personIndex % COLORS.length],
+                          }}
+                          title={person.display_name}
+                        >
+                          {personInitials(person.display_name)}
+                        </i>
+                      ))}
+                    </span>
+                  ) : null}
                 </button>
                 <div
                   className="studio-lane-track"
@@ -5292,7 +5318,8 @@ export function StudioEditorView() {
                   <button type="button" aria-label={`Remove ${lane.title}`} onClick={() => commitLanes(lanes.filter((item) => item.id !== lane.id))}><Icon name="fa-xmark" /></button>
                 </div>
               </div>
-            ))}
+              );
+            })}
             <div className="studio-add-lane">
               <button type="button" onClick={() => setActionsOpen(true)}>
                 <Icon name="fa-plus" /> Add track
