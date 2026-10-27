@@ -2830,6 +2830,10 @@ html{color-scheme:dark}
 
   .studio-project-actions{display:flex;align-items:center;gap:4px}
   .studio-project-tags{display:block;margin-top:2px;font-size:7.5px;color:#a5b4fc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .studio-project-comment-count{display:inline-flex;align-items:center;gap:3px;margin-top:3px;font-size:7.5px;color:#64748b}
+  .studio-project-comment-count .icon,.studio-project-comment-count .fa-replaced{font-size:7px!important;width:7px!important;height:7px!important}
+  .studio-project-comment-count.unread{color:#fbbf24}
+  .studio-project-comment-count.unread::after{content:"";width:4px;height:4px;border-radius:50%;background:#fbbf24}
   .studio-project-actions .studio-project-pin{width:24px;padding:0;color:#64748b}
   .studio-project-actions .studio-project-pin.active{color:#fbbf24;border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.08)}
   .studio-project-actions .studio-project-pin .icon,.studio-project-actions .studio-project-pin .fa-replaced{font-size:9px!important;width:9px!important;height:9px!important}

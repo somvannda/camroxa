@@ -20,6 +20,8 @@ export type StudioProject = {
   read_only?: boolean;
   pinned?: boolean;
   tags?: string[];
+  comment_count?: number;
+  last_comment_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };

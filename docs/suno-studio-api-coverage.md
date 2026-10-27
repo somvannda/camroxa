@@ -472,7 +472,8 @@ GET  /api/v3/web-music/studio/projects/{project_id}/comments
 Comments are stored against the project and appear on the shared page. Comment
 replies use `parent_id`, render as nested threads, and can be posted without an
 account. The project owner can read the full thread from the Studio **Share**
-dialog.
+dialog. The project browser shows the comment count and an unread dot based on
+the last comment timestamp; opening the Share dialog marks the thread seen.
 
 The owner can list every share link with its permission, expiry and active
 state, copy or open any active link, and revoke it from the Share dialog. Share

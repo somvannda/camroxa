@@ -1354,7 +1354,7 @@ export function StudioEditorView() {
   const [cloudState, setCloudState] = useState<"local" | "saving" | "saved" | "error">("local");
   const [cloudError, setCloudError] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(false);
-  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null; pinned?: boolean; tags?: string[] }>>([]);
+  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null; pinned?: boolean; tags?: string[]; comment_count?: number; last_comment_at?: string | null }>>([]);
   const [tagFilter, setTagFilter] = useState("");
   const [projectsBusy, setProjectsBusy] = useState(false);
   const [projectsError, setProjectsError] = useState("");
@@ -1842,6 +1842,26 @@ export function StudioEditorView() {
     return () => window.clearTimeout(timer);
   }, [loaded, user, projectId, sharedToken, sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, groups, lanes]);
 
+  function commentSeenKey(projectId: string) {
+    return `studio:commentsSeen:${projectId}`;
+  }
+
+  function hasUnreadComments(project: {
+    id: string;
+    last_comment_at?: string | null;
+  }) {
+    if (!project.last_comment_at) return false;
+    try {
+      const seen = window.localStorage.getItem(commentSeenKey(project.id));
+      if (!seen) return true;
+      return (
+        Date.parse(project.last_comment_at) > Date.parse(seen)
+      );
+    } catch {
+      return false;
+    }
+  }
+
   async function openProjects() {
     setProjectsOpen(true);
     setProjectSearch("");
@@ -2102,7 +2122,24 @@ export function StudioEditorView() {
     }
     setCommentsBusy(true);
     void listStudioProjectComments(projectId)
-      .then((result) => setProjectComments(result.items))
+      .then((result) => {
+        setProjectComments(result.items);
+        const latest = result.items.reduce<string | null>((current, comment) => {
+          if (!comment.created_at) return current;
+          if (!current) return comment.created_at;
+          return Date.parse(comment.created_at) > Date.parse(current)
+            ? comment.created_at
+            : current;
+        }, null);
+        try {
+          window.localStorage.setItem(
+            commentSeenKey(projectId),
+            latest ?? new Date().toISOString()
+          );
+        } catch {
+          /* local storage is best-effort */
+        }
+      })
       .catch((cause) =>
         setCommentsError(cause instanceof Error ? cause.message : "Could not load comments.")
       )
@@ -6233,6 +6270,13 @@ export function StudioEditorView() {
                     {project.tags?.length ? (
                       <small className="studio-project-tags">
                         {project.tags.join(" · ")}
+                      </small>
+                    ) : null}
+                    {project.comment_count ? (
+                      <small
+                        className={`studio-project-comment-count${hasUnreadComments(project) ? " unread" : ""}`}
+                      >
+                        <Icon name="fa-comment" /> {project.comment_count}
                       </small>
                     ) : null}
                   </div>

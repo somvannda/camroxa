@@ -1595,10 +1595,20 @@ class WebMusicService:
         safe_offset = max(0, int(offset))
         rows = await self._pool.fetch(
             """
-            SELECT id, title, major_version, bpm, time_signature, pinned, tags, created_at, updated_at
-            FROM studio_projects
-            WHERE user_id = $1
-            ORDER BY pinned DESC, updated_at DESC
+            SELECT p.id, p.title, p.major_version, p.bpm, p.time_signature,
+                   p.pinned, p.tags, p.created_at, p.updated_at,
+                   COALESCE(c.comment_count, 0) AS comment_count,
+                   c.last_comment_at
+            FROM studio_projects p
+            LEFT JOIN (
+                SELECT project_id,
+                       count(*)::int AS comment_count,
+                       max(created_at) AS last_comment_at
+                FROM studio_project_comments
+                GROUP BY project_id
+            ) c ON c.project_id = p.id
+            WHERE p.user_id = $1
+            ORDER BY p.pinned DESC, p.updated_at DESC
             LIMIT $2 OFFSET $3
             """,
             user_id,
@@ -1632,6 +1642,12 @@ class WebMusicService:
             "time_signature": str(row["time_signature"]),
             "pinned": bool(row.get("pinned")),
             "tags": list(row.get("tags") or []),
+            "comment_count": int(row.get("comment_count") or 0),
+            "last_comment_at": (
+                row["last_comment_at"].isoformat()
+                if row.get("last_comment_at")
+                else None
+            ),
             "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
             "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
         }
