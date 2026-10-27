@@ -514,12 +514,20 @@ Findings:
   upload_cover   404  /api/generate/v2-web/ failed (404): {"detail": "Not found."}
   ```
 
-  Both refunded correctly. Likely cause: `uploadExtendMusic` sends
-  `params.prompt` but Suno still reports it missing, and `uploadCoverMusic`
-  passes the caller's `audio_url` straight into `cover_clip_id`, which Suno
-  expects to be a Suno-side upload/clip id. The Studio upload path never runs
-  the `upload_init`/`upload_register` handshake that mints such an id, so the
-  registered-audio flow is incomplete end to end.
+  Both refunded correctly. Registration is not the blocker: routing the
+  `audio_url` through Suno's upload handshake (`upload_init` → S3 PUT →
+  `upload_register` → poll for a clip id) before the operation produced the
+  same two errors, so these are payload/task-shape defects:
+
+  - `upload_extend` sends `params.prompt` (non-empty, forwarded by the
+    platform) yet Suno still answers `body.params.prompt` missing, so the
+    request shape does not match Suno's model.
+  - `upload_cover` submits `task: "cover_infill"` to `/api/generate/v2-web/`
+    and gets `404 Not found`, i.e. that task/path combination does not exist.
+
+  That experiment was reverted (no behaviour changed). The next step is to
+  capture a real upload-extend request from Suno's own web UI and mirror its
+  exact task name and payload nesting rather than inferring it from 422 locs.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
