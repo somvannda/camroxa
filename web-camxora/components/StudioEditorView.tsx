@@ -3765,6 +3765,30 @@ export function StudioEditorView() {
     oscillator.stop(now + 0.58);
   }
 
+  function quantizeMidiNotes() {
+    if (!selectedLane?.midiNotes) return;
+    invalidateMidi(selectedLane);
+    updateLane(selectedLane.id, {
+      midiNotes: selectedLane.midiNotes.map((note) => ({
+        ...note,
+        time: Number(
+          clamp(Math.round(note.time / 0.5) * 0.5, 0, selectedLane.duration).toFixed(2)
+        ),
+      })),
+    });
+  }
+
+  function transposeMidiNotes(semitones: number) {
+    if (!selectedLane?.midiNotes) return;
+    invalidateMidi(selectedLane);
+    updateLane(selectedLane.id, {
+      midiNotes: selectedLane.midiNotes.map((note) => ({
+        ...note,
+        pitch: clamp(note.pitch + semitones, 0, 127),
+      })),
+    });
+  }
+
   function updateMidiNote(noteId: string, patch: Partial<MidiNote>) {
     if (!selectedLane?.midiNotes) return;
     invalidateMidi(selectedLane);
@@ -5332,6 +5356,23 @@ export function StudioEditorView() {
                         <option value="up">Arp up</option>
                         <option value="down">Arp down</option>
                       </select>
+                      <button type="button" onClick={quantizeMidiNotes}>
+                        Quantize
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Transpose MIDI down one octave"
+                        onClick={() => transposeMidiNotes(-12)}
+                      >
+                        −12
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Transpose MIDI up one octave"
+                        onClick={() => transposeMidiNotes(12)}
+                      >
+                        +12
+                      </button>
                       <button
                         type="button"
                         onClick={() => {

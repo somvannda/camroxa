@@ -433,6 +433,8 @@ roll auditions notes through the same synth and master bus. A **Connect MIDI**
 button requests Web MIDI access and routes connected-controller note-on events
 through the same audition path. **Record MIDI** writes played notes into the
 selected MIDI track at the playhead, using the incoming controller velocity.
+Quantize snaps note starts to the half-second grid, and −12/+12 transpose the
+whole MIDI clip by an octave.
 
 The transport includes a BPM-driven metronome with accented downbeats. Click
 scheduling follows the loop range and is monitoring-only; it is not included
