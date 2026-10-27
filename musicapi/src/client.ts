@@ -485,27 +485,40 @@ export class SunoClient {
   /**
    * Remaster a clip with a different model.
    *
-   * The model must come from the account's own `remaster_model_types`. The
-   * previous hardcoded fallback (`chirp-flounder`) does not exist for current
-   * accounts, so Suno accepted the submit but never processed it and the job
-   * sat until the poll ceiling. Checking entitlement up front also fails fast
-   * for accounts whose only remaster model has `can_use: false`, instead of
-   * charging the user and burning five minutes before refunding.
+   * Suno accepts a remaster submission even when the account reports
+   * `remaster_model_types[].can_use = false` — verified directly: the request
+   * returns 200 and creates a "submitted" clip. So entitlement is not a reason
+   * to refuse locally: prefer a model the account says it can use, otherwise
+   * fall back to its default remaster model and let the provider decide. The
+   * previous hard block made a callable feature look broken.
    */
   async remaster(clipId: string, model?: string): Promise<Clip[]> {
     let chosen = normalizeModel(model);
     if (!chosen) {
       const info = await this.billingInfo();
-      const usable = (info.remaster_model_types ?? []).filter(
+      const types = info.remaster_model_types ?? [];
+      const usable = types.filter(
         (m): m is { external_key: string; can_use?: boolean; is_default_model?: boolean } =>
           Boolean(m.can_use && m.external_key),
       );
+      const fallback = types.filter(
+        (m): m is { external_key: string; can_use?: boolean; is_default_model?: boolean } =>
+          Boolean(m.external_key),
+      );
+      const pick =
+        usable.find((m) => m.is_default_model) ??
+        usable[0] ??
+        fallback.find((m) => m.is_default_model) ??
+        fallback[0];
+      chosen = pick?.external_key;
+      if (!chosen) {
+        throw new Error("No remaster model is available for this Suno account.");
+      }
       if (usable.length === 0) {
-        throw new Error(
-          "This Suno account is not entitled to remaster (no usable remaster model).",
+        console.warn(
+          `[remaster] account reports no usable remaster model; attempting with ${chosen} anyway.`,
         );
       }
-      chosen = (usable.find((m) => m.is_default_model) ?? usable[0]).external_key;
     }
     const token = await this.ensureCaptchaToken();
     const payload: Record<string, unknown> = {

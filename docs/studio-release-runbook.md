@@ -594,14 +594,22 @@ Findings:
   when none can be used. Verified: the same call now errors in 3s instead of
   306s with a zero net credit delta.
 
-  Updated 2026-10-27 — this is a **plan-level** limitation, not an exhausted
-  quota. Two independent **Premier** accounts were checked: one with ~1,900
-  credits and one with 10,000 fresh credits. Both report
-  `remaster_model_types: [chirp-halibut can_use=false]` and
-  `free_remasters_remaining: 0`. Adding an entitled account therefore does not
-  fix remaster; no Premier account in the pool can use it. Ship the feature
-  capability-gated (hide or disable with a clear reason) unless Suno confirms
-  the correct remaster model for current plans.
+  Updated 2026-10-27 (corrected twice): remaster is **not** plan-gated and was
+  never broken. `can_use: false` does *not* prevent the call — Suno accepts it
+  (`POST /api/generate/upsample` → 200, clip `submitted`) and the clip **does
+  complete**. Four remasters were driven directly from the browser session and
+  all reached `status: complete` with audio, and the same operation through the
+  Studio API completed in ~15s with 12 credits and a durable B2 URL.
+
+  The original 306s timeouts were caused entirely by the callback 404s
+  (`/api/v3` prefix + missing `/suno-lyrics` route), which meant the finished
+  clip was never reported back. Once callbacks worked, remaster completed
+  normally.
+
+  Code consequence: `client.remaster` must **not** refuse when
+  `remaster_model_types[].can_use` is false. It now prefers a usable model,
+  falls back to the account's default remaster model, warns, and lets Suno
+  decide.
 
 
 
