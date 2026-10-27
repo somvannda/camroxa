@@ -2821,12 +2821,13 @@ html{color-scheme:dark}
   .studio-group-select{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:2px 0 8px;font-size:9px;color:#94a3b8}
   .studio-group-select select{height:24px;min-width:110px;padding:0 6px;border:1px solid var(--line);border-radius:5px;background:#0d1224;color:#cbd5e1;font:inherit;font-size:8.5px}
   .studio-groups .studio-eq-head small{font-size:8px;color:#64748b}
-  .studio-group-row{display:grid;grid-template-columns:16px minmax(0,1fr) 32px 22px;align-items:center;gap:5px;margin-top:4px;font-size:8.5px;color:#cbd5e1}
+  .studio-group-row{display:grid;grid-template-columns:16px minmax(0,1fr) 32px 22px 22px;align-items:center;gap:5px;margin-top:4px;font-size:8.5px;color:#cbd5e1}
   .studio-group-row>span{font-weight:600;color:#c4b5fd}
   .studio-group-row input{width:100%;min-width:0;accent-color:#a855f7}
   .studio-group-row b{text-align:right;font-size:8px;color:#94a3b8;font-weight:500}
   .studio-group-row button{width:22px;height:20px;padding:0;border:1px solid var(--line);border-radius:4px;background:rgba(255,255,255,.025);color:#94a3b8;font:inherit;font-size:8px;cursor:pointer}
   .studio-group-row button.on{border-color:rgba(248,113,113,.35);background:rgba(248,113,113,.15);color:#fca5a5}
+  .studio-group-row button.solo{border-color:rgba(250,204,21,.35);background:rgba(250,204,21,.15);color:#fde047}
   .studio-take-actions{margin:6px 0 8px;padding:7px;border:1px solid rgba(14,165,233,.2);border-radius:6px;background:rgba(14,165,233,.04)}
   .studio-take-actions>div{display:flex;align-items:center;justify-content:space-between;gap:6px}
   .studio-take-actions span{font-size:8.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#7dd3fc}

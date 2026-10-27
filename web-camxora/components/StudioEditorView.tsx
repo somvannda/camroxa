@@ -141,6 +141,7 @@ type TrackGroup = {
   id: TrackGroupId;
   volume: number;
   muted: boolean;
+  solo: boolean;
 };
 
 type StoredSession = {
@@ -170,10 +171,10 @@ type AudioMeta = {
 const COLORS = ["#8b5cf6", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899", "#14b8a6"];
 
 const DEFAULT_GROUPS: TrackGroup[] = [
-  { id: "A", volume: 100, muted: false },
-  { id: "B", volume: 100, muted: false },
-  { id: "C", volume: 100, muted: false },
-  { id: "D", volume: 100, muted: false },
+  { id: "A", volume: 100, muted: false, solo: false },
+  { id: "B", volume: 100, muted: false, solo: false },
+  { id: "C", volume: 100, muted: false, solo: false },
+  { id: "D", volume: 100, muted: false, solo: false },
 ];
 
 function normalizeGroups(input: unknown): TrackGroup[] {
@@ -191,19 +192,28 @@ function normalizeGroups(input: unknown): TrackGroup[] {
         ? clamp(Number(match?.volume), 0, 100)
         : fallback.volume,
       muted: Boolean(match?.muted),
+      solo: Boolean(match?.solo),
     };
   });
 }
 
 function applyGroupMix(lanes: Clip[], groups: TrackGroup[]): Clip[] {
   const byId = new Map(groups.map((group) => [group.id, group]));
+  const anyGroupSolo = groups.some((group) => group.solo);
   return lanes.map((lane) => {
     const group = lane.groupId ? byId.get(lane.groupId) : null;
-    if (!group) return lane;
+    if (!group && !anyGroupSolo) return lane;
+    const groupSolo = Boolean(group?.solo);
     return {
       ...lane,
-      volume: clamp(lane.volume * (group.volume / 100), 0, 100),
-      muted: lane.muted || group.muted,
+      volume: group
+        ? clamp(lane.volume * (group.volume / 100), 0, 100)
+        : lane.volume,
+      muted:
+        lane.muted ||
+        Boolean(group?.muted) ||
+        (anyGroupSolo && !groupSolo),
+      solo: anyGroupSolo ? groupSolo : lane.solo,
     };
   });
 }
@@ -3575,7 +3585,7 @@ export function StudioEditorView() {
 
   function updateGroup(
     groupId: TrackGroupId,
-    patch: Partial<Pick<TrackGroup, "volume" | "muted">>
+    patch: Partial<Pick<TrackGroup, "volume" | "muted" | "solo">>
   ) {
     setGroups((current) =>
       current.map((group) =>
@@ -5178,6 +5188,14 @@ export function StudioEditorView() {
                       }
                     />
                     <b>{group.volume}%</b>
+                    <button
+                      className={group.solo ? "solo" : ""}
+                      type="button"
+                      aria-label={`Solo group ${group.id}`}
+                      onClick={() => updateGroup(group.id, { solo: !group.solo })}
+                    >
+                      S
+                    </button>
                     <button
                       className={group.muted ? "on" : ""}
                       type="button"
