@@ -983,11 +983,16 @@ export class SunoClient {
     params: { uploadType: string; uploadFilename: string; uploadTitle?: string }
   ): Promise<unknown> {
     const token = await this.ensureCaptchaToken();
+    // Mirror Suno's own client exactly: it sends upload_type, upload_filename
+    // and agreed_to_vip_upload_terms, and does NOT send upload_title. Adding an
+    // empty upload_title left the upload in a state where initialize-clip
+    // returned 400 with an empty body.
     const body: Record<string, unknown> = {
       upload_type: params.uploadType,
       upload_filename: params.uploadFilename,
-      upload_title: params.uploadTitle ?? "",
+      agreed_to_vip_upload_terms: false,
     };
+    if (params.uploadTitle) body.upload_title = params.uploadTitle;
     if (token) body.token = token;
     const res = await this.request(`/api/uploads/audio/${uploadId}/upload-finish/`, {
       method: "POST",
