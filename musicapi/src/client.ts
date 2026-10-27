@@ -688,20 +688,19 @@ export class SunoClient {
       params.uploadedClipId ??
       (params.audioUrl ? await this.registerAudioFromUrl(params.audioUrl) : "");
     if (!coverClipId) throw new Error("uploadedClipId or audioUrl is required for upload_cover.");
-    // `cover_infill` with flat top-level clip ids validates; nesting them under
-    // `params` returns "continue_clip_id is required".
+    // Captured from Suno's own Create page: the task is `cover` (not
+    // `cover_infill`), only `cover_clip_id` is set, `continue_clip_id` is null,
+    // and no cover_start_s/cover_end_s are sent.
     return this.submitClips("/api/generate/v2-web/", {
-      task: "cover_infill",
+      task: "cover",
       generation_type: "TEXT",
       mv: config.model,
       prompt: params.prompt ?? "",
-      make_instrumental: false,
-      cover_clip_id: coverClipId,
-      continue_clip_id: coverClipId,
-      cover_start_s: params.coverStartS ?? null,
-      cover_end_s: params.coverEndS ?? null,
       title: params.title ?? "",
       tags: params.tags ?? "",
+      make_instrumental: false,
+      cover_clip_id: coverClipId,
+      continue_clip_id: null,
       override_fields: ["prompt"],
       transaction_uuid: randomUUID(),
     });
