@@ -1038,6 +1038,14 @@ async def get_studio_pricing(
     return await service.studio_operation_pricing(UUID(ctx.user_id))
 
 
+@router.get("/studio/readiness")
+async def get_studio_readiness(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.get_studio_readiness()
+
+
 @router.get("/studio/operations/{operation_id}")
 async def get_studio_operation(
     operation_id: UUID,

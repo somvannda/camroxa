@@ -2770,6 +2770,72 @@ class WebMusicService:
             label="mashup",
         )
 
+    async def get_studio_readiness(self) -> dict[str, Any]:
+        from platform_api.config import get_settings
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        settings = get_settings()
+        required_tables = [
+            "studio_projects",
+            "studio_operations",
+            "studio_uploads",
+            "studio_personas",
+            "studio_project_shares",
+            "studio_project_comments",
+            "studio_project_versions",
+        ]
+        table_rows = await self._pool.fetch(
+            """
+            SELECT tablename FROM pg_tables
+            WHERE schemaname = 'public' AND tablename = ANY($1::text[])
+            """,
+            required_tables,
+        )
+        present_tables = {str(row["tablename"]) for row in table_rows}
+        missing_tables = [
+            table for table in required_tables if table not in present_tables
+        ]
+        pricing_rows = await self._pool.fetch(
+            """
+            SELECT operation_type FROM credit_pricing
+            WHERE ai_service = 'suno'
+              AND operation_type = ANY($1::text[])
+            """,
+            ["studio_edit", "studio_stems_2", "studio_stems_12"],
+        )
+        present_pricing = {str(row["operation_type"]) for row in pricing_rows}
+        missing_pricing = [
+            operation
+            for operation in ("studio_edit", "studio_stems_2", "studio_stems_12")
+            if operation not in present_pricing
+        ]
+        storage_configured = False
+        storage_error: str | None = None
+        try:
+            storage_config = await resolve_streaming_storage_config(self._pool)
+            storage_configured = bool(storage_config.configured)
+        except Exception as exc:
+            storage_error = str(exc)
+        internal_token = bool(str(settings.studio_internal_token or "").strip())
+        suno_api_base_url = bool(str(settings.suno_api_base_url or "").strip())
+        checks = {
+            "tables": not missing_tables,
+            "pricing": not missing_pricing,
+            "storage": storage_configured,
+            "internal_token": internal_token,
+            "suno_api_base_url": suno_api_base_url,
+        }
+        return {
+            "ready": all(checks.values()),
+            "checks": checks,
+            "missing_tables": missing_tables,
+            "missing_pricing": missing_pricing,
+            "storage_error": storage_error,
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+        }
+
     async def studio_operation_pricing(self, user_id: UUID) -> dict[str, int]:
         bridge = self._web_music_charge_bridge()
         pricing: dict[str, int] = {}

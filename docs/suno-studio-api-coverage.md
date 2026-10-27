@@ -275,6 +275,17 @@ The Inspector displays the configured costs next to the Stems and AI edit
 actions, so admin pricing changes are reflected without hardcoding amounts in
 the frontend.
 
+Studio readiness is available to authenticated callers:
+
+```text
+GET /api/v3/web-music/studio/readiness
+```
+
+It reports whether the required Studio tables, pricing rows, durable storage,
+Studio internal token and Suno API base URL are configured. The response
+contains `ready`, per-check booleans, missing table/pricing lists and the check
+timestamp. It never returns the token or storage credentials.
+
 Local mixdown export supports:
 
 ```text
