@@ -964,15 +964,26 @@ export class SunoClient {
    * posts `{"user_reviewed_tags": true}` and receives `{"clip_id": ...}`.
    */
   async initializeUploadClip(uploadId: string): Promise<string> {
-    const res = await this.request(`/api/uploads/audio/${uploadId}/initialize-clip/`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ user_reviewed_tags: true }),
-    });
-    if (!res.ok) throw await sunoHttpError(`initialize-clip`, res);
-    const data = (await res.json()) as { clip_id?: string };
-    if (!data.clip_id) throw new Error("initialize-clip returned no clip id.");
-    return data.clip_id;
+    // Retry: the upload reports status "complete" slightly before Suno has
+    // finished inferring tags/description, and initialize-clip answers 400 with
+    // an empty body until it has.
+    let lastError = "";
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const res = await this.request(`/api/uploads/audio/${uploadId}/initialize-clip/`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: "https://suno.com", referer: "https://suno.com/" },
+        body: JSON.stringify({ user_reviewed_tags: true }),
+      });
+      if (res.ok) {
+        const data = (await res.json()) as { clip_id?: string };
+        if (data.clip_id) return data.clip_id;
+        lastError = "initialize-clip returned no clip id.";
+      } else {
+        lastError = `initialize-clip failed (${res.status}): ${await res.text()}`;
+      }
+      await new Promise((r) => setTimeout(r, 4000));
+    }
+    throw new Error(lastError || "initialize-clip failed.");
   }
 
   /** Step 3: register / finish upload (after S3 multipart PUT succeeded).
