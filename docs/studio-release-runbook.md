@@ -544,6 +544,12 @@ Findings:
   solve, so both operations now fail with
   `TWOCAPTCHA_KEY is required to solve captcha.` and refund. The payload fix
   itself is evidenced by the probes above, not by a completed run.
+
+  Additional evidence from the browser session: submitting the flat shape with a
+  **real owned clip** returns `422 token_validation_failed` rather than a shape
+  error, while the same shape with a fake clip returns `403 permission_denied`.
+  Suno validates the clip before the captcha token, so the shape is accepted and
+  a captcha token is the sole remaining gate.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
