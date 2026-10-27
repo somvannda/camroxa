@@ -460,6 +460,13 @@ Findings:
   empty, so word timestamps are not produced and the UI falls back to plain
   lyrics. Aligned lyrics remain unproven and need the timestamped-lyrics
   provider configuration checked before the matrix can claim them.
+- Uploaded-audio Extend/Cover could not be exercised: `POST /studio/uploads`
+  fails 502 `Could not store the uploaded audio.` The platform's B2 client
+  raises a TLS error against `s3.us-east-005.backblazeb2.com` for bucket
+  `camroxa-song-storage` (`EOF occurred in violation of protocol`), while
+  musicapi's own bucket `productions-camxora-song` works on the same host. This
+  is platform storage configuration/network, not Studio logic; verify the
+  bucket and endpoint before relying on uploads in sandbox.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
