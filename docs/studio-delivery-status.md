@@ -141,7 +141,8 @@ This is not a promise to clone every Suno Studio feature.
 - [x] Comment count/unread badge passed
 - [x] Long-poll updates endpoint passed
 - [x] Presence API accepted playhead and selected lane
-- [x] Readiness endpoint returned expected local configuration state
+- [x] Readiness endpoint verified locally: tables, pricing, storage, internal
+      token and musicapi reachability all pass; Suno account count is `0`
 
 ## Release gates — still open
 
@@ -152,6 +153,7 @@ so they are **not** marked complete yet.
 - [ ] Production durable B2/S3 storage configured
 - [ ] Migrations `158`–`163` applied in sandbox and production
 - [ ] Readiness endpoint returns `ready: true`
+- [ ] At least one active Suno account is available in the musicapi pool
 - [ ] Live Stems 2/12 acceptance re-run in target environment
 - [ ] Live Extend acceptance
 - [ ] Live Cover acceptance

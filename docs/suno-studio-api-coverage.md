@@ -282,8 +282,10 @@ GET /api/v3/web-music/studio/readiness
 ```
 
 It reports whether the required Studio tables, pricing rows, durable storage,
-Studio internal token and Suno API base URL are configured. The response
-contains `ready`, per-check booleans, missing table/pricing lists and the check
+Studio internal token and Suno API base URL are configured. It also calls
+musicapi's `/internal/studio/health` with the token and checks that at least one
+Suno account is available. The response contains `ready`, per-check booleans,
+missing table/pricing lists, musicapi account count/error and the check
 timestamp. It never returns the token or storage credentials.
 
 Local mixdown export supports:

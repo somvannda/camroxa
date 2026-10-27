@@ -8701,6 +8701,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     });
   });
 
+  app.get("/internal/studio/health", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    return reply.send({
+      ok: true,
+      accounts: pool.size,
+      jobs: jobs.size,
+    });
+  });
+
   app.post("/internal/studio/persona", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;

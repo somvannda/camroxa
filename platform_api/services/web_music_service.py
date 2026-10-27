@@ -2927,12 +2927,35 @@ class WebMusicService:
             storage_error = str(exc)
         internal_token = bool(str(settings.studio_internal_token or "").strip())
         suno_api_base_url = bool(str(settings.suno_api_base_url or "").strip())
+        musicapi_ok = False
+        musicapi_accounts = 0
+        musicapi_error: str | None = None
+        if internal_token and suno_api_base_url:
+            base = str(settings.suno_api_base_url).rstrip("/")
+            try:
+                async with httpx.AsyncClient(timeout=5) as client:
+                    response = await client.get(
+                        f"{base}/internal/studio/health",
+                        headers={
+                            "x-internal-token": str(
+                                settings.studio_internal_token
+                            ).strip()
+                        },
+                    )
+                    response.raise_for_status()
+                    payload = response.json()
+                    musicapi_ok = bool(payload.get("ok"))
+                    musicapi_accounts = int(payload.get("accounts") or 0)
+            except Exception as exc:
+                musicapi_error = str(exc)
         checks = {
             "tables": not missing_tables,
             "pricing": not missing_pricing,
             "storage": storage_configured,
             "internal_token": internal_token,
             "suno_api_base_url": suno_api_base_url,
+            "musicapi": musicapi_ok,
+            "musicapi_accounts": musicapi_accounts > 0,
         }
         return {
             "ready": all(checks.values()),
@@ -2940,6 +2963,8 @@ class WebMusicService:
             "missing_tables": missing_tables,
             "missing_pricing": missing_pricing,
             "storage_error": storage_error,
+            "musicapi_accounts": musicapi_accounts,
+            "musicapi_error": musicapi_error,
             "checked_at": datetime.now(timezone.utc).isoformat(),
         }
 
