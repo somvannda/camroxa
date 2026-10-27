@@ -190,3 +190,6 @@ so they are **not** marked complete yet.
 Do not add more feature scope. Configure the target environment until the
 readiness endpoint is green, then run the live Suno acceptance suite and the
 two-user collaboration test.
+
+Use [studio-release-runbook.md](studio-release-runbook.md) for the exact
+migration, readiness, acceptance, sandbox, production and rollback steps.
