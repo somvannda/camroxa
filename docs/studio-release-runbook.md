@@ -489,11 +489,14 @@ Findings:
   `AccessDenied: not entitled`, because that key is scoped to
   `productions-camxora-song`, not to the platform's `camroxa-song-storage`.
 
-  So the platform has no valid credential for its own bucket: the stored pair
-  is a truncated copy of a different bucket's key. Ops must provision a
-  Backblaze application key authorised for `camroxa-song-storage` and store it
-  in `system_settings.streaming.b2.key_id` / `.application_key`. The
-  experiment was reverted; no credential change was left in place.
+  So the platform's stored pair was a truncated copy of a different bucket's
+  key. Corrected: the project's own deploy secrets
+  (`.deploy/secrets.sandbox.env`, and every other environment) use bucket
+  `productions-camxora-song` with key id `00516ad00876f4d0000000003` — the same
+  bucket and key musicapi uses. `camroxa-song-storage` is a stale value.
+  Writing those five `streaming.b2.*` settings (as **plain text**, not JSON —
+  quoting the value leaks into `region_name`) makes `HeadBucket` succeed,
+  readiness report `storage: true`, and `POST /studio/uploads` return 201.
 
   Fixed: readiness now calls `StorageService.probe()` (an authenticated
   `HeadBucket` with 5s timeouts) instead of trusting that a bucket and keys are
@@ -501,6 +504,22 @@ Findings:
   `storage_probe_failed: ... Forbidden` whenever the credential is rejected.
   The bucket therefore needs `ListBucket`/bucket-read permission for the key,
   not just write.
+
+  With storage fixed, uploads land (201) but both uploaded-audio operations
+  still fail, and they are genuine defects rather than config:
+
+  ```text
+  upload_extend  422  /api/generate/v2-web/ failed (422):
+                      {"loc":["body","params","prompt"],"msg":"Field required"}
+  upload_cover   404  /api/generate/v2-web/ failed (404): {"detail": "Not found."}
+  ```
+
+  Both refunded correctly. Likely cause: `uploadExtendMusic` sends
+  `params.prompt` but Suno still reports it missing, and `uploadCoverMusic`
+  passes the caller's `audio_url` straight into `cover_clip_id`, which Suno
+  expects to be a Suno-side upload/clip id. The Studio upload path never runs
+  the `upload_init`/`upload_register` handshake that mints such an id, so the
+  registered-audio flow is incomplete end to end.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
