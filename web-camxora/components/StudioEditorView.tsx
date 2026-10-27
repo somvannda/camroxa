@@ -1315,6 +1315,7 @@ export function StudioEditorView() {
   const [masterSpectrum, setMasterSpectrum] = useState<number[]>(
     Array.from({ length: 12 }, () => 0)
   );
+  const [trackMeters, setTrackMeters] = useState<Record<string, number>>({});
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [audioLoading, setAudioLoading] = useState(false);
@@ -1433,6 +1434,7 @@ export function StudioEditorView() {
   const masterEqRef = useRef<{ low: BiquadFilterNode; mid: BiquadFilterNode; high: BiquadFilterNode } | null>(null);
   const masterDriveRef = useRef<WaveShaperNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
+  const trackAnalysersRef = useRef<Map<string, AnalyserNode>>(new Map());
   const meterFrameRef = useRef(0);
   const buffersRef = useRef<Map<string, AudioBuffer>>(new Map());
   const sourcesRef = useRef<AudioScheduledSourceNode[]>([]);
@@ -2538,6 +2540,22 @@ export function StudioEditorView() {
       return clamp(total / Math.max(1, end - start) / 220, 0, 1);
     });
     setMasterSpectrum(next);
+    const levels: Record<string, number> = {};
+    for (const [id, trackAnalyser] of trackAnalysersRef.current.entries()) {
+      const trackData = new Uint8Array(trackAnalyser.fftSize);
+      trackAnalyser.getByteTimeDomainData(trackData);
+      let trackSum = 0;
+      for (const value of trackData) {
+        const centered = (value - 128) / 128;
+        trackSum += centered * centered;
+      }
+      levels[id] = clamp(
+        Math.sqrt(trackSum / trackData.length) * 3.2,
+        0,
+        1
+      );
+    }
+    setTrackMeters(levels);
   }, []);
 
   const stopSources = useCallback(() => {
@@ -2550,6 +2568,8 @@ export function StudioEditorView() {
     }
     sourcesRef.current = [];
     nodesRef.current.clear();
+    trackAnalysersRef.current.clear();
+    setTrackMeters({});
     if (rafRef.current !== null) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -2836,6 +2856,10 @@ export function StudioEditorView() {
           const duckGain = context.createGain();
           gain.connect(duckGain);
           duckGain.connect(panner);
+          const trackAnalyser = context.createAnalyser();
+          trackAnalyser.fftSize = 256;
+          panner.connect(trackAnalyser);
+          trackAnalysersRef.current.set(lane.id, trackAnalyser);
           const fx = connectTrackFx(context, panner, masterGain, lane);
           scheduleClipGain(gain, lane.volume / 100, lane, from, startWhen, remaining);
           scheduleDucking(duckGain, lane, from, startWhen, remaining, bpm);
@@ -6268,6 +6292,16 @@ export function StudioEditorView() {
                         <b>{lane.title}</b>
                         <small>{groupName || "No group"}</small>
                       </button>
+                      <span
+                        className="studio-mixer-level"
+                        aria-label={`Level for ${lane.title}`}
+                      >
+                        <i
+                          style={{
+                            transform: `scaleX(${Math.max(0.03, trackMeters[lane.id] ?? 0)})`,
+                          }}
+                        />
+                      </span>
                       <label>
                         Volume <b>{lane.volume}%</b>
                         <input

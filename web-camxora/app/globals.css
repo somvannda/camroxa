@@ -1916,6 +1916,8 @@ html{color-scheme:dark}
   .studio-mixer-strip-head i{width:8px;height:8px;border-radius:2px}
   .studio-mixer-strip-head b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px}
   .studio-mixer-strip-head small{grid-column:2;font-size:7.5px;color:#64748b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .studio-mixer-level{display:block;height:4px;border-radius:2px;background:rgba(148,163,184,.12);overflow:hidden}
+  .studio-mixer-level i{display:block;width:100%;height:100%;border-radius:2px;background:linear-gradient(90deg,#22c55e,#a3e635,#f59e0b);transform-origin:left;transition:transform .08s linear}
   .studio-mixer-strip label{display:grid;gap:3px;font-size:7.5px;color:#94a3b8}
   .studio-mixer-strip label b{font-size:8px;color:#c4b5fd;font-weight:500;text-align:right}
   .studio-mixer-strip input[type="range"]{width:100%;accent-color:#a855f7}
