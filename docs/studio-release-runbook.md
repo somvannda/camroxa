@@ -443,6 +443,11 @@ Findings:
 - Suno enforces per-account clip ownership: an operation on a clip owned by a
   different Suno account returns `403 permission_denied`. Do not backfill
   `asset_owners` to force a clip onto an account; the provider rejects it.
+- `add-vocals` completed (12 credits). `add-instrumental`, `replace-section`
+  and `mashup` each failed fast with
+  `TWOCAPTCHA_KEY is required to solve captcha.` and refunded: those endpoints
+  are captcha-gated, so a 2Captcha key is required in any environment that
+  runs them. Configuration gap, not a code defect.
 - `remaster` is a reproducible defect locally, root cause confirmed:
   `client.remaster` hardcodes `normalizeModel(model) ?? "chirp-flounder"`, but
   the account's model list only has `chirp-hawk`, `chirp-hawk-wild` and
