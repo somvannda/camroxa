@@ -422,6 +422,34 @@ refund on failure: verified twice, net zero
 A generation costs 150 credits; the pricing table above covers edits and
 stems only.
 
+### Live operations run against the pooled account
+
+Executed against clips genuinely owned by the seeded Suno account
+(`acct-1` / `iamduke1987@gmail.com`), not generated locally:
+
+```text
+stems_2      complete   12 credits kept   durable B2 audio URL
+cover        complete   12 credits kept   durable B2 audio URL
+cover-image  accepted   12 credits kept   returns batch_id + image_ids, images still processing
+extend       complete   12 credits kept   (only once the task had audio_url_ok set)
+remaster     error      refunded          "Timed out waiting for clip completion." (2/2 runs, ~306s)
+```
+
+Findings:
+
+- Derivative operations need a task row with `audio_url_ok`. Without it,
+  `extend` fails with `audio_ingest_failed`. With a real signed B2 URL set,
+  the same extend completes. This is a fixture requirement, not a code bug.
+- Suno enforces per-account clip ownership: an operation on a clip owned by a
+  different Suno account returns `403 permission_denied`. Do not backfill
+  `asset_owners` to force a clip onto an account; the provider rejects it.
+- `remaster` is a reproducible defect locally: the submit is accepted and
+  charged, then `pollClips` (`musicapi/src/client.ts`, 300s ceiling) never sees
+  the returned ids reach a terminal state, so the operation errors at ~306s and
+  is refunded. Investigate in sandbox by logging the returned clip ids and
+  comparing them with `/api/feed/?ids=`.
+
+
 ### Defect 1 — live generation cannot run locally
 
 `platform_api/clients/suno_client.py` falls back to
