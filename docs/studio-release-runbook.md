@@ -583,8 +583,7 @@ Findings:
   processes, and `pollClips` (`musicapi/src/client.ts`, 300s ceiling) burns the
   full window before erroring and refunding.
 
-  Two fixes needed, neither a provider bug in Studio's own logic:
-  1. stop hardcoding `chirp-flounder`; use the account's remaster model
+  Two fixes needed, neither a provider bug in Studio's own logic:  1. stop hardcoding `chirp-flounder`; use the account's remaster model
      (or the configured default) instead of a model it cannot use;
   2. pre-flight the entitlement so an unentitled account fails fast with a
      clear message, instead of charging, waiting five minutes and refunding.
@@ -594,6 +593,15 @@ Findings:
   "This Suno account is not entitled to remaster (no usable remaster model)."
   when none can be used. Verified: the same call now errors in 3s instead of
   306s with a zero net credit delta.
+
+  Updated 2026-10-27 — this is a **plan-level** limitation, not an exhausted
+  quota. Two independent **Premier** accounts were checked: one with ~1,900
+  credits and one with 10,000 fresh credits. Both report
+  `remaster_model_types: [chirp-halibut can_use=false]` and
+  `free_remasters_remaining: 0`. Adding an entitled account therefore does not
+  fix remaster; no Premier account in the pool can use it. Ship the feature
+  capability-gated (hide or disable with a clear reason) unless Suno confirms
+  the correct remaster model for current plans.
 
 
 
