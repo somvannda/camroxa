@@ -1354,7 +1354,8 @@ export function StudioEditorView() {
   const [cloudState, setCloudState] = useState<"local" | "saving" | "saved" | "error">("local");
   const [cloudError, setCloudError] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(false);
-  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null; pinned?: boolean }>>([]);
+  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null; pinned?: boolean; tags?: string[] }>>([]);
+  const [tagFilter, setTagFilter] = useState("");
   const [projectsBusy, setProjectsBusy] = useState(false);
   const [projectsError, setProjectsError] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -1844,6 +1845,7 @@ export function StudioEditorView() {
   async function openProjects() {
     setProjectsOpen(true);
     setProjectSearch("");
+    setTagFilter("");
     setProjectsError("");
     setProjectsBusy(true);
     try {
@@ -1972,6 +1974,48 @@ export function StudioEditorView() {
       );
       setProjectsError(
         cause instanceof Error ? cause.message : "Could not update project pin."
+      );
+    } finally {
+      setProjectsBusy(false);
+    }
+  }
+
+  async function editProjectTags(project: {
+    id: string;
+    title: string;
+    tags?: string[];
+  }) {
+    if (projectsBusy) return;
+    const next = window.prompt(
+      "Tags (comma-separated)",
+      (project.tags ?? []).join(", ")
+    );
+    if (next === null) return;
+    const tags = Array.from(
+      new Set(
+        next
+          .split(",")
+          .map((tag) => tag.trim().slice(0, 32))
+          .filter(Boolean)
+      )
+    ).slice(0, 12);
+    setProjectsBusy(true);
+    setProjectsError("");
+    setProjectList((current) =>
+      current.map((item) =>
+        item.id === project.id ? { ...item, tags } : item
+      )
+    );
+    try {
+      await updateStudioProject(project.id, { tags });
+    } catch (cause) {
+      setProjectList((current) =>
+        current.map((item) =>
+          item.id === project.id ? { ...item, tags: project.tags } : item
+        )
+      );
+      setProjectsError(
+        cause instanceof Error ? cause.message : "Could not update project tags."
       );
     } finally {
       setProjectsBusy(false);
@@ -2378,6 +2422,13 @@ export function StudioEditorView() {
     () => lanes.some((lane) => (lane.midiNotes ?? []).length > 0),
     [lanes]
   );
+  const projectTags = useMemo(
+    () =>
+      Array.from(
+        new Set(projectList.flatMap((project) => project.tags ?? []))
+      ).sort(),
+    [projectList]
+  );
   const filteredProjects = useMemo(() => {
     const query = projectSearch.trim().toLowerCase();
     const filtered = query
@@ -2385,7 +2436,10 @@ export function StudioEditorView() {
           project.title.toLowerCase().includes(query)
         )
       : projectList;
-    return [...filtered].sort((a, b) => {
+    const tagged = tagFilter
+      ? filtered.filter((project) => project.tags?.includes(tagFilter))
+      : filtered;
+    return [...tagged].sort((a, b) => {
       if (Boolean(a.pinned) !== Boolean(b.pinned)) {
         return a.pinned ? -1 : 1;
       }
@@ -2395,7 +2449,7 @@ export function StudioEditorView() {
         new Date(a.updated_at ?? 0).getTime()
       );
     });
-  }, [projectList, projectSearch, projectSort]);
+  }, [projectList, projectSearch, projectSort, tagFilter]);
   const canSplit = Boolean(
     selectedLane &&
       playhead > selectedLane.start + MIN_CLIP &&
@@ -6148,6 +6202,18 @@ export function StudioEditorView() {
                 <option value="updated">Last updated</option>
                 <option value="title">Name</option>
               </select>
+              <select
+                value={tagFilter}
+                onChange={(event) => setTagFilter(event.target.value)}
+                aria-label="Filter projects by tag"
+              >
+                <option value="">All tags</option>
+                {projectTags.map((tag) => (
+                  <option key={tag} value={tag}>
+                    {tag}
+                  </option>
+                ))}
+              </select>
             </div>
             <div className="studio-versions-list">
               {projectsBusy && !projectList.length ? <p>Loading projects…</p> : null}
@@ -6164,6 +6230,11 @@ export function StudioEditorView() {
                         ? new Date(project.updated_at).toLocaleString()
                         : "Saved project"}
                     </small>
+                    {project.tags?.length ? (
+                      <small className="studio-project-tags">
+                        {project.tags.join(" · ")}
+                      </small>
+                    ) : null}
                   </div>
                   <div className="studio-project-actions">
                     <button
@@ -6174,6 +6245,13 @@ export function StudioEditorView() {
                       disabled={projectsBusy}
                     >
                       <Icon name="fa-star" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void editProjectTags(project)}
+                      disabled={projectsBusy}
+                    >
+                      Tags
                     </button>
                     <button
                       type="button"

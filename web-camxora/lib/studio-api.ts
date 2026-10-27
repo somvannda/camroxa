@@ -19,6 +19,7 @@ export type StudioProject = {
   permission?: "view" | "edit";
   read_only?: boolean;
   pinned?: boolean;
+  tags?: string[];
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -85,6 +86,7 @@ export async function updateStudioProject(
     time_signature?: string;
     data?: StudioProjectData;
     pinned?: boolean;
+    tags?: string[];
   }
 ): Promise<StudioProject> {
   return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}`, {

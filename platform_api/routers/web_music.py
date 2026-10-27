@@ -409,6 +409,7 @@ class StudioProjectUpdateRequest(BaseModel):
     time_signature: str | None = Field(default=None, pattern=r"^\d{1,2}/\d{1,2}$")
     data: dict[str, object] | None = None
     pinned: bool | None = None
+    tags: list[str] | None = None
     expected_updated_at: datetime | None = None
 
 
@@ -471,6 +472,7 @@ async def update_studio_project(
         time_signature=body.time_signature,
         data=body.data,
         pinned=body.pinned,
+        tags=body.tags,
     )
 
 

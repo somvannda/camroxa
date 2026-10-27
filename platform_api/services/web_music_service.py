@@ -1595,7 +1595,7 @@ class WebMusicService:
         safe_offset = max(0, int(offset))
         rows = await self._pool.fetch(
             """
-            SELECT id, title, major_version, bpm, time_signature, pinned, created_at, updated_at
+            SELECT id, title, major_version, bpm, time_signature, pinned, tags, created_at, updated_at
             FROM studio_projects
             WHERE user_id = $1
             ORDER BY pinned DESC, updated_at DESC
@@ -1631,6 +1631,7 @@ class WebMusicService:
             "bpm": int(row["bpm"]),
             "time_signature": str(row["time_signature"]),
             "pinned": bool(row.get("pinned")),
+            "tags": list(row.get("tags") or []),
             "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
             "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
         }
@@ -1688,7 +1689,17 @@ class WebMusicService:
         time_signature: str | None = None,
         data: dict[str, Any] | None = None,
         pinned: bool | None = None,
+        tags: list[str] | None = None,
     ) -> dict[str, Any]:
+        safe_tags = None
+        if tags is not None:
+            safe_tags = sorted(
+                {
+                    str(tag).strip()[:32]
+                    for tag in tags
+                    if str(tag).strip()
+                }
+            )[:12]
         row = await self._pool.fetchrow(
             """
             UPDATE studio_projects SET
@@ -1698,6 +1709,7 @@ class WebMusicService:
                 time_signature = COALESCE($6, time_signature),
                 data = COALESCE($7::jsonb, data),
                 pinned = COALESCE($8, pinned),
+                tags = COALESCE($9::text[], tags),
                 updated_at = now()
             WHERE id = $1 AND user_id = $2
             RETURNING *
@@ -1710,6 +1722,7 @@ class WebMusicService:
             str(time_signature) if time_signature is not None else None,
             json.dumps(data) if isinstance(data, dict) else None,
             bool(pinned) if pinned is not None else None,
+            safe_tags,
         )
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
