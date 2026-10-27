@@ -296,9 +296,10 @@ Each track has a **Dynamics** section with compression, drive/saturation and a
 rhythmic **Duck** effect with 1/4 or 1/8 rates, plus a low-pass **Filter** with
 cutoff/resonance and delay, reverb and chorus sends. All are saved with the
 project and applied to playback and export. Tracks can be assigned to one of four
-groups (A–D); each group has its own volume, mute and solo. Group volume scales
-assigned tracks, while group mute and group solo gate them in playback, mixdown
-and stem export.
+groups (A–D); each group has its own name, color, volume, mute and solo. Group
+volume scales assigned tracks, while group mute and group solo gate them in
+playback, mixdown and stem export. Double-click a group name to rename it, or
+click its color dot to cycle the color.
 Drive uses a normalized soft-clip waveshaper before the compressor; chorus uses
 an LFO-modulated delay. The Mix tab also has one-click plugin presets — Clean,
 Vocal focus, Warm tape, Lo-fi, Wide chorus and Punch — which write the selected

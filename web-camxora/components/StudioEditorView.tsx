@@ -140,6 +140,8 @@ type TrackGroupId = "A" | "B" | "C" | "D";
 
 type TrackGroup = {
   id: TrackGroupId;
+  name: string;
+  color: string;
   volume: number;
   muted: boolean;
   solo: boolean;
@@ -172,10 +174,10 @@ type AudioMeta = {
 const COLORS = ["#8b5cf6", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899", "#14b8a6"];
 
 const DEFAULT_GROUPS: TrackGroup[] = [
-  { id: "A", volume: 100, muted: false, solo: false },
-  { id: "B", volume: 100, muted: false, solo: false },
-  { id: "C", volume: 100, muted: false, solo: false },
-  { id: "D", volume: 100, muted: false, solo: false },
+  { id: "A", name: "Group A", color: COLORS[0]!, volume: 100, muted: false, solo: false },
+  { id: "B", name: "Group B", color: COLORS[1]!, volume: 100, muted: false, solo: false },
+  { id: "C", name: "Group C", color: COLORS[2]!, volume: 100, muted: false, solo: false },
+  { id: "D", name: "Group D", color: COLORS[3]!, volume: 100, muted: false, solo: false },
 ];
 
 function normalizeGroups(input: unknown): TrackGroup[] {
@@ -189,6 +191,14 @@ function normalizeGroups(input: unknown): TrackGroup[] {
     ) as TrackGroup | undefined;
     return {
       id: fallback.id,
+      name:
+        typeof match?.name === "string" && match.name.trim()
+          ? match.name.trim().slice(0, 40)
+          : fallback.name,
+      color:
+        typeof match?.color === "string" && /^#[0-9a-f]{6}$/i.test(match.color)
+          ? match.color
+          : fallback.color,
       volume: Number.isFinite(match?.volume)
         ? clamp(Number(match?.volume), 0, 100)
         : fallback.volume,
@@ -3604,7 +3614,7 @@ export function StudioEditorView() {
 
   function updateGroup(
     groupId: TrackGroupId,
-    patch: Partial<Pick<TrackGroup, "volume" | "muted" | "solo">>
+    patch: Partial<Pick<TrackGroup, "name" | "color" | "volume" | "muted" | "solo">>
   ) {
     setGroups((current) =>
       current.map((group) =>
@@ -5107,7 +5117,7 @@ export function StudioEditorView() {
                   <option value="">None</option>
                   {groups.map((group) => (
                     <option key={group.id} value={group.id}>
-                      Group {group.id}
+                      {group.name}
                     </option>
                   ))}
                 </select>
@@ -5192,14 +5202,39 @@ export function StudioEditorView() {
                 </div>
                 {groups.map((group) => (
                   <div className="studio-group-row" key={group.id}>
-                    <span>{group.id}</span>
+                    <button
+                      className="studio-group-dot"
+                      type="button"
+                      style={{ background: group.color }}
+                      aria-label={`Change color for ${group.name}`}
+                      onClick={() => {
+                        const index = COLORS.indexOf(group.color);
+                        updateGroup(group.id, {
+                          color: COLORS[(index + 1) % COLORS.length] ?? COLORS[0]!,
+                        });
+                      }}
+                    />
+                    <span
+                      className="studio-group-name"
+                      title="Double-click to rename"
+                      onDoubleClick={() => {
+                        const next = window.prompt("Group name", group.name);
+                        if (next && next.trim()) {
+                          updateGroup(group.id, {
+                            name: next.trim().slice(0, 40),
+                          });
+                        }
+                      }}
+                    >
+                      {group.name}
+                    </span>
                     <input
                       type="range"
                       min="0"
                       max="100"
                       step="1"
                       value={group.volume}
-                      aria-label={`Group ${group.id} volume`}
+                      aria-label={`Volume for ${group.name}`}
                       onChange={(event) =>
                         updateGroup(group.id, {
                           volume: Number(event.target.value),
@@ -5210,7 +5245,7 @@ export function StudioEditorView() {
                     <button
                       className={group.solo ? "solo" : ""}
                       type="button"
-                      aria-label={`Solo group ${group.id}`}
+                      aria-label={`Solo ${group.name}`}
                       onClick={() => updateGroup(group.id, { solo: !group.solo })}
                     >
                       S
@@ -5218,7 +5253,7 @@ export function StudioEditorView() {
                     <button
                       className={group.muted ? "on" : ""}
                       type="button"
-                      aria-label={`Mute group ${group.id}`}
+                      aria-label={`Mute ${group.name}`}
                       onClick={() => updateGroup(group.id, { muted: !group.muted })}
                     >
                       M
