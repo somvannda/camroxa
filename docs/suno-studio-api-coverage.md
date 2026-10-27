@@ -309,8 +309,9 @@ cutoff/resonance and delay, reverb and chorus sends. All are saved with the
 project and applied to playback and export. Tracks can be assigned to one of four
 groups (A–D); each group has its own name, color, volume, mute and solo. Group
 volume scales assigned tracks, while group mute and group solo gate them in
-playback, mixdown and stem export. Double-click a group name to rename it, or
-click its color dot to cycle the color.
+playback, mixdown and stem export. Double-click a group name to rename it,
+click its color dot to cycle the color, or collapse the group to hide its lanes
+behind a compact timeline summary row.
 Drive uses a normalized soft-clip waveshaper before the compressor; chorus uses
 an LFO-modulated delay. The Mix tab also has one-click plugin presets — Clean,
 Vocal focus, Warm tape, Lo-fi, Wide chorus and Punch — which write the selected

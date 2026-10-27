@@ -148,6 +148,7 @@ type TrackGroup = {
   volume: number;
   muted: boolean;
   solo: boolean;
+  collapsed: boolean;
 };
 
 type StoredSession = {
@@ -177,10 +178,10 @@ type AudioMeta = {
 const COLORS = ["#8b5cf6", "#0ea5e9", "#22c55e", "#f59e0b", "#ec4899", "#14b8a6"];
 
 const DEFAULT_GROUPS: TrackGroup[] = [
-  { id: "A", name: "Group A", color: COLORS[0]!, volume: 100, muted: false, solo: false },
-  { id: "B", name: "Group B", color: COLORS[1]!, volume: 100, muted: false, solo: false },
-  { id: "C", name: "Group C", color: COLORS[2]!, volume: 100, muted: false, solo: false },
-  { id: "D", name: "Group D", color: COLORS[3]!, volume: 100, muted: false, solo: false },
+  { id: "A", name: "Group A", color: COLORS[0]!, volume: 100, muted: false, solo: false, collapsed: false },
+  { id: "B", name: "Group B", color: COLORS[1]!, volume: 100, muted: false, solo: false, collapsed: false },
+  { id: "C", name: "Group C", color: COLORS[2]!, volume: 100, muted: false, solo: false, collapsed: false },
+  { id: "D", name: "Group D", color: COLORS[3]!, volume: 100, muted: false, solo: false, collapsed: false },
 ];
 
 function normalizeGroups(input: unknown): TrackGroup[] {
@@ -207,6 +208,7 @@ function normalizeGroups(input: unknown): TrackGroup[] {
         : fallback.volume,
       muted: Boolean(match?.muted),
       solo: Boolean(match?.solo),
+      collapsed: Boolean(match?.collapsed),
     };
   });
 }
@@ -2461,6 +2463,21 @@ export function StudioEditorView() {
     () => lanes.some((lane) => (lane.midiNotes ?? []).length > 0),
     [lanes]
   );
+  const collapsedGroups = useMemo(
+    () => groups.filter((group) => group.collapsed),
+    [groups]
+  );
+  const collapsedGroupIds = useMemo(
+    () => new Set(collapsedGroups.map((group) => group.id)),
+    [collapsedGroups]
+  );
+  const visibleLanes = useMemo(
+    () =>
+      lanes.filter(
+        (lane) => !lane.groupId || !collapsedGroupIds.has(lane.groupId)
+      ),
+    [lanes, collapsedGroupIds]
+  );
   const projectTags = useMemo(
     () =>
       Array.from(
@@ -2468,6 +2485,13 @@ export function StudioEditorView() {
       ).sort(),
     [projectList]
   );
+  useEffect(() => {
+    if (!selected || !visibleLanes.length) return;
+    if (!visibleLanes.some((lane) => lane.id === selected)) {
+      setSelected(visibleLanes[0]!.id);
+    }
+  }, [selected, visibleLanes]);
+
   const filteredProjects = useMemo(() => {
     const query = projectSearch.trim().toLowerCase();
     const filtered = query
@@ -3829,7 +3853,9 @@ export function StudioEditorView() {
 
   function updateGroup(
     groupId: TrackGroupId,
-    patch: Partial<Pick<TrackGroup, "name" | "color" | "volume" | "muted" | "solo">>
+    patch: Partial<
+      Pick<TrackGroup, "name" | "color" | "volume" | "muted" | "solo" | "collapsed">
+    >
   ) {
     setGroups((current) =>
       current.map((group) =>
@@ -5019,11 +5045,27 @@ export function StudioEditorView() {
               </div>
               <span />
             </div>
-            {lanes.map((lane, index) => (
+            {collapsedGroups.map((group) => (
+              <div className="studio-collapsed-group" key={group.id}>
+                <button
+                  type="button"
+                  onClick={() => updateGroup(group.id, { collapsed: false })}
+                >
+                  <i style={{ background: group.color }} />
+                  <b>{group.name}</b>
+                  <small>
+                    {lanes.filter((lane) => lane.groupId === group.id).length} tracks
+                    hidden
+                  </small>
+                  <Icon name="fa-chevron-down" />
+                </button>
+              </div>
+            ))}
+            {visibleLanes.map((lane, index) => (
               <div className={`studio-lane${selected === lane.id ? " selected" : ""}`} key={lane.id}>
                 <button className="studio-lane-head" type="button" onClick={() => setSelected(lane.id)} onDoubleClick={() => renameLane(lane)} title="Double-click to rename">
                   <span className="studio-lane-index" style={{ color: lane.color, borderColor: `${lane.color}66` }}>
-                    {String(index + 1).padStart(2, "0")}
+                    {String(lanes.indexOf(lane) + 1).padStart(2, "0")}
                   </span>
                   <span className="studio-lane-copy">
                     <b>{lane.title}</b>
@@ -5454,6 +5496,22 @@ export function StudioEditorView() {
                 </div>
                 {groups.map((group) => (
                   <div className="studio-group-row" key={group.id}>
+                    <button
+                      className="studio-group-collapse"
+                      type="button"
+                      aria-label={
+                        group.collapsed
+                          ? `Expand ${group.name}`
+                          : `Collapse ${group.name}`
+                      }
+                      onClick={() =>
+                        updateGroup(group.id, { collapsed: !group.collapsed })
+                      }
+                    >
+                      <Icon
+                        name={group.collapsed ? "fa-chevron-right" : "fa-chevron-down"}
+                      />
+                    </button>
                     <button
                       className="studio-group-dot"
                       type="button"
