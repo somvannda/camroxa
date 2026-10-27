@@ -52,6 +52,8 @@ import {
   type StudioProjectVersion,
   type StudioShareComment,
   createStudioProjectShare,
+  listStudioProjectShares,
+  type StudioProjectShare,
   revokeStudioProjectShare,
   listStudioProjectComments,
   waitStudioShareUpdate,
@@ -1359,6 +1361,9 @@ export function StudioEditorView() {
   const [versionsError, setVersionsError] = useState("");
   const [versionLabel, setVersionLabel] = useState("");
   const [shareOpen, setShareOpen] = useState(false);
+  const [projectShares, setProjectShares] = useState<StudioProjectShare[]>([]);
+  const [sharesBusy, setSharesBusy] = useState(false);
+  const [sharesError, setSharesError] = useState("");
   const [shareUrl, setShareUrl] = useState("");
   const [shareBusy, setShareBusy] = useState(false);
   const [shareError, setShareError] = useState("");
@@ -2022,6 +2027,26 @@ export function StudioEditorView() {
         setCommentsError(cause instanceof Error ? cause.message : "Could not load comments.")
       )
       .finally(() => setCommentsBusy(false));
+    void loadShares();
+  }
+
+  async function loadShares() {
+    if (!projectId) {
+      setProjectShares([]);
+      return;
+    }
+    setSharesBusy(true);
+    setSharesError("");
+    try {
+      const result = await listStudioProjectShares(projectId);
+      setProjectShares(result.items);
+    } catch (cause) {
+      setSharesError(
+        cause instanceof Error ? cause.message : "Could not load share links."
+      );
+    } finally {
+      setSharesBusy(false);
+    }
   }
 
   async function createShare() {
@@ -2041,6 +2066,7 @@ export function StudioEditorView() {
       const share = await createStudioProjectShare(projectId, shareDays, sharePermission);
       setShareId(share.id);
       setShareUrl(`${window.location.origin}${share.path}`);
+      void loadShares();
     } catch (cause) {
       setShareError(cause instanceof Error ? cause.message : "Could not create share link.");
     } finally {
@@ -2048,25 +2074,43 @@ export function StudioEditorView() {
     }
   }
 
-  async function copyShare() {
-    if (!shareUrl) return;
+  async function copyShareLink(url: string) {
+    if (!url) return;
     try {
-      await navigator.clipboard.writeText(shareUrl);
+      await navigator.clipboard.writeText(url);
     } catch {
       /* Clipboard may be unavailable on plain HTTP. */
     }
   }
 
-  async function revokeShare() {
-    if (!projectId || !shareId) return;
+  async function copyShare() {
+    await copyShareLink(shareUrl);
+  }
+
+  async function revokeShareLink(targetId: string) {
+    if (!projectId) return;
     if (!window.confirm("Revoke this share link? Anyone using it will lose access.")) return;
     try {
-      await revokeStudioProjectShare(projectId, shareId);
-      setShareUrl("");
-      setShareId(null);
+      await revokeStudioProjectShare(projectId, targetId);
+      setProjectShares((current) =>
+        current.map((item) =>
+          item.id === targetId
+            ? { ...item, active: false, revoked_at: new Date().toISOString() }
+            : item
+        )
+      );
+      if (shareId === targetId) {
+        setShareUrl("");
+        setShareId(null);
+      }
+      void loadShares();
     } catch (cause) {
       setShareError(cause instanceof Error ? cause.message : "Could not revoke share link.");
     }
+  }
+
+  async function revokeShare() {
+    if (shareId) await revokeShareLink(shareId);
   }
 
   async function saveVersion() {
@@ -6172,6 +6216,53 @@ export function StudioEditorView() {
               </>
             )}
             {shareError ? <small className="studio-stem-error">{shareError}</small> : null}
+            <div className="studio-share-list">
+              <div className="studio-share-list-head">
+                <span>Share links</span>
+                <button type="button" onClick={() => void loadShares()} disabled={sharesBusy}>
+                  {sharesBusy ? "Loading…" : "Refresh"}
+                </button>
+              </div>
+              {sharesError ? <small className="studio-stem-error">{sharesError}</small> : null}
+              {!sharesBusy && !projectShares.length ? (
+                <small>No share links yet.</small>
+              ) : null}
+              {projectShares.map((share) => {
+                const url = `${window.location.origin}${share.path}`;
+                return (
+                  <div className="studio-share-row" key={share.id}>
+                    <div>
+                      <b>{share.permission === "edit" ? "Can edit" : "View only"}</b>
+                      <small>
+                        {share.active ? "Active" : "Revoked or expired"}
+                        {share.expires_at
+                          ? ` · expires ${new Date(share.expires_at).toLocaleDateString()}`
+                          : ""}
+                      </small>
+                    </div>
+                    {share.active ? (
+                      <div className="studio-share-row-actions">
+                        <button type="button" onClick={() => void copyShareLink(url)}>
+                          Copy
+                        </button>
+                        <a href={url} target="_blank" rel="noreferrer">
+                          Open
+                        </a>
+                        <button
+                          className="danger"
+                          type="button"
+                          onClick={() => void revokeShareLink(share.id)}
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    ) : (
+                      <span className="studio-share-inactive">Inactive</span>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
             <div className="studio-project-comments">
               <div className="studio-project-comments-head">
                 <span>Comments</span>

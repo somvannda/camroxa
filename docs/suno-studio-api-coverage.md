@@ -442,9 +442,11 @@ retained per project.
 Read-only Studio sharing is available from the **Share** dialog:
 
 ```text
-POST /api/v3/web-music/studio/projects/{id}/shares
-GET  /api/v3/web-music/studio/shares/{token}
-GET  /api/v3/web-music/studio/shares/{token}/updates
+POST   /api/v3/web-music/studio/projects/{id}/shares
+GET    /api/v3/web-music/studio/projects/{id}/shares
+DELETE /api/v3/web-music/studio/projects/{id}/shares/{share_id}
+GET    /api/v3/web-music/studio/shares/{token}
+GET    /api/v3/web-music/studio/shares/{token}/updates
 ```
 
 Share links expire after 1, 7 or 30 days and open `/studio/shared/{token}`, a
@@ -466,8 +468,10 @@ replies use `parent_id`, render as nested threads, and can be posted without an
 account. The project owner can read the full thread from the Studio **Share**
 dialog.
 
-Share links can be **View only** or **Can edit**, expire after 1, 7 or 30
-days, and can be revoked immediately by the owner.
+The owner can list every share link with its permission, expiry and active
+state, copy or open any active link, and revoke it from the Share dialog. Share
+links can be **View only** or **Can edit**, expire after 1, 7 or 30 days, and
+stop working immediately after revocation.
 
 Editable links load into Studio through:
 

@@ -373,8 +373,11 @@ export type StudioProjectShare = {
   id: string;
   token: string;
   path: string;
-  expires_at: string;
+  expires_at?: string | null;
+  revoked_at?: string | null;
+  created_at?: string | null;
   permission?: "view" | "edit";
+  active?: boolean;
 };
 
 export async function createStudioProjectShare(
@@ -526,6 +529,14 @@ export async function deleteStudioProject(id: string): Promise<void> {
   if (!response.ok) {
     throw new Error(await readError(response, `Delete project failed (${response.status})`));
   }
+}
+
+export async function listStudioProjectShares(
+  projectId: string
+): Promise<{ items: StudioProjectShare[] }> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/shares`
+  );
 }
 
 export async function revokeStudioProjectShare(

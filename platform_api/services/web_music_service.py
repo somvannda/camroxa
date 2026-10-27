@@ -1965,6 +1965,52 @@ class WebMusicService:
                 details={"share_id": str(share_id)},
             )
 
+    async def list_studio_project_shares(
+        self,
+        user_id: UUID,
+        project_id: UUID,
+    ) -> dict[str, Any]:
+        project = await self._pool.fetchrow(
+            "SELECT id FROM studio_projects WHERE id = $1 AND user_id = $2",
+            project_id,
+            user_id,
+        )
+        if project is None:
+            raise NotFoundError(
+                "Studio project not found.",
+                details={"project_id": str(project_id)},
+            )
+        rows = await self._pool.fetch(
+            """
+            SELECT id, token, permission, expires_at, revoked_at, created_at
+            FROM studio_project_shares
+            WHERE project_id = $1 AND user_id = $2
+            ORDER BY created_at DESC
+            LIMIT 50
+            """,
+            project_id,
+            user_id,
+        )
+        now = datetime.now(timezone.utc)
+        return {
+            "items": [
+                {
+                    "id": str(row["id"]),
+                    "token": str(row["token"]),
+                    "path": f"/studio/shared/{row['token']}",
+                    "permission": str(row["permission"]),
+                    "expires_at": row["expires_at"].isoformat() if row["expires_at"] else None,
+                    "revoked_at": row["revoked_at"].isoformat() if row["revoked_at"] else None,
+                    "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                    "active": bool(
+                        row["revoked_at"] is None
+                        and (row["expires_at"] is None or row["expires_at"] > now)
+                    ),
+                }
+                for row in rows
+            ]
+        }
+
     async def get_studio_shared_project(self, token: str) -> dict[str, Any]:
         row = await self._pool.fetchrow(
             """

@@ -646,6 +646,18 @@ async def add_studio_share_comment(
     )
 
 
+@router.get("/studio/projects/{project_id}/shares")
+async def list_studio_project_shares(
+    project_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.list_studio_project_shares(
+        UUID(ctx.user_id),
+        project_id,
+    )
+
+
 @router.delete("/studio/projects/{project_id}/shares/{share_id}", status_code=204)
 async def revoke_studio_project_share(
     project_id: UUID,

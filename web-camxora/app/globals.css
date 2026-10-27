@@ -1927,6 +1927,18 @@ html{color-scheme:dark}
   .studio-share-link{display:flex;gap:6px;margin:8px 0}
   .studio-share-link input{flex:1;min-width:0;height:32px;padding:0 9px;border:1px solid var(--line);border-radius:6px;background:rgba(255,255,255,.03);color:#e2e8f0;font:inherit;font-size:10px}
   .studio-share-link .btn{height:32px;font-size:10px;white-space:nowrap}
+  .studio-share-list{margin-top:10px;padding-top:10px;border-top:1px solid rgba(148,163,184,.12);display:grid;gap:5px}
+  .studio-share-list-head{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:9px;letter-spacing:.08em;text-transform:uppercase;color:#c4b5fd}
+  .studio-share-list-head button{padding:0;border:0;background:transparent;color:#a5b4fc;font:inherit;font-size:8.5px;cursor:pointer}
+  .studio-share-list>small{font-size:8.5px;color:#64748b}
+  .studio-share-row{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 7px;border:1px solid var(--line);border-radius:6px;background:rgba(255,255,255,.018)}
+  .studio-share-row b{display:block;font-size:8.5px;color:#e2e8f0}
+  .studio-share-row small{display:block;margin-top:2px;font-size:7.5px;color:#64748b}
+  .studio-share-row-actions{display:flex;align-items:center;gap:4px;flex:none}
+  .studio-share-row-actions button,.studio-share-row-actions a{height:22px;padding:0 6px;border:1px solid var(--line);border-radius:4px;background:transparent;color:#cbd5e1;font:inherit;font-size:8px;text-decoration:none;cursor:pointer;display:inline-flex;align-items:center}
+  .studio-share-row-actions button:hover,.studio-share-row-actions a:hover{background:rgba(168,85,247,.13);color:#fff}
+  .studio-share-row-actions button.danger{border-color:rgba(248,113,113,.2);color:#fca5a5}
+  .studio-share-inactive{font-size:7.5px;color:#64748b;text-transform:uppercase;letter-spacing:.08em}
   .studio-share-open{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:#7dd3fc;text-decoration:none}
   .studio-share-open:hover{text-decoration:underline}
   .studio-automation small{display:block;margin-top:5px;font-size:8.5px;line-height:1.4;color:var(--muted2)}
