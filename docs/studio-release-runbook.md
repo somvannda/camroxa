@@ -385,11 +385,75 @@ Readiness result: ____________________
 ## 15. Current blockers
 
 ```text
-[ ] At least one active Suno account in the local musicapi pool
+[x] At least one active Suno account in the local musicapi pool (JWT-seeded, expires ~1h)
+[x] Two-user collaboration acceptance (18/18, see section 16)
+[ ] Public Suno callback base URL for live generation (see section 16)
+[ ] Readiness must validate account health, not pool size (see section 16)
 [ ] Production Studio internal token
 [ ] Production durable storage credentials
-[ ] Live Suno acceptance matrix
-[ ] Two-user collaboration acceptance
+[ ] Live Suno acceptance matrix (sandbox, not local)
 [ ] Sandbox deploy
 [ ] Production approval
 ```
+
+## 16. Local gate results and defects (2026-10-27)
+
+### Passed locally
+
+```text
+readiness: ready=true, all seven checks true, musicapi_accounts=1
+non-Suno release suite: 17/17
+two-user collaboration: 18/18
+  distinct owner + collaborator identities, two presence entries with
+  separate playheads and lane selections, long-poll propagation,
+  non-owner write rejected, view-only write rejected, nested comment
+  reply, revoked link 404, cleanup 204
+pricing: studio_edit=12, studio_stems_2=12, studio_stems_12=60
+refund on failure: verified twice, net zero
+  debit 120000 -> refund 120000 (studio_stems_2)
+  debit 150000 -> refund 150000 (music generation)
+```
+
+A generation costs 150 credits; the pricing table above covers edits and
+stems only.
+
+### Defect 1 — live generation cannot run locally
+
+`platform_api/clients/suno_client.py` falls back to
+`https://localhost/api/v3/callbacks/suno` when
+`PLATFORM_SUNO_CALLBACK_BASE_URL` is unset. Suno rejects that host:
+
+```text
+Suno API error 400: submit_lyrics_task
+{"error":"callback_url must not target a local host."}
+```
+
+Consequence: no clip can be generated locally, so no `asset_owners` row is
+written, so every derivative operation then fails with
+`"The source clip's Suno account is not recorded."` Clips generated before
+an account was seeded into the pool have no ownership row and cannot be
+used either.
+
+Run the live matrix in sandbox, where the callback host is public. If local
+live testing is required, set `PLATFORM_SUNO_CALLBACK_BASE_URL` to a public
+tunnel and accept that the local API becomes internet-reachable while it
+runs; close the tunnel immediately after.
+
+### Defect 2 — readiness is a false green over time
+
+`get_studio_readiness` derives `musicapi_accounts` from `pool.size` only.
+A pool holding an expired or revoked credential still reports
+`ready: true` while every live call fails. A stored JWT with a 2027 `exp`
+was observed returning 401, so expiry is not evidence of validity.
+
+Fix before trusting the gate: have readiness call the musicapi health check
+for live account state, and treat an unreachable or unauthenticated account
+as not ready.
+
+### Credential note
+
+Seeding `acct-1` from a Clerk session JWT works but cannot self-refresh;
+`musicapi` only refreshes accounts that hold a durable `__client` cookie.
+Re-seed from a signed-in browser session before each local live run, or
+store the durable cookie for long-lived local pools.
+
