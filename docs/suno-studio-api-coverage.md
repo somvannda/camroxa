@@ -777,17 +777,24 @@ If cloud projects are required, their **project state** still needs the project/
 - Do not present cloned Suno endpoints as an official Suno API.
 - Get legal/compliance review before public launch of AI edit operations.
 
-## 9. Immediate next step
+## 9. Delivery status
 
-Build Phase 1 and Phase 2a (stems) first:
+The feature implementation backlog is complete. Release acceptance is tracked
+separately:
+
+[studio-delivery-status.md](studio-delivery-status.md)
+
+Production remains blocked on configuration and live Suno validation:
 
 ```text
-Studio project save/load
-  -> clip selected
-  -> POST /v1/studio/clips/{id}/stems
-  -> musicapi /me/stems
-  -> poll operation
-  -> add vocals/instrumental stems as new Studio lanes
+[ ] Production Studio internal token
+[ ] Production durable storage
+[ ] Migrations 158–163 in each environment
+[ ] Readiness endpoint returns ready: true
+[ ] Live Suno acceptance tests
+[ ] Two-user collaboration test
+[ ] Sandbox and production deploy
 ```
 
-This gives a real Suno-backed Studio workflow without trying to clone the entire DAW at once.
+Do not expand feature scope until the readiness endpoint is green and the live
+acceptance suite has passed.
