@@ -547,6 +547,13 @@ live testing is required, set `PLATFORM_SUNO_CALLBACK_BASE_URL` to a public
 tunnel and accept that the local API becomes internet-reachable while it
 runs; close the tunnel immediately after.
 
+Readiness validation for this gate: a non-empty value is not sufficient.
+`_callback_base_is_public` rejects schemes other than http/https, localhost and
+`*.localhost`, and loopback/private/link-local/reserved IP literals, so
+`http://127.0.0.1:8100` reports the gate as not ready exactly like an unset
+value. Verified against nine cases (empty, localhost, 127.0.0.1, 192.168.x,
+10.x, ftp, a tunnel host and two public hosts).
+
 ### Defect 2 — readiness is a false green over time
 
 `get_studio_readiness` derives `musicapi_accounts` from `pool.size` only.

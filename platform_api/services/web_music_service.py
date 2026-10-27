@@ -13,7 +13,35 @@ import httpx
 from datetime import date, datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID, uuid4
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
+
+
+def _callback_base_is_public(url: str) -> bool:
+    """True when the Studio callback base is an absolute, publicly reachable URL.
+
+    Suno rejects callbacks targeting a local or private host, and the Suno
+    client silently falls back to ``https://localhost`` when nothing is
+    configured. A non-empty value is therefore not enough: a localhost value is
+    exactly as broken as an unset one and must not be reported as ready.
+    """
+    from ipaddress import ip_address
+
+    raw = (url or "").strip()
+    if not raw:
+        return False
+    parsed = urlparse(raw)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return False
+    host = parsed.hostname.lower()
+    if host == "localhost" or host.endswith(".localhost"):
+        return False
+    try:
+        ip = ip_address(host)
+    except ValueError:
+        return True
+    return not (
+        ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+    )
 
 from fastapi.responses import Response, StreamingResponse
 
@@ -2939,10 +2967,11 @@ class WebMusicService:
         internal_token = bool(str(settings.studio_internal_token or "").strip())
         suno_api_base_url = bool(str(settings.suno_api_base_url or "").strip())
         # Suno refuses to call back to a local/private host, so generation is
-        # dead without a publicly reachable callback base. Surface it here
-        # instead of failing later inside a generation request.
-        suno_callback_base_url = bool(
-            str(getattr(settings, "suno_callback_base_url", "") or "").strip()
+        # dead without a publicly reachable callback base. A non-empty value is
+        # not enough: `http://127.0.0.1:8100` is exactly as broken as unset, so
+        # reject local and private hosts instead of reporting them as ready.
+        suno_callback_base_url = _callback_base_is_public(
+            str(getattr(settings, "suno_callback_base_url", "") or "")
         )
         musicapi_ok = False
         musicapi_accounts = 0
