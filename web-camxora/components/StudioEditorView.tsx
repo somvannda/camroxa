@@ -1388,6 +1388,7 @@ export function StudioEditorView() {
   const [sharedToken, setSharedToken] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<StudioPresence[]>([]);
   const [remoteChanges, setRemoteChanges] = useState(false);
+  const [autoApplyRemote, setAutoApplyRemote] = useState(false);
   const sharedUpdatedAtRef = useRef("");
   const sharedHydratingRef = useRef(false);
   const [actionsOpen, setActionsOpen] = useState(false);
@@ -2374,6 +2375,49 @@ export function StudioEditorView() {
       active = false;
     };
   }, [sharedToken]);
+
+  useEffect(() => {
+    try {
+      setAutoApplyRemote(
+        window.localStorage.getItem("studio:autoApplyRemote") === "1"
+      );
+    } catch {
+      /* local storage is best-effort */
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "studio:autoApplyRemote",
+        autoApplyRemote ? "1" : "0"
+      );
+    } catch {
+      /* local storage is best-effort */
+    }
+  }, [autoApplyRemote]);
+
+  useEffect(() => {
+    if (
+      !autoApplyRemote ||
+      !remoteChanges ||
+      !sharedToken ||
+      playing ||
+      cloudState !== "saved"
+    ) {
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      void reloadSharedProject();
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [
+    autoApplyRemote,
+    cloudState,
+    playing,
+    remoteChanges,
+    sharedToken,
+  ]);
 
   const timelineDuration = useMemo(() => {
     const end = lanes.reduce((max, lane) => Math.max(max, lane.start + lane.duration), 0);
@@ -4840,6 +4884,14 @@ export function StudioEditorView() {
       {remoteChanges ? (
         <div className="studio-remote-banner" role="status">
           <Icon name="fa-arrows-rotate" /> Collaborator changes are available.
+          <label className="studio-auto-apply">
+            <input
+              type="checkbox"
+              checked={autoApplyRemote}
+              onChange={(event) => setAutoApplyRemote(event.target.checked)}
+            />
+            Auto-apply
+          </label>
           <button type="button" onClick={() => void reloadSharedProject()}>
             Reload
           </button>

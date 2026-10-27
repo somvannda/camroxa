@@ -461,7 +461,9 @@ GET    /api/v3/web-music/studio/shares/{token}/updates
 Share links expire after 1, 7 or 30 days and open `/studio/shared/{token}`, a
 public read-only view of the project title, BPM, tracks and arrangement. The
 editable Studio view long-polls the updates route with `since` and a 20-second
-timeout, so collaborator changes appear without fixed-interval polling.
+timeout, so collaborator changes appear without fixed-interval polling. The
+change banner also has an optional **Auto-apply** toggle that reloads remote
+changes when playback is stopped and the local project is saved.
 
 Share viewers can leave feedback without an account:
 
