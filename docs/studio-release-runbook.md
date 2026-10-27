@@ -451,7 +451,9 @@ Findings:
 - `personas` is captcha-gated like the other operations: its musicapi job
   errored with the same `TWOCAPTCHA_KEY` message when no key was configured.
   **With `TWOCAPTCHA_KEY` set it completes**: row reaches `status: complete` with
-  a real `provider_persona_id`, at zero credits. Creation is asynchronous by
+  a real `provider_persona_id`, at zero credits. A persona-backed Replace
+  section using that provider id also completes (12 credits, durable B2 audio),
+  so the persona path is verified end to end. Creation is asynchronous by
   design — POST returns 202 with `status: queued`, and `GET /studio/personas`
   refreshes each row from the musicapi job. Re-listing correctly reported
   `status: error` with the captcha message, so the failure is **not** silent
