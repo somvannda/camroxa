@@ -19,6 +19,7 @@ export type StudioProject = {
   permission?: "view" | "edit";
   read_only?: boolean;
   pinned?: boolean;
+  archived?: boolean;
   tags?: string[];
   comment_count?: number;
   last_comment_at?: string | null;
@@ -51,10 +52,11 @@ async function studioJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 export async function listStudioProjects(
   limit = 20,
-  offset = 0
+  offset = 0,
+  includeArchived = false
 ): Promise<{ items: StudioProject[]; total: number }> {
   return studioJson(
-    `/api/v3/web-music/studio/projects?limit=${limit}&offset=${offset}`
+    `/api/v3/web-music/studio/projects?limit=${limit}&offset=${offset}&include_archived=${includeArchived ? "true" : "false"}`
   );
 }
 
@@ -88,6 +90,7 @@ export async function updateStudioProject(
     time_signature?: string;
     data?: StudioProjectData;
     pinned?: boolean;
+    archived?: boolean;
     tags?: string[];
   }
 ): Promise<StudioProject> {

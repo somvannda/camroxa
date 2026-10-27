@@ -1590,13 +1590,14 @@ class WebMusicService:
         *,
         limit: int = 40,
         offset: int = 0,
+        include_archived: bool = False,
     ) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 100))
         safe_offset = max(0, int(offset))
         rows = await self._pool.fetch(
             """
             SELECT p.id, p.title, p.major_version, p.bpm, p.time_signature,
-                   p.pinned, p.tags, p.created_at, p.updated_at,
+                   p.pinned, p.tags, p.archived, p.created_at, p.updated_at,
                    COALESCE(c.comment_count, 0) AS comment_count,
                    c.last_comment_at
             FROM studio_projects p
@@ -1608,16 +1609,22 @@ class WebMusicService:
                 GROUP BY project_id
             ) c ON c.project_id = p.id
             WHERE p.user_id = $1
+              AND ($4::boolean OR p.archived = false)
             ORDER BY p.pinned DESC, p.updated_at DESC
             LIMIT $2 OFFSET $3
             """,
             user_id,
             safe_limit,
             safe_offset,
+            bool(include_archived),
         )
         total = await self._pool.fetchval(
-            "SELECT count(*) FROM studio_projects WHERE user_id = $1",
+            """
+            SELECT count(*) FROM studio_projects
+            WHERE user_id = $1 AND ($2::boolean OR archived = false)
+            """,
             user_id,
+            bool(include_archived),
         )
         return {
             "items": [self._studio_project_payload(row, include_data=False) for row in rows],
@@ -1641,6 +1648,7 @@ class WebMusicService:
             "bpm": int(row["bpm"]),
             "time_signature": str(row["time_signature"]),
             "pinned": bool(row.get("pinned")),
+            "archived": bool(row.get("archived")),
             "tags": list(row.get("tags") or []),
             "comment_count": int(row.get("comment_count") or 0),
             "last_comment_at": (
@@ -1705,6 +1713,7 @@ class WebMusicService:
         time_signature: str | None = None,
         data: dict[str, Any] | None = None,
         pinned: bool | None = None,
+        archived: bool | None = None,
         tags: list[str] | None = None,
     ) -> dict[str, Any]:
         safe_tags = None
@@ -1726,6 +1735,7 @@ class WebMusicService:
                 data = COALESCE($7::jsonb, data),
                 pinned = COALESCE($8, pinned),
                 tags = COALESCE($9::text[], tags),
+                archived = COALESCE($10, archived),
                 updated_at = now()
             WHERE id = $1 AND user_id = $2
             RETURNING *
@@ -1739,6 +1749,7 @@ class WebMusicService:
             json.dumps(data) if isinstance(data, dict) else None,
             bool(pinned) if pinned is not None else None,
             safe_tags,
+            bool(archived) if archived is not None else None,
         )
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})

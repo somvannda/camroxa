@@ -362,11 +362,12 @@ with the project and used for the track header, clip border and arrangement bar.
 The project menu includes **Open project**, which lists saved cloud projects
 with their update time and loads the selected project into Studio. The list has
 a title search filter and can be sorted by last updated or name. Project rows
-can be pinned, tagged, renamed, duplicated or deleted; pinned projects always
-sort first and both pin and tags are stored with the project. The tag list can
-filter the browser without changing the active session. Duplication copies the
-full project data into a new `copy` project, and deletion clears the active
-session when the current project is removed.
+can be pinned, tagged, archived, renamed, duplicated or deleted; pinned projects
+always sort first and pin, tags and archive state are stored with the project.
+Archived projects are hidden by default and revealed with **Show archived**.
+The tag list can filter the browser without changing the active session.
+Duplication copies the full project data into a new `copy` project, and
+deletion clears the active session when the current project is removed.
 
 Projects can be exported as `.camxora.json` and imported back into any Studio
 session, including lanes, markers, BPM, time signature, grid, loop, master and

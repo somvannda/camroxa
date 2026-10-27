@@ -1357,8 +1357,9 @@ export function StudioEditorView() {
   const [cloudState, setCloudState] = useState<"local" | "saving" | "saved" | "error">("local");
   const [cloudError, setCloudError] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(false);
-  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null; pinned?: boolean; tags?: string[]; comment_count?: number; last_comment_at?: string | null }>>([]);
+  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null; pinned?: boolean; archived?: boolean; tags?: string[]; comment_count?: number; last_comment_at?: string | null }>>([]);
   const [tagFilter, setTagFilter] = useState("");
+  const [showArchived, setShowArchived] = useState(false);
   const [projectsBusy, setProjectsBusy] = useState(false);
   const [projectsError, setProjectsError] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -1867,20 +1868,25 @@ export function StudioEditorView() {
     }
   }
 
-  async function openProjects() {
-    setProjectsOpen(true);
-    setProjectSearch("");
-    setTagFilter("");
-    setProjectsError("");
+  async function loadProjectList(includeArchived: boolean) {
     setProjectsBusy(true);
+    setProjectsError("");
     try {
-      const result = await listStudioProjects(50, 0);
+      const result = await listStudioProjects(50, 0, includeArchived);
       setProjectList(result.items);
     } catch (cause) {
       setProjectsError(cause instanceof Error ? cause.message : "Could not load projects.");
     } finally {
       setProjectsBusy(false);
     }
+  }
+
+  async function openProjects() {
+    setProjectsOpen(true);
+    setProjectSearch("");
+    setTagFilter("");
+    setShowArchived(false);
+    await loadProjectList(false);
   }
 
   async function openProject(projectIdToOpen: string) {
@@ -2000,6 +2006,35 @@ export function StudioEditorView() {
       setProjectsError(
         cause instanceof Error ? cause.message : "Could not update project pin."
       );
+    } finally {
+      setProjectsBusy(false);
+    }
+  }
+
+  async function toggleProjectArchive(project: {
+    id: string;
+    title: string;
+    archived?: boolean;
+  }) {
+    if (projectsBusy) return;
+    const next = !project.archived;
+    setProjectsBusy(true);
+    setProjectsError("");
+    setProjectList((current) =>
+      next && !showArchived
+        ? current.filter((item) => item.id !== project.id)
+        : current.map((item) =>
+            item.id === project.id ? { ...item, archived: next } : item
+          )
+    );
+    try {
+      await updateStudioProject(project.id, { archived: next });
+      await loadProjectList(showArchived);
+    } catch (cause) {
+      setProjectsError(
+        cause instanceof Error ? cause.message : "Could not archive project."
+      );
+      await loadProjectList(showArchived);
     } finally {
       setProjectsBusy(false);
     }
@@ -6395,6 +6430,17 @@ export function StudioEditorView() {
                 ))}
               </select>
             </div>
+            <label className="studio-project-archive-toggle">
+              <input
+                type="checkbox"
+                checked={showArchived}
+                onChange={(event) => {
+                  setShowArchived(event.target.checked);
+                  void loadProjectList(event.target.checked);
+                }}
+              />
+              Show archived
+            </label>
             <div className="studio-versions-list">
               {projectsBusy && !projectList.length ? <p>Loading projects…</p> : null}
               {!projectsBusy && !projectList.length ? <p>No saved projects yet.</p> : null}
@@ -6414,6 +6460,9 @@ export function StudioEditorView() {
                       <small className="studio-project-tags">
                         {project.tags.join(" · ")}
                       </small>
+                    ) : null}
+                    {project.archived ? (
+                      <small className="studio-project-archived">Archived</small>
                     ) : null}
                     {project.comment_count ? (
                       <small
@@ -6453,6 +6502,13 @@ export function StudioEditorView() {
                       disabled={projectsBusy}
                     >
                       Duplicate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void toggleProjectArchive(project)}
+                      disabled={projectsBusy}
+                    >
+                      {project.archived ? "Unarchive" : "Archive"}
                     </button>
                     <button
                       className="danger"

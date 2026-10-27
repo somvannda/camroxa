@@ -409,6 +409,7 @@ class StudioProjectUpdateRequest(BaseModel):
     time_signature: str | None = Field(default=None, pattern=r"^\d{1,2}/\d{1,2}$")
     data: dict[str, object] | None = None
     pinned: bool | None = None
+    archived: bool | None = None
     tags: list[str] | None = None
     expected_updated_at: datetime | None = None
 
@@ -423,11 +424,13 @@ async def list_studio_projects(
     service: WebMusicServiceDep,
     limit: int = Query(40, ge=1, le=100),
     offset: int = Query(0, ge=0),
+    include_archived: bool = Query(False),
 ) -> dict:
     return await service.list_studio_projects(
         UUID(ctx.user_id),
         limit=limit,
         offset=offset,
+        include_archived=include_archived,
     )
 
 
@@ -472,6 +475,7 @@ async def update_studio_project(
         time_signature=body.time_signature,
         data=body.data,
         pinned=body.pinned,
+        archived=body.archived,
         tags=body.tags,
     )
 
