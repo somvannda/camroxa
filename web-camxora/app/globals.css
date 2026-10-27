@@ -2804,6 +2804,9 @@ html{color-scheme:dark}
   .studio-marker:hover{background:rgba(30,41,59,.95)}
 
   .studio-project-actions{display:flex;align-items:center;gap:4px}
+  .studio-project-actions .studio-project-pin{width:24px;padding:0;color:#64748b}
+  .studio-project-actions .studio-project-pin.active{color:#fbbf24;border-color:rgba(251,191,36,.25);background:rgba(251,191,36,.08)}
+  .studio-project-actions .studio-project-pin .icon,.studio-project-actions .studio-project-pin .fa-replaced{font-size:9px!important;width:9px!important;height:9px!important}
   .studio-project-actions button.danger{color:#fca5a5;border-color:rgba(248,113,113,.2);background:rgba(248,113,113,.05)}
   .studio-project-actions button.danger:hover:not(:disabled){background:rgba(248,113,113,.14);color:#fecaca}
 

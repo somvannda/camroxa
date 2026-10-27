@@ -1353,7 +1353,7 @@ export function StudioEditorView() {
   const [cloudState, setCloudState] = useState<"local" | "saving" | "saved" | "error">("local");
   const [cloudError, setCloudError] = useState("");
   const [projectsOpen, setProjectsOpen] = useState(false);
-  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null }>>([]);
+  const [projectList, setProjectList] = useState<Array<{ id: string; title: string; updated_at?: string | null; pinned?: boolean }>>([]);
   const [projectsBusy, setProjectsBusy] = useState(false);
   const [projectsError, setProjectsError] = useState("");
   const [projectSearch, setProjectSearch] = useState("");
@@ -1945,6 +1945,36 @@ export function StudioEditorView() {
     }
   }
 
+  async function toggleProjectPin(project: {
+    id: string;
+    title: string;
+    pinned?: boolean;
+  }) {
+    if (projectsBusy) return;
+    const next = !project.pinned;
+    setProjectsBusy(true);
+    setProjectsError("");
+    setProjectList((current) =>
+      current.map((item) =>
+        item.id === project.id ? { ...item, pinned: next } : item
+      )
+    );
+    try {
+      await updateStudioProject(project.id, { pinned: next });
+    } catch (cause) {
+      setProjectList((current) =>
+        current.map((item) =>
+          item.id === project.id ? { ...item, pinned: project.pinned } : item
+        )
+      );
+      setProjectsError(
+        cause instanceof Error ? cause.message : "Could not update project pin."
+      );
+    } finally {
+      setProjectsBusy(false);
+    }
+  }
+
   async function duplicateProject(project: { id: string; title: string }) {
     if (projectsBusy) return;
     setProjectsBusy(true);
@@ -2353,6 +2383,9 @@ export function StudioEditorView() {
         )
       : projectList;
     return [...filtered].sort((a, b) => {
+      if (Boolean(a.pinned) !== Boolean(b.pinned)) {
+        return a.pinned ? -1 : 1;
+      }
       if (projectSort === "title") return a.title.localeCompare(b.title);
       return (
         new Date(b.updated_at ?? 0).getTime() -
@@ -6096,6 +6129,15 @@ export function StudioEditorView() {
                     </small>
                   </div>
                   <div className="studio-project-actions">
+                    <button
+                      className={`studio-project-pin${project.pinned ? " active" : ""}`}
+                      type="button"
+                      aria-label={project.pinned ? `Unpin ${project.title}` : `Pin ${project.title}`}
+                      onClick={() => void toggleProjectPin(project)}
+                      disabled={projectsBusy}
+                    >
+                      <Icon name="fa-star" />
+                    </button>
                     <button
                       type="button"
                       onClick={() => void renameProject(project)}

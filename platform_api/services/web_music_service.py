@@ -1595,10 +1595,10 @@ class WebMusicService:
         safe_offset = max(0, int(offset))
         rows = await self._pool.fetch(
             """
-            SELECT id, title, major_version, bpm, time_signature, created_at, updated_at
+            SELECT id, title, major_version, bpm, time_signature, pinned, created_at, updated_at
             FROM studio_projects
             WHERE user_id = $1
-            ORDER BY updated_at DESC
+            ORDER BY pinned DESC, updated_at DESC
             LIMIT $2 OFFSET $3
             """,
             user_id,
@@ -1630,6 +1630,7 @@ class WebMusicService:
             "major_version": int(row["major_version"]),
             "bpm": int(row["bpm"]),
             "time_signature": str(row["time_signature"]),
+            "pinned": bool(row.get("pinned")),
             "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
             "updated_at": row["updated_at"].isoformat() if row.get("updated_at") else None,
         }
@@ -1686,6 +1687,7 @@ class WebMusicService:
         bpm: int | None = None,
         time_signature: str | None = None,
         data: dict[str, Any] | None = None,
+        pinned: bool | None = None,
     ) -> dict[str, Any]:
         row = await self._pool.fetchrow(
             """
@@ -1695,6 +1697,7 @@ class WebMusicService:
                 bpm = COALESCE($5, bpm),
                 time_signature = COALESCE($6, time_signature),
                 data = COALESCE($7::jsonb, data),
+                pinned = COALESCE($8, pinned),
                 updated_at = now()
             WHERE id = $1 AND user_id = $2
             RETURNING *
@@ -1706,6 +1709,7 @@ class WebMusicService:
             max(20, min(int(bpm), 300)) if bpm is not None else None,
             str(time_signature) if time_signature is not None else None,
             json.dumps(data) if isinstance(data, dict) else None,
+            bool(pinned) if pinned is not None else None,
         )
         if row is None:
             raise NotFoundError("Studio project not found.", details={"project_id": str(project_id)})
