@@ -1032,7 +1032,12 @@ export class SunoClient {
     }
     await this.registerAudioUpload(session.id, { uploadType, uploadFilename: `audio.${ext}` });
     const status = await this.getAudioUploadStatus(session.id);
-    return status.clip_id || session.id;
+    // Never fall back to the upload session id: Suno 404s on it as a clip root,
+    // and the caller cannot tell a processed upload from an unprocessed one.
+    if (!status.clip_id) {
+      throw new Error("Suno did not return a processed clip id for the uploaded audio.");
+    }
+    return status.clip_id;
   }
 
   // =========================================

@@ -540,10 +540,17 @@ Findings:
   path now registers the audio through Suno's upload handshake
   (`registerAudioFromUrl`) because Suno needs a Suno-side clip id, not a URL.
 
-  End-to-end verification is still blocked: that handshake requires a captcha
-  solve, so both operations now fail with
-  `TWOCAPTCHA_KEY is required to solve captcha.` and refund. The payload fix
-  itself is evidenced by the probes above, not by a completed run.
+  With `TWOCAPTCHA_KEY` configured the captcha gate clears and registration
+  succeeds, but the flow still cannot complete: Suno's upload status object
+  (documented shape `{id, status, title, copyright_muted}`) carries **no
+  `clip_id`**, so `uploadAudio` previously fell back to the upload session id,
+  which Suno then 404s as a clip root. That fallback is now removed and the
+  operation fails explicitly with
+  `Suno did not return a processed clip id for the uploaded audio.` (refunded).
+
+  Remaining work: determine what a completed audio upload actually yields as a
+  clip root (an upload-session id is not one), then use that for
+  `cover_clip_id` / `continue_clip_id`.
 
   Additional evidence from the browser session: submitting the flat shape with a
   **real owned clip** returns `422 token_validation_failed` rather than a shape
