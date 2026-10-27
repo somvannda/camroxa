@@ -2251,6 +2251,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
     if (job.status === "complete" || job.status === "error") job.completedAt ??= Date.now();
     await saveJob(job);
+    // Register ownership for a finished asset. Without this row Studio's
+    // derivative operations cannot route a clip back to the account that
+    // produced it and fail with "The source clip's Suno account is not
+    // recorded." The helper existed but was never called.
+    if (job.status === "complete") {
+      await recordOwnedAssets(job);
+    }
     // Log every user-attributed job, not only key-charged ones: free endpoints
     // reached from the session UI (and any priced-at-0 row) carry a userId but
     // no apiKeyId, and would otherwise leave no usage trail. `settleCredits`
