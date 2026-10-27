@@ -955,6 +955,26 @@ export class SunoClient {
     return (await res.json()) as { id: string; url: string; fields: Record<string, string>; is_file_uploaded?: boolean };
   }
 
+  /**
+   * Turn a processed upload into a clip.
+   *
+   * Suno requires this call after `upload-finish`: until it runs, the upload id
+   * and even the status `s3_id` are not clip roots (both 404 on
+   * `/api/generate/*`). Discovered by capturing Suno's own upload modal, which
+   * posts `{"user_reviewed_tags": true}` and receives `{"clip_id": ...}`.
+   */
+  async initializeUploadClip(uploadId: string): Promise<string> {
+    const res = await this.request(`/api/uploads/audio/${uploadId}/initialize-clip/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ user_reviewed_tags: true }),
+    });
+    if (!res.ok) throw await sunoHttpError(`initialize-clip`, res);
+    const data = (await res.json()) as { clip_id?: string };
+    if (!data.clip_id) throw new Error("initialize-clip returned no clip id.");
+    return data.clip_id;
+  }
+
   /** Step 3: register / finish upload (after S3 multipart PUT succeeded).
    *  Suno's Pydantic `loc` names the model, not a nesting level, so the fields are
    *  flat top-level: {upload_type, upload_filename, upload_title}. */
@@ -1044,13 +1064,10 @@ export class SunoClient {
       throw new Error(`audio S3 upload failed (${up.status}): ${await up.text()}`);
     }
     await this.registerAudioUpload(session.id, { uploadType, uploadFilename: `audio.${ext}` });
-    const status = await this.getAudioUploadStatus(session.id);
-    // Never fall back to the upload session id: Suno 404s on it as a clip root,
-    // and the caller cannot tell a processed upload from an unprocessed one.
-    if (!status.clip_id) {
-      throw new Error("Suno did not return a processed clip id for the uploaded audio.");
-    }
-    return status.clip_id;
+    await this.getAudioUploadStatus(session.id);
+    // The upload is only a clip root after initialize-clip; until then both the
+    // upload id and the status s3_id 404 on /api/generate.
+    return this.initializeUploadClip(session.id);
   }
 
   // =========================================
