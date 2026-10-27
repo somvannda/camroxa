@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import secrets
+import time
 
 import httpx
 from datetime import date, datetime, timedelta, timezone
@@ -2091,6 +2092,34 @@ class WebMusicService:
         if row is None:
             raise NotFoundError("Shared Studio project not found or expired.")
         return UUID(str(row["project_id"]))
+
+    async def wait_studio_share_update(
+        self,
+        token: str,
+        *,
+        since: datetime | None = None,
+        timeout_seconds: int = 20,
+    ) -> dict[str, Any]:
+        project_id = await self._active_share_project_id(token)
+        if since is not None and since.tzinfo is None:
+            since = since.replace(tzinfo=timezone.utc)
+        deadline = time.monotonic() + max(1, min(int(timeout_seconds), 25))
+        while True:
+            row = await self._pool.fetchrow(
+                "SELECT updated_at FROM studio_projects WHERE id = $1",
+                project_id,
+            )
+            if row is None:
+                raise NotFoundError("Studio project not found.")
+            updated_at = row["updated_at"]
+            updated_iso = updated_at.isoformat() if updated_at else None
+            if since is None:
+                return {"changed": False, "updated_at": updated_iso}
+            if updated_at is not None and updated_at > since:
+                return {"changed": True, "updated_at": updated_iso}
+            if time.monotonic() >= deadline:
+                return {"changed": False, "updated_at": updated_iso}
+            await asyncio.sleep(1)
 
     async def fork_studio_shared_project(
         self,

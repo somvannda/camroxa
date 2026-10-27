@@ -432,10 +432,13 @@ Read-only Studio sharing is available from the **Share** dialog:
 ```text
 POST /api/v3/web-music/studio/projects/{id}/shares
 GET  /api/v3/web-music/studio/shares/{token}
+GET  /api/v3/web-music/studio/shares/{token}/updates
 ```
 
-Share links expire after 7 days and open `/studio/shared/{token}`, a public
-read-only view of the project title, BPM, tracks and arrangement.
+Share links expire after 1, 7 or 30 days and open `/studio/shared/{token}`, a
+public read-only view of the project title, BPM, tracks and arrangement. The
+editable Studio view long-polls the updates route with `since` and a 20-second
+timeout, so collaborator changes appear without fixed-interval polling.
 
 Share viewers can leave feedback without an account:
 

@@ -404,6 +404,21 @@ export type StudioShareComment = {
   created_at?: string | null;
 };
 
+export async function waitStudioShareUpdate(
+  token: string,
+  since?: string | null,
+  timeoutSeconds = 20,
+  signal?: AbortSignal
+): Promise<{ changed: boolean; updated_at?: string | null }> {
+  const query = new URLSearchParams();
+  if (since) query.set("since", since);
+  query.set("timeout", String(timeoutSeconds));
+  return studioJson(
+    `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}/updates?${query.toString()}`,
+    { signal }
+  );
+}
+
 export async function listStudioShareComments(
   token: string
 ): Promise<{ items: StudioShareComment[] }> {

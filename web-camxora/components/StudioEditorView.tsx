@@ -54,6 +54,7 @@ import {
   createStudioProjectShare,
   revokeStudioProjectShare,
   listStudioProjectComments,
+  waitStudioShareUpdate,
   getStudioSharedProject,
   updateStudioSharedProject,
   deleteStudioProject,
@@ -2166,19 +2167,37 @@ export function StudioEditorView() {
 
   useEffect(() => {
     if (!sharedToken) return;
-    const timer = window.setInterval(async () => {
-      try {
-        const project = await getStudioSharedProject(sharedToken);
-        const remote = project.updated_at ? Date.parse(project.updated_at) || 0 : 0;
-        const local = sharedUpdatedAtRef.current ? Date.parse(sharedUpdatedAtRef.current) || 0 : 0;
-        if (remote > local + 750 && !cloudSaveRef.current) {
-          setRemoteChanges(true);
+    let active = true;
+    let lastSeen = sharedUpdatedAtRef.current;
+    const run = async () => {
+      while (active) {
+        try {
+          const current = sharedUpdatedAtRef.current;
+          if (
+            current &&
+            (!lastSeen || Date.parse(current) > Date.parse(lastSeen))
+          ) {
+            lastSeen = current;
+          }
+          const result = await waitStudioShareUpdate(
+            sharedToken,
+            lastSeen || null,
+            20
+          );
+          if (!active) return;
+          if (result.updated_at) lastSeen = result.updated_at;
+          if (result.changed && !cloudSaveRef.current) {
+            setRemoteChanges(true);
+          }
+        } catch {
+          await new Promise((resolve) => window.setTimeout(resolve, 2500));
         }
-      } catch {
-        /* polling is best-effort */
       }
-    }, 5000);
-    return () => window.clearInterval(timer);
+    };
+    void run();
+    return () => {
+      active = false;
+    };
   }, [sharedToken]);
 
   const timelineDuration = useMemo(() => {

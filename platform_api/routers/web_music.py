@@ -618,6 +618,20 @@ async def list_studio_share_comments(
     return await service.list_studio_share_comments(token, limit=limit)
 
 
+@router.get("/studio/shares/{token}/updates")
+async def wait_studio_share_update(
+    token: str,
+    service: WebMusicServiceDep,
+    since: datetime | None = Query(None),
+    timeout: int = Query(20, ge=1, le=25),
+) -> dict:
+    return await service.wait_studio_share_update(
+        token,
+        since=since,
+        timeout_seconds=timeout,
+    )
+
+
 @router.post("/studio/shares/{token}/comments", status_code=201)
 async def add_studio_share_comment(
     token: str,
