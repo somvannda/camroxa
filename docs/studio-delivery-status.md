@@ -143,6 +143,8 @@ This is not a promise to clone every Suno Studio feature.
 - [x] Presence API accepted playhead and selected lane
 - [x] Readiness endpoint verified locally: tables, pricing, storage, internal
       token and musicapi reachability all pass; Suno account count is `0`
+- [x] Automated non-Suno release checks: 17/17 passed, including project
+      CRUD/pin/tags/archive, shares, comments, presence, long-poll and revoke
 
 ## Release gates — still open
 

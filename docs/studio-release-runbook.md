@@ -123,7 +123,36 @@ ready: false
 
 Do not proceed while `ready` is false.
 
-## 5. Live Suno acceptance matrix
+## 5. Automated non-Suno checks
+
+Use a test account with no Premier dependency:
+
+```bash
+set CAMXORA_WEB_URL=http://localhost:3103
+set CAMXORA_TEST_EMAIL=...
+set CAMXORA_TEST_PASSWORD=...
+python scripts/studio_release_checks.py --allow-not-ready
+```
+
+The checker creates and deletes a temporary project and verifies:
+
+```text
+readiness response
+project list/create/pin/tags/archive/duplicate
+view and edit share creation/list/revoke
+comment create/reply/list
+presence with playhead and selected lane
+long-poll change detection
+public share page
+revoked share rejection
+project cleanup
+```
+
+Expected result: all checks pass, with readiness blockers reported separately.
+The current local run passes 17/17 checks; readiness remains blocked only by
+`musicapi_accounts: false`.
+
+## 6. Live Suno acceptance matrix
 
 Run each operation with a controlled test account and record:
 
@@ -186,7 +215,7 @@ result clip usable in Studio
 [ ] Duplicate submission does not double-charge
 ```
 
-## 6. Two-user collaboration acceptance
+## 7. Two-user collaboration acceptance
 
 Use two separate browser contexts:
 
@@ -225,7 +254,7 @@ Comments:
 [ ] Revoked link comments fail
 ```
 
-## 7. Project regression
+## 8. Project regression
 
 ```text
 [ ] Create project
@@ -247,7 +276,7 @@ Comments:
 [ ] Mixer changes persist
 ```
 
-## 8. Export smoke tests
+## 9. Export smoke tests
 
 ```text
 [ ] WAV full mix
@@ -266,7 +295,7 @@ Comments:
 
 Verify audio is not silent, not clipped and not truncated.
 
-## 9. Browser and layout checks
+## 10. Browser and layout checks
 
 ```text
 [ ] Chrome current
@@ -280,7 +309,7 @@ Verify audio is not silent, not clipped and not truncated.
 [ ] No failed Studio requests other than expected 401s
 ```
 
-## 10. Sandbox rollout
+## 11. Sandbox rollout
 
 ```text
 1. Deploy platform API, musicapi and web-camxora.
@@ -304,7 +333,7 @@ Go/no-go:
 [ ] Error budget acceptable
 ```
 
-## 11. Production rollout
+## 12. Production rollout
 
 ```text
 1. Snapshot database and confirm restore point.
@@ -319,7 +348,7 @@ Go/no-go:
 
 Do not deploy while readiness is false.
 
-## 12. Rollback
+## 13. Rollback
 
 ```text
 [ ] Previous web build available
@@ -341,7 +370,7 @@ Rollback triggers:
 - share links exposing another user's project
 ```
 
-## 13. Sign-off
+## 14. Sign-off
 
 ```text
 Engineering:      ____________________
@@ -353,7 +382,7 @@ Commit/image:     ____________________
 Readiness result: ____________________
 ```
 
-## 14. Current blockers
+## 15. Current blockers
 
 ```text
 [ ] At least one active Suno account in the local musicapi pool
