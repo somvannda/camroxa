@@ -38,6 +38,8 @@ export interface AccountStatus {
   credits: number;
   models: string[];
   captchaRequired: boolean;
+  /** False when the account could not be reached or authenticated. */
+  reachable: boolean;
 }
 
 /**
@@ -165,9 +167,9 @@ export class AccountPool {
         try {
           const h = await this.healthFor(c);
           const captchaRequired = await this.captchaFor(c);
-          return { id: c.account.id, plan: h.plan, credits: h.credits, models: h.models, captchaRequired };
+          return { id: c.account.id, plan: h.plan, credits: h.credits, models: h.models, captchaRequired, reachable: true };
         } catch {
-          return { id: c.account.id, plan: "unknown", credits: 0, models: [], captchaRequired: false };
+          return { id: c.account.id, plan: "unknown", credits: 0, models: [], captchaRequired: false, reachable: false };
         }
       }),
     );

@@ -8703,9 +8703,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   app.get("/internal/studio/health", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
+    // Live reachability, not just pool membership: a seeded-but-expired or
+    // revoked credential still counts in `pool.size`, which made readiness
+    // report green while every real call failed. `active_accounts` is the
+    // number of accounts that just authenticated against Suno.
+    const health = await pool.listHealth().catch(() => []);
+    const activeAccounts = health.filter((h) => h.reachable).length;
     return reply.send({
       ok: true,
       accounts: pool.size,
+      active_accounts: activeAccounts,
       jobs: jobs.size,
     });
   });

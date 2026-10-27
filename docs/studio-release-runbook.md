@@ -25,10 +25,15 @@ Do not add new Studio features until this runbook passes.
 
 ```text
 PLATFORM_SUNO_API_BASE_URL
+PLATFORM_SUNO_CALLBACK_BASE_URL
 PLATFORM_STUDIO_INTERNAL_TOKEN
 Durable streaming storage configuration
 Existing database and Redis configuration
 ```
+
+`PLATFORM_SUNO_CALLBACK_BASE_URL` must be a public host. Without it the
+client falls back to `https://localhost/...`, which Suno rejects, and
+readiness now reports the gate as not ready.
 
 ### musicapi
 
@@ -449,6 +454,18 @@ was observed returning 401, so expiry is not evidence of validity.
 Fix before trusting the gate: have readiness call the musicapi health check
 for live account state, and treat an unreachable or unauthenticated account
 as not ready.
+
+Resolved in this change: `GET /internal/studio/health` now returns
+`active_accounts` (accounts that just authenticated against Suno), and
+readiness requires it to be non-zero while still reporting `musicapi_pool_size`
+for diagnostics. Readiness also gained a `suno_callback_base_url` check.
+Verified both directions: an expired credential reports
+`pool_size: 1, accounts: 0, ready: false`; a live credential reports
+`pool_size: 1, accounts: 1` with only the callback gate still red.
+
+Note: `serve.ts` seeds from `SUNO_CLIENT_COOKIE`/`SUNO_JWT` only when the pool
+is empty. To re-seed an existing row, clear its `client_cookie` and set
+`is_active=false` first, otherwise the stale credential is reloaded.
 
 ### Credential note
 

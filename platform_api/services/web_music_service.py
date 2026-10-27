@@ -2927,13 +2927,20 @@ class WebMusicService:
             storage_error = str(exc)
         internal_token = bool(str(settings.studio_internal_token or "").strip())
         suno_api_base_url = bool(str(settings.suno_api_base_url or "").strip())
+        # Suno refuses to call back to a local/private host, so generation is
+        # dead without a publicly reachable callback base. Surface it here
+        # instead of failing later inside a generation request.
+        suno_callback_base_url = bool(
+            str(getattr(settings, "suno_callback_base_url", "") or "").strip()
+        )
         musicapi_ok = False
         musicapi_accounts = 0
+        musicapi_active_accounts = 0
         musicapi_error: str | None = None
         if internal_token and suno_api_base_url:
             base = str(settings.suno_api_base_url).rstrip("/")
             try:
-                async with httpx.AsyncClient(timeout=5) as client:
+                async with httpx.AsyncClient(timeout=10) as client:
                     response = await client.get(
                         f"{base}/internal/studio/health",
                         headers={
@@ -2946,6 +2953,12 @@ class WebMusicService:
                     payload = response.json()
                     musicapi_ok = bool(payload.get("ok"))
                     musicapi_accounts = int(payload.get("accounts") or 0)
+                    # Older musicapi builds omit it; fall back to pool size so
+                    # this stays compatible, but prefer the live count.
+                    active = payload.get("active_accounts")
+                    musicapi_active_accounts = (
+                        int(active) if active is not None else musicapi_accounts
+                    )
             except Exception as exc:
                 musicapi_error = str(exc)
         checks = {
@@ -2954,8 +2967,9 @@ class WebMusicService:
             "storage": storage_configured,
             "internal_token": internal_token,
             "suno_api_base_url": suno_api_base_url,
+            "suno_callback_base_url": suno_callback_base_url,
             "musicapi": musicapi_ok,
-            "musicapi_accounts": musicapi_accounts > 0,
+            "musicapi_accounts": musicapi_active_accounts > 0,
         }
         return {
             "ready": all(checks.values()),
@@ -2963,7 +2977,8 @@ class WebMusicService:
             "missing_tables": missing_tables,
             "missing_pricing": missing_pricing,
             "storage_error": storage_error,
-            "musicapi_accounts": musicapi_accounts,
+            "musicapi_accounts": musicapi_active_accounts,
+            "musicapi_pool_size": musicapi_accounts,
             "musicapi_error": musicapi_error,
             "checked_at": datetime.now(timezone.utc).isoformat(),
         }
