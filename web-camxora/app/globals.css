@@ -1818,6 +1818,10 @@ html{color-scheme:dark}
   .studio-loop-handle.end{right:-4px;border-radius:0 4px 4px 0}
   .studio-ruler-track>span:first-child{border-left:0}
   .studio-lanes{position:relative;flex:1;min-height:440px;overflow:auto;scrollbar-width:thin;scrollbar-color:#293244 transparent}
+  .studio-collab-cursors{position:absolute;left:150px;right:76px;top:0;bottom:0;z-index:3;pointer-events:none}
+  .studio-collab-cursor{position:absolute;top:0;bottom:0;width:1px;opacity:.65}
+  .studio-collab-cursor b{position:absolute;top:2px;left:2px;padding:1px 3px;border-radius:3px;background:#0b1021;color:#fff;font:inherit;font-size:7px;line-height:1.2;opacity:.9}
+  @media(max-width:800px){.studio-collab-cursors{left:120px;right:68px}}
   .studio-loop-layer{position:absolute;inset:0;display:grid;grid-template-columns:150px minmax(0,1fr) 76px;pointer-events:none;z-index:0}
   .studio-loop-layer-track{position:relative}
   .studio-loop-layer-track>i{position:absolute;top:0;bottom:0;background:rgba(168,85,247,.045);border-left:1px dashed rgba(168,85,247,.3);border-right:1px dashed rgba(168,85,247,.3)}

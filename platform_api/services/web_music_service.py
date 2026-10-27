@@ -2248,6 +2248,8 @@ class WebMusicService:
         user_id: UUID,
         *,
         display_name: str,
+        playhead_seconds: float | None = None,
+        selected_lane_id: str | None = None,
     ) -> dict[str, Any]:
         share = await self._pool.fetchrow(
             """
@@ -2267,14 +2269,23 @@ class WebMusicService:
         name = str(display_name or "").strip()[:80] or "Collaborator"
         await self._pool.execute(
             """
-            INSERT INTO studio_project_presence (project_id, user_id, display_name, last_seen)
-            VALUES ($1, $2, $3, now())
+            INSERT INTO studio_project_presence
+                (project_id, user_id, display_name, last_seen, playhead_seconds, selected_lane_id)
+            VALUES ($1, $2, $3, now(), $4, $5)
             ON CONFLICT (project_id, user_id)
-            DO UPDATE SET display_name = EXCLUDED.display_name, last_seen = now()
+            DO UPDATE SET
+                display_name = EXCLUDED.display_name,
+                last_seen = now(),
+                playhead_seconds = EXCLUDED.playhead_seconds,
+                selected_lane_id = EXCLUDED.selected_lane_id
             """,
             project_id,
             user_id,
             name,
+            max(0.0, float(playhead_seconds))
+            if playhead_seconds is not None
+            else None,
+            str(selected_lane_id)[:120] if selected_lane_id else None,
         )
         await self._pool.execute(
             "DELETE FROM studio_project_presence WHERE project_id = $1 AND last_seen < now() - interval '90 seconds'",
@@ -2282,7 +2293,7 @@ class WebMusicService:
         )
         rows = await self._pool.fetch(
             """
-            SELECT user_id, display_name, last_seen
+            SELECT user_id, display_name, last_seen, playhead_seconds, selected_lane_id
             FROM studio_project_presence
             WHERE project_id = $1 AND last_seen >= now() - interval '90 seconds'
             ORDER BY last_seen DESC
@@ -2295,6 +2306,12 @@ class WebMusicService:
                     "user_id": str(row["user_id"]),
                     "display_name": str(row["display_name"]),
                     "last_seen": row["last_seen"].isoformat() if row["last_seen"] else None,
+                    "playhead_seconds": (
+                        float(row["playhead_seconds"])
+                        if row["playhead_seconds"] is not None
+                        else None
+                    ),
+                    "selected_lane_id": row["selected_lane_id"],
                 }
                 for row in rows
             ]

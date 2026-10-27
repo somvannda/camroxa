@@ -500,18 +500,28 @@ export type StudioPresence = {
   user_id: string;
   display_name: string;
   last_seen?: string | null;
+  playhead_seconds?: number | null;
+  selected_lane_id?: string | null;
 };
 
 export async function touchStudioPresence(
   token: string,
-  displayName: string
+  displayName: string,
+  options?: {
+    playheadSeconds?: number | null;
+    selectedLaneId?: string | null;
+  }
 ): Promise<{ items: StudioPresence[] }> {
   return studioJson(
     `/api/v3/web-music/studio/shares/${encodeURIComponent(token)}/presence`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ display_name: displayName }),
+      body: JSON.stringify({
+        display_name: displayName,
+        playhead_seconds: options?.playheadSeconds ?? undefined,
+        selected_lane_id: options?.selectedLaneId ?? undefined,
+      }),
     }
   );
 }

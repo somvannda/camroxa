@@ -2323,7 +2323,11 @@ export function StudioEditorView() {
     const touch = () => {
       void touchStudioPresence(
         sharedToken,
-        user.display_name || user.email || "Collaborator"
+        user.display_name || user.email || "Collaborator",
+        {
+          playheadSeconds: playheadRef.current,
+          selectedLaneId: selectedLaneRef.current?.id ?? null,
+        }
       )
         .then((result) => {
           if (alive) setCollaborators(result.items);
@@ -2333,7 +2337,7 @@ export function StudioEditorView() {
         });
     };
     touch();
-    const timer = window.setInterval(touch, 20000);
+    const timer = window.setInterval(touch, 5000);
     return () => {
       alive = false;
       window.clearInterval(timer);
@@ -5156,6 +5160,41 @@ export function StudioEditorView() {
                 />
               </div>
               <span />
+            </div>
+            <div className="studio-collab-cursors" aria-hidden="true">
+              {collaborators
+                .filter(
+                  (person) =>
+                    person.user_id !== user?.id &&
+                    typeof person.playhead_seconds === "number"
+                )
+                .map((person, index) => {
+                  const initials =
+                    person.display_name
+                      .split(/\s+/)
+                      .map((part) => part[0] ?? "")
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase() || "?";
+                  const left = clamp(
+                    ((person.playhead_seconds ?? 0) / Math.max(1, timelineDuration)) *
+                      100,
+                    0,
+                    100
+                  );
+                  return (
+                    <span
+                      key={person.user_id}
+                      className="studio-collab-cursor"
+                      style={{
+                        left: `${left}%`,
+                        background: COLORS[index % COLORS.length],
+                      }}
+                    >
+                      <b>{initials}</b>
+                    </span>
+                  );
+                })}
             </div>
             {collapsedGroups.map((group) => (
               <div className="studio-collapsed-group" key={group.id}>

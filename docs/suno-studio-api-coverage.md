@@ -466,7 +466,9 @@ public read-only view of the project title, BPM, tracks and arrangement. The
 editable Studio view long-polls the updates route with `since` and a 20-second
 timeout, so collaborator changes appear without fixed-interval polling. The
 change banner also has an optional **Auto-apply** toggle that reloads remote
-changes when playback is stopped and the local project is saved.
+changes when playback is stopped and the local project is saved. Presence now
+includes each collaborator's playhead and selected lane; the timeline renders
+coloured playhead cursors with initials.
 
 Share viewers can leave feedback without an account:
 

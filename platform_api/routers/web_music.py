@@ -572,6 +572,8 @@ async def create_studio_project_share(
 
 class StudioPresenceRequest(BaseModel):
     display_name: str = Field(default="Collaborator", max_length=80)
+    playhead_seconds: float | None = None
+    selected_lane_id: str | None = Field(default=None, max_length=120)
 
 
 @router.post("/studio/shares/{token}/presence")
@@ -585,6 +587,8 @@ async def touch_studio_shared_presence(
         token,
         UUID(ctx.user_id),
         display_name=body.display_name,
+        playhead_seconds=body.playhead_seconds,
+        selected_lane_id=body.selected_lane_id,
     )
 
 
