@@ -1400,6 +1400,7 @@ export function StudioEditorView() {
   const [mashupError, setMashupError] = useState("");
   const [sharedToken, setSharedToken] = useState<string | null>(null);
   const [collaborators, setCollaborators] = useState<StudioPresence[]>([]);
+  const [followingUserId, setFollowingUserId] = useState<string | null>(null);
   const [remoteChanges, setRemoteChanges] = useState(false);
   const [autoApplyRemote, setAutoApplyRemote] = useState(false);
   const sharedUpdatedAtRef = useRef("");
@@ -3132,6 +3133,16 @@ export function StudioEditorView() {
     [playing, startPlayback, stopSources]
   );
 
+  useEffect(() => {
+    if (!followingUserId || playing) return;
+    const person = collaborators.find(
+      (item) => item.user_id === followingUserId
+    );
+    if (typeof person?.playhead_seconds === "number") {
+      seekTo(person.playhead_seconds);
+    }
+  }, [collaborators, followingUserId, playing, seekTo]);
+
   const togglePlay = useCallback(() => {
     if (!lanes.length) return;
     if (playing) {
@@ -4741,17 +4752,22 @@ export function StudioEditorView() {
               {collaborators.slice(0, 3).map((person) => (
                 <button
                   key={person.user_id}
+                  className={followingUserId === person.user_id ? "following" : ""}
                   type="button"
                   title={
                     typeof person.playhead_seconds === "number"
-                      ? `${person.display_name} at ${formatTime(person.playhead_seconds)}`
+                      ? `${person.display_name} at ${formatTime(person.playhead_seconds)} — click to follow`
                       : person.display_name
                   }
-                  aria-label={`Jump to ${person.display_name}'s playhead`}
+                  aria-label={`Follow ${person.display_name}'s playhead`}
+                  aria-pressed={followingUserId === person.user_id}
                   disabled={typeof person.playhead_seconds !== "number"}
                   onClick={() => {
                     if (typeof person.playhead_seconds === "number") {
                       seekTo(person.playhead_seconds);
+                      setFollowingUserId((current) =>
+                        current === person.user_id ? null : person.user_id
+                      );
                     }
                   }}
                 >

@@ -2837,6 +2837,7 @@ html{color-scheme:dark}
   .studio-presence span,.studio-presence button{display:grid;place-items:center;width:20px;height:20px;margin-left:-4px;border:1px solid #0b1021;border-radius:50%;background:#4c1d95;color:#ede9fe;font:inherit;font-size:7px;font-weight:700;cursor:pointer}
   .studio-presence span:first-child,.studio-presence button:first-child{margin-left:0}
   .studio-presence button:hover:not(:disabled){background:#6d28d9;transform:translateY(-1px)}
+  .studio-presence button.following{background:#7c3aed;box-shadow:0 0 0 2px rgba(167,139,250,.55)}
   .studio-presence button:disabled{cursor:default;opacity:.7}
   .studio-presence em{font-style:normal;font-size:7px;color:#a78bfa;margin-left:2px}
 
