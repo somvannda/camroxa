@@ -561,6 +561,15 @@ def _extract_audio_urls_from_raw(raw_payload: dict[str, Any]) -> tuple[str | Non
     summary="Suno callback endpoint",
     include_in_schema=False,  # Internal callback, not shown in public docs
 )
+# Suno's lyrics/agentic tasks post to `/suno-lyrics`, which had no route at all:
+# generation callbacks 404'd and tasks stayed pending until timeout. Both paths
+# share one handler.
+@router.post(
+    "/suno-lyrics",
+    status_code=200,
+    summary="Suno lyrics callback endpoint",
+    include_in_schema=False,  # Internal callback, not shown in public docs
+)
 async def suno_callback(
     request: Request,
     task_repo: SunoTaskRepoDep,
