@@ -61,7 +61,7 @@ Backend (`platform_api`):
   `generate()`, persisted in `_enqueue_web_generate`, read back in
   `fulfill_queued_generate`, plus `create_studio_video_file()`.
 - `routers/web_music.py`: `video_urls` (max 1) on the generate body and
-  `POST /studio/video-uploads` (201, ≤200 MB).
+  `POST /studio/video-uploads` (201, ≤100 MB).
 
 `musicapi` already accepted `videoUrls` (`uploadReferenceVideo`); no change there.
 
@@ -103,6 +103,18 @@ Backend (`platform_api`):
 
 ## Follow-ups
 
+- **musicapi does not forward a video asset.** `processMusicSubmitWithVideo`
+  (`musicapi/src/server.ts`) extracts a frame at `t=1s`
+  (`musicapi/src/video.ts`) and uploads it as an *image*, then generates with
+  `task: "agentic_thinking"`. Suno instead uploads the clip and sends
+  `user_uploaded_video_id`. UI parity is complete; the audio result is a
+  frame-driven approximation until `SunoClient` grows a visual-upload path.
+- **Image + video precedence.** `musicSubmitFactory` tries inline images, then
+  reference images, then videos — so attaching both silently drops the video.
+  Suno sends `user_uploaded_image_ids` and `user_uploaded_video_id` together.
+- **Reference URL expiry.** The stored URL is a CDN URL or a signed B2 URL with
+  `stream_url_ttl_seconds` (default 3600). A long queue backlog could expire it
+  before musicapi fetches the clip.
 - Live QA needs Suno credits: all pool accounts are out
   (`iamduke1987@gmail.com` = 0, renews ~2026-11-04). Retest attach + generate
   then.

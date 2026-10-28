@@ -1224,9 +1224,9 @@ async def upload_studio_video_file(
             details={"field": "file"},
         )
     data = await file.read()
-    if len(data) > 200 * 1024 * 1024:
+    if len(data) > 100 * 1024 * 1024:
         raise ValidationError(
-            "Reference clips are limited to 200 MB.",
+            "Reference clips are limited to 100 MB.",
             details={"field": "file"},
         )
     return await service.create_studio_video_file(
