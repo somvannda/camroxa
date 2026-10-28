@@ -4080,7 +4080,7 @@ export function CreateStudio() {
 
       {lyricsLibraryOpen ? (
         <div
-          className="s-modal-overlay"
+          className="s-modal-overlay s-lyrics-library-overlay"
           role="dialog"
           aria-modal="true"
           aria-label="Saved lyrics"
@@ -4099,6 +4099,18 @@ export function CreateStudio() {
               </button>
             </div>
             <div className="s-lyrics-library-body">
+              {lyricsModalOpen && lyrics.trim() ? (
+                <button
+                  type="button"
+                  className="s-lyrics-save-current"
+                  onClick={() => {
+                    setLyricsLibraryOpen(false);
+                    startSaveLyrics();
+                  }}
+                >
+                  <Icon name="fa-bookmark" /> Save current lyrics
+                </button>
+              ) : null}
               {savedLyrics === null ? (
                 <p className="s-note">Loading saved lyrics…</p>
               ) : savedLyrics.length ? (
@@ -4188,9 +4200,9 @@ export function CreateStudio() {
                 <button
                   type="button"
                   className="s-lyrics-tool"
-                  aria-label="Save lyrics"
-                  title="Save lyrics"
-                  onClick={startSaveLyrics}
+                  aria-label="Saved lyrics"
+                  title="Saved lyrics"
+                  onClick={() => void openLyricsLibrary()}
                 >
                   <Icon name="fa-bookmark" />
                 </button>

@@ -4017,3 +4017,7 @@ html{color-scheme:dark}
 .s-lyrics-saved-delete{width:32px;height:32px;border-radius:8px;display:inline-flex;align-items:center;justify-content:center;color:var(--s-text3);flex:none;cursor:pointer}
 .s-lyrics-saved-delete:hover{background:rgba(185,28,28,.16);color:var(--s-danger-soft)}
 .s-lyrics-saved-delete .icon,.s-lyrics-saved-delete svg{width:12px;height:12px}
+.s-lyrics-library-overlay{z-index:240}
+.s-lyrics-save-current{display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;margin:6px 4px 8px;border-radius:9px;border:1px dashed var(--s-line2);color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.s-lyrics-save-current:hover{border-color:var(--s-accent);color:var(--s-text);background:rgba(168,85,247,.08)}
+.s-lyrics-save-current .icon,.s-lyrics-save-current svg{width:12px;height:12px}
