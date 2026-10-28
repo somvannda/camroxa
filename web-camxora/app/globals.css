@@ -3969,3 +3969,32 @@ html{color-scheme:dark}
   .s-lyrics-modal{height:calc(100vh - 20px);border-radius:14px}
   .s-lyrics-modal-input{font-size:14px}
 }
+/* lyricist composer */
+.s-lyrics-modal-foot.with-lyricist{align-items:stretch;justify-content:stretch;padding:0 12px 12px}
+.s-lyrics-modal-foot.with-lyricist .s-lyrics-error{bottom:100%;margin-bottom:6px}
+.s-lyricist{width:100%;display:flex;flex-direction:column;gap:8px;padding:10px;border-radius:14px;background:rgba(255,255,255,.04);border:1px solid var(--s-line);animation:s-lyricist-in .28s cubic-bezier(.2,.8,.2,1) both}
+.s-lyricist-top{display:flex;align-items:center;gap:6px;min-width:0}
+.s-lyricist-pill{height:32px;padding:0 10px;border-radius:999px;border:1px dashed var(--s-line2);background:transparent;color:var(--s-text2);font:inherit;font-size:12px;display:inline-flex;align-items:center;gap:6px;flex:none;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
+.s-lyricist-pill:hover{border-color:var(--s-accent);color:var(--s-text);background:rgba(168,85,247,.08)}
+.s-lyricist-pill .icon,.s-lyricist-pill svg{width:11px;height:11px}
+.s-lyricist-chips{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;flex:1;min-width:0;padding:1px}
+.s-lyricist-chips::-webkit-scrollbar{display:none}
+.s-lyricist-chip{height:32px;padding:0 12px;border-radius:999px;border:1px solid var(--s-line);background:rgba(255,255,255,.03);color:var(--s-text2);font:inherit;font-size:12px;white-space:nowrap;flex:none;cursor:pointer;animation:s-chip-rise .38s cubic-bezier(.2,.8,.2,1) both;transition:transform .15s,border-color .15s,color .15s,background .15s}
+.s-lyricist-chip:hover{transform:translateY(-1px);border-color:var(--s-accent);color:var(--s-text);background:rgba(168,85,247,.1)}
+.s-lyricist-scroll,.s-lyricist-close{width:28px;height:28px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:var(--s-text3);flex:none;cursor:pointer}
+.s-lyricist-scroll:hover,.s-lyricist-close:hover{background:rgba(255,255,255,.07);color:var(--s-text)}
+.s-lyricist-scroll .icon,.s-lyricist-scroll svg,.s-lyricist-close .icon,.s-lyricist-close svg{width:11px;height:11px}
+.s-lyricist-input{display:flex;align-items:center;gap:8px;padding:4px 4px 4px 12px;border-radius:12px;background:rgba(0,0,0,.2);border:1px solid var(--s-line);transition:border-color .15s}
+.s-lyricist-input:focus-within{border-color:var(--s-accent)}
+.s-lyricist-input input{flex:1;min-width:0;height:34px;background:transparent;border:0;outline:none;color:var(--s-text);font:inherit;font-size:13px}
+.s-lyricist-input input::placeholder{color:var(--s-text3)}
+.s-lyricist-send{width:36px;height:36px;border-radius:999px;background:var(--s-accent);color:#fff;display:inline-flex;align-items:center;justify-content:center;flex:none;cursor:pointer;box-shadow:0 6px 16px rgba(168,85,247,.35);transition:transform .15s,opacity .15s,box-shadow .15s}
+.s-lyricist-send:hover{transform:scale(1.05)}
+.s-lyricist-send:active{transform:scale(.95)}
+.s-lyricist-send:disabled{opacity:.45;cursor:not-allowed;box-shadow:none}
+.s-lyricist-send .icon,.s-lyricist-send svg{width:14px;height:14px}
+@keyframes s-lyricist-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes s-chip-rise{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:translateY(0)}}
+@media (prefers-reduced-motion: reduce){
+  .s-lyricist,.s-lyricist-chip{animation:none}
+}

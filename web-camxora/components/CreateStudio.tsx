@@ -87,6 +87,14 @@ const models: Array<{ value: WebMusicModel; label: string }> = [
 const SIMPLE_SONG_COUNTS = [1, 5, 10, 20] as const;
 const BATCH_SUBMIT_GAP_MS = 900;
 
+const LYRICIST_SUGGESTIONS = [
+  "Write a blues song about love",
+  "Write an R&B ballad about a long drive",
+  "Write a country song about coming home",
+  "Write a pop anthem about starting over",
+  "Write a Khmer ballad about the Mekong",
+];
+
 function voiceFailureMessage(message: string): string {
   if (/clips you own/i.test(message)) {
     return "Create the voice from a song on the same Suno account that has Voice access.";
@@ -195,6 +203,10 @@ export function CreateStudio() {
   const [lyricsFullscreen, setLyricsFullscreen] = useState(false);
   const [lyricsHistoryIndex, setLyricsHistoryIndex] = useState(0);
   const lyricsHistoryRef = useRef<string[]>([""]);
+  const [lyricistOpen, setLyricistOpen] = useState(true);
+  const [lyricistPrompt, setLyricistPrompt] = useState("");
+  const lyricistChipsRef = useRef<HTMLDivElement | null>(null);
+  const lyricistInputRef = useRef<HTMLInputElement | null>(null);
   const [featureTab, setFeatureTab] = useState<FeatureTab>(null);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [audioHistory, setAudioHistory] = useState<WebMusicStudioOperation[]>([]);
@@ -638,6 +650,8 @@ export function CreateStudio() {
     setLyricsOpen(true);
     setLyricsFullscreen(false);
     setError("");
+    setLyricistOpen(true);
+    setLyricistPrompt("");
     lyricsHistoryRef.current = [lyrics];
     setLyricsHistoryIndex(0);
     setLyricsModalOpen(true);
@@ -685,6 +699,15 @@ export function CreateStudio() {
       style.trim();
     if (!seed) {
       setError("Add a song description, title, or style first.");
+      return;
+    }
+    await generateLyricsFromPrompt(seed);
+  }
+
+  async function generateLyricsFromPrompt(text: string) {
+    const seed = String(text || "").trim();
+    if (!seed) {
+      setError("Describe the lyrics you want first.");
       return;
     }
     setWritingLyrics(true);
@@ -4039,18 +4062,92 @@ export function CreateStudio() {
               maxLength={5000}
               autoFocus
             />
-            <div className="s-lyrics-modal-foot">
+            <div className={cn("s-lyrics-modal-foot", lyricistOpen && "with-lyricist")}>
               {error ? <p className="s-lyrics-error">{error}</p> : null}
-              <button
-                type="button"
-                className="s-lyrics-wand"
-                onClick={() => void writeLyrics()}
-                disabled={writingLyrics}
-                aria-label={writingLyrics ? "Generating lyrics" : "Auto-generate lyrics"}
-                title="Auto-generate lyrics"
-              >
-                <Icon name="fa-wand-magic-sparkles" />
-              </button>
+              {lyricistOpen ? (
+                <div className="s-lyricist">
+                  <div className="s-lyricist-top">
+                    <button
+                      type="button"
+                      className="s-lyricist-pill"
+                      onClick={() => lyricistInputRef.current?.focus()}
+                    >
+                      <Icon name="fa-plus" /> Lyricist
+                    </button>
+                    <div className="s-lyricist-chips" ref={lyricistChipsRef}>
+                      {LYRICIST_SUGGESTIONS.map((suggestion, index) => (
+                        <button
+                          key={suggestion}
+                          type="button"
+                          className="s-lyricist-chip"
+                          style={{ animationDelay: `${index * 45}ms` }}
+                          onClick={() => {
+                            setLyricistPrompt(suggestion);
+                            lyricistInputRef.current?.focus();
+                          }}
+                        >
+                          {suggestion}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      type="button"
+                      className="s-lyricist-scroll"
+                      aria-label="More suggestions"
+                      onClick={() => lyricistChipsRef.current?.scrollBy({ left: 180, behavior: "smooth" })}
+                    >
+                      <Icon name="fa-chevron-right" />
+                    </button>
+                    <button
+                      type="button"
+                      className="s-lyricist-close"
+                      aria-label="Hide lyricist"
+                      onClick={() => setLyricistOpen(false)}
+                    >
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                  <div className="s-lyricist-input">
+                    <input
+                      ref={lyricistInputRef}
+                      value={lyricistPrompt}
+                      onChange={(event) => setLyricistPrompt(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && !event.shiftKey) {
+                          event.preventDefault();
+                          void generateLyricsFromPrompt(lyricistPrompt);
+                        }
+                      }}
+                      placeholder="Describe the lyrics you want"
+                      maxLength={600}
+                      aria-label="Lyricist prompt"
+                    />
+                    <button
+                      type="button"
+                      className="s-lyricist-send"
+                      aria-label="Generate lyrics"
+                      onClick={() => void generateLyricsFromPrompt(lyricistPrompt)}
+                      disabled={writingLyrics || !lyricistPrompt.trim()}
+                    >
+                      <Icon
+                        name={writingLyrics ? "fa-circle-notch" : "fa-arrow-up"}
+                        className={writingLyrics ? "fa-spin" : undefined}
+                      />
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="s-lyrics-wand"
+                  onClick={() => setLyricistOpen(true)}
+                  disabled={writingLyrics}
+                  aria-label={writingLyrics ? "Generating lyrics" : "Open lyricist"}
+                  title="Open lyricist"
+                >
+                  <Icon name="fa-wand-magic-sparkles" />
+                </button>
+              )}
             </div>
           </div>
         </div>
