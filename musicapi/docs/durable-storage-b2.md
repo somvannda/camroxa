@@ -173,14 +173,27 @@ Apply the WAV rule with:
 
 ```bash
 npx tsx scripts/b2-wav-lifecycle.ts              # dry run
-npx tsx scripts/b2-wav-lifecycle.ts --apply      # 14-day expiry + abort stale multipart uploads
+npx tsx scripts/b2-wav-lifecycle.ts --apply      # 14-day expiry
 npx tsx scripts/b2-wav-lifecycle.ts --apply --days 30
-npx tsx scripts/b2-wav-lifecycle.ts --remove     # drop only this rule
+npx tsx scripts/b2-wav-lifecycle.ts --remove     # drop only the rules on our prefix
 ```
 
-The script merges with existing rules rather than replacing the config, and is
-scoped to `<prefix>/wav/`. As of 2026-10-28 the bucket had **zero** lifecycle
-rules configured.
+The script merges with existing rules rather than replacing the configuration, and
+is scoped to `<prefix>/wav/`. As of 2026-10-28 the bucket had **zero** lifecycle
+rules configured; the rule was then applied.
+
+Two B2-specific constraints shape how it is written:
+
+- **Expiration must be paired.** B2 stores the pair as one native rule; the S3 API
+  surfaces it as two rules on the same prefix, one with `Expiration.Days` and one
+  with `Expiration.ExpiredObjectDeleteMarker: true`. Note the marker lives
+  *inside* `Expiration`, not at rule level. Sending only the first is rejected.
+- **No `AbortIncompleteMultipartUpload`.** B2 rejects overlapping prefix filters,
+  so an abort rule would have to either overlap this prefix or go bucket-wide
+  (which would also cancel `platform_api`'s in-flight uploads).
+- **Idempotency relies on prefix, not ID.** B2 regenerates the companion rule's ID
+  when it collapses the pair, so the script treats "any rule on our prefix" as
+  ours; matching by ID would duplicate it on the second run and fail.
 
 > An earlier revision of this doc said "do not add an expiry/delete rule" without
 > qualification. That was written when WAV was indistinguishable from MP3 in the
