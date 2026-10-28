@@ -1,6 +1,6 @@
 # Remix Flow Spec
 
-Status: **planned / Library-first**
+Status: **Library path implemented + tested 2026-10-28; For You / Staff Picks blocked**
 Owner surface: `web-camxora/components/CreateStudio.tsx`
 Backend path: **web → platform_api → musicapi → Suno**
 Production deploy: **not approved** — sandbox only after the checklist passes.
@@ -211,39 +211,39 @@ Cancel branches:
 
 ### Web
 
-- [ ] `RemixPicker` modal component.
-- [ ] Library tab + search/filter/sort.
-- [ ] Row selection with version handling.
-- [ ] `remixSource` state in `CreateStudio`.
-- [ ] Source chip with remove.
-- [ ] Create submits cover/remix operation.
-- [ ] Poll operation and refresh feed.
-- [ ] Error/empty/loading states.
-- [ ] Disable unsupported rows.
-- [ ] Wire entry points: row menu, rail.
+- [x] `RemixPicker` modal component.
+- [x] Library tab + search/sort (status/model/instrumental filters still pending).
+- [x] Row selection with V1/V2 handling.
+- [x] `remixSource` state in `CreateStudio`.
+- [x] Source chip with remove.
+- [x] Create submits cover/remix operation.
+- [x] Poll operation and refresh Audio results.
+- [x] Empty/error states.
+- [x] Disable unsupported rows.
+- [x] Row-menu entry point (rail entry still pending).
 
 ### Platform API
 
-- [ ] Confirm `/studio/generations/{task_id}/cover` contract fits Remix.
+- [x] Confirm `/studio/generations/{task_id}/cover` contract fits Remix.
 - [ ] Optional alias `POST /web-music/remix` **only if** the UI contract needs it.
-- [ ] Ownership/readiness validation.
-- [ ] Pricing + refund via Studio path.
+- [x] Ownership/readiness validation (existing path; ownership denial not exercised).
+- [x] Pricing via Studio path (12-credit charge observed; failure refund not tested).
 
 ### Musicapi
 
-- [ ] Verify `/internal/studio/cover` payload matches Suno Remix.
-- [ ] Add `/internal/studio/remix` only if behavior differs.
+- [x] Verify `/internal/studio/cover` payload matches Suno Remix.
+- [x] No `/internal/studio/remix` needed — the cover route produced a completed remix.
 
 ### Tests
 
-- [ ] Library picker loads ready songs only.
-- [ ] Search/filter/sort.
-- [ ] Select V1/V2 correctly.
-- [ ] Submit creates operation with correct `task_id` + `variant`.
-- [ ] Success shows result in feed.
+- [x] Library picker loads ready songs only.
+- [x] Search and sort.
+- [x] Select V1/V2 correctly.
+- [x] Submit creates operation with correct `task_id` + `variant`.
+- [x] Success shows the remix result in Audio results.
 - [ ] Failure shows refund/error.
-- [ ] Remove chip cancels mode.
-- [ ] Permissions: other user’s task cannot be remixed.
+- [x] Remove chip cancels mode.
+- [ ] Permissions: other user’s task cannot be remixed (backend ownership check exists but not exercised).
 
 ## 10. Open questions / blockers
 

@@ -532,6 +532,24 @@ export async function coverWebMusicStudioUpload(
 export async function getWebMusicStudioOperation(id: string): Promise<WebMusicStudioOperation> {
   return musicJson(`/api/v3/web-music/studio/operations/${encodeURIComponent(id)}`);
 }
+export async function coverWebMusicGeneration(
+  taskId: string,
+  input: { variant?: "ok" | "alt"; prompt?: string; project_id?: string | null } = {}
+): Promise<WebMusicStudioOperation> {
+  return musicJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(taskId)}/cover`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        prompt: input.prompt ?? "",
+        project_id: input.project_id ?? null,
+      }),
+    }
+  );
+}
+
 export async function createWebMusicStudioVideo(input: {
   task_id: string;
   variant?: "ok" | "alt";

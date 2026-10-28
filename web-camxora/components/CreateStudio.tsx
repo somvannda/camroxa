@@ -21,6 +21,7 @@ import {
   WebMusicApiError,
   addWebMusicPlaylistItem,
   clipFilename,
+  coverWebMusicGeneration,
   coverWebMusicStudioUpload,
   createWebMusicPlaylist,
   createWebMusicStudioPersona,
@@ -335,6 +336,17 @@ export function CreateStudio() {
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
+  const [remixPickerOpen, setRemixPickerOpen] = useState(false);
+  const [remixSearch, setRemixSearch] = useState("");
+  const [remixSort, setRemixSort] = useState<"new" | "old">("new");
+  const [remixBusy, setRemixBusy] = useState(false);
+  const [remixSource, setRemixSource] = useState<{
+    taskId: string;
+    variant: "ok" | "alt";
+    title: string;
+    image?: string;
+    model?: string;
+  } | null>(null);
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
   const [toast, setToast] = useState("");
@@ -1539,7 +1551,75 @@ export function CreateStudio() {
     }
   }
 
+  function openRemixPicker() {
+    setRemixPickerOpen(true);
+    setRemixSearch("");
+    setRemixSort("new");
+    setRowMenuKey(null);
+  }
+
+  function selectRemixSource(song: WebMusicGeneration, variant: "ok" | "alt") {
+    const clip = generationClips(song).find((item) => item.variant === variant);
+    setRemixSource({
+      taskId: song.id,
+      variant,
+      title: song.title,
+      image: clip?.image_url || undefined,
+      model: song.model_label || song.model,
+    });
+    setRemixPickerOpen(false);
+    setToast(`Remix source: ${song.title}`);
+  }
+
+  async function submitRemix() {
+    if (!remixSource || busy) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const promptText =
+        (mode === "simple" ? prompt.trim() : style.trim()) ||
+        prompt.trim() ||
+        "Remix this song";
+      let operation = await coverWebMusicGeneration(remixSource.taskId, {
+        variant: remixSource.variant,
+        prompt: promptText,
+      });
+      const terminal = new Set(["complete", "completed", "success", "error", "failed"]);
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        if (terminal.has(String(operation.status).toLowerCase())) break;
+        await new Promise((resolve) => window.setTimeout(resolve, 2000));
+        if (!mounted.current) return;
+        operation = await getWebMusicStudioOperation(operation.id);
+      }
+      const state = String(operation.status).toLowerCase();
+      setAudioHistory((current) => [
+        operation,
+        ...current.filter((item) => item.id !== operation.id),
+      ]);
+      if (state === "error" || state === "failed") {
+        setError(operation.error_message || "Remix failed.");
+      } else if (!terminal.has(state)) {
+        setError("Remix is still rendering. Check Audio results shortly.");
+      } else {
+        setToast("Remix ready");
+        setNotice("Remix created. It is available in Audio results.");
+        setRemixSource(null);
+        void refreshSongs();
+        void refresh();
+      }
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not create the remix.");
+    } finally {
+      if (mounted.current) setBusy(false);
+    }
+  }
+
   async function onSubmit() {
+    if (remixSource) {
+      await submitRemix();
+      return;
+    }
     if (busy || !formReady) return;
     if (cooldownSeconds > 0) {
       setError(`Please wait ${cooldownSeconds}s before creating another song.`);
@@ -1710,6 +1790,24 @@ export function CreateStudio() {
             ? `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`
             : null;
   const audioResultRows = audioHistory.filter((operation) => Boolean(operation.result?.clips?.[0]?.audioUrl));
+  const remixReadySongs = songs.filter(
+    (song) =>
+      String(song.status).toLowerCase() === "success" &&
+      generationClips(song).some((clip) => clipIsReady(song, clip))
+  );
+  const remixQuery = remixSearch.trim().toLowerCase();
+  const remixOptions = remixReadySongs
+    .filter(
+      (song) =>
+        !remixQuery ||
+        song.title.toLowerCase().includes(remixQuery) ||
+        String(song.style || "").toLowerCase().includes(remixQuery)
+    )
+    .sort((a, b) => {
+      const left = new Date(a.created_at || 0).getTime();
+      const right = new Date(b.created_at || 0).getTime();
+      return remixSort === "new" ? right - left : left - right;
+    });
   const generationCount = totalSongs || songs.length;
   const generationWord = generationCount === 1 ? "song" : "songs";
   const versionCount = songs.reduce((total, song) => total + generationClips(song).length, 0);
@@ -2223,9 +2321,17 @@ export function CreateStudio() {
               >
                 <Icon name="fa-link" /> Copy link
               </button>
-              <Link className="s-menu-item" role="menuitem" href="/studio/editor" onClick={() => setRowMenuKey(null)}>
-                <Icon name="fa-wand-magic-sparkles" /> Remix / Edit
-              </Link>
+              <button
+                type="button"
+                className="s-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  openRemixPicker();
+                }}
+              >
+                <Icon name="fa-wand-magic-sparkles" /> Remix
+              </button>
               <div className="s-menu-sep" />
               <button
                 type="button"
@@ -2660,6 +2766,24 @@ export function CreateStudio() {
                       className="s-btn s-btn-icon sm"
                       aria-label="Remove voice"
                       onClick={() => setSelectedPersona(null)}
+                    >
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                ) : null}
+
+                {remixSource ? (
+                  <div className="s-remix-chip">
+                    {remixSource.image ? <img src={remixSource.image} alt="" /> : <Icon name="fa-wand-magic-sparkles" />}
+                    <span>
+                      Remix · {remixSource.title} ·{" "}
+                      {remixSource.variant === "alt" ? "V2" : "V1"}
+                    </span>
+                    <button
+                      type="button"
+                      className="s-btn s-btn-icon sm"
+                      aria-label="Remove remix source"
+                      onClick={() => setRemixSource(null)}
                     >
                       <Icon name="fa-xmark" />
                     </button>
@@ -4433,6 +4557,112 @@ export function CreateStudio() {
               <button type="button" className="s-btn s-btn-ghost" onClick={() => setAttachModal(null)}>
                 Close
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {remixPickerOpen ? (
+        <div
+          className="s-modal-overlay s-remix-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose a song to Remix"
+          onClick={() => setRemixPickerOpen(false)}
+        >
+          <div className="s-remix-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="s-modal-head">
+              <h3>Choose a song to Remix</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Close remix picker"
+                onClick={() => setRemixPickerOpen(false)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-remix-tabs" role="tablist">
+              <button type="button" role="tab" aria-selected="true" className="on">
+                Library
+              </button>
+              <button type="button" role="tab" aria-selected="false" disabled title="Catalog not connected yet">
+                For You
+              </button>
+              <button type="button" role="tab" aria-selected="false" disabled title="Catalog not connected yet">
+                Staff Picks
+              </button>
+            </div>
+            <div className="s-remix-tools">
+              <label className="s-remix-search">
+                <Icon name="fa-magnifying-glass" />
+                <input
+                  value={remixSearch}
+                  onChange={(event) => setRemixSearch(event.target.value)}
+                  placeholder="Search"
+                  aria-label="Search songs to remix"
+                />
+              </label>
+              <button
+                type="button"
+                className={cn("s-remix-sort", remixSort === "new" && "on")}
+                onClick={() => setRemixSort("new")}
+              >
+                New
+              </button>
+              <button
+                type="button"
+                className={cn("s-remix-sort", remixSort === "old" && "on")}
+                onClick={() => setRemixSort("old")}
+              >
+                Old
+              </button>
+            </div>
+            <div className="s-remix-list">
+              {remixOptions.length ? (
+                remixOptions.map((song) => {
+                  const clips = generationClips(song).filter((clip) =>
+                    clipIsReady(song, clip)
+                  );
+                  const cover = generationClips(song).find((clip) => clip.image_url)?.image_url;
+                  return (
+                    <div key={song.id} className="s-remix-row">
+                      <span className="s-remix-cover">
+                        {cover ? <img src={cover} alt="" /> : <Icon name="fa-music" />}
+                      </span>
+                      <span className="s-remix-meta">
+                        <b>{song.title}</b>
+                        <small>
+                          {song.model_label || song.model || "V6"} · {song.style || "No style"}
+                        </small>
+                      </span>
+                      <span className="s-remix-actions">
+                        {clips.map((clip) => (
+                          <button
+                            key={clip.variant}
+                            type="button"
+                            className="s-remix-pick"
+                            onClick={() =>
+                              selectRemixSource(
+                                song,
+                                clip.variant === "alt" ? "alt" : "ok"
+                              )
+                            }
+                          >
+                            {clips.length > 1 ? clipVersionLabel(clip.variant) : "Remix"}
+                          </button>
+                        ))}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <p className="s-note">
+                  {songs.length
+                    ? "No ready songs match this search."
+                    : "No songs to remix yet. Create a song first."}
+                </p>
+              )}
             </div>
           </div>
         </div>
