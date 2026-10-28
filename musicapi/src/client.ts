@@ -632,7 +632,7 @@ export class SunoClient {
     if (!res.ok) throw new Error(`audio download failed (${res.status}).`);
     let ext = "mp3";
     try {
-      const m = new URL(audioUrl).pathname.toLowerCase().match(/\.(wav|mp3|flac|m4a|ogg)$/);
+      const m = new URL(audioUrl).pathname.toLowerCase().match(/\.(wav|mp3|flac|m4a|ogg|webm|aac)$/);
       if (m) ext = m[1];
     } catch {
       /* keep default */
