@@ -3161,6 +3161,7 @@ html{color-scheme:dark}
 .s-menu-item:disabled:hover{background:transparent;color:var(--s-inactive)}
 .s-menu-item .check{margin-left:auto;font-size:11px;color:var(--s-accent)}
 .s-menu-sep{height:1px;background:var(--s-line);margin:4px 0}
+.s-menu-sub{position:absolute;right:calc(100% + 4px);top:0;min-width:140px}
 
 /* ---------- modal ---------- */
 .s-modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);backdrop-filter:blur(4px);z-index:200;display:grid;place-items:center;padding:24px;animation:s-fade .18s ease-out}

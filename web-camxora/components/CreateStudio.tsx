@@ -31,6 +31,7 @@ import {
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
   deleteWebMusicSavedLyrics,
+  deleteWebMusicStudioOperation,
   extendWebMusicStudioUpload,
   fetchWebMusicClipBlob,
   fetchWebMusicClipWavBlob,
@@ -46,6 +47,7 @@ import {
   listWebMusicStudioOperations,
   listWebMusicStudioPersonas,
   listWebMusicStudioUploads,
+  requestWebMusicOperationRemix,
   requestWebMusicStaffPickRemix,
   saveWebMusicSavedLyrics,
   uploadWebMusicStudioAudio,
@@ -53,6 +55,7 @@ import {
   verifyWebMusicVoiceSample,
   type WebMusicSavedLyrics,
   type WebMusicStaffPick,
+  type WebMusicStudioClipResult,
   type WebMusicStudioImage,
   type WebMusicStudioOperation,
   type WebMusicStudioPersona,
@@ -223,6 +226,15 @@ type FeedFilter =
   | "hideDisliked"
   | "hideStems";
 
+function clipFormatUrl(
+  clip: WebMusicStudioClipResult,
+  format: "wav" | "lrc" | "srt"
+): string {
+  if (format === "wav") return String(clip.wavUrl || clip.wav_url || "").trim();
+  if (format === "lrc") return String(clip.lrcUrl || clip.lrc_url || "").trim();
+  return String(clip.srtUrl || clip.srt_url || "").trim();
+}
+
 function SelectBox({
   value,
   onChange,
@@ -340,6 +352,7 @@ export function CreateStudio() {
   const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
+  const [downloadMenuKey, setDownloadMenuKey] = useState<string | null>(null);
   const [remixPickerOpen, setRemixPickerOpen] = useState(false);
   const [remixTab, setRemixTab] = useState<"library" | "foryou" | "staff">("library");
   const [remixFiltersOpen, setRemixFiltersOpen] = useState(false);
@@ -811,11 +824,12 @@ export function CreateStudio() {
   }, [hasPending, selectedId]);
 
   const formReady =
-    mode === "simple"
+    Boolean(remixSource) ||
+    (mode === "simple"
       ? prompt.trim().length > 0
       : instrumental
         ? style.trim().length > 0
-        : style.trim().length > 0 && lyrics.trim().length > 0;
+        : style.trim().length > 0 && lyrics.trim().length > 0);
 
   function openLyricsModal(autogenerate = false) {
     setMode("custom");
@@ -1666,6 +1680,20 @@ export function CreateStudio() {
     setToast(`Remix source: ${pick.title}`);
   }
 
+  async function followStudioOperation(
+    initial: WebMusicStudioOperation
+  ): Promise<WebMusicStudioOperation> {
+    let operation = initial;
+    const terminal = new Set(["complete", "completed", "success", "error", "failed"]);
+    for (let attempt = 0; attempt < 90; attempt += 1) {
+      if (terminal.has(String(operation.status).toLowerCase())) break;
+      await new Promise((resolve) => window.setTimeout(resolve, 2000));
+      if (!mounted.current) return operation;
+      operation = await getWebMusicStudioOperation(operation.id);
+    }
+    return operation;
+  }
+
   async function submitRemix() {
     if (!remixSource || busy) return;
     setBusy(true);
@@ -2062,6 +2090,19 @@ export function CreateStudio() {
     }
   }
 
+  async function shareClipLink(song: WebMusicGeneration, clip: WebMusicClip) {
+    const url = `${window.location.origin}/library?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant)}`;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: clip.title || song.title, url });
+        return;
+      } catch (cause) {
+        if ((cause as Error).name === "AbortError") return;
+      }
+    }
+    await copyClipLink(song, clip);
+  }
+
   async function deleteRow(song: WebMusicGeneration) {
     setDeletingId(song.id);
     try {
@@ -2200,6 +2241,32 @@ export function CreateStudio() {
     cooldownSeconds > 0 ||
     Boolean(quota?.requires_upgrade);
 
+  const remixChip = remixSource ? (
+    <div className="s-remix-chip">
+      {remixSource.image ? (
+        <img src={remixSource.image} alt="" />
+      ) : (
+        <Icon name="fa-wand-magic-sparkles" />
+      )}
+      <span>
+        Remix · {remixSource.title} ·{" "}
+        {remixSource.kind === "catalog"
+          ? "Staff Pick"
+          : remixSource.variant === "alt"
+            ? "V2"
+            : "V1"}
+      </span>
+      <button
+        type="button"
+        className="s-btn s-btn-icon sm"
+        aria-label="Remove remix source"
+        onClick={() => setRemixSource(null)}
+      >
+        <Icon name="fa-xmark" />
+      </button>
+    </div>
+  ) : null;
+
   if (loading || !user) {
     return (
       <div className="s-page">
@@ -2258,6 +2325,21 @@ export function CreateStudio() {
                         <a className="s-dl" href={clip.audioUrl} download>
                           MP3
                         </a>
+                        {clipFormatUrl(clip, "wav") ? (
+                          <a className="s-dl" href={clipFormatUrl(clip, "wav")} download>
+                            WAV
+                          </a>
+                        ) : null}
+                        {clipFormatUrl(clip, "lrc") ? (
+                          <a className="s-dl" href={clipFormatUrl(clip, "lrc")} download>
+                            LRC
+                          </a>
+                        ) : null}
+                        {clipFormatUrl(clip, "srt") ? (
+                          <a className="s-dl" href={clipFormatUrl(clip, "srt")} download>
+                            SRT
+                          </a>
+                        ) : null}
                       </div>
                       <div
                         className="s-anchor"
@@ -2270,13 +2352,14 @@ export function CreateStudio() {
                           className="s-row-more"
                           aria-label="More options"
                           aria-expanded={rowMenuKey === `audio:${operation.id}`}
-                          onClick={() =>
+                          onClick={() => {
+                            setDownloadMenuKey(null);
                             setRowMenuKey((current) =>
                               current === `audio:${operation.id}`
                                 ? null
                                 : `audio:${operation.id}`
-                            )
-                          }
+                            );
+                          }}
                         >
                           <Icon name="fa-ellipsis-vertical" />
                         </button>
@@ -2303,15 +2386,94 @@ export function CreateStudio() {
                             >
                               <Icon name="fa-play" /> Play
                             </button>
-                            <a
+                            <button
+                              type="button"
                               className="s-menu-item"
                               role="menuitem"
-                              href={clip.audioUrl}
-                              download
-                              onClick={() => setRowMenuKey(null)}
+                              aria-expanded={downloadMenuKey === operation.id}
+                              onClick={() =>
+                                setDownloadMenuKey((current) =>
+                                  current === operation.id ? null : operation.id
+                                )
+                              }
                             >
-                              <Icon name="fa-download" /> Download MP3
-                            </a>
+                              <Icon name="fa-download" /> Download
+                              <Icon name="fa-chevron-right" className="s-menu-caret" />
+                            </button>
+                            {downloadMenuKey === operation.id ? (
+                              <div className="s-menu s-menu-sub" role="menu">
+                                <a
+                                  className="s-menu-item"
+                                  role="menuitem"
+                                  href={clip.audioUrl}
+                                  download
+                                  onClick={() => setRowMenuKey(null)}
+                                >
+                                  MP3
+                                </a>
+                                {clipFormatUrl(clip, "wav") ? (
+                                  <a
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    href={clipFormatUrl(clip, "wav")}
+                                    download
+                                    onClick={() => setRowMenuKey(null)}
+                                  >
+                                    WAV
+                                  </a>
+                                ) : null}
+                                {clipFormatUrl(clip, "lrc") ? (
+                                  <a
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    href={clipFormatUrl(clip, "lrc")}
+                                    download
+                                    onClick={() => setRowMenuKey(null)}
+                                  >
+                                    LRC
+                                  </a>
+                                ) : null}
+                                {clipFormatUrl(clip, "srt") ? (
+                                  <a
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    href={clipFormatUrl(clip, "srt")}
+                                    download
+                                    onClick={() => setRowMenuKey(null)}
+                                  >
+                                    SRT
+                                  </a>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={async () => {
+                                setRowMenuKey(null);
+                                const url = clip.audioUrl as string;
+                                if (navigator.share) {
+                                  try {
+                                    await navigator.share({
+                                      title: clip.title || "Audio result",
+                                      url,
+                                    });
+                                    return;
+                                  } catch (cause) {
+                                    if ((cause as Error).name === "AbortError") return;
+                                  }
+                                }
+                                try {
+                                  await navigator.clipboard.writeText(url);
+                                  setToast("Link copied");
+                                } catch {
+                                  setToast("Could not copy link");
+                                }
+                              }}
+                            >
+                              <Icon name="fa-share-nodes" /> Share
+                            </button>
                             <button
                               type="button"
                               className="s-menu-item"
@@ -2319,15 +2481,36 @@ export function CreateStudio() {
                               onClick={async () => {
                                 setRowMenuKey(null);
                                 try {
-                                  await navigator.clipboard.writeText(clip.audioUrl as string);
-                                  setToast("Link copied");
-                                } catch {
-                                  setToast("Could not copy link");
+                                  const created = await requestWebMusicOperationRemix(
+                                    operation.id,
+                                    clip.id
+                                  );
+                                  setToast("Remix started");
+                                  const finished = await followStudioOperation(created);
+                                  setAudioHistory((current) => [
+                                    finished,
+                                    ...current.filter((item) => item.id !== finished.id),
+                                  ]);
+                                  const state = String(finished.status).toLowerCase();
+                                  if (state === "error" || state === "failed") {
+                                    setToast(finished.error_message || "Remix failed");
+                                  } else {
+                                    setToast("Remix ready");
+                                    void refreshSongs();
+                                    void refresh();
+                                  }
+                                } catch (cause) {
+                                  setToast(
+                                    cause instanceof Error
+                                      ? cause.message
+                                      : "Could not start remix"
+                                  );
                                 }
                               }}
                             >
-                              <Icon name="fa-link" /> Copy link
+                              <Icon name="fa-wand-magic-sparkles" /> Remix
                             </button>
+                            <div className="s-menu-sep" />
                             <Link
                               className="s-menu-item"
                               role="menuitem"
@@ -2336,6 +2519,30 @@ export function CreateStudio() {
                             >
                               <Icon name="fa-table-columns" /> Open in Studio
                             </Link>
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={async () => {
+                                setRowMenuKey(null);
+                                if (!window.confirm("Move this audio result to trash?")) return;
+                                try {
+                                  await deleteWebMusicStudioOperation(operation.id);
+                                  setAudioHistory((current) =>
+                                    current.filter((item) => item.id !== operation.id)
+                                  );
+                                  setToast("Moved to trash");
+                                } catch (cause) {
+                                  setToast(
+                                    cause instanceof Error
+                                      ? cause.message
+                                      : "Could not move to trash"
+                                  );
+                                }
+                              }}
+                            >
+                              <Icon name="fa-trash" /> Move to Trash
+                            </button>
                           </div>
                         ) : null}
                       </div>
@@ -2966,31 +3173,12 @@ export function CreateStudio() {
                   </div>
                 ) : null}
 
-                {remixSource ? (
-                  <div className="s-remix-chip">
-                    {remixSource.image ? <img src={remixSource.image} alt="" /> : <Icon name="fa-wand-magic-sparkles" />}
-                    <span>
-                      Remix · {remixSource.title} ·{" "}
-                      {remixSource.kind === "catalog"
-                        ? "Staff Pick"
-                        : remixSource.variant === "alt"
-                          ? "V2"
-                          : "V1"}
-                    </span>
-                    <button
-                      type="button"
-                      className="s-btn s-btn-icon sm"
-                      aria-label="Remove remix source"
-                      onClick={() => setRemixSource(null)}
-                    >
-                      <Icon name="fa-xmark" />
-                    </button>
-                  </div>
-                ) : null}
+                {mode !== "simple" ? remixChip : null}
 
                 {mode === "simple" ? (
                   <>
                     <div className="s-prompt-box">
+                      {remixChip}
                       <textarea
                         id="create-prompt"
                         value={prompt}
@@ -3667,15 +3855,18 @@ export function CreateStudio() {
                     disabled={createDisabled}
                     aria-busy={busy}
                   >
-                    {batchProgress
-                      ? `Creating ${Math.min(batchProgress.done + 1, batchProgress.total)}/${batchProgress.total}…`
-                      : busy
-                        ? "Creating…"
-                        : cooldownSeconds > 0
-                          ? `Wait ${cooldownSeconds}s`
-                          : queueFull
-                            ? `Queue full (${queueUsed}/${queueLimit})`
-                            : "Create"}
+                    <Icon name="fa-wand-magic-sparkles" />
+                    <span>
+                      {batchProgress
+                        ? `Creating ${Math.min(batchProgress.done + 1, batchProgress.total)}/${batchProgress.total}…`
+                        : busy
+                          ? "Creating…"
+                          : cooldownSeconds > 0
+                            ? `Wait ${cooldownSeconds}s`
+                            : queueFull
+                              ? `Queue full (${queueUsed}/${queueLimit})`
+                              : "Create"}
+                    </span>
                   </button>
                 </div>
                 <p className="s-note" style={{ textAlign: "center" }}>
@@ -4044,6 +4235,21 @@ export function CreateStudio() {
                         <a className="s-dl" href={clip.audioUrl} download>
                           MP3
                         </a>
+                        {clipFormatUrl(clip, "wav") ? (
+                          <a className="s-dl" href={clipFormatUrl(clip, "wav")} download>
+                            WAV
+                          </a>
+                        ) : null}
+                        {clipFormatUrl(clip, "lrc") ? (
+                          <a className="s-dl" href={clipFormatUrl(clip, "lrc")} download>
+                            LRC
+                          </a>
+                        ) : null}
+                        {clipFormatUrl(clip, "srt") ? (
+                          <a className="s-dl" href={clipFormatUrl(clip, "srt")} download>
+                            SRT
+                          </a>
+                        ) : null}
                       </div>
                       <div
                         className="s-anchor"
@@ -4056,13 +4262,14 @@ export function CreateStudio() {
                           className="s-row-more"
                           aria-label="More options"
                           aria-expanded={rowMenuKey === `audio:${operation.id}`}
-                          onClick={() =>
+                          onClick={() => {
+                            setDownloadMenuKey(null);
                             setRowMenuKey((current) =>
                               current === `audio:${operation.id}`
                                 ? null
                                 : `audio:${operation.id}`
-                            )
-                          }
+                            );
+                          }}
                         >
                           <Icon name="fa-ellipsis-vertical" />
                         </button>
@@ -4089,15 +4296,94 @@ export function CreateStudio() {
                             >
                               <Icon name="fa-play" /> Play
                             </button>
-                            <a
+                            <button
+                              type="button"
                               className="s-menu-item"
                               role="menuitem"
-                              href={clip.audioUrl}
-                              download
-                              onClick={() => setRowMenuKey(null)}
+                              aria-expanded={downloadMenuKey === operation.id}
+                              onClick={() =>
+                                setDownloadMenuKey((current) =>
+                                  current === operation.id ? null : operation.id
+                                )
+                              }
                             >
-                              <Icon name="fa-download" /> Download MP3
-                            </a>
+                              <Icon name="fa-download" /> Download
+                              <Icon name="fa-chevron-right" className="s-menu-caret" />
+                            </button>
+                            {downloadMenuKey === operation.id ? (
+                              <div className="s-menu s-menu-sub" role="menu">
+                                <a
+                                  className="s-menu-item"
+                                  role="menuitem"
+                                  href={clip.audioUrl}
+                                  download
+                                  onClick={() => setRowMenuKey(null)}
+                                >
+                                  MP3
+                                </a>
+                                {clipFormatUrl(clip, "wav") ? (
+                                  <a
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    href={clipFormatUrl(clip, "wav")}
+                                    download
+                                    onClick={() => setRowMenuKey(null)}
+                                  >
+                                    WAV
+                                  </a>
+                                ) : null}
+                                {clipFormatUrl(clip, "lrc") ? (
+                                  <a
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    href={clipFormatUrl(clip, "lrc")}
+                                    download
+                                    onClick={() => setRowMenuKey(null)}
+                                  >
+                                    LRC
+                                  </a>
+                                ) : null}
+                                {clipFormatUrl(clip, "srt") ? (
+                                  <a
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    href={clipFormatUrl(clip, "srt")}
+                                    download
+                                    onClick={() => setRowMenuKey(null)}
+                                  >
+                                    SRT
+                                  </a>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={async () => {
+                                setRowMenuKey(null);
+                                const url = clip.audioUrl as string;
+                                if (navigator.share) {
+                                  try {
+                                    await navigator.share({
+                                      title: clip.title || "Audio result",
+                                      url,
+                                    });
+                                    return;
+                                  } catch (cause) {
+                                    if ((cause as Error).name === "AbortError") return;
+                                  }
+                                }
+                                try {
+                                  await navigator.clipboard.writeText(url);
+                                  setToast("Link copied");
+                                } catch {
+                                  setToast("Could not copy link");
+                                }
+                              }}
+                            >
+                              <Icon name="fa-share-nodes" /> Share
+                            </button>
                             <button
                               type="button"
                               className="s-menu-item"
@@ -4105,15 +4391,36 @@ export function CreateStudio() {
                               onClick={async () => {
                                 setRowMenuKey(null);
                                 try {
-                                  await navigator.clipboard.writeText(clip.audioUrl as string);
-                                  setToast("Link copied");
-                                } catch {
-                                  setToast("Could not copy link");
+                                  const created = await requestWebMusicOperationRemix(
+                                    operation.id,
+                                    clip.id
+                                  );
+                                  setToast("Remix started");
+                                  const finished = await followStudioOperation(created);
+                                  setAudioHistory((current) => [
+                                    finished,
+                                    ...current.filter((item) => item.id !== finished.id),
+                                  ]);
+                                  const state = String(finished.status).toLowerCase();
+                                  if (state === "error" || state === "failed") {
+                                    setToast(finished.error_message || "Remix failed");
+                                  } else {
+                                    setToast("Remix ready");
+                                    void refreshSongs();
+                                    void refresh();
+                                  }
+                                } catch (cause) {
+                                  setToast(
+                                    cause instanceof Error
+                                      ? cause.message
+                                      : "Could not start remix"
+                                  );
                                 }
                               }}
                             >
-                              <Icon name="fa-link" /> Copy link
+                              <Icon name="fa-wand-magic-sparkles" /> Remix
                             </button>
+                            <div className="s-menu-sep" />
                             <Link
                               className="s-menu-item"
                               role="menuitem"
@@ -4122,6 +4429,30 @@ export function CreateStudio() {
                             >
                               <Icon name="fa-table-columns" /> Open in Studio
                             </Link>
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={async () => {
+                                setRowMenuKey(null);
+                                if (!window.confirm("Move this audio result to trash?")) return;
+                                try {
+                                  await deleteWebMusicStudioOperation(operation.id);
+                                  setAudioHistory((current) =>
+                                    current.filter((item) => item.id !== operation.id)
+                                  );
+                                  setToast("Moved to trash");
+                                } catch (cause) {
+                                  setToast(
+                                    cause instanceof Error
+                                      ? cause.message
+                                      : "Could not move to trash"
+                                  );
+                                }
+                              }}
+                            >
+                              <Icon name="fa-trash" /> Move to Trash
+                            </button>
                           </div>
                         ) : null}
                       </div>
