@@ -73,3 +73,18 @@ lyrics drafts, playlist style import, plans.
 4. **Playlist reference — done** (style import).
 5. **Voice — verified** (saved persona attach + generation); create-from-song
    needs a Voice-entitled account that owns the source song.
+
+## 6. Pre-deploy retest queue
+
+- [ ] **Voice persona creation after the Premier credit refresh**
+  - On 2026-10-28 the Premier account `iamduke1987@gmail.com` had **0 credits**
+    (plan renews around **2026-11-07**), so it could not generate new source songs.
+  - Before production: confirm credits in `/admin/accounts`, generate a source song
+    on Premier, create a persona from it, attach it in `+ → Voice`, and generate
+    with `persona_id`. Confirm the result is `SUCCESS`.
+  - If the pool still prefers `acct-2` for new generations, adjust routing so songs
+    intended as voice sources are generated on the Premier account.
+- [ ] **Demo persona cleanup**
+  - `Wink Voice` (`provider_persona_id 735f11c4-df0c-44ed-ab55-b38113285c06`) was
+    inserted manually to verify the pipeline. Remove or replace it with a
+    UI-created persona before deploy.
