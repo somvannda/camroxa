@@ -815,6 +815,12 @@ class StudioLyricsSaveRequest(BaseModel):
     id: UUID | None = None
 
 
+class StudioVoicePersonaRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=80)
+    styles: str = ""
+    voice_id: str = Field(min_length=1, max_length=200)
+
+
 class StudioVideoRequest(BaseModel):
     task_id: UUID
     variant: Literal["ok", "alt"] = "ok"
@@ -1045,6 +1051,67 @@ async def list_studio_personas(
     service: WebMusicServiceDep,
 ) -> list[dict]:
     return await service.list_studio_personas(UUID(ctx.user_id))
+
+
+@router.post("/studio/voice/samples", status_code=201)
+async def create_voice_sample(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    file: UploadFile = File(...),
+) -> dict:
+    content_type = str(file.content_type or "").split(";")[0].strip().lower()
+    if not content_type.startswith("audio/"):
+        raise ValidationError("Only audio files can be used as voice samples.", details={"field": "file"})
+    return await service.create_voice_sample(
+        UUID(ctx.user_id),
+        filename=file.filename or "voice-sample",
+        content_type=content_type,
+        data=await file.read(),
+    )
+
+
+@router.get("/studio/voice/phrase")
+async def get_voice_phrase(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    _ = ctx
+    return await service.get_voice_phrase()
+
+
+@router.post("/studio/voice/verify")
+async def verify_voice_sample(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    file: UploadFile = File(...),
+    phrase_id: str = Form(...),
+    source_voice_recording_id: str = Form(...),
+) -> dict:
+    content_type = str(file.content_type or "").split(";")[0].strip().lower()
+    if not content_type.startswith("audio/"):
+        raise ValidationError("Only audio recordings can be verified.", details={"field": "file"})
+    return await service.verify_voice_sample(
+        UUID(ctx.user_id),
+        filename=file.filename or "voice-verification",
+        content_type=content_type,
+        data=await file.read(),
+        phrase_id=phrase_id,
+        source_voice_recording_id=source_voice_recording_id,
+    )
+
+
+@router.post("/studio/voice/personas", status_code=201)
+async def create_voice_persona(
+    body: StudioVoicePersonaRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.create_voice_persona(
+        UUID(ctx.user_id),
+        name=body.name,
+        styles=body.styles,
+        voice_id=body.voice_id,
+    )
 
 
 @router.get("/studio/lyrics")

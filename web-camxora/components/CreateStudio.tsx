@@ -25,6 +25,8 @@ import {
   createWebMusicPlaylist,
   createWebMusicStudioPersona,
   createWebMusicStudioVideo,
+  createWebMusicVoicePersona,
+  createWebMusicVoiceSample,
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
   deleteWebMusicSavedLyrics,
@@ -35,6 +37,7 @@ import {
   fetchWebMusicQuota,
   fetchWebMusicTimedLyricsBlob,
   getWebMusicStudioOperation,
+  getWebMusicVoicePhrase,
   listWebMusicPlaylistItems,
   listWebMusicPlaylists,
   listWebMusicSavedLyrics,
@@ -43,6 +46,7 @@ import {
   saveWebMusicSavedLyrics,
   uploadWebMusicStudioAudio,
   uploadWebMusicStudioImage,
+  verifyWebMusicVoiceSample,
   type WebMusicSavedLyrics,
   type WebMusicStudioImage,
   type WebMusicStudioOperation,
@@ -304,9 +308,17 @@ export function CreateStudio() {
   const [voiceSearch, setVoiceSearch] = useState("");
   const [voiceCreateView, setVoiceCreateView] = useState(false);
   const [voiceCreateOpen, setVoiceCreateOpen] = useState(false);
-  const [voiceCreateStep, setVoiceCreateStep] = useState<"source" | "record" | "details">("source");
+  const [voiceCreateStep, setVoiceCreateStep] = useState<"source" | "record" | "phrase" | "verifying" | "failed" | "details">("source");
   const [voiceSampleName, setVoiceSampleName] = useState("");
   const [voiceSampleUrl, setVoiceSampleUrl] = useState<string | null>(null);
+  const [voiceSampleBlob, setVoiceSampleBlob] = useState<Blob | null>(null);
+  const [voiceSampleVoiceId, setVoiceSampleVoiceId] = useState("");
+  const [voicePhraseId, setVoicePhraseId] = useState("");
+  const [voicePhraseText, setVoicePhraseText] = useState("");
+  const [voiceRecordMode, setVoiceRecordMode] = useState<"sample" | "verify">("sample");
+  const [voiceVerifyState, setVoiceVerifyState] = useState<"idle" | "verifying" | "failed">("idle");
+  const [voiceVerifyVoiceId, setVoiceVerifyVoiceId] = useState("");
+  const [voiceVerifyReason, setVoiceVerifyReason] = useState("");
   const [voiceRecording, setVoiceRecording] = useState(false);
   const [voiceRecordSeconds, setVoiceRecordSeconds] = useState(0);
   const voiceRecorderRef = useRef<MediaRecorder | null>(null);
@@ -741,6 +753,14 @@ export function CreateStudio() {
     });
     setVoiceRecordSeconds(0);
     setVoiceRecording(false);
+    setVoiceSampleBlob(null);
+    setVoiceSampleVoiceId("");
+    setVoicePhraseId("");
+    setVoicePhraseText("");
+    setVoiceVerifyVoiceId("");
+    setVoiceVerifyReason("");
+    setVoiceCreateStep("source");
+    setVoiceError("");
   }
 
   async function toggleVoiceRecording() {
@@ -766,8 +786,13 @@ export function CreateStudio() {
           type: recorder.mimeType || "audio/webm",
         });
         setVoiceSampleUrl(URL.createObjectURL(blob));
-        setVoiceSampleName("Voice recording");
-        setVoiceCreateStep("details");
+        setVoiceSampleName(voiceRecordMode === "verify" ? "Verification recording" : "Voice recording");
+        setVoiceSampleBlob(blob);
+        if (voiceRecordMode === "verify") {
+          void verifyVoiceRecording(blob);
+        } else {
+          void beginVoiceSample(blob);
+        }
       };
       voiceRecorderRef.current = recorder;
       recorder.start();
@@ -782,13 +807,64 @@ export function CreateStudio() {
     }
   }
 
+  async function beginVoiceSample(blob: Blob) {
+    setVoiceError("");
+    setVoiceCreateStep("verifying");
+    setVoiceVerifyReason("");
+    try {
+      const sample = await createWebMusicVoiceSample(blob);
+      if (!sample.voice_recording_id) throw new Error("Could not extract your voice from the sample.");
+      setVoiceSampleVoiceId(sample.voice_recording_id);
+      const phrase = await getWebMusicVoicePhrase();
+      setVoicePhraseId(phrase.phrase_id);
+      setVoicePhraseText(phrase.phrase_text);
+      setVoiceCreateStep("phrase");
+    } catch (cause) {
+      setVoiceVerifyReason(cause instanceof Error ? cause.message : "Could not process the sample.");
+      setVoiceCreateStep("failed");
+    }
+  }
+
+  async function verifyVoiceRecording(blob: Blob) {
+    if (!voiceSampleVoiceId || !voicePhraseId) {
+      setVoiceVerifyReason("The voice verification session is missing.");
+      setVoiceCreateStep("failed");
+      return;
+    }
+    setVoiceError("");
+    setVoiceCreateStep("verifying");
+    setVoiceVerifyReason("");
+    try {
+      const result = await verifyWebMusicVoiceSample(blob, {
+        phrase_id: voicePhraseId,
+        source_voice_recording_id: voiceSampleVoiceId,
+      });
+      if (String(result.status).toLowerCase() === "approved" && result.voice_id) {
+        setVoiceVerifyVoiceId(result.voice_id);
+        setVoiceCreateStep("details");
+      } else {
+        setVoiceVerifyReason(
+          result.reason ||
+            (result.status === "pending"
+              ? "Verification is still processing. Try again in a moment."
+              : "We couldn't verify your voice. Please try again.")
+        );
+        setVoiceCreateStep("failed");
+      }
+    } catch (cause) {
+      setVoiceVerifyReason(cause instanceof Error ? cause.message : "Voice verification failed.");
+      setVoiceCreateStep("failed");
+    }
+  }
+
   function handleVoiceSampleFile(file: File) {
     setVoiceSampleUrl((current) => {
       if (current) URL.revokeObjectURL(current);
       return URL.createObjectURL(file);
     });
     setVoiceSampleName(file.name);
-    setVoiceCreateStep("details");
+    setVoiceSampleBlob(file);
+    void beginVoiceSample(file);
   }
 
   function openVoiceModal(intent: "use" | "new") {
@@ -808,6 +884,35 @@ export function CreateStudio() {
     setStylesModalMode(mode);
     setStylesModalOpen(true);
     setError("");
+  }
+
+  async function createVerifiedPersona() {
+    if (!voiceVerifyVoiceId) {
+      setVoiceError("Voice verification is not complete.");
+      return;
+    }
+    if (!voiceName.trim()) {
+      setVoiceError("Give the voice a name.");
+      return;
+    }
+    setVoiceBusy(true);
+    setVoiceError("");
+    try {
+      const persona = await createWebMusicVoicePersona({
+        name: voiceName.trim(),
+        styles: voiceStyles.trim(),
+        voice_id: voiceVerifyVoiceId,
+      });
+      setVoicePersonas((current) => [persona, ...(current || [])]);
+      setSelectedPersona(persona);
+      setVoiceCreateOpen(false);
+      setAttachModal(null);
+      setToast("Voice created and attached");
+    } catch (cause) {
+      setVoiceError(cause instanceof Error ? cause.message : "Could not create the voice");
+    } finally {
+      setVoiceBusy(false);
+    }
   }
 
   async function openLyricsLibrary() {
@@ -4278,8 +4383,18 @@ export function CreateStudio() {
                 </button>
               )}
               <h3>
-                {voiceCreateStep === "record" ? "Record your Voice" : "Create a Voice"}{" "}
-                <span className="s-voice-beta">Beta</span>
+                {voiceCreateStep === "record"
+                  ? "Record your Voice"
+                  : voiceCreateStep === "phrase"
+                    ? "One more piece of content we need"
+                    : voiceCreateStep === "verifying"
+                      ? "Verifying your voice"
+                      : voiceCreateStep === "failed"
+                        ? "Verification failed"
+                        : "Create a Voice"}{" "}
+                {voiceCreateStep === "source" || voiceCreateStep === "details" ? (
+                  <span className="s-voice-beta">Beta</span>
+                ) : null}
               </h3>
               {voiceCreateStep === "record" ? (
                 <span className="s-voice-input-pill">Audio input</span>
@@ -4312,7 +4427,10 @@ export function CreateStudio() {
                     <button
                       type="button"
                       className="s-voice-source-btn"
-                      onClick={() => setVoiceCreateStep("record")}
+                      onClick={() => {
+                        setVoiceRecordMode("sample");
+                        setVoiceCreateStep("record");
+                      }}
                     >
                       <span className="s-voice-rec-dot" /> Record
                     </button>
@@ -4331,7 +4449,12 @@ export function CreateStudio() {
                     <button
                       type="button"
                       className="s-voice-source-btn"
-                      onClick={() => setVoiceCreateStep("details")}
+                      onClick={() => {
+                        setVoiceSampleUrl(null);
+                        setVoiceSampleBlob(null);
+                        setVoiceVerifyVoiceId("");
+                        setVoiceCreateStep("details");
+                      }}
                     >
                       <Icon name="fa-layer-group" /> Select from library
                     </button>
@@ -4379,6 +4502,82 @@ export function CreateStudio() {
                   {[0, 1, 2, 3].map((step) => (
                     <span key={step} className={step === 0 ? "on" : ""} />
                   ))}
+                </div>
+              </div>
+            ) : null}
+
+            {voiceCreateStep === "phrase" ? (
+              <div className="s-voice-phrase">
+                <p className="s-voice-phrase-label">Read this out loud</p>
+                <blockquote className="s-voice-phrase-text">“{voicePhraseText}”</blockquote>
+                <div className="s-voice-record-divider" />
+                {voiceRecording ? (
+                  <div className="s-voice-phrase-recording">
+                    <span>
+                      {String(Math.floor(voiceRecordSeconds / 60)).padStart(2, "0")}:
+                      {String(voiceRecordSeconds % 60).padStart(2, "0")}
+                    </span>
+                    <button
+                      type="button"
+                      className="s-voice-record-btn recording"
+                      aria-label="Stop verification recording"
+                      onClick={() => void toggleVoiceRecording()}
+                    />
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="s-voice-phrase-record"
+                    onClick={() => {
+                      setVoiceRecordMode("verify");
+                      void toggleVoiceRecording();
+                    }}
+                  >
+                    <span className="s-voice-rec-dot" /> Record phrase
+                  </button>
+                )}
+                <p className="s-note">Read the phrase clearly using your natural voice.</p>
+              </div>
+            ) : null}
+
+            {voiceCreateStep === "verifying" ? (
+              <div className="s-voice-verifying">
+                <span className="s-voice-spinner" />
+                <b>Verifying your voice…</b>
+                <p>This usually takes a few seconds.</p>
+              </div>
+            ) : null}
+
+            {voiceCreateStep === "failed" ? (
+              <div className="s-voice-failed">
+                <div className="s-voice-failed-icon">!</div>
+                <b>Sorry, we couldn&apos;t verify your voice.</b>
+                <p>
+                  {voiceVerifyReason ||
+                    "Make sure you're using your own voice and that your microphone is working properly."}
+                </p>
+                <div className="s-voice-failed-actions">
+                  <button
+                    type="button"
+                    className="s-btn s-btn-secondary"
+                    onClick={() => {
+                      setVoiceVerifyReason("");
+                      setVoiceCreateStep("source");
+                    }}
+                  >
+                    Start over
+                  </button>
+                  <button
+                    type="button"
+                    className="s-btn s-btn-primary"
+                    onClick={() => {
+                      setVoiceVerifyReason("");
+                      setVoiceRecordMode("verify");
+                      setVoiceCreateStep("phrase");
+                    }}
+                  >
+                    Try again
+                  </button>
                 </div>
               </div>
             ) : null}

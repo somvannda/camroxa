@@ -2497,6 +2497,203 @@ class WebMusicService:
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
         }
 
+    async def _store_voice_audio(
+        self,
+        user_id: UUID,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+    ) -> str:
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        if not data:
+            raise ValidationError("The audio sample is empty.")
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Voice sample uploads are not configured.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        base_type = str(content_type or "").split(";")[0].strip().lower()
+        safe_ext = {
+            "audio/webm": "webm",
+            "audio/ogg": "ogg",
+            "audio/wav": "wav",
+            "audio/x-wav": "wav",
+            "audio/mp4": "m4a",
+            "audio/mpeg": "mp3",
+            "audio/mp3": "mp3",
+        }.get(base_type, "webm")
+        key = f"studio/voice/{user_id}/{uuid4()}.{safe_ext}"
+        try:
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(
+                key=key,
+                data=data,
+                content_type=content_type or "audio/webm",
+            )
+            return await storage.get_signed_get_url(key)
+        except Exception as exc:
+            logger.exception("Voice sample upload failed for user %s", user_id)
+            raise ExternalServiceError(
+                "Could not store the voice sample.",
+                is_retryable=True,
+                details={"provider": "storage"},
+            ) from exc
+
+    async def create_voice_sample(
+        self,
+        user_id: UUID,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+    ) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        if len(data) > 25 * 1024 * 1024:
+            raise ValidationError("Voice samples are limited to 25 MB.")
+        audio_url = await self._store_voice_audio(
+            user_id, filename=filename, content_type=content_type, data=data
+        )
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=180) as client:
+                response = await client.post(
+                    f"{base}/internal/studio/voice/sample",
+                    headers={"x-internal-token": token},
+                    json={"audio_url": audio_url},
+                )
+                if response.status_code >= 400:
+                    detail = "Voice sample processing failed."
+                    try:
+                        detail = str((response.json() or {}).get("error") or detail)
+                    except Exception:
+                        pass
+                    raise ExternalServiceError(detail, is_retryable=False)
+                payload = response.json()
+        except ExternalServiceError:
+            raise
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Could not reach the voice sample service.",
+                is_retryable=True,
+            ) from exc
+        return {
+            "sample_id": str(payload.get("voice_recording_id") or ""),
+            "voice_recording_id": str(payload.get("voice_recording_id") or ""),
+            "upload_id": payload.get("upload_id"),
+            "processed_id": payload.get("processed_id"),
+            "audio_url": audio_url,
+            "filename": filename[:240],
+        }
+
+    async def get_voice_phrase(self) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        if not token:
+            raise ExternalServiceError("Studio operations are not configured.", is_retryable=False)
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.get(
+                    f"{base}/internal/studio/voice/phrase",
+                    headers={"x-internal-token": token},
+                )
+                response.raise_for_status()
+                return response.json()
+        except Exception as exc:
+            raise ExternalServiceError("Could not load the voice verification phrase.", is_retryable=True) from exc
+
+    async def verify_voice_sample(
+        self,
+        user_id: UUID,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+        phrase_id: str,
+        source_voice_recording_id: str,
+    ) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        if not phrase_id.strip() or not source_voice_recording_id.strip():
+            raise ValidationError("The voice verification session is incomplete.")
+        audio_url = await self._store_voice_audio(
+            user_id, filename=filename, content_type=content_type, data=data
+        )
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        if not token:
+            raise ExternalServiceError("Studio operations are not configured.", is_retryable=False)
+        try:
+            async with httpx.AsyncClient(timeout=240) as client:
+                response = await client.post(
+                    f"{base}/internal/studio/voice/verify",
+                    headers={"x-internal-token": token},
+                    json={
+                        "audio_url": audio_url,
+                        "phrase_id": phrase_id,
+                        "source_voice_recording_id": source_voice_recording_id,
+                    },
+                )
+                if response.status_code >= 400:
+                    detail = "Voice verification failed."
+                    try:
+                        detail = str((response.json() or {}).get("error") or detail)
+                    except Exception:
+                        pass
+                    raise ExternalServiceError(detail, is_retryable=False)
+                return response.json()
+        except ExternalServiceError:
+            raise
+        except Exception as exc:
+            raise ExternalServiceError("Could not verify the voice sample.", is_retryable=True) from exc
+
+    async def create_voice_persona(
+        self,
+        user_id: UUID,
+        *,
+        name: str,
+        styles: str,
+        voice_id: str,
+    ) -> dict[str, Any]:
+        clean_name = str(name or "").strip()[:80]
+        clean_voice = str(voice_id or "").strip()
+        if not clean_name:
+            raise ValidationError("name is required.", details={"field": "name"})
+        if not clean_voice:
+            raise ValidationError("Voice verification is not complete.", details={"field": "voice_id"})
+        row = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_personas
+                (user_id, name, styles, description, source_clip_id, provider_persona_id, status)
+            VALUES ($1, $2, $3, NULL, NULL, $4, 'complete')
+            RETURNING *
+            """,
+            user_id,
+            clean_name,
+            str(styles or "").strip() or None,
+            clean_voice,
+        )
+        return self._studio_persona_payload(row)
+
     async def create_studio_image(
         self,
         user_id: UUID,

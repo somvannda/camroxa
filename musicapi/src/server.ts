@@ -8778,6 +8778,90 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  app.get("/internal/studio/voice/phrase", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const client = await pool.pickFeature("studio").catch(async () => pool.pick());
+    const phrase = await client.voicePhrase();
+    return reply.send(phrase);
+  });
+
+  app.post("/internal/studio/voice/sample", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const audioUrl = typeof body.audio_url === "string" ? body.audio_url : "";
+    if (!/^https?:\/\//i.test(audioUrl)) {
+      return reply.code(400).send({ error: "audio_url is required." });
+    }
+    try {
+      const resp = await fetch(audioUrl, { signal: AbortSignal.timeout(120_000) });
+      if (!resp.ok) throw new Error(`Could not download the voice sample (${resp.status}).`);
+      const bytes = Buffer.from(await resp.arrayBuffer());
+      if (!bytes.length) throw new Error("Voice sample is empty.");
+      const mp3 = await transcodeAudio(bytes, "mp3");
+      const client = await pool.pickFeature("studio").catch(async () => pool.pick());
+      const uploadId = await client.uploadForVoice(mp3, "voice_recording");
+      const stem = await client.voiceVoxStem(uploadId);
+      const voiceId =
+        (stem.voice_recording_id as string) ?? (stem.id as string) ?? "";
+      if (!voiceId) throw new Error("Could not extract a voice recording from the sample.");
+      return reply.code(200).send({
+        upload_id: uploadId,
+        voice_recording_id: voiceId,
+        processed_id: (stem.id as string) ?? null,
+      });
+    } catch (e) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
+  app.post("/internal/studio/voice/verify", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const audioUrl = typeof body.audio_url === "string" ? body.audio_url : "";
+    const phraseId = typeof body.phrase_id === "string" ? body.phrase_id : "";
+    const sourceVoiceId =
+      typeof body.source_voice_recording_id === "string"
+        ? body.source_voice_recording_id
+        : "";
+    if (!/^https?:\/\//i.test(audioUrl) || !phraseId || !sourceVoiceId) {
+      return reply.code(400).send({
+        error: "audio_url, phrase_id and source_voice_recording_id are required.",
+      });
+    }
+    try {
+      const resp = await fetch(audioUrl, { signal: AbortSignal.timeout(120_000) });
+      if (!resp.ok) throw new Error(`Could not download the verification recording (${resp.status}).`);
+      const bytes = Buffer.from(await resp.arrayBuffer());
+      if (!bytes.length) throw new Error("Verification recording is empty.");
+      const mp3 = await transcodeAudio(bytes, "mp3");
+      const client = await pool.pickFeature("studio").catch(async () => pool.pick());
+      const uploadId = await client.uploadForVoice(mp3);
+      const stem = await client.voiceVoxStem(uploadId, "verification");
+      const verificationRecordingId =
+        (stem.voice_recording_id as string) ?? (stem.id as string) ?? "";
+      if (!verificationRecordingId) throw new Error("Could not prepare the verification recording.");
+      let verified = await client.verifyVoice({
+        phraseId,
+        voiceRecordingId: sourceVoiceId,
+        verificationRecordingId,
+      });
+      let status = typeof verified.status === "string" ? verified.status : "";
+      for (let i = 0; i < 40 && status === "pending"; i++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        verified = await client.getVoiceVerification(String(verified.id));
+        status = typeof verified.status === "string" ? verified.status : "";
+      }
+      return reply.code(200).send({
+        status: status || "pending",
+        voice_id: (verified.id as string) ?? null,
+        reason: verified.rejection_reason ?? null,
+        verification: verified,
+      });
+    } catch (e) {
+      return reply.code(502).send({ error: e instanceof Error ? e.message : String(e) });
+    }
+  });
+
   app.post("/internal/studio/upload-extend", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;

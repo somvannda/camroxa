@@ -612,6 +612,61 @@ export async function deleteWebMusicSavedLyrics(id: string): Promise<void> {
     method: "DELETE",
   });
 }
+export type WebMusicVoiceSample = {
+  sample_id: string;
+  voice_recording_id: string;
+  upload_id?: string | null;
+  processed_id?: string | null;
+  audio_url?: string;
+  filename?: string;
+};
+
+export async function createWebMusicVoiceSample(file: Blob): Promise<WebMusicVoiceSample> {
+  const form = new FormData();
+  form.append("file", file, "voice-sample.webm");
+  return musicJson("/api/v3/web-music/studio/voice/samples", {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function getWebMusicVoicePhrase(): Promise<{
+  phrase_id: string;
+  phrase_text: string;
+}> {
+  return musicJson("/api/v3/web-music/studio/voice/phrase");
+}
+
+export async function verifyWebMusicVoiceSample(
+  file: Blob,
+  input: { phrase_id: string; source_voice_recording_id: string }
+): Promise<{
+  status: string;
+  voice_id: string | null;
+  reason: string | null;
+  verification?: Record<string, unknown>;
+}> {
+  const form = new FormData();
+  form.append("file", file, "voice-verification.webm");
+  form.append("phrase_id", input.phrase_id);
+  form.append("source_voice_recording_id", input.source_voice_recording_id);
+  return musicJson("/api/v3/web-music/studio/voice/verify", {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function createWebMusicVoicePersona(input: {
+  name: string;
+  styles?: string;
+  voice_id: string;
+}): Promise<WebMusicStudioPersona> {
+  return musicJson("/api/v3/web-music/studio/voice/personas", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
 export async function listWebMusicStudioOperations(
   limit = 20,
   operationType?: string
