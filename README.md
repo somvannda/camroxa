@@ -1,46 +1,56 @@
 # CAMXORA
 
-White-label AI music-generation platform. The active product is **`musicapi/`** — a
-Fastify + TypeScript core API, a Next.js user workspace, and a Next.js admin console,
-all credit-billed on top of a pool of Suno accounts.
+White-label AI music-generation platform. The active product is **`camxora.com/`** — a
+Next.js 16 web app backed by **`platform_api/`** (FastAPI), **`musicapi/`** (Fastify),
+and **`admin_portal/`**, all credit-billed on top of a pool of Suno accounts.
 
-## Active product — `musicapi/`
+## Active product
 
 | Path | What it is | Dev port |
 |---|---|---|
-| `musicapi/src/` | Core API — Fastify 5, TypeScript (ESM, run with `tsx`) | **4003** |
-| `musicapi/web-user/` | End-user workspace — Next.js 16 | **4001** |
-| `musicapi/web-admin/` | Operator console — Next.js 16 | **4002** |
+| `camxora.com/` | Customer web app — Next.js 16 | **3103** |
+| `platform_api/` | Platform API — FastAPI | **8100** |
+| `musicapi/` | Media/core API — Fastify 5, TypeScript | **4003** |
+| `admin_portal/` | Operator console — React + Vite | **5173** |
 
-Requirements: Node 20+ and a reachable PostgreSQL (local DB name `sunoapi`).
+Requirements: Node 20+, Python 3.11+, and PostgreSQL.
 
 ```bash
+# web
+cd camxora.com
+npm install
+npm run dev                    # :3103
+
+# platform API
+python -m uvicorn platform_api.main:app --host 127.0.0.1 --port 8100
+
+# media/core API
 cd musicapi
 npm install
-cp .env.example .env          # fill in JWT_SECRET, COOKIE_ENCRYPTION_KEY, DATABASE_URL
-npx tsx scripts/create-db.ts  # creates the `sunoapi` database if missing
-npx tsx scripts/migrate.ts    # applies migrations/*.sql in order
-npm run serve                 # core API on :4003
+npm run serve                  # :4003
+
+# admin
+cd admin_portal
+npm install
+npm run dev                    # :5173
 ```
 
-Then, each in its own terminal:
+Full setup — env contracts, database migrations, the optional Redis job queue,
+Google sign-in, and the script reference — lives in the individual READMEs.
 
-```bash
-cd musicapi/web-user  && npm install && npm run dev   # :4001
-cd musicapi/web-admin && npm install && npm run dev   # :4002
-```
+## Canonical checkout
 
-Full setup — env contract, the optional Redis job queue, Google sign-in, and the
-script reference — lives in [musicapi/README.md](musicapi/README.md).
+`G:\Developments\Projects\Camxora` is the canonical `main` checkout. Keep it on
+`main`, clean, and up to date. Feature work belongs on short-lived branches and
+worktrees; after merge, delete the branch, remove only clean merged worktrees,
+and run `git worktree prune`.
 
 ## Legacy trees
 
 The repository still contains the earlier Python/Electron incarnation. These are
 kept for reference and are **not** part of the current product:
 
-- `platform_api/` — legacy FastAPI backend
 - `python_app/`, `camxora_python/` — legacy PyQt6 desktop app
-- `admin_portal/` — legacy React + Vite admin portal
 - `music_web/` — legacy Next.js web app
 - `camxora/`, `archive/electron-app/` — legacy Electron app
 
