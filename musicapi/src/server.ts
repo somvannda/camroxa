@@ -2523,6 +2523,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     clipId: string,
     aspect = "16:9",
     accountId?: string | null,
+    backgroundVideoUrl?: string | null,
   ): Promise<void> {
     try {
       if (!storageConfigured()) throw new Error("Media storage is not configured.");
@@ -2559,7 +2560,35 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         }
       }
 
-      const mp4 = await renderMusicVideo({ audio, image, imageExt, audioExt: "mp3", aspect });
+      let backgroundVideo: { bytes: Buffer; ext: "mp4" | "mov" | "webm" } | null = null;
+      if (backgroundVideoUrl) {
+        const resp = await fetch(backgroundVideoUrl, {
+          signal: AbortSignal.timeout(60_000),
+          redirect: "follow",
+        });
+        if (!resp.ok) throw new Error(`background video fetch failed (${resp.status})`);
+        const bytes = Buffer.from(await resp.arrayBuffer());
+        if (bytes.length > 100 * 1024 * 1024) {
+          throw new Error("background video exceeds 100MB");
+        }
+        const contentType = (resp.headers.get("content-type") ?? "").toLowerCase();
+        const ext: "mp4" | "mov" | "webm" = contentType.includes("quicktime")
+          ? "mov"
+          : contentType.includes("webm")
+            ? "webm"
+            : "mp4";
+        backgroundVideo = { bytes, ext };
+      }
+
+      const mp4 = await renderMusicVideo({
+        audio,
+        image,
+        imageExt,
+        audioExt: "mp3",
+        aspect,
+        backgroundVideo: backgroundVideo?.bytes ?? null,
+        backgroundVideoExt: backgroundVideo?.ext,
+      });
       const key = objectKey("videos", `${clipId}.mp4`);
       await putObject(key, mp4, "video/mp4");
       const url = await getReadUrl(key);
@@ -9305,10 +9334,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       ? requestedAspect
       : "16:9";
     const accountId = await findAssetAccountAny(clipId);
+    const backgroundUrl =
+      typeof body.background_video_url === "string" ? body.background_video_url.trim() : "";
+    if (backgroundUrl && !/^https?:\/\//i.test(backgroundUrl)) {
+      return reply.code(400).send({ error: "background_video_url must be http(s)." });
+    }
     const job = newJob("mp4_generate");
     job.endpoint = "studio_video";
     job.credits = 0;
-    void runMusicVideoJob(job, clipId, aspect, accountId);
+    void runMusicVideoJob(job, clipId, aspect, accountId, backgroundUrl || null);
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 

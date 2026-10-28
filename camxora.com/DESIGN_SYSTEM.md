@@ -143,13 +143,24 @@ The prompt composer `+` opens a 230px menu with the Suno item set:
 | Styles ▸ | Saved styles, Shuffle styles, Enhance styles |
 | Playlist | "Add playlist" modal — playlist reference upload is not enabled yet |
 | Image | "Add image" modal — uploads not enabled yet |
-| Video | "Add video" modal — uploads not enabled yet |
+| Video | Opens the file picker directly (`video/mp4`, `video/quicktime`, `video/webm`), uploads **one** reference clip, then shows a removable chip (thumbnail, filename, size). Picking a second clip is refused. The MP4 renderer moved to the song rail (`Video`). |
 | Audio ▸ | Upload audio / Record audio → "Add audio" modal (Studio hand-off) |
 | Voice ▸ | My voices / Browse voices → "Add voice reference" modal |
 
 Submenus replace the list with a back header (no flyout overflow on narrow cards).
 Unsupported attachments show an explicit "not enabled" explanation instead of a dead
 button; each modal links to Studio.
+
+### Song rail → "Video" (MP4 renderer)
+
+The cover-art renderer lives on the song rail, not in `+`. Modal controls:
+
+| Control | Behaviour |
+|---|---|
+| Song | Finished songs only; first ready song preselected |
+| Version | `ok` / `alt` clip, shown only when both are ready |
+| Aspect | `16:9` → 1280×720, `9:16` → 720×1280, `1:1` → 720×720 |
+| Background | `Browse` attaches an MP4/MOV/WebM from the user's PC; it loops under the song and replaces the cover art. No clip → cover art is used. |
 
 ## 8. Do / don't
 

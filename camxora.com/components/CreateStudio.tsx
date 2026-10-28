@@ -57,11 +57,13 @@ import {
   saveWebMusicSavedLyrics,
   uploadWebMusicStudioAudio,
   uploadWebMusicStudioImage,
+  uploadWebMusicStudioVideoFile,
   verifyWebMusicVoiceSample,
   type WebMusicSavedLyrics,
   type WebMusicStaffPick,
   type WebMusicStudioClipResult,
   type WebMusicStudioImage,
+  type WebMusicStudioVideoFile,
   type WebMusicStudioOperation,
   type WebMusicStudioPersona,
   type WebMusicStudioUpload,
@@ -391,6 +393,7 @@ export function CreateStudio() {
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
   const [toast, setToast] = useState("");
+  const [toastTone, setToastTone] = useState<"info" | "warn">("info");
   const [feedPage, setFeedPage] = useState(1);
   const [attachModal, setAttachModal] = useState<null | "audio" | "voice" | "image" | "video" | "playlist" | "voices">(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -416,6 +419,10 @@ export function CreateStudio() {
   const [referenceImage, setReferenceImage] = useState<WebMusicStudioImage | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [referenceVideo, setReferenceVideo] = useState<WebMusicStudioVideoFile | null>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoUploadError, setVideoUploadError] = useState("");
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const [videoSongs, setVideoSongs] = useState<WebMusicGeneration[] | null>(null);
   const [videoTaskId, setVideoTaskId] = useState("");
   const [videoVariant, setVideoVariant] = useState<"ok" | "alt">("ok");
@@ -423,6 +430,10 @@ export function CreateStudio() {
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState("");
   const [videoOperation, setVideoOperation] = useState<WebMusicStudioOperation | null>(null);
+  const [videoBackground, setVideoBackground] = useState<WebMusicStudioVideoFile | null>(null);
+  const [videoBackgroundBusy, setVideoBackgroundBusy] = useState(false);
+  const [videoBackgroundError, setVideoBackgroundError] = useState("");
+  const videoBackgroundInputRef = useRef<HTMLInputElement | null>(null);
   const [voicePersonas, setVoicePersonas] = useState<WebMusicStudioPersona[] | null>(null);
   const [selectedPersona, setSelectedPersona] = useState<WebMusicStudioPersona | null>(null);
   const [voiceTab, setVoiceTab] = useState<"mine" | "favorites">("mine");
@@ -484,9 +495,15 @@ export function CreateStudio() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 2200);
+    const timer = window.setTimeout(
+      () => {
+        setToast("");
+        setToastTone("info");
+      },
+      toastTone === "warn" ? 5200 : 2600
+    );
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [toast, toastTone]);
 
   useEffect(() => {
     if (!notice) return;
@@ -1313,6 +1330,67 @@ export function CreateStudio() {
     }
   }
 
+  function warnToast(message: string) {
+    setToastTone("warn");
+    setToast(message);
+  }
+
+  function pickReferenceVideo() {
+    if (referenceVideo) {
+      warnToast("Remove the attached clip first — one video at a time.");
+      return;
+    }
+    videoInputRef.current?.click();
+  }
+
+  async function uploadReferenceVideoFile(file: File) {
+    const allowed = ["video/mp4", "video/quicktime", "video/webm"];
+    if (!allowed.includes(file.type)) {
+      warnToast("Attach an MP4, MOV, or WebM clip.");
+      return;
+    }
+    setVideoUploading(true);
+    setVideoUploadError("");
+    try {
+      const video = await uploadWebMusicStudioVideoFile(file);
+      if (!mounted.current) return;
+      setReferenceVideo(video);
+      setToast("Video attached");
+    } catch (cause) {
+      if (mounted.current) {
+        setVideoUploadError(
+          cause instanceof Error ? cause.message : "Could not upload the video"
+        );
+      }
+    } finally {
+      if (mounted.current) setVideoUploading(false);
+    }
+  }
+
+  async function uploadVideoBackgroundFile(file: File) {
+    const allowed = ["video/mp4", "video/quicktime", "video/webm"];
+    if (!allowed.includes(file.type)) {
+      warnToast("Attach an MP4, MOV, or WebM clip.");
+      return;
+    }
+    setVideoBackgroundBusy(true);
+    setVideoBackgroundError("");
+    try {
+      const video = await uploadWebMusicStudioVideoFile(file);
+      if (!mounted.current) return;
+      setVideoBackground(video);
+      setToast("Background clip attached");
+    } catch (cause) {
+      if (mounted.current) {
+        setVideoBackgroundError(
+          cause instanceof Error ? cause.message : "Could not upload the video"
+        );
+      }
+    } finally {
+      if (mounted.current) setVideoBackgroundBusy(false);
+    }
+  }
+
   async function uploadAudioFile(file: File) {
     setAudioUploading(true);
     setAudioError("");
@@ -1813,6 +1891,7 @@ export function CreateStudio() {
       weirdness_constraint: weirdness,
       audio_weight: audioWeight,
       image_urls: referenceImage ? [referenceImage.url] : undefined,
+      video_urls: referenceVideo ? [referenceVideo.url] : undefined,
       persona_id: selectedPersona?.provider_persona_id || undefined,
       workspace_id: activeWorkspaceId ?? undefined,
     };
@@ -2164,6 +2243,7 @@ export function CreateStudio() {
         task_id: videoTaskId,
         variant: videoVariant,
         aspect_ratio: videoAspect,
+        background_video_url: videoBackground?.url ?? null,
       });
       if (!mounted.current) return;
       setVideoOperation(operation);
@@ -3119,6 +3199,57 @@ export function CreateStudio() {
                   </div>
                 ) : null}
 
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/mp4,video/quicktime,video/webm"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadReferenceVideoFile(file);
+                    event.target.value = "";
+                  }}
+                />
+
+                {referenceVideo ? (
+                  <div className="s-video-chip">
+                    <video
+                      className="s-video-chip-frame"
+                      src={`${referenceVideo.url}#t=0.1`}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      aria-hidden="true"
+                    />
+                    <span className="s-video-chip-text">
+                      <b>{referenceVideo.filename}</b>
+                      <small>
+                        {(referenceVideo.size_bytes / (1024 * 1024)).toFixed(1)} MB
+                      </small>
+                    </span>
+                    <button
+                      type="button"
+                      className="s-btn s-btn-icon sm"
+                      aria-label="Remove video"
+                      onClick={() => setReferenceVideo(null)}
+                    >
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                ) : videoUploading ? (
+                  <div className="s-video-chip is-busy">
+                    <span className="s-video-chip-frame">
+                      <Icon name="fa-circle-notch" />
+                    </span>
+                    <span className="s-video-chip-text">
+                      <b>Uploading video…</b>
+                      <small>Keep this tab open</small>
+                    </span>
+                  </div>
+                ) : null}
+
+                {videoUploadError ? <p className="s-error">{videoUploadError}</p> : null}
+
                 {selectedPersona ? (
                   <div className="s-voice-chip">
                     <Icon name="fa-microphone" />
@@ -3245,7 +3376,7 @@ export function CreateStudio() {
                                 onMouseEnter={() => setAddSubmenu(null)}
                                 onClick={() => {
                                   setAddMenuOpen(false);
-                                  setAttachModal("video");
+                                  pickReferenceVideo();
                                 }}
                               >
                                 <Icon name="fa-video" /> Video
@@ -4405,6 +4536,10 @@ export function CreateStudio() {
           onRemix={(song, clip) =>
             selectRemixSource(song, clip.variant === "alt" ? "alt" : "ok")
           }
+          onCreateVideo={() => {
+            setVideoError("");
+            setAttachModal("video");
+          }}
           onRename={async (nextTitle, variant) => {
             if (!selected) return false;
             try {
@@ -4786,6 +4921,70 @@ export function CreateStudio() {
                           ))}
                         </div>
                       </div>
+
+                      <div className="s-video-row">
+                        <span className="s-video-label">Background</span>
+                        <div className="s-chip-row">
+                          <button
+                            type="button"
+                            className="s-btn s-btn-secondary"
+                            onClick={() => videoBackgroundInputRef.current?.click()}
+                            disabled={videoBackgroundBusy}
+                          >
+                            <Icon name="fa-folder-open" />{" "}
+                            {videoBackgroundBusy ? "Uploading…" : "Browse"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <input
+                        ref={videoBackgroundInputRef}
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/webm"
+                        hidden
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadVideoBackgroundFile(file);
+                          event.target.value = "";
+                        }}
+                      />
+
+                      {videoBackground ? (
+                        <div className="s-video-chip">
+                          <video
+                            className="s-video-chip-frame"
+                            src={`${videoBackground.url}#t=0.1`}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            aria-hidden="true"
+                          />
+                          <span className="s-video-chip-text">
+                            <b>{videoBackground.filename}</b>
+                            <small>
+                              {(videoBackground.size_bytes / (1024 * 1024)).toFixed(1)} MB · loops
+                              under the song
+                            </small>
+                          </span>
+                          <button
+                            type="button"
+                            className="s-btn s-btn-icon sm"
+                            aria-label="Remove background video"
+                            onClick={() => setVideoBackground(null)}
+                          >
+                            <Icon name="fa-xmark" />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="s-note">
+                          No background clip — the cover art is used. Browse an MP4, MOV, or WebM to
+                          use it instead.
+                        </p>
+                      )}
+
+                      {videoBackgroundError ? (
+                        <p className="s-error">{videoBackgroundError}</p>
+                      ) : null}
 
                       {videoBusy ? (
                         <p className="s-note">
@@ -6186,7 +6385,11 @@ export function CreateStudio() {
       ) : null}
 
       {toast ? (
-        <div className="s-toast" role="status">
+        <div
+          className={cn("s-toast", toastTone === "warn" && "warn")}
+          role="status"
+          aria-live={toastTone === "warn" ? "assertive" : "polite"}
+        >
           {toast}
         </div>
       ) : null}

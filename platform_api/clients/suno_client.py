@@ -806,6 +806,7 @@ class SunoClient:
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
         image_urls: list[str] | None = None,
+        video_urls: list[str] | None = None,
         persona_id: str | None = None,
         persona_model: str | None = None,
     ) -> dict[str, Any]:
@@ -898,6 +899,11 @@ class SunoClient:
             cleaned_images = [str(url).strip() for url in image_urls if str(url).strip()]
             if cleaned_images:
                 payload["imageUrls"] = cleaned_images[:4]
+        if video_urls:
+            # Suno's create composer allows exactly one attached reference clip.
+            cleaned_videos = [str(url).strip() for url in video_urls if str(url).strip()]
+            if cleaned_videos:
+                payload["videoUrls"] = cleaned_videos[:1]
         if persona_id:
             cleaned_persona = str(persona_id).strip()
             if cleaned_persona:
