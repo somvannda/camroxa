@@ -413,6 +413,13 @@ interface Job {
   model?: string;
   prompt?: string;
   credits?: number;
+  /**
+   * How many times this job has been deferred because the Suno pool had no
+   * funded account. In-memory only: a restart re-queues pending descriptor jobs
+   * and the counter restarts, which is acceptable — the bound exists to stop a
+   * single process looping forever, not to enforce a global budget.
+   */
+  capacityDeferrals?: number;
   createdAt: number;
   /** When the job reached a terminal state (complete/error). Used for WAV `completeTime`. */
   completedAt?: number;
@@ -3044,6 +3051,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
+    if (errors.length > 0 && errors.every(isCapacityExhaustion)) {
+      // A dry pool is temporary: keep the job alive (and the charge held) and
+      // retry with backoff instead of failing out and refunding.
+      if (
+        await deferForCapacity(job, errors[errors.length - 1], () =>
+          runClipJobWithRetry(job, submitFactory, options),
+        )
+      )
+        return;
+    }
     await finalizeJob(job);
   }
 
@@ -3054,6 +3071,59 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     options?: RetryOptions,
   ): Promise<void> {
     return trackJob(withSunoSlot(job, () => runResultJobWithRetryImpl(job, submitFactory, options)));
+  }
+
+  /**
+   * Deferral policy for a dry pool.
+   *
+   * "No Suno account with available credits" is not a delivery failure — the
+   * job is still valid, the user has already been charged, and the accounts
+   * refill on their own schedule (free plans refresh daily, paid on renewal).
+   * Before this, such a job was failed out after a single attempt, refunded, and
+   * re-submitted from scratch by the client's own retry loop: on 2026-10-28 that
+   * produced 48 errors and 45 blind re-submissions in 40 minutes.
+   *
+   * Deferring instead keeps the charge (no debit/refund churn), leaves the job
+   * `pending`, and re-runs it with exponential backoff. 6 deferrals at
+   * 1/2/4/8/16/32 minutes covers ~63 minutes; after that it is a real failure
+   * and is settled (refund + callback) exactly as before.
+   */
+  const CAPACITY_DEFER_LIMIT = 6;
+  const CAPACITY_DEFER_BASE_MS = 60_000;
+
+  /** True when the failure means "the pool is empty", not "this job is bad". */
+  function isCapacityExhaustion(err: unknown): boolean {
+    if (isInsufficientCreditsError(err)) return true;
+    const message = err instanceof Error ? err.message : String(err);
+    return /no suno account with available credits|no usable account|no paid suno account is available/i.test(
+      message,
+    );
+  }
+
+  /** Re-arm a capacity-blocked job after a backoff. Returns false when out of deferrals. */
+  async function deferForCapacity(
+    job: Job,
+    reason: string,
+    resubmit: () => Promise<void>,
+  ): Promise<boolean> {
+    const used = job.capacityDeferrals ?? 0;
+    if (used >= CAPACITY_DEFER_LIMIT) return false;
+    job.capacityDeferrals = used + 1;
+    // Never settle: no usage log, no refund, no callback — the job still owes a song.
+    job.status = "pending";
+    job.error = undefined;
+    job.accountId = undefined;
+    await saveJob(job);
+    const delayMs = CAPACITY_DEFER_BASE_MS * 2 ** used;
+    const timer = setTimeout(() => {
+      void resubmit();
+    }, delayMs);
+    (timer as { unref?: () => void }).unref?.();
+    console.warn(
+      `[jobs] ${job.id} deferred for capacity (${job.capacityDeferrals}/${CAPACITY_DEFER_LIMIT}) ` +
+        `in ${Math.round(delayMs / 1000)}s: ${reason.slice(0, 160)}`,
+    );
+    return true;
   }
 
   async function runResultJobWithRetryImpl(
@@ -3110,6 +3180,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
+    if (errors.length > 0 && errors.every(isCapacityExhaustion)) {
+      // A dry pool is temporary: keep the job alive (and the charge held) and
+      // retry with backoff instead of failing out and refunding.
+      if (
+        await deferForCapacity(job, errors[errors.length - 1], () =>
+          runResultJobWithRetry(job, submitFactory, options),
+        )
+      )
+        return;
+    }
     await finalizeJob(job);
   }
 
