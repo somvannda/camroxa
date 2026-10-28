@@ -16,6 +16,7 @@ export type WebMusicGenerateInput = {
   style_weight?: number;
   weirdness_constraint?: number;
   audio_weight?: number;
+  image_urls?: string[];
   workspace_id?: string;
 };
 
@@ -532,4 +533,19 @@ export async function listWebMusicStudioOperations(
   const params = new URLSearchParams({ limit: String(limit) });
   if (operationType) params.set("operation_type", operationType);
   return musicJson(`/api/v3/web-music/studio/operations?${params.toString()}`);
+}
+export type WebMusicStudioImage = {
+  url: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+};
+
+export async function uploadWebMusicStudioImage(file: File): Promise<WebMusicStudioImage> {
+  const form = new FormData();
+  form.append("file", file);
+  return musicJson<WebMusicStudioImage>("/api/v3/web-music/studio/images", {
+    method: "POST",
+    body: form,
+  });
 }

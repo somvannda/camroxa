@@ -24,6 +24,7 @@ class SunoRequest:
     style_weight: float | None = None
     weirdness_constraint: float | None = None
     audio_weight: float | None = None
+    image_urls: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True, slots=True)

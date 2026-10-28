@@ -51,6 +51,7 @@ class WebMusicGenerateRequest(BaseModel):
     style_weight: float | None = Field(default=None, ge=0.0, le=1.0)
     weirdness_constraint: float | None = Field(default=None, ge=0.0, le=1.0)
     audio_weight: float | None = Field(default=None, ge=0.0, le=1.0)
+    image_urls: list[str] = Field(default_factory=list, max_length=4)
     workspace_id: UUID | None = None
 
 
@@ -1017,6 +1018,32 @@ async def list_studio_personas(
     return await service.list_studio_personas(UUID(ctx.user_id))
 
 
+@router.post("/studio/images", status_code=201)
+async def upload_studio_image(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    file: UploadFile = File(...),
+) -> dict:
+    content_type = str(file.content_type or "").split(";")[0].strip().lower()
+    if not content_type.startswith("image/"):
+        raise ValidationError(
+            "Only image files can be attached.",
+            details={"field": "file"},
+        )
+    data = await file.read()
+    if len(data) > 10 * 1024 * 1024:
+        raise ValidationError(
+            "Reference images are limited to 10 MB.",
+            details={"field": "file"},
+        )
+    return await service.create_studio_image(
+        UUID(ctx.user_id),
+        filename=file.filename or "reference-image",
+        content_type=content_type,
+        data=data,
+    )
+
+
 @router.post("/studio/uploads", status_code=201)
 async def upload_studio_audio(
     ctx: CurrentUserDep,
@@ -1214,6 +1241,7 @@ async def generate(
             style_weight=body.style_weight,
             weirdness_constraint=body.weirdness_constraint,
             audio_weight=body.audio_weight,
+            image_urls=body.image_urls,
             workspace_id=body.workspace_id,
         )
     except QuotaExceededError:

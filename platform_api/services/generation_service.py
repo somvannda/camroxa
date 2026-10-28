@@ -173,6 +173,7 @@ class SunoClientProtocol(Protocol):
         style_weight: float | None = None,
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
+        image_urls: list[str] | None = None,
     ) -> dict[str, Any]:
         ...
 
@@ -2979,6 +2980,7 @@ class GenerationService:
             style_weight=request.style_weight,
             weirdness_constraint=request.weirdness_constraint,
             audio_weight=request.audio_weight,
+            image_urls=request.image_urls,
         )
         from platform_api.clients.suno_client import extract_suno_generate_task_id
 
@@ -3668,6 +3670,7 @@ class GenerationService:
         style_weight: float | None = None,
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
+        image_urls: list[str] | None = None,
     ) -> dict[str, Any]:
         wrapper, _provider = await self._music_pool_wrapper()
         return await wrapper.execute(
@@ -3684,6 +3687,7 @@ class GenerationService:
                 style_weight=style_weight,
                 weirdness_constraint=weirdness_constraint,
                 audio_weight=audio_weight,
+                image_urls=image_urls,
             )
         )
 

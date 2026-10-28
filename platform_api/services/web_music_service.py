@@ -1127,6 +1127,7 @@ class WebMusicService:
         style_weight: float | None = None,
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
+        image_urls: list[str] | None = None,
         workspace_id: UUID | None = None,
     ) -> dict[str, Any]:
         logger.info(
@@ -1148,6 +1149,11 @@ class WebMusicService:
         safe_negative = str(negative_tags or "").strip()
         raw_title = str(title or "").strip()
         safe_style = str(style or "").strip()
+        safe_image_urls = [
+            str(url).strip()
+            for url in (image_urls or [])
+            if str(url).strip().lower().startswith(("http://", "https://"))
+        ][:4]
 
         if mode_key == "simple":
             if not safe_prompt:
@@ -1310,6 +1316,7 @@ class WebMusicService:
                 style_weight=stored_style_weight,
                 weirdness_constraint=stored_weirdness,
                 audio_weight=stored_audio_weight,
+                image_urls=safe_image_urls,
                 workspace_id=workspace_id,
                 is_preview=is_preview,
                 preview_seconds=preview_seconds,
@@ -1350,6 +1357,7 @@ class WebMusicService:
         style_weight: float,
         weirdness_constraint: float,
         audio_weight: float,
+        image_urls: list[str] | None = None,
         workspace_id: UUID | None,
         is_preview: bool = False,
         preview_seconds: int | None = None,
@@ -1377,13 +1385,13 @@ class WebMusicService:
                 id, user_id, request_hash, model, title, lyrics, style,
                 instrumental, external_task_id, status, source, workspace_id,
                 negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                audio_weight, is_preview, preview_seconds, created_at, updated_at
+                audio_weight, reference_image_urls, is_preview, preview_seconds, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, NULL, $9, $10, $11,
                 $12, $13, $14, $15,
-                $16, $17, $18, NOW(), NOW()
+                $16, $17::jsonb, $18, $19, NOW(), NOW()
             )
             """,
             task_id,
@@ -1402,6 +1410,7 @@ class WebMusicService:
             style_weight,
             weirdness_constraint,
             audio_weight,
+            json.dumps(list(image_urls or [])),
             is_preview,
             preview_seconds,
         )
@@ -1425,7 +1434,7 @@ class WebMusicService:
             """
             SELECT id, title, lyrics, style, model, instrumental, external_task_id,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                   audio_weight
+                   audio_weight, reference_image_urls
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -1438,6 +1447,15 @@ class WebMusicService:
         if str(row["external_task_id"] or "").strip():
             return
 
+        raw_images = row["reference_image_urls"]
+        if isinstance(raw_images, str):
+            try:
+                reference_images = json.loads(raw_images) or []
+            except Exception:
+                reference_images = []
+        else:
+            reference_images = list(raw_images or [])
+
         request = SunoRequest(
             model=str(row["model"] or DEFAULT_SUNO_MUSIC_MODEL),
             title=str(row["title"] or ""),
@@ -1449,6 +1467,7 @@ class WebMusicService:
             style_weight=row["style_weight"],
             weirdness_constraint=row["weirdness_constraint"],
             audio_weight=row["audio_weight"],
+            image_urls=reference_images,
         )
         try:
             external_task_id = await self._generation.submit_suno_external_id(request)
@@ -2454,6 +2473,58 @@ class WebMusicService:
             ),
             "url": url,
             "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+        }
+
+    async def create_studio_image(
+        self,
+        user_id: UUID,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+    ) -> dict[str, Any]:
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        if not data:
+            raise ValidationError("The uploaded image is empty.")
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Image uploads are not configured.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        safe_ext = {
+            "image/jpeg": "jpg",
+            "image/jpg": "jpg",
+            "image/png": "png",
+            "image/webp": "webp",
+            "image/gif": "gif",
+        }.get(str(content_type or "").split(";")[0].strip().lower(), "jpg")
+        key = f"studio/images/{user_id}/{uuid4()}.{safe_ext}"
+        try:
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(
+                key=key,
+                data=data,
+                content_type=content_type or "image/jpeg",
+            )
+            url = await storage.get_signed_get_url(key)
+        except Exception as exc:
+            logger.exception("Studio image upload failed for user %s", user_id)
+            raise ExternalServiceError(
+                "Could not store the uploaded image.",
+                is_retryable=True,
+                details={"provider": "storage"},
+            ) from exc
+        return {
+            "url": url,
+            "filename": filename[:240] or f"image.{safe_ext}",
+            "content_type": content_type or "image/jpeg",
+            "size_bytes": len(data),
         }
 
     async def create_studio_upload(

@@ -805,6 +805,7 @@ class SunoClient:
         style_weight: float | None = None,
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
+        image_urls: list[str] | None = None,
     ) -> dict[str, Any]:
         """Submit a music generation task to Suno.
 
@@ -891,6 +892,10 @@ class SunoClient:
             payload["weirdnessConstraint"] = round(float(weirdness_constraint), 2)
         if audio_weight is not None and 0 <= audio_weight <= 1:
             payload["audioWeight"] = round(float(audio_weight), 2)
+        if image_urls:
+            cleaned_images = [str(url).strip() for url in image_urls if str(url).strip()]
+            if cleaned_images:
+                payload["imageUrls"] = cleaned_images[:4]
 
         client = self._build_client(api_key)
         try:

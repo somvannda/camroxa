@@ -36,6 +36,8 @@ import {
   listWebMusicPlaylists,
   listWebMusicStudioOperations,
   uploadWebMusicStudioAudio,
+  uploadWebMusicStudioImage,
+  type WebMusicStudioImage,
   type WebMusicStudioOperation,
   type WebMusicStudioUpload,
   generateWebMusic,
@@ -238,6 +240,9 @@ export function CreateStudio() {
   const [playlistSource, setPlaylistSource] = useState<WebMusicPlaylistSummary[] | null>(null);
   const [playlistSourceBusy, setPlaylistSourceBusy] = useState(false);
   const [playlistSourceError, setPlaylistSourceError] = useState("");
+  const [referenceImage, setReferenceImage] = useState<WebMusicStudioImage | null>(null);
+  const [imageUploading, setImageUploading] = useState(false);
+  const [imageError, setImageError] = useState("");
   const [recording, setRecording] = useState(false);
   const [audioDragging, setAudioDragging] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -607,6 +612,23 @@ export function CreateStudio() {
       .play()
       .then(() => setAudioPlaying(true))
       .catch(() => setToast("Could not play the preview"));
+  }
+
+  async function uploadImageFile(file: File) {
+    setImageUploading(true);
+    setImageError("");
+    try {
+      const image = await uploadWebMusicStudioImage(file);
+      if (!mounted.current) return;
+      setReferenceImage(image);
+      setToast("Image attached");
+    } catch (cause) {
+      if (mounted.current) {
+        setImageError(cause instanceof Error ? cause.message : "Could not upload the image");
+      }
+    } finally {
+      if (mounted.current) setImageUploading(false);
+    }
   }
 
   async function uploadAudioFile(file: File) {
@@ -997,6 +1019,7 @@ export function CreateStudio() {
       style_weight: styleWeight,
       weirdness_constraint: weirdness,
       audio_weight: audioWeight,
+      image_urls: referenceImage ? [referenceImage.url] : undefined,
       workspace_id: activeWorkspaceId ?? undefined,
     };
     setBatchProgress(count > 1 ? { done: 0, total: count } : null);
@@ -1285,6 +1308,8 @@ export function CreateStudio() {
     setError("");
     setNotice("");
     setStylesError("");
+    setReferenceImage(null);
+    setImageError("");
   }
 
   const createDisabled =
@@ -1793,6 +1818,21 @@ export function CreateStudio() {
                     <span className="s-btn-label">{mode === "custom" ? "Inspo" : "Image"}</span>
                   </button>
                 </div>
+
+                {referenceImage ? (
+                  <div className="s-image-chip">
+                    <img src={referenceImage.url} alt="" />
+                    <span>{referenceImage.filename}</span>
+                    <button
+                      type="button"
+                      className="s-btn s-btn-icon sm"
+                      aria-label="Remove image"
+                      onClick={() => setReferenceImage(null)}
+                    >
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                ) : null}
 
                 {mode === "simple" ? (
                   <>
@@ -3137,7 +3177,45 @@ export function CreateStudio() {
               </button>
             </div>
             <div className="s-modal-body">
-              {attachModal === "playlist" ? (
+              {attachModal === "image" ? (
+                <div className="s-image-attach">
+                  {referenceImage ? (
+                    <div className="s-image-preview">
+                      <img src={referenceImage.url} alt="" />
+                      <div>
+                        <b>{referenceImage.filename}</b>
+                        <small>Reference image attached</small>
+                      </div>
+                      <button
+                        type="button"
+                        className="s-btn s-btn-icon sm"
+                        aria-label="Remove image"
+                        onClick={() => setReferenceImage(null)}
+                      >
+                        <Icon name="fa-xmark" />
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="s-image-drop">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadImageFile(file);
+                          event.target.value = "";
+                        }}
+                      />
+                      <Icon name="fa-image" />
+                      <b>Choose an image</b>
+                      <span>JPG, PNG, WebP or GIF · up to 10 MB</span>
+                    </label>
+                  )}
+                  {imageUploading ? <p className="s-note">Uploading…</p> : null}
+                  {imageError ? <p className="s-error">{imageError}</p> : null}
+                  <p className="s-note">The image guides the song&apos;s mood and cover art.</p>
+                </div>
+              ) : attachModal === "playlist" ? (
                 <div className="s-playlist-picker">
                   <p className="s-note">
                     Choose a playlist — its track styles will be merged into Styles.
