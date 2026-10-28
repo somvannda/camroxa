@@ -23,6 +23,7 @@ import {
   clipFilename,
   coverWebMusicStudioUpload,
   createWebMusicPlaylist,
+  createWebMusicStudioVideo,
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
   extendWebMusicStudioUpload,
@@ -243,6 +244,13 @@ export function CreateStudio() {
   const [referenceImage, setReferenceImage] = useState<WebMusicStudioImage | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [videoSongs, setVideoSongs] = useState<WebMusicGeneration[] | null>(null);
+  const [videoTaskId, setVideoTaskId] = useState("");
+  const [videoVariant, setVideoVariant] = useState<"ok" | "alt">("ok");
+  const [videoAspect, setVideoAspect] = useState<"16:9" | "9:16" | "1:1">("16:9");
+  const [videoBusy, setVideoBusy] = useState(false);
+  const [videoError, setVideoError] = useState("");
+  const [videoOperation, setVideoOperation] = useState<WebMusicStudioOperation | null>(null);
   const [recording, setRecording] = useState(false);
   const [audioDragging, setAudioDragging] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -406,6 +414,34 @@ export function CreateStudio() {
       active = false;
     };
   }, [attachModal]);
+
+  useEffect(() => {
+    if (attachModal !== "video") return;
+    if (videoSongs !== null) return;
+    let active = true;
+    setVideoError("");
+    listWebMusicGenerations(24)
+      .then((page) => {
+        if (!active) return;
+        const ready = page.items.filter(
+          (item) =>
+            String(item.status).toLowerCase() === "success" &&
+            generationClips(item).some((clip) => clipIsReady(item, clip))
+        );
+        setVideoSongs(ready);
+        if (ready.length) {
+          setVideoTaskId((current) => current || ready[0].id);
+        }
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setVideoSongs([]);
+        setVideoError(cause instanceof Error ? cause.message : "Could not load your songs");
+      });
+    return () => {
+      active = false;
+    };
+  }, [attachModal, videoSongs]);
 
   useEffect(() => {
     if (!workspacesReady || loading || !user) return;
@@ -1295,6 +1331,47 @@ export function CreateStudio() {
     void selectSong(song.id, clip.variant);
   }
 
+  async function renderVideo() {
+    if (!videoTaskId) {
+      setVideoError("Choose a song first.");
+      return;
+    }
+    setVideoBusy(true);
+    setVideoError("");
+    setVideoOperation(null);
+    try {
+      let operation = await createWebMusicStudioVideo({
+        task_id: videoTaskId,
+        variant: videoVariant,
+        aspect_ratio: videoAspect,
+      });
+      if (!mounted.current) return;
+      setVideoOperation(operation);
+      const terminal = new Set(["complete", "completed", "success", "error", "failed"]);
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        if (terminal.has(String(operation.status).toLowerCase())) break;
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (!mounted.current) return;
+        operation = await getWebMusicStudioOperation(operation.id);
+        setVideoOperation(operation);
+      }
+      const state = String(operation.status).toLowerCase();
+      if (state === "error" || state === "failed") {
+        setVideoError(operation.error_message || "Video render failed.");
+      } else if (!terminal.has(state)) {
+        setVideoError("The video is still rendering. Reopen this panel in a moment.");
+      } else {
+        setToast("Video ready");
+      }
+    } catch (cause) {
+      if (mounted.current) {
+        setVideoError(cause instanceof Error ? cause.message : "Could not create the video");
+      }
+    } finally {
+      if (mounted.current) setVideoBusy(false);
+    }
+  }
+
   function clearAllFields() {
     setPrompt("");
     setTitle("");
@@ -1605,6 +1682,13 @@ export function CreateStudio() {
       </div>
     );
   };
+
+  const selectedVideoSong = videoSongs?.find((song) => song.id === videoTaskId) ?? null;
+  const selectedVideoClips = selectedVideoSong
+    ? generationClips(selectedVideoSong).filter((clip) => clipIsReady(selectedVideoSong, clip))
+    : [];
+  const videoResultUrl =
+    videoOperation?.result?.video_url || videoOperation?.result?.download_url || "";
 
   return (
     <div className="s-page">
@@ -3371,18 +3455,156 @@ export function CreateStudio() {
                     Extend continues the track. Cover recreates it using your current prompt and styles.
                   </p>
                 </div>
+              ) : attachModal === "video" ? (
+                <div className="s-video-attach">
+                  {videoResultUrl ? (
+                    <div className="s-video-result">
+                      <video className="s-video-player" controls src={videoResultUrl} />
+                      <div className="s-video-actions">
+                        <a
+                          className="s-btn s-btn-primary"
+                          href={videoResultUrl}
+                          download
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          <Icon name="fa-download" /> Download MP4
+                        </a>
+                        <button
+                          type="button"
+                          className="s-btn s-btn-secondary"
+                          onClick={() => {
+                            setVideoOperation(null);
+                            setVideoError("");
+                          }}
+                        >
+                          Render another
+                        </button>
+                      </div>
+                      <p className="s-note">
+                        Rendered from your {videoAspect} artwork and waveform.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <p className="s-note">
+                        Turn a finished song into an MP4 with its cover art and a live waveform.
+                      </p>
+                      {videoSongs === null ? (
+                        <p className="s-note">Loading your songs…</p>
+                      ) : videoSongs.length ? (
+                        <div className="s-video-songs">
+                          {videoSongs.map((song) => {
+                            const cover = generationClips(song).find(
+                              (clip) => clip.image_url
+                            )?.image_url;
+                            return (
+                              <button
+                                key={song.id}
+                                type="button"
+                                className={cn(
+                                  "s-video-song",
+                                  videoTaskId === song.id && "active"
+                                )}
+                                onClick={() => {
+                                  setVideoTaskId(song.id);
+                                  setVideoVariant("ok");
+                                  setVideoOperation(null);
+                                  setVideoError("");
+                                }}
+                              >
+                                <span
+                                  className="s-video-cover"
+                                  style={
+                                    cover ? { backgroundImage: `url(${cover})` } : undefined
+                                  }
+                                >
+                                  {cover ? null : <Icon name="fa-music" />}
+                                </span>
+                                <span className="s-video-meta">
+                                  <b>{song.title}</b>
+                                  <small>
+                                    {song.model_label || song.model || "V6"} ·{" "}
+                                    {formatDate(song.created_at)}
+                                  </small>
+                                </span>
+                                {videoTaskId === song.id ? <Icon name="fa-check" /> : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="s-note">No finished songs yet. Create a song first.</p>
+                      )}
+
+                      {selectedVideoClips.length > 1 ? (
+                        <div className="s-video-row">
+                          <span className="s-video-label">Version</span>
+                          <div className="s-chip-row">
+                            {selectedVideoClips.map((clip) => (
+                              <button
+                                key={clip.variant}
+                                type="button"
+                                className={cn(
+                                  "s-chip",
+                                  videoVariant === clip.variant && "active"
+                                )}
+                                onClick={() =>
+                                  setVideoVariant(clip.variant === "alt" ? "alt" : "ok")
+                                }
+                              >
+                                {clipVersionLabel(clip.variant)}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
+                      <div className="s-video-row">
+                        <span className="s-video-label">Aspect</span>
+                        <div className="s-chip-row">
+                          {(["16:9", "9:16", "1:1"] as const).map((aspect) => (
+                            <button
+                              key={aspect}
+                              type="button"
+                              className={cn("s-chip", videoAspect === aspect && "active")}
+                              onClick={() => setVideoAspect(aspect)}
+                            >
+                              {aspect}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {videoBusy ? (
+                        <p className="s-note">
+                          Rendering video… status: {videoOperation?.status || "queued"}
+                        </p>
+                      ) : null}
+                      {videoError ? <p className="s-error">{videoError}</p> : null}
+
+                      <button
+                        type="button"
+                        className="s-btn s-btn-primary"
+                        onClick={() => void renderVideo()}
+                        disabled={videoBusy || !videoTaskId}
+                      >
+                        <Icon name={videoBusy ? "fa-circle-notch" : "fa-video"} />{" "}
+                        {videoBusy ? "Rendering…" : "Create video"}
+                      </button>
+                    </>
+                  )}
+                </div>
               ) : (
                 <>
                   <p className="s-note">
                     {attachModal === "voices"
                       ? "Reuse a saved voice or pick one from the library as a vocal reference."
-                      : attachModal === "video"
-                        ? "Attach a video reference to guide motion, mood, or a visual cover."
-                        : attachModal === "voice"
-                          ? "Pick a voice reference to shape the vocal tone of your next song."
-                          : attachModal === "inspo"
-                            ? "Pull a style reference from one of your playlists."
-                            : "Attach artwork to your creation. Images are used as the cover."}
+                      : attachModal === "voice"
+                        ? "Pick a voice reference to shape the vocal tone of your next song."
+                        : attachModal === "inspo"
+                          ? "Pull a style reference from one of your playlists."
+                          : "Attach artwork to your creation. Images are used as the cover."}
                   </p>
                   <div className="s-box">
                     Reference attachments are not enabled for this workspace yet. You can still upload and reuse audio

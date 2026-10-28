@@ -481,7 +481,12 @@ export type WebMusicStudioOperation = {
   mode: string;
   task_id?: string | null;
   error_message?: string | null;
-  result?: { clips?: WebMusicStudioClipResult[] } | null;
+  result?: {
+    clips?: WebMusicStudioClipResult[];
+    video_url?: string | null;
+    download_url?: string | null;
+    clip_id?: string | null;
+  } | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -525,6 +530,18 @@ export async function coverWebMusicStudioUpload(
 
 export async function getWebMusicStudioOperation(id: string): Promise<WebMusicStudioOperation> {
   return musicJson(`/api/v3/web-music/studio/operations/${encodeURIComponent(id)}`);
+}
+export async function createWebMusicStudioVideo(input: {
+  task_id: string;
+  variant?: "ok" | "alt";
+  aspect_ratio?: "16:9" | "9:16" | "1:1";
+  project_id?: string | null;
+}): Promise<WebMusicStudioOperation> {
+  return musicJson("/api/v3/web-music/studio/videos", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
 }
 export async function listWebMusicStudioOperations(
   limit = 20,

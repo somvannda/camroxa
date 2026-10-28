@@ -2469,10 +2469,15 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    * API, so — like sunoapi.org, which returns its own `videoUrl` — we produce
    * the MP4 ourselves. 2-credit job; not queue-durable.
    */
-  async function runMusicVideoJob(job: Job, clipId: string, aspect = "16:9"): Promise<void> {
+  async function runMusicVideoJob(
+    job: Job,
+    clipId: string,
+    aspect = "16:9",
+    accountId?: string | null,
+  ): Promise<void> {
     try {
       if (!storageConfigured()) throw new Error("Media storage is not configured.");
-      const audioKey = await ensureAudio(clipId, "mp3");
+      const audioKey = await ensureAudio(clipId, "mp3", accountId);
       if (!audioKey) throw new Error("Could not prepare the audio for this video.");
       const audio = await getObjectBytes(audioKey);
 
@@ -8902,6 +8907,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.endpoint = "studio_remaster";
     job.credits = 0;
     void runClipJobWithRetry(job, (client) => client.remaster(clipId, model), { accountId });
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/video", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const requestedAspect =
+      typeof body.aspect_ratio === "string" ? body.aspect_ratio.trim() : "16:9";
+    const aspect = ["16:9", "9:16", "1:1"].includes(requestedAspect)
+      ? requestedAspect
+      : "16:9";
+    const accountId = await findAssetAccountAny(clipId);
+    const job = newJob("mp4_generate");
+    job.endpoint = "studio_video";
+    job.credits = 0;
+    void runMusicVideoJob(job, clipId, aspect, accountId);
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 

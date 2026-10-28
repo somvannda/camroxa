@@ -31,9 +31,9 @@ Honest "not enabled" panels (no backend wiring in the web app):
 |---|---|---|
 | Attach audio (upload/record) | **Implemented**: file picker, mic recording, then Extend / Cover | `POST /api/v3/web-music/studio/uploads` + `/studio/uploads/{id}/extend|cover` |
 | Voice reference | “Add voice reference” modal | **Partial**: personas exist (`/studio/personas`), but voice clone/generate/apply endpoints are not proxied |
-| Image attach | “Add image” modal | **Partial**: cover-image exists only per generation (`/studio/generations/{task_id}/cover-image`), not generic prompt images |
-| Video attach | “Add video” modal | **Missing**: no platform proxy for `POST /v1/mp4/generate` |
-| Playlist reference | “Add playlist” modal | **Missing**: no playlist-as-inspiration endpoint on either service |
+| Image attach | **Implemented**: upload to B2, stored as `reference_image_urls`, forwarded as `imageUrls` | `POST /api/v3/web-music/studio/images` |
+| Video attach | **Implemented**: pick a finished song, render a cover-art MP4, download | `POST /api/v3/web-music/studio/videos` → internal `/internal/studio/video` |
+| Playlist reference | **Implemented**: picker merges playlist track styles into Styles | Platform playlists + items APIs |
 
 ## 3. musicapi.camxora.com
 

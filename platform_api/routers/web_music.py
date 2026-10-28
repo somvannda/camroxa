@@ -808,6 +808,13 @@ class StudioReplaceSectionRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StudioVideoRequest(BaseModel):
+    task_id: UUID
+    variant: Literal["ok", "alt"] = "ok"
+    aspect_ratio: Literal["16:9", "9:16", "1:1"] = "16:9"
+    project_id: UUID | None = None
+
+
 @router.post("/studio/generations/{task_id}/extend", status_code=202)
 async def request_studio_extend(
     task_id: UUID,
@@ -898,6 +905,21 @@ async def request_studio_cover_image(
         task_id,
         variant=body.variant,
         prompt=body.prompt,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/studio/videos", status_code=202)
+async def create_studio_video(
+    body: StudioVideoRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.create_studio_video(
+        UUID(ctx.user_id),
+        body.task_id,
+        variant=body.variant,
+        aspect_ratio=body.aspect_ratio,
         project_id=body.project_id,
     )
 

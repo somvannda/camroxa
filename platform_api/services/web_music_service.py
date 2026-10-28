@@ -3704,6 +3704,39 @@ class WebMusicService:
             label="replace section",
         )
 
+    async def create_studio_video(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        aspect_ratio: str = "16:9",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        clean_variant = str(variant or "ok").strip().lower()
+        if clean_variant not in ("ok", "alt"):
+            raise ValidationError(
+                "variant must be ok or alt.",
+                details={"field": "variant"},
+            )
+        clean_aspect = str(aspect_ratio or "16:9").strip()
+        if clean_aspect not in ("16:9", "9:16", "1:1"):
+            raise ValidationError(
+                "aspect_ratio must be 16:9, 9:16 or 1:1.",
+                details={"field": "aspect_ratio"},
+            )
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="video",
+            variant=clean_variant,
+            mode="video",
+            project_id=project_id,
+            internal_path="/internal/studio/video",
+            internal_body={"aspect_ratio": clean_aspect},
+            label="video",
+        )
+
     async def get_studio_operation(self, user_id: UUID, operation_id: UUID) -> dict[str, Any]:
         from platform_api.config import get_settings
 
