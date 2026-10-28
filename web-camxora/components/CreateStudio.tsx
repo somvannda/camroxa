@@ -326,6 +326,16 @@ export function CreateStudio() {
   }, [lyricsModalOpen]);
 
   useEffect(() => {
+    if (!lyricsModalOpen) return;
+    if (lyrics === lyricsHistoryRef.current[lyricsHistoryIndex]) return;
+    const next = lyricsHistoryRef.current.slice(0, lyricsHistoryIndex + 1);
+    next.push(lyrics);
+    if (next.length > 80) next.shift();
+    lyricsHistoryRef.current = next;
+    setLyricsHistoryIndex(next.length - 1);
+  }, [lyrics, lyricsModalOpen, lyricsHistoryIndex]);
+
+  useEffect(() => {
     setFeedPage(1);
   }, [feedSearch, feedSort, feedFilters, activeWorkspaceId]);
 
@@ -627,6 +637,7 @@ export function CreateStudio() {
     setAdvancedOpen(false);
     setLyricsOpen(true);
     setLyricsFullscreen(false);
+    setError("");
     lyricsHistoryRef.current = [lyrics];
     setLyricsHistoryIndex(0);
     setLyricsModalOpen(true);
@@ -669,6 +680,7 @@ export function CreateStudio() {
   async function writeLyrics() {
     const seed =
       (mode === "custom" && lyricsMode === "prompt" ? lyrics.trim() : prompt.trim()) ||
+      lyrics.trim() ||
       title.trim() ||
       style.trim();
     if (!seed) {
@@ -3996,7 +4008,7 @@ export function CreateStudio() {
                   title="Format lyrics"
                   onClick={formatLyrics}
                 >
-                  <Icon name="fa-align-left" />
+                  <Icon name="fa-bars-staggered" />
                 </button>
                 <button
                   type="button"
@@ -4014,7 +4026,7 @@ export function CreateStudio() {
                   title="Close"
                   onClick={() => setLyricsModalOpen(false)}
                 >
-                  <Icon name="fa-xmark" />
+                  <Icon name="fa-circle-xmark" />
                 </button>
               </div>
             </div>
@@ -4028,6 +4040,7 @@ export function CreateStudio() {
               autoFocus
             />
             <div className="s-lyrics-modal-foot">
+              {error ? <p className="s-lyrics-error">{error}</p> : null}
               <button
                 type="button"
                 className="s-lyrics-wand"
