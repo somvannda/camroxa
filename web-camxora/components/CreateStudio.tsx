@@ -32,6 +32,8 @@ import {
   fetchWebMusicQuota,
   fetchWebMusicTimedLyricsBlob,
   getWebMusicStudioOperation,
+  listWebMusicPlaylistItems,
+  listWebMusicPlaylists,
   listWebMusicStudioOperations,
   uploadWebMusicStudioAudio,
   type WebMusicStudioOperation,
@@ -233,6 +235,9 @@ export function CreateStudio() {
   const [audioStatus, setAudioStatus] = useState("");
   const [audioKind, setAudioKind] = useState<"extend" | "cover" | null>(null);
   const [audioResult, setAudioResult] = useState<{ title: string; audioUrl: string } | null>(null);
+  const [playlistSource, setPlaylistSource] = useState<WebMusicPlaylistSummary[] | null>(null);
+  const [playlistSourceBusy, setPlaylistSourceBusy] = useState(false);
+  const [playlistSourceError, setPlaylistSourceError] = useState("");
   const [recording, setRecording] = useState(false);
   const [audioDragging, setAudioDragging] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -375,6 +380,27 @@ export function CreateStudio() {
       active = false;
     };
   }, [loading, user]);
+
+  useEffect(() => {
+    if (attachModal !== "playlist") return;
+    let active = true;
+    setPlaylistSource(null);
+    setPlaylistSourceError("");
+    listWebMusicPlaylists()
+      .then((payload) => {
+        if (active) setPlaylistSource(payload.items);
+      })
+      .catch((cause) => {
+        if (active) {
+          setPlaylistSourceError(
+            cause instanceof Error ? cause.message : "Could not load playlists"
+          );
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [attachModal]);
 
   useEffect(() => {
     if (!workspacesReady || loading || !user) return;
@@ -531,6 +557,40 @@ export function CreateStudio() {
       };
       audio.src = url;
     });
+  }
+
+  async function usePlaylistInspiration(playlist: WebMusicPlaylistSummary) {
+    if (playlistSourceBusy) return;
+    setPlaylistSourceBusy(true);
+    setPlaylistSourceError("");
+    try {
+      const payload = await listWebMusicPlaylistItems(playlist.id);
+      const tags = Array.from(
+        new Set(
+          payload.items
+            .map((item) => String(item.style || "").trim())
+            .filter(Boolean)
+        )
+      );
+      if (!tags.length) {
+        setPlaylistSourceError("This playlist has no style tags yet.");
+        return;
+      }
+      setStyle((current) => [current.trim(), ...tags].filter(Boolean).join(", ").slice(0, 1000));
+      setMode("custom");
+      setAdvancedOpen(false);
+      setStylePresetsOpen(false);
+      setAttachModal(null);
+      setToast(`Styles from ${playlist.name} added`);
+    } catch (cause) {
+      if (mounted.current) {
+        setPlaylistSourceError(
+          cause instanceof Error ? cause.message : "Could not use this playlist"
+        );
+      }
+    } finally {
+      if (mounted.current) setPlaylistSourceBusy(false);
+    }
   }
 
   function toggleAudioPreview() {
@@ -3077,7 +3137,33 @@ export function CreateStudio() {
               </button>
             </div>
             <div className="s-modal-body">
-              {attachModal === "audio" ? (
+              {attachModal === "playlist" ? (
+                <div className="s-playlist-picker">
+                  <p className="s-note">
+                    Choose a playlist — its track styles will be merged into Styles.
+                  </p>
+                  {playlistSourceError ? <p className="s-error">{playlistSourceError}</p> : null}
+                  {playlistSource === null ? (
+                    <p className="s-note">Loading playlists…</p>
+                  ) : playlistSource.length ? (
+                    playlistSource.map((playlist) => (
+                      <button
+                        key={playlist.id}
+                        type="button"
+                        className="s-menu-item"
+                        onClick={() => void usePlaylistInspiration(playlist)}
+                        disabled={playlistSourceBusy}
+                      >
+                        <Icon name="fa-rectangle-list" />
+                        <span style={{ flex: 1, textAlign: "left" }}>{playlist.name}</span>
+                        <small>{playlist.song_count ?? 0}</small>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="s-note">No playlists yet. Create one from the Library.</p>
+                  )}
+                </div>
+              ) : attachModal === "audio" ? (
                 <div className="s-audio-attach">
                   {audioUpload ? (
                     <div className="s-audio-file">
@@ -3214,13 +3300,11 @@ export function CreateStudio() {
                       ? "Reuse a saved voice or pick one from the library as a vocal reference."
                       : attachModal === "video"
                         ? "Attach a video reference to guide motion, mood, or a visual cover."
-                        : attachModal === "playlist"
-                          ? "Reference one of your playlists as style inspiration for this song."
-                          : attachModal === "voice"
-                            ? "Pick a voice reference to shape the vocal tone of your next song."
-                            : attachModal === "inspo"
-                              ? "Pull a style reference from one of your playlists."
-                              : "Attach artwork to your creation. Images are used as the cover."}
+                        : attachModal === "voice"
+                          ? "Pick a voice reference to shape the vocal tone of your next song."
+                          : attachModal === "inspo"
+                            ? "Pull a style reference from one of your playlists."
+                            : "Attach artwork to your creation. Images are used as the cover."}
                   </p>
                   <div className="s-box">
                     Reference attachments are not enabled for this workspace yet. You can still upload and reuse audio
@@ -3230,8 +3314,12 @@ export function CreateStudio() {
               )}
             </div>
             <div className="s-modal-foot">
-              <Link className="s-btn s-btn-secondary" href="/studio/editor">
-                <Icon name="fa-table-columns" /> Open Studio
+              <Link
+                className="s-btn s-btn-secondary"
+                href={attachModal === "playlist" ? "/library" : "/studio/editor"}
+              >
+                <Icon name={attachModal === "playlist" ? "fa-rectangle-list" : "fa-table-columns"} />
+                {attachModal === "playlist" ? "Open Library" : "Open Studio"}
               </Link>
               <span style={{ flex: 1 }} />
               <button type="button" className="s-btn s-btn-ghost" onClick={() => setAttachModal(null)}>

@@ -3870,3 +3870,6 @@ html{color-scheme:dark}
 .s-audio-drop.dragging{border-color:var(--s-accent);background:rgba(124,58,237,.12)}
 .s-audio-result{display:flex;flex-direction:column;gap:8px}
 .s-audio-player{width:100%;height:34px;color-scheme:dark}
+.s-playlist-picker{display:flex;flex-direction:column;gap:4px}
+.s-playlist-picker .s-menu-item{height:34px}
+.s-playlist-picker small{font-size:11px;color:var(--s-text3)}
