@@ -93,3 +93,64 @@ interactive targets, console errors.
 2. Add a skip-to-content link in the shell.
 3. Optional: visible `h1` on Create (e.g. ‚ÄúCreate music‚Äù above the tabs) if the design
    wants one; currently sr-only to preserve the Suno-style layout.
+
+---
+
+## Pass 2 ó control audit + component migration (2026-10-28)
+
+Scope: every `<select>`, checkbox, play control, icon+label pair, and auth surface in
+`camxora.com`.
+
+### Root causes found
+
+1. **Icons sat 2-3px low in every icon+label pair** (sidebar, Create Music, Sign in,
+   row play buttons). `components/Icon.tsx` emits `icon fa-classic fa-solid fa-replaced`,
+   but `.fa-replaced{display:inline-flex}` was declared *before* Font Awesome's
+   `.fa-solid{display:inline-block;line-height:1}`, so the icon computed as a block box
+   with a font-sized line box (16px) inside an 11-14px box. The glyph overflowed
+   downward. Fixed with a higher-specificity
+   `.icon.fa-replaced{display:inline-flex;align-items:center;justify-content:center;line-height:1}`
+   and removed the legacy `top:0.5px` optical hack.
+2. **Play buttons were dark glass, not green.** `.card .play` only turned green on hover.
+   All play controls now follow the documented "play is the one green action" rule.
+3. **"Remember me" used a raw `<input type="checkbox">`** despite
+   `components/ui/checkbox.tsx` existing. Its resting fill was 4% white ó effectively
+   invisible on `#070a13`.
+4. **Google sign-in disappeared after client-side navigation.** `next/script`'s `onLoad`
+   does not re-fire when the GIS script is already in the document, so moving
+   `/login` ? `/signup` left an empty container.
+5. **22 native `<select>` elements** bypassed the Radix Select that already shipped in
+   `components/ui/select.tsx`.
+
+### Fixes shipped
+
+| Area | Change |
+|---|---|
+| Icons | Global flex centring; `.checkbox-check` sized; optical hack removed |
+| Play | `.card .play`, `.chart-play`, `.chart-row-play`, `.s-row-compact .s-row-play`, `.s-cover-play span`, `.studio-transport-center .play` are green at rest |
+| Checkbox | `ui/checkbox.tsx` resting `bg-white/14` + `border-white/45`, hover `0.2` / `0.65`; indeterminate state; 11px check glyph |
+| Login | Remember me uses `ui/checkbox` with a real `htmlFor` label |
+| Signup | Required Terms & Conditions + Privacy Policy consent, blocking submit with an inline error, `aria-invalid` / `aria-describedby` |
+| Google | Custom 280x40 pill (official multicolour G) with the real GIS button invisibly overlaid at the same box; `onReady` + `window.google` probe; failure copy instead of a blank gap |
+| Selects | New `ui/select-field.tsx` (empty-value sentinel, `size="sm"`, `ariaLabel`); all 22 native selects migrated in `CreateStudio` and `StudioEditorView` |
+| Studio checkboxes | Auto-apply, Show archived and mashup rows migrated to `ui/checkbox` |
+| Account menu | `Topbar` uses `ui/dropdown-menu` (portal, focus trap, Escape, outside click) instead of the hand-rolled state machine |
+| CSS bug | Removed a literal `\n` escape that corrupted `.s-remix-sort.on` / `.s-remix-filter` |
+
+### Verification
+
+- `npm run typecheck` ó clean
+- `npm run check:ui` ó compliant
+- DOM checks on `/`, `/login`, `/signup`: 0 native `<select>`, 0 raw `type="checkbox"`,
+  0 horizontal overflow; icon boxes compute `display:flex` with a centred line box;
+  Google iframe/visual boxes identical (280x40, same top/left) and the click target
+  opens the Google flow; checkbox resting fill `rgba(255,255,255,0.14)`.
+
+### Still open
+
+1. 21 hand-rolled `role="menu"` popups remain in `CreateStudio` (16) and `LibraryView`
+   (4) plus the Studio export menu (1). They work and are keyboard reachable, but should
+   move to `ui/dropdown-menu` in a dedicated pass (one menu per commit).
+2. Re-run the route sweep with an authenticated session (Create/Studio/Account) to
+   confirm the migrated selects at real data volumes.
+3. No commits made ó working tree only.

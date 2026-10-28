@@ -14,6 +14,8 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { Icon } from "@/components/Icon";
+import { SelectField } from "@/components/ui/select-field";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
 import { fetchGenerations, type WebMusicClip, type WebMusicGeneration } from "@/lib/library-api";
@@ -4733,16 +4735,18 @@ export function StudioEditorView() {
           <span>{formatTime(playhead)}</span>
           <span>{barBeat}</span>
           <span>{bpm} BPM</span>
-          <select
+          <SelectField
             className="studio-timesig"
+            size="sm"
             value={timeSignature}
-            onChange={(event) => setTimeSignature(event.target.value)}
-            aria-label="Time signature"
-          >
-            <option value="4/4">4/4</option>
-            <option value="3/4">3/4</option>
-            <option value="6/8">6/8</option>
-          </select>
+            onValueChange={setTimeSignature}
+            ariaLabel="Time signature"
+            options={[
+              { value: "4/4", label: "4/4" },
+              { value: "3/4", label: "3/4" },
+              { value: "6/8", label: "6/8" },
+            ]}
+          />
         </div>
         <div className="studio-top-actions">
           {sharedToken && collaborators.length ? (
@@ -4930,26 +4934,30 @@ export function StudioEditorView() {
             ) : null}
           </div>
           <div className="studio-export-group">
-            <select
+            <SelectField
               className="studio-export-format"
+              size="sm"
               value={exportRange}
-              onChange={(event) => setExportRange(event.target.value as "full" | "loop")}
-              aria-label="Export range"
+              onValueChange={(value) => setExportRange(value as "full" | "loop")}
+              ariaLabel="Export range"
               disabled={exporting}
-            >
-              <option value="full">Full mix</option>
-              <option value="loop">Loop range</option>
-            </select>
-            <select
+              options={[
+                { value: "full", label: "Full mix" },
+                { value: "loop", label: "Loop range" },
+              ]}
+            />
+            <SelectField
               className="studio-export-format"
+              size="sm"
               value={exportFormat}
-              onChange={(event) => setExportFormat(event.target.value as "wav" | "mp3")}
-              aria-label="Export format"
+              onValueChange={(value) => setExportFormat(value as "wav" | "mp3")}
+              ariaLabel="Export format"
               disabled={exporting}
-            >
-              <option value="wav">WAV</option>
-              <option value="mp3">MP3 192k</option>
-            </select>
+              options={[
+                { value: "wav", label: "WAV" },
+                { value: "mp3", label: "MP3 192k" },
+              ]}
+            />
             <button
               className="btn btn-ghost studio-export-stems"
               type="button"
@@ -4991,14 +4999,15 @@ export function StudioEditorView() {
       {remoteChanges ? (
         <div className="studio-remote-banner" role="status">
           <Icon name="fa-arrows-rotate" /> Collaborator changes are available.
-          <label className="studio-auto-apply">
-            <input
-              type="checkbox"
+          <span className="studio-auto-apply">
+            <Checkbox
+              id="studio-auto-apply"
+              className="h-3.5 w-3.5 rounded-[4px]"
               checked={autoApplyRemote}
-              onChange={(event) => setAutoApplyRemote(event.target.checked)}
+              onCheckedChange={(checked) => setAutoApplyRemote(checked === true)}
             />
-            Auto-apply
-          </label>
+            <label htmlFor="studio-auto-apply">Auto-apply</label>
+          </span>
           <button type="button" onClick={() => void reloadSharedProject()}>
             Reload
           </button>
@@ -5027,15 +5036,22 @@ export function StudioEditorView() {
         <button className="studio-tap-tempo" type="button" onClick={tapTempo} title="Tap four times to set tempo">
           Tap
         </button>
-        <label className="studio-snap-grid">Grid
-          <select value={gridDivision} onChange={(event) => setGridDivision(event.target.value as typeof gridDivision)} aria-label="Snap grid">
-            <option value="off">Off</option>
-            <option value="bar">Bar</option>
-            <option value="beat">Beat</option>
-            <option value="1/8">1/8</option>
-            <option value="1/16">1/16</option>
-          </select>
-        </label>
+        <span className="studio-snap-grid">Grid
+          <SelectField
+            className="studio-snap-grid-select"
+            size="sm"
+            value={gridDivision}
+            onValueChange={(value) => setGridDivision(value as typeof gridDivision)}
+            ariaLabel="Snap grid"
+            options={[
+              { value: "off", label: "Off" },
+              { value: "bar", label: "Bar" },
+              { value: "beat", label: "Beat" },
+              { value: "1/8", label: "1/8" },
+              { value: "1/16", label: "1/16" },
+            ]}
+          />
+        </span>
         <label className="studio-zoom">Zoom <input type="range" min="0.7" max="2" step="0.1" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} /></label>
         <span className="studio-loop-range">
           <span>Loop</span>
@@ -5438,42 +5454,51 @@ export function StudioEditorView() {
                       >
                         +
                       </button>
-                      <select
+                      <SelectField
+                        className="studio-midi-select"
+                        size="sm"
                         value={selectedLane.instrument ?? "triangle"}
-                        onChange={(event) => {
+                        onValueChange={(value) => {
                           invalidateMidi(selectedLane);
                           updateLane(selectedLane.id, {
-                            instrument: event.target.value as Clip["instrument"],
+                            instrument: value as Clip["instrument"],
                           });
                         }}
-                        aria-label="MIDI instrument"
-                      >
-                        <option value="triangle">Triangle</option>
-                        <option value="sine">Sine</option>
-                        <option value="sawtooth">Saw</option>
-                      </select>
-                      <select
+                        ariaLabel="MIDI instrument"
+                        options={[
+                          { value: "triangle", label: "Triangle" },
+                          { value: "sine", label: "Sine" },
+                          { value: "sawtooth", label: "Saw" },
+                        ]}
+                      />
+                      <SelectField
+                        className="studio-midi-select"
+                        size="sm"
                         value={midiChordMode}
-                        onChange={(event) =>
-                          setMidiChordMode(event.target.value as "off" | "major" | "minor")
+                        onValueChange={(value) =>
+                          setMidiChordMode(value as "off" | "major" | "minor")
                         }
-                        aria-label="MIDI chord mode"
-                      >
-                        <option value="off">Single note</option>
-                        <option value="major">Major chord</option>
-                        <option value="minor">Minor chord</option>
-                      </select>
-                      <select
+                        ariaLabel="MIDI chord mode"
+                        options={[
+                          { value: "off", label: "Single note" },
+                          { value: "major", label: "Major chord" },
+                          { value: "minor", label: "Minor chord" },
+                        ]}
+                      />
+                      <SelectField
+                        className="studio-midi-select"
+                        size="sm"
                         value={midiArpMode}
-                        onChange={(event) =>
-                          setMidiArpMode(event.target.value as "off" | "up" | "down")
+                        onValueChange={(value) =>
+                          setMidiArpMode(value as "off" | "up" | "down")
                         }
-                        aria-label="MIDI arpeggiator"
-                      >
-                        <option value="off">Arp off</option>
-                        <option value="up">Arp up</option>
-                        <option value="down">Arp down</option>
-                      </select>
+                        ariaLabel="MIDI arpeggiator"
+                        options={[
+                          { value: "off", label: "Arp off" },
+                          { value: "up", label: "Arp up" },
+                          { value: "down", label: "Arp down" },
+                        ]}
+                      />
                       <button type="button" onClick={quantizeMidiNotes}>
                         Quantize
                       </button>
@@ -5628,24 +5653,27 @@ export function StudioEditorView() {
                   />
                 ))}
               </div>
-              <label className="studio-group-select">
+              <span className="studio-group-select">
                 Group
-                <select
+                <SelectField
+                  className="studio-group-field"
+                  size="sm"
                   value={selectedLane.groupId ?? ""}
-                  onChange={(event) =>
+                  onValueChange={(value) =>
                     updateLane(selectedLane.id, {
-                      groupId: (event.target.value || null) as Clip["groupId"],
+                      groupId: (value || null) as Clip["groupId"],
                     })
                   }
-                >
-                  <option value="">None</option>
-                  {groups.map((group) => (
-                    <option key={group.id} value={group.id}>
-                      {group.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
+                  ariaLabel="Group"
+                  options={[
+                    { value: "", label: "None" },
+                    ...groups.map((group) => ({
+                      value: group.id,
+                      label: group.name,
+                    })),
+                  ]}
+                />
+              </span>
               {(selectedLane.variant === "ok" || selectedLane.variant === "alt") &&
               !selectedLane.uploadId &&
               !selectedLane.midiNotes ? (
@@ -5682,32 +5710,40 @@ export function StudioEditorView() {
                 </label>
               </div>
               <div className="studio-fade-shapes">
-                <label>Fade in
-                  <select
+                <span>Fade in
+                  <SelectField
+                    className="studio-fade-shape-select"
+                    size="sm"
                     value={selectedLane.fadeInCurve ?? "linear"}
-                    onChange={(event) =>
+                    onValueChange={(value) =>
                       updateLane(selectedLane.id, {
-                        fadeInCurve: event.target.value as Clip["fadeInCurve"],
+                        fadeInCurve: value as Clip["fadeInCurve"],
                       })
                     }
-                  >
-                    <option value="linear">Linear</option>
-                    <option value="exponential">Exponential</option>
-                  </select>
-                </label>
-                <label>Fade out
-                  <select
+                    ariaLabel="Fade in curve"
+                    options={[
+                      { value: "linear", label: "Linear" },
+                      { value: "exponential", label: "Exponential" },
+                    ]}
+                  />
+                </span>
+                <span>Fade out
+                  <SelectField
+                    className="studio-fade-shape-select"
+                    size="sm"
                     value={selectedLane.fadeOutCurve ?? "linear"}
-                    onChange={(event) =>
+                    onValueChange={(value) =>
                       updateLane(selectedLane.id, {
-                        fadeOutCurve: event.target.value as Clip["fadeOutCurve"],
+                        fadeOutCurve: value as Clip["fadeOutCurve"],
                       })
                     }
-                  >
-                    <option value="linear">Linear</option>
-                    <option value="exponential">Exponential</option>
-                  </select>
-                </label>
+                    ariaLabel="Fade out curve"
+                    options={[
+                      { value: "linear", label: "Linear" },
+                      { value: "exponential", label: "Exponential" },
+                    ]}
+                  />
+                </span>
               </div>
               <label
                 className="studio-slider studio-speed"
@@ -5861,18 +5897,21 @@ export function StudioEditorView() {
                           }
                         />
                         <b>{Math.round(point.value)}%</b>
-                        <select
+                        <SelectField
+                          className="studio-automation-curve"
+                          size="sm"
                           value={point.curve ?? "linear"}
-                          aria-label={`Curve at ${point.time.toFixed(1)} seconds`}
-                          onChange={(event) =>
+                          ariaLabel={`Curve at ${point.time.toFixed(1)} seconds`}
+                          onValueChange={(value) =>
                             updateVolumeAutomationPoint(point.id, {
-                              curve: event.target.value as AutomationPoint["curve"],
+                              curve: value as AutomationPoint["curve"],
                             })
                           }
-                        >
-                          <option value="linear">Lin</option>
-                          <option value="exponential">Exp</option>
-                        </select>
+                          options={[
+                            { value: "linear", label: "Lin" },
+                            { value: "exponential", label: "Exp" },
+                          ]}
+                        />
                         <button type="button" aria-label="Remove automation point" onClick={() => removeVolumeAutomationPoint(point.id)}>
                           <Icon name="fa-xmark" />
                         </button>
@@ -5999,19 +6038,23 @@ export function StudioEditorView() {
                     }
                   />
                 </label>
-                <label>Duck rate
-                  <select
+                <span className="studio-eq-row">Duck rate
+                  <SelectField
+                    className="studio-duck-rate"
+                    size="sm"
                     value={selectedLane.duckRate ?? "1/4"}
-                    onChange={(event) =>
+                    onValueChange={(value) =>
                       updateLane(selectedLane.id, {
-                        duckRate: event.target.value as Clip["duckRate"],
+                        duckRate: value as Clip["duckRate"],
                       })
                     }
-                  >
-                    <option value="1/4">1/4</option>
-                    <option value="1/8">1/8</option>
-                  </select>
-                </label>
+                    ariaLabel="Duck rate"
+                    options={[
+                      { value: "1/4", label: "1/4" },
+                      { value: "1/8", label: "1/8" },
+                    ]}
+                  />
+                </span>
               </div>
                 </>
               ) : null}
@@ -6097,21 +6140,26 @@ export function StudioEditorView() {
                     {personasBusy ? "Loading…" : "Refresh"}
                   </button>
                 </div>
-                <select
+                <SelectField
+                  className="studio-persona-select"
+                  size="sm"
                   value={selectedPersonaId}
-                  onChange={(event) => setSelectedPersonaId(event.target.value)}
+                  onValueChange={setSelectedPersonaId}
                   disabled={personasBusy}
-                  aria-label="Studio persona"
-                >
-                  <option value="">No persona</option>
-                  {personas
-                    .filter((persona) => persona.status === "complete" && persona.provider_persona_id)
-                    .map((persona) => (
-                      <option key={persona.id} value={persona.provider_persona_id ?? ""}>
-                        {persona.name}
-                      </option>
-                    ))}
-                </select>
+                  ariaLabel="Studio persona"
+                  options={[
+                    { value: "", label: "No persona" },
+                    ...personas
+                      .filter(
+                        (persona) =>
+                          persona.status === "complete" && persona.provider_persona_id
+                      )
+                      .map((persona) => ({
+                        value: persona.provider_persona_id ?? "",
+                        label: persona.name,
+                      })),
+                  ]}
+                />
                 <div className="studio-persona-create">
                   <input
                     value={personaName}
@@ -6569,40 +6617,44 @@ export function StudioEditorView() {
                 placeholder="Search projects…"
                 aria-label="Search projects"
               />
-              <select
+              <SelectField
+                className="studio-project-sort"
+                size="sm"
                 value={projectSort}
-                onChange={(event) =>
-                  setProjectSort(event.target.value as "updated" | "title")
+                onValueChange={(value) =>
+                  setProjectSort(value as "updated" | "title")
                 }
-                aria-label="Sort projects"
-              >
-                <option value="updated">Last updated</option>
-                <option value="title">Name</option>
-              </select>
-              <select
+                ariaLabel="Sort projects"
+                options={[
+                  { value: "updated", label: "Last updated" },
+                  { value: "title", label: "Name" },
+                ]}
+              />
+              <SelectField
+                className="studio-project-tag"
+                size="sm"
                 value={tagFilter}
-                onChange={(event) => setTagFilter(event.target.value)}
-                aria-label="Filter projects by tag"
-              >
-                <option value="">All tags</option>
-                {projectTags.map((tag) => (
-                  <option key={tag} value={tag}>
-                    {tag}
-                  </option>
-                ))}
-              </select>
+                onValueChange={setTagFilter}
+                ariaLabel="Filter projects by tag"
+                options={[
+                  { value: "", label: "All tags" },
+                  ...projectTags.map((tag) => ({ value: tag, label: tag })),
+                ]}
+              />
             </div>
-            <label className="studio-project-archive-toggle">
-              <input
-                type="checkbox"
+            <div className="studio-project-archive-toggle">
+              <Checkbox
+                id="studio-show-archived"
+                className="h-3.5 w-3.5 rounded-[4px]"
                 checked={showArchived}
-                onChange={(event) => {
-                  setShowArchived(event.target.checked);
-                  void loadProjectList(event.target.checked);
+                onCheckedChange={(checked) => {
+                  const next = checked === true;
+                  setShowArchived(next);
+                  void loadProjectList(next);
                 }}
               />
-              Show archived
-            </label>
+              <label htmlFor="studio-show-archived">Show archived</label>
+            </div>
             <div className="studio-versions-list">
               {projectsBusy && !projectList.length ? <p>Loading projects…</p> : null}
               {!projectsBusy && !projectList.length ? <p>No saved projects yet.</p> : null}
@@ -6708,16 +6760,19 @@ export function StudioEditorView() {
             </div>
             <div className="studio-mashup-list">
               {lanes.filter((lane) => lane.variant === "ok" || lane.variant === "alt").map((lane) => (
-                <label key={lane.id} className="studio-mashup-row">
-                  <input
-                    type="checkbox"
+                <div key={lane.id} className="studio-mashup-row">
+                  <Checkbox
+                    id={`studio-mashup-${lane.id}`}
+                    className="h-3.5 w-3.5 rounded-[4px]"
                     checked={mashupSelection.includes(lane.id)}
-                    onChange={() => toggleMashupLane(lane.id)}
+                    onCheckedChange={() => toggleMashupLane(lane.id)}
                   />
                   <span style={{ background: lane.color }} />
-                  <b>{lane.title}</b>
+                  <label htmlFor={`studio-mashup-${lane.id}`}>
+                    <b>{lane.title}</b>
+                  </label>
                   <small>{lane.style}</small>
-                </label>
+                </div>
               ))}
             </div>
             <textarea
@@ -6928,29 +6983,39 @@ export function StudioEditorView() {
               </>
              ) : (
               <>
-                <label className="studio-share-permission">
+                <span className="studio-share-permission">
                   Link access
-                  <select
+                  <SelectField
+                    className="studio-share-permission-field"
+                    size="sm"
                     value={sharePermission}
-                    onChange={(event) => setSharePermission(event.target.value as "view" | "edit")}
+                    onValueChange={(value) =>
+                      setSharePermission(value as "view" | "edit")
+                    }
                     disabled={shareBusy}
-                  >
-                    <option value="view">View only</option>
-                    <option value="edit">Can edit</option>
-                  </select>
-                </label>
-                <label className="studio-share-permission">
+                    ariaLabel="Link access"
+                    options={[
+                      { value: "view", label: "View only" },
+                      { value: "edit", label: "Can edit" },
+                    ]}
+                  />
+                </span>
+                <span className="studio-share-permission">
                   Expires
-                  <select
-                    value={shareDays}
-                    onChange={(event) => setShareDays(Number(event.target.value))}
+                  <SelectField
+                    className="studio-share-permission-field"
+                    size="sm"
+                    value={String(shareDays)}
+                    onValueChange={(value) => setShareDays(Number(value))}
                     disabled={shareBusy}
-                  >
-                    <option value={1}>1 day</option>
-                    <option value={7}>7 days</option>
-                    <option value={30}>30 days</option>
-                  </select>
-                </label>
+                    ariaLabel="Link expiry"
+                    options={[
+                      { value: "1", label: "1 day" },
+                      { value: "7", label: "7 days" },
+                      { value: "30", label: "30 days" },
+                    ]}
+                  />
+                </span>
                 <button className="btn btn-primary" type="button" onClick={() => void createShare()} disabled={shareBusy || !projectId}>
                   <Icon name={shareBusy ? "fa-spinner" : "fa-link"} />
                   {shareBusy ? "Creating?" : "Create share link"}

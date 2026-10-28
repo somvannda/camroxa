@@ -1,31 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "./ui/dropdown-menu";
 import { useAuth } from "./AuthProvider";
 
 export function Topbar() {
   const { user, logout } = useAuth();
-  const [accountOpen, setAccountOpen] = useState(false);
-  const accountRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    const onPointerDown = (event: MouseEvent) => {
-      if (accountRef.current && !accountRef.current.contains(event.target as Node)) {
-        setAccountOpen(false);
-      }
-    };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setAccountOpen(false);
-    };
-    document.addEventListener("mousedown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, []);
 
   return (
     <header className="topbar">
@@ -61,63 +48,68 @@ export function Topbar() {
               Create Music
             </Link>
 
-            <div className="menu-wrap" ref={accountRef}>
-              <button
-                className={`account${accountOpen ? " open" : ""}`}
-                type="button"
-                aria-haspopup="menu"
-                aria-expanded={accountOpen}
-                onClick={() => setAccountOpen((value) => !value)}
-              >
-                <img src={user.avatar_url || "/hero.png"} alt={user.display_name} />
-                <span className="account-text">
-                  <strong>{user.display_name}</strong>
-                </span>
-                <Icon name="fa-chevron-down" className="chev" />
-              </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="account" type="button">
+                  <img src={user.avatar_url || "/hero.png"} alt={user.display_name} />
+                  <span className="account-text">
+                    <strong>{user.display_name}</strong>
+                  </span>
+                  <Icon name="fa-chevron-down" className="chev" />
+                </button>
+              </DropdownMenuTrigger>
 
-              <div
-                className={`menu account-menu${accountOpen ? " open" : ""}`}
-                role="menu"
+              <DropdownMenuContent
+                className="account-menu"
+                align="end"
+                sideOffset={10}
               >
                 <div className="menu-head">
                   <strong>{user.display_name}</strong>
                 </div>
-                <Link href="/account" role="menuitem" onClick={() => setAccountOpen(false)}>
-                  <Icon name="fa-user" /> Profile &amp; plan
-                </Link>
-                <Link href="/artist-dashboard" role="menuitem" onClick={() => setAccountOpen(false)}>
-                  <Icon name="fa-chart-line" /> Creator dashboard
-                </Link>
-                <Link href="/create" role="menuitem" onClick={() => setAccountOpen(false)}>
-                  <Icon name="fa-plus" /> Create a song
-                </Link>
-                <Link href="/discover" role="menuitem" onClick={() => setAccountOpen(false)}>
-                  <Icon name="fa-compass" /> Discover music
-                </Link>
-                {user.email_confirmed === false ? (
-                  <Link
-                    href={`/verify-email?email=${encodeURIComponent(user.email)}`}
-                    role="menuitem"
-                    onClick={() => setAccountOpen(false)}
-                  >
-                    <Icon name="fa-envelope" /> Verify email
+
+                <DropdownMenuItem asChild>
+                  <Link href="/account">
+                    <Icon name="fa-user" /> Profile &amp; plan
                   </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/artist-dashboard">
+                    <Icon name="fa-chart-line" /> Creator dashboard
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/create">
+                    <Icon name="fa-plus" /> Create a song
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link href="/discover">
+                    <Icon name="fa-compass" /> Discover music
+                  </Link>
+                </DropdownMenuItem>
+                {user.email_confirmed === false ? (
+                  <DropdownMenuItem asChild>
+                    <Link
+                      href={`/verify-email?email=${encodeURIComponent(user.email)}`}
+                    >
+                      <Icon name="fa-envelope" /> Verify email
+                    </Link>
+                  </DropdownMenuItem>
                 ) : null}
-                <button
+
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
                   className="menu-signout"
-                  type="button"
-                  role="menuitem"
-                  onClick={async () => {
-                    setAccountOpen(false);
+                  onSelect={async () => {
                     await logout();
                     window.location.href = "/";
                   }}
                 >
                   <Icon name="fa-arrow-right-from-bracket" /> Sign out
-                </button>
-              </div>
-            </div>
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </>
         ) : (
           <>

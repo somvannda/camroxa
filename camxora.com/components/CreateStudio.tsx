@@ -4,13 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { SelectField } from "@/components/ui/select-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/components/AuthProvider";
@@ -251,21 +245,15 @@ function SelectBox({
   disabled?: boolean;
 }) {
   return (
-    <Select value={value} onValueChange={onChange} disabled={disabled}>
-      <SelectTrigger
-        aria-label={ariaLabel}
-        className={cn("select-box", className)}
-      >
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent className="create-select-content">
-        {options.map((option) => (
-          <SelectItem key={option.value} value={option.value}>
-            {option.label}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
+    <SelectField
+      value={value}
+      onValueChange={onChange}
+      options={options}
+      ariaLabel={ariaLabel}
+      disabled={disabled}
+      className={cn("select-box", className)}
+      contentClassName="create-select-content"
+    />
   );
 }
 
@@ -5064,18 +5052,20 @@ export function CreateStudio() {
                         </div>
                       </div>
                       <p className="s-note">Create a voice from one of your songs.</p>
-                      <select
+                      <SelectField
                         className="s-input"
                         value={voiceCreateTaskId}
-                        onChange={(event) => setVoiceCreateTaskId(event.target.value)}
-                      >
-                        <option value="">Choose a finished song</option>
-                        {(voiceSongs || []).map((song) => (
-                          <option key={song.id} value={song.id}>
-                            {song.title}
-                          </option>
-                        ))}
-                      </select>
+                        onValueChange={setVoiceCreateTaskId}
+                        ariaLabel="Choose a finished song"
+                        placeholder="Choose a finished song"
+                        options={[
+                          { value: "", label: "Choose a finished song" },
+                          ...(voiceSongs || []).map((song) => ({
+                            value: song.id,
+                            label: song.title,
+                          })),
+                        ]}
+                      />
                       <input
                         id="voice-name-input"
                         className="s-input"
@@ -5318,34 +5308,40 @@ export function CreateStudio() {
                       <div className="s-remix-filter-pop">
                         <label>
                           <span>Model</span>
-                          <select
+                          <SelectField
+                            className="s-remix-filter"
                             value={remixModelFilter}
-                            onChange={(event) =>
+                            onValueChange={(value) =>
                               setRemixModelFilter(
-                                event.target.value as "all" | "V6" | "V6_MINI" | "V6_WILD"
+                                value as "all" | "V6" | "V6_MINI" | "V6_WILD"
                               )
                             }
-                          >
-                            <option value="all">All models</option>
-                            <option value="V6">V6</option>
-                            <option value="V6_MINI">V6 Mini</option>
-                            <option value="V6_WILD">V6 Wild</option>
-                          </select>
+                            ariaLabel="Filter by model"
+                            options={[
+                              { value: "all", label: "All models" },
+                              { value: "V6", label: "V6" },
+                              { value: "V6_MINI", label: "V6 Mini" },
+                              { value: "V6_WILD", label: "V6 Wild" },
+                            ]}
+                          />
                         </label>
                         <label>
                           <span>Type</span>
-                          <select
+                          <SelectField
+                            className="s-remix-filter"
                             value={remixTypeFilter}
-                            onChange={(event) =>
+                            onValueChange={(value) =>
                               setRemixTypeFilter(
-                                event.target.value as "all" | "instrumental" | "vocal"
+                                value as "all" | "instrumental" | "vocal"
                               )
                             }
-                          >
-                            <option value="all">All types</option>
-                            <option value="vocal">Vocal</option>
-                            <option value="instrumental">Instrumental</option>
-                          </select>
+                            ariaLabel="Filter by type"
+                            options={[
+                              { value: "all", label: "All types" },
+                              { value: "vocal", label: "Vocal" },
+                              { value: "instrumental", label: "Instrumental" },
+                            ]}
+                          />
                         </label>
                         <button
                           type="button"
@@ -5360,15 +5356,16 @@ export function CreateStudio() {
                       </div>
                     ) : null}
                   </div>
-                  <select
+                  <SelectField
                     className="s-remix-sort-select"
                     value={remixSort}
-                    onChange={(event) => setRemixSort(event.target.value as "new" | "old")}
-                    aria-label="Sort remix songs"
-                  >
-                    <option value="new">Newest</option>
-                    <option value="old">Oldest</option>
-                  </select>
+                    onValueChange={(value) => setRemixSort(value as "new" | "old")}
+                    ariaLabel="Sort remix songs"
+                    options={[
+                      { value: "new", label: "Newest" },
+                      { value: "old", label: "Oldest" },
+                    ]}
+                  />
                 </>
               ) : null}
             </div>
@@ -5925,18 +5922,20 @@ export function CreateStudio() {
                   <p className="s-note">Choose a finished song to clone the voice from.</p>
                 )}
                 {!voiceSampleUrl ? (
-                  <select
+                  <SelectField
                     className="s-input"
                     value={voiceCreateTaskId}
-                    onChange={(event) => setVoiceCreateTaskId(event.target.value)}
-                  >
-                    <option value="">Choose a finished song</option>
-                    {(voiceSongs || []).map((song) => (
-                      <option key={song.id} value={song.id}>
-                        {song.title}
-                      </option>
-                    ))}
-                  </select>
+                    onValueChange={setVoiceCreateTaskId}
+                    ariaLabel="Choose a finished song"
+                    placeholder="Choose a finished song"
+                    options={[
+                      { value: "", label: "Choose a finished song" },
+                      ...(voiceSongs || []).map((song) => ({
+                        value: song.id,
+                        label: song.title,
+                      })),
+                    ]}
+                  />
                 ) : null}
                 <input
                   id="voice-name-input"
