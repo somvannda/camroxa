@@ -560,6 +560,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     bodyLimit: Number(process.env.BODY_LIMIT_BYTES ?? 26_214_400),
   });
 
+  // Reconcile an operator-set `suno_accounts.type` with Suno's live plan when a
+  // health probe notices they disagree (see `AccountPool.syncAccountType`). The
+  // row is the durable record; this hook only makes the change visible in the
+  // ops log and the audit trail, since it happens without an admin request.
+  pool.onTypeSynced = ({ id, from, to, plan }) => {
+    app.log.warn({ account: id, from, to, plan }, "suno account type reconciled from live plan");
+    void query(
+      `INSERT INTO audit_logs (actor_id, actor_email, action, target_type, target_id, details)
+       VALUES (NULL, 'system:plan-sync', 'account.auto_type_sync', 'suno_account', $1, $2)`,
+      [id, JSON.stringify({ from, to, plan })],
+    ).catch((err) => app.log.warn({ err }, "account type sync audit write failed"));
+  };
+
   // Keep the exact JSON bytes alongside the parsed body: ChmabaPay signs
   // `t=<unix>.<rawBody>`, so the webhook HMAC has to run over the bytes as
   // received rather than a re-serialised object. Overriding the default JSON

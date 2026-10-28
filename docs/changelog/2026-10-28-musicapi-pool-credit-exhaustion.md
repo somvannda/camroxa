@@ -39,6 +39,15 @@ playground and stored on `jobs.error`. Three problems sat behind it:
 - `pool.ts`
   - New `isPaidEligible(dbType, plan)`: the live `plan` from `billing/info`
     decides; the stored `type` is only the fallback for an account never probed.
+  - New `desiredAccountType(plan)`: maps a live plan to the `type` the row
+    should hold, and returns `null` for an unknown reading.
+  - `healthFor` now distinguishes **paid**, **explicitly free**, and **unknown**
+    (payload omitted `subscription_type`); only the middle one may demote a row.
+  - `syncAccountType` runs off the 30s health probe: when the plan disagrees with
+    the row it heals the in-memory client, writes `type` once
+    (`WHERE ... type IS DISTINCT FROM`), and notifies `onTypeSynced`. The rule is
+    **plan-only** — a drained paid account stays `paid`, because emptiness is the
+    credit floor's job and demoting it would mis-rank it under `prefer_free`.
   - `pick` / `pickExcept` / `pickFeature` / `pickFeatureExcept` no longer
     pre-filter candidates by `type`; eligibility is decided in the scan
     (`pickFrom`), after the health probe.
@@ -52,6 +61,9 @@ playground and stored on `jobs.error`. Three problems sat behind it:
     `not_enough_credits`-style `error_type` or message. `isInsufficientCreditsError`
     keeps its broad "any 402" meaning for retry classification.
 - `server.ts`
+  - `pool.onTypeSynced` writes an `audit_logs` row (`account.auto_type_sync`,
+    actor `system:plan-sync`) and an ops log line, so a reconciliation that
+    happens without an admin request is still traceable.
   - `noteAccountCreditFailure(id, err)` zeroes the cached balance only on a
     definite credit exhaustion, or when the cached balance is already at/below
     the floor; otherwise it logs the 402 and keeps the balance.
@@ -80,20 +92,23 @@ playground and stored on `jobs.error`. Three problems sat behind it:
 ## Tests
 
 - `npx tsc --noEmit` — clean.
-- `npm run test:unit` — 128 passing, including: only a credit-specific 402 is a
+- `npm run test:unit` — 133 passing, including: only a credit-specific 402 is a
   definite exhaustion; a bare/restricted 402 is not; `lowCreditSummary` lists
   every drained account; `PoolCreditExhaustedError` keeps account labels out of
   `message`; `paid_only` uses a funded account still tagged `free`, refuses a
   lapsed row tagged `paid`, and only blames credits for accounts that could
-  serve the model.
+  serve the model; `desiredAccountType` maps plans and refuses to guess; a probe
+  promotes an upgraded account and records the sync; a drained paid account is
+  never demoted; a free plan with leftover credits stays free; a payload with no
+  plan field leaves the stored type alone.
 
 ## Follow-ups
 
 - Confirm the production pool's per-account balances (admin → Accounts). This
   change makes the failure honest; it does not top up a genuinely drained pool.
-- `orderForDispatch`'s `prefer_free` still ranks by the stored `type`; an
-  upgraded `free`-tagged account is therefore picked before truly free accounts
-  for V6-Mini. Low impact (it is funded and capable) but worth aligning.
+- `orderForDispatch`'s `prefer_free` still ranks by the stored `type`; the
+  auto-reconcile narrows that gap (the tag now follows the plan), but a
+  previously-drifted row is only corrected on its next probe.
 - There is no way to reserve a paid-capable account from customer work short of
   deactivating it; consider an explicit "reserved" flag if that is needed.
 - Consider surfacing "capacity exhausted" as a distinct job status/code so the

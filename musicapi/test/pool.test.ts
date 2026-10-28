@@ -13,6 +13,7 @@ const {
   orderForDispatch,
   belowCreditFloor,
   isPaidEligible,
+  desiredAccountType,
   lowCreditSummary,
   PoolCreditExhaustedError,
 } = await import("../src/pool.js");
@@ -96,35 +97,123 @@ test("isPaidEligible trusts the live plan over the stored type", () => {
   assert.equal(isPaidEligible(undefined, undefined), false);
 });
 
-type Probe = { credits: number; plan: string; models: string[] };
+type Probe = { credits: number; plan?: string; models: string[] };
 
-/** A pool whose Suno probes are stubbed, so routing can be tested offline. */
+/** A pool whose Suno probes and row writes are stubbed, so routing stays offline. */
 function stubPool(
   accounts: Array<{ id: string; type: "free" | "paid" }>,
   probes: Record<string, Probe>,
+  capture: {
+    writes?: Array<[string, string]>;
+    events?: Array<{ id: string; from: string; to: string; plan: string }>;
+  } = {},
 ): InstanceType<typeof AccountPool> {
   const pool = new AccountPool(
     accounts.map((a) => ({ id: a.id, clientCookie: "x", deviceId: "d", type: a.type })),
   );
   const clients = (pool as unknown as {
     clients: Array<{
-      account: { id: string };
+      account: { id: string; type?: string };
       billingInfo: () => Promise<unknown>;
       captchaRequired: () => Promise<boolean>;
     }>;
+    persistAccountType: (label: string, type: string) => Promise<void>;
   }).clients;
   for (const client of clients) {
     const probe = probes[client.account.id]!;
-    client.billingInfo = async () => ({
-      total_credits_left: probe.credits,
-      subscription_type: probe.plan === "free" ? null : probe.plan,
-      accessible_features: [],
-      models: probe.models.map((external_key) => ({ external_key, can_use: true })),
-    });
+    client.billingInfo = async (): Promise<Record<string, unknown>> => {
+      const payload: Record<string, unknown> = {
+        total_credits_left: probe.credits,
+        accessible_features: [],
+        models: probe.models.map((external_key) => ({ external_key, can_use: true })),
+      };
+      // An omitted field ("unknown" plan) must be distinguishable from the
+      // explicit `null` Suno returns for a free plan.
+      if (probe.plan !== undefined) {
+        payload.subscription_type = probe.plan === "free" ? null : probe.plan;
+      }
+      return payload;
+    };
     client.captchaRequired = async () => false;
   }
+  (pool as unknown as { persistAccountType: (label: string, type: string) => Promise<void> }).persistAccountType =
+    async (label, type) => {
+      capture.writes?.push([label, type]);
+    };
+  pool.onTypeSynced = (event) => {
+    capture.events?.push(event);
+  };
   return pool;
 }
+
+const accountType = (pool: InstanceType<typeof AccountPool>, id: string): string | undefined =>
+  (pool as unknown as { clients: Array<{ account: { id: string; type?: string } }> }).clients.find(
+    (c) => c.account.id === id,
+  )?.account.type;
+
+test("desiredAccountType maps plans, and refuses to guess", () => {
+  assert.equal(desiredAccountType("free"), "free");
+  assert.equal(desiredAccountType("pro"), "paid");
+  assert.equal(desiredAccountType("premier"), "paid");
+  assert.equal(desiredAccountType("paid"), "paid");
+  // A failed or field-less billing read must never rewrite the column.
+  assert.equal(desiredAccountType("unknown"), null);
+  assert.equal(desiredAccountType(""), null);
+  assert.equal(desiredAccountType(undefined), null);
+});
+
+test("a probe promotes a funded upgraded account and records the sync", async () => {
+  const writes: Array<[string, string]> = [];
+  const events: Array<{ id: string; from: string; to: string; plan: string }> = [];
+  const pool = stubPool(
+    [{ id: "upgraded", type: "free" }],
+    { upgraded: { credits: 9982, plan: "pro", models: ["chirp-hawk"] } },
+    { writes, events },
+  );
+  const picked = await pool.pickExcept([], "v6", "paid_only");
+  assert.equal(picked.account.id, "upgraded");
+  assert.deepEqual(writes, [["upgraded", "paid"]]);
+  assert.deepEqual(events, [{ id: "upgraded", from: "free", to: "paid", plan: "pro" }]);
+  assert.equal(accountType(pool, "upgraded"), "paid");
+});
+
+test("a drained paid account is never demoted to free", async () => {
+  const writes: Array<[string, string]> = [];
+  const pool = stubPool(
+    [{ id: "drained", type: "paid" }],
+    { drained: { credits: 0, plan: "paid", models: ["chirp-hawk"] } },
+    { writes },
+  );
+  await assert.rejects(() => pool.pickExcept([], "v6", "paid_only"), PoolCreditExhaustedError);
+  assert.deepEqual(writes, []);
+  assert.equal(accountType(pool, "drained"), "paid");
+});
+
+test("a free plan with leftover credits stays free", async () => {
+  const writes: Array<[string, string]> = [];
+  const pool = stubPool(
+    [{ id: "free-plan", type: "free" }],
+    { "free-plan": { credits: 100, plan: "free", models: ["chirp-goose"] } },
+    { writes },
+  );
+  await assert.rejects(() => pool.pickExcept([], "v6", "paid_only"), /No paid Suno account/);
+  assert.deepEqual(writes, []);
+  assert.equal(accountType(pool, "free-plan"), "free");
+});
+
+test("a billing payload without a plan field leaves the stored type alone", async () => {
+  const writes: Array<[string, string]> = [];
+  const pool = stubPool(
+    [{ id: "mystery", type: "paid" }],
+    { mystery: { credits: 500, models: ["chirp-hawk"] } },
+    { writes },
+  );
+  // Unknown plan falls back to the operator's tag, so premium routing still works.
+  const picked = await pool.pickExcept([], "v6", "paid_only");
+  assert.equal(picked.account.id, "mystery");
+  assert.deepEqual(writes, []);
+  assert.equal(accountType(pool, "mystery"), "paid");
+});
 
 test("paid_only uses a funded upgraded account that is still tagged free", async () => {
   // The real outage: the only rows tagged `paid` were drained, while two

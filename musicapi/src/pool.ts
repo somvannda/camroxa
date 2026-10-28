@@ -135,8 +135,23 @@ export function isPaidEligible(
   dbType: "free" | "paid" | undefined,
   plan: string | undefined,
 ): boolean {
-  if (plan) return plan !== "free";
+  if (plan && plan !== "unknown") return plan !== "free";
   return (dbType ?? "free") === "paid";
+}
+
+/**
+ * What `suno_accounts.type` should say for a live Suno plan, or `null` when the
+ * plan is unknown (never write from an unknown reading).
+ *
+ * Balance is deliberately not an input: a drained Premier account is still
+ * Premier and must stay `paid`, or it would be demoted out of premium routing
+ * while it waits for its renewal, then promoted again on refill — churn that
+ * also mis-ranks it as a free account under `prefer_free`. Emptiness is the
+ * credit floor's job, not this column's.
+ */
+export function desiredAccountType(plan: string | undefined): "free" | "paid" | null {
+  if (!plan || plan === "unknown") return null;
+  return plan === "free" ? "free" : "paid";
 }
 
 /**
@@ -184,6 +199,25 @@ export class AccountPool {
    * fresh `billing/info` arrives, because that value already includes the spend.
    */
   private readonly reservedCredits: Map<string, number> = new Map();
+
+  /**
+   * Notified when a health probe reconciles a row's `type` with Suno's live
+   * plan. Best-effort: a listener that throws must never fail the probe.
+   */
+  onTypeSynced?: (event: {
+    id: string;
+    from: "free" | "paid";
+    to: "free" | "paid";
+    plan: string;
+  }) => void;
+
+  /** Persistence for `syncAccountType`; injectable so routing tests stay offline. */
+  private persistAccountType = async (label: string, type: "free" | "paid"): Promise<void> => {
+    await query(
+      "UPDATE suno_accounts SET type = $1 WHERE label = $2 AND type IS DISTINCT FROM $1",
+      [type, label],
+    );
+  };
 
   constructor(accounts: AccountCreds[] = []) {
     this.clients = accounts.map((a) => this.makeClient(a));
@@ -331,7 +365,18 @@ export class AccountPool {
     const health: AccountHealth = {
       credits: info.total_credits_left ?? 0,
       models: usable.map((m) => m.external_key ?? "").filter(Boolean),
-      plan: typeof subType === "string" ? subType : subType ? "paid" : "free",
+      // Three states, not two: a paid plan, an explicitly-free plan, and a
+      // payload that simply omitted the field. Only the middle one may demote a
+      // stored `type` (see `syncAccountType`); "unknown" leaves routing on the
+      // operator's value instead of guessing.
+      plan:
+        typeof subType === "string" && subType
+          ? subType
+          : subType
+            ? "paid"
+            : Object.prototype.hasOwnProperty.call(info, "subscription_type")
+              ? "free"
+              : "unknown",
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
@@ -339,7 +384,38 @@ export class AccountPool {
     // The fresh balance already reflects every settled spend, so any outstanding
     // reservation for this account is now double-counting.
     this.reservedCredits.delete(client.account.id);
+    await this.syncAccountType(client, health.plan);
     return health;
+  }
+
+  /**
+   * Keep `suno_accounts.type` in step with the plan Suno actually reports.
+   *
+   * The column is operator-set and therefore drifts: an account added as `free`
+   * and upgraded later keeps routing as free, which is exactly how the
+   * 2026-10-28 outage happened (funded Premier accounts excluded from premium
+   * models while the drained `paid` rows were tried and refused). Only the plan
+   * is an input — see `desiredAccountType`. Runs off the 30s health probe, so it
+   * writes at most once per account per drift, and never when the plan is
+   * unknown. Best-effort: a failed write must not fail the probe.
+   */
+  private async syncAccountType(client: SunoClient, plan: string): Promise<void> {
+    const desired = desiredAccountType(plan);
+    const from = client.account.type ?? "free";
+    if (!desired || desired === from) return;
+    // Heal the live client first: dispatch in this process must stop trusting
+    // the stale tag even if the row write below fails.
+    client.account.type = desired;
+    try {
+      await this.persistAccountType(client.account.id, desired);
+    } catch {
+      /* best-effort: the next probe retries the write */
+    }
+    try {
+      this.onTypeSynced?.({ id: client.account.id, from, to: desired, plan });
+    } catch {
+      /* a listener must never break a health probe */
+    }
   }
 
   /**
