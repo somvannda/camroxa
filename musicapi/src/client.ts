@@ -348,9 +348,14 @@ export class SunoClient {
     };
     if (params.metadata) payload.metadata = params.metadata;
     if (params.personaId) {
+      const personaModel = params.personaModel ?? "style_persona";
       payload.persona_id = params.personaId;
-      payload.artist_clip_id = params.personaId;
-      payload.persona_model = params.personaModel ?? "style_persona";
+      payload.persona_model = personaModel;
+      // `artist_clip_id` is the legacy style-persona field and expects a clip id.
+      // Voice persona ids are not clip ids, so only send it for style personas.
+      if (personaModel === "style_persona") {
+        payload.artist_clip_id = params.personaId;
+      }
     }
     if (params.duration != null) payload.duration = params.duration;
     if (params.vocalGender) payload.vocal_gender = params.vocalGender;
@@ -606,9 +611,14 @@ export class SunoClient {
     if (params.weirdnessConstraint != null) payload.weirdness_constraint = params.weirdnessConstraint;
     if (params.audioWeight != null) payload.audio_weight = params.audioWeight;
     if (params.personaId) {
+      const personaModel = params.personaModel ?? "style_persona";
       payload.persona_id = params.personaId;
-      payload.artist_clip_id = params.personaId;
-      payload.persona_model = params.personaModel ?? "style_persona";
+      payload.persona_model = personaModel;
+      // `artist_clip_id` is the legacy style-persona field and expects a clip id.
+      // Voice persona ids are not clip ids, so only send it for style personas.
+      if (personaModel === "style_persona") {
+        payload.artist_clip_id = params.personaId;
+      }
     }
     return this.submitClips("/api/generate/v2-web/", payload);
   }
