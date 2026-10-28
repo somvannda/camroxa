@@ -477,6 +477,16 @@ export class AccountPool {
     };
     this.health.set(client.account.id, { info: health, updatedAt: Date.now() });
     this.persistRenewsOn(client.account.id, health.renewsOn);
+    // Persist the probe result. Balances previously lived only in this 30s
+    // in-memory cache, so a drained pool was invisible in the DB and in the
+    // admin console until users reported failed songs. Best-effort: a failed
+    // write must never fail routing.
+    void query("UPDATE suno_accounts SET credits_left = $2 WHERE label = $1", [
+      client.account.id,
+      health.credits,
+    ]).catch(() => {
+      /* best-effort telemetry */
+    });
     // The fresh balance already reflects every settled spend, so any outstanding
     // reservation for this account is now double-counting.
     this.reservedCredits.delete(client.account.id);

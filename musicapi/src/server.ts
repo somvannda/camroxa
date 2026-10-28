@@ -181,6 +181,15 @@ export interface AlertSettings {
   captcha_balance_threshold: number;
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
+  /**
+   * Alert when refunded jobs make up at least this share of settled jobs in the
+   * window. A refund spike is the earliest signal that deliveries are failing
+   * downstream (empty pool, provider outage) — it fires before support does.
+   * `0` disables the check.
+   */
+  refund_rate_threshold: number;
+  /** Minimum settled jobs in the window before the refund rate is meaningful. */
+  refund_rate_min_jobs: number;
   window_minutes: number;
   /**
    * Alert when this many jobs are waiting for a Suno slot. `0` disables the
@@ -204,6 +213,8 @@ const DEFAULT_ALERTS: AlertSettings = {
   captcha_balance_threshold: 1,
   failure_rate_threshold: 0.25,
   failure_rate_min_requests: 20,
+  refund_rate_threshold: 0.1,
+  refund_rate_min_jobs: 10,
   window_minutes: 60,
   queue_backlog_depth: 50,
 };
@@ -291,6 +302,18 @@ function coerceAlerts(value: unknown): AlertSettings {
       1_000_000,
     ),
     window_minutes: clampInt(o.window_minutes, DEFAULT_ALERTS.window_minutes, 5, 1440),
+    refund_rate_threshold: clampNumber(
+      o.refund_rate_threshold,
+      DEFAULT_ALERTS.refund_rate_threshold,
+      0,
+      1,
+    ),
+    refund_rate_min_jobs: clampInt(
+      o.refund_rate_min_jobs,
+      DEFAULT_ALERTS.refund_rate_min_jobs,
+      1,
+      1_000_000,
+    ),
     queue_backlog_depth: clampInt(
       o.queue_backlog_depth,
       DEFAULT_ALERTS.queue_backlog_depth,
@@ -353,6 +376,8 @@ function mergeAlerts(
     ["captcha_balance_threshold", 0, 100_000],
     ["failure_rate_threshold", 0, 1],
     ["failure_rate_min_requests", 1, 1_000_000],
+    ["refund_rate_threshold", 0, 1],
+    ["refund_rate_min_jobs", 1, 1_000_000],
     ["window_minutes", 5, 1440],
     ["queue_backlog_depth", 0, 1_000_000],
   ];
@@ -363,7 +388,11 @@ function mergeAlerts(
       return { ok: false, error: `alerts.${key} must be a number between ${min} and ${max}.` };
     }
     (next[key] as number) =
-      key === "failure_rate_threshold" || key === "captcha_balance_threshold" ? value : Math.round(value);
+      key === "failure_rate_threshold" ||
+      key === "captcha_balance_threshold" ||
+      key === "refund_rate_threshold"
+        ? value
+        : Math.round(value);
   }
   return { ok: true, value: next };
 }
@@ -5734,6 +5763,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     | "captcha_no_solver"
     | "captcha_balance"
     | "failure_rate"
+    | "refund_rate"
     | "queue_backlog";
 
   interface AlertItem {
@@ -5979,6 +6009,50 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
             top_reasons: topReasons,
           },
         });
+      }
+    }
+
+    // 3b. Refund rate: the earliest signal that deliveries are failing.
+    //
+    // A dry pool or a provider outage shows up here before the failure-rate
+    // alert, because a deferred/retried job is not an error yet — but every
+    // refund is paired with a spend row on `credit_transactions`, so the ratio
+    // moves the moment deliveries start bouncing.
+    if (thresholds.refund_rate_threshold > 0) {
+      try {
+        const row = await queryOne<{ spends: string; refunds: string }>(
+          `SELECT count(*) FILTER (WHERE type = 'spend')::text AS spends,
+                  count(*) FILTER (WHERE type = 'refund')::text AS refunds
+           FROM credit_transactions
+           WHERE created_at > now() - ($1 || ' minutes')::interval`,
+          [String(thresholds.window_minutes)],
+        );
+        const spends = Number(row?.spends ?? 0);
+        const refunded = Number(row?.refunds ?? 0);
+        if (spends >= thresholds.refund_rate_min_jobs) {
+          const rate = refunded / spends;
+          if (rate >= thresholds.refund_rate_threshold) {
+            alerts.push({
+              id: "refund_rate",
+              type: "refund_rate",
+              severity: rate >= 0.5 ? "critical" : "warning",
+              message:
+                `Refund rate ${(rate * 100).toFixed(1)}% over the last ${
+                  thresholds.window_minutes
+                } min (${refunded} refunds / ${spends} settled spends), above the ${(
+                  thresholds.refund_rate_threshold * 100
+                ).toFixed(1)}% threshold. Deliveries are failing: check the Suno pool balance and provider health.`,
+              details: {
+                rate,
+                refunds: refunded,
+                spends,
+                window_minutes: thresholds.window_minutes,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        app.log.warn({ err }, "refund-rate lookup failed");
       }
     }
 
