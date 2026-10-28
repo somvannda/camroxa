@@ -41,6 +41,34 @@ export async function extractVideoFrame(bytes: Buffer, atSeconds = 1): Promise<B
   }
 }
 
+/**
+ * Pull several representative stills from a video. Suno's public create flow
+ * accepts video as a reference, but the upstream API still exposes image ids;
+ * sending multiple frames is the closest durable approximation. Failed seeks
+ * (e.g. a clip shorter than the requested timestamp) are skipped, and an
+ * identical frame is only uploaded once.
+ */
+export async function extractVideoFrames(
+  bytes: Buffer,
+  atSeconds: number[] = [1, 4, 8],
+): Promise<Buffer[]> {
+  const frames: Buffer[] = [];
+  for (const at of atSeconds) {
+    try {
+      const frame = await extractVideoFrame(bytes, at);
+      if (frame.length > 0 && !frames.some((existing) => existing.equals(frame))) {
+        frames.push(frame);
+      }
+    } catch {
+      // The clip may be shorter than this timestamp; keep the frames we have.
+    }
+  }
+  if (frames.length === 0) {
+    frames.push(await extractVideoFrame(bytes));
+  }
+  return frames;
+}
+
 function ffmpegBin(): string {
   const bin = ffmpegPath as unknown as string | null;
   // Prefer the bundled binary but fall back to a system ffmpeg on PATH (see the

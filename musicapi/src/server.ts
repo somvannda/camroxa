@@ -80,7 +80,7 @@ import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured, storageInfo } from "./storage.js";
-import { extractVideoFrame } from "./video.js";
+import { extractVideoFrames } from "./video.js";
 import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
 import { renderMusicVideo } from "./video.js";
 import { decryptSunoClip, openDecryptedM4aStream } from "./sunoAudio.js";
@@ -3518,19 +3518,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return client.uploadImage(bytes, ext);
   }
 
-  /**
-   * Music submit that first uploads reference images to the generation account
-   * (Suno's `uploadImage` 3-step) and passes `user_uploaded_image_ids` with the
-   * `agentic_thinking` task — the flow suno.com's create form uses.
-   */
-  function processMusicSubmitWithImages(params: Record<string, unknown>, imageUrls: string[]) {
-    const gen = buildMusicGen(params);
-    return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
-      const imageIds = await Promise.all(imageUrls.map((u) => uploadReferenceImage(client, u)));
-      return client.generateMusic({ ...gen, imageIds, task: "agentic_thinking" });
-    };
-  }
-
   /** Decode a `data:image/...;base64,...` URL (or raw base64) to bytes + ext. */
   function decodeImageData(dataUrl: string): { bytes: Buffer; ext: string } {
     const m = dataUrl.match(/^data:image\/([a-z0-9.+-]+);base64,(.*)$/is);
@@ -3538,20 +3525,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const b64 = m?.[2] ?? dataUrl;
     const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
     return { bytes: Buffer.from(b64, "base64"), ext };
-  }
-
-  /** Reference images supplied inline (panel upload) as data URLs. */
-  function processMusicSubmitWithImageData(params: Record<string, unknown>, dataUrls: string[]) {
-    const gen = buildMusicGen(params);
-    return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
-      const imageIds = await Promise.all(
-        dataUrls.map((d) => {
-          const { bytes, ext } = decodeImageData(d);
-          return client.uploadImage(bytes, ext);
-        }),
-      );
-      return client.generateMusic({ ...gen, imageIds, task: "agentic_thinking" });
-    };
   }
 
   /** Reference audio URLs from a request body (camelCase or snake_case). */
@@ -3586,16 +3559,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return session.id;
   }
 
-  /** Music submit from reference audio (upload -> user_uploaded_audio_ids,
-   *  task agentic_thinking — the same flow as reference images). */
-  function processMusicSubmitWithAudio(params: Record<string, unknown>, audioUrls: string[]) {
-    const gen = buildMusicGen(params);
-    return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
-      const audioIds = await Promise.all(audioUrls.map((u) => uploadReferenceAudio(client, u)));
-      return client.generateMusic({ ...gen, audioIds, task: "agentic_thinking" });
-    };
-  }
-
   /** Reference video URLs from a request body (camelCase or snake_case). */
   function referenceVideoUrls(params: Record<string, unknown>): string[] {
     const raw = params.videoUrls ?? params.video_urls;
@@ -3604,35 +3567,72 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       : [];
   }
 
-  /** Extract a frame from a reference video and upload it to Suno as an image
-   *  (Suno has no video input, so a frame drives the image/agentic flow). */
-  async function uploadReferenceVideo(client: SunoClient, url: string): Promise<string> {
+  /** Extract representative frames from a reference video and upload them to
+   *  Suno as images. The upstream API exposes image ids only, so several frames
+   *  are the closest durable approximation of Suno's native video reference. */
+  async function uploadReferenceVideoFrames(client: SunoClient, url: string): Promise<string[]> {
     const resp = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: "follow" });
     if (!resp.ok) throw new Error(`reference video fetch failed (${resp.status})`);
     const bytes = Buffer.from(await resp.arrayBuffer());
     if (bytes.length > 100 * 1024 * 1024) throw new Error("reference video exceeds 100MB");
-    const frame = await extractVideoFrame(bytes);
-    return client.uploadImage(frame, "jpg");
+    const frames = await extractVideoFrames(bytes);
+    return Promise.all(frames.map((frame) => client.uploadImage(frame, "jpg")));
   }
 
-  function processMusicSubmitWithVideo(params: Record<string, unknown>, videoUrls: string[]) {
+  type MusicReferences = {
+    inlineImages: string[];
+    imageUrls: string[];
+    videoUrls: string[];
+    audioUrls: string[];
+  };
+
+  /** Upload every supported reference input to the generation account and
+   *  submit one agentic request. Image, video and audio references compose
+   *  instead of one input silently winning over the others. */
+  function processMusicSubmitWithReferences(
+    params: Record<string, unknown>,
+    refs: MusicReferences,
+  ) {
     const gen = buildMusicGen(params);
     return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
-      const imageIds = await Promise.all(videoUrls.map((u) => uploadReferenceVideo(client, u)));
-      return client.generateMusic({ ...gen, imageIds, task: "agentic_thinking" });
+      const [inlineImageIds, imageIds, videoIdGroups, audioIds] = await Promise.all([
+        Promise.all(
+          refs.inlineImages.map((dataUrl) => {
+            const { bytes, ext } = decodeImageData(dataUrl);
+            return client.uploadImage(bytes, ext);
+          }),
+        ),
+        Promise.all(refs.imageUrls.map((url) => uploadReferenceImage(client, url))),
+        Promise.all(refs.videoUrls.map((url) => uploadReferenceVideoFrames(client, url))),
+        Promise.all(refs.audioUrls.map((url) => uploadReferenceAudio(client, url))),
+      ]);
+      const allImageIds = [...inlineImageIds, ...imageIds, ...videoIdGroups.flat()];
+      const hasReferences = allImageIds.length > 0 || audioIds.length > 0;
+      return client.generateMusic({
+        ...gen,
+        ...(allImageIds.length ? { imageIds: allImageIds } : {}),
+        ...(audioIds.length ? { audioIds } : {}),
+        ...(hasReferences ? { task: "agentic_thinking" } : {}),
+      });
     };
   }
 
   /** Choose the music submit strategy from the request's reference inputs. */
   function musicSubmitFactory(params: Record<string, unknown>, inlineImages?: string[]) {
-    if (inlineImages && inlineImages.length) return processMusicSubmitWithImageData(params, inlineImages);
-    const imgs = referenceImageUrls(params);
-    if (imgs.length) return processMusicSubmitWithImages(params, imgs);
-    const vids = referenceVideoUrls(params);
-    if (vids.length) return processMusicSubmitWithVideo(params, vids);
-    const auds = referenceAudioUrls(params);
-    if (auds.length) return processMusicSubmitWithAudio(params, auds);
-    return processMusicSubmit(params);
+    const refs: MusicReferences = {
+      inlineImages: inlineImages ?? [],
+      imageUrls: referenceImageUrls(params),
+      videoUrls: referenceVideoUrls(params),
+      audioUrls: referenceAudioUrls(params),
+    };
+    const hasReferences =
+      refs.inlineImages.length > 0 ||
+      refs.imageUrls.length > 0 ||
+      refs.videoUrls.length > 0 ||
+      refs.audioUrls.length > 0;
+    return hasReferences
+      ? processMusicSubmitWithReferences(params, refs)
+      : processMusicSubmit(params);
   }
 
   function processSoundsSubmit(params: Record<string, unknown>) {
