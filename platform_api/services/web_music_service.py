@@ -3430,7 +3430,7 @@ class WebMusicService:
         return {
             "id": str(row["id"]),
             "project_id": str(row["project_id"]) if row["project_id"] else None,
-            "task_id": str(row["task_id"]),
+            "task_id": str(row["task_id"]) if row["task_id"] else None,
             "variant": str(row["variant"]),
             "provider_clip_id": str(row["provider_clip_id"]),
             "operation_type": str(row["operation_type"]),
@@ -4050,6 +4050,160 @@ class WebMusicService:
             internal_body={"aspect_ratio": clean_aspect},
             label="video",
         )
+
+    @staticmethod
+    def _staff_pick_payload(row: Any) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "provider_clip_id": str(row["provider_clip_id"]),
+            "title": str(row["title"]),
+            "image_url": row["image_url"],
+            "styles": row["styles"],
+            "model": row["model"],
+            "account_id": row["account_id"],
+            "sort_order": int(row["sort_order"] or 0),
+            "is_active": bool(row["is_active"]),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+
+    async def list_staff_picks(self, *, active_only: bool = True) -> dict[str, Any]:
+        rows = await self._pool.fetch(
+            f"""
+            SELECT id, provider_clip_id, title, image_url, styles, model, account_id,
+                   sort_order, is_active, created_at, updated_at
+            FROM remix_staff_picks
+            {"WHERE is_active = TRUE" if active_only else ""}
+            ORDER BY sort_order ASC, created_at DESC
+            """
+        )
+        return {"items": [self._staff_pick_payload(row) for row in rows]}
+
+    async def request_staff_pick_remix(
+        self,
+        user_id: UUID,
+        pick_id: UUID,
+        *,
+        prompt: str = "",
+    ) -> dict[str, Any]:
+        from platform_api.config import get_settings
+
+        pick = await self._pool.fetchrow(
+            """
+            SELECT * FROM remix_staff_picks
+            WHERE id = $1 AND is_active = TRUE
+            """,
+            pick_id,
+        )
+        if pick is None:
+            raise NotFoundError("Staff pick not found.")
+        provider_clip_id = str(pick["provider_clip_id"])
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        op = await self._pool.fetchrow(
+            """
+            INSERT INTO studio_operations
+                (user_id, project_id, task_id, variant, provider_clip_id, operation_type, mode, status)
+            VALUES ($1, NULL, NULL, 'catalog', $2, 'remix', 'remix', 'queued')
+            RETURNING *
+            """,
+            user_id,
+            provider_clip_id,
+        )
+        charge_op = self._studio_charge_op("remix", "remix")
+        try:
+            charge = await self._web_music_charge_bridge().charge(
+                user_id,
+                charge_op,
+                ref_id=str(op["id"]),
+            )
+        except Exception as exc:
+            await self._pool.execute(
+                "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                op["id"],
+                str(exc),
+            )
+            raise
+        op = await self._pool.fetchrow(
+            """
+            UPDATE studio_operations
+            SET credits_charged=$2, charge_path=$3, charge_op=$4, charge_ref=$5, updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            op["id"],
+            int(charge.amount_credits or 0),
+            str(charge.path),
+            charge_op,
+            str(charge.ref_id or op["id"]),
+        )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.post(
+                    f"{base}/internal/studio/cover",
+                    headers={"x-internal-token": token},
+                    json={
+                        "clip_id": provider_clip_id,
+                        "prompt": str(prompt or "").strip() or str(pick["title"]),
+                        "account_id": pick["account_id"],
+                    },
+                )
+                if response.status_code >= 400:
+                    detail = "Remix request failed."
+                    try:
+                        detail = str((response.json() or {}).get("error") or detail)
+                    except Exception:
+                        pass
+                    await self._pool.execute(
+                        "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                        op["id"],
+                        detail,
+                    )
+                    try:
+                        await self._refund_studio_operation(user_id, op["id"])
+                    except Exception:
+                        logger.exception("Studio operation refund failed for %s", op["id"])
+                    raise ExternalServiceError(
+                        detail,
+                        is_retryable=False,
+                        details={"provider": "musicapi", "operation": "remix"},
+                    )
+                payload = response.json()
+        except ExternalServiceError:
+            raise
+        except Exception as exc:
+            await self._pool.execute(
+                "UPDATE studio_operations SET status='error', error_message=$2, updated_at=now() WHERE id=$1",
+                op["id"],
+                str(exc),
+            )
+            try:
+                await self._refund_studio_operation(user_id, op["id"])
+            except Exception:
+                logger.exception("Studio operation refund failed for %s", op["id"])
+            raise ExternalServiceError(
+                "Could not reach the Studio remix service.",
+                is_retryable=True,
+                details={"provider": "musicapi", "operation": "remix"},
+            ) from exc
+        job_id = str(payload.get("job_id") or "")
+        updated = await self._pool.fetchrow(
+            """
+            UPDATE studio_operations
+            SET musicapi_job_id=$2, status=$3, updated_at=now()
+            WHERE id=$1 RETURNING *
+            """,
+            op["id"],
+            job_id or None,
+            str(payload.get("status") or "queued").lower(),
+        )
+        return self._studio_operation_payload(updated)
 
     async def get_studio_operation(self, user_id: UUID, operation_id: UUID) -> dict[str, Any]:
         from platform_api.config import get_settings

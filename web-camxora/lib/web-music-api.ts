@@ -532,6 +532,32 @@ export async function coverWebMusicStudioUpload(
 export async function getWebMusicStudioOperation(id: string): Promise<WebMusicStudioOperation> {
   return musicJson(`/api/v3/web-music/studio/operations/${encodeURIComponent(id)}`);
 }
+export type WebMusicStaffPick = {
+  id: string;
+  provider_clip_id: string;
+  title: string;
+  image_url?: string | null;
+  styles?: string | null;
+  model?: string | null;
+  sort_order: number;
+  is_active: boolean;
+};
+
+export async function listWebMusicStaffPicks(): Promise<{ items: WebMusicStaffPick[] }> {
+  return musicJson("/api/v3/web-music/remix/staff-picks");
+}
+
+export async function requestWebMusicStaffPickRemix(
+  id: string,
+  prompt = ""
+): Promise<WebMusicStudioOperation> {
+  return musicJson(`/api/v3/web-music/remix/staff-picks/${encodeURIComponent(id)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }),
+  });
+}
+
 export async function coverWebMusicGeneration(
   taskId: string,
   input: { variant?: "ok" | "alt"; prompt?: string; project_id?: string | null } = {}

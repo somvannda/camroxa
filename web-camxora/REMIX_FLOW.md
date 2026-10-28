@@ -1,6 +1,6 @@
 # Remix Flow Spec
 
-Status: **Library path implemented + tested 2026-10-28; For You / Staff Picks blocked**
+Status: **Library + Staff Picks implemented; Staff Picks remix blocked by Premier credits**
 Owner surface: `web-camxora/components/CreateStudio.tsx`
 Backend path: **web → platform_api → musicapi → Suno**
 Production deploy: **not approved** — sandbox only after the checklist passes.
@@ -247,11 +247,10 @@ Cancel branches:
 
 ## 10. Open questions / blockers
 
-1. **For You / Staff Picks data source** — no platform/musicapi catalog exists.
-2. **Exact Suno Remix semantics** — is it `SIMPLE_REMIX` cover, or a distinct
-   generation mode with its own prompt/style fields?
-3. **Version UX** — one Remix button with a version step, or two buttons?
-4. **Prompt fields** — does Remix expose only prompt, or style and model too?
+1. **For You data source** — no personalized catalog exists.
+2. **Staff Picks remix success** — catalog and admin management are implemented,
+   but remix requires a pool account with credits. The Premier catalog account
+   currently has 0 credits, so the provider returned 402 and the operation refunded.
 5. **Visibility** — remix result goes to the user’s library only, or can target a
    playlist/workspace?
 

@@ -72,6 +72,7 @@ const KeyPoolPage = React.lazy(() => import('@/pages/key-pool/index'));
 const JobQueuePage = React.lazy(() => import('@/pages/job-queue/index'));
 const PipelineOpsPage = React.lazy(() => import('@/pages/pipeline/index'));
 const ContentPoolsPage = React.lazy(() => import('@/pages/content-pools/index'));
+const RemixStaffPicksPage = React.lazy(() => import('@/pages/remix-staff-picks/index'));
 const ImageSamplePacksPage = React.lazy(() => import('@/pages/image-sample-packs/index'));
 const MarketplacePage = React.lazy(() => import('@/pages/marketplace/index'));
 const StreamingCatalogPage = React.lazy(() => import('@/pages/streaming/catalog'));
@@ -135,6 +136,7 @@ function App() {
                     <Route path="/job-queue" element={<JobQueuePage />} />
                     <Route path="/pipeline" element={<PipelineOpsPage />} />
                     <Route path="/content-pools" element={<ContentPoolsPage />} />
+                    <Route path="/remix-staff-picks" element={<RemixStaffPicksPage />} />
                     <Route path="/image-sample-packs" element={<ImageSamplePacksPage />} />
                     <Route path="/marketplace" element={<MarketplacePage />} />
                     <Route path="/streaming" element={<StreamingCatalogPage />} />

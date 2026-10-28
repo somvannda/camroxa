@@ -8578,8 +8578,14 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
     const prompt = typeof body.prompt === "string" ? body.prompt.trim() : "";
+    const requestedAccount =
+      typeof body.account_id === "string" ? body.account_id.trim() : "";
     if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
-    const accountId = await findAssetAccountAny(clipId);
+    const accountId = requestedAccount
+      ? pool.get(requestedAccount)
+        ? requestedAccount
+        : null
+      : await findAssetAccountAny(clipId);
     if (!accountId) {
       return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
     }

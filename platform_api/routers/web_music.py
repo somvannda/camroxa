@@ -828,6 +828,10 @@ class StudioVideoRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StaffPickRemixRequest(BaseModel):
+    prompt: str = Field(default="", max_length=2000)
+
+
 @router.post("/studio/generations/{task_id}/extend", status_code=202)
 async def request_studio_extend(
     task_id: UUID,
@@ -1111,6 +1115,29 @@ async def create_voice_persona(
         name=body.name,
         styles=body.styles,
         voice_id=body.voice_id,
+    )
+
+
+@router.get("/remix/staff-picks")
+async def list_remix_staff_picks(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    _ = ctx
+    return await service.list_staff_picks(active_only=True)
+
+
+@router.post("/remix/staff-picks/{pick_id}", status_code=202)
+async def request_staff_pick_remix(
+    pick_id: UUID,
+    body: StaffPickRemixRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_staff_pick_remix(
+        UUID(ctx.user_id),
+        pick_id,
+        prompt=body.prompt,
     )
 
 
