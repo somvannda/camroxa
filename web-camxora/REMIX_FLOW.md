@@ -241,7 +241,7 @@ Cancel branches:
 - [x] Select V1/V2 correctly.
 - [x] Submit creates operation with correct `task_id` + `variant`.
 - [x] Success shows the remix result in Audio results.
-- [ ] Failure shows refund/error.
+- [x] Failure shows refund/error — provider failure returned 502, operation marked `error`, 12 credits refunded.
 - [x] Remove chip cancels mode.
 - [x] Permissions: another user’s task returns 404 `Generation not found.`
 
