@@ -6,7 +6,10 @@ import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
 import {
   SMenu,
+  SMenuCheckboxItem,
   SMenuItem,
+  SMenuRadioGroup,
+  SMenuRadioItem,
   SMenuSeparator,
   SMenuSub,
   SMenuSubContent,
@@ -2943,85 +2946,88 @@ export function CreateStudio() {
                   </div>
 
                   <div className="s-top-meta">
-                  <div className="s-anchor" data-s-menu>
-                    <button
-                      type="button"
-                      className="s-credits"
-                      aria-label={`Credits remaining: ${displayCredits.toLocaleString()}`}
-                      onClick={() => setCreditsOpen((value) => !value)}
+                  <div className="s-anchor">
+                    <SMenu
+                      align="start"
+                      sideOffset={6}
+                      trigger={
+                        <button
+                          type="button"
+                          className="s-credits"
+                          aria-label={`Credits remaining: ${displayCredits.toLocaleString()}`}
+                        >
+                          <Icon name="fa-coins" />
+                          {creditsLabel}
+                        </button>
+                      }
                     >
-                      <Icon name="fa-coins" />
-                      {creditsLabel}
-                    </button>
-                    {creditsOpen ? (
-                      <div className="s-menu" role="menu" style={{ top: 46, left: 0, width: 260 }}>
-                        <div className="s-menu-label">Credits</div>
+                      <div className="s-menu-label">Credits</div>
+                      <div className="s-menu-item" style={{ cursor: "default" }}>
+                        <span>Balance</span>
+                        <span className="check">{displayCredits.toLocaleString()}</span>
+                      </div>
+                      <div className="s-menu-item" style={{ cursor: "default" }}>
+                        <span>Per song</span>
+                        <span className="check">{(quota?.credits_per_song ?? 0).toLocaleString()}</span>
+                      </div>
+                      {quota ? (
                         <div className="s-menu-item" style={{ cursor: "default" }}>
-                          <span>Balance</span>
-                          <span className="check">{displayCredits.toLocaleString()}</span>
+                          <span>Plan</span>
+                          <span className="check">
+                            {quota.has_subscription || quota.is_pro ? "Pro" : "Free"}
+                          </span>
                         </div>
-                        <div className="s-menu-item" style={{ cursor: "default" }}>
-                          <span>Per song</span>
-                          <span className="check">{(quota?.credits_per_song ?? 0).toLocaleString()}</span>
-                        </div>
-                        {quota ? (
-                          <div className="s-menu-item" style={{ cursor: "default" }}>
-                            <span>Plan</span>
-                            <span className="check">
-                              {quota.has_subscription || quota.is_pro ? "Pro" : "Free"}
-                            </span>
-                          </div>
-                        ) : null}
-                        <div className="s-menu-sep" />
-                        <Link className="s-menu-item" href="/pricing" role="menuitem">
+                      ) : null}
+                      <SMenuSeparator />
+                      <SMenuItem asChild>
+                        <Link href="/pricing">
                           <Icon name="fa-bag-shopping" /> Buy credits
                         </Link>
-                        <Link className="s-menu-item" href="/redeem" role="menuitem">
+                      </SMenuItem>
+                      <SMenuItem asChild>
+                        <Link href="/redeem">
                           <Icon name="fa-ticket" /> Redeem code
                         </Link>
-                      </div>
-                    ) : null}
+                      </SMenuItem>
+                    </SMenu>
                   </div>
 
-                  <div className="s-anchor" data-s-menu>
-                    <button
-                      type="button"
-                      className="s-model"
-                      aria-label="Model"
-                      aria-expanded={modelOpen}
-                      onClick={() => setModelOpen((value) => !value)}
-                    >
-                      {shortModel}
-                      <Icon name="fa-chevron-down" />
-                    </button>
-                    {modelOpen ? (
-                      <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 320 }}>
-                        <div className="s-menu-label">Model</div>
-                        <button type="button" className="s-menu-item" role="menuitem" disabled>
-                          <Icon name="fa-wand-magic-sparkles" /> Create Custom Model
-                          <span className="check">Beta</span>
+                  <div className="s-anchor">
+                    <SMenu
+                      align="end"
+                      sideOffset={6}
+                      style={{ width: 320 }}
+                      trigger={
+                        <button type="button" className="s-model" aria-label="Model">
+                          {shortModel}
+                          <Icon name="fa-chevron-down" />
                         </button>
-                        <div className="s-menu-item" style={{ cursor: "default", height: "auto", padding: "4px 10px 8px" }}>
-                          <span className="s-note">Create a model based on your uploads (100 Credits)</span>
-                        </div>
-                        <div className="s-menu-sep" />
-                        <div className="s-menu-label">All Models</div>
+                      }
+                    >
+                      <div className="s-menu-label">Model</div>
+                      <SMenuItem disabled>
+                        <Icon name="fa-wand-magic-sparkles" /> Create Custom Model
+                        <span className="check">Beta</span>
+                      </SMenuItem>
+                      <div className="s-menu-item" style={{ cursor: "default", height: "auto", padding: "4px 10px 8px" }}>
+                        <span className="s-note">Create a model based on your uploads (100 Credits)</span>
+                      </div>
+                      <SMenuSeparator />
+                      <div className="s-menu-label">All Models</div>
+                      <SMenuRadioGroup
+                        value={model}
+                        onValueChange={(value) => setModel(value as WebMusicModel)}
+                      >
                         {[
                           { value: "V6" as WebMusicModel, name: "v6", tag: "Pro", desc: "Powerful. Versatile. Refined. Our best model yet." },
                           { value: "V6_WILD" as WebMusicModel, name: "v6-wild", tag: "Pro", desc: "Best for experimental ideas." },
                           { value: "V6_MINI" as WebMusicModel, name: "v6-mini", tag: "", desc: "A free, more efficient version of premium v6 models." },
                         ].map((option) => (
-                          <button
+                          <SMenuRadioItem
                             key={option.value}
-                            type="button"
-                            role="menuitemradio"
-                            aria-checked={model === option.value}
-                            className={`s-menu-item${model === option.value ? " on" : ""}`}
+                            value={option.value}
+                            className={model === option.value ? "on" : undefined}
                             style={{ height: "auto", padding: "8px 10px", alignItems: "flex-start" }}
-                            onClick={() => {
-                              setModel(option.value);
-                              setModelOpen(false);
-                            }}
                           >
                             <span style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "left" }}>
                               <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -3030,11 +3036,10 @@ export function CreateStudio() {
                               </span>
                               <span className="s-note">{option.desc}</span>
                             </span>
-                            {model === option.value ? <span className="check">✓</span> : null}
-                          </button>
+                          </SMenuRadioItem>
                         ))}
-                      </div>
-                    ) : null}
+                      </SMenuRadioGroup>
+                    </SMenu>
                   </div>
                   </div>
                 </div>
@@ -3620,72 +3625,53 @@ export function CreateStudio() {
 
                     <div className="s-rowline s-form-card">
                       <span className="s-rowline-label">Save to...</span>
-                      <div className="s-anchor" data-s-menu>
-                        <button
-                          type="button"
-                          className="s-select"
-                          onClick={() => { setWorkspaceMenuOpen(false); setSaveMenuOpen((value) => !value); }}
+                      <div className="s-anchor">
+                        <SMenu
+                          align="end"
+                          side="top"
+                          sideOffset={6}
+                          style={{ width: 240 }}
+                          trigger={
+                            <button type="button" className="s-select">
+                              {activeWorkspaceName}
+                              <Icon name="fa-chevron-down" />
+                            </button>
+                          }
                         >
-                          {activeWorkspaceName}
-                          <Icon name="fa-chevron-down" />
-                        </button>
-                        {saveMenuOpen ? (
-                          <div className="s-menu" role="menu" style={{ bottom: 46, right: 0, width: 240 }}>
-                            <div className="s-menu-label">Workspaces</div>
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={() => {
-                                setActiveWorkspaceId(null);
-                                setSaveMenuOpen(false);
-                              }}
-                            >
+                          <div className="s-menu-label">Workspaces</div>
+                          <SMenuRadioGroup
+                            value={activeWorkspaceId ?? ""}
+                            onValueChange={(value) => setActiveWorkspaceId(value || null)}
+                          >
+                            <SMenuRadioItem value="">
                               <Icon name="fa-folder" /> My Workspace
-                              {!activeWorkspaceId ? <span className="check">✓</span> : null}
-                            </button>
-                            {workspaces.filter((workspace) => !workspace.is_default).map((workspace) => (
-                              <button
-                                key={workspace.id}
-                                type="button"
-                                className="s-menu-item"
-                                role="menuitem"
-                                onClick={() => {
-                                  setActiveWorkspaceId(workspace.id);
-                                  setSaveMenuOpen(false);
-                                }}
-                              >
-                                <Icon name="fa-folder" /> {workspace.name}
-                                {activeWorkspaceId === workspace.id ? <span className="check">✓</span> : null}
-                              </button>
-                            ))}
-                            <div className="s-menu-sep" />
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={() => {
-                                setNewWorkspaceOpen(true);
-                                setNewWorkspaceName("");
-                                setSaveMenuOpen(false);
-                              }}
-                            >
-                              <Icon name="fa-plus" /> New workspace
-                            </button>
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={() => {
-                                setRenameWorkspaceName(activeWorkspaceName);
-                                setRenameWorkspaceOpen(true);
-                                setSaveMenuOpen(false);
-                              }}
-                            >
-                              <Icon name="fa-pen" /> Rename current
-                            </button>
-                          </div>
-                        ) : null}
+                            </SMenuRadioItem>
+                            {workspaces
+                              .filter((workspace) => !workspace.is_default)
+                              .map((workspace) => (
+                                <SMenuRadioItem key={workspace.id} value={workspace.id}>
+                                  <Icon name="fa-folder" /> {workspace.name}
+                                </SMenuRadioItem>
+                              ))}
+                          </SMenuRadioGroup>
+                          <SMenuSeparator />
+                          <SMenuItem
+                            onSelect={() => {
+                              setNewWorkspaceOpen(true);
+                              setNewWorkspaceName("");
+                            }}
+                          >
+                            <Icon name="fa-plus" /> New workspace
+                          </SMenuItem>
+                          <SMenuItem
+                            onSelect={() => {
+                              setRenameWorkspaceName(activeWorkspaceName);
+                              setRenameWorkspaceOpen(true);
+                            }}
+                          >
+                            <Icon name="fa-pen" /> Rename current
+                          </SMenuItem>
+                        </SMenu>
                       </div>
                     </div>
 
@@ -3806,74 +3792,55 @@ export function CreateStudio() {
         <div className="s-feed">
           <div className="s-feed-head">
             <span className="s-workspace-label">Workspaces</span>
-            <div className="s-anchor" data-s-menu>
-              <button
-                type="button"
-                className="s-workspace"
-                onClick={() => { setSaveMenuOpen(false); setWorkspaceMenuOpen((value) => !value); }}
-                aria-expanded={workspaceMenuOpen}
+            <div className="s-anchor">
+              <SMenu
+                align="start"
+                sideOffset={6}
+                style={{ width: 240 }}
+                trigger={
+                  <button type="button" className="s-workspace">
+                    <b>{activeWorkspaceName}</b>
+                    <Icon name="fa-chevron-down" />
+                  </button>
+                }
               >
-                <b>{activeWorkspaceName}</b>
-                <Icon name="fa-chevron-down" />
-              </button>
-              {workspaceMenuOpen ? (
-                <div className="s-menu" role="menu" style={{ top: 34, left: 0, width: 240 }}>
-                  <div className="s-menu-label">Workspaces</div>
-                  <button
-                    type="button"
-                    className="s-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setActiveWorkspaceId(null);
-                      setWorkspaceMenuOpen(false);
-                    }}
-                  >
+                <div className="s-menu-label">Workspaces</div>
+                <SMenuRadioGroup
+                  value={activeWorkspaceId ?? ""}
+                  onValueChange={(value) => {
+                    setActiveWorkspaceId(value || null);
+                    setSelectedClipKeys([]);
+                  }}
+                >
+                  <SMenuRadioItem value="">
                     <Icon name="fa-folder" /> My Workspace
-                    {!activeWorkspaceId ? <span className="check">✓</span> : null}
-                  </button>
-                  {workspaces.filter((workspace) => !workspace.is_default).map((workspace) => (
-                    <button
-                      key={workspace.id}
-                      type="button"
-                      className="s-menu-item"
-                      role="menuitem"
-                      onClick={() => {
-                        setActiveWorkspaceId(workspace.id);
-                        setWorkspaceMenuOpen(false);
-                        setSelectedClipKeys([]);
-                      }}
-                    >
-                      <Icon name="fa-folder" /> {workspace.name}
-                      {activeWorkspaceId === workspace.id ? <span className="check">✓</span> : null}
-                    </button>
-                  ))}
-                  <div className="s-menu-sep" />
-                  <button
-                    type="button"
-                    className="s-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setNewWorkspaceOpen(true);
-                      setNewWorkspaceName("");
-                      setWorkspaceMenuOpen(false);
-                    }}
-                  >
-                    <Icon name="fa-plus" /> New workspace
-                  </button>
-                  <button
-                    type="button"
-                    className="s-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setRenameWorkspaceName(activeWorkspaceName);
-                      setRenameWorkspaceOpen(true);
-                      setWorkspaceMenuOpen(false);
-                    }}
-                  >
-                    <Icon name="fa-pen" /> Rename current
-                  </button>
-                </div>
-              ) : null}
+                  </SMenuRadioItem>
+                  {workspaces
+                    .filter((workspace) => !workspace.is_default)
+                    .map((workspace) => (
+                      <SMenuRadioItem key={workspace.id} value={workspace.id}>
+                        <Icon name="fa-folder" /> {workspace.name}
+                      </SMenuRadioItem>
+                    ))}
+                </SMenuRadioGroup>
+                <SMenuSeparator />
+                <SMenuItem
+                  onSelect={() => {
+                    setNewWorkspaceOpen(true);
+                    setNewWorkspaceName("");
+                  }}
+                >
+                  <Icon name="fa-plus" /> New workspace
+                </SMenuItem>
+                <SMenuItem
+                  onSelect={() => {
+                    setRenameWorkspaceName(activeWorkspaceName);
+                    setRenameWorkspaceOpen(true);
+                  }}
+                >
+                  <Icon name="fa-pen" /> Rename current
+                </SMenuItem>
+              </SMenu>
             </div>
 
             <span className="s-spacer" />
@@ -3902,48 +3869,40 @@ export function CreateStudio() {
             >
               <Icon name="fa-check-double" />
             </button>
-            <div className="s-anchor" data-s-menu>
-              <button
-                type="button"
-                className="s-btn s-btn-icon sm"
-                aria-label="Share workspace"
-                onClick={() => setShareOpen((value) => !value)}
-                aria-expanded={shareOpen}
-              >
-                <Icon name="fa-share" />
-              </button>
-              {shareOpen ? (
-                <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 230 }}>
+            <div className="s-anchor">
+              <SMenu
+                align="end"
+                sideOffset={6}
+                style={{ width: 230 }}
+                trigger={
                   <button
                     type="button"
-                    className="s-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      void navigator.clipboard
-                        .writeText(window.location.href)
-                        .then(() => setToast("Workspace link copied"))
-                        .catch(() => setToast("Could not copy link"));
-                      setShareOpen(false);
-                    }}
+                    className="s-btn s-btn-icon sm"
+                    aria-label="Share workspace"
                   >
-                    <Icon name="fa-link" /> Copy workspace link
+                    <Icon name="fa-share" />
                   </button>
-                  <Link className="s-menu-item" href="/library" role="menuitem">
+                }
+              >
+                <SMenuItem
+                  onSelect={() => {
+                    void navigator.clipboard
+                      .writeText(window.location.href)
+                      .then(() => setToast("Workspace link copied"))
+                      .catch(() => setToast("Could not copy link"));
+                  }}
+                >
+                  <Icon name="fa-link" /> Copy workspace link
+                </SMenuItem>
+                <SMenuItem asChild>
+                  <Link href="/library">
                     <Icon name="fa-rectangle-list" /> Open in Library
                   </Link>
-                  <button
-                    type="button"
-                    className="s-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setSelectionMode(true);
-                      setShareOpen(false);
-                    }}
-                  >
-                    <Icon name="fa-download" /> Select &amp; download
-                  </button>
-                </div>
-              ) : null}
+                </SMenuItem>
+                <SMenuItem onSelect={() => setSelectionMode(true)}>
+                  <Icon name="fa-download" /> Select &amp; download
+                </SMenuItem>
+              </SMenu>
             </div>
           </div>
 
@@ -3958,58 +3917,60 @@ export function CreateStudio() {
               />
             </label>
 
-            <div className="s-anchor" data-s-menu>
-              <button
-                type="button"
-                className={`s-pill${activeFilterCount ? " on" : ""}`}
-                onClick={() => setFiltersOpen((value) => !value)}
-                aria-expanded={filtersOpen}
-                aria-label={`Filters (${activeFilterCount})`}
+            <div className="s-anchor">
+              <SMenu
+                align="end"
+                sideOffset={6}
+                style={{ width: 200 }}
+                trigger={
+                  <button
+                    type="button"
+                    className={`s-pill${activeFilterCount ? " on" : ""}`}
+                    aria-label={`Filters (${activeFilterCount})`}
+                  >
+                    <Icon name="fa-filter" /> <span className="s-btn-label">Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}</span>
+                  </button>
+                }
               >
-                <Icon name="fa-filter" /> <span className="s-btn-label">Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}</span>
-              </button>
-              {filtersOpen ? (
-                <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 200 }}>
-                  {filterOptions.map((option) => {
-                    const on = feedFilters.includes(option.id);
-                    return (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`s-menu-item${on ? " on" : ""}`}
-                        role="menuitemcheckbox"
-                        aria-checked={on}
-                        disabled={option.disabled}
-                        onClick={() =>
-                          setFeedFilters((current) =>
-                            current.includes(option.id)
-                              ? current.filter((item) => item !== option.id)
-                              : [...current, option.id]
-                          )
-                        }
-                      >
-                        {option.label}
-                        {option.disabled ? <span className="check">—</span> : on ? <span className="check">✓</span> : null}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : null}
+                {filterOptions.map((option) => {
+                  const on = feedFilters.includes(option.id);
+                  return (
+                    <SMenuCheckboxItem
+                      key={option.id}
+                      className={on ? "on" : undefined}
+                      checked={on}
+                      disabled={option.disabled}
+                      onCheckedChange={() =>
+                        setFeedFilters((current) =>
+                          current.includes(option.id)
+                            ? current.filter((item) => item !== option.id)
+                            : [...current, option.id]
+                        )
+                      }
+                    >
+                      {option.label}
+                    </SMenuCheckboxItem>
+                  );
+                })}
+              </SMenu>
             </div>
 
-            <div className="s-anchor" data-s-menu>
-              <button
-                type="button"
-                className="s-pill"
-                onClick={() => setSortOpen((value) => !value)}
-                aria-expanded={sortOpen}
-                aria-label={sortLabel}
+            <div className="s-anchor">
+              <SMenu
+                align="end"
+                sideOffset={6}
+                style={{ width: 180 }}
+                trigger={
+                  <button type="button" className="s-pill" aria-label={sortLabel}>
+                    {sortLabel}
+                    <Icon name="fa-chevron-down" />
+                  </button>
+                }
               >
-                {sortLabel}
-                <Icon name="fa-chevron-down" />
-              </button>
-              {sortOpen ? (
-                <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 180 }}>
+                <SMenuRadioGroup
+                  value={feedSort}
+                  onValueChange={(value) => setFeedSort(value as typeof feedSort)}
+                >
                   {(
                     [
                       { id: "new", label: "Newest" },
@@ -4018,29 +3979,18 @@ export function CreateStudio() {
                       { id: "least", label: "Least liked" },
                     ] as const
                   ).map((option) => (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className="s-menu-item"
-                      role="menuitemradio"
-                      aria-checked={feedSort === option.id}
-                      onClick={() => {
-                        setFeedSort(option.id);
-                        setSortOpen(false);
-                      }}
-                    >
+                    <SMenuRadioItem key={option.id} value={option.id}>
                       {option.label}
-                      {feedSort === option.id ? <span className="check">✓</span> : null}
-                    </button>
+                    </SMenuRadioItem>
                   ))}
-                </div>
-              ) : null}
+                </SMenuRadioGroup>
+              </SMenu>
             </div>
 
             <button
               type="button"
               className="s-pill"
-              aria-label={`View: $<span className="s-btn-label">{viewMode === "list" ? "List" : "Grid"}</span>`}
+              aria-label={`View: ${viewMode === "list" ? "List" : "Grid"}`}
               onClick={() => setViewMode((value) => (value === "list" ? "grid" : "list"))}
             >
               <Icon name={viewMode === "list" ? "fa-list" : "fa-table-cells"} />

@@ -32,6 +32,7 @@ export type SMenuProps = {
   side?: "top" | "right" | "bottom" | "left";
   sideOffset?: number;
   className?: string;
+  style?: React.CSSProperties;
 };
 
 export function SMenu({
@@ -41,6 +42,7 @@ export function SMenu({
   side = "bottom",
   sideOffset = 6,
   className,
+  style,
 }: SMenuProps) {
   return (
     <DropdownMenu>
@@ -50,6 +52,7 @@ export function SMenu({
         side={side}
         sideOffset={sideOffset}
         className={cn("s-menu", className)}
+        style={style}
       >
         {children}
       </DropdownMenuContent>
