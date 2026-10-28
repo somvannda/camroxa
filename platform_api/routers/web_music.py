@@ -832,6 +832,11 @@ class StaffPickRemixRequest(BaseModel):
     prompt: str = Field(default="", max_length=2000)
 
 
+class OperationRemixRequest(BaseModel):
+    prompt: str = Field(default="", max_length=2000)
+    clip_id: str | None = Field(default=None, max_length=200)
+
+
 @router.post("/studio/generations/{task_id}/extend", status_code=202)
 async def request_studio_extend(
     task_id: UUID,
@@ -1283,6 +1288,30 @@ async def get_studio_operation(
     service: WebMusicServiceDep,
 ) -> dict:
     return await service.get_studio_operation(UUID(ctx.user_id), operation_id)
+
+
+@router.post("/studio/operations/{operation_id}/remix", status_code=202)
+async def request_operation_remix(
+    operation_id: UUID,
+    body: OperationRemixRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_operation_clip_remix(
+        UUID(ctx.user_id),
+        operation_id,
+        clip_id=body.clip_id,
+        prompt=body.prompt,
+    )
+
+
+@router.delete("/studio/operations/{operation_id}")
+async def delete_studio_operation(
+    operation_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.delete_studio_operation(UUID(ctx.user_id), operation_id)
 
 
 @router.get("/quota", response_model=WebMusicQuotaResponse)

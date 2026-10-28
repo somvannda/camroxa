@@ -473,6 +473,12 @@ export type WebMusicStudioClipResult = {
   title?: string;
   audioUrl?: string;
   imageUrl?: string;
+  wavUrl?: string | null;
+  wav_url?: string | null;
+  lrcUrl?: string | null;
+  lrc_url?: string | null;
+  srtUrl?: string | null;
+  srt_url?: string | null;
 };
 
 export type WebMusicStudioOperation = {
@@ -724,6 +730,30 @@ export async function listWebMusicStudioOperations(
   const params = new URLSearchParams({ limit: String(limit) });
   if (operationType) params.set("operation_type", operationType);
   return musicJson(`/api/v3/web-music/studio/operations?${params.toString()}`);
+}
+
+export async function requestWebMusicOperationRemix(
+  operationId: string,
+  clipId?: string,
+  prompt = ""
+): Promise<WebMusicStudioOperation> {
+  return musicJson(
+    `/api/v3/web-music/studio/operations/${encodeURIComponent(operationId)}/remix`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clip_id: clipId, prompt }),
+    }
+  );
+}
+
+export async function deleteWebMusicStudioOperation(
+  operationId: string
+): Promise<{ ok: boolean }> {
+  return musicJson(
+    `/api/v3/web-music/studio/operations/${encodeURIComponent(operationId)}`,
+    { method: "DELETE" }
+  );
 }
 export type WebMusicStudioImage = {
   url: string;

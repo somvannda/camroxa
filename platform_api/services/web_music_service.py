@@ -4116,25 +4116,16 @@ class WebMusicService:
         )
         return {"items": [self._staff_pick_payload(row) for row in rows]}
 
-    async def request_staff_pick_remix(
+    async def _request_provider_clip_remix(
         self,
         user_id: UUID,
-        pick_id: UUID,
+        provider_clip_id: str,
         *,
-        prompt: str = "",
+        prompt: str,
+        account_id: str | None = None,
     ) -> dict[str, Any]:
         from platform_api.config import get_settings
 
-        pick = await self._pool.fetchrow(
-            """
-            SELECT * FROM remix_staff_picks
-            WHERE id = $1 AND is_active = TRUE
-            """,
-            pick_id,
-        )
-        if pick is None:
-            raise NotFoundError("Staff pick not found.")
-        provider_clip_id = str(pick["provider_clip_id"])
         settings = get_settings()
         token = str(settings.studio_internal_token or "").strip()
         if not token:
@@ -4179,17 +4170,19 @@ class WebMusicService:
             charge_op,
             str(charge.ref_id or op["id"]),
         )
+        request_body: dict[str, Any] = {
+            "clip_id": provider_clip_id,
+            "prompt": prompt,
+        }
+        if account_id:
+            request_body["account_id"] = account_id
         base = str(settings.suno_api_base_url or "").rstrip("/")
         try:
             async with httpx.AsyncClient(timeout=45) as client:
                 response = await client.post(
                     f"{base}/internal/studio/cover",
                     headers={"x-internal-token": token},
-                    json={
-                        "clip_id": provider_clip_id,
-                        "prompt": str(prompt or "").strip() or str(pick["title"]),
-                        "account_id": pick["account_id"],
-                    },
+                    json=request_body,
                 )
                 if response.status_code >= 400:
                     detail = "Remix request failed."
@@ -4241,6 +4234,121 @@ class WebMusicService:
             str(payload.get("status") or "queued").lower(),
         )
         return self._studio_operation_payload(updated)
+
+    async def request_staff_pick_remix(
+        self,
+        user_id: UUID,
+        pick_id: UUID,
+        *,
+        prompt: str = "",
+    ) -> dict[str, Any]:
+        pick = await self._pool.fetchrow(
+            """
+            SELECT * FROM remix_staff_picks
+            WHERE id = $1 AND is_active = TRUE
+            """,
+            pick_id,
+        )
+        if pick is None:
+            raise NotFoundError("Staff pick not found.")
+        return await self._request_provider_clip_remix(
+            user_id,
+            str(pick["provider_clip_id"]),
+            prompt=str(prompt or "").strip() or str(pick["title"]),
+            account_id=str(pick["account_id"] or "").strip() or None,
+        )
+
+    async def request_operation_clip_remix(
+        self,
+        user_id: UUID,
+        operation_id: UUID,
+        *,
+        clip_id: str | None = None,
+        prompt: str = "",
+    ) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            "SELECT * FROM studio_operations WHERE id = $1 AND user_id = $2",
+            operation_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError(
+                "Studio operation not found.",
+                details={"operation_id": str(operation_id)},
+            )
+        if str(row["status"] or "").lower() not in ("complete", "completed", "success"):
+            raise ValidationError(
+                "This audio result is not ready to remix yet.",
+                details={"field": "status"},
+            )
+        result = row["result_json"]
+        if isinstance(result, str):
+            try:
+                result = json.loads(result)
+            except Exception:
+                result = None
+        clips = result.get("clips") if isinstance(result, dict) else None
+        if not isinstance(clips, list) or not clips:
+            raise ValidationError(
+                "This audio result has no provider clip to remix.",
+                details={"field": "result"},
+            )
+        wanted = str(clip_id or "").strip()
+        chosen: dict[str, Any] | None = None
+        for clip in clips:
+            if not isinstance(clip, dict):
+                continue
+            candidate = str(clip.get("id") or "").strip()
+            if not candidate:
+                continue
+            if wanted and candidate != wanted:
+                continue
+            chosen = clip
+            break
+        if chosen is None:
+            raise ValidationError(
+                "The selected audio result clip was not found.",
+                details={"field": "clip_id"},
+            )
+        provider_clip_id = str(chosen.get("id") or "").strip()
+        title = str(chosen.get("title") or "Audio result").strip()
+        return await self._request_provider_clip_remix(
+            user_id,
+            provider_clip_id,
+            prompt=str(prompt or "").strip() or title,
+        )
+
+    async def delete_studio_operation(
+        self,
+        user_id: UUID,
+        operation_id: UUID,
+    ) -> dict[str, Any]:
+        row = await self._pool.fetchrow(
+            "SELECT status FROM studio_operations WHERE id = $1 AND user_id = $2",
+            operation_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError(
+                "Studio operation not found.",
+                details={"operation_id": str(operation_id)},
+            )
+        if str(row["status"] or "").lower() not in (
+            "complete",
+            "completed",
+            "success",
+            "error",
+            "failed",
+        ):
+            raise ConflictError(
+                "Wait for this audio result to finish before moving it to trash."
+            )
+        await self._pool.execute(
+            "DELETE FROM studio_operations WHERE id = $1 AND user_id = $2",
+            operation_id,
+            user_id,
+        )
+        return {"ok": True}
 
     async def get_studio_operation(self, user_id: UUID, operation_id: UUID) -> dict[str, Any]:
         from platform_api.config import get_settings
