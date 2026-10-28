@@ -2898,7 +2898,18 @@ class WebMusicService:
                 clean_content,
             )
             if row is None:
-                raise NotFoundError("Saved lyrics not found.", details={"id": str(lyrics_id)})
+                # The draft may have been deleted in another tab. Never lose
+                # the user's current lyrics: save a fresh draft instead.
+                row = await self._pool.fetchrow(
+                    """
+                    INSERT INTO studio_lyrics (user_id, title, content)
+                    VALUES ($1, $2, $3)
+                    RETURNING id, title, content, created_at, updated_at
+                    """,
+                    user_id,
+                    clean_title,
+                    clean_content,
+                )
         return self._saved_lyrics_payload(row)
 
     async def delete_saved_lyrics(self, user_id: UUID, lyrics_id: UUID) -> None:
