@@ -1017,15 +1017,10 @@ class StreamingUploadService:
                 user_id=user_id,
                 refreshed=refreshed,
             ))
-            # Also upload WAV to B2
-            asyncio.create_task(self._upload_web_music_wav(
-                context=context,
-                variant=variant,
-                suno_task_id=suno_task_id,
-                song_slug=song_slug,
-                user_id=user_id,
-                storage=storage,
-            ))
+            # WAV is intentionally NOT scheduled here. Doing so made every
+            # generation convert and store a ~28-33 MiB WAV for both variants
+            # regardless of whether anyone downloaded one. It is produced on
+            # demand by the download path instead.
         except Exception as exc:
             logger.warning("Web music B2 upload failed task=%s variant=%s: %s", suno_task_id, variant, exc)
 
@@ -1986,33 +1981,13 @@ class StreamingUploadService:
                         except Exception as exc:
                             bump("pkg_failed")
                             record_error("package", task_id, exc)
-                    # --- WAV (capped; requires Suno conversion when no url yet) ---
-                    wav_key = str(row.get(f"b2_wav_storage_key_{variant}") or "").strip()
-                    wav_task = str(row.get(f"wav_task_id_{variant}") or "").strip()
-                    wav_status = str(row.get(f"wav_status_{variant}") or "").strip()
-                    wav_eligible = not wav_key and wav_status != "failed"
-                    if wav_eligible and wav_budget > 0 and storage is not None:
-                        wav_budget -= 1
-                        try:
-                            await self._upload_web_music_wav(
-                                context=context,
-                                variant=variant,
-                                suno_task_id=task_id,
-                                song_slug=song_slug,
-                                user_id=user_id,
-                                storage=storage,
-                            )
-                            after = await fetch_col(
-                                f"b2_wav_storage_key_{variant}", task_id
-                            )
-                            if after:
-                                bump("wav_recovered")
-                            else:
-                                bump("wav_failed")
-                        except Exception as exc:
-                            bump("wav_failed")
-                            record_error("wav", task_id, exc)
-                        await persist()
+                    # --- WAV: deliberately skipped ---
+                    # The asset recovery pass used to convert and store missing
+                    # WAVs here (capped by wav_budget). WAV is a paid, optional
+                    # export that the download path builds on demand, so
+                    # recovering it would re-inflate B2 for work nobody asked
+                    # for. _backfill_web_music_wav stays available for explicit
+                    # admin/tool use.
                     # --- LRC (capped) ---
                     instrumental = bool(row.get("instrumental"))
                     lrc_key = str(
