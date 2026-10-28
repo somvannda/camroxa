@@ -308,10 +308,11 @@ export function CreateStudio() {
   const [voiceSearch, setVoiceSearch] = useState("");
   const [voiceCreateView, setVoiceCreateView] = useState(false);
   const [voiceCreateOpen, setVoiceCreateOpen] = useState(false);
-  const [voiceCreateStep, setVoiceCreateStep] = useState<"source" | "record" | "phrase" | "verifying" | "failed" | "details">("source");
+  const [voiceCreateStep, setVoiceCreateStep] = useState<"source" | "record" | "trim" | "phrase" | "verifying" | "failed" | "details">("source");
   const [voiceSampleName, setVoiceSampleName] = useState("");
   const [voiceSampleUrl, setVoiceSampleUrl] = useState<string | null>(null);
   const [voiceSampleBlob, setVoiceSampleBlob] = useState<Blob | null>(null);
+  const [voiceSampleDuration, setVoiceSampleDuration] = useState(0);
   const [voiceSampleVoiceId, setVoiceSampleVoiceId] = useState("");
   const [voicePhraseId, setVoicePhraseId] = useState("");
   const [voicePhraseText, setVoicePhraseText] = useState("");
@@ -754,6 +755,7 @@ export function CreateStudio() {
     setVoiceRecordSeconds(0);
     setVoiceRecording(false);
     setVoiceSampleBlob(null);
+    setVoiceSampleDuration(0);
     setVoiceSampleVoiceId("");
     setVoicePhraseId("");
     setVoicePhraseText("");
@@ -791,7 +793,8 @@ export function CreateStudio() {
         if (voiceRecordMode === "verify") {
           void verifyVoiceRecording(blob);
         } else {
-          void beginVoiceSample(blob);
+          setVoiceSampleDuration(voiceRecordSeconds);
+          setVoiceCreateStep("trim");
         }
       };
       voiceRecorderRef.current = recorder;
@@ -858,13 +861,19 @@ export function CreateStudio() {
   }
 
   function handleVoiceSampleFile(file: File) {
+    const url = URL.createObjectURL(file);
     setVoiceSampleUrl((current) => {
       if (current) URL.revokeObjectURL(current);
-      return URL.createObjectURL(file);
+      return url;
     });
     setVoiceSampleName(file.name);
     setVoiceSampleBlob(file);
-    void beginVoiceSample(file);
+    setVoiceSampleDuration(0);
+    const audio = new Audio(url);
+    audio.onloadedmetadata = () => {
+      if (Number.isFinite(audio.duration)) setVoiceSampleDuration(Math.round(audio.duration));
+    };
+    setVoiceCreateStep("trim");
   }
 
   function openVoiceModal(intent: "use" | "new") {
@@ -4502,6 +4511,68 @@ export function CreateStudio() {
                   {[0, 1, 2, 3].map((step) => (
                     <span key={step} className={step === 0 ? "on" : ""} />
                   ))}
+                </div>
+              </div>
+            ) : null}
+
+            {voiceCreateStep === "trim" ? (
+              <div className="s-voice-trim">
+                <p className="s-voice-trim-copy">Keep the part where you sound most like you.</p>
+                <div className="s-voice-trim-time">
+                  {String(Math.floor(voiceSampleDuration / 60)).padStart(2, "0")}:
+                  {String(voiceSampleDuration % 60).padStart(2, "0")}
+                </div>
+                <div className="s-voice-trim-wave">
+                  <div className="s-voice-trim-bars">
+                    {Array.from({ length: 48 }).map((_, index) => (
+                      <span
+                        key={index}
+                        style={{
+                          height: `${Math.round(
+                            12 + Math.abs(Math.sin(index * 1.7)) * 52
+                          )}%`,
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span className="s-voice-trim-handle left" />
+                  <span className="s-voice-trim-handle right" />
+                </div>
+                <div className="s-voice-trim-range">
+                  00:00 — {String(Math.floor(voiceSampleDuration / 60)).padStart(2, "0")}:
+                  {String(voiceSampleDuration % 60).padStart(2, "0")}
+                </div>
+                <button
+                  type="button"
+                  className="s-voice-trim-play"
+                  aria-label="Play recording"
+                  onClick={() => {
+                    if (voiceSampleUrl) {
+                      const audio = new Audio(voiceSampleUrl);
+                      void audio.play();
+                    }
+                  }}
+                >
+                  <Icon name="fa-play" />
+                </button>
+                <div className="s-voice-trim-actions">
+                  <button
+                    type="button"
+                    className="s-btn s-btn-secondary"
+                    onClick={() => setVoiceCreateStep("source")}
+                  >
+                    Start over
+                  </button>
+                  <button
+                    type="button"
+                    className="s-btn s-btn-primary"
+                    onClick={() => {
+                      if (voiceSampleBlob) void beginVoiceSample(voiceSampleBlob);
+                    }}
+                    disabled={!voiceSampleBlob}
+                  >
+                    Use Voice
+                  </button>
                 </div>
               </div>
             ) : null}
