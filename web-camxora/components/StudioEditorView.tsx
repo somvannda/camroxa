@@ -4714,6 +4714,7 @@ export function StudioEditorView() {
 
   return (
     <div className="page studio-editor-page">
+      <h1 className="sr-only">Studio editor</h1>
       <div className="studio-editor-head">
         <div className="studio-session-title">
           <input

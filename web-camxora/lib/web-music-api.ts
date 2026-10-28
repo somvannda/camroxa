@@ -70,6 +70,37 @@ export type WebMusicPlaylistSummary = {
   description?: string | null;
   is_public?: boolean;
   song_count?: number;
+  updated_at?: string | null;
+};
+
+export type WebMusicPlaylistItem = {
+  id: string;
+  task_id: string;
+  variant: string;
+  position: number;
+  title: string;
+  style?: string;
+  status?: string;
+  ready?: boolean;
+  package_status?: string;
+  audio_url?: string;
+  image_url?: string | null;
+  added_at?: string | null;
+};
+
+export type WebMusicStudioProject = {
+  id: string;
+  title: string;
+  major_version: number;
+  bpm: number;
+  time_signature: string;
+  pinned?: boolean;
+  archived?: boolean;
+  tags?: string[];
+  comment_count?: number;
+  last_comment_at?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 type ErrorBody = {
@@ -379,4 +410,108 @@ export function clipFilename(
 ): string {
   const name = clip.title || generation.title || generation.id;
   return `${name} - ${clipVariantLabel(clip.variant)}.${extension}`.replace(/[\\/:*?"<>|]+/g, "-");
+}
+
+/** Generation keys the viewer has liked, formatted `${generationId}:${variant}`. */
+export async function fetchWebMusicLikedKeys(): Promise<string[]> {
+  const data = await musicJson<{ keys?: string[] }>("/api/v3/web-music/likes/keys");
+  return Array.isArray(data?.keys) ? data.keys : [];
+}
+
+export async function likeWebMusicGeneration(
+  id: string,
+  variant: string,
+  liked: boolean
+): Promise<void> {
+  await musicJson(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/like?variant=${encodeURIComponent(variant)}`,
+    { method: liked ? "PUT" : "DELETE" }
+  );
+}
+
+export async function listWebMusicPlaylistItems(
+  playlistId: string
+): Promise<{ items: WebMusicPlaylistItem[] }> {
+  return musicJson<{ items: WebMusicPlaylistItem[] }>(
+    `/api/v3/web-music/playlists/${encodeURIComponent(playlistId)}/items`
+  );
+}
+
+export async function deleteWebMusicPlaylist(playlistId: string): Promise<void> {
+  await musicJson<void>(`/api/v3/web-music/playlists/${encodeURIComponent(playlistId)}`, {
+    method: "DELETE",
+  });
+}
+
+export async function listWebMusicStudioProjects(
+  limit = 40,
+  offset = 0
+): Promise<{
+  items: WebMusicStudioProject[];
+  total: number;
+  limit: number;
+  offset: number;
+}> {
+  const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+  return musicJson(`/api/v3/web-music/studio/projects?${params.toString()}`);
+}
+
+export type WebMusicStudioUpload = {
+  id: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+  duration_seconds?: number | null;
+  url: string;
+  created_at?: string | null;
+};
+
+export type WebMusicStudioOperation = {
+  id: string;
+  status: string;
+  operation_type: string;
+  mode: string;
+  task_id?: string | null;
+  error_message?: string | null;
+};
+
+export async function uploadWebMusicStudioAudio(
+  file: File,
+  durationSeconds?: number
+): Promise<WebMusicStudioUpload> {
+  const form = new FormData();
+  form.append("file", file);
+  if (durationSeconds && Number.isFinite(durationSeconds)) {
+    form.append("duration_seconds", String(durationSeconds));
+  }
+  return musicJson<WebMusicStudioUpload>("/api/v3/web-music/studio/uploads", {
+    method: "POST",
+    body: form,
+  });
+}
+
+export async function extendWebMusicStudioUpload(
+  uploadId: string,
+  input: { prompt?: string; title?: string; tags?: string; continue_at?: number } = {}
+): Promise<WebMusicStudioOperation> {
+  return musicJson(`/api/v3/web-music/studio/uploads/${encodeURIComponent(uploadId)}/extend`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function coverWebMusicStudioUpload(
+  uploadId: string,
+  input: { prompt?: string; title?: string; tags?: string; cover_start_s?: number; cover_end_s?: number } = {}
+): Promise<WebMusicStudioOperation> {
+  return musicJson(`/api/v3/web-music/studio/uploads/${encodeURIComponent(uploadId)}/cover`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function getWebMusicStudioOperation(id: string): Promise<WebMusicStudioOperation> {
+  return musicJson(`/api/v3/web-music/studio/operations/${encodeURIComponent(id)}`);
 }

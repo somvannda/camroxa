@@ -6,7 +6,8 @@
     "dev": "next dev -p 3103",
     "build": "next build",
     "start": "next start -p 3103",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "check:ui": "node scripts/check-ui-system.mjs"
   },
   "dependencies": {
     "@breezystack/lamejs": "^1.2.7",

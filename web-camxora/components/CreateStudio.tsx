@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
+import { TrackRail } from "@/components/TrackRail";
 import {
   Select,
   SelectContent,
@@ -20,20 +21,26 @@ import {
   WebMusicApiError,
   addWebMusicPlaylistItem,
   clipFilename,
+  coverWebMusicStudioUpload,
   createWebMusicPlaylist,
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
+  extendWebMusicStudioUpload,
   fetchWebMusicClipBlob,
   fetchWebMusicClipWavBlob,
+  fetchWebMusicLikedKeys,
   fetchWebMusicQuota,
   fetchWebMusicTimedLyricsBlob,
+  getWebMusicStudioOperation,
+  uploadWebMusicStudioAudio,
+  type WebMusicStudioUpload,
   generateWebMusic,
   generateWebMusicDraft,
   generateWebMusicStyles,
   getWebMusicGeneration,
   listWebMusicGenerations,
-  listWebMusicPlaylists,
   listWebMusicWorkspaces,
+  likeWebMusicGeneration,
   saveBlob,
   unlockWebMusicPreview,
   updateWebMusicGenerationTitle,
@@ -45,6 +52,18 @@ import {
   type WebMusicWorkspace,
 } from "@/lib/web-music-api";
 import { createStoreZip, type ZipEntry } from "@/lib/zip-store";
+import {
+  clipDownloadUrl,
+  clipIsReady,
+  clipTrackKey,
+  clipVersionLabel,
+  formatClipDuration,
+  formatDate,
+  generationClips,
+  generationIsInstrumental,
+  statusClass,
+  statusLabel,
+} from "@/lib/clip-utils";
 
 type Mode = "simple" | "custom";
 type LyricsMode = "write" | "prompt";
@@ -81,82 +100,19 @@ const styleChips = [
 
 type FeatureTab = "audio" | "voice" | "inspo" | null;
 type DownloadKind = "lrc" | "srt" | "mp3" | "wav";
-
-function statusLabel(status: string): string {
-  return status.replace(/_/g, " ");
-}
-
-function clipVersionLabel(variant?: string | null): string {
-  return variant === "alt" ? "Version 2" : "Version 1";
-}
-
-function generationClips(generation: WebMusicGeneration): WebMusicClip[] {
-  if (generation.clips?.length) return generation.clips;
-  return [
-    {
-      variant: "ok",
-      label: generation.title,
-      audio_url: "",
-      download_url: "",
-      ready: false,
-    },
-    {
-      variant: "alt",
-      label: generation.title,
-      audio_url: "",
-      download_url: "",
-      ready: false,
-    },
-  ];
-}
-
-function clipTrackKey(songId: string, variant: string): string {
-  return `${songId}:${variant}`;
-}
-
-function clipIsReady(generation: WebMusicGeneration, clip: WebMusicClip): boolean {
-  return Boolean(clip.ready || clip.audio_url) ||
-    String(generation.status).toLowerCase() === "success";
-}
-
-function generationIsInstrumental(generation: WebMusicGeneration): boolean {
-  const lyrics = String(generation.lyrics || "").trim().toLowerCase();
-  return Boolean(generation.instrumental) || !lyrics || lyrics === "[instrumental]";
-}
-
-function clipDownloadUrl(
-  songId: string,
-  variant: string,
-  kind: DownloadKind
-): string {
-  const base = `/api/v3/web-music/generations/${encodeURIComponent(songId)}`;
-  if (kind === "mp3") return `${base}/download?variant=${encodeURIComponent(variant)}`;
-  if (kind === "wav") return `${base}/download-wav?variant=${encodeURIComponent(variant)}`;
-  return `${base}/timed-lyrics?variant=${encodeURIComponent(variant)}&format=${kind}`;
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "—";
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "—";
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
-
-function percent(value?: number | null): string {
-  return `${Math.round((value ?? 0.5) * 100)}%`;
-}
-
-function vocalLabel(value?: string | null): string {
-  if (value === "f") return "Female";
-  if (value === "m") return "Male";
-  if (value === "both") return "Both";
-  return "Not set";
-}
+type FeedSort = "new" | "old" | "most" | "least";
+type FeedFilter =
+  | "liked"
+  | "disliked"
+  | "public"
+  | "private"
+  | "uploads"
+  | "full"
+  | "cover"
+  | "voice"
+  | "downloads"
+  | "hideDisliked"
+  | "hideStems";
 
 function SelectBox({
   value,
@@ -209,8 +165,9 @@ export function CreateStudio() {
   const [weirdness, setWeirdness] = useState(0.5);
   const [audioWeight, setAudioWeight] = useState(0.5);
   const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [stylesOpen, setStylesOpen] = useState(true);
+  const [lyricsOpen, setLyricsOpen] = useState(true);
   const [featureTab, setFeatureTab] = useState<FeatureTab>(null);
-  const [copied, setCopied] = useState<"style" | "lyrics" | null>(null);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -230,9 +187,6 @@ export function CreateStudio() {
   const [renameWorkspaceOpen, setRenameWorkspaceOpen] = useState(false);
   const [renameWorkspaceName, setRenameWorkspaceName] = useState("");
   const [playlists, setPlaylists] = useState<WebMusicPlaylistSummary[]>([]);
-  const [playlistOpen, setPlaylistOpen] = useState(false);
-  const [playlistBusy, setPlaylistBusy] = useState(false);
-  const [newPlaylistName, setNewPlaylistName] = useState("");
   const [totalSongs, setTotalSongs] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [simpleSongCount, setSimpleSongCount] = useState<number>(1);
@@ -248,10 +202,104 @@ export function CreateStudio() {
   const [batchError, setBatchError] = useState("");
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [editingTitle, setEditingTitle] = useState(false);
-  const [titleDraft, setTitleDraft] = useState("");
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
+
+  const [createTab, setCreateTab] = useState<"songs" | "speech" | "sounds">("songs");
+  const [feedSearch, setFeedSearch] = useState("");
+  const [feedSort, setFeedSort] = useState<FeedSort>("new");
+  const [feedFilters, setFeedFilters] = useState<FeedFilter[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const [shareOpen, setShareOpen] = useState(false);
+  const [workspaceMenuOpen, setWorkspaceMenuOpen] = useState(false);
+  const [saveMenuOpen, setSaveMenuOpen] = useState(false);
+  const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
+  const [likedKeys, setLikedKeys] = useState<string[]>([]);
+  const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
+  const [toast, setToast] = useState("");
+  const [feedPage, setFeedPage] = useState(1);
+  const [attachModal, setAttachModal] = useState<null | "audio" | "voice" | "image" | "inspo" | "video" | "playlist" | "voices">(null);
+  const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addSubmenu, setAddSubmenu] = useState<null | "lyrics" | "styles" | "audio" | "voice">(null);
+  const [audioUpload, setAudioUpload] = useState<WebMusicStudioUpload | null>(null);
+  const [audioUploading, setAudioUploading] = useState(false);
+  const [audioBusy, setAudioBusy] = useState(false);
+  const [audioError, setAudioError] = useState("");
+  const [recording, setRecording] = useState(false);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const recordChunks = useRef<Blob[]>([]);
+  const [modelOpen, setModelOpen] = useState(false);
+  const [creditsOpen, setCreditsOpen] = useState(false);
+  const [stylePresetsOpen, setStylePresetsOpen] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [durationMode, setDurationMode] = useState<"custom" | "auto">("auto");
+  const [maxMode, setMaxMode] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    let active = true;
+    fetchWebMusicLikedKeys()
+      .then((keys) => {
+        if (active) setLikedKeys(keys);
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(""), 2200);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  useEffect(() => {
+    setFeedPage(1);
+  }, [feedSearch, feedSort, feedFilters, activeWorkspaceId]);
+
+  useEffect(() => {
+    const onDoc = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest("[data-s-menu]")) {
+        setFiltersOpen(false);
+        setSortOpen(false);
+        setModelOpen(false);
+        setCreditsOpen(false);
+        setShareOpen(false);
+        setWorkspaceMenuOpen(false);
+        setSaveMenuOpen(false);
+        setRowMenuKey(null);
+        setStylePresetsOpen(false);
+        setAddMenuOpen(false);
+        setAddSubmenu(null);
+      }
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setFiltersOpen(false);
+        setSortOpen(false);
+        setModelOpen(false);
+        setCreditsOpen(false);
+        setShareOpen(false);
+        setWorkspaceMenuOpen(false);
+        setSaveMenuOpen(false);
+        setRowMenuKey(null);
+        setStylePresetsOpen(false);
+        setAddMenuOpen(false);
+        setAddSubmenu(null);
+        setAttachModal(null);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, []);
 
   useEffect(() => {
     mounted.current = true;
@@ -347,7 +395,6 @@ export function CreateStudio() {
 
   async function loadDetail(id: string, variant?: string) {
     setSelectedId(id);
-    setEditingTitle(false);
     if (variant) setSelectedVariant(variant);
     setDetailLoading(true);
     try {
@@ -444,13 +491,118 @@ export function CreateStudio() {
     setStyle(picks.join(", "));
   }
 
-  async function copyText(text: string, kind: "style" | "lyrics") {
+  async function probeAudioDuration(file: File): Promise<number | undefined> {
+    return new Promise((resolve) => {
+      const url = URL.createObjectURL(file);
+      const audio = new Audio();
+      audio.preload = "metadata";
+      audio.onloadedmetadata = () => {
+        const duration = Number.isFinite(audio.duration) ? audio.duration : undefined;
+        URL.revokeObjectURL(url);
+        resolve(duration);
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(undefined);
+      };
+      audio.src = url;
+    });
+  }
+
+  async function uploadAudioFile(file: File) {
+    setAudioUploading(true);
+    setAudioError("");
     try {
-      await navigator.clipboard.writeText(text);
-      setCopied(kind);
-      window.setTimeout(() => setCopied(null), 1600);
+      const duration = await probeAudioDuration(file);
+      const upload = await uploadWebMusicStudioAudio(file, duration);
+      if (!mounted.current) return;
+      setAudioUpload(upload);
+      setToast("Audio uploaded");
+    } catch (cause) {
+      if (mounted.current) {
+        setAudioError(cause instanceof Error ? cause.message : "Could not upload the audio file");
+      }
+    } finally {
+      if (mounted.current) setAudioUploading(false);
+    }
+  }
+
+  async function toggleRecording() {
+    if (recording) {
+      recorderRef.current?.stop();
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      recordChunks.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size) recordChunks.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        setRecording(false);
+        const blob = new Blob(recordChunks.current, { type: recorder.mimeType || "audio/webm" });
+        const file = new File([blob], `recording-${Date.now()}.webm`, { type: blob.type });
+        void uploadAudioFile(file);
+      };
+      recorder.start();
+      recorderRef.current = recorder;
+      setAudioError("");
+      setRecording(true);
     } catch {
-      setError("Copy failed. Select the text and copy it manually.");
+      setAudioError("Microphone access was denied. Check your browser permission.");
+    }
+  }
+
+  async function pollStudioOperation(id: string, attempt = 0) {
+    if (!mounted.current) return;
+    const operation = await getWebMusicStudioOperation(id).catch(() => null);
+    if (!mounted.current) return;
+    if (operation) {
+      const status = operation.status.toLowerCase();
+      if (status === "success" || status === "completed" || status === "done") {
+        setToast("Audio is ready");
+        void refreshSongs();
+        void refresh();
+        return;
+      }
+      if (status === "error" || status === "failed") {
+        setError(operation.error_message || "The audio operation failed.");
+        return;
+      }
+    }
+    if (attempt >= 40) {
+      setError("Audio is still processing. Check the feed in a minute.");
+      return;
+    }
+    window.setTimeout(() => void pollStudioOperation(id, attempt + 1), 3000);
+  }
+
+  async function runAudioOperation(kind: "extend" | "cover") {
+    if (!audioUpload || audioBusy) return;
+    setAudioBusy(true);
+    setAudioError("");
+    const input = {
+      prompt: prompt || style,
+      title: title || audioUpload.filename,
+      tags: style,
+    };
+    try {
+      const operation =
+        kind === "extend"
+          ? await extendWebMusicStudioUpload(audioUpload.id, input)
+          : await coverWebMusicStudioUpload(audioUpload.id, input);
+      if (!mounted.current) return;
+      setAttachModal(null);
+      setToast(kind === "extend" ? "Extend queued" : "Cover queued");
+      void pollStudioOperation(operation.id);
+    } catch (cause) {
+      if (mounted.current) {
+        setAudioError(cause instanceof Error ? cause.message : "Could not start the audio operation");
+      }
+    } finally {
+      if (mounted.current) setAudioBusy(false);
     }
   }
 
@@ -567,48 +719,6 @@ export function CreateStudio() {
     }
   }
 
-  async function openPlaylistMenu() {
-    setPlaylistOpen((value) => !value);
-    if (!playlists.length) {
-      const payload = await listWebMusicPlaylists().catch(() => ({ items: [] }));
-      if (mounted.current) setPlaylists(payload.items);
-    }
-  }
-
-  async function onAddToPlaylist(playlist: WebMusicPlaylistSummary) {
-    if (!selected || !selectedClip?.ready || playlistBusy) {
-      setError("This track upload is still processing. Try again once it is fully ready.");
-      return;
-    }
-    setPlaylistBusy(true);
-    setError("");
-    try {
-      await addWebMusicPlaylistItem(playlist.id, selected.id, selectedClip.variant);
-      setNotice(`Added "${selectedClip.title || selected.title}" to ${playlist.name}.`);
-      setPlaylistOpen(false);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not add to playlist");
-    } finally {
-      if (mounted.current) setPlaylistBusy(false);
-    }
-  }
-
-  async function onCreatePlaylist() {
-    const name = newPlaylistName.trim();
-    if (!name || playlistBusy) return;
-    setPlaylistBusy(true);
-    try {
-      const created = await createWebMusicPlaylist(name);
-      setPlaylists((current) => [...current, created]);
-      setNewPlaylistName("");
-      setNotice(`Created playlist "${created.name}".`);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not create playlist");
-    } finally {
-      if (mounted.current) setPlaylistBusy(false);
-    }
-  }
-
   async function loadMoreSongs() {
     if (loadingMore || songs.length >= totalSongs) return;
     await reloadGenerations(activeWorkspaceId, songs.length);
@@ -675,28 +785,6 @@ export function CreateStudio() {
         setBatchBusy(false);
         setBatchDownloadProgress(null);
       }
-    }
-  }
-
-  async function saveTitle() {
-    if (!selected) return;
-    const nextTitle = titleDraft.trim();
-    if (!nextTitle) {
-      setError("Title cannot be empty.");
-      return;
-    }
-    try {
-      const updated = await updateWebMusicGenerationTitle(
-        selected.id,
-        nextTitle,
-        selectedClip?.variant
-      );
-      if (!mounted.current) return;
-      setSelectedDetail(updated);
-      setSongs((current) => current.map((item) => (item.id === updated.id ? updated : item)));
-      setEditingTitle(false);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not rename this track");
     }
   }
 
@@ -905,470 +993,1772 @@ export function CreateStudio() {
           : batchOverQueue
             ? `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`
             : null;
-  const activeWorkspaceName =
-    workspaces.find((workspace) => workspace.id === activeWorkspaceId)?.name ?? "My Workspace";
   const generationCount = totalSongs || songs.length;
   const generationWord = generationCount === 1 ? "song" : "songs";
   const versionCount = songs.reduce((total, song) => total + generationClips(song).length, 0);
   const versionWord = versionCount === 1 ? "version" : "versions";
-  const selectedInstrumental = selected ? generationIsInstrumental(selected) : false;
   const selectedClipAddable = Boolean(selectedClip?.ready);
+
+  const filterOptions: Array<{ id: FeedFilter; label: string; disabled?: boolean }> = [
+    { id: "liked", label: "Liked" },
+    { id: "disliked", label: "Disliked" },
+    { id: "public", label: "Public", disabled: true },
+    { id: "private", label: "Private", disabled: true },
+    { id: "uploads", label: "Uploads", disabled: true },
+    { id: "full", label: "Full song" },
+    { id: "cover", label: "Cover", disabled: true },
+    { id: "voice", label: "Voice", disabled: true },
+    { id: "downloads", label: "Downloads" },
+    { id: "hideDisliked", label: "Hide Disliked" },
+    { id: "hideStems", label: "Hide Stems", disabled: true },
+  ];
+
+  const rowKeyOf = (song: WebMusicGeneration, clip: WebMusicClip) =>
+    clipTrackKey(song.id, clip.variant);
+
+  const isLikedRow = (song: WebMusicGeneration, clip: WebMusicClip) =>
+    likedKeys.includes(rowKeyOf(song, clip));
+  const isDislikedRow = (song: WebMusicGeneration, clip: WebMusicClip) =>
+    dislikedKeys.includes(rowKeyOf(song, clip));
+
+  type FeedRow = {
+    song: WebMusicGeneration;
+    clip: WebMusicClip;
+    key: string;
+    title: string;
+    ready: boolean;
+    duration: number;
+    createdAt: number;
+  };
+
+  const feedRows: FeedRow[] = songs.flatMap((song) =>
+    generationClips(song).map((clip) => ({
+      song,
+      clip,
+      key: rowKeyOf(song, clip),
+      title: clip.title || song.title || "Untitled",
+      ready: clipIsReady(song, clip),
+      duration: Math.round(clip.duration_seconds || 0),
+      createdAt: song.created_at ? new Date(song.created_at).getTime() : 0,
+    }))
+  );
+
+  const searchTerm = feedSearch.trim().toLowerCase();
+  const filteredRows = feedRows.filter((row) => {
+    if (searchTerm) {
+      const haystack = `${row.title} ${row.song.style || ""} ${row.song.lyrics || ""}`.toLowerCase();
+      if (!haystack.includes(searchTerm)) return false;
+    }
+    if (feedFilters.includes("liked") && !isLikedRow(row.song, row.clip)) return false;
+    if (feedFilters.includes("disliked") && !isDislikedRow(row.song, row.clip)) return false;
+    if (feedFilters.includes("hideDisliked") && isDislikedRow(row.song, row.clip)) return false;
+    if (feedFilters.includes("downloads") && !row.ready) return false;
+    if (feedFilters.includes("full") && row.duration > 0 && row.duration < 60) return false;
+    return true;
+  });
+
+  const sortedRows = [...filteredRows].sort((a, b) => {
+    if (feedSort === "old") return a.createdAt - b.createdAt;
+    if (feedSort === "most") {
+      const diff = Number(isLikedRow(b.song, b.clip)) - Number(isLikedRow(a.song, a.clip));
+      return diff || b.createdAt - a.createdAt;
+    }
+    if (feedSort === "least") {
+      const diff = Number(isLikedRow(a.song, a.clip)) - Number(isLikedRow(b.song, b.clip));
+      return diff || b.createdAt - a.createdAt;
+    }
+    return b.createdAt - a.createdAt;
+  });
+
+  const pageSize = 50;
+  const pageCount = Math.max(1, Math.ceil(sortedRows.length / pageSize));
+  const pageRows = sortedRows.slice((feedPage - 1) * pageSize, feedPage * pageSize);
+  const dayLabel = (value: number) => {
+    if (!value) return "Earlier";
+    const date = new Date(value);
+    const today = new Date();
+    const day = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    if (value >= day) return "Today";
+    if (value >= day - 86_400_000) return "Yesterday";
+    return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  };
+  const groupedRows = pageRows.reduce<Array<{ label: string; rows: FeedRow[] }>>((groups, row) => {
+    const label = dayLabel(row.createdAt);
+    const last = groups[groups.length - 1];
+    if (last && last.label === label) last.rows.push(row);
+    else groups.push({ label, rows: [row] });
+    return groups;
+  }, []);
+  const activeFilterCount = feedFilters.length;
+  const displayCredits = quota?.credits_remaining ?? credits ?? 0;
+  const modelLabel = models.find((item) => item.value === model)?.label ?? "V6 Pro";
+  const activeWorkspace = workspaces.find((workspace) => workspace.id === activeWorkspaceId);
+  const activeWorkspaceName = activeWorkspace?.name ?? "My Workspace";
+  const savedStylePrompts = songs
+    .map((song) => (song.style || "").trim())
+    .filter((value, index, all) => value && all.indexOf(value) === index)
+    .slice(0, 8);
+
+  async function toggleLikeRow(song: WebMusicGeneration, clip: WebMusicClip) {
+    const key = rowKeyOf(song, clip);
+    const nextLiked = !likedKeys.includes(key);
+    setLikedKeys((current) =>
+      nextLiked ? [...current, key] : current.filter((item) => item !== key)
+    );
+    setToast(nextLiked ? "Saved to Liked" : "Removed from Liked");
+    try {
+      await likeWebMusicGeneration(song.id, clip.variant, nextLiked);
+    } catch {
+      setLikedKeys((current) =>
+        nextLiked ? current.filter((item) => item !== key) : [...current, key]
+      );
+      setToast("Could not update like");
+    }
+  }
+
+  function toggleDislikeRow(song: WebMusicGeneration, clip: WebMusicClip) {
+    const key = rowKeyOf(song, clip);
+    setDislikedKeys((current) =>
+      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+    );
+  }
+
+  async function copyClipLink(song: WebMusicGeneration, clip: WebMusicClip) {
+    const url = `${window.location.origin}/library?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setToast("Link copied");
+    } catch {
+      setToast(url);
+    }
+  }
+
+  async function deleteRow(song: WebMusicGeneration) {
+    setDeletingId(song.id);
+    try {
+      await deleteWebMusicGeneration(song.id);
+      setSongs((current) => current.filter((item) => item.id !== song.id));
+      if (selectedId === song.id) {
+        setSelectedId(null);
+        }
+      setToast("Song deleted");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not delete song");
+    } finally {
+      if (mounted.current) setDeletingId(null);
+    }
+  }
+
+  function openDetail(song: WebMusicGeneration, clip: WebMusicClip) {
+    void selectSong(song.id, clip.variant);
+  }
+
+  function clearAllFields() {
+    setPrompt("");
+    setTitle("");
+    setStyle("");
+    setLyrics("");
+    setNegativeTags("");
+    setInstrumental(false);
+    setStyleWeight(0.5);
+    setWeirdness(0.5);
+    setAudioWeight(0.5);
+    setError("");
+    setNotice("");
+    setStylesError("");
+  }
+
+  const createDisabled =
+    busy ||
+    !formReady ||
+    needsCredits ||
+    batchRequiresUpgrade ||
+    queueFull ||
+    cooldownSeconds > 0 ||
+    Boolean(quota?.requires_upgrade);
 
   if (loading || !user) {
     return (
-      <div className="page">
-        <div className="page-head">
-          <div>
-            <div className="eyebrow">Studio</div>
-            <h1>Create</h1>
-            <p>{loading ? "Checking your session…" : "Redirecting to sign in…"}</p>
+      <div className="s-page">
+        <div className="s-create-grid">
+          <div className="s-form-col">
+            <div className="s-form-scroll">
+              {[0, 1, 2].map((item) => (
+                <div className="s-skel" key={item}>
+                  <span className="a" />
+                  <span className="b">
+                    <i />
+                    <i />
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+          <div className="s-feed">
+            <div className="s-feed-head" />
+            <div className="s-feed-scroll">
+              {[0, 1, 2, 3].map((item) => (
+                <div className="s-skel" key={item}>
+                  <span className="a" />
+                  <span className="b">
+                    <i />
+                    <i />
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       </div>
     );
   }
 
+  const shortModel =
+    model === "V6" ? "v6" : model === "V6_MINI" ? "v6-mini" : "v6-wild";
+  const creditsLabel =
+    displayCredits >= 1000
+      ? `${(displayCredits / 1000).toFixed(1).replace(/\.0$/, "")}k`
+      : displayCredits.toLocaleString();
+  const sortLabel =
+    feedSort === "new"
+      ? "Newest"
+      : feedSort === "old"
+        ? "Oldest"
+        : feedSort === "most"
+          ? "Most liked"
+          : "Least liked";
+
+  const renderRow = (row: FeedRow) => {
+    const { song, clip, key, title, ready } = row;
+    const liked = isLikedRow(song, clip);
+    const disliked = isDislikedRow(song, clip);
+    const isSelected = selectedId === song.id && selectedVariant === clip.variant;
+    const selectedForBatch = selectedClipKeys.includes(key);
+    const instrumental = generationIsInstrumental(song);
+    return (
+      <div
+        className={`s-row s-row-compact${isSelected ? " selected" : ""}`}
+        key={key}
+        role="group"
+        aria-label={title}
+        onClick={() => {
+          if (selectionMode) {
+            if (ready) toggleClipSelection(key);
+            return;
+          }
+          openDetail(song, clip);
+        }}
+      >
+        {selectionMode ? (
+          <button
+            type="button"
+            className={`s-selectbox${selectedForBatch ? " on" : ""}`}
+            aria-label={`Select ${title}`}
+            aria-pressed={selectedForBatch}
+            onClick={(event) => {
+              event.stopPropagation();
+              if (ready) toggleClipSelection(key);
+            }}
+          >
+            {selectedForBatch ? <Icon name="fa-check" /> : null}
+          </button>
+        ) : null}
+
+        <button
+          type="button"
+          className="s-row-play"
+          aria-label={ready ? `Play ${title}` : "Song not ready"}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (ready) playSong(song, clip);
+          }}
+        >
+          <Icon name={ready ? "fa-play" : "fa-hourglass-half"} />
+        </button>
+
+        <div className="s-row-body">
+          <div className="s-row-title">
+            <a
+              href={`/library?clip=${encodeURIComponent(song.id)}`}
+              onClick={(event) => {
+                event.preventDefault();
+                openDetail(song, clip);
+              }}
+            >
+              {title}
+            </a>
+            <span className="s-row-version">· {clipVersionLabel(clip.variant)}</span>
+            {song.is_preview ? <span className="s-status live">Preview</span> : null}
+          </div>
+          <div className="s-row-desc">
+            {ready ? "Ready" : statusLabel(song.status)} · {song.model_label || song.model || shortModel} ·{" "}
+            {formatDate(song.created_at)}
+            {row.duration ? ` · ${formatClipDuration(row.duration)}` : ""}
+          </div>
+        </div>
+
+        <div className="s-row-downloads" onClick={(event) => event.stopPropagation()}>
+          {!instrumental && ready ? (
+            <>
+              <a className="s-dl" href={clipDownloadUrl(song.id, clip.variant, "lrc")} aria-label="Download LRC">
+                LRC
+              </a>
+              <a className="s-dl" href={clipDownloadUrl(song.id, clip.variant, "srt")} aria-label="Download SRT">
+                SRT
+              </a>
+            </>
+          ) : null}
+          {ready ? (
+            <>
+              <a
+                className="s-dl"
+                href={clip.download_url || clipDownloadUrl(song.id, clip.variant, "mp3")}
+                aria-label="Download MP3"
+              >
+                MP3
+              </a>
+              <a className="s-dl" href={clipDownloadUrl(song.id, clip.variant, "wav")} aria-label="Download WAV">
+                WAV
+              </a>
+            </>
+          ) : null}
+        </div>
+
+        <div className="s-anchor" data-s-menu style={{ position: "static" }} onClick={(event) => event.stopPropagation()}>
+          <button
+            type="button"
+            className="s-row-more"
+            aria-label="More options"
+            aria-expanded={rowMenuKey === key}
+            onClick={() => setRowMenuKey((current) => (current === key ? null : key))}
+          >
+            <Icon name="fa-ellipsis-vertical" />
+          </button>
+          {rowMenuKey === key ? (
+            <div className="s-menu" role="menu" style={{ right: 12, top: 40, minWidth: 220 }}>
+              <button
+                type="button"
+                className="s-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  void toggleLikeRow(song, clip);
+                }}
+              >
+                <Icon name="fa-heart" /> {liked ? "Remove like" : "Like"}
+              </button>
+              <button
+                type="button"
+                className="s-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  toggleDislikeRow(song, clip);
+                }}
+              >
+                <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
+              </button>
+              <button
+                type="button"
+                className="s-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  void copyClipLink(song, clip);
+                }}
+              >
+                <Icon name="fa-link" /> Copy link
+              </button>
+              <Link className="s-menu-item" role="menuitem" href="/studio/editor" onClick={() => setRowMenuKey(null)}>
+                <Icon name="fa-wand-magic-sparkles" /> Remix / Edit
+              </Link>
+              <div className="s-menu-sep" />
+              <button
+                type="button"
+                className="s-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  openDetail(song, clip);
+                }}
+                disabled={!selectedClipAddable && !ready}
+              >
+                <Icon name="fa-list" /> Add to playlist
+              </button>
+              <button
+                type="button"
+                className="s-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  window.location.href = `/publish?clip=${encodeURIComponent(song.id)}`;
+                }}
+              >
+                <Icon name="fa-arrow-up-from-bracket" /> Publish
+              </button>
+              <Link className="s-menu-item" role="menuitem" href="/studio/editor" onClick={() => setRowMenuKey(null)}>
+                <Icon name="fa-table-columns" /> Open in Studio
+              </Link>
+              <div className="s-menu-sep" />
+              <button
+                type="button"
+                className="s-menu-item"
+                role="menuitem"
+                onClick={() => {
+                  setRowMenuKey(null);
+                  void deleteRow(song);
+                }}
+                disabled={deletingId === song.id}
+              >
+                <Icon name="fa-trash" /> {deletingId === song.id ? "Deleting…" : "Delete"}
+              </button>
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="page create-page">
-      <div className="create-layout">
-        <section className="panel create-card">
-          <div className="create-card-top">
-            <div className="create-tabs" role="tablist" aria-label="Creation mode">
-              <button
-                className={mode === "simple" ? "on" : ""}
-                type="button"
-                role="tab"
-                aria-selected={mode === "simple"}
-                onClick={() => setMode("simple")}
-              >
-                Simple
-              </button>
-              <button
-                className={mode === "custom" ? "on" : ""}
-                type="button"
-                role="tab"
-                aria-selected={mode === "custom"}
-                onClick={() => setMode("custom")}
-              >
-                Advanced
-              </button>
-            </div>
-            <div className="create-model-pill">
-              <Icon name="fa-bolt" />
-              <SelectBox
-                value={model}
-                onChange={(value) => setModel(value as WebMusicModel)}
-                options={models}
-                ariaLabel="Model"
-                className="create-model-select"
-              />
-            </div>
+    <div className="s-page">
+      <h1 className="sr-only">Create music</h1>
+      <div className="s-create-grid with-rail">
+        <div
+          className={`s-form-col${dragging ? " dragging" : ""}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            setAttachModal("audio");
+          }}
+        >
+          <div className="s-drop-hint" aria-hidden="true">
+            Drop to attach · Drop here to remix
           </div>
 
-          <div className="create-feature-tabs">
-            {(["audio", "voice", "inspo"] as const).map((tab) => (
+          <div className="s-tabs" role="tablist" aria-label="What to create">
+            {(
+              [
+                { id: "songs", label: "Songs" },
+                { id: "speech", label: "Speech" },
+                { id: "sounds", label: "Sounds" },
+              ] as const
+            ).map((item, index) => (
               <button
-                key={tab}
+                key={item.id}
                 type="button"
-                className={featureTab === tab ? "on" : ""}
-                aria-pressed={featureTab === tab}
-                onClick={() => setFeatureTab((current) => (current === tab ? null : tab))}
+                role="tab"
+                className={`s-tab${createTab === item.id ? " on" : ""}`}
+                aria-selected={createTab === item.id}
+                onClick={() => setCreateTab(item.id)}
               >
-                + {tab}
+                {item.label}
+                {createTab === item.id ? (
+                  <span
+                    className="s-tab-indicator"
+                    style={{ left: `${(index * 100) / 3}%`, width: `${100 / 3}%` }}
+                  />
+                ) : null}
               </button>
             ))}
           </div>
-          {featureTab ? (
-            <p className="create-feature-note">
-              {featureTab === "audio"
-                ? "Reference audio uploads are coming soon."
-                : featureTab === "voice"
-                  ? "Voice reference uploads are coming soon."
-                  : "Inspiration references are coming soon."}
-            </p>
-          ) : null}
 
-          <div className="create-card-body" ref={cardBodyRef}>
-            {mode === "simple" ? (
-              <div className="create-field">
-                <div className="create-field-head">
-                  <label htmlFor="create-prompt">Song description</label>
-                  <span>{prompt.length}/5000</span>
-                </div>
-                <textarea
-                  id="create-prompt"
-                  className="textarea create-prompt"
-                  placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPM…"
-                  value={prompt}
-                  onChange={(event) => setPrompt(event.target.value)}
-                  maxLength={5000}
-                  rows={8}
-                />
-                <div className="create-count-card">
-                  <div>
-                    <b>Songs to generate</b>
-                    <span>
-                      Each song returns 2 versions
-                      {requiredCredits > 0 ? ` · ${requiredCredits} credits total` : ""}
-                    </span>
+          {createTab !== "songs" ? (
+            <div className="s-empty" style={{ flex: 1 }}>
+              <span className="ico">
+                <Icon name={createTab === "speech" ? "fa-microphone-lines" : "fa-wave-square"} />
+              </span>
+              <b>{createTab === "speech" ? "Speech" : "Sounds"} is coming soon</b>
+              <p>
+                {createTab === "speech"
+                  ? "Turn a script into narrated audio with cloned voices. This workspace is not enabled yet."
+                  : "Generate sound effects and one-shot samples. This workspace is not enabled yet."}
+              </p>
+              <button type="button" className="s-btn s-btn-secondary" onClick={() => setCreateTab("songs")}>
+                Create a song instead
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="s-form-scroll">
+                <div className="s-form-topline">
+                  <div className="s-segment" role="tablist" aria-label="Create form mode">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === "simple"}
+                      className={`s-segment-item${mode === "simple" ? " on" : ""}`}
+                      onClick={() => setMode("simple")}
+                    >
+                      Simple
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={mode === "custom"}
+                      className={`s-segment-item${mode === "custom" ? " on" : ""}`}
+                      onClick={() => setMode("custom")}
+                    >
+                      Advanced
+                    </button>
                   </div>
-                  <SelectBox
-                    value={String(simpleSongCount)}
-                    onChange={(value) => setSimpleSongCount(Number(value))}
-                    options={SIMPLE_SONG_COUNTS.map((count) => ({
-                      value: String(count),
-                      label:
-                        count === 1
-                          ? "1 song"
-                          : `${count} songs · ${count * 2} versions`,
-                    }))}
-                    ariaLabel="Songs to generate"
-                    className="create-count-select"
-                  />
+
+                  <div className="s-top-meta">
+                  <div className="s-anchor" data-s-menu>
+                    <button
+                      type="button"
+                      className="s-credits"
+                      aria-label={`Credits remaining: ${displayCredits.toLocaleString()}`}
+                      onClick={() => setCreditsOpen((value) => !value)}
+                    >
+                      <Icon name="fa-coins" />
+                      {creditsLabel}
+                    </button>
+                    {creditsOpen ? (
+                      <div className="s-menu" role="menu" style={{ top: 46, left: 0, width: 260 }}>
+                        <div className="s-menu-label">Credits</div>
+                        <div className="s-menu-item" style={{ cursor: "default" }}>
+                          <span>Balance</span>
+                          <span className="check">{displayCredits.toLocaleString()}</span>
+                        </div>
+                        <div className="s-menu-item" style={{ cursor: "default" }}>
+                          <span>Per song</span>
+                          <span className="check">{(quota?.credits_per_song ?? 0).toLocaleString()}</span>
+                        </div>
+                        {quota ? (
+                          <div className="s-menu-item" style={{ cursor: "default" }}>
+                            <span>Plan</span>
+                            <span className="check">
+                              {quota.has_subscription || quota.is_pro ? "Pro" : "Free"}
+                            </span>
+                          </div>
+                        ) : null}
+                        <div className="s-menu-sep" />
+                        <Link className="s-menu-item" href="/pricing" role="menuitem">
+                          <Icon name="fa-bag-shopping" /> Buy credits
+                        </Link>
+                        <Link className="s-menu-item" href="/redeem" role="menuitem">
+                          <Icon name="fa-ticket" /> Redeem code
+                        </Link>
+                      </div>
+                    ) : null}
+                  </div>
+
+                  <div className="s-anchor" data-s-menu>
+                    <button
+                      type="button"
+                      className="s-model"
+                      aria-label="Model"
+                      aria-expanded={modelOpen}
+                      onClick={() => setModelOpen((value) => !value)}
+                    >
+                      {shortModel}
+                      <Icon name="fa-chevron-down" />
+                    </button>
+                    {modelOpen ? (
+                      <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 320 }}>
+                        <div className="s-menu-label">Model</div>
+                        <button type="button" className="s-menu-item" role="menuitem" disabled>
+                          <Icon name="fa-wand-magic-sparkles" /> Create Custom Model
+                          <span className="check">Beta</span>
+                        </button>
+                        <div className="s-menu-item" style={{ cursor: "default", height: "auto", padding: "4px 10px 8px" }}>
+                          <span className="s-note">Create a model based on your uploads (100 Credits)</span>
+                        </div>
+                        <div className="s-menu-sep" />
+                        <div className="s-menu-label">All Models</div>
+                        {[
+                          { value: "V6" as WebMusicModel, name: "v6", tag: "Pro", desc: "Powerful. Versatile. Refined. Our best model yet." },
+                          { value: "V6_WILD" as WebMusicModel, name: "v6-wild", tag: "Pro", desc: "Best for experimental ideas." },
+                          { value: "V6_MINI" as WebMusicModel, name: "v6-mini", tag: "", desc: "A free, more efficient version of premium v6 models." },
+                        ].map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            role="menuitemradio"
+                            aria-checked={model === option.value}
+                            className={`s-menu-item${model === option.value ? " on" : ""}`}
+                            style={{ height: "auto", padding: "8px 10px", alignItems: "flex-start" }}
+                            onClick={() => {
+                              setModel(option.value);
+                              setModelOpen(false);
+                            }}
+                          >
+                            <span style={{ display: "flex", flexDirection: "column", gap: 2, textAlign: "left" }}>
+                              <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <b style={{ fontWeight: 500, color: "var(--s-text)" }}>{option.name}</b>
+                                {option.tag ? <span className="s-tag">{option.tag}</span> : null}
+                              </span>
+                              <span className="s-note">{option.desc}</span>
+                            </span>
+                            {model === option.value ? <span className="check">✓</span> : null}
+                          </button>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                  </div>
                 </div>
+
+                <div className="s-attach">
+                  <button
+                    type="button"
+                    className="s-attach-btn"
+                    onClick={() => setAttachModal("audio")}
+                    aria-label="Add audio - Browse, upload, or record audio"
+                  >
+                    <Icon name="fa-music" /> <span className="s-btn-label">Audio</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="s-attach-btn"
+                    onClick={() => setAttachModal("voice")}
+                    aria-label="Add Voice"
+                  >
+                    <Icon name="fa-microphone" /> <span className="s-btn-label">Voice</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="s-attach-btn"
+                    onClick={() => setAttachModal(mode === "custom" ? "inspo" : "image")}
+                    aria-label={mode === "custom" ? "Add inspiration from a playlist" : "Add an image to your creation."}
+                  >
+                    <Icon name={mode === "custom" ? "fa-lightbulb" : "fa-image"} />{" "}
+                    <span className="s-btn-label">{mode === "custom" ? "Inspo" : "Image"}</span>
+                  </button>
+                </div>
+
+                {mode === "simple" ? (
+                  <>
+                    <div className="s-prompt-box">
+                      <textarea
+                        id="create-prompt"
+                        value={prompt}
+                        onChange={(event) => setPrompt(event.target.value)}
+                        placeholder="A warm Khmer ballad about the Mekong at sunset. Female vocal, acoustic guitar, 72 BPM…"
+                        maxLength={5000}
+                        rows={5}
+                        aria-label="Song description"
+                      />
+                      <div className="s-prompt-foot">
+                        <div className="s-anchor" data-s-menu>
+                          <button
+                            type="button"
+                            className="s-add-btn"
+                            aria-label="Add to prompt"
+                            aria-expanded={addMenuOpen}
+                            onClick={() => {
+                              setAddMenuOpen((value) => !value);
+                              setAddSubmenu(null);
+                            }}
+                          >
+                            <Icon name="fa-plus" />
+                          </button>
+                          {addMenuOpen ? (
+                            <div className="s-menu s-add-menu" role="menu" style={{ bottom: 44, left: 0, width: 230 }}>
+                              {addSubmenu ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    className="s-add-back"
+                                    onClick={() => setAddSubmenu(null)}
+                                  >
+                                    <Icon name="fa-chevron-left" />
+                                    {addSubmenu === "lyrics"
+                                      ? "Lyrics"
+                                      : addSubmenu === "styles"
+                                        ? "Styles"
+                                        : addSubmenu === "audio"
+                                          ? "Audio"
+                                          : "Voice"}
+                                  </button>
+                                  {addSubmenu === "lyrics" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setMode("custom");
+                                          setAdvancedOpen(false);
+                                          setLyricsOpen(true);
+                                          window.setTimeout(() => document.getElementById("create-lyrics")?.focus(), 80);
+                                        }}
+                                      >
+                                        <Icon name="fa-pen" /> Write lyrics
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setMode("custom");
+                                          setLyricsOpen(true);
+                                          void writeLyrics();
+                                        }}
+                                      >
+                                        <Icon name="fa-wand-magic-sparkles" /> Auto-generate
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className={`s-menu-item${instrumental ? " on" : ""}`}
+                                        role="menuitemcheckbox"
+                                        aria-checked={instrumental}
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setInstrumental((value) => !value);
+                                        }}
+                                      >
+                                        <Icon name={instrumental ? "fa-check" : "fa-music"} /> Instrumental
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {addSubmenu === "styles" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setMode("custom");
+                                          setStylePresetsOpen(true);
+                                        }}
+                                      >
+                                        <Icon name="fa-bookmark" /> Saved styles
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          shuffleStyle();
+                                        }}
+                                      >
+                                        <Icon name="fa-shuffle" /> Shuffle styles
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setMode("custom");
+                                          void suggestStyles();
+                                        }}
+                                      >
+                                        <Icon name="fa-wand-magic-sparkles" /> Enhance styles
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {addSubmenu === "audio" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setAttachModal("audio");
+                                        }}
+                                      >
+                                        <Icon name="fa-arrow-up-from-bracket" /> Upload audio
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setAttachModal("audio");
+                                        }}
+                                      >
+                                        <Icon name="fa-microphone" /> Record audio
+                                      </button>
+                                    </>
+                                  ) : null}
+                                  {addSubmenu === "voice" ? (
+                                    <>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setAttachModal("voices");
+                                        }}
+                                      >
+                                        <Icon name="fa-user" /> My voices
+                                      </button>
+                                      <button
+                                        type="button"
+                                        className="s-menu-item"
+                                        role="menuitem"
+                                        onClick={() => {
+                                          setAddMenuOpen(false);
+                                          setAddSubmenu(null);
+                                          setAttachModal("voices");
+                                        }}
+                                      >
+                                        <Icon name="fa-users" /> Browse voices
+                                      </button>
+                                    </>
+                                  ) : null}
+                                </>
+                              ) : (
+                                <>
+                                  {(
+                                    [
+                                      { id: "lyrics", icon: "fa-font", label: "Lyrics" },
+                                      { id: "styles", icon: "fa-music", label: "Styles" },
+                                    ] as const
+                                  ).map((item) => (
+                                    <button
+                                      key={item.id}
+                                      type="button"
+                                      className="s-menu-item"
+                                      role="menuitem"
+                                      onClick={() => setAddSubmenu(item.id)}
+                                    >
+                                      <Icon name={item.icon} /> {item.label}
+                                      <Icon name="fa-chevron-right" className="s-menu-caret" />
+                                    </button>
+                                  ))}
+                                  <button
+                                    type="button"
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setAddMenuOpen(false);
+                                      setAttachModal("playlist");
+                                    }}
+                                  >
+                                    <Icon name="fa-rectangle-list" /> Playlist
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setAddMenuOpen(false);
+                                      setAttachModal("image");
+                                    }}
+                                  >
+                                    <Icon name="fa-image" /> Image
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setAddMenuOpen(false);
+                                      setAttachModal("video");
+                                    }}
+                                  >
+                                    <Icon name="fa-video" /> Video
+                                  </button>
+                                  {(
+                                    [
+                                      { id: "audio", icon: "fa-file-audio", label: "Audio" },
+                                      { id: "voice", icon: "fa-microphone", label: "Voice" },
+                                    ] as const
+                                  ).map((item) => (
+                                    <button
+                                      key={item.id}
+                                      type="button"
+                                      className="s-menu-item"
+                                      role="menuitem"
+                                      onClick={() => setAddSubmenu(item.id)}
+                                    >
+                                      <Icon name={item.icon} /> {item.label}
+                                      <Icon name="fa-chevron-right" className="s-menu-caret" />
+                                    </button>
+                                  ))}
+                                </>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                        <span className="s-char">{prompt.length}/5000</span>
+                      </div>
+                      <span className="s-drop" aria-hidden="true">
+                        <span>Drop to attach</span>
+                        <span>Drop here to remix</span>
+                      </span>
+                    </div>
+
+                    <div className="s-form-card">
+                      <div className="s-rowline">
+                        <span className="s-rowline-label">Songs to generate</span>
+                        <div className="s-radio-pair" role="group" aria-label="Songs to generate">
+                          {SIMPLE_SONG_COUNTS.map((count) => (
+                            <button
+                              key={count}
+                              type="button"
+                              className={simpleSongCount === count ? "on" : ""}
+                              aria-pressed={simpleSongCount === count}
+                              onClick={() => setSimpleSongCount(count)}
+                            >
+                              {count}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {simpleSongCount > 1 ? (
+                        <p className="s-note">
+                          {simpleSongCount} songs · {simpleSongCount * 2} versions
+                          {requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}
+                        </p>
+                      ) : (
+                        <p className="s-note">Each song returns 2 versions{requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}</p>
+                      )}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="s-form-card">
+                      <div className="s-rowline">
+                        <span className="s-rowline-label">Styles</span>
+                        <div className="s-counts">
+                          <span className="s-char">{style.length}/1000</span>
+                        <div className="s-anchor" data-s-menu>
+                          <button
+                            type="button"
+                            className="s-sec-toggle"
+                            aria-label="Saved styles" aria-expanded={stylePresetsOpen}
+                            title="Saved style prompts"
+                            onClick={() => setStylePresetsOpen((value) => !value)}
+                          >
+                            <Icon name="fa-bookmark" />
+                          </button>
+                          {stylePresetsOpen ? (
+                            <div className="s-menu" role="menu" style={{ top: 40, right: 0, width: 260 }}>
+                              <div className="s-menu-label">Saved styles</div>
+                              {savedStylePrompts.length ? (
+                                savedStylePrompts.map((value) => (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    className="s-menu-item"
+                                    role="menuitem"
+                                    onClick={() => {
+                                      setStyle(value);
+                                      setStylePresetsOpen(false);
+                                    }}
+                                  >
+                                    <Icon name="fa-bookmark" />
+                                    <span
+                                      style={{
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
+                                      }}
+                                    >
+                                      {value}
+                                    </span>
+                                  </button>
+                                ))
+                              ) : (
+                                <div className="s-note" style={{ padding: 10 }}>
+                                  Styles you generate are saved here.
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+
+                          <button
+                            type="button"
+                            className="s-sec-toggle"
+                            aria-expanded={stylesOpen}
+                            aria-label={stylesOpen ? "Collapse styles" : "Expand styles"}
+                            onClick={() => setStylesOpen((value) => !value)}
+                          >
+                            <Icon name={stylesOpen ? "fa-chevron-up" : "fa-chevron-down"} />
+                          </button>
+                        </div>
+                      </div>
+                      {stylesOpen ? (
+                        <>
+                      <div className="s-style-box">
+                        <textarea
+                          id="create-style"
+                          value={style}
+                          onChange={(event) => setStyle(event.target.value)}
+                          placeholder={
+                            instrumental
+                              ? "Instrumental genre, mood, instrumentation, tempo…"
+                              : "urbano, electric guitar, upbeat rock, 128 BPM, eurodance"
+                          }
+                          maxLength={1000}
+                          rows={3}
+                          aria-label="Styles"
+                        />
+                      </div>
+                      <div className="s-rowline">
+                        <button
+                          type="button"
+                          className={`s-chip${instrumental ? " on" : ""}`}
+                          aria-pressed={instrumental}
+                          onClick={() => setInstrumental((value) => !value)}
+                        >
+                          <Icon name={instrumental ? "fa-check" : "fa-music"} /> Instrumental
+                        </button>
+                        <div className="s-counts">
+                          <button type="button" className="s-chip" onClick={shuffleStyle}>
+                            <Icon name="fa-shuffle" /> Shuffle
+                          </button>
+                          <button
+                            type="button"
+                            className="s-chip"
+                            onClick={() => void suggestStyles()}
+                            disabled={generatingStyles}
+                          >
+                            <Icon name="fa-wand-magic-sparkles" /> {generatingStyles ? "Enhancing…" : "Enhance"}
+                          </button>
+                        </div>
+                      </div>
+                      </>
+                      ) : null}
+                    </div>
+
+                    <div className="s-form-card">
+                      <div className="s-rowline">
+                        <span className="s-rowline-label">Lyrics</span>
+                        <div className="s-lyrics-tools">
+                          {!instrumental ? (
+                            <span className="s-radio-pair" role="group" aria-label="Lyrics mode">
+                              <button
+                                type="button"
+                                className={lyricsMode === "write" ? "on" : ""}
+                                aria-pressed={lyricsMode === "write"}
+                                onClick={() => setLyricsMode("write")}
+                              >
+                                Write
+                              </button>
+                              <button
+                                type="button"
+                                className={lyricsMode === "prompt" ? "on" : ""}
+                                aria-pressed={lyricsMode === "prompt"}
+                                onClick={() => setLyricsMode("prompt")}
+                              >
+                                Prompt
+                              </button>
+                            </span>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="s-sec-toggle"
+                            aria-expanded={lyricsOpen}
+                            aria-label={lyricsOpen ? "Collapse lyrics" : "Expand lyrics"}
+                            onClick={() => setLyricsOpen((value) => !value)}
+                          >
+                            <Icon name={lyricsOpen ? "fa-chevron-up" : "fa-chevron-down"} />
+                          </button>
+                        </div>
+                      </div>
+                      {lyricsOpen ? (
+                        <>
+                      <div className="s-lyrics-box">
+                        <textarea
+                          id="create-lyrics"
+                          value={lyrics}
+                          onChange={(event) => setLyrics(event.target.value)}
+                          placeholder={
+                            instrumental
+                              ? "Instrumental track — lyrics are not used."
+                              : lyricsMode === "write"
+                                ? "Write lyrics, or paste a verse…"
+                                : "Describe the story or feeling you want the lyrics to capture…"
+                          }
+                          disabled={instrumental}
+                          maxLength={5000}
+                          rows={5}
+                          aria-label="Lyrics"
+                        />
+                        <div className="s-lyrics-foot">
+                          {lyricsMode === "write" && !instrumental ? (
+                            <button
+                              type="button"
+                              className="s-lyrics-auto"
+                              onClick={() => void writeLyrics()}
+                              disabled={writingLyrics || instrumental}
+                              aria-label={writingLyrics ? "Generating lyrics" : "Auto-generate lyrics"}
+                              title="Auto-generate lyrics"
+                            >
+                              <Icon name="fa-wand-magic-sparkles" />
+                            </button>
+                          ) : (
+                            <span />
+                          )}
+                          <span className="s-char">{lyrics.length}/5000</span>
+                        </div>
+                      </div>
+                      {lyricsMode === "prompt" && !instrumental ? (
+                        <p className="s-note">Lyrics are written for you when the song starts.</p>
+                      ) : null}
+                      </>
+                      ) : null}
+                    </div>
+
+                    <div className="s-more s-form-card">
+                      <button
+                        type="button"
+                        className="s-more-head"
+                        aria-expanded={advancedOpen}
+                        onClick={() => setAdvancedOpen((value) => !value)}
+                      >
+                        <Icon name="fa-sliders" /> More Options
+                        <Icon name={advancedOpen ? "fa-chevron-up" : "fa-chevron-down"} />
+                      </button>
+                      {advancedOpen ? (
+                        <div className="s-more-body">
+                          <div className="s-settings-row">
+                            <span className="s-settings-label">Exclude styles</span>
+                          </div>
+                          <input
+                            className="s-input"
+                            value={negativeTags}
+                            onChange={(event) => setNegativeTags(event.target.value)}
+                            placeholder="choir, backing vocals, falsetto"
+                            aria-label="Exclude styles"
+                          />
+
+                          <div className="s-settings-row">
+                            <span className="s-settings-label">Vocal Gender</span>
+                            <div className="s-radio-pair" role="group" aria-label="Vocal gender">
+                              {(
+                                [
+                                  { value: "m", label: "Male" },
+                                  { value: "f", label: "Female" },
+                                ] as const
+                              ).map((option) => (
+                                <button
+                                  key={option.value}
+                                  type="button"
+                                  className={vocalGender === option.value ? "on" : ""}
+                                  aria-pressed={vocalGender === option.value}
+                                  onClick={() => setVocalGender(option.value)}
+                                  disabled={instrumental}
+                                >
+                                  {option.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="s-settings-row">
+                            <span className="s-settings-label">Duration</span>
+                            <div className="s-radio-pair" role="group" aria-label="Duration">
+                              <button
+                                type="button"
+                                className={durationMode === "custom" ? "on" : ""}
+                                aria-pressed={durationMode === "custom"}
+                                onClick={() => setDurationMode("custom")}
+                              >
+                                Custom
+                              </button>
+                              <button
+                                type="button"
+                                className={durationMode === "auto" ? "on" : ""}
+                                aria-pressed={durationMode === "auto"}
+                                onClick={() => setDurationMode("auto")}
+                              >
+                                Auto
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="s-settings-row">
+                            <span className="s-settings-label">Max Mode</span>
+                            <button
+                              type="button"
+                              className={`s-switch${maxMode ? " on" : ""}`}
+                              role="switch"
+                              aria-checked={maxMode}
+                              aria-label="Max Mode"
+                              onClick={() => setMaxMode((value) => !value)}
+                            />
+                          </div>
+
+                          <div className="s-settings-row">
+                            <span className="s-settings-label">Weirdness</span>
+                            <div className="s-slider">
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={weirdness}
+                                aria-label="Weirdness"
+                                style={{ "--v": `${Math.round(weirdness * 100)}%` } as React.CSSProperties}
+                                onChange={(event) => setWeirdness(Number(event.target.value))}
+                              />
+                              <output>{Math.round(weirdness * 100)} %</output>
+                            </div>
+                          </div>
+
+                          <div className="s-settings-row">
+                            <span className="s-settings-label">Style Influence</span>
+                            <div className="s-slider">
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={styleWeight}
+                                aria-label="Style Influence"
+                                style={{ "--v": `${Math.round(styleWeight * 100)}%` } as React.CSSProperties}
+                                onChange={(event) => setStyleWeight(Number(event.target.value))}
+                              />
+                              <output>{Math.round(styleWeight * 100)} %</output>
+                            </div>
+                          </div>
+
+                          <div className="s-settings-row">
+                            <span className="s-settings-label">Variety</span>
+                            <div className="s-slider">
+                              <input
+                                type="range"
+                                min={0}
+                                max={1}
+                                step={0.01}
+                                value={audioWeight}
+                                aria-label="Variety"
+                                style={{ "--v": `${Math.round(audioWeight * 100)}%` } as React.CSSProperties}
+                                onChange={(event) => setAudioWeight(Number(event.target.value))}
+                              />
+                              <output>{Math.round(audioWeight * 100)} %</output>
+                            </div>
+                          </div>
+
+                          <div className="s-settings-row">
+                            <span className="s-settings-label">Personalize</span>
+                            <div className="s-radio-pair" role="group" aria-label="Personalize">
+                              <button type="button" className="on">
+                                My Taste
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </div>
+
+                    <div className="s-field s-form-card">
+                      <span className="s-field-label">Song Title (Optional)</span>
+                      <input
+                        className="s-input"
+                        value={title}
+                        onChange={(event) => setTitle(event.target.value)}
+                        placeholder="Song title"
+                        maxLength={200}
+                        aria-label="Song Title (Optional)"
+                      />
+                    </div>
+
+                    {stylesError ? <p className="s-error">{stylesError}</p> : null}
+                  </>
+                )}
+
+                    <div className="s-rowline s-form-card">
+                      <span className="s-rowline-label">Save to...</span>
+                      <div className="s-anchor" data-s-menu>
+                        <button
+                          type="button"
+                          className="s-select"
+                          onClick={() => { setWorkspaceMenuOpen(false); setSaveMenuOpen((value) => !value); }}
+                        >
+                          {activeWorkspaceName}
+                          <Icon name="fa-chevron-down" />
+                        </button>
+                        {saveMenuOpen ? (
+                          <div className="s-menu" role="menu" style={{ bottom: 46, right: 0, width: 240 }}>
+                            <div className="s-menu-label">Workspaces</div>
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={() => {
+                                setActiveWorkspaceId(null);
+                                setSaveMenuOpen(false);
+                              }}
+                            >
+                              <Icon name="fa-folder" /> My Workspace
+                              {!activeWorkspaceId ? <span className="check">✓</span> : null}
+                            </button>
+                            {workspaces.filter((workspace) => !workspace.is_default).map((workspace) => (
+                              <button
+                                key={workspace.id}
+                                type="button"
+                                className="s-menu-item"
+                                role="menuitem"
+                                onClick={() => {
+                                  setActiveWorkspaceId(workspace.id);
+                                  setSaveMenuOpen(false);
+                                }}
+                              >
+                                <Icon name="fa-folder" /> {workspace.name}
+                                {activeWorkspaceId === workspace.id ? <span className="check">✓</span> : null}
+                              </button>
+                            ))}
+                            <div className="s-menu-sep" />
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={() => {
+                                setNewWorkspaceOpen(true);
+                                setNewWorkspaceName("");
+                                setSaveMenuOpen(false);
+                              }}
+                            >
+                              <Icon name="fa-plus" /> New workspace
+                            </button>
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={() => {
+                                setRenameWorkspaceName(activeWorkspaceName);
+                                setRenameWorkspaceOpen(true);
+                                setSaveMenuOpen(false);
+                              }}
+                            >
+                              <Icon name="fa-pen" /> Rename current
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    {newWorkspaceOpen ? (
+                      <div className="s-rowline">
+                        <input
+                          className="s-input"
+                          autoFocus
+                          value={newWorkspaceName}
+                          onChange={(event) => setNewWorkspaceName(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") void onCreateWorkspace();
+                            if (event.key === "Escape") setNewWorkspaceOpen(false);
+                          }}
+                          placeholder="Workspace name"
+                          aria-label="New workspace name"
+                          maxLength={120}
+                        />
+                        <button
+                          type="button"
+                          className="s-btn s-btn-secondary"
+                          onClick={() => void onCreateWorkspace()}
+                          disabled={workspaceBusy || !newWorkspaceName.trim()}
+                        >
+                          {workspaceBusy ? "Saving…" : "Create"}
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {renameWorkspaceOpen ? (
+                      <div className="s-rowline">
+                        <input
+                          className="s-input"
+                          autoFocus
+                          value={renameWorkspaceName}
+                          onChange={(event) => setRenameWorkspaceName(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") void onRenameWorkspace();
+                            if (event.key === "Escape") setRenameWorkspaceOpen(false);
+                          }}
+                          placeholder="Workspace name"
+                          aria-label="Workspace name"
+                          maxLength={120}
+                        />
+                        <button
+                          type="button"
+                          className="s-btn s-btn-secondary"
+                          onClick={() => void onRenameWorkspace()}
+                          disabled={workspaceBusy || !renameWorkspaceName.trim()}
+                        >
+                          {workspaceBusy ? "Saving…" : "Save"}
+                        </button>
+                      </div>
+                    ) : null}
+
                 {batchWarning ? (
-                  <p className="create-batch-warning" role="status">
+                  <p className="s-note warn">
                     {batchWarning} <Link href="/pricing">Upgrade</Link>
                   </p>
                 ) : null}
               </div>
-            ) : (
-              <>
-                <div className="create-section-head">
-                  <h3>Lyrics</h3>
-                  {lyricsMode === "write" ? (
-                    <button
-                      className="create-auto"
-                      type="button"
-                      onClick={writeLyrics}
-                      disabled={writingLyrics || instrumental}
-                    >
-                      <Icon name="fa-wand-magic-sparkles" />
-                      {writingLyrics ? "Generating…" : "Auto-generate"}
-                    </button>
-                  ) : (
-                    <span className="create-auto-note">Generated on Create</span>
-                  )}
-                </div>
-                <div className="create-lyrics-tabs" role="tablist" aria-label="Lyrics mode">
-                  <button
-                    className={lyricsMode === "write" ? "on" : ""}
-                    type="button"
-                    role="tab"
-                    aria-selected={lyricsMode === "write"}
-                    onClick={() => setLyricsMode("write")}
-                  >
-                    Write
-                  </button>
-                  <button
-                    className={lyricsMode === "prompt" ? "on" : ""}
-                    type="button"
-                    role="tab"
-                    aria-selected={lyricsMode === "prompt"}
-                    onClick={() => setLyricsMode("prompt")}
-                  >
-                    Prompt
-                  </button>
-                </div>
-                <textarea
-                  className="textarea create-lyrics"
-                  value={lyrics}
-                  onChange={(event) => setLyrics(event.target.value)}
-                  placeholder={
-                    lyricsMode === "write"
-                      ? "Write lyrics, or paste a verse…"
-                      : "Describe the story or feeling you want the lyrics to capture…"
-                  }
-                  disabled={instrumental}
-                  maxLength={5000}
-                  rows={7}
-                />
-                <div className="create-char-row">
-                  <span>{lyrics.length}/5000</span>
-                </div>
 
-                <div className="create-section-head">
-                  <h3>Styles</h3>
-                  <div className="create-style-actions">
-                    <button className="create-shuffle" type="button" onClick={shuffleStyle}>
-                      <Icon name="fa-shuffle" /> Shuffle
-                    </button>
-                    <button
-                      className="create-enhance"
-                      type="button"
-                      onClick={() => void suggestStyles()}
-                      disabled={generatingStyles}
-                    >
-                      <Icon name="fa-wand-magic-sparkles" />
-                      {generatingStyles ? "Enhancing…" : "Enhance"}
-                    </button>
-                  </div>
+              <div className="s-form-foot">
+                {error ? (
+                  <p className="s-error" role="alert">
+                    {error}
+                  </p>
+                ) : null}
+                {notice ? <p className="s-note" role="status">{notice}</p> : null}
+                {createStatusHint ? <p className="s-note" role="status">{createStatusHint}</p> : null}
+                {(needsCredits && batchCount === 1) || quota?.requires_upgrade ? (
+                  <p className="s-note warn">
+                    Not enough credits for this selection. <Link href="/pricing">Buy packs</Link>
+                  </p>
+                ) : null}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    className="s-btn s-btn-ghost s-btn-icon s-cta-icon"
+                    aria-label="Clear all form inputs"
+                    title="Clear all form inputs"
+                    onClick={clearAllFields}
+                  >
+                    <Icon name="fa-eraser" />
+                  </button>
+                  <button
+                    type="button"
+                    className="s-create-btn"
+                    style={{ flex: 1 }}
+                    onClick={onSubmit}
+                    disabled={createDisabled}
+                    aria-busy={busy}
+                  >
+                    {batchProgress
+                      ? `Creating ${Math.min(batchProgress.done + 1, batchProgress.total)}/${batchProgress.total}…`
+                      : busy
+                        ? "Creating…"
+                        : cooldownSeconds > 0
+                          ? `Wait ${cooldownSeconds}s`
+                          : queueFull
+                            ? `Queue full (${queueUsed}/${queueLimit})`
+                            : "Create"}
+                  </button>
                 </div>
-                <textarea
-                  id="create-style"
-                  className="textarea create-style"
-                  value={style}
-                  onChange={(event) => setStyle(event.target.value)}
-                  placeholder="urbano, electric guitar, upbeat rock, 128 BPM, eurodance"
-                  maxLength={1000}
-                  rows={4}
-                />
-                <div className="create-chips">
-                  {styleChips.map((chip) => (
-                    <button key={chip} type="button" onClick={() => appendStyle(chip)}>
-                      {chip}
+                <p className="s-note" style={{ textAlign: "center" }}>
+                  {requiredCredits > 0
+                    ? `${requiredCredits.toLocaleString()} credits · ${availableCredits.toLocaleString()} available`
+                    : "Uses your credit balance"}
+                </p>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="s-feed">
+          <div className="s-feed-head">
+            <span className="s-workspace-label">Workspaces</span>
+            <div className="s-anchor" data-s-menu>
+              <button
+                type="button"
+                className="s-workspace"
+                onClick={() => { setSaveMenuOpen(false); setWorkspaceMenuOpen((value) => !value); }}
+                aria-expanded={workspaceMenuOpen}
+              >
+                <b>{activeWorkspaceName}</b>
+                <Icon name="fa-chevron-down" />
+              </button>
+              {workspaceMenuOpen ? (
+                <div className="s-menu" role="menu" style={{ top: 34, left: 0, width: 240 }}>
+                  <div className="s-menu-label">Workspaces</div>
+                  <button
+                    type="button"
+                    className="s-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setActiveWorkspaceId(null);
+                      setWorkspaceMenuOpen(false);
+                    }}
+                  >
+                    <Icon name="fa-folder" /> My Workspace
+                    {!activeWorkspaceId ? <span className="check">✓</span> : null}
+                  </button>
+                  {workspaces.filter((workspace) => !workspace.is_default).map((workspace) => (
+                    <button
+                      key={workspace.id}
+                      type="button"
+                      className="s-menu-item"
+                      role="menuitem"
+                      onClick={() => {
+                        setActiveWorkspaceId(workspace.id);
+                        setWorkspaceMenuOpen(false);
+                        setSelectedClipKeys([]);
+                      }}
+                    >
+                      <Icon name="fa-folder" /> {workspace.name}
+                      {activeWorkspaceId === workspace.id ? <span className="check">✓</span> : null}
+                    </button>
+                  ))}
+                  <div className="s-menu-sep" />
+                  <button
+                    type="button"
+                    className="s-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setNewWorkspaceOpen(true);
+                      setNewWorkspaceName("");
+                      setWorkspaceMenuOpen(false);
+                    }}
+                  >
+                    <Icon name="fa-plus" /> New workspace
+                  </button>
+                  <button
+                    type="button"
+                    className="s-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setRenameWorkspaceName(activeWorkspaceName);
+                      setRenameWorkspaceOpen(true);
+                      setWorkspaceMenuOpen(false);
+                    }}
+                  >
+                    <Icon name="fa-pen" /> Rename current
+                  </button>
+                </div>
+              ) : null}
+            </div>
+
+            <span className="s-spacer" />
+
+            <button
+              type="button"
+              className="s-btn s-btn-icon sm"
+              aria-label="New workspace"
+              title="New workspace"
+              onClick={() => {
+                setNewWorkspaceName("");
+                setNewWorkspaceOpen(true);
+              }}
+            >
+              <Icon name="fa-plus" />
+            </button>
+            <button
+              type="button"
+              className={`s-btn s-btn-icon sm${selectionMode ? " on" : ""}`}
+              aria-label="Select clips"
+              aria-pressed={selectionMode}
+              onClick={() => {
+                setSelectionMode((value) => !value);
+                setSelectedClipKeys([]);
+              }}
+            >
+              <Icon name="fa-check-double" />
+            </button>
+            <div className="s-anchor" data-s-menu>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Share workspace"
+                onClick={() => setShareOpen((value) => !value)}
+                aria-expanded={shareOpen}
+              >
+                <Icon name="fa-share" />
+              </button>
+              {shareOpen ? (
+                <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 230 }}>
+                  <button
+                    type="button"
+                    className="s-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      void navigator.clipboard
+                        .writeText(window.location.href)
+                        .then(() => setToast("Workspace link copied"))
+                        .catch(() => setToast("Could not copy link"));
+                      setShareOpen(false);
+                    }}
+                  >
+                    <Icon name="fa-link" /> Copy workspace link
+                  </button>
+                  <Link className="s-menu-item" href="/library" role="menuitem">
+                    <Icon name="fa-rectangle-list" /> Open in Library
+                  </Link>
+                  <button
+                    type="button"
+                    className="s-menu-item"
+                    role="menuitem"
+                    onClick={() => {
+                      setSelectionMode(true);
+                      setShareOpen(false);
+                    }}
+                  >
+                    <Icon name="fa-download" /> Select &amp; download
+                  </button>
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="s-feed-tools">
+            <label className="s-search">
+              <Icon name="fa-magnifying-glass" />
+              <input
+                value={feedSearch}
+                onChange={(event) => setFeedSearch(event.target.value)}
+                placeholder="Search clips"
+                aria-label="Search clips"
+              />
+            </label>
+
+            <div className="s-anchor" data-s-menu>
+              <button
+                type="button"
+                className={`s-pill${activeFilterCount ? " on" : ""}`}
+                onClick={() => setFiltersOpen((value) => !value)}
+                aria-expanded={filtersOpen}
+                aria-label={`Filters (${activeFilterCount})`}
+              >
+                <Icon name="fa-filter" /> <span className="s-btn-label">Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}</span>
+              </button>
+              {filtersOpen ? (
+                <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 200 }}>
+                  {filterOptions.map((option) => {
+                    const on = feedFilters.includes(option.id);
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        className={`s-menu-item${on ? " on" : ""}`}
+                        role="menuitemcheckbox"
+                        aria-checked={on}
+                        disabled={option.disabled}
+                        onClick={() =>
+                          setFeedFilters((current) =>
+                            current.includes(option.id)
+                              ? current.filter((item) => item !== option.id)
+                              : [...current, option.id]
+                          )
+                        }
+                      >
+                        {option.label}
+                        {option.disabled ? <span className="check">—</span> : on ? <span className="check">✓</span> : null}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+
+            <div className="s-anchor" data-s-menu>
+              <button
+                type="button"
+                className="s-pill"
+                onClick={() => setSortOpen((value) => !value)}
+                aria-expanded={sortOpen}
+                aria-label={sortLabel}
+              >
+                {sortLabel}
+                <Icon name="fa-chevron-down" />
+              </button>
+              {sortOpen ? (
+                <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 180 }}>
+                  {(
+                    [
+                      { id: "new", label: "Newest" },
+                      { id: "old", label: "Oldest" },
+                      { id: "most", label: "Most liked" },
+                      { id: "least", label: "Least liked" },
+                    ] as const
+                  ).map((option) => (
+                    <button
+                      key={option.id}
+                      type="button"
+                      className="s-menu-item"
+                      role="menuitemradio"
+                      aria-checked={feedSort === option.id}
+                      onClick={() => {
+                        setFeedSort(option.id);
+                        setSortOpen(false);
+                      }}
+                    >
+                      {option.label}
+                      {feedSort === option.id ? <span className="check">✓</span> : null}
                     </button>
                   ))}
                 </div>
-                {stylesError ? <p className="create-section-error" role="alert">{stylesError}</p> : null}
-                <div className="create-field create-negative">
-                  <label htmlFor="create-negative">Negative tags (optional)</label>
-                  <input
-                    id="create-negative"
-                    className="input"
-                    value={negativeTags}
-                    onChange={(event) => setNegativeTags(event.target.value)}
-                    placeholder="choir, backing vocals, falsetto"
-                  />
-                </div>
-              </>
-            )}
-
-            <div className="create-option-card">
-              <div>
-                <b>Instrumental</b>
-                <span>No vocals — music only.</span>
-              </div>
-              <Switch
-                checked={instrumental}
-                onCheckedChange={setInstrumental}
-                aria-label="Instrumental"
-              />
+              ) : null}
             </div>
 
             <button
-              className="create-advanced-toggle"
               type="button"
-              aria-expanded={advancedOpen}
-              onClick={() => setAdvancedOpen((value) => !value)}
+              className="s-pill"
+              aria-label={`View: $<span className="s-btn-label">{viewMode === "list" ? "List" : "Grid"}</span>`}
+              onClick={() => setViewMode((value) => (value === "list" ? "grid" : "list"))}
             >
-              <Icon name="fa-sliders" />
-              More Options
-              <Icon name={advancedOpen ? "fa-chevron-up" : "fa-chevron-down"} />
+              <Icon name={viewMode === "list" ? "fa-list" : "fa-table-cells"} />
+              <span className="s-btn-label">{viewMode === "list" ? "List" : "Grid"}</span>
             </button>
 
-            {advancedOpen ? (
-              <div className="create-advanced">
-                <div className="create-field">
-                  <label>Vocal gender</label>
-                  <SelectBox
-                    value={vocalGender}
-                    onChange={(value) => setVocalGender(value as "f" | "m" | "both")}
-                    options={[
-                      { value: "f", label: "Female" },
-                      { value: "m", label: "Male" },
-                      { value: "both", label: "Both" },
-                    ]}
-                    ariaLabel="Vocal gender"
-                    className="create-select-full"
-                  />
-                </div>
-                <div className="create-sliders">
-                  <label>Style influence <b>{Math.round(styleWeight * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={styleWeight} onChange={(event) => setStyleWeight(Number(event.target.value))} /></label>
-                  <label>Weirdness <b>{Math.round(weirdness * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={weirdness} onChange={(event) => setWeirdness(Number(event.target.value))} /></label>
-                  <label>Audio influence <b>{Math.round(audioWeight * 100)}%</b><input type="range" min="0" max="1" step="0.01" value={audioWeight} onChange={(event) => setAudioWeight(Number(event.target.value))} /></label>
-                </div>
-              </div>
-            ) : null}
-
-            <label className="create-title-row" htmlFor="create-title">
-              <Icon name="fa-music" />
-              <span className="create-title-label">Song title</span>
-              <input
-                id="create-title"
-                value={title}
-                onChange={(event) => setTitle(event.target.value)}
-                placeholder="Optional"
-                maxLength={200}
-                aria-label="Song title (optional)"
-              />
-            </label>
-
-            {error ? <p className="fine create-error" role="alert">{error}</p> : null}
-            {notice ? <p className="fine create-notice" role="status">{notice}</p> : null}
-          </div>
-
-          <div className="create-submit">
-            <span className="create-cost">
-              <Icon name="fa-coins" />
-              {requiredCredits > 0
-                ? `${requiredCredits.toLocaleString()} credits · ${availableCredits.toLocaleString()} available`
-                : "Uses your credit balance"}
-            </span>
-            {(needsCredits && batchCount === 1) || quota?.requires_upgrade ? (
-              <p className="create-credit-warning">
-                Not enough credits for this selection.{" "}
-                <Link href="/pricing">Buy packs</Link>
-              </p>
-            ) : null}
-            {createStatusHint ? (
-              <p className="create-status-hint" role="status">{createStatusHint}</p>
-            ) : null}
-            <button
-              className="create-generate-btn"
-              type="button"
-              onClick={onSubmit}
-              disabled={busy || !formReady || needsCredits || batchRequiresUpgrade || queueFull || cooldownSeconds > 0 || Boolean(quota?.requires_upgrade)}
-              aria-busy={busy}
-            >
-              <Icon name="fa-music" />{" "}
-              {batchProgress
-                ? `Creating ${Math.min(batchProgress.done + 1, batchProgress.total)}/${batchProgress.total}…`
-                : busy
-                  ? "Creating…"
-                  : cooldownSeconds > 0
-                    ? `Wait ${cooldownSeconds}s`
-                    : queueFull
-                      ? `Queue full (${queueUsed}/${queueLimit})`
-                      : mode === "simple" && simpleSongCount > 1
-                        ? `Create ${simpleSongCount} songs${requiredCredits > 0 ? ` · ${requiredCredits} credits` : ""}`
-                        : requiredCredits > 0
-                          ? `Create · ${requiredCredits} credits`
-                          : "Create"}
-            </button>
-          </div>
-        </section>
-
-        <section className="panel create-workspace" aria-busy={loadingSongs}>
-          <div className="create-workspace-head">
-            <div className="create-workspace-title-block">
-              <p className="create-eyebrow">Workspaces</p>
-              <div className="create-workspace-title-row">
-                <SelectBox
-                  value={activeWorkspaceId ?? workspaces[0]?.id ?? "default"}
-                  onChange={(value) => {
-                    setActiveWorkspaceId(value === "default" ? null : value);
-                    setSelectedClipKeys([]);
-                  }}
-                  options={
-                    workspaces.length
-                      ? workspaces.map((workspace) => ({
-                          value: workspace.id,
-                          label: workspace.name,
-                        }))
-                      : [{ value: "default", label: "My Workspace" }]
-                  }
-                  ariaLabel="Workspace"
-                  className="create-workspace-select"
-                />
-                <button
-                  className="create-new-workspace-btn"
-                  type="button"
-                  onClick={() => {
-                    setRenameWorkspaceOpen((value) => !value);
-                    setRenameWorkspaceName(activeWorkspaceName);
-                    setNewWorkspaceOpen(false);
-                  }}
-                  aria-label="Rename workspace"
-                  title="Rename workspace"
-                >
-                  <Icon name="fa-pen" />
-                </button>
-                <button
-                  className="create-new-workspace-btn"
-                  type="button"
-                  onClick={() => {
-                    setNewWorkspaceOpen((value) => !value);
-                    setRenameWorkspaceOpen(false);
-                  }}
-                  aria-label="New workspace"
-                  title="New workspace"
-                >
-                  <Icon name="fa-plus" />
-                </button>
-              </div>
-              {renameWorkspaceOpen ? (
-                <div className="create-new-workspace">
-                  <input
-                    autoFocus
-                    value={renameWorkspaceName}
-                    onChange={(event) => setRenameWorkspaceName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void onRenameWorkspace();
-                      if (event.key === "Escape") setRenameWorkspaceOpen(false);
-                    }}
-                    placeholder="Workspace name"
-                    aria-label="Workspace name"
-                    maxLength={120}
-                  />
-                  <button type="button" onClick={() => void onRenameWorkspace()} disabled={workspaceBusy || !renameWorkspaceName.trim()}>
-                    {workspaceBusy ? "Saving…" : "Save"}
-                  </button>
-                  <button type="button" onClick={() => setRenameWorkspaceOpen(false)}>Cancel</button>
-                </div>
-              ) : null}
-              {newWorkspaceOpen ? (
-                <div className="create-new-workspace">
-                  <input
-                    autoFocus
-                    value={newWorkspaceName}
-                    onChange={(event) => setNewWorkspaceName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter") void onCreateWorkspace();
-                      if (event.key === "Escape") setNewWorkspaceOpen(false);
-                    }}
-                    placeholder="Workspace name"
-                    aria-label="New workspace name"
-                    maxLength={120}
-                  />
-                  <button type="button" onClick={() => void onCreateWorkspace()} disabled={workspaceBusy || !newWorkspaceName.trim()}>
-                    {workspaceBusy ? "Saving…" : "Create"}
-                  </button>
-                  <button type="button" onClick={() => setNewWorkspaceOpen(false)}>Cancel</button>
-                </div>
-              ) : null}
-            </div>
-            <div className="create-workspace-actions">
-              <span className="create-song-count">{generationCount} {generationWord}</span>
-              <button type="button" onClick={() => void refreshSongs()} aria-label="Refresh songs">
-                <Icon name="fa-rotate" />
+            <div className="s-pager">
+              <button
+                type="button"
+                aria-label="Previous page"
+                onClick={() => setFeedPage((value) => Math.max(1, value - 1))}
+                disabled={feedPage <= 1}
+              >
+                <Icon name="fa-chevron-left" />
               </button>
-              <Link href="/library">Library</Link>
+              <input
+                aria-label="Current page number"
+                value={feedPage}
+                onChange={(event) => {
+                  const next = Number(event.target.value.replace(/\D/g, "")) || 1;
+                  setFeedPage(Math.min(pageCount, Math.max(1, next)));
+                }}
+              />
+              <button
+                type="button"
+                aria-label="Next page"
+                onClick={() => {
+                  if (feedPage < pageCount) setFeedPage(feedPage + 1);
+                  else if (songs.length < totalSongs) void loadMoreSongs();
+                }}
+              >
+                <Icon name="fa-chevron-right" />
+              </button>
             </div>
           </div>
-          <div className="create-workspace-toolbar">
-            <label className="create-select-mode">
-              <Checkbox
-                checked={selectionMode}
-                onCheckedChange={(checked) => {
-                  const next = checked === true;
-                  setSelectionMode(next);
-                  setBatchError("");
-                  if (!next) setSelectedClipKeys([]);
-                }}
-                aria-label="Select tracks"
-              />
-              <span>Select</span>
-            </label>
-            {selectionMode ? (
-              <div className="create-batch-actions">
-                <span role="status" aria-live="polite">{selectedClipKeys.length} selected</span>
-                <SelectBox
-                  value={batchFormat}
-                  onChange={(value) => {
-                    setBatchFormat(value as DownloadKind);
-                    setBatchError("");
-                  }}
-                  options={DOWNLOAD_FORMATS}
-                  ariaLabel="Batch download format"
-                  className="create-batch-format"
-                />
+
+          {selectionMode ? (
+            <div className="s-rowline" style={{ paddingBottom: 8 }}>
+              <span className="s-note" role="status" aria-live="polite">
+                {selectedClipKeys.length} selected
+              </span>
+              <div className="s-counts">
+                <div className="s-radio-pair" role="group" aria-label="Batch download format">
+                  {DOWNLOAD_FORMATS.map((option) => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={batchFormat === option.value ? "on" : ""}
+                      aria-pressed={batchFormat === option.value}
+                      onClick={() => {
+                        setBatchFormat(option.value);
+                        setBatchError("");
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
                 <button
                   type="button"
+                  className="s-chip"
                   onClick={() => void onBatchDownload()}
                   disabled={batchBusy || selectedClipKeys.length === 0}
-                  aria-busy={batchBusy}
-                  title={`Download selected as ${batchFormat.toUpperCase()} ZIP`}
                 >
                   <Icon name="fa-download" />
                   {batchBusy
@@ -1377,339 +2767,290 @@ export function CreateStudio() {
                       : "Preparing…"
                     : "ZIP"}
                 </button>
-                <button type="button" onClick={() => setSelectedClipKeys([])}>Clear</button>
+                <button type="button" className="s-chip" onClick={() => setSelectedClipKeys([])}>
+                  Clear
+                </button>
               </div>
-            ) : (
-              <>
-                <span><Icon name="fa-layer-group" /> All generations</span>
-                <span>{loadingSongs ? "Loading…" : "Newest first"}</span>
-              </>
-            )}
-          </div>
-          {batchError ? <p className="create-batch-error" role="alert">{batchError}</p> : null}
-          {loadingSongs ? (
-            <div className="create-skeleton-list" role="status" aria-label="Loading your songs">
-              {[0, 1, 2].map((item) => (
-                <div className="create-skeleton-row" key={item}>
-                  <span className="create-skeleton-cover" />
-                  <span className="create-skeleton-copy">
-                    <span />
-                    <span />
+            </div>
+          ) : null}
+          {batchError ? <p className="s-error">{batchError}</p> : null}
+
+          <div className="s-feed-scroll">
+            {loadingSongs ? (
+              [0, 1, 2, 3].map((item) => (
+                <div className="s-skel" key={item}>
+                  <span className="a" />
+                  <span className="b">
+                    <i />
+                    <i />
                   </span>
                 </div>
-              ))}
-            </div>
-          ) : !songs.length ? (
-            <div className="create-empty">
-              <span><Icon name="fa-music" /></span>
-              <h3>Your songs will land here</h3>
-              <p>Write a description or lyrics, then hit Create.</p>
-            </div>
-          ) : (
-            <div className="create-song-list">
-              {songs.flatMap((song) =>
-                generationClips(song).map((clip) => {
-                  const ready = clipIsReady(song, clip);
-                  const key = clipTrackKey(song.id, clip.variant);
-                  const isSelected = selectedId === song.id && selectedVariant === clip.variant;
-                  const title = clip.title || song.title || "Untitled";
-                  return (
-                    <div
-                      className={`create-song${isSelected ? " selected" : ""}`}
-                      key={key}
-                      onClick={() => void selectSong(song.id, clip.variant)}
-                    >
-                      {selectionMode ? (
-                        <label
-                          className="create-clip-check-wrap"
-                          onClick={(event) => event.stopPropagation()}
-                          title={ready ? `Select ${title}` : "Not ready"}
-                        >
-                          <Checkbox
-                            checked={selectedClipKeys.includes(key)}
-                            disabled={!ready}
-                            aria-label={`Select ${title} ${clipVersionLabel(clip.variant)}`}
-                            onCheckedChange={() => toggleClipSelection(key)}
-                          />
-                        </label>
-                      ) : null}
-                      <button
-                        className={`create-song-cover${ready ? "" : " pending"}`}
-                        type="button"
-                        aria-label={ready ? `Play ${title}` : "Song not ready"}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          if (ready) playSong(song, clip);
-                        }}
-                        disabled={!ready}
-                      >
-                        <img src={clip.image_url || "/hero.png"} alt="" loading="lazy" />
-                        <span><Icon name={ready ? "fa-play" : "fa-clock"} /></span>
-                      </button>
-                      <button
-                        className="create-song-info"
-                        type="button"
-                        aria-pressed={isSelected}
-                        aria-label={`Select ${title} ${clipVersionLabel(clip.variant)}`}
-                        onClick={(event) => {
-                          event.stopPropagation();
-                          void selectSong(song.id, clip.variant);
-                        }}
-                      >
-                        <span className="create-song-title">
-                          <b>{title}</b>
-                          <em>{clipVersionLabel(clip.variant)}</em>
-                        </span>
-                        <span className="create-song-meta">
-                          <i className={ready ? "ready" : ""}>{ready ? "Ready" : statusLabel(song.status)}</i>
-                          {" · "}
-                          {song.model_label || song.model || "V6"}
-                          {" · "}
-                          {formatDate(song.created_at)}
-                        </span>
-                      </button>
-                      <div className="create-song-actions" onClick={(event) => event.stopPropagation()}>
-                        {ready ? (
-                          <>
-                            {!generationIsInstrumental(song) ? (
-                              <>
-                                <a href={clipDownloadUrl(song.id, clip.variant, "lrc")} title="Download LRC">LRC</a>
-                                <a href={clipDownloadUrl(song.id, clip.variant, "srt")} title="Download SRT">SRT</a>
-                              </>
-                            ) : null}
-                            <a href={clip.download_url || clipDownloadUrl(song.id, clip.variant, "mp3")} title="Download MP3">MP3</a>
-                            <a href={clipDownloadUrl(song.id, clip.variant, "wav")} title="Download WAV">WAV</a>
-                          </>
-                        ) : (
-                          <span className="create-song-waiting">Waiting</span>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          )}
-          {songs.length ? (
-            songs.length < totalSongs ? (
-              <button className="create-load-more" type="button" onClick={() => void loadMoreSongs()} disabled={loadingMore}>
-                {loadingMore ? "Loading…" : `Load more (${songs.length} of ${totalSongs})`}
-              </button>
+              ))
+            ) : !sortedRows.length ? (
+              <div className="s-empty">
+                <span className="ico">
+                  <Icon name="fa-music" />
+                </span>
+                <b>{feedSearch || activeFilterCount ? "No clips match" : "Your songs will land here"}</b>
+                <p>
+                  {feedSearch || activeFilterCount
+                    ? "Try a different search or clear your filters."
+                    : "Describe a song or write lyrics, then hit Create."}
+                </p>
+                {feedSearch || activeFilterCount ? (
+                  <button
+                    type="button"
+                    className="s-btn s-btn-secondary"
+                    onClick={() => {
+                      setFeedSearch("");
+                      setFeedFilters([]);
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                ) : null}
+              </div>
+            ) : viewMode === "list" ? (
+              groupedRows.map((group) => (
+                <div key={group.label}>
+                  <h3 className="s-day">{group.label}</h3>
+                  {group.rows.map(renderRow)}
+                </div>
+              ))
             ) : (
-              <p className="create-list-foot">
-                Showing all {generationCount} {generationWord} · {versionCount} {versionWord}
-              </p>
-            )
-          ) : null}
-        </section>
+              groupedRows.map((group) => (
+                <div key={group.label}>
+                  <h3 className="s-day">{group.label}</h3>
+                  <div className="s-grid">
+                    {group.rows.map((row) => (
+                      <div
+                        className="s-card"
+                        key={row.key}
+                        onClick={() => openDetail(row.song, row.clip)}
+                        role="button"
+                        tabIndex={0}
+                      >
+                        <div className="s-card-cover">
+                          <img src={row.clip.image_url || "/hero.png"} alt="" loading="lazy" />
+                        </div>
+                        <b>{row.title}</b>
+                        <small>{row.song.style || "No style tags"}</small>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            )}
 
-        <aside className="panel create-inspector" aria-busy={detailLoading}>
-          {!selected ? (
-            <div className="create-inspector-empty">
-              <Icon name="fa-circle-info" />
-              <p>Select a track to see its settings, style, and lyrics.</p>
+            {songs.length < totalSongs ? (
+              <div className="s-lib-foot">
+                <button
+                  type="button"
+                  className="s-btn s-btn-secondary"
+                  onClick={() => void loadMoreSongs()}
+                  disabled={loadingMore}
+                >
+                  {loadingMore ? "Loading…" : `Load more (${songs.length} of ${totalSongs})`}
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
+        <TrackRail
+          key={`${selected?.id ?? "empty"}:${selectedClip?.variant ?? ""}`}
+          detail={selected ?? null}
+          clip={selectedClip ?? null}
+          liked={selected && selectedClip ? isLikedRow(selected, selectedClip) : false}
+          playlists={playlists}
+          loading={detailLoading}
+          onPlay={() => {
+            if (selected) playSong(selected, selectedClip ?? undefined);
+          }}
+          onLike={() => {
+            if (selected && selectedClip) void toggleLikeRow(selected, selectedClip);
+          }}
+          onUnlock={() => void unlockSelected()}
+          onDelete={() => void deleteSelected()}
+          onRename={async (nextTitle, variant) => {
+            if (!selected) return false;
+            try {
+              const updated = await updateWebMusicGenerationTitle(selected.id, nextTitle, variant);
+              if (!mounted.current) return false;
+              setSelectedDetail(updated);
+              setSongs((current) =>
+                current.map((item) => (item.id === updated.id ? updated : item))
+              );
+              return true;
+            } catch (cause) {
+              setError(cause instanceof Error ? cause.message : "Could not rename this track");
+              return false;
+            }
+          }}
+          onAddToPlaylist={async (playlist) => {
+            if (!selected || !selectedClip?.ready) return;
+            try {
+              await addWebMusicPlaylistItem(playlist.id, selected.id, selectedClip.variant);
+              setNotice(`Added to ${playlist.name}.`);
+            } catch (cause) {
+              setError(cause instanceof Error ? cause.message : "Could not add to playlist");
+            }
+          }}
+          onCreatePlaylist={async (name) => {
+            try {
+              const created = await createWebMusicPlaylist(name);
+              if (mounted.current) setPlaylists((current) => [...current, created]);
+              setNotice(`Created playlist "${created.name}".`);
+              return created;
+            } catch (cause) {
+              setError(cause instanceof Error ? cause.message : "Could not create playlist");
+              return null;
+            }
+          }}
+        />      </div>
+
+      {attachModal ? (
+        <div className="s-modal-overlay" role="dialog" aria-modal="true" onClick={() => setAttachModal(null)}>
+          <div className="s-modal" style={{ width: "min(520px,100%)" }} onClick={(event) => event.stopPropagation()}>
+            <div className="s-modal-head">
+              <h3>
+                {attachModal === "audio"
+                  ? "Add audio"
+                  : attachModal === "voices"
+                    ? "Add voice reference"
+                    : attachModal === "video"
+                      ? "Add video"
+                      : attachModal === "playlist"
+                        ? "Add playlist"
+                        : attachModal === "voice"
+                          ? "Add voice"
+                          : attachModal === "inspo"
+                            ? "Add inspiration"
+                            : "Add image"}
+              </h3>
+              <button type="button" className="s-btn s-btn-icon sm" onClick={() => setAttachModal(null)} aria-label="Close">
+                <Icon name="fa-xmark" />
+              </button>
             </div>
-          ) : detailLoading ? (
-            <div className="create-inspector-loading" role="status" aria-live="polite">
-              <span className="create-loading-spinner" aria-hidden="true" />
-              <b>Loading track details…</b>
-              <span>Fetching lyrics, style, and settings.</span>
-            </div>
-          ) : (
-            <>
-              <div className="create-detail-head">
-                <img src={selectedCover} alt="" />
-                <div>
-                  {editingTitle ? (
-                    <div className="create-title-editor">
-                      <input
-                        autoFocus
-                        value={titleDraft}
-                        onChange={(event) => setTitleDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") void saveTitle();
-                          if (event.key === "Escape") setEditingTitle(false);
-                        }}
-                        maxLength={200}
-                        aria-label="Track title"
-                      />
-                      <button type="button" onClick={() => void saveTitle()} aria-label="Save title">
-                        <Icon name="fa-check" />
-                      </button>
-                      <button type="button" onClick={() => setEditingTitle(false)} aria-label="Cancel title edit">
+            <div className="s-modal-body">
+              {attachModal === "audio" ? (
+                <div className="s-audio-attach">
+                  {audioUpload ? (
+                    <div className="s-audio-file">
+                      <span className="s-audio-ico">
+                        <Icon name="fa-file-audio" />
+                      </span>
+                      <div>
+                        <b>{audioUpload.filename}</b>
+                        <small>
+                          {audioUpload.duration_seconds
+                            ? `${formatClipDuration(audioUpload.duration_seconds)} · `
+                            : ""}
+                          {Math.max(1, Math.round(audioUpload.size_bytes / 1024))} KB
+                        </small>
+                      </div>
+                      <button
+                        type="button"
+                        className="s-btn s-btn-icon sm"
+                        aria-label="Remove audio"
+                        onClick={() => setAudioUpload(null)}
+                      >
                         <Icon name="fa-xmark" />
                       </button>
                     </div>
                   ) : (
-                    <div className="create-detail-title">
-                      <h3>{selectedClip?.title || selected.title || "Untitled"}</h3>
-                      <em>{clipVersionLabel(selectedClip?.variant)}</em>
-                      <button
-                        className="create-edit-title"
-                        type="button"
-                        onClick={() => {
-                          setTitleDraft(selectedClip?.title || selected.title || "");
-                          setEditingTitle(true);
+                    <label className="s-audio-drop">
+                      <input
+                        type="file"
+                        accept="audio/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadAudioFile(file);
+                          event.target.value = "";
                         }}
-                        aria-label="Rename track"
-                        title="Rename track"
-                      >
-                        <Icon name="fa-pen" />
-                      </button>
-                    </div>
+                      />
+                      <Icon name="fa-arrow-up-from-bracket" />
+                      <b>Choose an audio file</b>
+                      <span>MP3, WAV, M4A, OGG or WebM · up to 50 MB</span>
+                    </label>
                   )}
-                  <span className="create-detail-sub">
-                    <i className={selectedReady ? "ready" : ""}>{selectedReady ? "Ready" : statusLabel(selected.status)}</i>
-                    {" · "}
-                    {selected.model_label || selected.model || "V6"}
-                    {" · "}
-                    {formatDate(selected.created_at)}
-                  </span>
-                </div>
-              </div>
-
-              <div className="create-detail-actions">
-                <button
-                  className="create-action create-action-play"
-                  type="button"
-                  onClick={() => playSong(selected, selectedClip ?? undefined)}
-                  disabled={!selectedReady}
-                  aria-label="Play track"
-                >
-                  <Icon name="fa-play" /> Play
-                </button>
-                {selected.unlockable ? (
-                  <button
-                    className="create-action create-action-unlock"
-                    type="button"
-                    onClick={() => void unlockSelected()}
-                    disabled={detailLoading}
-                  >
-                    <Icon name="fa-lock-open" /> Unlock
-                  </button>
-                ) : null}
-                {selectedReady && selectedClip ? (
-                  <>
-                    {!selectedInstrumental ? (
+                  <div className="s-counts">
+                    <button
+                      type="button"
+                      className="s-btn s-btn-secondary"
+                      onClick={() => void toggleRecording()}
+                      disabled={audioUploading || audioBusy || Boolean(audioUpload)}
+                    >
+                      <Icon name={recording ? "fa-stop" : "fa-microphone"} />{" "}
+                      {recording ? "Stop & upload" : "Record"}
+                    </button>
+                    {audioUpload ? (
                       <>
-                        <a className="create-action" href={clipDownloadUrl(selected.id, selectedClip.variant || "ok", "lrc")} title="Download LRC">LRC</a>
-                        <a className="create-action" href={clipDownloadUrl(selected.id, selectedClip.variant || "ok", "srt")} title="Download SRT">SRT</a>
+                        <button
+                          type="button"
+                          className="s-btn s-btn-primary"
+                          onClick={() => void runAudioOperation("extend")}
+                          disabled={audioBusy || audioUploading}
+                        >
+                          Extend
+                        </button>
+                        <button
+                          type="button"
+                          className="s-btn s-btn-secondary"
+                          onClick={() => void runAudioOperation("cover")}
+                          disabled={audioBusy || audioUploading}
+                        >
+                          Cover
+                        </button>
                       </>
                     ) : null}
-                    <a className="create-action" href={selectedClip.download_url || clipDownloadUrl(selected.id, selectedClip.variant || "ok", "mp3")} title="Download MP3">MP3</a>
-                    <a className="create-action" href={clipDownloadUrl(selected.id, selectedClip.variant || "ok", "wav")} title="Download WAV">WAV</a>
-                  </>
-                ) : null}
-                <button
-                  className="create-action"
-                  type="button"
-                  onClick={() => void openPlaylistMenu()}
-                  disabled={!selectedReady || !selectedClip || !selectedClipAddable || playlistBusy}
-                  title={selectedClipAddable ? "Add to playlist" : "Playlist is available after the track upload completes"}
-                >
-                  <Icon name="fa-list" /> Playlist
-                </button>
-              </div>
-
-              {playlistOpen ? (
-                <div className="create-playlist-menu">
-                  <div className="create-playlist-menu-head">
-                    <span>Add to playlist</span>
-                    <button type="button" onClick={() => setPlaylistOpen(false)} aria-label="Close playlist menu">
-                      <Icon name="fa-xmark" />
-                    </button>
                   </div>
-                  <div className="create-playlist-list">
-                    {playlists.length ? playlists.map((playlist) => (
-                      <button
-                        key={playlist.id}
-                        type="button"
-                        onClick={() => void onAddToPlaylist(playlist)}
-                        disabled={playlistBusy}
-                      >
-                        <Icon name="fa-music" />
-                        <span>{playlist.name}</span>
-                        <small>{playlist.song_count ?? 0}</small>
-                      </button>
-                    )) : (
-                      <p>No playlists yet. Create one below.</p>
-                    )}
+                  {audioUploading ? <p className="s-note">Uploading…</p> : null}
+                  {audioBusy ? <p className="s-note">Queueing…</p> : null}
+                  {audioError ? <p className="s-error">{audioError}</p> : null}
+                  <p className="s-note">
+                    Extend continues the track. Cover recreates it using your current prompt and styles.
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <p className="s-note">
+                    {attachModal === "voices"
+                      ? "Reuse a saved voice or pick one from the library as a vocal reference."
+                      : attachModal === "video"
+                        ? "Attach a video reference to guide motion, mood, or a visual cover."
+                        : attachModal === "playlist"
+                          ? "Reference one of your playlists as style inspiration for this song."
+                          : attachModal === "voice"
+                            ? "Pick a voice reference to shape the vocal tone of your next song."
+                            : attachModal === "inspo"
+                              ? "Pull a style reference from one of your playlists."
+                              : "Attach artwork to your creation. Images are used as the cover."}
+                  </p>
+                  <div className="s-box">
+                    Reference attachments are not enabled for this workspace yet. You can still upload and reuse audio
+                    from the Studio editor.
                   </div>
-                  <div className="create-playlist-create">
-                    <input
-                      value={newPlaylistName}
-                      onChange={(event) => setNewPlaylistName(event.target.value)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") void onCreatePlaylist();
-                      }}
-                      placeholder="New playlist"
-                      aria-label="New playlist name"
-                      maxLength={120}
-                    />
-                    <button type="button" onClick={() => void onCreatePlaylist()} disabled={playlistBusy || !newPlaylistName.trim()}>
-                      <Icon name="fa-plus" />
-                    </button>
-                  </div>
-                </div>
-              ) : null}
+                </>
+              )}
+            </div>
+            <div className="s-modal-foot">
+              <Link className="s-btn s-btn-secondary" href="/studio/editor">
+                <Icon name="fa-table-columns" /> Open Studio
+              </Link>
+              <span style={{ flex: 1 }} />
+              <button type="button" className="s-btn s-btn-ghost" onClick={() => setAttachModal(null)}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
-              <div className="create-detail-section">
-                <div className="create-detail-label">Settings</div>
-                <div className="create-settings">
-                  <div><span>Model</span><b>{selected.model_label || selected.model || "V6"}</b></div>
-                  <div><span>Type</span><b>{selectedInstrumental ? "Instrumental" : "With Vocals"}</b></div>
-                  <div><span>Vocal Gender</span><b>{selectedInstrumental ? "Not set" : vocalLabel(selected.vocal_gender)}</b></div>
-                  <div><span>Style Influence</span><b>{percent(selected.style_weight)}</b></div>
-                  <div><span>Weirdness</span><b>{percent(selected.weirdness_constraint)}</b></div>
-                  <div><span>Audio Weight</span><b>{percent(selected.audio_weight)}</b></div>
-                  <div><span>Status</span><b>{selectedReady ? "Ready" : statusLabel(selected.status)}</b></div>
-                </div>
-              </div>
-
-              {selected.negative_tags ? (
-                <div className="create-detail-section">
-                  <div className="create-detail-label">Negative Tags</div>
-                  <div className="create-detail-box">{selected.negative_tags}</div>
-                </div>
-              ) : null}
-
-              <div className="create-detail-section">
-                <div className="create-detail-label-row">
-                  <span className="create-detail-label">Style</span>
-                  <button type="button" className="create-copy" onClick={() => void copyText(selected.style || "", "style")} aria-label="Copy style">
-                    <Icon name={copied === "style" ? "fa-check" : "fa-copy"} />
-                  </button>
-                </div>
-                <div className="create-detail-box">{selected.style || "—"}</div>
-              </div>
-
-              <div className="create-detail-section">
-                <div className="create-detail-label-row">
-                  <span className="create-detail-label">Lyrics</span>
-                  <button type="button" className="create-copy" onClick={() => void copyText(selected.lyrics || "", "lyrics")} aria-label="Copy lyrics">
-                    <Icon name={copied === "lyrics" ? "fa-check" : "fa-copy"} />
-                  </button>
-                </div>
-                <pre className="create-detail-lyrics">{selectedInstrumental ? "Instrumental — no lyrics" : selected.lyrics || "No lyrics saved."}</pre>
-              </div>
-
-              <div className="create-detail-footer">
-                <Link className="create-open-studio" href="/studio/editor">
-                  <Icon name="fa-table-columns" /> Open in Studio
-                </Link>
-                <button
-                  className="create-delete"
-                  type="button"
-                  onClick={() => void deleteSelected()}
-                  disabled={deletingId === selected.id}
-                >
-                  <Icon name="fa-trash" /> {deletingId === selected.id ? "Deleting…" : "Delete"}
-                </button>
-              </div>
-            </>
-          )}
-        </aside>
-      </div>
+      {toast ? (
+        <div className="s-toast" role="status">
+          {toast}
+        </div>
+      ) : null}
     </div>
   );
 }
