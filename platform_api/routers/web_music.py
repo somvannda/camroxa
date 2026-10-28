@@ -52,6 +52,7 @@ class WebMusicGenerateRequest(BaseModel):
     weirdness_constraint: float | None = Field(default=None, ge=0.0, le=1.0)
     audio_weight: float | None = Field(default=None, ge=0.0, le=1.0)
     image_urls: list[str] = Field(default_factory=list, max_length=4)
+    video_urls: list[str] = Field(default_factory=list, max_length=1)
     persona_id: str | None = Field(default=None, max_length=128)
     workspace_id: UUID | None = None
 
@@ -1205,6 +1206,37 @@ async def upload_studio_image(
     )
 
 
+@router.post("/studio/video-uploads", status_code=201)
+async def upload_studio_video_file(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    file: UploadFile = File(...),
+) -> dict:
+    """Store the one reference clip the create composer can attach.
+
+    Mirrors Suno's `+ → Video` picker, which accepts
+    `video/mp4`, `video/quicktime`, and `video/webm`.
+    """
+    content_type = str(file.content_type or "").split(";")[0].strip().lower()
+    if content_type not in ("video/mp4", "video/quicktime", "video/webm"):
+        raise ValidationError(
+            "Attach an MP4, MOV, or WebM clip.",
+            details={"field": "file"},
+        )
+    data = await file.read()
+    if len(data) > 200 * 1024 * 1024:
+        raise ValidationError(
+            "Reference clips are limited to 200 MB.",
+            details={"field": "file"},
+        )
+    return await service.create_studio_video_file(
+        UUID(ctx.user_id),
+        filename=file.filename or "reference-video",
+        content_type=content_type,
+        data=data,
+    )
+
+
 @router.post("/studio/uploads", status_code=201)
 async def upload_studio_audio(
     ctx: CurrentUserDep,
@@ -1447,6 +1479,7 @@ async def generate(
             weirdness_constraint=body.weirdness_constraint,
             audio_weight=body.audio_weight,
             image_urls=body.image_urls,
+            video_urls=body.video_urls,
             persona_id=body.persona_id,
             workspace_id=body.workspace_id,
         )

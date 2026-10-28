@@ -25,6 +25,7 @@ class SunoRequest:
     weirdness_constraint: float | None = None
     audio_weight: float | None = None
     image_urls: list[str] = field(default_factory=list)
+    video_urls: list[str] = field(default_factory=list)
     persona_id: str | None = None
     persona_model: str | None = None
 

@@ -161,6 +161,9 @@ async def test_fulfill_refunds_when_suno_rejects() -> None:
             "style_weight": 0.5,
             "weirdness_constraint": 0.5,
             "audio_weight": 0.5,
+            "reference_image_urls": "[]",
+            "reference_video_urls": "[]",
+            "persona_id": None,
         }
     )
     pool.execute = AsyncMock()

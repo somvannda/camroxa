@@ -1128,6 +1128,7 @@ class WebMusicService:
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
         image_urls: list[str] | None = None,
+        video_urls: list[str] | None = None,
         persona_id: str | None = None,
         workspace_id: UUID | None = None,
     ) -> dict[str, Any]:
@@ -1155,6 +1156,11 @@ class WebMusicService:
             for url in (image_urls or [])
             if str(url).strip().lower().startswith(("http://", "https://"))
         ][:4]
+        safe_video_urls = [
+            str(url).strip()
+            for url in (video_urls or [])
+            if str(url).strip().lower().startswith(("http://", "https://"))
+        ][:1]
         safe_persona_id = str(persona_id or "").strip()[:128] or None
         if safe_persona_id:
             persona_row = await self._pool.fetchrow(
@@ -1335,6 +1341,7 @@ class WebMusicService:
                 weirdness_constraint=stored_weirdness,
                 audio_weight=stored_audio_weight,
                 image_urls=safe_image_urls,
+                video_urls=safe_video_urls,
                 persona_id=safe_persona_id,
                 workspace_id=workspace_id,
                 is_preview=is_preview,
@@ -1377,6 +1384,7 @@ class WebMusicService:
         weirdness_constraint: float,
         audio_weight: float,
         image_urls: list[str] | None = None,
+        video_urls: list[str] | None = None,
         persona_id: str | None = None,
         workspace_id: UUID | None,
         is_preview: bool = False,
@@ -1405,13 +1413,13 @@ class WebMusicService:
                 id, user_id, request_hash, model, title, lyrics, style,
                 instrumental, external_task_id, status, source, workspace_id,
                 negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                audio_weight, reference_image_urls, persona_id, is_preview, preview_seconds, created_at, updated_at
+                audio_weight, reference_image_urls, reference_video_urls, persona_id, is_preview, preview_seconds, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, NULL, $9, $10, $11,
                 $12, $13, $14, $15,
-                $16, $17::jsonb, $18, $19, $20, NOW(), NOW()
+                $16, $17::jsonb, $18::jsonb, $19, $20, $21, NOW(), NOW()
             )
             """,
             task_id,
@@ -1431,6 +1439,7 @@ class WebMusicService:
             weirdness_constraint,
             audio_weight,
             json.dumps(list(image_urls or [])),
+            json.dumps(list(video_urls or [])),
             persona_id,
             is_preview,
             preview_seconds,
@@ -1455,7 +1464,7 @@ class WebMusicService:
             """
             SELECT id, title, lyrics, style, model, instrumental, external_task_id,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                   audio_weight, reference_image_urls, persona_id
+                   audio_weight, reference_image_urls, reference_video_urls, persona_id
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -1477,6 +1486,15 @@ class WebMusicService:
         else:
             reference_images = list(raw_images or [])
 
+        raw_videos = row["reference_video_urls"]
+        if isinstance(raw_videos, str):
+            try:
+                reference_videos = json.loads(raw_videos) or []
+            except Exception:
+                reference_videos = []
+        else:
+            reference_videos = list(raw_videos or [])
+
         request = SunoRequest(
             model=str(row["model"] or DEFAULT_SUNO_MUSIC_MODEL),
             title=str(row["title"] or ""),
@@ -1489,6 +1507,7 @@ class WebMusicService:
             weirdness_constraint=row["weirdness_constraint"],
             audio_weight=row["audio_weight"],
             image_urls=reference_images,
+            video_urls=reference_videos,
             persona_id=str(row["persona_id"] or "").strip() or None,
         )
         try:
@@ -2743,6 +2762,62 @@ class WebMusicService:
             "url": url,
             "filename": filename[:240] or f"image.{safe_ext}",
             "content_type": content_type or "image/jpeg",
+            "size_bytes": len(data),
+        }
+
+    async def create_studio_video_file(
+        self,
+        user_id: UUID,
+        *,
+        filename: str,
+        content_type: str,
+        data: bytes,
+    ) -> dict[str, Any]:
+        """Store one reference clip for the create composer (Suno: max 1)."""
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        if not data:
+            raise ValidationError("The uploaded video is empty.")
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Video uploads are not configured.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        safe_ext = {
+            "video/mp4": "mp4",
+            "video/quicktime": "mov",
+            "video/webm": "webm",
+        }.get(str(content_type or "").split(";")[0].strip().lower())
+        if safe_ext is None:
+            raise ValidationError(
+                "Attach an MP4, MOV, or WebM clip.",
+                details={"field": "file"},
+            )
+        key = f"studio/videos/{user_id}/{uuid4()}.{safe_ext}"
+        try:
+            storage = StorageService.from_config(config)
+            await storage.upload_bytes(
+                key=key,
+                data=data,
+                content_type=content_type or "video/mp4",
+            )
+            url = await storage.get_signed_get_url(key)
+        except Exception as exc:
+            logger.exception("Studio video upload failed for user %s", user_id)
+            raise ExternalServiceError(
+                "Could not store the uploaded video.",
+                is_retryable=True,
+                details={"provider": "storage"},
+            ) from exc
+        return {
+            "url": url,
+            "filename": filename[:240] or f"video.{safe_ext}",
+            "content_type": content_type or "video/mp4",
             "size_bytes": len(data),
         }
 

@@ -2983,6 +2983,7 @@ class GenerationService:
             weirdness_constraint=request.weirdness_constraint,
             audio_weight=request.audio_weight,
             image_urls=request.image_urls,
+            video_urls=request.video_urls,
             persona_id=request.persona_id,
             persona_model=request.persona_model
             or ("voice_persona" if request.persona_id else None),
@@ -3676,6 +3677,7 @@ class GenerationService:
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
         image_urls: list[str] | None = None,
+        video_urls: list[str] | None = None,
         persona_id: str | None = None,
         persona_model: str | None = None,
     ) -> dict[str, Any]:
@@ -3695,6 +3697,7 @@ class GenerationService:
                 weirdness_constraint=weirdness_constraint,
                 audio_weight=audio_weight,
                 image_urls=image_urls,
+                video_urls=video_urls,
                 persona_id=persona_id,
                 persona_model=persona_model,
             )
