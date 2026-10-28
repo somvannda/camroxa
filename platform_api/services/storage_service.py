@@ -94,7 +94,13 @@ class StorageService:
 
         await asyncio.to_thread(_head)
 
-    async def get_signed_get_url(self, key: str, *, cache_bust: bool = False) -> str:
+    async def get_signed_get_url(
+        self,
+        key: str,
+        *,
+        cache_bust: bool = False,
+        expires_seconds: int | None = None,
+    ) -> str:
         normalized_key = key.lstrip("/")
         if self._config.cdn_base_url:
             base = self._config.cdn_base_url.rstrip("/")
@@ -113,7 +119,7 @@ class StorageService:
             return client.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self._config.bucket, "Key": normalized_key},
-                ExpiresIn=self._config.stream_url_ttl_seconds,
+                ExpiresIn=expires_seconds or self._config.stream_url_ttl_seconds,
             )
 
         return await asyncio.to_thread(_sign)

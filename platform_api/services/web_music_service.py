@@ -2750,7 +2750,7 @@ class WebMusicService:
                 data=data,
                 content_type=content_type or "image/jpeg",
             )
-            url = await storage.get_signed_get_url(key)
+            url = await storage.get_signed_get_url(key, expires_seconds=24 * 60 * 60)
         except Exception as exc:
             logger.exception("Studio image upload failed for user %s", user_id)
             raise ExternalServiceError(
@@ -2806,7 +2806,7 @@ class WebMusicService:
                 data=data,
                 content_type=content_type or "video/mp4",
             )
-            url = await storage.get_signed_get_url(key)
+            url = await storage.get_signed_get_url(key, expires_seconds=24 * 60 * 60)
         except Exception as exc:
             logger.exception("Studio video upload failed for user %s", user_id)
             raise ExternalServiceError(
