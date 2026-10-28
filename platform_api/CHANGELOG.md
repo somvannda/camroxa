@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-28] — Thumbnails are no longer charged before their background exists
+
+### Fixed
+
+- `claim_image_jobs_for_run` selected chained image jobs on `status = 'pending'` alone, and `_run_one_job` placed the wallet hold (`reserve_and_hold_before_provider` → `atomic_deduct`) **before** checking whether the job's `source_job_id` had produced an artefact. A thumbnail therefore charged first, waited 10s (`_wait_for_source_job_output`), raised `DependencyPendingError`, and refunded as `image_generation_deferred` — to be charged and refunded again on the next sweep. Production on 2026-10-28 showed 21 `v3_image` debits against 14 refunds (67%) for that loop. Chained jobs are now only claimable when their source row is `success` or `failed` (terminal-inclusive, so a failed source still fails fast with a clear message), and `_ensure_dependency_ready` re-checks readiness before the hold, so a not-ready dependency writes no debit and no refund. See `docs/changelog/2026-10-28-image-dependency-gate.md`.
+
 ## [Unreleased] - Packs-only billing: 30-day pack credits
 
 ### Added
