@@ -3867,3 +3867,4 @@ html{color-scheme:dark}
   background:rgba(124,58,237,.18);color:#ded5ff;flex:none;
 }
 .s-audio-ico .icon,.s-audio-ico svg{width:14px;height:14px}
+.s-audio-drop.dragging{border-color:var(--s-accent);background:rgba(124,58,237,.12)}

@@ -228,8 +228,11 @@ export function CreateStudio() {
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioError, setAudioError] = useState("");
   const [recording, setRecording] = useState(false);
+  const [audioDragging, setAudioDragging] = useState(false);
+  const [audioPlaying, setAudioPlaying] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recordChunks = useRef<Blob[]>([]);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [stylePresetsOpen, setStylePresetsOpen] = useState(false);
@@ -509,9 +512,27 @@ export function CreateStudio() {
     });
   }
 
+  function toggleAudioPreview() {
+    if (!audioUpload) return;
+    if (audioPlaying) {
+      previewAudioRef.current?.pause();
+      setAudioPlaying(false);
+      return;
+    }
+    const audio = previewAudioRef.current ?? new Audio(audioUpload.url);
+    previewAudioRef.current = audio;
+    audio.onended = () => setAudioPlaying(false);
+    void audio
+      .play()
+      .then(() => setAudioPlaying(true))
+      .catch(() => setToast("Could not play the preview"));
+  }
+
   async function uploadAudioFile(file: File) {
     setAudioUploading(true);
     setAudioError("");
+    previewAudioRef.current?.pause();
+    setAudioPlaying(false);
     try {
       const duration = await probeAudioDuration(file);
       const upload = await uploadWebMusicStudioAudio(file, duration);
@@ -2951,14 +2972,39 @@ export function CreateStudio() {
                       <button
                         type="button"
                         className="s-btn s-btn-icon sm"
+                        aria-label={audioPlaying ? "Pause audio preview" : "Play audio preview"}
+                        onClick={toggleAudioPreview}
+                      >
+                        <Icon name={audioPlaying ? "fa-pause" : "fa-play"} />
+                      </button>
+                      <button
+                        type="button"
+                        className="s-btn s-btn-icon sm"
                         aria-label="Remove audio"
-                        onClick={() => setAudioUpload(null)}
+                        onClick={() => {
+                          previewAudioRef.current?.pause();
+                          setAudioPlaying(false);
+                          setAudioUpload(null);
+                        }}
                       >
                         <Icon name="fa-xmark" />
                       </button>
                     </div>
                   ) : (
-                    <label className="s-audio-drop">
+                    <label
+                      className={`s-audio-drop${audioDragging ? " dragging" : ""}`}
+                      onDragOver={(event) => {
+                        event.preventDefault();
+                        setAudioDragging(true);
+                      }}
+                      onDragLeave={() => setAudioDragging(false)}
+                      onDrop={(event) => {
+                        event.preventDefault();
+                        setAudioDragging(false);
+                        const file = event.dataTransfer.files?.[0];
+                        if (file) void uploadAudioFile(file);
+                      }}
+                    >
                       <input
                         type="file"
                         accept="audio/*"
