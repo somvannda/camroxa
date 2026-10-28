@@ -8995,6 +8995,33 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     });
   });
 
+  app.get("/internal/studio/clips/:clip_id/wav", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const clipId = (req.params as { clip_id?: string }).clip_id ?? "";
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    try {
+      const key = await ensureAudio(clipId, "wav", accountId);
+      if (!key) {
+        return reply.code(503).send({ error: "WAV conversion is not ready yet." });
+      }
+      const url = await getReadUrl(key);
+      if (!url) {
+        return reply.code(503).send({ error: "Could not sign the WAV download." });
+      }
+      return reply.send({ clip_id: clipId, format: "wav", url });
+    } catch (err) {
+      req.log.error({ err, clipId }, "studio WAV delivery failed");
+      return reply.code(502).send({
+        error: "Could not prepare the WAV download.",
+        detail: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
   app.get("/internal/studio/health", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     // Live reachability, not just pool membership: a seeded-but-expired or

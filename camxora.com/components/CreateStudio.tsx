@@ -240,6 +240,14 @@ function clipFormatUrl(
   return String(clip.srtUrl || clip.srt_url || "").trim();
 }
 
+function studioClipWavUrl(clip: WebMusicStudioClipResult): string {
+  const explicit = clipFormatUrl(clip, "wav");
+  if (explicit) return explicit;
+  return clip.id
+    ? `/api/v3/web-music/studio/clips/${encodeURIComponent(clip.id)}/wav`
+    : "";
+}
+
 function SelectBox({
   value,
   onChange,
@@ -2324,8 +2332,8 @@ export function CreateStudio() {
                         <a className="s-dl" href={clip.audioUrl} download>
                           MP3
                         </a>
-                        {clipFormatUrl(clip, "wav") ? (
-                          <a className="s-dl" href={clipFormatUrl(clip, "wav")} download>
+                        {studioClipWavUrl(clip) ? (
+                          <a className="s-dl" href={studioClipWavUrl(clip)} download>
                             WAV
                           </a>
                         ) : null}
@@ -2381,9 +2389,9 @@ export function CreateStudio() {
                                   MP3
                                 </a>
                               </SMenuItem>
-                              {clipFormatUrl(clip, "wav") ? (
+                              {studioClipWavUrl(clip) ? (
                                 <SMenuItem asChild>
-                                  <a href={clipFormatUrl(clip, "wav")} download>
+                                  <a href={studioClipWavUrl(clip)} download>
                                     WAV
                                   </a>
                                 </SMenuItem>
@@ -4109,8 +4117,8 @@ export function CreateStudio() {
                         <a className="s-dl" href={clip.audioUrl} download>
                           MP3
                         </a>
-                        {clipFormatUrl(clip, "wav") ? (
-                          <a className="s-dl" href={clipFormatUrl(clip, "wav")} download>
+                        {studioClipWavUrl(clip) ? (
+                          <a className="s-dl" href={studioClipWavUrl(clip)} download>
                             WAV
                           </a>
                         ) : null}
@@ -4166,9 +4174,9 @@ export function CreateStudio() {
                                   MP3
                                 </a>
                               </SMenuItem>
-                              {clipFormatUrl(clip, "wav") ? (
+                              {studioClipWavUrl(clip) ? (
                                 <SMenuItem asChild>
-                                  <a href={clipFormatUrl(clip, "wav")} download>
+                                  <a href={studioClipWavUrl(clip)} download>
                                     WAV
                                   </a>
                                 </SMenuItem>

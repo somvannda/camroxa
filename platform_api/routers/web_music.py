@@ -8,7 +8,7 @@ from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, Response, UploadFile
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from platform_api.ai.registry import DEFAULT_SUNO_MUSIC_MODEL, SUNO_MODEL_PATTERN
@@ -1312,6 +1312,17 @@ async def delete_studio_operation(
     service: WebMusicServiceDep,
 ) -> dict:
     return await service.delete_studio_operation(UUID(ctx.user_id), operation_id)
+
+
+@router.get("/studio/clips/{clip_id}/wav")
+async def download_studio_clip_wav(
+    clip_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> Response:
+    await enforce_rate_limit_for_endpoint(ctx.user_id, "web_music_download")
+    url = await service.get_operation_clip_wav_url(UUID(ctx.user_id), clip_id)
+    return RedirectResponse(url, status_code=302)
 
 
 @router.get("/quota", response_model=WebMusicQuotaResponse)

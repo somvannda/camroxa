@@ -4350,6 +4350,77 @@ class WebMusicService:
         )
         return {"ok": True}
 
+    async def get_operation_clip_wav_url(self, user_id: UUID, clip_id: str) -> str:
+        rows = await self._pool.fetch(
+            """
+            SELECT result_json FROM studio_operations
+            WHERE user_id = $1 AND result_json IS NOT NULL
+            ORDER BY created_at DESC
+            LIMIT 50
+            """,
+            user_id,
+        )
+        found = False
+        for row in rows:
+            result = row["result_json"]
+            if isinstance(result, str):
+                try:
+                    result = json.loads(result)
+                except Exception:
+                    continue
+            clips = result.get("clips") if isinstance(result, dict) else None
+            if not isinstance(clips, list):
+                continue
+            if any(
+                isinstance(clip, dict)
+                and str(clip.get("id") or "").strip() == clip_id
+                for clip in clips
+            ):
+                found = True
+                break
+        if not found:
+            raise NotFoundError("Audio result clip not found.", details={"clip_id": clip_id})
+
+        from platform_api.config import get_settings
+
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=180) as client:
+                response = await client.get(
+                    f"{base}/internal/studio/clips/{clip_id}/wav",
+                    headers={"x-internal-token": token},
+                )
+                if response.status_code >= 400:
+                    detail = "WAV conversion is not ready yet."
+                    try:
+                        detail = str((response.json() or {}).get("error") or detail)
+                    except Exception:
+                        pass
+                    raise ExternalServiceError(detail, is_retryable=True)
+                payload = response.json()
+        except ExternalServiceError:
+            raise
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Could not reach the Studio WAV service.",
+                is_retryable=True,
+            ) from exc
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            raise ExternalServiceError(
+                "The Studio WAV service did not return a download URL.",
+                is_retryable=True,
+            )
+        return url
+
     async def get_studio_operation(self, user_id: UUID, operation_id: UUID) -> dict[str, Any]:
         from platform_api.config import get_settings
 
