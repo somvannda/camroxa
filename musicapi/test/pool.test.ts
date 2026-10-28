@@ -7,7 +7,8 @@ process.env.JWT_SECRET ??= "unit-test-jwt-secret-0123456789abcdef0123456789";
 process.env.COOKIE_ENCRYPTION_KEY ??=
   "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 
-const { orderByLoad, orderForDispatch, belowCreditFloor } = await import("../src/pool.js");
+const { orderByLoad, orderForDispatch, belowCreditFloor, lowCreditSummary, PoolCreditExhaustedError } =
+  await import("../src/pool.js");
 
 type Client = { account: { id: string; type?: string } };
 
@@ -49,6 +50,31 @@ test("belowCreditFloor never treats an empty account as usable", () => {
   // A floor of 0 (legacy setting) must still exclude exactly-empty accounts.
   assert.equal(belowCreditFloor(0, 0), true);
   assert.equal(belowCreditFloor(1, 0), false);
+});
+
+test("lowCreditSummary names every drained account and the floor", () => {
+  assert.equal(
+    lowCreditSummary(
+      [
+        { id: "acct-1", credits: 3 },
+        { id: "acct-2", credits: 0 },
+      ],
+      10,
+    ),
+    "acct-1 (3), acct-2 (0) — floor 10 credits",
+  );
+});
+
+test("PoolCreditExhaustedError keeps account labels out of the user-facing text", () => {
+  const err = new PoolCreditExhaustedError(
+    "Music generation is temporarily unavailable.",
+    lowCreditSummary([{ id: "ops@example.com", credits: 2 }], 10),
+  );
+  assert.equal(err.name, "PoolCreditExhaustedError");
+  assert.ok(err instanceof Error);
+  assert.equal(err.message, "Music generation is temporarily unavailable.");
+  assert.doesNotMatch(err.message, /ops@example\.com/);
+  assert.match(err.detail, /ops@example\.com \(2\)/);
 });
 
 const ids = (ordered: Client[]): string[] => ordered.map((c) => c.account.id);

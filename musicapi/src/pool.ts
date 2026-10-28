@@ -120,6 +120,39 @@ export function belowCreditFloor(
   return credits < Math.max(1, floor);
 }
 
+/**
+ * Operator-facing rendering of the accounts a selection scan skipped for a low
+ * balance. Kept out of the error message itself: account labels are operator
+ * data (usually the Suno account email), so they belong in logs, never in a
+ * `jobs.error` string that the user dashboard and webhooks render.
+ */
+export function lowCreditSummary(
+  accounts: Array<{ id: string; credits: number }>,
+  floor: number = config.suno.minCredits,
+): string {
+  const list = accounts.map((a) => `${a.id} (${a.credits})`).join(", ");
+  return `${list} — floor ${Math.max(1, floor)} credits`;
+}
+
+/**
+ * No pooled account could be selected because every candidate is drained.
+ *
+ * Distinct from a failed *attempt*: nothing was submitted to Suno, so the
+ * message is safe for end users (stored on `jobs.error` and shown in the
+ * playground) while `detail` carries the accounts and balances for the ops log.
+ */
+export class PoolCreditExhaustedError extends Error {
+  constructor(
+    /** User-safe text: mentions no account ids or balances. */
+    message: string,
+    /** Operator detail (labels + balances). Log only, never return to a caller. */
+    readonly detail: string,
+  ) {
+    super(message);
+    this.name = "PoolCreditExhaustedError";
+  }
+}
+
 export class AccountPool {
   private clients: SunoClient[] = [];
   private health: Map<string, { info: AccountHealth; updatedAt: number }> = new Map();
@@ -291,6 +324,15 @@ export class AccountPool {
   }
 
   /**
+   * Last known live balance for an account, or `undefined` when this process
+   * has never read it. Used by the retry loop to decide whether a bare 402 from
+   * Suno should be treated as a drained account (see `markCreditExhausted`).
+   */
+  cachedCredits(id: string): number | undefined {
+    return this.health.get(id)?.info.credits;
+  }
+
+  /**
    * Mark an account as just-out-of-credits after a 402. Sets its cached health
    * to zero so `belowCreditFloor` skips it until the cache expires and the next
    * `billing/info` refresh runs. Without this a drained account keeps looking
@@ -427,6 +469,9 @@ export class AccountPool {
    * Shared selection scan: order the candidates, then return the first that is
    * funded, advertises `model` (or is kept as a last-resort fallback when it
    * doesn't), and isn't cooling after a 429.
+   *
+   * A drained pool throws {@link PoolCreditExhaustedError}, whose message is
+   * user-safe and whose `detail` carries the per-account balances for the log.
    */
   private async pickFrom(
     candidates: SunoClient[],
@@ -441,7 +486,7 @@ export class AccountPool {
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
-    let sawLowCredits = false;
+    const drained: Array<{ id: string; credits: number }> = [];
     for (const client of this.prioritizeCooling(ordered)) {
       const probed = healths.get(client.account.id);
       if (!probed) continue;
@@ -451,7 +496,7 @@ export class AccountPool {
       }
       const health = probed.health;
       if (belowCreditFloor(health.credits)) {
-        sawLowCredits = true;
+        drained.push({ id: client.account.id, credits: health.credits });
         continue;
       }
       if (want && health.models.length && !health.models.includes(want)) {
@@ -464,8 +509,11 @@ export class AccountPool {
       return client;
     }
     if (fallback) return fallback;
-    if (sawLowCredits) {
-      throw new Error("No Suno account with available credits for this model.");
+    if (drained.length) {
+      throw new PoolCreditExhaustedError(
+        "Music generation is temporarily unavailable: every Suno account is out of credits for this model. Please try again in a few minutes.",
+        `model=${want ?? "*"}; policy=${policy}; below floor: ${lowCreditSummary(drained)}`,
+      );
     }
     throw new Error(lastError);
   }

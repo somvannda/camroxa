@@ -85,6 +85,29 @@ export function isInsufficientCreditsError(err: unknown): boolean {
 }
 
 /**
+ * Whether a 402 is *definitely* about the account's credit balance, as opposed
+ * to some other "payment required" rejection (restricted/locked account, plan
+ * change pending, billing hold). Callers that zero an account's cached balance
+ * must ask this rather than {@link isInsufficientCreditsError}: marking on any
+ * 402 turned one such rejection per account into a pool-wide "no credits"
+ * outage for the length of the health cache, with no real drain behind it.
+ */
+export function isDefiniteCreditExhaustion(err: unknown): boolean {
+  if (err instanceof SunoHttpError) {
+    if (
+      err.errorType &&
+      /not[_ ]enough[_ ]credits|insufficient[_ ]credits|no[_ ]credits|credits?_exhausted/i.test(
+        err.errorType,
+      )
+    ) {
+      return true;
+    }
+  }
+  const msg = err instanceof Error ? err.message : String(err);
+  return /not enough credits|insufficient credits|out of credits|credits? exhausted/i.test(msg);
+}
+
+/**
  * Whether a failed submit was rate-limited by Suno (429). Callers use this to
  * put the account on a short cooldown so retries and other jobs don't re-hit the
  * throttled account immediately.
