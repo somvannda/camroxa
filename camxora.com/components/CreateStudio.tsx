@@ -393,6 +393,7 @@ export function CreateStudio() {
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
   const [toast, setToast] = useState("");
+  const [toastTone, setToastTone] = useState<"info" | "warn">("info");
   const [feedPage, setFeedPage] = useState(1);
   const [attachModal, setAttachModal] = useState<null | "audio" | "voice" | "image" | "video" | "playlist" | "voices">(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
@@ -494,9 +495,15 @@ export function CreateStudio() {
 
   useEffect(() => {
     if (!toast) return;
-    const timer = window.setTimeout(() => setToast(""), 2200);
+    const timer = window.setTimeout(
+      () => {
+        setToast("");
+        setToastTone("info");
+      },
+      toastTone === "warn" ? 5200 : 2600
+    );
     return () => window.clearTimeout(timer);
-  }, [toast]);
+  }, [toast, toastTone]);
 
   useEffect(() => {
     if (!lyricsModalOpen) return;
@@ -1317,9 +1324,14 @@ export function CreateStudio() {
     }
   }
 
+  function warnToast(message: string) {
+    setToastTone("warn");
+    setToast(message);
+  }
+
   function pickReferenceVideo() {
     if (referenceVideo) {
-      setToast("Remove the attached clip first — one video at a time.");
+      warnToast("Remove the attached clip first — one video at a time.");
       return;
     }
     videoInputRef.current?.click();
@@ -1328,7 +1340,7 @@ export function CreateStudio() {
   async function uploadReferenceVideoFile(file: File) {
     const allowed = ["video/mp4", "video/quicktime", "video/webm"];
     if (!allowed.includes(file.type)) {
-      setToast("Attach an MP4, MOV, or WebM clip.");
+      warnToast("Attach an MP4, MOV, or WebM clip.");
       return;
     }
     setVideoUploading(true);
@@ -1352,7 +1364,7 @@ export function CreateStudio() {
   async function uploadVideoBackgroundFile(file: File) {
     const allowed = ["video/mp4", "video/quicktime", "video/webm"];
     if (!allowed.includes(file.type)) {
-      setToast("Attach an MP4, MOV, or WebM clip.");
+      warnToast("Attach an MP4, MOV, or WebM clip.");
       return;
     }
     setVideoBackgroundBusy(true);
@@ -6337,7 +6349,11 @@ export function CreateStudio() {
       ) : null}
 
       {toast ? (
-        <div className="s-toast" role="status">
+        <div
+          className={cn("s-toast", toastTone === "warn" && "warn")}
+          role="status"
+          aria-live={toastTone === "warn" ? "assertive" : "polite"}
+        >
           {toast}
         </div>
       ) : null}
