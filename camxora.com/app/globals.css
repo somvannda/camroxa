@@ -3212,7 +3212,7 @@ html{color-scheme:dark}
 .s-row-title{display:flex;align-items:center;gap:6px;min-width:0}
 .s-row-title b{font-size:14px;font-weight:500;line-height:16px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .s-row-title a{color:var(--s-text)}
-.s-row-title a:hover{text-decoration:underline}
+.s-row-title a:hover{text-decoration:none;color:var(--s-text)}
 .s-row-desc{font-size:12px;line-height:14px;color:var(--s-text3);height:28px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
 .s-row-actions{display:flex;align-items:center;gap:8px;margin-top:2px;flex-wrap:wrap}
 .s-act{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border-radius:var(--s-pill);background:var(--s-bg3);font-size:15px;font-weight:500;color:var(--s-text);transition:background .15s,color .15s}
@@ -4311,3 +4311,18 @@ html{color-scheme:dark}
 /* Closed menus stay mounted for the 150ms exit animation; make sure a stalled
    or backgrounded animation can never swallow clicks on the page beneath. */
 .s-menu[data-state="closed"]{pointer-events:none}
+
+/* Generating row indicator */
+.s-hourglass{display:inline-block;transform-origin:center;animation:s-hourglass-spin 2.4s ease-in-out infinite}
+@keyframes s-hourglass-spin{0%,100%{transform:rotate(0)}50%{transform:rotate(180deg)}}
+
+/* Centered workspace status notification */
+.s-status-pop{position:fixed;top:72px;left:50%;z-index:280;display:flex;align-items:flex-start;gap:10px;width:min(520px,calc(100vw - 32px));padding:12px 14px;border:1px solid var(--s-line2);border-radius:14px;background:rgba(13,18,34,.97);box-shadow:0 22px 60px rgba(0,0,0,.5);transform:translateX(-50%);animation:s-status-in .2s ease-out}
+.s-status-pop-icon{display:grid;place-items:center;width:30px;height:30px;flex:none;border-radius:50%;background:rgba(168,85,247,.14);color:var(--s-accent)}
+.s-status-pop.ready .s-status-pop-icon{background:rgba(34,197,94,.14);color:#52d17c}
+.s-status-pop-icon .icon,.s-status-pop-icon svg{width:13px;height:13px}
+.s-status-pop-copy{display:flex;min-width:0;flex-direction:column;gap:2px;padding-top:1px}
+.s-status-pop-copy b{font-size:13px;font-weight:600;color:var(--s-text)}
+.s-status-pop-copy span{font-size:12px;line-height:1.45;color:var(--s-text2)}
+@keyframes s-status-in{from{opacity:0;transform:translate(-50%,-6px)}to{opacity:1;transform:translate(-50%,0)}}
+@media (max-width:640px){.s-status-pop{top:12px;width:calc(100vw - 20px)}}

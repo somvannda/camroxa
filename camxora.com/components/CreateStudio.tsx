@@ -489,6 +489,12 @@ export function CreateStudio() {
   }, [toast]);
 
   useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 6500);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
+
+  useEffect(() => {
     if (!lyricsModalOpen) return;
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -1912,6 +1918,21 @@ export function CreateStudio() {
         : queueUsed > 0
           ? `${queueUsed} in the global queue. Suno starts them one by one.`
           : null;
+  const statusPopup =
+    notice || createStatusHint
+      ? {
+          title: notice?.toLowerCase().includes("ready")
+            ? "Song ready"
+            : busy
+              ? "Generation started"
+              : "Generation update",
+          detail:
+            notice === "Your song is ready."
+              ? "Your new track is ready in the workspace."
+              : [notice, createStatusHint].filter(Boolean).join(" "),
+          tone: notice?.toLowerCase().includes("ready") ? "ready" : "info",
+        }
+      : null;
   const batchWarning =
     mode !== "simple" || batchCount <= 1
       ? null
@@ -2576,7 +2597,10 @@ export function CreateStudio() {
             if (ready) playSong(song, clip);
           }}
         >
-          <Icon name={ready ? "fa-play" : "fa-hourglass-half"} />
+          <Icon
+            name={ready ? "fa-play" : "fa-hourglass-half"}
+            className={ready ? "" : "s-hourglass"}
+          />
         </button>
 
         <div className="s-row-body">
@@ -3748,8 +3772,6 @@ export function CreateStudio() {
                     {error}
                   </p>
                 ) : null}
-                {notice ? <p className="s-note" role="status">{notice}</p> : null}
-                {createStatusHint ? <p className="s-note" role="status">{createStatusHint}</p> : null}
                 {(needsCredits && batchCount === 1) || quota?.requires_upgrade ? (
                   <p className="s-note warn">
                     Not enough credits for this selection. <Link href="/pricing">Buy packs</Link>
@@ -6145,6 +6167,20 @@ export function CreateStudio() {
                 </button>
               )}
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {statusPopup ? (
+        <div className={`s-status-pop ${statusPopup.tone}`} role="status">
+          <span className="s-status-pop-icon">
+            <Icon
+              name={statusPopup.tone === "ready" ? "fa-circle-check" : "fa-wave-square"}
+            />
+          </span>
+          <div className="s-status-pop-copy">
+            <b>{statusPopup.title}</b>
+            <span>{statusPopup.detail}</span>
           </div>
         </div>
       ) : null}
