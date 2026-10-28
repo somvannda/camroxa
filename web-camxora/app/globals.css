@@ -3938,6 +3938,7 @@ html{color-scheme:dark}
 }
 .s-add-submenu::before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:8px}
 .s-add-menu.below .s-add-submenu{top:0;bottom:auto}
+.s-add-submenu.stack{left:0;top:calc(100% + 8px);bottom:auto}
 .s-page .s-add-submenu .s-menu-item{height:40px;padding:0 12px;gap:10px;font-size:13px;border-radius:9px}
 @media (max-width: 720px){
   .s-add-submenu{left:0;bottom:calc(100% + 8px);width:100%}

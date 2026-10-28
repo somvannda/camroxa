@@ -248,6 +248,8 @@ export function CreateStudio() {
   const [attachModal, setAttachModal] = useState<null | "audio" | "voice" | "image" | "video" | "playlist" | "voices">(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [addMenuBelow, setAddMenuBelow] = useState(false);
+  const [addMenuPos, setAddMenuPos] = useState({ left: 0, top: 0 });
+  const [addSubmenuStack, setAddSubmenuStack] = useState(false);
   const [addSubmenu, setAddSubmenu] = useState<null | "lyrics" | "styles" | "audio" | "voice">(null);
   const addButtonRef = useRef<HTMLButtonElement | null>(null);
   const [audioUpload, setAudioUpload] = useState<WebMusicStudioUpload | null>(null);
@@ -491,6 +493,20 @@ export function CreateStudio() {
         .catch(() => setVoiceSongs([]));
     }
   }, [attachModal, voicePersonas, voiceSongs]);
+
+  useEffect(() => {
+    if (!addMenuOpen) return;
+    const close = () => {
+      setAddMenuOpen(false);
+      setAddSubmenu(null);
+    };
+    window.addEventListener("resize", close);
+    window.addEventListener("scroll", close, true);
+    return () => {
+      window.removeEventListener("resize", close);
+      window.removeEventListener("scroll", close, true);
+    };
+  }, [addMenuOpen]);
 
   useEffect(() => {
     if (!workspacesReady || loading || !user) return;
@@ -1799,7 +1815,11 @@ export function CreateStudio() {
             ? "Audio"
             : "Voice";
     return (
-      <div className="s-add-submenu" role="menu" aria-label={label}>
+      <div
+        className={cn("s-add-submenu", addSubmenuStack && "stack")}
+        role="menu"
+        aria-label={label}
+      >
         {addSubmenu === "lyrics" ? (
           <>
             <button
@@ -2210,10 +2230,23 @@ export function CreateStudio() {
                             aria-expanded={addMenuOpen}
                             onClick={() => {
                               const rect = addButtonRef.current?.getBoundingClientRect();
-                              const spaceAbove = rect ? rect.top - 44 : 0;
-                              const spaceBelow = rect ? window.innerHeight - rect.bottom - 44 : 0;
+                              const menuWidth = 236;
                               const menuHeight = 330;
-                              setAddMenuBelow(spaceAbove < menuHeight && spaceBelow > spaceAbove);
+                              const gap = 8;
+                              const left = Math.min(
+                                Math.max(8, rect?.left ?? 8),
+                                Math.max(8, window.innerWidth - menuWidth - 8)
+                              );
+                              const above = (rect?.top ?? 0) - menuHeight - gap;
+                              const below = (rect?.bottom ?? 0) + gap;
+                              const fitsAbove = above >= 8;
+                              const top = Math.min(
+                                Math.max(8, fitsAbove ? above : below),
+                                Math.max(8, window.innerHeight - menuHeight - 8)
+                              );
+                              setAddMenuPos({ left, top });
+                              setAddMenuBelow(!fitsAbove);
+                              setAddSubmenuStack(left + menuWidth + gap + 236 > window.innerWidth - 8);
                               setAddMenuOpen((value) => !value);
                               setAddSubmenu(null);
                             }}
@@ -2225,8 +2258,10 @@ export function CreateStudio() {
                               className={cn("s-menu s-add-menu", addMenuBelow && "below")}
                               role="menu"
                               style={{
-                                ...(addMenuBelow ? { top: 44, bottom: "auto" } : { bottom: 44 }),
-                                left: 0,
+                                position: "fixed",
+                                left: addMenuPos.left,
+                                top: addMenuPos.top,
+                                bottom: "auto",
                                 width: 230,
                               }}
                             >
