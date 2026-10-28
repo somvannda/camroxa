@@ -4142,7 +4142,7 @@ html{color-scheme:dark}
 .s-voice-trim-sliders input[type="range"]{flex:1;accent-color:var(--s-accent);cursor:pointer}
 /* remix picker */
 .s-remix-overlay{z-index:235}
-.s-remix-modal{width:min(680px,100%);max-height:min(80vh,760px);display:flex;flex-direction:column;background:var(--s-bg2);border:1px solid var(--s-line);border-radius:16px;box-shadow:var(--s-shadow);overflow:hidden;animation:s-pop .2s cubic-bezier(0,0,.2,1)}
+.s-remix-modal{width:min(560px,100%);max-height:min(80vh,760px);display:flex;flex-direction:column;background:var(--s-bg2);border:1px solid var(--s-line);border-radius:16px;box-shadow:var(--s-shadow);overflow:hidden;animation:s-pop .2s cubic-bezier(0,0,.2,1)}
 .s-remix-tabs{display:flex;gap:20px;padding:0 18px;border-bottom:1px solid var(--s-line)}
 .s-remix-tabs button{height:36px;font:inherit;font-size:13px;color:var(--s-text3);border-bottom:2px solid transparent;cursor:pointer}
 .s-remix-tabs button.on{color:var(--s-text);border-bottom-color:var(--s-text)}
@@ -4170,3 +4170,13 @@ html{color-scheme:dark}
 .s-remix-chip > .icon,.s-remix-chip > svg{width:14px;height:14px;color:var(--s-accent)}
 .s-remix-chip span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media (max-width:640px){.s-remix-tabs{gap:12px;padding:0 12px}.s-remix-tools{padding:10px 12px}.s-remix-actions{flex-direction:column}}
+.s-remix-filter-wrap{position:relative}
+.s-remix-filter-btn{height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--s-line);background:rgba(255,255,255,.04);color:var(--s-text2);font:inherit;font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.s-remix-filter-btn:hover{color:var(--s-text);border-color:var(--s-line2)}
+.s-remix-filter-btn .icon,.s-remix-filter-btn svg{width:11px;height:11px}
+.s-remix-filter-pop{position:absolute;right:0;top:42px;z-index:3;width:220px;padding:10px;border-radius:12px;background:var(--s-bg2);border:1px solid var(--s-line);box-shadow:var(--s-shadow);display:flex;flex-direction:column;gap:8px}
+.s-remix-filter-pop label{display:flex;flex-direction:column;gap:4px;font-size:11px;color:var(--s-text3)}
+.s-remix-filter-pop select{height:32px;border-radius:7px;border:1px solid var(--s-line);background:rgba(0,0,0,.2);color:var(--s-text);font:inherit;font-size:12px;padding:0 6px}
+.s-remix-filter-clear{height:30px;border-radius:7px;color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer}
+.s-remix-filter-clear:hover{background:rgba(255,255,255,.06);color:var(--s-text)}
+.s-remix-sort-select{height:36px;padding:0 8px;border-radius:999px;border:1px solid var(--s-line);background:rgba(255,255,255,.04);color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer}

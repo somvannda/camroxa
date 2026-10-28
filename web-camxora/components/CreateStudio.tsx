@@ -340,7 +340,8 @@ export function CreateStudio() {
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
   const [remixPickerOpen, setRemixPickerOpen] = useState(false);
-  const [remixTab, setRemixTab] = useState<"library" | "staff">("library");
+  const [remixTab, setRemixTab] = useState<"library" | "foryou" | "staff">("library");
+  const [remixFiltersOpen, setRemixFiltersOpen] = useState(false);
   const [staffPicks, setStaffPicks] = useState<WebMusicStaffPick[] | null>(null);
   const remixHandledRef = useRef(false);
   const [remixSearch, setRemixSearch] = useState("");
@@ -1889,6 +1890,16 @@ export function CreateStudio() {
       const right = new Date(b.created_at || 0).getTime();
       return remixSort === "new" ? right - left : left - right;
     });
+  const remixForYouOptions = [...remixOptions]
+    .sort((a, b) => {
+      const aLiked = likedKeys.some((key) => key.startsWith(`${a.id}:`));
+      const bLiked = likedKeys.some((key) => key.startsWith(`${b.id}:`));
+      return Number(bLiked) - Number(aLiked);
+    })
+    .slice(0, 20);
+  const remixFilterCount =
+    Number(remixModelFilter !== "all") + Number(remixTypeFilter !== "all");
+  const activeRemixOptions = remixTab === "foryou" ? remixForYouOptions : remixOptions;
   const generationCount = totalSongs || songs.length;
   const generationWord = generationCount === 1 ? "song" : "songs";
   const versionCount = songs.reduce((total, song) => total + generationClips(song).length, 0);
@@ -4680,7 +4691,13 @@ export function CreateStudio() {
               >
                 Library
               </button>
-              <button type="button" role="tab" aria-selected="false" disabled title="Personalized catalog is not available yet">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={remixTab === "foryou"}
+                className={remixTab === "foryou" ? "on" : ""}
+                onClick={() => setRemixTab("foryou")}
+              >
                 For You
               </button>
               <button
@@ -4703,48 +4720,71 @@ export function CreateStudio() {
                   aria-label="Search songs to remix"
                 />
               </label>
-              {remixTab === "library" ? (
+              {remixTab !== "staff" ? (
                 <>
-                  <button
-                    type="button"
-                    className={cn("s-remix-sort", remixSort === "new" && "on")}
-                    onClick={() => setRemixSort("new")}
-                  >
-                    New
-                  </button>
-                  <button
-                    type="button"
-                    className={cn("s-remix-sort", remixSort === "old" && "on")}
-                    onClick={() => setRemixSort("old")}
-                  >
-                    Old
-                  </button>
+                  <div className="s-remix-filter-wrap" data-s-menu>
+                    <button
+                      type="button"
+                      className="s-remix-filter-btn"
+                      onClick={() => setRemixFiltersOpen((value) => !value)}
+                    >
+                      <Icon name="fa-sliders" /> Filters
+                      {remixFilterCount ? ` (${remixFilterCount})` : ""}
+                    </button>
+                    {remixFiltersOpen ? (
+                      <div className="s-remix-filter-pop">
+                        <label>
+                          <span>Model</span>
+                          <select
+                            value={remixModelFilter}
+                            onChange={(event) =>
+                              setRemixModelFilter(
+                                event.target.value as "all" | "V6" | "V6_MINI" | "V6_WILD"
+                              )
+                            }
+                          >
+                            <option value="all">All models</option>
+                            <option value="V6">V6</option>
+                            <option value="V6_MINI">V6 Mini</option>
+                            <option value="V6_WILD">V6 Wild</option>
+                          </select>
+                        </label>
+                        <label>
+                          <span>Type</span>
+                          <select
+                            value={remixTypeFilter}
+                            onChange={(event) =>
+                              setRemixTypeFilter(
+                                event.target.value as "all" | "instrumental" | "vocal"
+                              )
+                            }
+                          >
+                            <option value="all">All types</option>
+                            <option value="vocal">Vocal</option>
+                            <option value="instrumental">Instrumental</option>
+                          </select>
+                        </label>
+                        <button
+                          type="button"
+                          className="s-remix-filter-clear"
+                          onClick={() => {
+                            setRemixModelFilter("all");
+                            setRemixTypeFilter("all");
+                          }}
+                        >
+                          Clear filters
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                   <select
-                    className="s-remix-filter"
-                    value={remixModelFilter}
-                    onChange={(event) =>
-                      setRemixModelFilter(
-                        event.target.value as "all" | "V6" | "V6_MINI" | "V6_WILD"
-                      )
-                    }
-                    aria-label="Filter by model"
+                    className="s-remix-sort-select"
+                    value={remixSort}
+                    onChange={(event) => setRemixSort(event.target.value as "new" | "old")}
+                    aria-label="Sort remix songs"
                   >
-                    <option value="all">All models</option>
-                    <option value="V6">V6</option>
-                    <option value="V6_MINI">V6 Mini</option>
-                    <option value="V6_WILD">V6 Wild</option>
-                  </select>
-                  <select
-                    className="s-remix-filter"
-                    value={remixTypeFilter}
-                    onChange={(event) =>
-                      setRemixTypeFilter(event.target.value as "all" | "instrumental" | "vocal")
-                    }
-                    aria-label="Filter by type"
-                  >
-                    <option value="all">All types</option>
-                    <option value="vocal">Vocal</option>
-                    <option value="instrumental">Instrumental</option>
+                    <option value="new">Newest</option>
+                    <option value="old">Oldest</option>
                   </select>
                 </>
               ) : null}
@@ -4802,11 +4842,13 @@ export function CreateStudio() {
               className="s-remix-list"
               style={remixTab === "staff" ? { display: "none" } : undefined}
             >
-              {remixOptions.length ? (
-                remixOptions.map((song) => {
+              {activeRemixOptions.length ? (
+                activeRemixOptions.map((song) => {
                   const clips = generationClips(song).filter((clip) =>
                     clipIsReady(song, clip)
                   );
+                  const preferredClip =
+                    clips.find((clip) => clip.variant === "ok") ?? clips[0];
                   const cover = generationClips(song).find((clip) => clip.image_url)?.image_url;
                   return (
                     <div key={song.id} className="s-remix-row">
@@ -4820,21 +4862,20 @@ export function CreateStudio() {
                         </small>
                       </span>
                       <span className="s-remix-actions">
-                        {clips.map((clip) => (
+                        {preferredClip ? (
                           <button
-                            key={clip.variant}
                             type="button"
                             className="s-remix-pick"
                             onClick={() =>
                               selectRemixSource(
                                 song,
-                                clip.variant === "alt" ? "alt" : "ok"
+                                preferredClip.variant === "alt" ? "alt" : "ok"
                               )
                             }
                           >
-                            {clips.length > 1 ? clipVersionLabel(clip.variant) : "Remix"}
+                            Remix
                           </button>
-                        ))}
+                        ) : null}
                       </span>
                     </div>
                   );

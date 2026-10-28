@@ -75,8 +75,7 @@ shown as functional until a real catalog endpoint exists.
 
 - Rows without a ready clip cannot be remixed.
 - Rows without `audio_id_ok`/`audio_id_alt` cannot be remixed.
-- Clicking `Remix` selects that task + version and closes the picker.
-- If both versions exist, the row exposes a version choice before submitting.
+- Clicking `Remix` selects the preferred ready version (`ok` first, else `alt`) and closes the picker.
 
 ### States
 
@@ -213,7 +212,7 @@ Cancel branches:
 
 - [x] `RemixPicker` modal component.
 - [x] Library tab + search/sort + model/type filters.
-- [x] Row selection with V1/V2 handling.
+- [x] Row selection uses the preferred ready version.
 - [x] `remixSource` state in `CreateStudio`.
 - [x] Source chip with remove.
 - [x] Create submits cover/remix operation.
@@ -238,7 +237,7 @@ Cancel branches:
 
 - [x] Library picker loads ready songs only.
 - [x] Search and sort.
-- [x] Select V1/V2 correctly.
+- [x] Remix uses preferred ready version.
 - [x] Submit creates operation with correct `task_id` + `variant`.
 - [x] Success shows the remix result in Audio results.
 - [x] Failure shows refund/error — provider failure returned 502, operation marked `error`, 12 credits refunded.
