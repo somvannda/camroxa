@@ -1872,11 +1872,15 @@ export function CreateStudio() {
           : addSubmenu === "audio"
             ? "Audio"
             : "Voice";
+    const submenuIndex =
+      addSubmenu === "lyrics" ? 0 : addSubmenu === "styles" ? 1 : addSubmenu === "audio" ? 5 : 6;
+    const submenuTop = 8 + submenuIndex * 44;
     return (
       <div
         className={cn("s-add-submenu", addSubmenuStack && "stack")}
         role="menu"
         aria-label={label}
+        style={addSubmenuStack ? undefined : { top: submenuTop }}
       >
         {addSubmenu === "lyrics" ? (
           <>
