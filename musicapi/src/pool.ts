@@ -120,6 +120,73 @@ export function belowCreditFloor(
   return credits < Math.max(1, floor);
 }
 
+/**
+ * Whether an account may serve a `paid_only` (premium) request.
+ *
+ * The operator-set `type` column is only a hint: Suno enforces the *plan*, so an
+ * account tagged `free` that has since upgraded must still be usable, or the
+ * pool refuses premium models while funded accounts sit idle. Conversely a row
+ * still tagged `paid` whose plan lapsed would be rejected upstream with 403
+ * "isn't available on your current plan", so it must not be selected either.
+ * The live `plan` (from `billing/info`) wins whenever it has been read; the tag
+ * is the fallback for an account that has never been probed.
+ */
+export function isPaidEligible(
+  dbType: "free" | "paid" | undefined,
+  plan: string | undefined,
+): boolean {
+  if (plan && plan !== "unknown") return plan !== "free";
+  return (dbType ?? "free") === "paid";
+}
+
+/**
+ * What `suno_accounts.type` should say for a live Suno plan, or `null` when the
+ * plan is unknown (never write from an unknown reading).
+ *
+ * Balance is deliberately not an input: a drained Premier account is still
+ * Premier and must stay `paid`, or it would be demoted out of premium routing
+ * while it waits for its renewal, then promoted again on refill — churn that
+ * also mis-ranks it as a free account under `prefer_free`. Emptiness is the
+ * credit floor's job, not this column's.
+ */
+export function desiredAccountType(plan: string | undefined): "free" | "paid" | null {
+  if (!plan || plan === "unknown") return null;
+  return plan === "free" ? "free" : "paid";
+}
+
+/**
+ * Operator-facing rendering of the accounts a selection scan skipped for a low
+ * balance. Kept out of the error message itself: account labels are operator
+ * data (usually the Suno account email), so they belong in logs, never in a
+ * `jobs.error` string that the user dashboard and webhooks render.
+ */
+export function lowCreditSummary(
+  accounts: Array<{ id: string; credits: number }>,
+  floor: number = config.suno.minCredits,
+): string {
+  const list = accounts.map((a) => `${a.id} (${a.credits})`).join(", ");
+  return `${list} — floor ${Math.max(1, floor)} credits`;
+}
+
+/**
+ * No pooled account could be selected because every candidate is drained.
+ *
+ * Distinct from a failed *attempt*: nothing was submitted to Suno, so the
+ * message is safe for end users (stored on `jobs.error` and shown in the
+ * playground) while `detail` carries the accounts and balances for the ops log.
+ */
+export class PoolCreditExhaustedError extends Error {
+  constructor(
+    /** User-safe text: mentions no account ids or balances. */
+    message: string,
+    /** Operator detail (labels + balances). Log only, never return to a caller. */
+    readonly detail: string,
+  ) {
+    super(message);
+    this.name = "PoolCreditExhaustedError";
+  }
+}
+
 export class AccountPool {
   private clients: SunoClient[] = [];
   private health: Map<string, { info: AccountHealth; updatedAt: number }> = new Map();
@@ -132,6 +199,25 @@ export class AccountPool {
    * fresh `billing/info` arrives, because that value already includes the spend.
    */
   private readonly reservedCredits: Map<string, number> = new Map();
+
+  /**
+   * Notified when a health probe reconciles a row's `type` with Suno's live
+   * plan. Best-effort: a listener that throws must never fail the probe.
+   */
+  onTypeSynced?: (event: {
+    id: string;
+    from: "free" | "paid";
+    to: "free" | "paid";
+    plan: string;
+  }) => void;
+
+  /** Persistence for `syncAccountType`; injectable so routing tests stay offline. */
+  private persistAccountType = async (label: string, type: "free" | "paid"): Promise<void> => {
+    await query(
+      "UPDATE suno_accounts SET type = $1 WHERE label = $2 AND type IS DISTINCT FROM $1",
+      [type, label],
+    );
+  };
 
   constructor(accounts: AccountCreds[] = []) {
     this.clients = accounts.map((a) => this.makeClient(a));
@@ -279,7 +365,18 @@ export class AccountPool {
     const health: AccountHealth = {
       credits: info.total_credits_left ?? 0,
       models: usable.map((m) => m.external_key ?? "").filter(Boolean),
-      plan: typeof subType === "string" ? subType : subType ? "paid" : "free",
+      // Three states, not two: a paid plan, an explicitly-free plan, and a
+      // payload that simply omitted the field. Only the middle one may demote a
+      // stored `type` (see `syncAccountType`); "unknown" leaves routing on the
+      // operator's value instead of guessing.
+      plan:
+        typeof subType === "string" && subType
+          ? subType
+          : subType
+            ? "paid"
+            : Object.prototype.hasOwnProperty.call(info, "subscription_type")
+              ? "free"
+              : "unknown",
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
@@ -287,7 +384,47 @@ export class AccountPool {
     // The fresh balance already reflects every settled spend, so any outstanding
     // reservation for this account is now double-counting.
     this.reservedCredits.delete(client.account.id);
+    await this.syncAccountType(client, health.plan);
     return health;
+  }
+
+  /**
+   * Keep `suno_accounts.type` in step with the plan Suno actually reports.
+   *
+   * The column is operator-set and therefore drifts: an account added as `free`
+   * and upgraded later keeps routing as free, which is exactly how the
+   * 2026-10-28 outage happened (funded Premier accounts excluded from premium
+   * models while the drained `paid` rows were tried and refused). Only the plan
+   * is an input — see `desiredAccountType`. Runs off the 30s health probe, so it
+   * writes at most once per account per drift, and never when the plan is
+   * unknown. Best-effort: a failed write must not fail the probe.
+   */
+  private async syncAccountType(client: SunoClient, plan: string): Promise<void> {
+    const desired = desiredAccountType(plan);
+    const from = client.account.type ?? "free";
+    if (!desired || desired === from) return;
+    // Heal the live client first: dispatch in this process must stop trusting
+    // the stale tag even if the row write below fails.
+    client.account.type = desired;
+    try {
+      await this.persistAccountType(client.account.id, desired);
+    } catch {
+      /* best-effort: the next probe retries the write */
+    }
+    try {
+      this.onTypeSynced?.({ id: client.account.id, from, to: desired, plan });
+    } catch {
+      /* a listener must never break a health probe */
+    }
+  }
+
+  /**
+   * Last known live balance for an account, or `undefined` when this process
+   * has never read it. Used by the retry loop to decide whether a bare 402 from
+   * Suno should be treated as a drained account (see `markCreditExhausted`).
+   */
+  cachedCredits(id: string): number | undefined {
+    return this.health.get(id)?.info.credits;
   }
 
   /**
@@ -427,6 +564,9 @@ export class AccountPool {
    * Shared selection scan: order the candidates, then return the first that is
    * funded, advertises `model` (or is kept as a last-resort fallback when it
    * doesn't), and isn't cooling after a 429.
+   *
+   * A drained pool throws {@link PoolCreditExhaustedError}, whose message is
+   * user-safe and whose `detail` carries the per-account balances for the log.
    */
   private async pickFrom(
     candidates: SunoClient[],
@@ -441,7 +581,8 @@ export class AccountPool {
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
-    let sawLowCredits = false;
+    let sawIneligiblePaid = false;
+    const drained: Array<{ id: string; credits: number }> = [];
     for (const client of this.prioritizeCooling(ordered)) {
       const probed = healths.get(client.account.id);
       if (!probed) continue;
@@ -450,8 +591,15 @@ export class AccountPool {
         continue;
       }
       const health = probed.health;
+      if (policy === "paid_only" && !isPaidEligible(client.account.type, health.plan)) {
+        // Premium keys are refused upstream on a free plan, so this account is
+        // not even a last-resort fallback — that would just burn an attempt on a
+        // predictable 403.
+        sawIneligiblePaid = true;
+        continue;
+      }
       if (belowCreditFloor(health.credits)) {
-        sawLowCredits = true;
+        drained.push({ id: client.account.id, credits: health.credits });
         continue;
       }
       if (want && health.models.length && !health.models.includes(want)) {
@@ -464,8 +612,16 @@ export class AccountPool {
       return client;
     }
     if (fallback) return fallback;
-    if (sawLowCredits) {
-      throw new Error("No Suno account with available credits for this model.");
+    if (drained.length) {
+      throw new PoolCreditExhaustedError(
+        "Music generation is temporarily unavailable: every Suno account is out of credits for this model. Please try again in a few minutes.",
+        `model=${want ?? "*"}; policy=${policy}; below floor: ${lowCreditSummary(drained)}`,
+      );
+    }
+    if (sawIneligiblePaid) {
+      throw new Error(
+        "No paid Suno account is available for this model; premium models require a paid account.",
+      );
     }
     throw new Error(lastError);
   }
@@ -473,6 +629,10 @@ export class AccountPool {
   /**
    * Pick a healthy account that can use `model`, has credits, and matches the
    * routing `policy` (prefer_free / paid_only / any).
+   *
+   * The pool-wide candidate list is passed through unfiltered: `paid_only`
+   * eligibility is decided inside `pickFrom` from the live plan, because the
+   * `type` column can lag behind a Suno upgrade (or survive a lapse).
    */
   async pick(
     model?: string,
@@ -480,16 +640,7 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
-    const filtered = this.clients.filter((c) => {
-      if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
-      return true;
-    });
-    if (filtered.length === 0 && policy === "paid_only") {
-      throw new Error(
-        "No paid Suno account is available for this model; premium models require a paid account.",
-      );
-    }
-    return this.pickFrom(filtered, model, policy, opts);
+    return this.pickFrom(this.clients, model, policy, opts);
   }
 
   /**
@@ -504,15 +655,14 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     const want = normalizeModel(model);
-    const candidates = this.clients.filter(
-      (c) => policy !== "paid_only" || (c.account.type ?? "free") === "paid",
-    );
+    const candidates = this.clients;
     const healths = await this.probeHealth(candidates);
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
     for (const client of this.prioritizeCooling(ordered)) {
       const probed = healths.get(client.account.id);
       if (!probed || "error" in probed) continue;
       const health = probed.health;
+      if (policy === "paid_only" && !isPaidEligible(client.account.type, health.plan)) continue;
       if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
       if (want && health.models.length && !health.models.includes(want)) continue;
       return client;
@@ -530,17 +680,14 @@ export class AccountPool {
   ): Promise<SunoClient> {
     const exclude = new Set(excludeIds);
     const want = normalizeModel(model);
-    const candidates = this.clients.filter(
-      (c) =>
-        !exclude.has(c.account.id) &&
-        (policy !== "paid_only" || (c.account.type ?? "free") === "paid"),
-    );
+    const candidates = this.clients.filter((c) => !exclude.has(c.account.id));
     const healths = await this.probeHealth(candidates);
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
     for (const client of this.prioritizeCooling(ordered)) {
       const probed = healths.get(client.account.id);
       if (!probed || "error" in probed) continue;
       const health = probed.health;
+      if (policy === "paid_only" && !isPaidEligible(client.account.type, health.plan)) continue;
       if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
       if (want && health.models.length && !health.models.includes(want)) continue;
       return client;
@@ -565,18 +712,8 @@ export class AccountPool {
   ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
     const exclude = new Set(excludeIds);
-    const filtered = this.clients.filter((c) => {
-      if (exclude.has(c.account.id)) return false;
-      if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
-      return true;
-    });
+    const filtered = this.clients.filter((c) => !exclude.has(c.account.id));
     if (filtered.length === 0) {
-      const anyPaid = this.clients.some((c) => (c.account.type ?? "free") === "paid");
-      if (policy === "paid_only" && !anyPaid) {
-        throw new Error(
-          "No paid Suno account is available for this model; premium models require a paid account.",
-        );
-      }
       throw new Error("No Suno accounts available after excluding attempted ones.");
     }
     return this.pickFrom(filtered, model, policy, opts);

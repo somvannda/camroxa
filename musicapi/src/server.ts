@@ -5,9 +5,14 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { AccountPool, RoutingPolicy } from "./pool.js";
+import { AccountPool, PoolCreditExhaustedError, RoutingPolicy, belowCreditFloor } from "./pool.js";
 import { SunoClient } from "./client.js";
-import { isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
+import {
+  isDefiniteCreditExhaustion,
+  isInsufficientCreditsError,
+  isRateLimitedSunoError,
+  isRetryableSunoError,
+} from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
@@ -554,6 +559,19 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // 25MB accommodates a 10MB image plus encoding overhead.
     bodyLimit: Number(process.env.BODY_LIMIT_BYTES ?? 26_214_400),
   });
+
+  // Reconcile an operator-set `suno_accounts.type` with Suno's live plan when a
+  // health probe notices they disagree (see `AccountPool.syncAccountType`). The
+  // row is the durable record; this hook only makes the change visible in the
+  // ops log and the audit trail, since it happens without an admin request.
+  pool.onTypeSynced = ({ id, from, to, plan }) => {
+    app.log.warn({ account: id, from, to, plan }, "suno account type reconciled from live plan");
+    void query(
+      `INSERT INTO audit_logs (actor_id, actor_email, action, target_type, target_id, details)
+       VALUES (NULL, 'system:plan-sync', 'account.auto_type_sync', 'suno_account', $1, $2)`,
+      [id, JSON.stringify({ from, to, plan })],
+    ).catch((err) => app.log.warn({ err }, "account type sync audit write failed"));
+  };
 
   // Keep the exact JSON bytes alongside the parsed body: ChmabaPay signs
   // `t=<unix>.<rawBody>`, so the webhook HMAC has to run over the bytes as
@@ -2964,6 +2982,43 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
   }
 
+  /**
+   * React to a submit failure that looks like a drained account.
+   *
+   * Only zeroes the cached balance when Suno actually said the account is out of
+   * credits, or when the last read was already at/below the floor. A bare 402
+   * can also mean a restricted or billing-held account, and zeroing on those
+   * parked every account as "drained" for a full health-cache window — the pool
+   * then refused every job with "no credits" without a credit problem existing.
+   */
+  function noteAccountCreditFailure(id: string, err: unknown): void {
+    if (!isInsufficientCreditsError(err)) return;
+    const cached = pool.cachedCredits(id);
+    if (isDefiniteCreditExhaustion(err) || (cached !== undefined && belowCreditFloor(cached))) {
+      pool.markCreditExhausted(id);
+      return;
+    }
+    app.log.warn(
+      { account: id, cachedCredits: cached, err },
+      "Suno 402 without a credit reason; keeping the cached balance",
+    );
+  }
+
+  /**
+   * Fail a job out immediately when *selection* (not an attempt) found no
+   * funded account. `err.message` is user-safe, so it becomes `job.error`
+   * verbatim instead of the misleading "All N attempts failed: …" wrapper, and
+   * the per-account balances go to the ops log only.
+   */
+  async function failOnPoolExhaustion(job: Job, err: unknown): Promise<boolean> {
+    if (!(err instanceof PoolCreditExhaustedError)) return false;
+    app.log.warn({ jobId: job.id, detail: err.detail }, "no funded Suno account for job");
+    job.status = "error";
+    job.error = err.message;
+    await finalizeJob(job);
+    return true;
+  }
+
   function runClipJobWithRetry(
     job: Job,
     submitFactory: (client: SunoClient) => Promise<import("./client.js").Clip[]>,
@@ -2990,6 +3045,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any", accountOpts)
           : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any", accountOpts);
       } catch (e) {
+        if (await failOnPoolExhaustion(job, e)) return;
         errors.push(e instanceof Error ? e.message : String(e));
         break;
       }
@@ -3011,9 +3067,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         errors.push(msg);
-        // A 402 means this account has no credits left: drop it from selection
-        // immediately so the next job skips it instead of repeating the 402.
-        if (isInsufficientCreditsError(e)) pool.markCreditExhausted(client.account.id);
+        // A credit-exhaustion 402 drains this account: drop it from selection so
+        // the next job skips it instead of repeating the 402. Other 402s keep
+        // their cached balance — see noteAccountCreditFailure.
+        noteAccountCreditFailure(client.account.id, e);
         if (isRateLimitedSunoError(e)) {
           pool.markRateLimited(client.account.id, config.suno.rateLimitCooldownMs);
         }
@@ -3060,6 +3117,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           ? await pool.pickFeatureExcept(options.needFeature, excludeAttemptedIds, options.model, options.policy ?? "any", accountOpts)
           : await pool.pickExcept(excludeAttemptedIds, options?.model, options?.policy ?? "any", accountOpts);
       } catch (e) {
+        if (await failOnPoolExhaustion(job, e)) return;
         errors.push(e instanceof Error ? e.message : String(e));
         break;
       }
@@ -3077,9 +3135,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
         errors.push(msg);
-        // A 402 means this account has no credits left: drop it from selection
-        // immediately so the next job skips it instead of repeating the 402.
-        if (isInsufficientCreditsError(e)) pool.markCreditExhausted(client.account.id);
+        // A credit-exhaustion 402 drains this account: drop it from selection so
+        // the next job skips it instead of repeating the 402. Other 402s keep
+        // their cached balance — see noteAccountCreditFailure.
+        noteAccountCreditFailure(client.account.id, e);
         if (isRateLimitedSunoError(e)) {
           pool.markRateLimited(client.account.id, config.suno.rateLimitCooldownMs);
         }
