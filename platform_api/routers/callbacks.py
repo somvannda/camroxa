@@ -47,7 +47,13 @@ def _schedule_audio_ingest_after_success(
     service = StreamingUploadService(get_db_pool())
     if str(source or "").strip().lower() == "web_music":
         service.schedule_web_music_b2_backfill(suno_task_id=task_id)
-        service.schedule_web_music_wav_upload(suno_task_id=task_id)
+        # WAV is intentionally NOT generated here. It is a paid, optional export
+        # that most listeners never request, yet generating it eagerly asked Suno
+        # for a conversion, downloaded a ~37 MiB file and stored an encrypted
+        # copy for every single generation (~58% of the web-music B2 footprint).
+        # The download path fetches it on demand instead: see
+        # WebMusicService's WAV download fallback, which submits/polls the Suno
+        # conversion when no stored object exists.
         service.schedule_web_music_lrc_upload(suno_task_id=task_id, variant="ok")
         service.schedule_web_music_lrc_upload(suno_task_id=task_id, variant="alt")
         return

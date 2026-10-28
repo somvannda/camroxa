@@ -2086,24 +2086,10 @@ class StreamingUploadService:
                 except Exception:
                     stats["backfill_failed"] += 1
 
-        wav_missing = await self._repo.list_web_music_tasks_missing_wav(
-            window_hours=min(window_hours, 48),
-            limit=min(limit, 20),
-        )
-        for row in wav_missing:
-            for variant, flag in (("ok", "missing_wav_ok"), ("alt", "missing_wav_alt")):
-                if not row.get(flag):
-                    continue
-                try:
-                    if await self._backfill_web_music_wav(
-                        suno_task_id=UUID(str(row["id"])),
-                        variant=variant,
-                    ):
-                        stats["wav_backfilled"] += 1
-                    else:
-                        stats["wav_failed"] += 1
-                except Exception:
-                    stats["wav_failed"] += 1
+        # Web-music WAV is deliberately not backfilled. It is a paid, optional
+        # export that the download path generates on demand, so rebuilding every
+        # missing one here would undo that and re-fill B2 with ~37 MiB per track.
+        # (`_backfill_web_music_wav` is kept for explicit admin/tool use.)
 
         if alert and (
             stats["jobs_failed"] or stats["backfill_failed"] or stats["wav_failed"]
