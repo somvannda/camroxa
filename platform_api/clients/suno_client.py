@@ -806,6 +806,8 @@ class SunoClient:
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
         image_urls: list[str] | None = None,
+        persona_id: str | None = None,
+        persona_model: str | None = None,
     ) -> dict[str, Any]:
         """Submit a music generation task to Suno.
 
@@ -896,6 +898,13 @@ class SunoClient:
             cleaned_images = [str(url).strip() for url in image_urls if str(url).strip()]
             if cleaned_images:
                 payload["imageUrls"] = cleaned_images[:4]
+        if persona_id:
+            cleaned_persona = str(persona_id).strip()
+            if cleaned_persona:
+                payload["personaId"] = cleaned_persona
+                payload["personaModel"] = (
+                    str(persona_model).strip() if persona_model else "voice_persona"
+                )
 
         client = self._build_client(api_key)
         try:

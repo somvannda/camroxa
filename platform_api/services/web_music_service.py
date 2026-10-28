@@ -1128,6 +1128,7 @@ class WebMusicService:
         weirdness_constraint: float | None = None,
         audio_weight: float | None = None,
         image_urls: list[str] | None = None,
+        persona_id: str | None = None,
         workspace_id: UUID | None = None,
     ) -> dict[str, Any]:
         logger.info(
@@ -1154,6 +1155,7 @@ class WebMusicService:
             for url in (image_urls or [])
             if str(url).strip().lower().startswith(("http://", "https://"))
         ][:4]
+        safe_persona_id = str(persona_id or "").strip()[:128] or None
 
         if mode_key == "simple":
             if not safe_prompt:
@@ -1317,6 +1319,7 @@ class WebMusicService:
                 weirdness_constraint=stored_weirdness,
                 audio_weight=stored_audio_weight,
                 image_urls=safe_image_urls,
+                persona_id=safe_persona_id,
                 workspace_id=workspace_id,
                 is_preview=is_preview,
                 preview_seconds=preview_seconds,
@@ -1358,6 +1361,7 @@ class WebMusicService:
         weirdness_constraint: float,
         audio_weight: float,
         image_urls: list[str] | None = None,
+        persona_id: str | None = None,
         workspace_id: UUID | None,
         is_preview: bool = False,
         preview_seconds: int | None = None,
@@ -1385,13 +1389,13 @@ class WebMusicService:
                 id, user_id, request_hash, model, title, lyrics, style,
                 instrumental, external_task_id, status, source, workspace_id,
                 negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                audio_weight, reference_image_urls, is_preview, preview_seconds, created_at, updated_at
+                audio_weight, reference_image_urls, persona_id, is_preview, preview_seconds, created_at, updated_at
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6, $7,
                 $8, NULL, $9, $10, $11,
                 $12, $13, $14, $15,
-                $16, $17::jsonb, $18, $19, NOW(), NOW()
+                $16, $17::jsonb, $18, $19, $20, NOW(), NOW()
             )
             """,
             task_id,
@@ -1411,6 +1415,7 @@ class WebMusicService:
             weirdness_constraint,
             audio_weight,
             json.dumps(list(image_urls or [])),
+            persona_id,
             is_preview,
             preview_seconds,
         )
@@ -1434,7 +1439,7 @@ class WebMusicService:
             """
             SELECT id, title, lyrics, style, model, instrumental, external_task_id,
                    negative_tags, vocal_gender, style_weight, weirdness_constraint,
-                   audio_weight, reference_image_urls
+                   audio_weight, reference_image_urls, persona_id
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -1468,6 +1473,7 @@ class WebMusicService:
             weirdness_constraint=row["weirdness_constraint"],
             audio_weight=row["audio_weight"],
             image_urls=reference_images,
+            persona_id=str(row["persona_id"] or "").strip() or None,
         )
         try:
             external_task_id = await self._generation.submit_suno_external_id(request)

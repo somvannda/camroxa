@@ -23,6 +23,7 @@ import {
   clipFilename,
   coverWebMusicStudioUpload,
   createWebMusicPlaylist,
+  createWebMusicStudioPersona,
   createWebMusicStudioVideo,
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
@@ -36,10 +37,12 @@ import {
   listWebMusicPlaylistItems,
   listWebMusicPlaylists,
   listWebMusicStudioOperations,
+  listWebMusicStudioPersonas,
   uploadWebMusicStudioAudio,
   uploadWebMusicStudioImage,
   type WebMusicStudioImage,
   type WebMusicStudioOperation,
+  type WebMusicStudioPersona,
   type WebMusicStudioUpload,
   generateWebMusic,
   generateWebMusicDraft,
@@ -251,6 +254,14 @@ export function CreateStudio() {
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState("");
   const [videoOperation, setVideoOperation] = useState<WebMusicStudioOperation | null>(null);
+  const [voicePersonas, setVoicePersonas] = useState<WebMusicStudioPersona[] | null>(null);
+  const [selectedPersona, setSelectedPersona] = useState<WebMusicStudioPersona | null>(null);
+  const [voiceSongs, setVoiceSongs] = useState<WebMusicGeneration[] | null>(null);
+  const [voiceCreateTaskId, setVoiceCreateTaskId] = useState("");
+  const [voiceName, setVoiceName] = useState("");
+  const [voiceStyles, setVoiceStyles] = useState("");
+  const [voiceBusy, setVoiceBusy] = useState(false);
+  const [voiceError, setVoiceError] = useState("");
   const [recording, setRecording] = useState(false);
   const [audioDragging, setAudioDragging] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -442,6 +453,28 @@ export function CreateStudio() {
       active = false;
     };
   }, [attachModal, videoSongs]);
+
+  useEffect(() => {
+    if (attachModal !== "voice" && attachModal !== "voices") return;
+    if (voicePersonas === null) {
+      listWebMusicStudioPersonas()
+        .then((items) => setVoicePersonas(items))
+        .catch(() => setVoicePersonas([]));
+    }
+    if (voiceSongs === null) {
+      listWebMusicGenerations(24)
+        .then((page) => {
+          const ready = page.items.filter(
+            (item) =>
+              String(item.status).toLowerCase() === "success" &&
+              generationClips(item).some((clip) => clipIsReady(item, clip))
+          );
+          setVoiceSongs(ready);
+          if (ready.length) setVoiceCreateTaskId((current) => current || ready[0].id);
+        })
+        .catch(() => setVoiceSongs([]));
+    }
+  }, [attachModal, voicePersonas, voiceSongs]);
 
   useEffect(() => {
     if (!workspacesReady || loading || !user) return;
@@ -1056,6 +1089,7 @@ export function CreateStudio() {
       weirdness_constraint: weirdness,
       audio_weight: audioWeight,
       image_urls: referenceImage ? [referenceImage.url] : undefined,
+      persona_id: selectedPersona?.provider_persona_id || undefined,
       workspace_id: activeWorkspaceId ?? undefined,
     };
     setBatchProgress(count > 1 ? { done: 0, total: count } : null);
@@ -1372,6 +1406,60 @@ export function CreateStudio() {
     }
   }
 
+  async function createVoicePersona() {
+    if (!voiceCreateTaskId) {
+      setVoiceError("Choose a finished song first.");
+      return;
+    }
+    if (!voiceName.trim()) {
+      setVoiceError("Give the voice a name.");
+      return;
+    }
+    setVoiceBusy(true);
+    setVoiceError("");
+    try {
+      let persona = await createWebMusicStudioPersona(voiceCreateTaskId, {
+        name: voiceName.trim(),
+        styles: voiceStyles.trim(),
+      });
+      if (!mounted.current) return;
+      const complete = new Set(["complete", "completed", "success"]);
+      const failed = new Set(["error", "failed"]);
+      for (let attempt = 0; attempt < 90; attempt += 1) {
+        const items = await listWebMusicStudioPersonas();
+        if (!mounted.current) return;
+        setVoicePersonas(items);
+        const found = items.find((item) => item.id === persona.id);
+        if (found) persona = found;
+        const state = String(persona.status).toLowerCase();
+        if (complete.has(state) && persona.provider_persona_id) break;
+        if (failed.has(state)) {
+          throw new Error(persona.error_message || "Voice creation failed.");
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        if (!mounted.current) return;
+      }
+      if (!persona.provider_persona_id) {
+        throw new Error("The voice is still processing. Try again in a moment.");
+      }
+      setSelectedPersona(persona);
+      setVoiceName("");
+      setVoiceStyles("");
+      setToast("Voice created and attached");
+    } catch (cause) {
+      if (mounted.current) {
+        const message = cause instanceof Error ? cause.message : "Could not create the voice";
+        setVoiceError(
+          /429|rate.?limit|too many requests/i.test(message)
+            ? "The voice service is rate-limited. Please try again in a few minutes."
+            : message
+        );
+      }
+    } finally {
+      if (mounted.current) setVoiceBusy(false);
+    }
+  }
+
   function clearAllFields() {
     setPrompt("");
     setTitle("");
@@ -1387,6 +1475,7 @@ export function CreateStudio() {
     setStylesError("");
     setReferenceImage(null);
     setImageError("");
+    setSelectedPersona(null);
   }
 
   const createDisabled =
@@ -1912,6 +2001,21 @@ export function CreateStudio() {
                       className="s-btn s-btn-icon sm"
                       aria-label="Remove image"
                       onClick={() => setReferenceImage(null)}
+                    >
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                ) : null}
+
+                {selectedPersona ? (
+                  <div className="s-voice-chip">
+                    <Icon name="fa-microphone" />
+                    <span>{selectedPersona.name}</span>
+                    <button
+                      type="button"
+                      className="s-btn s-btn-icon sm"
+                      aria-label="Remove voice"
+                      onClick={() => setSelectedPersona(null)}
                     >
                       <Icon name="fa-xmark" />
                     </button>
@@ -3595,16 +3699,123 @@ export function CreateStudio() {
                     </>
                   )}
                 </div>
+              ) : attachModal === "voice" || attachModal === "voices" ? (
+                <div className="s-voice-attach">
+                  {selectedPersona ? (
+                    <div className="s-voice-selected">
+                      <span className="s-voice-avatar">
+                        <Icon name="fa-microphone" />
+                      </span>
+                      <div>
+                        <b>{selectedPersona.name}</b>
+                        <small>Attached to your next song</small>
+                      </div>
+                      <button
+                        type="button"
+                        className="s-btn s-btn-icon sm"
+                        aria-label="Remove voice"
+                        onClick={() => setSelectedPersona(null)}
+                      >
+                        <Icon name="fa-xmark" />
+                      </button>
+                    </div>
+                  ) : null}
+
+                  <div className="s-voice-list">
+                    {voicePersonas === null ? (
+                      <p className="s-note">Loading voices…</p>
+                    ) : voicePersonas.length ? (
+                      voicePersonas.map((persona) => {
+                        const ready = Boolean(persona.provider_persona_id);
+                        return (
+                          <button
+                            key={persona.id}
+                            type="button"
+                            className={cn(
+                              "s-voice-item",
+                              selectedPersona?.id === persona.id && "active"
+                            )}
+                            disabled={!ready || voiceBusy}
+                            onClick={() => {
+                              setSelectedPersona(persona);
+                              setToast(`${persona.name} attached`);
+                              setAttachModal(null);
+                            }}
+                          >
+                            <span className="s-voice-avatar">
+                              <Icon name="fa-microphone" />
+                            </span>
+                            <span className="s-voice-meta">
+                              <b>{persona.name}</b>
+                              <small>
+                                {ready
+                                  ? persona.styles || "Custom voice"
+                                  : persona.status === "error"
+                                    ? /429|rate.?limit|too many requests/i.test(
+                                        persona.error_message || ""
+                                      )
+                                      ? "Voice service is rate-limited — try again shortly"
+                                      : persona.error_message || "Voice creation failed"
+                                    : "Preparing voice…"}
+                              </small>
+                            </span>
+                            {selectedPersona?.id === persona.id ? (
+                              <Icon name="fa-check" />
+                            ) : null}
+                          </button>
+                        );
+                      })
+                    ) : (
+                      <p className="s-note">
+                        No voices yet. Create one from a finished song below.
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="s-voice-create">
+                    <p className="s-note">Or create a voice from one of your songs.</p>
+                    <select
+                      className="s-input"
+                      value={voiceCreateTaskId}
+                      onChange={(event) => setVoiceCreateTaskId(event.target.value)}
+                    >
+                      <option value="">Choose a finished song</option>
+                      {(voiceSongs || []).map((song) => (
+                        <option key={song.id} value={song.id}>
+                          {song.title}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      className="s-input"
+                      placeholder="Voice name"
+                      maxLength={80}
+                      value={voiceName}
+                      onChange={(event) => setVoiceName(event.target.value)}
+                    />
+                    <input
+                      className="s-input"
+                      placeholder="Styles (optional)"
+                      value={voiceStyles}
+                      onChange={(event) => setVoiceStyles(event.target.value)}
+                    />
+                    {voiceError ? <p className="s-error">{voiceError}</p> : null}
+                    {voiceBusy ? <p className="s-note">Creating voice…</p> : null}
+                    <button
+                      type="button"
+                      className="s-btn s-btn-primary"
+                      onClick={() => void createVoicePersona()}
+                      disabled={voiceBusy || !voiceCreateTaskId || !voiceName.trim()}
+                    >
+                      <Icon name="fa-microphone" />{" "}
+                      {voiceBusy ? "Creating…" : "Create voice"}
+                    </button>
+                  </div>
+                </div>
               ) : (
                 <>
                   <p className="s-note">
-                    {attachModal === "voices"
-                      ? "Reuse a saved voice or pick one from the library as a vocal reference."
-                      : attachModal === "voice"
-                        ? "Pick a voice reference to shape the vocal tone of your next song."
-                        : attachModal === "inspo"
-                          ? "Pull a style reference from one of your playlists."
-                          : "Attach artwork to your creation. Images are used as the cover."}
+                    Pull a style reference from one of your playlists.
                   </p>
                   <div className="s-box">
                     Reference attachments are not enabled for this workspace yet. You can still upload and reuse audio

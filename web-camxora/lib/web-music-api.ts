@@ -17,6 +17,7 @@ export type WebMusicGenerateInput = {
   weirdness_constraint?: number;
   audio_weight?: number;
   image_urls?: string[];
+  persona_id?: string;
   workspace_id?: string;
 };
 
@@ -542,6 +543,43 @@ export async function createWebMusicStudioVideo(input: {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
+}
+export type WebMusicStudioPersona = {
+  id: string;
+  name: string;
+  styles?: string | null;
+  description?: string | null;
+  source_task_id?: string | null;
+  source_clip_id?: string | null;
+  provider_persona_id?: string | null;
+  status: string;
+  musicapi_job_id?: string | null;
+  error_message?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export async function listWebMusicStudioPersonas(): Promise<WebMusicStudioPersona[]> {
+  return musicJson("/api/v3/web-music/studio/personas");
+}
+
+export async function createWebMusicStudioPersona(
+  taskId: string,
+  input: {
+    name: string;
+    styles?: string;
+    description?: string;
+    variant?: "ok" | "alt";
+  }
+): Promise<WebMusicStudioPersona> {
+  return musicJson(
+    `/api/v3/web-music/studio/generations/${encodeURIComponent(taskId)}/personas`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }
+  );
 }
 export async function listWebMusicStudioOperations(
   limit = 20,

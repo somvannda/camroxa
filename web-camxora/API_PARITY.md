@@ -30,7 +30,7 @@ Honest "not enabled" panels (no backend wiring in the web app):
 | Feature | UI today | Backend status |
 |---|---|---|
 | Attach audio (upload/record) | **Implemented**: file picker, mic recording, then Extend / Cover | `POST /api/v3/web-music/studio/uploads` + `/studio/uploads/{id}/extend|cover` |
-| Voice reference | “Add voice reference” modal | **Partial**: personas exist (`/studio/personas`), but voice clone/generate/apply endpoints are not proxied |
+| Voice reference | **Implemented**: pick a saved persona or create one from a finished song | `/studio/personas` + `persona_id` on generation (`voice_persona`); upstream vox-stem can rate-limit enrollment |
 | Image attach | **Implemented**: upload to B2, stored as `reference_image_urls`, forwarded as `imageUrls` | `POST /api/v3/web-music/studio/images` |
 | Video attach | **Implemented**: pick a finished song, render a cover-art MP4, download | `POST /api/v3/web-music/studio/videos` → internal `/internal/studio/video` |
 | Playlist reference | **Implemented**: picker merges playlist track styles into Styles | Platform playlists + items APIs |
@@ -52,24 +52,24 @@ credits, task, Studio projects.
 **Do not call it from the browser.** It uses an API key (secret) and lives on a different
 origin; the web app must go through `platform_api` (`/api/v3/web-music/*`) as it does now.
 
-## 4. What is missing in the web stack
+## 4. Remaining gaps
 
-To make the "+" menu behave like Suno end-to-end, `platform_api` needs new proxy routes for:
+The "+" menu is now backed end-to-end except for full Suno-native voice enrolment:
 
-1. `POST /v1/upload/init` → `POST /v1/upload/register` → `GET /v1/upload/status/:id`
-   (reference audio / images).
-2. `POST /v1/voice/generate|record|validate|apply|extend|phrase`, `GET /v1/voice/…`
-   (voice library + cloning).
-3. `POST /v1/mp4/generate` (video generation) + status.
-4. A playlist-reference contract (no obvious musicapi endpoint; would need product
-   mapping, e.g. playlist → style tags).
+1. `POST /v1/voice/record|validate|phrase` and the raw recording upload flow
+   (the platform uses persona creation from a finished song instead).
+2. `POST /v1/upload/init|register|status` for native reference-audio uploads
+   (Studio audio now uses platform uploads + Extend/Cover).
 
 Already proxied today: generation (`/generate`), studio projects, extends/covers/stems,
-personas, Studio audio uploads, generations/streams/downloads, lyrics drafts, plans.
+personas, Studio audio/image uploads, video rendering, generations/streams/downloads,
+lyrics drafts, playlist style import, plans.
 
 ## 5. Recommended next steps
 
 1. **Audio attach — done** (upload, record, Extend, Cover; upload API returns 201).
-2. **Voice** — expose `/v1/voice/*` through platform_api, then build the voice picker.
-3. **Video** — expose `/v1/mp4/generate`, show progress via `/v1/task/:id`.
-4. **Playlist reference** — decide the product mapping before building UI.
+2. **Image attach — done** (B2 upload → `image_urls` → `imageUrls`).
+3. **Video — done** (cover-art MP4 render + download).
+4. **Playlist reference — done** (style import).
+5. **Voice — done for saved personas and create-from-song**; add native
+   record/validate enrolment if the vox-stem rate limit is lifted.

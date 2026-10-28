@@ -52,6 +52,7 @@ class WebMusicGenerateRequest(BaseModel):
     weirdness_constraint: float | None = Field(default=None, ge=0.0, le=1.0)
     audio_weight: float | None = Field(default=None, ge=0.0, le=1.0)
     image_urls: list[str] = Field(default_factory=list, max_length=4)
+    persona_id: str | None = Field(default=None, max_length=128)
     workspace_id: UUID | None = None
 
 
@@ -1264,6 +1265,7 @@ async def generate(
             weirdness_constraint=body.weirdness_constraint,
             audio_weight=body.audio_weight,
             image_urls=body.image_urls,
+            persona_id=body.persona_id,
             workspace_id=body.workspace_id,
         )
     except QuotaExceededError:
