@@ -809,6 +809,12 @@ class StudioReplaceSectionRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StudioLyricsSaveRequest(BaseModel):
+    title: str = Field(default="", max_length=120)
+    content: str = Field(min_length=1, max_length=5000)
+    id: UUID | None = None
+
+
 class StudioVideoRequest(BaseModel):
     task_id: UUID
     variant: Literal["ok", "alt"] = "ok"
@@ -1039,6 +1045,39 @@ async def list_studio_personas(
     service: WebMusicServiceDep,
 ) -> list[dict]:
     return await service.list_studio_personas(UUID(ctx.user_id))
+
+
+@router.get("/studio/lyrics")
+async def list_saved_lyrics(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(default=50, ge=1, le=100),
+) -> dict:
+    return await service.list_saved_lyrics(UUID(ctx.user_id), limit=limit)
+
+
+@router.post("/studio/lyrics", status_code=201)
+async def save_saved_lyrics(
+    body: StudioLyricsSaveRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.save_saved_lyrics(
+        UUID(ctx.user_id),
+        title=body.title,
+        content=body.content,
+        lyrics_id=body.id,
+    )
+
+
+@router.delete("/studio/lyrics/{lyrics_id}", status_code=204)
+async def delete_saved_lyrics(
+    lyrics_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> Response:
+    await service.delete_saved_lyrics(UUID(ctx.user_id), lyrics_id)
+    return Response(status_code=204)
 
 
 @router.post("/studio/images", status_code=201)

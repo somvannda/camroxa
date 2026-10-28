@@ -581,6 +581,37 @@ export async function createWebMusicStudioPersona(
     }
   );
 }
+export type WebMusicSavedLyrics = {
+  id: string;
+  title: string;
+  content: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+export async function listWebMusicSavedLyrics(
+  limit = 50
+): Promise<{ items: WebMusicSavedLyrics[] }> {
+  return musicJson(`/api/v3/web-music/studio/lyrics?limit=${limit}`);
+}
+
+export async function saveWebMusicSavedLyrics(input: {
+  id?: string | null;
+  title?: string;
+  content: string;
+}): Promise<WebMusicSavedLyrics> {
+  return musicJson("/api/v3/web-music/studio/lyrics", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function deleteWebMusicSavedLyrics(id: string): Promise<void> {
+  await musicJson(`/api/v3/web-music/studio/lyrics/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+}
 export async function listWebMusicStudioOperations(
   limit = 20,
   operationType?: string

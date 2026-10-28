@@ -2830,6 +2830,90 @@ class WebMusicService:
         )
         return self._studio_persona_payload(updated)
 
+    @staticmethod
+    def _saved_lyrics_payload(row: Any) -> dict[str, Any]:
+        return {
+            "id": str(row["id"]),
+            "title": str(row["title"]),
+            "content": str(row["content"]),
+            "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+            "updated_at": row["updated_at"].isoformat() if row["updated_at"] else None,
+        }
+
+    async def list_saved_lyrics(self, user_id: UUID, *, limit: int = 50) -> dict[str, Any]:
+        safe_limit = max(1, min(int(limit), 100))
+        rows = await self._pool.fetch(
+            """
+            SELECT id, title, content, created_at, updated_at
+            FROM studio_lyrics
+            WHERE user_id = $1
+            ORDER BY updated_at DESC
+            LIMIT $2
+            """,
+            user_id,
+            safe_limit,
+        )
+        return {"items": [self._saved_lyrics_payload(row) for row in rows]}
+
+    async def save_saved_lyrics(
+        self,
+        user_id: UUID,
+        *,
+        title: str,
+        content: str,
+        lyrics_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        clean_content = str(content or "").strip()
+        if not clean_content:
+            raise ValidationError("Lyrics are empty.", details={"field": "content"})
+        if len(clean_content) > 5000:
+            clean_content = clean_content[:5000]
+        first_line = next(
+            (line.strip() for line in clean_content.splitlines() if line.strip()),
+            "Untitled lyrics",
+        )
+        clean_title = str(title or "").strip()[:120] or first_line[:120]
+        if lyrics_id is None:
+            row = await self._pool.fetchrow(
+                """
+                INSERT INTO studio_lyrics (user_id, title, content)
+                VALUES ($1, $2, $3)
+                RETURNING id, title, content, created_at, updated_at
+                """,
+                user_id,
+                clean_title,
+                clean_content,
+            )
+        else:
+            row = await self._pool.fetchrow(
+                """
+                UPDATE studio_lyrics
+                SET title = $3, content = $4, updated_at = NOW()
+                WHERE id = $1 AND user_id = $2
+                RETURNING id, title, content, created_at, updated_at
+                """,
+                lyrics_id,
+                user_id,
+                clean_title,
+                clean_content,
+            )
+            if row is None:
+                raise NotFoundError("Saved lyrics not found.", details={"id": str(lyrics_id)})
+        return self._saved_lyrics_payload(row)
+
+    async def delete_saved_lyrics(self, user_id: UUID, lyrics_id: UUID) -> None:
+        row = await self._pool.fetchrow(
+            """
+            DELETE FROM studio_lyrics
+            WHERE id = $1 AND user_id = $2
+            RETURNING id
+            """,
+            lyrics_id,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Saved lyrics not found.", details={"id": str(lyrics_id)})
+
     async def list_studio_personas(self, user_id: UUID) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             """

@@ -27,6 +27,7 @@ import {
   createWebMusicStudioVideo,
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
+  deleteWebMusicSavedLyrics,
   extendWebMusicStudioUpload,
   fetchWebMusicClipBlob,
   fetchWebMusicClipWavBlob,
@@ -36,10 +37,13 @@ import {
   getWebMusicStudioOperation,
   listWebMusicPlaylistItems,
   listWebMusicPlaylists,
+  listWebMusicSavedLyrics,
   listWebMusicStudioOperations,
   listWebMusicStudioPersonas,
+  saveWebMusicSavedLyrics,
   uploadWebMusicStudioAudio,
   uploadWebMusicStudioImage,
+  type WebMusicSavedLyrics,
   type WebMusicStudioImage,
   type WebMusicStudioOperation,
   type WebMusicStudioPersona,
@@ -207,6 +211,12 @@ export function CreateStudio() {
   const [lyricistPrompt, setLyricistPrompt] = useState("");
   const lyricistChipsRef = useRef<HTMLDivElement | null>(null);
   const lyricistInputRef = useRef<HTMLInputElement | null>(null);
+  const [lyricsLibraryOpen, setLyricsLibraryOpen] = useState(false);
+  const [savedLyrics, setSavedLyrics] = useState<WebMusicSavedLyrics[] | null>(null);
+  const [lyricsSaveOpen, setLyricsSaveOpen] = useState(false);
+  const [lyricsSaveTitle, setLyricsSaveTitle] = useState("");
+  const [lyricsSaveId, setLyricsSaveId] = useState<string | null>(null);
+  const [lyricsSaving, setLyricsSaving] = useState(false);
   const [featureTab, setFeatureTab] = useState<FeatureTab>(null);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [audioHistory, setAudioHistory] = useState<WebMusicStudioOperation[]>([]);
@@ -652,6 +662,8 @@ export function CreateStudio() {
     setError("");
     setLyricistOpen(true);
     setLyricistPrompt("");
+    setLyricsSaveOpen(false);
+    setLyricsSaveId(null);
     lyricsHistoryRef.current = [lyrics];
     setLyricsHistoryIndex(0);
     setLyricsModalOpen(true);
@@ -689,6 +701,81 @@ export function CreateStudio() {
       .replace(/\n{3,}/g, "\n\n")
       .trim();
     updateLyrics(cleaned);
+  }
+
+  async function openLyricsLibrary() {
+    setLyricsLibraryOpen(true);
+    setSavedLyrics(null);
+    try {
+      const payload = await listWebMusicSavedLyrics(50);
+      setSavedLyrics(payload.items);
+    } catch (cause) {
+      setSavedLyrics([]);
+      setError(cause instanceof Error ? cause.message : "Could not load saved lyrics");
+    }
+  }
+
+  function loadSavedLyrics(item: WebMusicSavedLyrics) {
+    setLyrics(item.content);
+    setLyricsMode("write");
+    setLyricsLibraryOpen(false);
+    setLyricsSaveOpen(false);
+    setLyricsSaveId(item.id);
+    setLyricistOpen(false);
+    setError("");
+    lyricsHistoryRef.current = [item.content];
+    setLyricsHistoryIndex(0);
+    setLyricsModalOpen(true);
+    setToast(`Loaded ${item.title}`);
+  }
+
+  function startSaveLyrics() {
+    if (!lyrics.trim()) {
+      setError("Write something before saving.");
+      return;
+    }
+    const firstLine =
+      lyrics.split("\n").find((line) => line.trim().length > 0)?.trim() || "Untitled lyrics";
+    setLyricsSaveTitle(firstLine.slice(0, 120));
+    setLyricsSaveOpen(true);
+  }
+
+  async function saveLyricsDraft() {
+    if (!lyrics.trim()) {
+      setError("Write something before saving.");
+      return;
+    }
+    setLyricsSaving(true);
+    setError("");
+    try {
+      const saved = await saveWebMusicSavedLyrics({
+        id: lyricsSaveId,
+        title: lyricsSaveTitle,
+        content: lyrics,
+      });
+      setLyricsSaveId(saved.id);
+      setSavedLyrics((current) => {
+        const rest = (current || []).filter((item) => item.id !== saved.id);
+        return [saved, ...rest];
+      });
+      setLyricsSaveOpen(false);
+      setToast("Lyrics saved");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not save lyrics");
+    } finally {
+      setLyricsSaving(false);
+    }
+  }
+
+  async function removeSavedLyrics(item: WebMusicSavedLyrics) {
+    try {
+      await deleteWebMusicSavedLyrics(item.id);
+      setSavedLyrics((current) => (current || []).filter((entry) => entry.id !== item.id));
+      if (lyricsSaveId === item.id) setLyricsSaveId(null);
+      setToast("Saved lyrics removed");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not remove saved lyrics");
+    }
   }
 
   async function writeLyrics() {
@@ -1940,6 +2027,17 @@ export function CreateStudio() {
               }}
             >
               <Icon name="fa-wand-magic-sparkles" /> Auto-generate
+            </button>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                void openLyricsLibrary();
+              }}
+            >
+              <Icon name="fa-bookmark" /> Saved lyrics
             </button>
             <button
               type="button"
@@ -3980,6 +4078,60 @@ export function CreateStudio() {
         </div>
       ) : null}
 
+      {lyricsLibraryOpen ? (
+        <div
+          className="s-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Saved lyrics"
+          onClick={() => setLyricsLibraryOpen(false)}
+        >
+          <div className="s-lyrics-library" onClick={(event) => event.stopPropagation()}>
+            <div className="s-modal-head">
+              <h3>Saved lyrics</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Close saved lyrics"
+                onClick={() => setLyricsLibraryOpen(false)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-lyrics-library-body">
+              {savedLyrics === null ? (
+                <p className="s-note">Loading saved lyrics…</p>
+              ) : savedLyrics.length ? (
+                savedLyrics.map((item) => (
+                  <div key={item.id} className="s-lyrics-saved-row">
+                    <button
+                      type="button"
+                      className="s-lyrics-saved-load"
+                      onClick={() => loadSavedLyrics(item)}
+                    >
+                      <b>{item.title}</b>
+                      <small>
+                        {item.content.replace(/\s+/g, " ").trim().slice(0, 110)}
+                      </small>
+                    </button>
+                    <button
+                      type="button"
+                      className="s-lyrics-saved-delete"
+                      aria-label={`Delete ${item.title}`}
+                      onClick={() => void removeSavedLyrics(item)}
+                    >
+                      <Icon name="fa-trash" />
+                    </button>
+                  </div>
+                ))
+              ) : (
+                <p className="s-note">No saved lyrics yet. Save a draft from the lyrics editor.</p>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {lyricsModalOpen ? (
         <div
           className="s-lyrics-modal-overlay"
@@ -4036,6 +4188,15 @@ export function CreateStudio() {
                 <button
                   type="button"
                   className="s-lyrics-tool"
+                  aria-label="Save lyrics"
+                  title="Save lyrics"
+                  onClick={startSaveLyrics}
+                >
+                  <Icon name="fa-bookmark" />
+                </button>
+                <button
+                  type="button"
+                  className="s-lyrics-tool"
                   aria-label={lyricsFullscreen ? "Exit fullscreen" : "Expand"}
                   title={lyricsFullscreen ? "Exit fullscreen" : "Expand"}
                   onClick={() => setLyricsFullscreen((value) => !value)}
@@ -4062,9 +4223,41 @@ export function CreateStudio() {
               maxLength={5000}
               autoFocus
             />
-            <div className={cn("s-lyrics-modal-foot", lyricistOpen && "with-lyricist")}>
+            <div className={cn("s-lyrics-modal-foot", (lyricistOpen || lyricsSaveOpen) && "with-lyricist")}>
               {error ? <p className="s-lyrics-error">{error}</p> : null}
-              {lyricistOpen ? (
+              {lyricsSaveOpen ? (
+                <div className="s-lyrics-save">
+                  <input
+                    autoFocus
+                    value={lyricsSaveTitle}
+                    onChange={(event) => setLyricsSaveTitle(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void saveLyricsDraft();
+                      }
+                    }}
+                    placeholder="Name this lyric draft"
+                    maxLength={120}
+                    aria-label="Lyrics title"
+                  />
+                  <button
+                    type="button"
+                    className="s-lyrics-save-primary"
+                    onClick={() => void saveLyricsDraft()}
+                    disabled={lyricsSaving || !lyrics.trim()}
+                  >
+                    {lyricsSaving ? "Saving…" : "Save"}
+                  </button>
+                  <button
+                    type="button"
+                    className="s-lyrics-save-cancel"
+                    onClick={() => setLyricsSaveOpen(false)}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : lyricistOpen ? (
                 <div className="s-lyricist">
                   <div className="s-lyricist-top">
                     <button
