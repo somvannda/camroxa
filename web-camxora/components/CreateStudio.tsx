@@ -2041,18 +2041,6 @@ export function CreateStudio() {
             >
               <Icon name="fa-bookmark" /> Saved lyrics
             </button>
-            <button
-              type="button"
-              className={`s-menu-item${instrumental ? " on" : ""}`}
-              role="menuitemcheckbox"
-              aria-checked={instrumental}
-              onClick={() => {
-                closeMenu();
-                setInstrumental((value) => !value);
-              }}
-            >
-              <Icon name={instrumental ? "fa-check" : "fa-music"} /> Instrumental
-            </button>
           </>
         ) : null}
         {addSubmenu === "styles" ? (
