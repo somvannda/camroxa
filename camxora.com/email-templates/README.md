@@ -13,8 +13,8 @@ python scripts/preview-auth-emails.py
 Open:
 
 ```text
-web-camxora/email-templates/password-reset.html
-web-camxora/email-templates/verify-email.html
+camxora.com/email-templates/password-reset.html
+camxora.com/email-templates/verify-email.html
 ```
 
 The preview script uses:

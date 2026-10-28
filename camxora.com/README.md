@@ -1,4 +1,4 @@
-# web-camxora
+# camxora.com
 
 New apex frontend for `camxora.com`.
 
@@ -15,7 +15,7 @@ Build the new Camxora music platform from the new templates while reusing the pr
 ## Structure
 
 ```
-web-camxora/
+camxora.com/
   design-reference/   Static prototype snapshot. Reference only; never served.
   README.md
 ```
@@ -23,7 +23,7 @@ web-camxora/
 Planned next folders after Phase 1 approval:
 
 ```
-web-camxora/
+camxora.com/
   app/                Next.js routes
   components/         New visual components
   lib/                API clients and adapters
@@ -33,7 +33,7 @@ web-camxora/
 
 ## Decisions pending
 
-- D-001: app base. Recommended: new `web-camxora` app from `music_web` + `website`.
+- D-001: app base. Recommended: new `camxora.com` app from `music_web` + `website`.
 - D-002: runtime API. Recommended: `platform_api` `/api/v3`; `musicapi` remains provider.
 
 ## Rules

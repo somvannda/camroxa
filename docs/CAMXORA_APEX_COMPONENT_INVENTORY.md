@@ -1,6 +1,6 @@
 # CAMXORA apex component inventory
 
-Inventory of template primitives to extract from `web-camxora/design-reference/app.css` and the HTML pages.
+Inventory of template primitives to extract from `camxora.com/design-reference/app.css` and the HTML pages.
 
 ## Shell
 

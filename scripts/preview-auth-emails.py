@@ -4,7 +4,7 @@ Run from the repository root:
 
     python scripts/preview-auth-emails.py
 
-The output goes to web-camxora/email-templates/. The previews are generated
+The output goes to camxora.com/email-templates/. The previews are generated
 from the same render functions used by the API, so layout changes cannot drift
 between the preview and the real message.
 """
@@ -24,7 +24,7 @@ from platform_api.services.email_templates import (  # noqa: E402
     render_verification_email,
 )
 
-OUT_DIR = ROOT / "web-camxora" / "email-templates"
+OUT_DIR = ROOT / "camxora.com" / "email-templates"
 BASE_URL = os.environ.get("CAMXORA_EMAIL_PREVIEW_BASE_URL", "http://localhost:3103")
 LOGO_URL = os.environ.get(
     "CAMXORA_EMAIL_PREVIEW_LOGO_URL",

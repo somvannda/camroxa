@@ -20,7 +20,7 @@ beyond generic UI labels.
 
 ## 2. Hard scope rules (user corrected an earlier overreach)
 
-- **Only** `web-camxora/components/CreateStudio.tsx` and `web-camxora/components/LibraryView.tsx`
+- **Only** `camxora.com/components/CreateStudio.tsx` and `camxora.com/components/LibraryView.tsx`
   (+ their shared CSS/API helpers).
 - **Do NOT** restyle or rewrite the global shell again: `components/Sidebar.tsx`,
   `components/Player.tsx`, `app/(site)/layout.tsx`, `components/Topbar.tsx`,
@@ -39,17 +39,17 @@ beyond generic UI labels.
 |---|---|
 | Repo (worktree to edit) | `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\camxora-apex` |
 | Branch | `feat/camxora-apex` (HEAD `1d31d26d`) |
-| Next.js web app | `<worktree>\web-camxora` — dev server on **3103** |
+| Next.js web app | `<worktree>\camxora.com` — dev server on **3103** |
 | Platform API (FastAPI) | `<worktree>\platform_api` — **8100** (`PLATFORM_DEBUG=true`) |
 | Suno proxy API (Fastify) | `<worktree>\musicapi` — **4003** |
 | Local Postgres | `postgres://postgres:postgres@localhost:5432` — DBs `platform_db`, `sunoapi` |
-| Web env | `web-camxora/.env.local`: `PLATFORM_API_URL=http://localhost:8100`, Turnstile disabled |
+| Web env | `camxora.com/.env.local`: `PLATFORM_API_URL=http://localhost:8100`, Turnstile disabled |
 | Suno reference | user is logged into `suno.com` in the connected browser tab |
 
 Run / verify:
 
 ```powershell
-cd "C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\camxora-apex\web-camxora"
+cd "C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\camxora-apex\camxora.com"
 npx tsc --noEmit          # current state: clean
 curl.exe -s -o NUL -w "%{http_code}" http://localhost:3103/create   # expect 200
 ```
@@ -58,7 +58,7 @@ The dev server is already running (`next dev -p 3103`, Turbopack). Edits hot-rel
 
 ### Auth for visual QA
 
-- `web-camxora` authenticates against **platform_api** (`/api/v3/auth/*`), not musicapi.
+- `camxora.com` authenticates against **platform_api** (`/api/v3/auth/*`), not musicapi.
 - `login` is email+password or Google; cookies are `camxora_access_token` /
   `camxora_refresh_token`; the Next rewrites proxy `/api/v3/*` → `:8100`.
 - There is **no dev bypass**. To inspect authenticated pages, either:
@@ -74,9 +74,9 @@ The dev server is already running (`next dev -p 3103`, Turbopack). Edits hot-rel
 ## 4. Current state of the work (git)
 
 ```
- M web-camxora/app/globals.css              +281
- M web-camxora/components/CreateStudio.tsx  heavily restructured (~2.8k lines)
- M web-camxora/lib/web-music-api.ts         +17
+ M camxora.com/app/globals.css              +281
+ M camxora.com/components/CreateStudio.tsx  heavily restructured (~2.8k lines)
+ M camxora.com/lib/web-music-api.ts         +17
 ```
 
 - `npx tsc --noEmit` → **passes**.
@@ -209,7 +209,7 @@ Rows ×110 with per-row actions; pagination `Page [n] ‹ ›` at the bottom.
 ### 6.1 Files
 
 ```
-web-camxora/
+camxora.com/
   app/(site)/create/page.tsx      → <CreateStudio />
   app/(site)/library/page.tsx     → <LibraryView />
   app/globals.css                 → old Camxora CSS + new .s-* block at the END (keep it last)
@@ -392,7 +392,7 @@ Required behaviour:
 ### 8.3 Verification checklist
 
 ```powershell
-cd ...\web-camxora
+cd ...\camxora.com
 npx tsc --noEmit
 curl.exe -s -o NUL -w "%{http_code}" http://localhost:3103/create
 curl.exe -s -o NUL -w "%{http_code}" http://localhost:3103/library
@@ -412,7 +412,7 @@ Then in the browser (logged in):
 
 ## 9. Suggested prompt for the fresh session
 
-> Work only in `...\camxora-apex\web-camxora` (branch `feat/camxora-apex`, dev server on
+> Work only in `...\camxora-apex\camxora.com` (branch `feat/camxora-apex`, dev server on
 > 3103). Read `HANDOFF.md` first. `/create` is already rebuilt to match Suno — do not
 > regress it. Now rebuild `components/LibraryView.tsx` to match `suno.com/library` 1:1
 > using the existing `.s-*` design system and platform_api endpoints. Keep the sidebar,
@@ -517,7 +517,7 @@ New helpers in `lib/web-music-api.ts`: `listWebMusicPlaylistItems`,
 - All cards measure 310px wide at 1297px; no horizontal overflow.
 ### Design system codified (this pass)
 
-- `web-camxora/DESIGN_SYSTEM.md` is now the source of truth: type scale
+- `camxora.com/DESIGN_SYSTEM.md` is now the source of truth: type scale
   (11/12/13/14/15/16/18/22/24/26/30/32), icon tiers (12/13/14/16/18), spacing
   (4/6/8/10/12/16/20/24), control heights (28/32-34/40/44/46/48), radii, surfaces,
   component specs and do/don't rules.
@@ -624,7 +624,7 @@ pm run typecheck pass.
 - Result: 0 console errors, 0 horizontal overflow, 0 missing alt, 0 unnamed buttons.
 - Fixed: /create and /studio/editor had no rendered h1 -> added `.sr-only` headings
   (new `.sr-only` utility in globals.css).
-- Report: `web-camxora/UI_AUDIT.md` (summary, contrast table, per-route table, next steps).
+- Report: `camxora.com/UI_AUDIT.md` (summary, contrast table, per-route table, next steps).
 - Main remaining inconsistency: only /create and /library use the .s-* design system;
   other pages still use the legacy CSS.
 ### Lyrics auto-generate moved into the input footer

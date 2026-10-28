@@ -584,7 +584,7 @@ Measured Suno-side charges are recorded in
 ## 4. Architecture decision
 
 ```text
-web-camxora Studio
+camxora.com Studio
         |
         v
 platform_api  -> auth, ownership, credits, plan gates, audit, API keys

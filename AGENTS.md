@@ -1,5 +1,12 @@
 # CAMXORA — Project Rules
 
+## Canonical checkout (mandatory)
+- `G:\Developments\Projects\Camxora` is the **canonical `main` checkout**. It must stay on `main`, clean, and contain the latest merged code.
+- Feature work happens on short-lived branches. Use a worktree when parallel agents share the repo; never treat a worktree as the long-lived source of truth.
+- **After every merge**, clean up: delete the merged branch, remove only worktrees that are clean and fully merged, run `git worktree prune`, then sync the main checkout with `git switch main && git pull --ff-only`.
+- Never remove a worktree that has uncommitted or unpushed work. Check `git status` and `git log origin/main..HEAD` first.
+- Do not leave stale `*-apex`, `*-dev`, or temporary worktrees behind after their branch is merged.
+
 ## Shipping / multi-agent (mandatory)
 - One task → one git branch (prefer worktrees when parallel agents share this repo).
 - Commit / push / merge / production deploy only when the user explicitly asks.
@@ -8,7 +15,7 @@
 
 ## Session & Git Workflow (mandatory)
 - One commit = one logical change. **Commit before switching tasks** — never leave work from two tasks in the same uncommitted state.
-- Start each session from a clean `main` on a fresh branch: `git checkout -b <task>/<short-name>`.
+- Start each session from a clean `main` on a fresh branch: `git fetch origin && git switch -c <task>/<short-name> origin/main`.
 - Commit early and often, even incomplete checkpoints (prefix rough ones `WIP:`) — never wait for a task to be "fully done" before the first commit.
 - When a related task/bug arrives mid-session, ask 3 questions and act:
   - **Blocking** the current task → fix it first, in its own small commit.
@@ -20,27 +27,22 @@
 
 ## App Identity
 - App name: **CAMXORA** (never "AI", "NEXORA AI", or other names)
-- Active product: **`musicapi/`** — white-label AI music generation, credit-billed over a
-  pool of Suno accounts
-  - Core API: **Fastify 5 + TypeScript** (`src/`, ESM via `tsx`) at `localhost:4003`
-  - User workspace: **Next.js 16** (`web-user/`) at `localhost:4001`
-  - Admin console: **Next.js 16** (`web-admin/`) at `localhost:4002`
-  - Database: PostgreSQL, local DB `sunoapi`; migrations `migrations/*.sql` via `scripts/migrate.ts`
-  - Optional Redis job queue (`QUEUE_DRIVER=redis`)
-- Legacy trees (reference only, **not** the active product): `platform_api/` (FastAPI),
-  `python_app/` + `camxora_python/` (PyQt6 desktop), `admin_portal/` (React + Vite),
-  `music_web/` (Next.js), `camxora/` + `archive/electron-app/` (Electron)
+- Canonical web app: **`camxora.com/`**, Next.js 16 at `localhost:3103`
+- Core API: **`musicapi/`**, Fastify 5 + TypeScript at `localhost:4003`
+- Platform API: **`platform_api/`**, FastAPI at `localhost:8100`
+- Admin console: **`admin_portal/`**, React + Vite at `localhost:5173`
+- Database: PostgreSQL, local DB `platform_db` / `sunoapi`; migrations in `platform_api/migrations` and `musicapi/migrations`
+- Optional Redis job queue (`QUEUE_DRIVER=redis`)
+- Legacy trees (reference only, **not** the active product): `python_app/` + `camxora_python/` (PyQt6 desktop), `music_web/` (Next.js), `camxora/` + `archive/electron-app/` (Electron)
 - See [README.md](README.md) and [musicapi/README.md](musicapi/README.md) for the runbook.
 
 ## Conventions for the active product
+- Web API calls go through the `lib/*-api.ts` helpers and the relative `/api/v3/*` rewrite; never hardcode the backend origin in the browser.
 - Core API routes live in `musicapi/src/server.ts`; shared infra in `musicapi/src/`
   (`config.ts`, `db.ts`, `pool.ts`, `jobQueue.ts`) — do not add a second route module.
-- Frontend API calls go through `apiFetch()` in `web-user/lib/api.ts` / `web-admin/lib/api.ts`
-  and the relative `/backend/*` rewrite; never hardcode the backend origin.
 - Credit **costs belong to the `pricing` table**, edited via the admin console
   (`/admin/pricing`) — never hardcode a price in a route.
-- New schema changes ship as a new ordered `migrations/NNNN_*.sql` file; never edit an
-  applied migration.
+- New schema changes ship as a new ordered migration file; never edit an applied migration.
 
 ## Legacy design system (Python/Electron only — NOT the active product)
 

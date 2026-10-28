@@ -125,7 +125,7 @@ This is not a promise to clone every Suno Studio feature.
 
 ## Verified in this branch
 
-- [x] `web-camxora` TypeScript checks pass
+- [x] `camxora.com` TypeScript checks pass
 - [x] `musicapi` TypeScript checks pass
 - [x] Platform API Python compilation passes
 - [x] Real Stems end-to-end test passed

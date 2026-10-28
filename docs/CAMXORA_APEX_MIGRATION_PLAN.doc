@@ -110,7 +110,7 @@
 
 <table>
   <tr><th>Decision</th><th>Recommendation</th></tr>
-  <tr><td>New app</td><td><span class="mono">web-camxora/</span>, a new Next.js application on port <span class="mono">3103</span>.</td></tr>
+  <tr><td>New app</td><td><span class="mono">camxora.com/</span>, a new Next.js application on port <span class="mono">3103</span>.</td></tr>
   <tr><td>Visual source</td><td>The new templates from <span class="mono">sample-1</span>. Every visible surface is rebuilt from these templates.</td></tr>
   <tr><td>Logic source</td><td>Reuse <span class="mono">music_web</span> providers, player engines, auth, streaming, library, playlists, likes, and checkout. Do not copy its old UI.</td></tr>
   <tr><td>Content source</td><td>Reuse <span class="mono">website/</span> legal, blog, changelog, download, and marketing content, restyled in the new templates.</td></tr>
@@ -189,7 +189,7 @@
 <h3>4.1 Application layers</h3>
 <table>
   <tr><th>Layer</th><th>Target</th></tr>
-  <tr><td>New apex app</td><td><span class="mono">web-camxora/</span> - Next.js 16, React 19, new Camxora templates.</td></tr>
+  <tr><td>New apex app</td><td><span class="mono">camxora.com/</span> - Next.js 16, React 19, new Camxora templates.</td></tr>
   <tr><td>Service</td><td><span class="mono">camxora-web-apex.service</span> on port <span class="mono">3103</span>.</td></tr>
   <tr><td>Browser API</td><td>Same-origin <span class="mono">/api/v3/*</span> rewrite to <span class="mono">platform_api</span>.</td></tr>
   <tr><td>Auth</td><td>Existing platform accounts; first-party apex session; no change to old music cookies.</td></tr>
@@ -310,7 +310,7 @@
 <h3>Phase 1 - Sandbox foundation (4-5 days)</h3>
 <table>
   <tr><th>ID</th><th>Task</th><th>Output / action</th><th>Est.</th><th>Depends on</th><th>Owner</th><th>Status</th></tr>
-  <tr><td>P1-01</td><td>Scaffold <span class="mono">web-camxora</span></td><td>Next.js app, TypeScript, lint, typecheck, build, health route.</td><td>0.5d</td><td>P0-02</td><td>FE</td><td>Not started</td></tr>
+  <tr><td>P1-01</td><td>Scaffold <span class="mono">camxora.com</span></td><td>Next.js app, TypeScript, lint, typecheck, build, health route.</td><td>0.5d</td><td>P0-02</td><td>FE</td><td>Not started</td></tr>
   <tr><td>P1-02</td><td>Port design tokens</td><td><span class="mono">--bg</span>, <span class="mono">--panel</span>, <span class="mono">--brand</span>, <span class="mono">--play</span>, <span class="mono">--focus</span>, type scale, spacing, radii.</td><td>0.5d</td><td>P1-01</td><td>FE + Design</td><td>Not started</td></tr>
   <tr><td>P1-03</td><td>Assets</td><td>Original logo, Inter, Niradei, Font Awesome 7.3.1, license notes.</td><td>0.5d</td><td>P1-01</td><td>FE</td><td>Not started</td></tr>
   <tr><td>P1-04</td><td>Shell</td><td>Sidebar, topbar, mobile header, footer, page container, auth states.</td><td>1d</td><td>P1-02</td><td>FE</td><td>Not started</td></tr>
@@ -479,7 +479,7 @@
 
 <h3>9.2 Sandbox setup actions</h3>
 <ol>
-  <li>Create <span class="mono">web-camxora/</span> and build it on port <span class="mono">3103</span>.</li>
+  <li>Create <span class="mono">camxora.com/</span> and build it on port <span class="mono">3103</span>.</li>
   <li>Add <span class="mono">camxora-web-apex.service</span> with environment from the sandbox matrix.</li>
   <li>Repoint the <span class="mono">sandbox.camxora.com</span> nginx block from <span class="mono">3100</span> to <span class="mono">3103</span>.</li>
   <li>Keep the old <span class="mono">3100</span> service running for rollback.</li>
@@ -511,7 +511,7 @@
 <ol>
   <li>Freeze apex changes; confirm sandbox signoff and launch checklist.</li>
   <li>Back up current nginx config, environment files, and service state.</li>
-  <li>Deploy <span class="mono">web-camxora</span> to production <span class="mono">3103</span>.</li>
+  <li>Deploy <span class="mono">camxora.com</span> to production <span class="mono">3103</span>.</li>
   <li>Keep the old <span class="mono">3100</span> website service running.</li>
   <li>Switch <span class="mono">camxora.com</span> and <span class="mono">www</span> upstream to <span class="mono">3103</span>.</li>
   <li>Reload nginx and purge Cloudflare cache for HTML.</li>
@@ -571,7 +571,7 @@
 <h3>13.1 Decisions required before coding</h3>
 <table>
   <tr><th>ID</th><th>Decision</th><th>Recommendation</th><th>Owner</th></tr>
-  <tr><td>D-001</td><td>App base</td><td>New <span class="mono">web-camxora/</span> from <span class="mono">music_web</span> + <span class="mono">website</span>.</td><td>Product + FE</td></tr>
+  <tr><td>D-001</td><td>App base</td><td>New <span class="mono">camxora.com/</span> from <span class="mono">music_web</span> + <span class="mono">website</span>.</td><td>Product + FE</td></tr>
   <tr><td>D-002</td><td>Runtime API</td><td><span class="mono">platform_api</span> <span class="mono">/api/v3</span>; musicapi remains provider.</td><td>Product + BE</td></tr>
   <tr><td>D-003</td><td>User portal role</td><td>Keep <span class="mono">app.camxora.com</span> for billing/API keys in v1.</td><td>Product</td></tr>
   <tr><td>D-004</td><td>Auth cookies</td><td>Host-only apex session; no old-app cookie changes.</td><td>FE + BE</td></tr>
@@ -595,7 +595,7 @@
 <ol>
   <li>Approve D-001 and D-002.</li>
   <li>Create a clean worktree from <span class="mono">main</span> named <span class="mono">feat/camxora-apex</span>.</li>
-  <li>Copy the prototype into the repo as a design reference under <span class="mono">web-camxora/design-reference</span> (not served).</li>
+  <li>Copy the prototype into the repo as a design reference under <span class="mono">camxora.com/design-reference</span> (not served).</li>
   <li>Produce the route map and component inventory from this document.</li>
   <li>Stand up the sandbox service on <span class="mono">3103</span> and repoint only <span class="mono">sandbox.camxora.com</span>.</li>
   <li>Ship the new shell, player, Home, and Discover to sandbox.</li>

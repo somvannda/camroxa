@@ -49,7 +49,7 @@ PLATFORM_FRONTEND_BASE_URL=https://<web host>
 values, non-http(s) schemes, `localhost`, `*.localhost`, and
 loopback/private/link-local/reserved IPs.
 
-### web-camxora
+### camxora.com
 
 ```text
 NEXT_PUBLIC_API_BASE_URL=https://<platform host>

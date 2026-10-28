@@ -1,7 +1,7 @@
 # Remix Flow Spec
 
 Status: **Library + Staff Picks implemented; Staff Picks remix blocked by Premier credits**
-Owner surface: `web-camxora/components/CreateStudio.tsx`
+Owner surface: `camxora.com/components/CreateStudio.tsx`
 Backend path: **web → platform_api → musicapi → Suno**
 Production deploy: **not approved** — sandbox only after the checklist passes.
 

@@ -49,7 +49,7 @@ The platform token and musicapi token must match exactly.
 ### Web
 
 ```text
-web-camxora connected to the platform API
+camxora.com connected to the platform API
 Authenticated test user
 Second authenticated test user for edit-link collaboration
 ```
@@ -317,7 +317,7 @@ Verify audio is not silent, not clipped and not truncated.
 ## 11. Sandbox rollout
 
 ```text
-1. Deploy platform API, musicapi and web-camxora.
+1. Deploy platform API, musicapi and camxora.com.
 2. Run migrations.
 3. Verify readiness.
 4. Run a create/save/share/export smoke test.
@@ -345,7 +345,7 @@ Go/no-go:
 2. Deploy migrations.
 3. Deploy musicapi.
 4. Deploy platform API.
-5. Deploy web-camxora.
+5. Deploy camxora.com.
 6. Verify readiness.
 7. Run production smoke test with a controlled account.
 8. Watch errors, credit charges and refunds.
