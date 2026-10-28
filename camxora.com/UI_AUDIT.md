@@ -96,7 +96,7 @@ interactive targets, console errors.
 
 ---
 
-## Pass 2 — control audit + component migration (2026-10-28)
+## Pass 2 ï¿½ control audit + component migration (2026-10-28)
 
 Scope: every `<select>`, checkbox, play control, icon+label pair, and auth surface in
 `camxora.com`.
@@ -114,7 +114,7 @@ Scope: every `<select>`, checkbox, play control, icon+label pair, and auth surfa
 2. **Play buttons were dark glass, not green.** `.card .play` only turned green on hover.
    All play controls now follow the documented "play is the one green action" rule.
 3. **"Remember me" used a raw `<input type="checkbox">`** despite
-   `components/ui/checkbox.tsx` existing. Its resting fill was 4% white — effectively
+   `components/ui/checkbox.tsx` existing. Its resting fill was 4% white ï¿½ effectively
    invisible on `#070a13`.
 4. **Google sign-in disappeared after client-side navigation.** `next/script`'s `onLoad`
    does not re-fire when the GIS script is already in the document, so moving
@@ -139,8 +139,8 @@ Scope: every `<select>`, checkbox, play control, icon+label pair, and auth surfa
 
 ### Verification
 
-- `npm run typecheck` — clean
-- `npm run check:ui` — compliant
+- `npm run typecheck` ï¿½ clean
+- `npm run check:ui` ï¿½ compliant
 - DOM checks on `/`, `/login`, `/signup`: 0 native `<select>`, 0 raw `type="checkbox"`,
   0 horizontal overflow; icon boxes compute `display:flex` with a centred line box;
   Google iframe/visual boxes identical (280x40, same top/left) and the click target
@@ -153,4 +153,48 @@ Scope: every `<select>`, checkbox, play control, icon+label pair, and auth surfa
    move to `ui/dropdown-menu` in a dedicated pass (one menu per commit).
 2. Re-run the route sweep with an authenticated session (Create/Studio/Account) to
    confirm the migrated selects at real data volumes.
-3. No commits made — working tree only.
+3. No commits made ï¿½ working tree only.
+
+---
+
+## Pass 3 ï¿½ dropdown/menu migration (2026-10-28)
+
+The app shipped `@radix-ui/react-dropdown-menu` but every `.s-menu` popup was hand-rolled
+(`useState` + document `mousedown` listener + manual `role="menu"`). Migrated the
+dropdown menus to Radix while keeping the `.s-menu*` visual language through
+`components/ui/s-menu.tsx`.
+
+### Migrated (15 popups)
+
+| Surface | Menus |
+|---|---|
+| `/library` | row menu, Audio, Filters, Sort |
+| `/create` audio results | row menu (both render sites) incl. Download submenu |
+| `/create` song rows | row menu incl. Download submenu |
+| `/create` toolbar | Credits, Model, Workspace picker, Save toï¿½, Share workspace, Filters, Sort |
+| Topbar | account menu |
+
+Behaviour gained: portal rendering, collision-aware positioning, focus trap, roving
+`ArrowUp`/`ArrowDown`, type-ahead, `Escape` + outside click, `menuitemcheckbox` /
+`menuitemradio` semantics. Closed menus are forced `pointer-events:none` so a stalled
+exit animation can never swallow page clicks.
+
+### Deliberately not migrated
+
+1. **`/create` "+" add menu** ï¿½ uses `position:fixed` with computed `addMenuPos` /
+   `addMenuBelow` and a submenu that *replaces* the list with a back header. That is
+   documented behaviour in `DESIGN_SYSTEM.md` ï¿½7b (no flyout overflow on narrow cards),
+   so it stays custom.
+2. **Saved-styles popup** in `/create` ï¿½ currently unreachable: the trigger opens the
+   saved-styles modal instead of toggling `stylePresetsOpen`. Dead code; remove or wire up
+   in a follow-up.
+3. **`/studio/editor` clip context menu** ï¿½ anchored to cursor coordinates
+   (`clipMenu.x/y`), not a trigger element. Correct primitive is
+   `@radix-ui/react-context-menu`, which is not a dependency yet.
+
+### Verification
+
+- `npm run typecheck` / `npm run check:ui` clean
+- Live DOM checks (authenticated, `:3104`): every migrated menu opens with the expected
+  `menuitem` / `menuitemcheckbox` / `menuitemradio` roles; Download submenus render;
+  legacy `.s-menu[role=menu]` count is 0 on `/library` and on the migrated `/create` rows.
