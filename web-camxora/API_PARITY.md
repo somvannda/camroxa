@@ -82,8 +82,8 @@ lyrics drafts, playlist style import, plans.
     vocal MP3).
   - Test the full UI flow with a real microphone: Record → Trim → Use Voice →
     read the phrase → Verify → name → appears in My Voices.
-  - Trim is currently visual only; the full sample is submitted. Implement
-    range-trimming before claiming exact Suno parity.
+  - Trim now selects a real start/end range and re-encodes the sample to WAV
+    before upload; still needs a live mic test.
   - Verification/persona creation still depends on the Premier voice entitlement
     and available credits.
 - [ ] **Voice persona creation after the Premier credit refresh**

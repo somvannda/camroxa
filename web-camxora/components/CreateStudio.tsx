@@ -116,6 +116,70 @@ function voiceFailureMessage(message: string): string {
   return message || "Voice creation failed.";
 }
 
+function audioBufferToWav(buffer: AudioBuffer): ArrayBuffer {
+  const channels = buffer.numberOfChannels;
+  const sampleRate = buffer.sampleRate;
+  const frames = buffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = channels * bytesPerSample;
+  const dataSize = frames * blockAlign;
+  const out = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(out);
+  const write = (offset: number, text: string) => {
+    for (let i = 0; i < text.length; i += 1) view.setUint8(offset + i, text.charCodeAt(i));
+  };
+  write(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  write(8, "WAVE");
+  write(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * blockAlign, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, 8 * bytesPerSample, true);
+  write(36, "data");
+  view.setUint32(40, dataSize, true);
+  const channelData: Float32Array[] = [];
+  for (let channel = 0; channel < channels; channel += 1) {
+    channelData.push(buffer.getChannelData(channel));
+  }
+  let offset = 44;
+  for (let frame = 0; frame < frames; frame += 1) {
+    for (let channel = 0; channel < channels; channel += 1) {
+      const sample = Math.max(-1, Math.min(1, channelData[channel][frame]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return out;
+}
+
+async function trimAudioBlob(blob: Blob, startSeconds: number, endSeconds: number): Promise<Blob> {
+  const context = new AudioContext();
+  try {
+    const decoded = await context.decodeAudioData(await blob.arrayBuffer());
+    const start = Math.max(0, Math.floor(startSeconds * decoded.sampleRate));
+    const end = Math.min(decoded.length, Math.ceil(endSeconds * decoded.sampleRate));
+    const length = Math.max(1, end - start);
+    const output = context.createBuffer(
+      decoded.numberOfChannels,
+      length,
+      decoded.sampleRate
+    );
+    for (let channel = 0; channel < decoded.numberOfChannels; channel += 1) {
+      output.copyToChannel(
+        decoded.getChannelData(channel).slice(start, end),
+        channel
+      );
+    }
+    return new Blob([audioBufferToWav(output)], { type: "audio/wav" });
+  } finally {
+    await context.close();
+  }
+}
+
 const DOWNLOAD_FORMATS: Array<{ value: DownloadKind; label: string }> = [
   { value: "mp3", label: "MP3" },
   { value: "wav", label: "WAV" },
@@ -313,6 +377,8 @@ export function CreateStudio() {
   const [voiceSampleUrl, setVoiceSampleUrl] = useState<string | null>(null);
   const [voiceSampleBlob, setVoiceSampleBlob] = useState<Blob | null>(null);
   const [voiceSampleDuration, setVoiceSampleDuration] = useState(0);
+  const [voiceTrimStart, setVoiceTrimStart] = useState(0);
+  const [voiceTrimEnd, setVoiceTrimEnd] = useState(0);
   const [voiceSampleVoiceId, setVoiceSampleVoiceId] = useState("");
   const [voicePhraseId, setVoicePhraseId] = useState("");
   const [voicePhraseText, setVoicePhraseText] = useState("");
@@ -373,6 +439,12 @@ export function CreateStudio() {
       document.body.style.overflow = previous;
     };
   }, [lyricsModalOpen]);
+
+  useEffect(() => {
+    if (voiceCreateStep !== "trim" || voiceSampleDuration <= 0) return;
+    setVoiceTrimStart(0);
+    setVoiceTrimEnd(voiceSampleDuration);
+  }, [voiceCreateStep, voiceSampleDuration]);
 
   useEffect(() => {
     if (!lyricsModalOpen) return;
@@ -4535,13 +4607,60 @@ export function CreateStudio() {
                       />
                     ))}
                   </div>
-                  <span className="s-voice-trim-handle left" />
-                  <span className="s-voice-trim-handle right" />
+                  {voiceSampleDuration > 0 ? (
+                    <span
+                      className="s-voice-trim-selection"
+                      style={{
+                        left: `${(voiceTrimStart / voiceSampleDuration) * 100}%`,
+                        right: `${100 - (voiceTrimEnd / voiceSampleDuration) * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  <span
+                    className="s-voice-trim-handle left"
+                    style={{
+                      left: `${voiceSampleDuration ? (voiceTrimStart / voiceSampleDuration) * 100 : 0}%`,
+                    }}
+                  />
+                  <span
+                    className="s-voice-trim-handle right"
+                    style={{
+                      right: `${voiceSampleDuration ? 100 - (voiceTrimEnd / voiceSampleDuration) * 100 : 0}%`,
+                    }}
+                  />
                 </div>
                 <div className="s-voice-trim-range">
                   00:00 — {String(Math.floor(voiceSampleDuration / 60)).padStart(2, "0")}:
                   {String(voiceSampleDuration % 60).padStart(2, "0")}
                 </div>
+                {voiceSampleDuration > 0 ? (
+                  <div className="s-voice-trim-sliders">
+                    <input
+                      type="range"
+                      min={0}
+                      max={voiceSampleDuration}
+                      step={1}
+                      value={voiceTrimStart}
+                      aria-label="Trim start"
+                      onChange={(event) => {
+                        const next = Math.min(Number(event.target.value), voiceTrimEnd - 1);
+                        setVoiceTrimStart(Math.max(0, next));
+                      }}
+                    />
+                    <input
+                      type="range"
+                      min={0}
+                      max={voiceSampleDuration}
+                      step={1}
+                      value={voiceTrimEnd}
+                      aria-label="Trim end"
+                      onChange={(event) => {
+                        const next = Math.max(Number(event.target.value), voiceTrimStart + 1);
+                        setVoiceTrimEnd(Math.min(voiceSampleDuration, next));
+                      }}
+                    />
+                  </div>
+                ) : null}
                 <button
                   type="button"
                   className="s-voice-trim-play"
@@ -4567,7 +4686,24 @@ export function CreateStudio() {
                     type="button"
                     className="s-btn s-btn-primary"
                     onClick={() => {
-                      if (voiceSampleBlob) void beginVoiceSample(voiceSampleBlob);
+                      if (!voiceSampleBlob) return;
+                      void (async () => {
+                        setVoiceError("");
+                        setVoiceCreateStep("verifying");
+                        try {
+                          const trimmed = await trimAudioBlob(
+                            voiceSampleBlob,
+                            voiceTrimStart,
+                            voiceTrimEnd || voiceSampleDuration || 0
+                          );
+                          await beginVoiceSample(trimmed);
+                        } catch (cause) {
+                          setVoiceVerifyReason(
+                            cause instanceof Error ? cause.message : "Could not trim the recording."
+                          );
+                          setVoiceCreateStep("failed");
+                        }
+                      })();
                     }}
                     disabled={!voiceSampleBlob}
                   >
