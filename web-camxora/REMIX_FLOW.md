@@ -243,7 +243,7 @@ Cancel branches:
 - [x] Success shows the remix result in Audio results.
 - [ ] Failure shows refund/error.
 - [x] Remove chip cancels mode.
-- [ ] Permissions: other user’s task cannot be remixed (backend ownership check exists but not exercised).
+- [x] Permissions: another user’s task returns 404 `Generation not found.`
 
 ## 10. Open questions / blockers
 
