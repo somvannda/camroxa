@@ -693,16 +693,15 @@ export function CreateStudio() {
     setLyrics(lyricsHistoryRef.current[next] ?? "");
   }
 
-  function formatLyrics() {
-    const cleaned = lyrics
-      .split("\n")
-      .map((line) => line.replace(/\s+$/g, ""))
-      .join("\n")
-      .replace(/\n{3,}/g, "\n\n")
-      .trim();
-    const changed = cleaned !== lyrics;
-    updateLyrics(cleaned);
-    setToast(changed ? "Lyrics formatted" : "Lyrics are already formatted");
+  function newLyricsDraft() {
+    setLyrics("");
+    lyricsHistoryRef.current = [""];
+    setLyricsHistoryIndex(0);
+    setLyricsSaveOpen(false);
+    setLyricsSaveId(null);
+    setLyricistPrompt("");
+    setError("");
+    setToast("New lyrics draft");
   }
 
   async function openLyricsLibrary() {
@@ -4172,20 +4171,11 @@ export function CreateStudio() {
                 <button
                   type="button"
                   className="s-lyrics-tool"
-                  aria-label="Edit lyrics"
-                  title="Edit lyrics"
-                  onClick={() => document.getElementById("lyrics-modal-input")?.focus()}
+                  aria-label="New draft"
+                  title="New draft"
+                  onClick={newLyricsDraft}
                 >
                   <Icon name="fa-pen" />
-                </button>
-                <button
-                  type="button"
-                  className="s-lyrics-tool"
-                  aria-label="Format lyrics"
-                  title="Format lyrics"
-                  onClick={formatLyrics}
-                >
-                  <Icon name="fa-bars-staggered" />
                 </button>
                 <button
                   type="button"
@@ -4194,7 +4184,7 @@ export function CreateStudio() {
                   title="Saved lyrics"
                   onClick={() => void openLyricsLibrary()}
                 >
-                  <Icon name="fa-bookmark" />
+                  <Icon name="fa-bars-staggered" />
                 </button>
                 <button
                   type="button"
