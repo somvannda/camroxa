@@ -466,6 +466,13 @@ export type WebMusicStudioUpload = {
   created_at?: string | null;
 };
 
+export type WebMusicStudioClipResult = {
+  id?: string;
+  title?: string;
+  audioUrl?: string;
+  imageUrl?: string;
+};
+
 export type WebMusicStudioOperation = {
   id: string;
   status: string;
@@ -473,6 +480,7 @@ export type WebMusicStudioOperation = {
   mode: string;
   task_id?: string | null;
   error_message?: string | null;
+  result?: { clips?: WebMusicStudioClipResult[] } | null;
 };
 
 export async function uploadWebMusicStudioAudio(

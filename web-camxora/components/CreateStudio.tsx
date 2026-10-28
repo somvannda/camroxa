@@ -227,6 +227,9 @@ export function CreateStudio() {
   const [audioUploading, setAudioUploading] = useState(false);
   const [audioBusy, setAudioBusy] = useState(false);
   const [audioError, setAudioError] = useState("");
+  const [audioStatus, setAudioStatus] = useState("");
+  const [audioKind, setAudioKind] = useState<"extend" | "cover" | null>(null);
+  const [audioResult, setAudioResult] = useState<{ title: string; audioUrl: string } | null>(null);
   const [recording, setRecording] = useState(false);
   const [audioDragging, setAudioDragging] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
@@ -538,6 +541,8 @@ export function CreateStudio() {
       const upload = await uploadWebMusicStudioAudio(file, duration);
       if (!mounted.current) return;
       setAudioUpload(upload);
+      setAudioResult(null);
+      setAudioStatus("");
       setToast("Audio uploaded");
     } catch (cause) {
       if (mounted.current) {
@@ -576,34 +581,48 @@ export function CreateStudio() {
     }
   }
 
-  async function pollStudioOperation(id: string, attempt = 0) {
+  async function pollStudioOperation(id: string, kind: "extend" | "cover", attempt = 0) {
     if (!mounted.current) return;
     const operation = await getWebMusicStudioOperation(id).catch(() => null);
     if (!mounted.current) return;
     if (operation) {
       const status = operation.status.toLowerCase();
-      if (status === "success" || status === "completed" || status === "done") {
-        setToast("Audio is ready");
+      setAudioStatus(status);
+      if (status === "complete" || status === "completed" || status === "success" || status === "done") {
+        const clip = operation.result?.clips?.[0];
+        setAudioBusy(false);
+        setToast(kind === "extend" ? "Extend complete" : "Cover complete");
+        if (clip?.audioUrl) {
+          setAudioResult({
+            title: clip.title || audioUpload?.filename || "Audio result",
+            audioUrl: clip.audioUrl,
+          });
+        }
         void refreshSongs();
         void refresh();
         return;
       }
       if (status === "error" || status === "failed") {
-        setError(operation.error_message || "The audio operation failed.");
+        setAudioBusy(false);
+        setAudioError(operation.error_message || "The audio operation failed.");
         return;
       }
     }
-    if (attempt >= 40) {
-      setError("Audio is still processing. Check the feed in a minute.");
+    if (attempt >= 60) {
+      setAudioBusy(false);
+      setAudioError("Audio is still processing. Check the Studio editor in a minute.");
       return;
     }
-    window.setTimeout(() => void pollStudioOperation(id, attempt + 1), 3000);
+    window.setTimeout(() => void pollStudioOperation(id, kind, attempt + 1), 3000);
   }
 
   async function runAudioOperation(kind: "extend" | "cover") {
     if (!audioUpload || audioBusy) return;
     setAudioBusy(true);
     setAudioError("");
+    setAudioResult(null);
+    setAudioStatus("queued");
+    setAudioKind(kind);
     const input = {
       prompt: prompt || style,
       title: title || audioUpload.filename,
@@ -615,15 +634,14 @@ export function CreateStudio() {
           ? await extendWebMusicStudioUpload(audioUpload.id, input)
           : await coverWebMusicStudioUpload(audioUpload.id, input);
       if (!mounted.current) return;
-      setAttachModal(null);
+      setAudioStatus(operation.status);
       setToast(kind === "extend" ? "Extend queued" : "Cover queued");
-      void pollStudioOperation(operation.id);
+      void pollStudioOperation(operation.id, kind);
     } catch (cause) {
       if (mounted.current) {
+        setAudioBusy(false);
         setAudioError(cause instanceof Error ? cause.message : "Could not start the audio operation");
       }
-    } finally {
-      if (mounted.current) setAudioBusy(false);
     }
   }
 
@@ -3035,7 +3053,7 @@ export function CreateStudio() {
                           type="button"
                           className="s-btn s-btn-primary"
                           onClick={() => void runAudioOperation("extend")}
-                          disabled={audioBusy || audioUploading}
+                          disabled={audioBusy || audioUploading || Boolean(audioResult)}
                         >
                           Extend
                         </button>
@@ -3043,7 +3061,7 @@ export function CreateStudio() {
                           type="button"
                           className="s-btn s-btn-secondary"
                           onClick={() => void runAudioOperation("cover")}
-                          disabled={audioBusy || audioUploading}
+                          disabled={audioBusy || audioUploading || Boolean(audioResult)}
                         >
                           Cover
                         </button>
@@ -3051,8 +3069,34 @@ export function CreateStudio() {
                     ) : null}
                   </div>
                   {audioUploading ? <p className="s-note">Uploading…</p> : null}
-                  {audioBusy ? <p className="s-note">Queueing…</p> : null}
+                  {audioBusy ? (
+                    <p className="s-note">
+                      {audioKind === "cover" ? "Covering" : "Extending"}… status: {audioStatus || "queued"}
+                    </p>
+                  ) : null}
                   {audioError ? <p className="s-error">{audioError}</p> : null}
+                  {audioResult ? (
+                    <div className="s-audio-result">
+                      <div className="s-audio-file">
+                        <span className="s-audio-ico">
+                          <Icon name="fa-check" />
+                        </span>
+                        <div>
+                          <b>{audioResult.title}</b>
+                          <small>{audioKind === "cover" ? "Cover" : "Extend"} complete</small>
+                        </div>
+                        <a
+                          className="s-btn s-btn-icon sm"
+                          href={audioResult.audioUrl}
+                          download
+                          aria-label="Download result"
+                        >
+                          <Icon name="fa-download" />
+                        </a>
+                      </div>
+                      <audio className="s-audio-player" controls src={audioResult.audioUrl} />
+                    </div>
+                  ) : null}
                   <p className="s-note">
                     Extend continues the track. Cover recreates it using your current prompt and styles.
                   </p>
