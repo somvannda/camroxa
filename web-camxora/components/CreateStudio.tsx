@@ -864,12 +864,13 @@ export function CreateStudio() {
   }
 
   function openAudioModal(intent: "browse" | "upload" | "record") {
+    if (intent === "browse") {
+      audioFileInputRef.current?.click();
+      return;
+    }
     setAttachModal("audio");
     if (intent === "record") {
       window.setTimeout(() => void toggleRecording(), 350);
-    }
-    if (intent === "browse") {
-      audioFileInputRef.current?.click();
     }
   }
 
@@ -2630,7 +2631,10 @@ export function CreateStudio() {
         tabIndex={-1}
         onChange={(event) => {
           const file = event.target.files?.[0];
-          if (file) void uploadAudioFile(file);
+          if (file) {
+            setAttachModal("audio");
+            void uploadAudioFile(file);
+          }
           event.target.value = "";
         }}
       />
