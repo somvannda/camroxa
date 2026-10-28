@@ -30,7 +30,7 @@ Honest "not enabled" panels (no backend wiring in the web app):
 | Feature | UI today | Backend status |
 |---|---|---|
 | Attach audio (upload/record) | **Implemented**: file picker, mic recording, then Extend / Cover | `POST /api/v3/web-music/studio/uploads` + `/studio/uploads/{id}/extend|cover` |
-| Voice reference | **Implemented**: pick a saved persona or create one from a finished song | `/studio/personas` + `persona_id` on generation (`voice_persona`); upstream vox-stem can rate-limit enrollment |
+| Voice reference | **Implemented + verified**: pick a saved persona or create one from a song; attaches `persona_id` as a voice persona | `/studio/personas` + `persona_id`/`voice_persona`; source song must belong to a Voice-entitled account |
 | Image attach | **Implemented**: upload to B2, stored as `reference_image_urls`, forwarded as `imageUrls` | `POST /api/v3/web-music/studio/images` |
 | Video attach | **Implemented**: pick a finished song, render a cover-art MP4, download | `POST /api/v3/web-music/studio/videos` → internal `/internal/studio/video` |
 | Playlist reference | **Implemented**: picker merges playlist track styles into Styles | Platform playlists + items APIs |
@@ -71,5 +71,5 @@ lyrics drafts, playlist style import, plans.
 2. **Image attach — done** (B2 upload → `image_urls` → `imageUrls`).
 3. **Video — done** (cover-art MP4 render + download).
 4. **Playlist reference — done** (style import).
-5. **Voice — done for saved personas and create-from-song**; add native
-   record/validate enrolment if the vox-stem rate limit is lifted.
+5. **Voice — verified** (saved persona attach + generation); create-from-song
+   needs a Voice-entitled account that owns the source song.

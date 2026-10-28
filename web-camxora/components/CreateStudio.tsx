@@ -88,6 +88,9 @@ const SIMPLE_SONG_COUNTS = [1, 5, 10, 20] as const;
 const BATCH_SUBMIT_GAP_MS = 900;
 
 function voiceFailureMessage(message: string): string {
+  if (/clips you own/i.test(message)) {
+    return "Create the voice from a song on the same Suno account that has Voice access.";
+  }
   if (/403|401|entitlement|premier|vox-stem.*forbidden|voice-vox-stem/i.test(message)) {
     return "Voice cloning needs a Voice-entitled (Premier) Suno account. Connect one in Admin → Key Pool.";
   }
