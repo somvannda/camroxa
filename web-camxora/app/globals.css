@@ -4039,3 +4039,23 @@ html{color-scheme:dark}
 .s-styles-existing-item .icon,.s-styles-existing-item svg{width:12px;height:12px;color:var(--s-text3);flex:none}
 .s-styles-existing-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .s-styles-modal-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px 16px;border-top:1px solid var(--s-line)}
+/* voice library */
+.s-voice-tabs{display:flex;gap:4px;padding:4px;border-radius:10px;background:rgba(255,255,255,.04)}
+.s-voice-tabs button{flex:1;height:34px;border-radius:8px;color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer;transition:background .15s,color .15s}
+.s-voice-tabs button.on{background:var(--s-bg3);color:var(--s-text)}
+.s-voice-search{display:flex;align-items:center;gap:8px;height:38px;padding:0 10px;border-radius:9px;background:rgba(0,0,0,.18);border:1px solid var(--s-line)}
+.s-voice-search .icon,.s-voice-search svg{width:12px;height:12px;color:var(--s-text3);flex:none}
+.s-voice-search input{flex:1;min-width:0;background:transparent;border:0;outline:none;color:var(--s-text);font:inherit;font-size:13px}
+.s-voice-search input::placeholder{color:var(--s-text3)}
+.s-voice-create-row{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:10px;border:1px solid var(--s-line);background:rgba(168,85,247,.06);text-align:left;color:inherit;font:inherit;cursor:pointer;transition:border-color .15s,background .15s}
+.s-voice-create-row:hover{border-color:var(--s-accent);background:rgba(168,85,247,.12)}
+.s-voice-new{font-size:11px;color:var(--s-accent);background:rgba(168,85,247,.14);border-radius:999px;padding:1px 5px;margin-left:4px;vertical-align:1px}
+.s-voice-empty{display:flex;flex-direction:column;align-items:center;gap:4px;padding:18px 10px;text-align:center}
+.s-voice-empty b{font-size:13px;font-weight:500;color:var(--s-text)}
+.s-voice-empty small{font-size:11px;line-height:1.5;color:var(--s-text3);max-width:280px}
+.s-voice-back{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 8px;border-radius:7px;color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer;align-self:flex-start}
+.s-voice-back:hover{background:rgba(255,255,255,.06);color:var(--s-text)}
+.s-voice-back .icon,.s-voice-back svg{width:10px;height:10px}
+.s-voice-create-head{display:flex;align-items:center;gap:10px}
+.s-voice-create-head b{display:block;font-size:13px;font-weight:500}
+.s-voice-create-head small{display:block;font-size:11px;color:var(--s-text3)}

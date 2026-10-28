@@ -300,7 +300,9 @@ export function CreateStudio() {
   const [videoOperation, setVideoOperation] = useState<WebMusicStudioOperation | null>(null);
   const [voicePersonas, setVoicePersonas] = useState<WebMusicStudioPersona[] | null>(null);
   const [selectedPersona, setSelectedPersona] = useState<WebMusicStudioPersona | null>(null);
-  const [voiceIntent, setVoiceIntent] = useState<"use" | "new">("use");
+  const [voiceTab, setVoiceTab] = useState<"mine" | "favorites">("mine");
+  const [voiceSearch, setVoiceSearch] = useState("");
+  const [voiceCreateView, setVoiceCreateView] = useState(false);
   const [voiceSongs, setVoiceSongs] = useState<WebMusicGeneration[] | null>(null);
   const [voiceCreateTaskId, setVoiceCreateTaskId] = useState("");
   const [voiceName, setVoiceName] = useState("");
@@ -721,7 +723,10 @@ export function CreateStudio() {
   }
 
   function openVoiceModal(intent: "use" | "new") {
-    setVoiceIntent(intent);
+    setVoiceTab("mine");
+    setVoiceSearch("");
+    setVoiceCreateView(intent === "new");
+    setVoicePersonas(null);
     setAttachModal("voices");
     if (intent === "new") {
       window.setTimeout(() => document.getElementById("voice-name-input")?.focus(), 350);
@@ -3607,7 +3612,7 @@ export function CreateStudio() {
                 {attachModal === "audio"
                   ? "Add audio"
                   : attachModal === "voices"
-                    ? "Add voice reference"
+                    ? "Voice"
                     : attachModal === "video"
                       ? "Add video"
                       : attachModal === "playlist"
@@ -3957,7 +3962,7 @@ export function CreateStudio() {
                 </div>
               ) : attachModal === "voice" || attachModal === "voices" ? (
                 <div className="s-voice-attach">
-                  {selectedPersona ? (
+                  {selectedPersona && !voiceCreateView ? (
                     <div className="s-voice-selected">
                       <span className="s-voice-avatar">
                         <Icon name="fa-microphone" />
@@ -3977,96 +3982,187 @@ export function CreateStudio() {
                     </div>
                   ) : null}
 
-                  <div className="s-voice-list">
-                    {voicePersonas === null ? (
-                      <p className="s-note">Loading voices…</p>
-                    ) : voicePersonas.length ? (
-                      voicePersonas.map((persona) => {
-                        const ready = Boolean(persona.provider_persona_id);
-                        return (
+                  {voiceCreateView ? (
+                    <div className="s-voice-create-panel">
+                      <button
+                        type="button"
+                        className="s-voice-back"
+                        onClick={() => setVoiceCreateView(false)}
+                      >
+                        <Icon name="fa-chevron-left" /> Back to voices
+                      </button>
+                      <div className="s-voice-create-head">
+                        <span className="s-voice-avatar">
+                          <Icon name="fa-microphone" />
+                        </span>
+                        <div>
+                          <b>
+                            Create Voice <span className="s-voice-new">NEW</span>
+                          </b>
+                          <small>Record or upload your voice</small>
+                        </div>
+                      </div>
+                      <p className="s-note">Create a voice from one of your songs.</p>
+                      <select
+                        className="s-input"
+                        value={voiceCreateTaskId}
+                        onChange={(event) => setVoiceCreateTaskId(event.target.value)}
+                      >
+                        <option value="">Choose a finished song</option>
+                        {(voiceSongs || []).map((song) => (
+                          <option key={song.id} value={song.id}>
+                            {song.title}
+                          </option>
+                        ))}
+                      </select>
+                      <input
+                        id="voice-name-input"
+                        className="s-input"
+                        placeholder="Voice name"
+                        maxLength={80}
+                        value={voiceName}
+                        onChange={(event) => setVoiceName(event.target.value)}
+                      />
+                      <input
+                        className="s-input"
+                        placeholder="Styles (optional)"
+                        value={voiceStyles}
+                        onChange={(event) => setVoiceStyles(event.target.value)}
+                      />
+                      {voiceError ? <p className="s-error">{voiceError}</p> : null}
+                      {voiceBusy ? <p className="s-note">Creating voice…</p> : null}
+                      <button
+                        type="button"
+                        className="s-btn s-btn-primary"
+                        onClick={() => void createVoicePersona()}
+                        disabled={voiceBusy || !voiceCreateTaskId || !voiceName.trim()}
+                      >
+                        <Icon name="fa-microphone" />{" "}
+                        {voiceBusy ? "Creating…" : "Create voice"}
+                      </button>
+                      <p className="s-note">
+                        Cloning requires a Voice-entitled (Premier) Suno account.
+                      </p>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="s-voice-tabs" role="tablist" aria-label="Voice library">
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={voiceTab === "mine"}
+                          className={voiceTab === "mine" ? "on" : ""}
+                          onClick={() => setVoiceTab("mine")}
+                        >
+                          My Voices
+                        </button>
+                        <button
+                          type="button"
+                          role="tab"
+                          aria-selected={voiceTab === "favorites"}
+                          className={voiceTab === "favorites" ? "on" : ""}
+                          onClick={() => setVoiceTab("favorites")}
+                        >
+                          Favorites
+                        </button>
+                      </div>
+                      <div className="s-voice-search">
+                        <Icon name="fa-magnifying-glass" />
+                        <input
+                          value={voiceSearch}
+                          onChange={(event) => setVoiceSearch(event.target.value)}
+                          placeholder="Search"
+                          aria-label="Search voices"
+                        />
+                      </div>
+
+                      {voiceTab === "mine" ? (
+                        <>
                           <button
-                            key={persona.id}
                             type="button"
-                            className={cn(
-                              "s-voice-item",
-                              selectedPersona?.id === persona.id && "active"
-                            )}
-                            disabled={!ready || voiceBusy}
-                            onClick={() => {
-                              setSelectedPersona(persona);
-                              setToast(`${persona.name} attached`);
-                              setAttachModal(null);
-                            }}
+                            className="s-voice-create-row"
+                            onClick={() => setVoiceCreateView(true)}
                           >
                             <span className="s-voice-avatar">
                               <Icon name="fa-microphone" />
                             </span>
                             <span className="s-voice-meta">
-                              <b>{persona.name}</b>
-                              <small>
-                                {ready
-                                  ? persona.styles || "Custom voice"
-                                  : persona.status === "error"
-                                    ? voiceFailureMessage(persona.error_message || "")
-                                    : "Preparing voice…"}
-                              </small>
+                              <b>
+                                Create Voice <span className="s-voice-new">NEW</span>
+                              </b>
+                              <small>Record or upload your voice</small>
                             </span>
-                            {selectedPersona?.id === persona.id ? (
-                              <Icon name="fa-check" />
-                            ) : null}
+                            <Icon name="fa-chevron-right" />
                           </button>
-                        );
-                      })
-                    ) : (
-                      <p className="s-note">
-                        No voices yet. Create one from a finished song below.
-                      </p>
-                    )}
-                  </div>
 
-                  <div className={cn("s-voice-create", voiceIntent === "new" && "active")}>
-                    <p className="s-note">Or create a voice from one of your songs.</p>
-                    <select
-                      className="s-input"
-                      value={voiceCreateTaskId}
-                      onChange={(event) => setVoiceCreateTaskId(event.target.value)}
-                    >
-                      <option value="">Choose a finished song</option>
-                      {(voiceSongs || []).map((song) => (
-                        <option key={song.id} value={song.id}>
-                          {song.title}
-                        </option>
-                      ))}
-                    </select>
-                    <input
-                      id="voice-name-input"
-                      className="s-input"
-                      placeholder="Voice name"
-                      maxLength={80}
-                      value={voiceName}
-                      onChange={(event) => setVoiceName(event.target.value)}
-                    />
-                    <input
-                      className="s-input"
-                      placeholder="Styles (optional)"
-                      value={voiceStyles}
-                      onChange={(event) => setVoiceStyles(event.target.value)}
-                    />
-                    {voiceError ? <p className="s-error">{voiceError}</p> : null}
-                    {voiceBusy ? <p className="s-note">Creating voice…</p> : null}
-                    <button
-                      type="button"
-                      className="s-btn s-btn-primary"
-                      onClick={() => void createVoicePersona()}
-                      disabled={voiceBusy || !voiceCreateTaskId || !voiceName.trim()}
-                    >
-                      <Icon name="fa-microphone" />{" "}
-                      {voiceBusy ? "Creating…" : "Create voice"}
-                    </button>
-                    <p className="s-note">
-                      Cloning requires a Voice-entitled (Premier) Suno account.
-                    </p>
-                  </div>
+                          <div className="s-voice-list">
+                            {voicePersonas === null ? (
+                              <p className="s-note">Loading voices…</p>
+                            ) : (
+                              (() => {
+                                const query = voiceSearch.trim().toLowerCase();
+                                const filtered = (voicePersonas || []).filter((persona) =>
+                                  persona.name.toLowerCase().includes(query)
+                                );
+                                if (!filtered.length) {
+                                  return (
+                                    <div className="s-voice-empty">
+                                      <b>No Voices</b>
+                                      <small>
+                                        Voices let you create songs that have a similar style and
+                                        voice.
+                                      </small>
+                                    </div>
+                                  );
+                                }
+                                return filtered.map((persona) => {
+                                  const ready = Boolean(persona.provider_persona_id);
+                                  return (
+                                    <button
+                                      key={persona.id}
+                                      type="button"
+                                      className={cn(
+                                        "s-voice-item",
+                                        selectedPersona?.id === persona.id && "active"
+                                      )}
+                                      disabled={!ready || voiceBusy}
+                                      onClick={() => {
+                                        setSelectedPersona(persona);
+                                        setToast(`${persona.name} attached`);
+                                        setAttachModal(null);
+                                      }}
+                                    >
+                                      <span className="s-voice-avatar">
+                                        <Icon name="fa-microphone" />
+                                      </span>
+                                      <span className="s-voice-meta">
+                                        <b>{persona.name}</b>
+                                        <small>
+                                          {ready
+                                            ? persona.styles || "Custom voice"
+                                            : persona.status === "error"
+                                              ? voiceFailureMessage(persona.error_message || "")
+                                              : "Preparing voice…"}
+                                        </small>
+                                      </span>
+                                      {selectedPersona?.id === persona.id ? (
+                                        <Icon name="fa-check" />
+                                      ) : null}
+                                    </button>
+                                  );
+                                });
+                              })()
+                            )}
+                          </div>
+                        </>
+                      ) : (
+                        <div className="s-voice-empty">
+                          <b>No favorites yet</b>
+                          <small>Favorites you add will appear here.</small>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               ) : null}
             </div>
