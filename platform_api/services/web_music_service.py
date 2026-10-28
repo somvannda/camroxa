@@ -1156,6 +1156,22 @@ class WebMusicService:
             if str(url).strip().lower().startswith(("http://", "https://"))
         ][:4]
         safe_persona_id = str(persona_id or "").strip()[:128] or None
+        if safe_persona_id:
+            persona_row = await self._pool.fetchrow(
+                """
+                SELECT 1 FROM studio_personas
+                WHERE user_id = $1
+                  AND provider_persona_id = $2
+                  AND lower(status) IN ('complete', 'completed', 'success')
+                """,
+                user_id,
+                safe_persona_id,
+            )
+            if persona_row is None:
+                raise ValidationError(
+                    "The selected voice is not available.",
+                    details={"field": "persona_id"},
+                )
 
         if mode_key == "simple":
             if not safe_prompt:
