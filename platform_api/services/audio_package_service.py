@@ -51,7 +51,16 @@ class AudioPackageService:
             # `pg_advisory_lock` leaked once (the holder sat idle after the
             # insert) and blocked every other packager + the API pool.
             async with conn.transaction():
-                await conn.execute("SET LOCAL lock_timeout = '30s'")
+                # This transaction spans every storage upload in
+                # _package_plaintext_body (lane A, lane B, ~35 HLS segments), so
+                # the lock budget has to cover several minutes of B2 writes, not
+                # a DB round trip. At 30s the statement was being cancelled
+                # mid-upload, the work discarded, and the whole thing retried -
+                # observed on production as a track that stayed unplayable for
+                # ~4 minutes ("canceling statement due to lock timeout" then
+                # re-packaging). Raising it stops that loop; the real fix is to
+                # move the uploads outside the transaction.
+                await conn.execute("SET LOCAL lock_timeout = '300s'")
                 acquired = await conn.fetchval(
                     "SELECT pg_try_advisory_xact_lock(hashtext($1::text), hashtext($2::text))",
                     str(subject_id),
