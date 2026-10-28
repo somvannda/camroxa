@@ -86,6 +86,17 @@ const models: Array<{ value: WebMusicModel; label: string }> = [
 
 const SIMPLE_SONG_COUNTS = [1, 5, 10, 20] as const;
 const BATCH_SUBMIT_GAP_MS = 900;
+
+function voiceFailureMessage(message: string): string {
+  if (/403|401|entitlement|premier|vox-stem.*forbidden|voice-vox-stem/i.test(message)) {
+    return "Voice cloning needs a Voice-entitled (Premier) Suno account. Connect one in Admin → Key Pool.";
+  }
+  if (/429|rate.?limit|too many requests/i.test(message)) {
+    return "The voice service is rate-limited. Please try again in a few minutes.";
+  }
+  return message || "Voice creation failed.";
+}
+
 const DOWNLOAD_FORMATS: Array<{ value: DownloadKind; label: string }> = [
   { value: "mp3", label: "MP3" },
   { value: "wav", label: "WAV" },
@@ -1449,11 +1460,7 @@ export function CreateStudio() {
     } catch (cause) {
       if (mounted.current) {
         const message = cause instanceof Error ? cause.message : "Could not create the voice";
-        setVoiceError(
-          /429|rate.?limit|too many requests/i.test(message)
-            ? "The voice service is rate-limited. Please try again in a few minutes."
-            : message
-        );
+        setVoiceError(voiceFailureMessage(message));
       }
     } finally {
       if (mounted.current) setVoiceBusy(false);
@@ -3751,11 +3758,7 @@ export function CreateStudio() {
                                 {ready
                                   ? persona.styles || "Custom voice"
                                   : persona.status === "error"
-                                    ? /429|rate.?limit|too many requests/i.test(
-                                        persona.error_message || ""
-                                      )
-                                      ? "Voice service is rate-limited — try again shortly"
-                                      : persona.error_message || "Voice creation failed"
+                                    ? voiceFailureMessage(persona.error_message || "")
                                     : "Preparing voice…"}
                               </small>
                             </span>
@@ -3810,6 +3813,9 @@ export function CreateStudio() {
                       <Icon name="fa-microphone" />{" "}
                       {voiceBusy ? "Creating…" : "Create voice"}
                     </button>
+                    <p className="s-note">
+                      Cloning requires a Voice-entitled (Premier) Suno account.
+                    </p>
                   </div>
                 </div>
               ) : (
