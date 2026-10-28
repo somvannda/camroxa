@@ -141,9 +141,9 @@ The prompt composer `+` opens a 230px menu with the Suno item set:
 |---|---|
 | Lyrics ▸ | Write lyrics (switches to Advanced, focuses the field), Auto-generate, Instrumental |
 | Styles ▸ | Saved styles, Shuffle styles, Enhance styles |
-| Playlist | "Add playlist" modal — playlist reference upload is not enabled yet |
-| Image | "Add image" modal — uploads not enabled yet |
-| Video | Opens the file picker directly (`video/mp4`, `video/quicktime`, `video/webm`), uploads **one** reference clip, then shows a removable chip (thumbnail, filename, size). Picking a second clip is refused. The MP4 renderer moved to the song rail (`Video`). |
+| Playlist | Opens the playlist inspiration picker. Selecting a playlist pulls its style tags into the Current Prompt. |
+| Image | "Add image" modal — uploads one reference image (JPEG/PNG/WebP/GIF, max 10 MB), then shows a removable chip. Image + video references can be attached together. |
+| Video | Opens the file picker directly (`video/mp4`, `video/quicktime`, `video/webm`), uploads **one** reference clip, then shows a removable chip (thumbnail, filename, size). MusicAPI extracts representative frames and passes them as image references; video and image references compose instead of one dropping the other. The MP4 renderer moved to the song rail (`Video`). |
 | Audio ▸ | Upload audio / Record audio → "Add audio" modal (Studio hand-off) |
 | Voice ▸ | My voices / Browse voices → "Add voice reference" modal |
 
