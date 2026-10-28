@@ -13,6 +13,10 @@ interface AccountHealth {
   healthy: number;
   disabled: number;
   low_credits: number;
+  /** Paid plans with a failed payment. */
+  past_due: number;
+  /** Paid plans paused, or scheduled to pause at the end of the period. */
+  paused: number;
   captcha_required: number;
   /** A 2Captcha key is configured, so captcha requirements are solved automatically. */
   captcha_solver: boolean;
@@ -28,6 +32,8 @@ interface Stats {
   credits_per_usd: number;
   accounts: number;
   account_health: AccountHealth;
+  /** Upcoming subscription spend across the pool (next 30 days). */
+  renewal_forecast: { count: number; monthly_usd: number; unpriced: number };
   suno_credits: { total: number; active: number };
   series: { day: string; count: number }[];
 }
@@ -64,12 +70,18 @@ export default function AdminDashboard() {
     { label: "Credits Held", value: num(stats.credits) },
     { label: "Credits Spent", value: num(stats.spent) },
     { label: "Revenue", value: usd(stats.revenue) },
+    {
+      label: `Renewals 30d (${stats.renewal_forecast.count})`,
+      value: usd(stats.renewal_forecast.monthly_usd),
+    },
   ];
 
   const h = stats.account_health;
   const healthChips: Array<{ label: string; value: number; tone: BadgeTone }> = [
     { label: "Healthy", value: h.healthy, tone: "success" },
     { label: "Low credits", value: h.low_credits, tone: "warning" },
+    { label: "Past due", value: h.past_due, tone: "danger" },
+    { label: "Paused / won't renew", value: h.paused, tone: "warning" },
     h.captcha_solver
       ? { label: "Captcha (auto-solve)", value: h.captcha_required, tone: "info" }
       : { label: "Captcha required", value: h.captcha_required, tone: "warning" },

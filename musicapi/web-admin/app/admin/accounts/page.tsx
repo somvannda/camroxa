@@ -10,6 +10,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { EmptyState, ErrorState, LoadingState, PageHeader } from "@/components/ui/Feedback";
 import { Field, Input, Select } from "@/components/ui/Field";
 import { useToast } from "@/components/ui/Toast";
+import { dateOnly, num } from "@/lib/format";
 
 interface Account {
   id: string;
@@ -18,11 +19,29 @@ interface Account {
   is_active: boolean;
   created_at: string;
   live_plan: string;
+  /** Paid plan's display name, e.g. "Premier Plan"; null on free plans. */
+  live_plan_name: string | null;
+  /** Monthly list price of that plan in USD, null when unknown/free. */
+  live_plan_price_usd: number | null;
+  /** Credits included per billing period; null on free plans. */
+  live_monthly_limit: number | null;
+  /** Credits used in the current period; null when unknown. */
+  live_monthly_usage: number | null;
   live_credits: number;
+  /** Next Suno charge for a paid plan; null on free plans / failed probe. */
+  live_renews_on: string | null;
+  /** True when the date is the last value Suno reported, not a fresh read. */
+  renews_on_stale: boolean;
   live_models: string[];
   health: {
     disabled: boolean;
     low_credits: boolean;
+    /** Suno reported a failed payment for the paid subscription. */
+    past_due: boolean;
+    /** The paid subscription is paused; it will not renew. */
+    paused: boolean;
+    /** The subscription will pause (stop renewing) at the end of the period. */
+    pause_scheduled: boolean;
     captcha_required: boolean;
     captcha_solver: boolean;
   };
@@ -37,11 +56,20 @@ interface RoutingRule {
 function healthBadges(a: Account): { label: string; tone: BadgeTone }[] {
   const badges: { label: string; tone: BadgeTone }[] = [];
   if (a.health.disabled) badges.push({ label: "Disabled", tone: "danger" });
+  // Subscription problems come before credit ones: a past-due or paused plan
+  // still serves work from its remaining balance but will never refresh it.
+  if (a.health.past_due) badges.push({ label: "Past due", tone: "danger" });
+  if (a.health.paused) {
+    badges.push({ label: "Paused", tone: "warning" });
+  } else if (a.health.pause_scheduled) {
+    badges.push({ label: "Won't renew", tone: "warning" });
+  }
   if (a.health.low_credits) badges.push({ label: "Low credits", tone: "warning" });
   // An enabled, funded account stays healthy even when Suno challenges its
   // captcha — the worker solves it automatically at generation time.
   const captchaBlocks = a.health.captcha_required && !a.health.captcha_solver;
-  if (!a.health.disabled && !a.health.low_credits && !captchaBlocks) {
+  const subscriptionAtRisk = a.health.past_due || a.health.paused || a.health.pause_scheduled;
+  if (!a.health.disabled && !a.health.low_credits && !captchaBlocks && !subscriptionAtRisk) {
     badges.push({ label: "Healthy", tone: "success" });
   }
   if (a.health.captcha_required && a.health.captcha_solver) {
@@ -53,6 +81,50 @@ function healthBadges(a: Account): { label: string; tone: BadgeTone }[] {
 }
 
 const EMPTY_FORM = { label: "", type: "free", client_cookie: "", device_id: "" };
+
+/** Whole days from today until `iso`; null when the value isn't a valid date. */
+function daysUntil(iso: string): number | null {
+  const target = new Date(iso);
+  if (Number.isNaN(target.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  target.setHours(0, 0, 0, 0);
+  return Math.round((target.getTime() - today.getTime()) / 86_400_000);
+}
+
+/** Human hint next to the renewal date, flagged when the charge is imminent. */
+function renewalHint(iso: string): { text: string; soon: boolean } {
+  const days = daysUntil(iso);
+  if (days === null) return { text: "", soon: false };
+  if (days === 0) return { text: "today", soon: true };
+  if (days < 0) return { text: `${Math.abs(days)}d ago`, soon: false };
+  return { text: `in ${days}d`, soon: days <= 7 };
+}
+
+function RenewalCell({ iso, stale }: { iso: string | null; stale: boolean }) {
+  if (!iso) return <span className="text-[var(--muted)]">—</span>;
+  // A stored date means the live probe failed (or the account is disabled and
+  // never probed), so show it muted and without the countdown, which would
+  // imply we know the plan still renews.
+  if (stale) {
+    return (
+      <span
+        className="text-[var(--muted)]"
+        title="Last renewal date Suno reported; the live check failed."
+      >
+        {dateOnly(iso)}
+        <span className="ml-1 text-xs">(last seen)</span>
+      </span>
+    );
+  }
+  const hint = renewalHint(iso);
+  return (
+    <span className={hint.soon ? "text-amber-300" : undefined}>
+      {dateOnly(iso)}
+      <span className="ml-1 text-xs text-[var(--muted)]">({hint.text})</span>
+    </span>
+  );
+}
 
 export default function AccountsPage() {
   const toast = useToast();
@@ -327,6 +399,7 @@ export default function AccountsPage() {
                 <th scope="col" className="px-4 py-3">Label</th>
                 <th scope="col" className="px-4 py-3">Type</th>
                 <th scope="col" className="px-4 py-3">Plan</th>
+                <th scope="col" className="px-4 py-3">Renews</th>
                 <th scope="col" className="px-4 py-3 text-right">Credits</th>
                 <th scope="col" className="px-4 py-3">Models</th>
                 <th scope="col" className="px-4 py-3">Status</th>
@@ -338,8 +411,25 @@ export default function AccountsPage() {
                 <tr key={a.id} className="border-t border-[var(--border)]">
                   <td className="px-4 py-3 font-medium">{a.label}</td>
                   <td className="px-4 py-3 capitalize">{a.type}</td>
-                  <td className="px-4 py-3 capitalize">{a.live_plan}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{a.live_credits}</td>
+                  <td className="px-4 py-3 capitalize">
+                    {a.live_plan_name ?? a.live_plan}
+                    {a.live_plan_price_usd != null && (
+                      <span className="ml-1 text-xs normal-case text-[var(--muted)]">
+                        · ${a.live_plan_price_usd}/mo
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap">
+                    <RenewalCell iso={a.live_renews_on} stale={a.renews_on_stale} />
+                  </td>
+                  <td className="px-4 py-3 text-right tabular-nums">
+                    {a.live_credits}
+                    {a.live_monthly_limit != null && (
+                      <span className="block text-xs text-[var(--muted)]">
+                        {num(a.live_monthly_usage ?? 0)} / {num(a.live_monthly_limit)} used
+                      </span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-xs text-[var(--muted)]">
                     {a.live_models.join(", ") || "—"}
                   </td>

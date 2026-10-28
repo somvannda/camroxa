@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-28] — Thumbnails are no longer charged before their background exists
+
+### Fixed
+
+- `claim_image_jobs_for_run` selected chained image jobs on `status = 'pending'` alone, and `_run_one_job` placed the wallet hold (`reserve_and_hold_before_provider` → `atomic_deduct`) **before** checking whether the job's `source_job_id` had produced an artefact. A thumbnail therefore charged first, waited 10s (`_wait_for_source_job_output`), raised `DependencyPendingError`, and refunded as `image_generation_deferred` — to be charged and refunded again on the next sweep. Production on 2026-10-28 showed 21 `v3_image` debits against 14 refunds (67%) for that loop. Chained jobs are now only claimable when their source row is `success` or `failed` (terminal-inclusive, so a failed source still fails fast with a clear message), and `_ensure_dependency_ready` re-checks readiness before the hold, so a not-ready dependency writes no debit and no refund. See `docs/changelog/2026-10-28-image-dependency-gate.md`.
+
 ## [Unreleased] - Packs-only billing: 30-day pack credits
 
 ### Added
@@ -26,6 +32,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `POST /api/v3/subscriptions/purchase` and `POST /api/v3/subscriptions/renewal` now return **410 Gone** (`SubscriptionRetiredError`) instead of opening a CutLuy checkout. `GET /subscriptions/my-subscription` and `POST /subscriptions/cancel` stay live for grandfathered subscribers.
 - The `User must have active subscription to purchase top-ups` gate in `TopupService.purchase_topup`, which would otherwise have blocked every buyer once subscriptions stopped being sold.
+
+### Fixed
+
+- Telegram spend reports badge a Free-plan user who bought a credit pack this month as **PAID**, not **FREE**. A pack unlocks V6-Pro / V6-Wild for the calendar month, so those generations are paid usage; `_user_snapshot()` now treats a completed `topup_purchases` row like a subscription or studio licence. See `docs/changelog/2026-10-25-telegram-paid-pack-badge.md`.
 
 ## [2026-10-18] — Pending-downloads poll stays under the desktop 30s timeout
 

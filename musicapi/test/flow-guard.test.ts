@@ -122,7 +122,10 @@ function routeRegistrations(): Route[] {
 }
 
 const CLIP_READ = /\b(clip_id|clipId|clip_ids|clipIds|audioId|audio_id|uploaded_clip_id|uploadedClipId)\b/;
-const GUARD = /enforceFlow\(|requireOwnedAsset\(|assetIdsInBody\(/;
+// Internal studio routes are token-authenticated and resolve the clip's
+// recorded asset owner before creating a job; that lookup is their ownership
+// guard because no end-user id is present on the internal call.
+const GUARD = /enforceFlow\(|requireOwnedAsset\(|assetIdsInBody\(|findAssetAccountAny\(/;
 
 test("every job-creating route that reads a clip id enforces the flow guard", () => {
   const offenders = routeRegistrations()

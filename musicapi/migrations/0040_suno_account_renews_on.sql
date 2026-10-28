@@ -1,0 +1,11 @@
+-- Persist the last subscription renewal Suno reported for an account.
+--
+-- `billing/info` stays the source of truth, but a probe can fail (expired
+-- `__client` cookie, Suno timeout) and the pool only loads *active* accounts, so
+-- a disabled account is never probed at all. Storing the last successful value
+-- lets the admin console keep showing when the plan renews instead of blanking
+-- the column exactly when an operator is investigating a lapsed session.
+--
+-- Nullable: free accounts have no renewal, and rows written before this
+-- migration are filled in by the next health refresh (every 30 s).
+ALTER TABLE suno_accounts ADD COLUMN IF NOT EXISTS renews_on TIMESTAMPTZ;

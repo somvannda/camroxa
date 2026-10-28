@@ -5,9 +5,9 @@ import rateLimit from "@fastify/rate-limit";
 import multipart from "@fastify/multipart";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { AccountPool, RoutingPolicy } from "./pool.js";
+import { AccountPool, RoutingPolicy, daysUntilRenewal, forecastRenewals } from "./pool.js";
 import { SunoClient } from "./client.js";
-import { isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
+import { isCapacityExhaustionError, isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
@@ -172,10 +172,24 @@ export interface BrandSettings {
 export interface AlertSettings {
   enabled: boolean;
   low_credits_threshold: number;
+  /**
+   * Alert when a paid Suno subscription renews within this many days. `0`
+   * disables the check; a past-due/lapsed subscription is always flagged.
+   */
+  renewal_warning_days: number;
   /** Alert when the 2Captcha balance (USD) is at or below this. 0 disables. */
   captcha_balance_threshold: number;
   failure_rate_threshold: number;
   failure_rate_min_requests: number;
+  /**
+   * Alert when refunded jobs make up at least this share of settled jobs in the
+   * window. A refund spike is the earliest signal that deliveries are failing
+   * downstream (empty pool, provider outage) — it fires before support does.
+   * `0` disables the check.
+   */
+  refund_rate_threshold: number;
+  /** Minimum settled jobs in the window before the refund rate is meaningful. */
+  refund_rate_min_jobs: number;
   window_minutes: number;
   /**
    * Alert when this many jobs are waiting for a Suno slot. `0` disables the
@@ -195,9 +209,12 @@ const DEFAULT_BRAND: BrandSettings = {
 const DEFAULT_ALERTS: AlertSettings = {
   enabled: true,
   low_credits_threshold: 50,
+  renewal_warning_days: 7,
   captcha_balance_threshold: 1,
   failure_rate_threshold: 0.25,
   failure_rate_min_requests: 20,
+  refund_rate_threshold: 0.1,
+  refund_rate_min_jobs: 10,
   window_minutes: 60,
   queue_backlog_depth: 50,
 };
@@ -265,6 +282,12 @@ function coerceAlerts(value: unknown): AlertSettings {
   return {
     enabled: typeof o.enabled === "boolean" ? o.enabled : DEFAULT_ALERTS.enabled,
     low_credits_threshold: clampInt(o.low_credits_threshold, DEFAULT_ALERTS.low_credits_threshold, 0, 1_000_000),
+    renewal_warning_days: clampInt(
+      o.renewal_warning_days,
+      DEFAULT_ALERTS.renewal_warning_days,
+      0,
+      365,
+    ),
     captcha_balance_threshold: clampNumber(
       o.captcha_balance_threshold,
       DEFAULT_ALERTS.captcha_balance_threshold,
@@ -279,6 +302,18 @@ function coerceAlerts(value: unknown): AlertSettings {
       1_000_000,
     ),
     window_minutes: clampInt(o.window_minutes, DEFAULT_ALERTS.window_minutes, 5, 1440),
+    refund_rate_threshold: clampNumber(
+      o.refund_rate_threshold,
+      DEFAULT_ALERTS.refund_rate_threshold,
+      0,
+      1,
+    ),
+    refund_rate_min_jobs: clampInt(
+      o.refund_rate_min_jobs,
+      DEFAULT_ALERTS.refund_rate_min_jobs,
+      1,
+      1_000_000,
+    ),
     queue_backlog_depth: clampInt(
       o.queue_backlog_depth,
       DEFAULT_ALERTS.queue_backlog_depth,
@@ -337,9 +372,12 @@ function mergeAlerts(
   }
   const numeric: Array<[keyof AlertSettings, number, number]> = [
     ["low_credits_threshold", 0, 1_000_000],
+    ["renewal_warning_days", 0, 365],
     ["captcha_balance_threshold", 0, 100_000],
     ["failure_rate_threshold", 0, 1],
     ["failure_rate_min_requests", 1, 1_000_000],
+    ["refund_rate_threshold", 0, 1],
+    ["refund_rate_min_jobs", 1, 1_000_000],
     ["window_minutes", 5, 1440],
     ["queue_backlog_depth", 0, 1_000_000],
   ];
@@ -350,7 +388,11 @@ function mergeAlerts(
       return { ok: false, error: `alerts.${key} must be a number between ${min} and ${max}.` };
     }
     (next[key] as number) =
-      key === "failure_rate_threshold" || key === "captcha_balance_threshold" ? value : Math.round(value);
+      key === "failure_rate_threshold" ||
+      key === "captcha_balance_threshold" ||
+      key === "refund_rate_threshold"
+        ? value
+        : Math.round(value);
   }
   return { ok: true, value: next };
 }
@@ -400,6 +442,13 @@ interface Job {
   model?: string;
   prompt?: string;
   credits?: number;
+  /**
+   * How many times this job has been deferred because the Suno pool had no
+   * funded account. In-memory only: a restart re-queues pending descriptor jobs
+   * and the counter restarts, which is acceptable — the bound exists to stop a
+   * single process looping forever, not to enforce a global budget.
+   */
+  capacityDeferrals?: number;
   createdAt: number;
   /** When the job reached a terminal state (complete/error). Used for WAV `completeTime`. */
   completedAt?: number;
@@ -2311,18 +2360,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
       // Audio: the progressive URL is AES-CTR encrypted (Suno "mango" DRM).
       // Fetch its license with the owning account and decrypt server-side, then
-      // store a playable MP3 plus the decrypted m4a master (source for WAV).
+      // store a playable MP3 plus the decrypted m4a master. The master is the
+      // source for WAV, which is transcoded on demand in `ensureAudio` when a
+      // user actually buys the WAV download — eagerly storing it here cost ~76%
+      // of all object bytes for a file most clips never had downloaded.
       if (!item.audio_storage_key) {
         try {
           const encryptedUrl = pickPublicAudioUrl(item) ?? undefined;
           const m4a = await decryptSunoClip(await accountClient(), clipId, encryptedUrl);
           const mp3Key = objectKey("clips", `${clipId}.mp3`);
-          const wavKey = objectKey("wav", `${clipId}.wav`);
           const masterKey = objectKey("masters", `${clipId}.m4a`);
           const mp3 = await transcodeAudio(m4a, "mp3");
-          const wav = await transcodeAudio(m4a, "wav");
           await putObject(mp3Key, mp3, "audio/mpeg");
-          await putObject(wavKey, wav, "audio/wav");
           await putObject(masterKey, m4a, "audio/mp4");
           item.audio_storage_key = mp3Key;
           item.master_storage_key = masterKey;
@@ -3106,6 +3155,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
+    if (errors.length > 0 && errors.every(isCapacityExhaustionError)) {
+      // A dry pool is temporary: keep the job alive (and the charge held) and
+      // retry with backoff instead of failing out and refunding.
+      if (
+        await deferForCapacity(job, errors[errors.length - 1], () =>
+          runClipJobWithRetry(job, submitFactory, options),
+        )
+      )
+        return;
+    }
     await finalizeJob(job);
   }
 
@@ -3116,6 +3175,50 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     options?: RetryOptions,
   ): Promise<void> {
     return trackJob(withSunoSlot(job, () => runResultJobWithRetryImpl(job, submitFactory, options)));
+  }
+
+  /**
+   * Deferral policy for a dry pool.
+   *
+   * "No Suno account with available credits" is not a delivery failure — the
+   * job is still valid, the user has already been charged, and the accounts
+   * refill on their own schedule (free plans refresh daily, paid on renewal).
+   * Before this, such a job was failed out after a single attempt, refunded, and
+   * re-submitted from scratch by the client's own retry loop: on 2026-10-28 that
+   * produced 48 errors and 45 blind re-submissions in 40 minutes.
+   *
+   * Deferring instead keeps the charge (no debit/refund churn), leaves the job
+   * `pending`, and re-runs it with exponential backoff. 6 deferrals at
+   * 1/2/4/8/16/32 minutes covers ~63 minutes; after that it is a real failure
+   * and is settled (refund + callback) exactly as before.
+   */
+  const CAPACITY_DEFER_LIMIT = 6;
+  const CAPACITY_DEFER_BASE_MS = 60_000;
+
+  /** Re-arm a capacity-blocked job after a backoff. Returns false when out of deferrals. */
+  async function deferForCapacity(
+    job: Job,
+    reason: string,
+    resubmit: () => Promise<void>,
+  ): Promise<boolean> {
+    const used = job.capacityDeferrals ?? 0;
+    if (used >= CAPACITY_DEFER_LIMIT) return false;
+    job.capacityDeferrals = used + 1;
+    // Never settle: no usage log, no refund, no callback — the job still owes a song.
+    job.status = "pending";
+    job.error = undefined;
+    job.accountId = undefined;
+    await saveJob(job);
+    const delayMs = CAPACITY_DEFER_BASE_MS * 2 ** used;
+    const timer = setTimeout(() => {
+      void resubmit();
+    }, delayMs);
+    (timer as { unref?: () => void }).unref?.();
+    console.warn(
+      `[jobs] ${job.id} deferred for capacity (${job.capacityDeferrals}/${CAPACITY_DEFER_LIMIT}) ` +
+        `in ${Math.round(delayMs / 1000)}s: ${reason.slice(0, 160)}`,
+    );
+    return true;
   }
 
   async function runResultJobWithRetryImpl(
@@ -3179,6 +3282,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
+    if (errors.length > 0 && errors.every(isCapacityExhaustionError)) {
+      // A dry pool is temporary: keep the job alive (and the charge held) and
+      // retry with backoff instead of failing out and refunding.
+      if (
+        await deferForCapacity(job, errors[errors.length - 1], () =>
+          runResultJobWithRetry(job, submitFactory, options),
+        )
+      )
+        return;
+    }
     await finalizeJob(job);
   }
 
@@ -5727,9 +5840,12 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   type AlertType =
     | "low_credits"
+    | "renewal_soon"
+    | "subscription_past_due"
     | "captcha_no_solver"
     | "captcha_balance"
     | "failure_rate"
+    | "refund_rate"
     | "queue_backlog";
 
   interface AlertItem {
@@ -5747,6 +5863,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     alerts: AlertItem[];
     summary: {
       low_credits: number;
+      renewals_soon: number;
+      past_due: number;
       captcha_required: number;
       captcha_balance: number | null;
       failure_rate: number | null;
@@ -5788,6 +5906,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const checkedAt = new Date().toISOString();
     const summary: AlertReport["summary"] = {
       low_credits: 0,
+      renewals_soon: 0,
+      past_due: 0,
       captcha_required: 0,
       captcha_balance: null,
       failure_rate: null,
@@ -5817,7 +5937,62 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       });
     }
 
-    // 2. Captcha: only alert when it actually blocks generation. A funded
+    // 2. Paid Suno subscriptions: warn before the card is charged, and shout if
+    //    a subscription is already past due / lapsed. A lapsed plan stops
+    //    refreshing its monthly credits while routing keeps drawing on the
+    //    remaining balance, so this is what turns a silent capacity cliff into
+    //    a planned top-up. Free accounts carry no `renews_on`, so they never
+    //    fire here.
+    //    Paused / pause-scheduled plans are excluded: their date will not
+    //    charge, and the Accounts page badges already explain why.
+    const stopped = (h: { paused: boolean; pauseScheduled: boolean }): boolean =>
+      h.paused || h.pauseScheduled;
+    const pastDue = health.filter((h) => h.pastDue);
+    const lapsed = health.filter((h) => {
+      if (h.pastDue || stopped(h)) return false;
+      const days = daysUntilRenewal(h.renewsOn);
+      return days !== null && days < 0;
+    });
+    const soon =
+      thresholds.renewal_warning_days > 0
+        ? health.filter((h) => {
+            if (h.pastDue || stopped(h)) return false;
+            const days = daysUntilRenewal(h.renewsOn);
+            return days !== null && days >= 0 && days <= thresholds.renewal_warning_days;
+          })
+        : [];
+    summary.renewals_soon = soon.length;
+    summary.past_due = pastDue.length + lapsed.length;
+    if (pastDue.length + lapsed.length > 0) {
+      const affected = [...pastDue, ...lapsed];
+      alerts.push({
+        id: "subscription_past_due",
+        type: "subscription_past_due",
+        severity: "critical",
+        message: `${affected.length} paid Suno account(s) have a past-due or lapsed subscription: ${affected
+          .map((h) => `${h.id} (${h.pastDue ? "past due" : `renewal was ${h.renewsOn?.slice(0, 10)}`})`)
+          .join(", ")}. Their monthly credits will not refresh until the payment is fixed.`,
+        details: {
+          past_due: pastDue.map((h) => ({ id: h.id, renews_on: h.renewsOn })),
+          lapsed: lapsed.map((h) => ({ id: h.id, renews_on: h.renewsOn })),
+        },
+      });
+    }
+    if (soon.length > 0) {
+      alerts.push({
+        id: "renewal_soon",
+        type: "renewal_soon",
+        severity: "warning",
+        message: `${soon.length} paid Suno account(s) renew within ${thresholds.renewal_warning_days} day(s): ${soon
+          .map((h) => `${h.id} (${h.renewsOn?.slice(0, 10)})`)
+          .join(", ")}. Make sure each account's payment method is funded.`,
+        details: {
+          accounts: soon.map((h) => ({ id: h.id, renews_on: h.renewsOn })),
+        },
+      });
+    }
+
+    // 3. Captcha: only alert when it actually blocks generation. A funded
     //    solver makes a captcha challenge a no-op, so the actionable cases are
     //    "accounts need a captcha but no solver is configured" and "the solver
     //    is drained/broken".
@@ -5846,7 +6021,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
 
-    // 3. Failure-rate spike over the configured sliding window. Jobs failed out
+    // 4. Failure-rate spike over the configured sliding window. Jobs failed out
     //    by a deploy/restart (`recoverJobs` -> "Interrupted by server restart.")
     //    are excluded: they are operator-caused, not generation failures, and
     //    would otherwise page ops after every deploy as they sit in the window.
@@ -5919,7 +6094,51 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       }
     }
 
-    // 4. Suno concurrency gate backlog: jobs waiting for a slot to free up.
+    // 3b. Refund rate: the earliest signal that deliveries are failing.
+    //
+    // A dry pool or a provider outage shows up here before the failure-rate
+    // alert, because a deferred/retried job is not an error yet — but every
+    // refund is paired with a spend row on `credit_transactions`, so the ratio
+    // moves the moment deliveries start bouncing.
+    if (thresholds.refund_rate_threshold > 0) {
+      try {
+        const row = await queryOne<{ spends: string; refunds: string }>(
+          `SELECT count(*) FILTER (WHERE type = 'spend')::text AS spends,
+                  count(*) FILTER (WHERE type = 'refund')::text AS refunds
+           FROM credit_transactions
+           WHERE created_at > now() - ($1 || ' minutes')::interval`,
+          [String(thresholds.window_minutes)],
+        );
+        const spends = Number(row?.spends ?? 0);
+        const refunded = Number(row?.refunds ?? 0);
+        if (spends >= thresholds.refund_rate_min_jobs) {
+          const rate = refunded / spends;
+          if (rate >= thresholds.refund_rate_threshold) {
+            alerts.push({
+              id: "refund_rate",
+              type: "refund_rate",
+              severity: rate >= 0.5 ? "critical" : "warning",
+              message:
+                `Refund rate ${(rate * 100).toFixed(1)}% over the last ${
+                  thresholds.window_minutes
+                } min (${refunded} refunds / ${spends} settled spends), above the ${(
+                  thresholds.refund_rate_threshold * 100
+                ).toFixed(1)}% threshold. Deliveries are failing: check the Suno pool balance and provider health.`,
+              details: {
+                rate,
+                refunds: refunded,
+                spends,
+                window_minutes: thresholds.window_minutes,
+              },
+            });
+          }
+        }
+      } catch (err) {
+        app.log.warn({ err }, "refund-rate lookup failed");
+      }
+    }
+
+    // 5. Suno concurrency gate backlog: jobs waiting for a slot to free up.
     const gate = sunoSlots.stats();
     summary.queue_backlog = gate.waiting;
     if (thresholds.queue_backlog_depth > 0 && gate.waiting >= thresholds.queue_backlog_depth) {
@@ -6238,7 +6457,8 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       credits_left: number | null;
       is_active: boolean;
       created_at: string;
-    }>("SELECT id, label, type, plan, credits_left, is_active, created_at FROM suno_accounts ORDER BY created_at");
+      renews_on: string | null;
+    }>("SELECT id, label, type, plan, credits_left, is_active, created_at, renews_on FROM suno_accounts ORDER BY created_at");
     const [live, thresholds] = await Promise.all([
       pool.listHealth().catch(() => [] as Awaited<ReturnType<AccountPool["listHealth"]>>),
       loadAlertSettings(),
@@ -6247,6 +6467,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const accounts = dbRows.map((row) => {
       const l = liveById.get(row.label);
       const liveCredits = l?.credits ?? row.credits_left ?? 0;
+      const liveRenewsOn = l?.renewsOn ?? null;
       return {
         id: row.id,
         label: row.label,
@@ -6254,13 +6475,33 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         is_active: row.is_active,
         created_at: row.created_at,
         live_plan: l?.plan ?? row.plan ?? "unknown",
+        // Plan label + monthly list price, so the console can show "Premier
+        // ($30/mo)" and total upcoming renewal spend.
+        live_plan_name: l?.planName ?? null,
+        live_plan_price_usd: l?.monthlyPriceUsd ?? null,
+        // Allowance for the current period ("6,580 / 10,000 used"); null on free
+        // plans or when Suno does not report it.
+        live_monthly_limit: l?.monthlyLimit ?? null,
+        live_monthly_usage: l?.monthlyUsage ?? null,
         live_credits: liveCredits,
+        // Next Suno charge for a paid plan (`billing/info.renews_on`). When the
+        // live probe failed — or the account is disabled and therefore never
+        // probed — fall back to the last value Suno reported, flagged as stale
+        // so the console never presents an old date as current.
+        live_renews_on: liveRenewsOn ?? row.renews_on ?? null,
+        renews_on_stale: !liveRenewsOn && Boolean(row.renews_on),
         live_models: l?.models ?? [],
         // Operator-facing health flags (REQUIREMENTS §4.2). `low_credits` uses the
         // same threshold as the §4.10 alert so the badge and the alert never disagree.
         health: {
           disabled: !row.is_active,
           low_credits: liveCredits <= thresholds.low_credits_threshold,
+          // A paid plan that is past due / paused / about to pause keeps serving
+          // work from its remaining balance but will not refresh credits, so it
+          // must not be labelled "Healthy" on its own.
+          past_due: l?.pastDue ?? false,
+          paused: l?.paused ?? false,
+          pause_scheduled: l?.pauseScheduled ?? false,
           captcha_required: l?.captchaRequired ?? false,
           // When a solver key is configured, a captcha-required account is still
           // fully usable — the Turnstile is solved automatically at generation
@@ -6472,7 +6713,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     ]);
     const liveByLabel = new Map(live.map((l) => [l.id, l]));
     const captchaSolver = Boolean(config.twoCaptchaKey);
-    const accountHealth = { total: accountRows.length, healthy: 0, disabled: 0, low_credits: 0, captcha_required: 0, captcha_solver: captchaSolver };
+    const accountHealth = {
+      total: accountRows.length,
+      healthy: 0,
+      disabled: 0,
+      low_credits: 0,
+      past_due: 0,
+      paused: 0,
+      captcha_required: 0,
+      captcha_solver: captchaSolver,
+    };
     // Aggregate Suno credit monitor (REQUIREMENTS §4.6): the size of the live
     // credit pool across the configured accounts. `active` sums only enabled
     // accounts — the credits actually available to serve requests right now —
@@ -6488,13 +6738,23 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (!disabled) sunoCredits.active += liveCredits;
       if (disabled) accountHealth.disabled += 1;
       if (lowCredits) accountHealth.low_credits += 1;
+      // Subscription flags mirror the Accounts page: a plan that is past due,
+      // paused, or scheduled to pause will not refresh its credits, so it is
+      // not "healthy" even while it still has a balance to spend.
+      const pastDue = l?.pastDue ?? false;
+      const paused = (l?.paused ?? false) || (l?.pauseScheduled ?? false);
+      if (pastDue) accountHealth.past_due += 1;
+      if (paused) accountHealth.paused += 1;
       if (captcha) accountHealth.captcha_required += 1;
       // A captcha-required account stays healthy when a solver key is configured
       // (solved automatically at generation time). It only counts against health
-      // when there is no solver — i.e. when generation would actually fail.
-      if (!disabled && !lowCredits && (!captcha || captchaSolver)) accountHealth.healthy += 1;
+      // when there is no solver - i.e. when generation would actually fail.
+      if (!disabled && !lowCredits && !pastDue && !paused && (!captcha || captchaSolver)) {
+        accountHealth.healthy += 1;
+      }
     }
     const spentCredits = Number(spent?.sum ?? 0);
+    const renewalForecast = forecastRenewals(live, { withinDays: 30 });
     return {
       users: Number(users?.count ?? 0),
       keys: Number(keys?.count ?? 0),
@@ -6505,6 +6765,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       credits_per_usd: creditsPerUsd,
       accounts: pool.size,
       account_health: accountHealth,
+      // Upcoming subscription spend: what the pool will be charged in the next
+      // 30 days, so an operator can budget renewals without opening Suno.
+      renewal_forecast: {
+        count: renewalForecast.count,
+        monthly_usd: Number(renewalForecast.monthlyUsd.toFixed(2)),
+        unpriced: renewalForecast.unpriced,
+      },
       suno_credits: sunoCredits,
       series: series.map((s) => ({ day: s.day, count: Number(s.count) })),
     };

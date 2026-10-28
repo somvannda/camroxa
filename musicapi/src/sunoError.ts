@@ -85,6 +85,23 @@ export function isInsufficientCreditsError(err: unknown): boolean {
 }
 
 /**
+ * Whether a failed submit means the pool is dry *right now* rather than the job
+ * being bad.
+ *
+ * Capacity exhaustion is transient: the accounts refill on their own schedule
+ * (free plans daily, paid on renewal), so callers should defer the job and retry
+ * with backoff instead of settling it as a failure (which refunds and forces the
+ * client to re-submit from scratch).
+ */
+export function isCapacityExhaustionError(err: unknown): boolean {
+  if (isInsufficientCreditsError(err)) return true;
+  const message = err instanceof Error ? err.message : String(err);
+  return /no suno account with available credits|no usable account|no paid suno account is available/i.test(
+    message,
+  );
+}
+
+/**
  * Whether a failed submit was rate-limited by Suno (429). Callers use this to
  * put the account on a short cooldown so retries and other jobs don't re-hit the
  * throttled account immediately.

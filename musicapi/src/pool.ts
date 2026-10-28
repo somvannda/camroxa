@@ -11,6 +11,22 @@ export interface AccountHealth {
   credits: number;
   models: string[];
   plan: string;
+  /** ISO timestamp of the next subscription charge, or null for free plans. */
+  renewsOn: string | null;
+  /** Suno reports the paid subscription's payment as past due. */
+  pastDue: boolean;
+  /** The paid subscription is paused, so it will not renew or refresh credits. */
+  paused: boolean;
+  /** The subscription is scheduled to pause at the end of the current period. */
+  pauseScheduled: boolean;
+  /** Display name of the paid plan, e.g. "Premier Plan"; null for free plans. */
+  planName: string | null;
+  /** Monthly list price of the plan in USD; null for free/unknown plans. */
+  monthlyPriceUsd: number | null;
+  /** Credits included in one billing period, null on free plans. */
+  monthlyLimit: number | null;
+  /** Credits consumed in the current billing period, null when unknown. */
+  monthlyUsage: number | null;
   /** `billing/info.accessible_features` names (e.g. "studio", "persona"). */
   features: string[];
   /**
@@ -22,6 +38,105 @@ export interface AccountHealth {
 }
 
 type BillingModel = NonNullable<BillingInfo["models"]>[number];
+
+/**
+ * Next subscription charge from a `billing/info` payload, normalised to ISO, or
+ * null when the account is on a free plan / the payload has no usable date.
+ *
+ * `renews_on` is the documented-for-us field; `period_end` carries the same
+ * instant on current plans and is kept as the fallback, so a rename on Suno's
+ * side degrades to the other field instead of silently blanking the admin
+ * console. Pure and exported so the parsing can be unit-tested without a pool.
+ */
+export function parseRenewsOn(
+  info: Pick<BillingInfo, "renews_on" | "period_end">,
+): string | null {
+  for (const value of [info.renews_on, info.period_end]) {
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim();
+    if (!trimmed) continue;
+    const ms = Date.parse(trimmed);
+    if (Number.isFinite(ms)) return new Date(ms).toISOString();
+  }
+  return null;
+}
+
+/**
+ * Whole days from `now` until an ISO timestamp, rounded up so "renews in six
+ * hours" reads as 1 day instead of 0. Negative once the date has passed. Null
+ * for a missing/unparseable timestamp. Pure and exported so the renewal-alert
+ * window can be unit-tested without a live pool.
+ */
+export function daysUntilRenewal(
+  renewsOn: string | null,
+  now: number = Date.now(),
+): number | null {
+  if (!renewsOn) return null;
+  const ms = Date.parse(renewsOn);
+  return Number.isFinite(ms) ? Math.ceil((ms - now) / 86_400_000) : null;
+}
+
+/**
+ * Monthly cost of the account's paid plan in USD, or null for a free/unknown
+ * plan.
+ *
+ * Suno lists both a monthly and an annual price for every plan, so the
+ * subscription cadence decides which applies: an annual plan is normalised to
+ * its monthly equivalent (annual / 12) so the renewal forecast stays comparable
+ * month to month. A price of 0 means a free plan, not a paid one. Pure and
+ * exported so the pricing rules can be unit-tested.
+ */
+export function monthlyPlanPriceUsd(
+  info: Pick<BillingInfo, "plan" | "period">,
+): number | null {
+  const monthly = info.plan?.monthly_price_usd;
+  if (typeof monthly === "number" && monthly > 0) return monthly;
+  const annual = info.plan?.annual_price_usd;
+  if (info.period === "year" && typeof annual === "number" && annual > 0) {
+    return Math.round((annual / 12) * 100) / 100;
+  }
+  return null;
+}
+
+/** Upcoming-subscription spend across the pool, for the admin dashboard. */export interface RenewalForecast {
+  /** Accounts charging inside the window. */
+  count: number;
+  /** Their combined monthly list price, in USD. */
+  monthlyUsd: number;
+  /** Accounts charging inside the window whose plan price Suno did not report. */
+  unpriced: number;
+}
+
+/**
+ * Total upcoming renewal spend for accounts charging within `withinDays`.
+ *
+ * Only live, active subscriptions count: a paused, pause-scheduled, or past-due
+ * plan will not charge, and a date in the past has already billed. Accounts
+ * with no price are still counted so the operator sees that the total is partial
+ * (`unpriced`). Pure and exported so the forecast can be unit-tested.
+ */
+export function forecastRenewals(
+  statuses: Array<
+    Pick<
+      AccountStatus,
+      "renewsOn" | "pastDue" | "paused" | "pauseScheduled" | "monthlyPriceUsd"
+    >
+  >,
+  opts: { withinDays: number; now?: number },
+): RenewalForecast {
+  const forecast: RenewalForecast = { count: 0, monthlyUsd: 0, unpriced: 0 };
+  if (!(opts.withinDays > 0)) return forecast;
+  const now = opts.now ?? Date.now();
+  for (const status of statuses) {
+    if (!status.renewsOn || status.pastDue || status.paused || status.pauseScheduled) continue;
+    const days = daysUntilRenewal(status.renewsOn, now);
+    if (days === null || days < 0 || days > opts.withinDays) continue;
+    forecast.count += 1;
+    if (status.monthlyPriceUsd === null) forecast.unpriced += 1;
+    else forecast.monthlyUsd += status.monthlyPriceUsd;
+  }
+  return forecast;
+}
 
 /** One selectable model version, aggregated across healthy accounts. */
 export interface ModelInfo {
@@ -40,6 +155,22 @@ export interface AccountStatus {
   captchaRequired: boolean;
   /** False when the account could not be reached or authenticated. */
   reachable: boolean;
+  /** Next subscription charge from `billing/info`, null when free/unknown. */
+  renewsOn: string | null;
+  /** Suno reports the paid subscription's payment as past due. */
+  pastDue: boolean;
+  /** The paid subscription is paused (no renewal, no monthly refresh). */
+  paused: boolean;
+  /** The subscription is scheduled to pause at the end of the period. */
+  pauseScheduled: boolean;
+  /** Display name of the paid plan, e.g. "Premier Plan"; null for free plans. */
+  planName: string | null;
+  /** Monthly list price of the plan in USD; null for free/unknown plans. */
+  monthlyPriceUsd: number | null;
+  /** Credits included in one billing period, null on free plans. */
+  monthlyLimit: number | null;
+  /** Credits consumed in the current billing period, null when unknown. */
+  monthlyUsage: number | null;
 }
 
 /**
@@ -134,6 +265,12 @@ export class AccountPool {
    * fresh `billing/info` arrives, because that value already includes the spend.
    */
   private readonly reservedCredits: Map<string, number> = new Map();
+  /**
+   * Renewal date last written to `suno_accounts.renews_on`, keyed by account
+   * label. The health cache refreshes every 30 s; remembering what we already
+   * stored keeps that from turning into a write per account per tick.
+   */
+  private readonly persistedRenewsOn: Map<string, string> = new Map();
 
   constructor(accounts: AccountCreds[] = []) {
     this.clients = accounts.map((a) => this.makeClient(a));
@@ -167,9 +304,39 @@ export class AccountPool {
         try {
           const h = await this.healthFor(c);
           const captchaRequired = await this.captchaFor(c);
-          return { id: c.account.id, plan: h.plan, credits: h.credits, models: h.models, captchaRequired, reachable: true };
+          return {
+            id: c.account.id,
+            plan: h.plan,
+            credits: h.credits,
+            models: h.models,
+            captchaRequired,
+            reachable: true,
+            renewsOn: h.renewsOn,
+            pastDue: h.pastDue,
+            paused: h.paused,
+            pauseScheduled: h.pauseScheduled,
+            planName: h.planName,
+            monthlyPriceUsd: h.monthlyPriceUsd,
+            monthlyLimit: h.monthlyLimit,
+            monthlyUsage: h.monthlyUsage,
+          };
         } catch {
-          return { id: c.account.id, plan: "unknown", credits: 0, models: [], captchaRequired: false, reachable: false };
+          return {
+            id: c.account.id,
+            plan: "unknown",
+            credits: 0,
+            models: [],
+            captchaRequired: false,
+            reachable: false,
+            renewsOn: null,
+            pastDue: false,
+            paused: false,
+            pauseScheduled: false,
+            planName: null,
+            monthlyPriceUsd: null,
+            monthlyLimit: null,
+            monthlyUsage: null,
+          };
         }
       }),
     );
@@ -255,6 +422,7 @@ export class AccountPool {
     this.captcha.clear();
     this.rateLimitedUntil.clear();
     this.reservedCredits.clear();
+    this.persistedRenewsOn.clear();
   }
 
   /**
@@ -278,18 +446,76 @@ export class AccountPool {
     const info = await client.billingInfo();
     const subType = info.subscription_type;
     const usable = (info.models ?? []).filter((m) => m.can_use);
+    // Plan catalog entry, used to label the plan and to total upcoming renewal
+    // spend. A price of 0 means a free plan, so treat it as "no paid plan".
+    const plan = info.plan ?? null;
+    const monthlyPriceUsd = monthlyPlanPriceUsd(info);
+    const planName =
+      monthlyPriceUsd !== null && typeof plan?.name === "string" && plan.name.trim()
+        ? plan.name.trim()
+        : null;
+    // Allowance for the current period, so the console can show "6,580 / 10,000
+    // used" next to the remaining balance. Free plans report 0.
+    const monthlyLimit =
+      typeof info.monthly_limit === "number" && info.monthly_limit > 0
+        ? info.monthly_limit
+        : null;
+    const monthlyUsage =
+      monthlyLimit !== null && typeof info.monthly_usage === "number" && info.monthly_usage >= 0
+        ? info.monthly_usage
+        : null;
     const health: AccountHealth = {
       credits: info.total_credits_left ?? 0,
       models: usable.map((m) => m.external_key ?? "").filter(Boolean),
       plan: typeof subType === "string" ? subType : subType ? "paid" : "free",
+      renewsOn: parseRenewsOn(info),
+      pastDue: info.is_past_due === true,
+      paused: info.is_paused === true,
+      pauseScheduled: info.is_pause_scheduled === true,
+      planName,
+      monthlyPriceUsd,
+      monthlyLimit,
+      monthlyUsage,
       features: (info.accessible_features ?? []).map((f) => f.name ?? "").filter(Boolean),
       catalog: usable,
     };
     this.health.set(client.account.id, { info: health, updatedAt: Date.now() });
+    this.persistRenewsOn(client.account.id, health.renewsOn);
+    // Persist the probe result. Balances previously lived only in this 30s
+    // in-memory cache, so a drained pool was invisible in the DB and in the
+    // admin console until users reported failed songs. Best-effort: a failed
+    // write must never fail routing.
+    void query("UPDATE suno_accounts SET credits_left = $2 WHERE label = $1", [
+      client.account.id,
+      health.credits,
+    ]).catch(() => {
+      /* best-effort telemetry */
+    });
     // The fresh balance already reflects every settled spend, so any outstanding
     // reservation for this account is now double-counting.
     this.reservedCredits.delete(client.account.id);
     return health;
+  }
+
+  /**
+   * Store the renewal date Suno just reported, so the admin console can still
+   * show it when the next probe fails (expired cookie) or when the account is
+   * disabled and therefore never probed. Best-effort: a failed write costs
+   * nothing but a missing fallback, and a `null` (free plan / omitted field) is
+   * never written over a known date.
+   */
+  private persistRenewsOn(label: string, renewsOn: string | null): void {
+    if (!renewsOn || this.persistedRenewsOn.get(label) === renewsOn) return;
+    void query(
+      "UPDATE suno_accounts SET renews_on = $1 WHERE label = $2 AND renews_on IS DISTINCT FROM $1",
+      [renewsOn, label],
+    )
+      .then(() => {
+        this.persistedRenewsOn.set(label, renewsOn);
+      })
+      .catch(() => {
+        /* best-effort: the live value still renders from the health cache */
+      });
   }
 
   /**
@@ -304,7 +530,21 @@ export class AccountPool {
     const existing = this.health.get(id)?.info;
     const info: AccountHealth = existing
       ? { ...existing, credits: 0 }
-      : { credits: 0, models: [], plan: "unknown", features: [], catalog: [] };
+      : {
+          credits: 0,
+          models: [],
+          plan: "unknown",
+          renewsOn: null,
+          pastDue: false,
+          paused: false,
+          pauseScheduled: false,
+          planName: null,
+          monthlyPriceUsd: null,
+          monthlyLimit: null,
+          monthlyUsage: null,
+          features: [],
+          catalog: [],
+        };
     this.health.set(id, { info, updatedAt: Date.now() });
   }
 

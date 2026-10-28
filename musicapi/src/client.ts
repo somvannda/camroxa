@@ -72,6 +72,30 @@ export interface Clip {
 export interface BillingInfo {
   total_credits_left?: number;
   subscription_type?: string;
+  /** ISO timestamp of the next charge — absent/null on free plans. */
+  renews_on?: string | null;
+  /** End of the current billing period (normally the same instant as `renews_on`). */
+  period_end?: string | null;
+  /** Billing cadence for a paid plan, e.g. "month" or "year". */
+  period?: string | null;
+  /** True while a paid subscription is paused (renewal skipped). */
+  is_paused?: boolean;
+  /** True when the subscription is set to pause at the end of the period. */
+  is_pause_scheduled?: boolean;
+  /** True when the last invoice failed and the plan is behind on payment. */
+  is_past_due?: boolean;
+  /** The subscribed plan's catalog entry (paid plans only). */
+  plan?: {
+    plan_key?: string;
+    name?: string;
+    level?: number;
+    monthly_price_usd?: number;
+    annual_price_usd?: number;
+  } | null;
+  /** Credits included in one billing period (0 on free plans). */
+  monthly_limit?: number;
+  /** Credits used in the current billing period. */
+  monthly_usage?: number;
   accessible_features?: Array<{ name?: string }>;
   /** Models the account may use for remaster, with the entitlement flag. */
   remaster_model_types?: Array<{

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import logging
 from typing import Any, Protocol
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from platform_api.models.domain import Batch, BatchChannelAssets, ImageJob, Song, SunoTask
 from platform_api.models.enums import ChannelRole, ImageKind, TaskStatus
@@ -1938,6 +1938,21 @@ class BatchRepository:
                           AND ($2::uuid IS NULL OR batch_id = $2)
                           AND status = ANY($3::text[])
                           AND ($6::uuid[] IS NULL OR id = ANY($6::uuid[]))
+                          -- Chained images (thumbnails) wait for their source
+                          -- artefact. Claiming them while the source is still
+                          -- running forced a charge followed by an
+                          -- `image_generation_deferred` refund on every sweep.
+                          -- `failed` counts as terminal so the child can fail
+                          -- fast with a clear message instead of parking here.
+                          AND (
+                              source_job_id IS NULL
+                              OR EXISTS (
+                                  SELECT 1
+                                  FROM image_jobs AS source_job
+                                  WHERE source_job.id = image_jobs.source_job_id
+                                    AND source_job.status IN ('success', 'failed')
+                              )
+                          )
                         ORDER BY updated_at DESC
                         FOR UPDATE SKIP LOCKED
                         LIMIT $4

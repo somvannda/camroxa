@@ -46,27 +46,35 @@ class AudioPackageService:
             return {"status": "ready", "skipped": True}
 
         async with self._pool.acquire() as conn:
-            # Transaction-scoped advisory lock: Postgres releases it on COMMIT,
-            # ROLLBACK, cancellation, or connection loss. A session-level
-            # `pg_advisory_lock` leaked once (the holder sat idle after the
-            # insert) and blocked every other packager + the API pool.
-            async with conn.transaction():
-                await conn.execute("SET LOCAL lock_timeout = '30s'")
-                acquired = await conn.fetchval(
-                    "SELECT pg_try_advisory_xact_lock(hashtext($1::text), hashtext($2::text))",
-                    str(subject_id),
-                    f"{subject_type}:{variant}",
+            # Session-scoped advisory lock, deliberately NOT transaction-scoped.
+            # The packaging body performs several minutes of object-storage
+            # uploads. Wrapping that in one transaction meant the rows stayed
+            # locked until COMMIT, so a track never became visible as 'ready'
+            # until every upload had finished, and the lock_timeout could cancel
+            # the statement mid-upload and roll the whole thing back (seen on
+            # production as "canceling statement due to lock timeout" followed
+            # by a retry, leaving a track unplayable for ~4 minutes).
+            #
+            # With no enclosing transaction every statement autocommits, so the
+            # ready columns written after lane A are visible immediately while
+            # lane B and HLS continue. The lock is released in `finally` - a
+            # leaked session lock previously blocked every packager.
+            acquired = await conn.fetchval(
+                "SELECT pg_try_advisory_lock(hashtext($1::text), hashtext($2::text))",
+                str(subject_id),
+                f"{subject_type}:{variant}",
+            )
+            if not acquired:
+                # Another request/worker is already packaging this exact
+                # subject. Do not queue on the lock: long storage uploads would
+                # otherwise exhaust the API's DB pool with waiters.
+                logger.info(
+                    "Skip packaging (busy) subject=%s variant=%s",
+                    subject_id,
+                    variant,
                 )
-                if not acquired:
-                    # Another request/worker is already packaging this exact
-                    # subject. Do not queue on the lock: long storage uploads
-                    # would otherwise exhaust the API's DB pool with waiters.
-                    logger.info(
-                        "Skip packaging (busy) subject=%s variant=%s",
-                        subject_id,
-                        variant,
-                    )
-                    return {"status": "busy", "skipped": True}
+                return {"status": "busy", "skipped": True}
+            try:
                 if subject_type == "stream_track":
                     existing = await conn.fetchrow(
                         "SELECT package_status, packaged_storage_key FROM stream_tracks WHERE id = $1",
@@ -102,6 +110,69 @@ class AudioPackageService:
                     null_suno_urls=null_suno_urls,
                     source_key=source_key,
                 )
+            finally:
+                await conn.execute(
+                    "SELECT pg_advisory_unlock(hashtext($1::text), hashtext($2::text))",
+                    str(subject_id),
+                    f"{subject_type}:{variant}",
+                )
+
+    async def _mark_playable(
+        self,
+        conn: Any,
+        *,
+        subject_id: UUID,
+        variant: str,
+        orig_key: str,
+        pkg_a_key: str,
+        key_id: Any,
+        null_suno_urls: bool,
+    ) -> None:
+        """Set just enough state for playback, before the heavy packaging work.
+
+        ``content_license_service`` treats a track as playable when
+        ``package_status = 'ready'`` and both ``packaged_storage_key`` and
+        ``content_key_id`` are set. Lane B (``.b.cxa``) and the HLS segments are
+        not required for that, so writing those columns here turns a
+        multi-minute wait into two object uploads. The caller finishes lane B and
+        HLS afterwards and re-asserts the same values.
+        """
+        if variant == "ok":
+            await conn.execute(
+                """
+                UPDATE suno_tasks
+                SET encrypted_original_key_ok = $2,
+                    packaged_storage_key_ok = $3,
+                    package_status_ok = 'ready',
+                    content_key_id_ok = $4,
+                    audio_url_ok = CASE WHEN $5 THEN NULL ELSE audio_url_ok END,
+                    updated_at = NOW()
+                WHERE id = $1
+                """,
+                subject_id,
+                orig_key,
+                pkg_a_key,
+                key_id,
+                null_suno_urls,
+            )
+        else:
+            await conn.execute(
+                """
+                UPDATE suno_tasks
+                SET encrypted_original_key_alt = $2,
+                    packaged_storage_key_alt = $3,
+                    package_status_alt = 'ready',
+                    content_key_id_alt = $4,
+                    audio_url_alt = CASE WHEN $5 THEN NULL ELSE audio_url_alt END,
+                    updated_at = NOW()
+                WHERE id = $1
+                """,
+                subject_id,
+                orig_key,
+                pkg_a_key,
+                key_id,
+                null_suno_urls,
+            )
 
     async def _package_plaintext_body(
         self,
@@ -150,12 +221,29 @@ class AudioPackageService:
         key_id = str(key_row["id"])
         original_blob = encrypt_original(plaintext, content_key)
         package_a = package_chunks(ab_plaintext_variant(plaintext, lane="a"), content_key, key_id=key_id)
-        package_b = package_chunks(ab_plaintext_variant(plaintext, lane="b"), content_key, key_id=key_id)
         orig_key = f"{base_key}.cxo"
         pkg_a_key = f"{base_key}.cxa"
         pkg_b_key = f"{base_key}.b.cxa"
         await storage.upload_bytes(key=orig_key, data=original_blob, content_type=GCM_MIME)
         await storage.upload_bytes(key=pkg_a_key, data=package_a, content_type=GCM_MIME)
+
+        # Web-music tracks are playable from this point. content_license_service
+        # only requires package_status='ready' plus packaged_storage_key and
+        # content_key_id, so lane B and the ~35 HLS segment uploads stay off the
+        # critical path to first play. The UPDATEs below re-assert the same
+        # values once the heavy work finishes.
+        if subject_type != "stream_track":
+            await self._mark_playable(
+                conn,
+                subject_id=subject_id,
+                variant=variant,
+                orig_key=orig_key,
+                pkg_a_key=pkg_a_key,
+                key_id=key_row["id"],
+                null_suno_urls=null_suno_urls,
+            )
+
+        package_b = package_chunks(ab_plaintext_variant(plaintext, lane="b"), content_key, key_id=key_id)
         await storage.upload_bytes(key=pkg_b_key, data=package_b, content_type=GCM_MIME)
         hls_prefix = f"{base_key}.hls"
         hls_status = await self._package_and_upload_hls(

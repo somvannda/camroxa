@@ -355,6 +355,15 @@ export const config = {
     publicBaseUrl: (process.env.MUSICAPI_B2_PUBLIC_BASE_URL ?? "").replace(/\/+$/, ""),
     /** Signed GET URL lifetime for direct B2 reads. */
     urlTtlSeconds: Number(process.env.MUSICAPI_B2_URL_TTL_SECONDS ?? 7 * 24 * 3600),
+    /**
+     * `Cache-Control` written on every uploaded object. Without one the CDN
+     * applies its own short default (Cloudflare: 120 minutes) and re-fetches
+     * from the bucket far more often than it needs to. Keys are stable per
+     * clip, but a clip's bytes *can* be rewritten by the repair/re-render
+     * paths, so this is a long-but-finite TTL rather than `immutable`.
+     */
+    cacheControl:
+      process.env.MUSICAPI_B2_CACHE_CONTROL ?? "public, max-age=604800, stale-while-revalidate=86400",
   },
 };
 

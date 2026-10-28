@@ -19,7 +19,6 @@ from platform_api.services.thumbnail_composite import (
     normalize_thumbnail_reference_mode,
     to_cover_png_bytes,
 )
-from platform_api.services.image_sample_rotation import ImageSampleRotationService
 from platform_api.services.image_source_mode import (
     empty_prompt_error_message,
     is_personal_reference_source,
@@ -463,6 +462,12 @@ class ImageJobService:
                             "max_length": IMAGE_MAX_PROMPT_LENGTH,
                         },
                     )
+
+                # Chained images must not reach the wallet hold until their
+                # source artefact exists: charging first made every pending
+                # dependency produce a debit plus an
+                # `image_generation_deferred` refund.
+                await self._ensure_dependency_ready(user_id=user_id, job=job)
 
                 if self._enforcement_service is not None:
                     # Always bill like credit ops / plan_allowance — never skip
@@ -983,6 +988,40 @@ class ImageJobService:
         cache_path.write_bytes(image_bytes)
         return str(cache_path)
 
+    async def _ensure_dependency_ready(self, *, user_id: UUID, job: ImageJob) -> None:
+        """Fail before billing when a chained job's source artefact is not ready.
+
+        Thumbnail jobs are chained to a background image via ``source_job_id``.
+        ``claim_image_jobs_for_run`` already skips sources that are still
+        running; this is the second line of defence for a job claimed by an
+        older build, replayed from a retry sweep, or requested through explicit
+        ``job_ids``. Checking here — before ``reserve_and_hold_before_provider``
+        — is what keeps a not-ready dependency from writing a wallet debit and
+        an ``image_generation_deferred`` refund for work that never ran.
+        """
+        source_job_id = getattr(job, "source_job_id", None)
+        if getattr(job, "kind", None) != ImageKind.THUMBNAIL or source_job_id is None:
+            return
+        source_job = await self._repo.get_image_job_by_id(source_job_id, user_id)
+        if source_job is None:
+            raise ValidationError(
+                "Thumbnail image job source background job was not found.",
+                details={"source_job_id": str(source_job_id)},
+            )
+        if source_job.status == TaskStatus.FAILED:
+            raise ValidationError(
+                "Thumbnail image job source background job failed.",
+                details={"source_job_id": str(source_job_id)},
+            )
+        if source_job.status == TaskStatus.SUCCESS and (
+            source_job.output_image_path
+            or self._server_image_cache_path(source_job.id).is_file()
+        ):
+            return
+        raise DependencyPendingError(
+            f"Waiting for background image output from job {source_job_id}."
+        )
+
     async def _wait_for_source_job_output(
         self,
         *,
@@ -991,7 +1030,6 @@ class ImageJobService:
         max_attempts: int = 20,
         delay_seconds: float = 0.5,
     ) -> ImageJob:
-        last_job: ImageJob | None = None
         for _ in range(max_attempts):
             source_job = await self._repo.get_image_job_by_id(source_job_id, user_id)
             if source_job is None:
@@ -999,7 +1037,6 @@ class ImageJobService:
                     "Thumbnail image job source background job was not found.",
                     details={"source_job_id": str(source_job_id)},
                 )
-            last_job = source_job
             if source_job.status == TaskStatus.SUCCESS and (
                 source_job.output_image_path
                 or self._server_image_cache_path(source_job.id).is_file()
