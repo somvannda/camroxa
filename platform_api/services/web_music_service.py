@@ -3705,6 +3705,30 @@ class WebMusicService:
                 logger.exception("Studio operation refund failed for %s", operation_id)
         return self._studio_operation_payload(updated)
 
+    async def list_studio_operations(
+        self,
+        user_id: UUID,
+        *,
+        limit: int = 20,
+        operation_type: str | None = None,
+    ) -> dict[str, Any]:
+        safe_limit = max(1, min(int(limit), 50))
+        rows = await self._pool.fetch(
+            """
+            SELECT * FROM studio_operations
+            WHERE user_id = $1
+              AND status IN ('complete', 'success', 'completed')
+              AND result_json IS NOT NULL
+              AND ($3::text IS NULL OR operation_type = $3)
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            user_id,
+            safe_limit,
+            operation_type or None,
+        )
+        return {"items": [self._studio_operation_payload(row) for row in rows]}
+
     async def list_generations(
         self,
         user_id: UUID,

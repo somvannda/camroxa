@@ -32,7 +32,9 @@ import {
   fetchWebMusicQuota,
   fetchWebMusicTimedLyricsBlob,
   getWebMusicStudioOperation,
+  listWebMusicStudioOperations,
   uploadWebMusicStudioAudio,
+  type WebMusicStudioOperation,
   type WebMusicStudioUpload,
   generateWebMusic,
   generateWebMusicDraft,
@@ -169,6 +171,7 @@ export function CreateStudio() {
   const [lyricsOpen, setLyricsOpen] = useState(true);
   const [featureTab, setFeatureTab] = useState<FeatureTab>(null);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
+  const [audioHistory, setAudioHistory] = useState<WebMusicStudioOperation[]>([]);
   const [loadingSongs, setLoadingSongs] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedDetail, setSelectedDetail] = useState<WebMusicGeneration | null>(null);
@@ -352,6 +355,21 @@ export function CreateStudio() {
       })
       .finally(() => {
         if (active) setWorkspacesReady(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, [loading, user]);
+
+  useEffect(() => {
+    if (loading || !user) return;
+    let active = true;
+    listWebMusicStudioOperations(20)
+      .then((payload) => {
+        if (active) setAudioHistory(payload.items);
+      })
+      .catch(() => {
+        /* history is optional */
       });
     return () => {
       active = false;
@@ -598,6 +616,7 @@ export function CreateStudio() {
             audioUrl: clip.audioUrl,
           });
         }
+        setAudioHistory((current) => [operation, ...current.filter((item) => item.id !== operation.id)]);
         void refreshSongs();
         void refresh();
         return;
@@ -1032,6 +1051,7 @@ export function CreateStudio() {
           : batchOverQueue
             ? `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`
             : null;
+  const audioResultRows = audioHistory.filter((operation) => Boolean(operation.result?.clips?.[0]?.audioUrl));
   const generationCount = totalSongs || songs.length;
   const generationWord = generationCount === 1 ? "song" : "songs";
   const versionCount = songs.reduce((total, song) => total + generationClips(song).length, 0);
@@ -1236,7 +1256,50 @@ export function CreateStudio() {
           <div className="s-feed">
             <div className="s-feed-head" />
             <div className="s-feed-scroll">
-              {[0, 1, 2, 3].map((item) => (
+            {audioResultRows.length ? (
+              <div>
+                <h3 className="s-day">Audio results</h3>
+                {audioResultRows.map((operation) => {
+                  const clip = operation.result?.clips?.[0];
+                  if (!clip?.audioUrl) return null;
+                  return (
+                    <div className="s-row s-row-compact" key={operation.id}>
+                      <button
+                        type="button"
+                        className="s-row-play"
+                        aria-label={`Play ${clip.title || "audio result"}`}
+                        onClick={() =>
+                          playTrack({
+                            title: clip.title || "Audio result",
+                            artist: "You",
+                            cover: clip.imageUrl || "/hero.png",
+                            duration: 180,
+                            audioUrl: clip.audioUrl as string,
+                          })
+                        }
+                      >
+                        <Icon name="fa-play" />
+                      </button>
+                      <div className="s-row-body">
+                        <div className="s-row-title">
+                          <b>{clip.title || "Audio result"}</b>
+                          <span className="s-tag">{operation.mode === "cover" ? "Cover" : "Extend"}</span>
+                        </div>
+                        <div className="s-row-desc">
+                          {operation.operation_type === "upload_cover" ? "Cover" : "Extend"} ·{" "}
+                          {formatDate(operation.created_at)}
+                        </div>
+                      </div>
+                      <div className="s-row-downloads">
+                        <a className="s-dl" href={clip.audioUrl} download>
+                          MP3
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}              {[0, 1, 2, 3].map((item) => (
                 <div className="s-skel" key={item}>
                   <span className="a" />
                   <span className="b">
@@ -2815,7 +2878,50 @@ export function CreateStudio() {
           {batchError ? <p className="s-error">{batchError}</p> : null}
 
           <div className="s-feed-scroll">
-            {loadingSongs ? (
+            {audioResultRows.length ? (
+              <div>
+                <h3 className="s-day">Audio results</h3>
+                {audioResultRows.map((operation) => {
+                  const clip = operation.result?.clips?.[0];
+                  if (!clip?.audioUrl) return null;
+                  return (
+                    <div className="s-row s-row-compact" key={operation.id}>
+                      <button
+                        type="button"
+                        className="s-row-play"
+                        aria-label={`Play ${clip.title || "audio result"}`}
+                        onClick={() =>
+                          playTrack({
+                            title: clip.title || "Audio result",
+                            artist: "You",
+                            cover: clip.imageUrl || "/hero.png",
+                            duration: 180,
+                            audioUrl: clip.audioUrl as string,
+                          })
+                        }
+                      >
+                        <Icon name="fa-play" />
+                      </button>
+                      <div className="s-row-body">
+                        <div className="s-row-title">
+                          <b>{clip.title || "Audio result"}</b>
+                          <span className="s-tag">{operation.mode === "cover" ? "Cover" : "Extend"}</span>
+                        </div>
+                        <div className="s-row-desc">
+                          {operation.operation_type === "upload_cover" ? "Cover" : "Extend"} ·{" "}
+                          {formatDate(operation.created_at)}
+                        </div>
+                      </div>
+                      <div className="s-row-downloads">
+                        <a className="s-dl" href={clip.audioUrl} download>
+                          MP3
+                        </a>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : null}            {loadingSongs ? (
               [0, 1, 2, 3].map((item) => (
                 <div className="s-skel" key={item}>
                   <span className="a" />

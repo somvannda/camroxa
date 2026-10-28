@@ -481,6 +481,8 @@ export type WebMusicStudioOperation = {
   task_id?: string | null;
   error_message?: string | null;
   result?: { clips?: WebMusicStudioClipResult[] } | null;
+  created_at?: string | null;
+  updated_at?: string | null;
 };
 
 export async function uploadWebMusicStudioAudio(
@@ -522,4 +524,12 @@ export async function coverWebMusicStudioUpload(
 
 export async function getWebMusicStudioOperation(id: string): Promise<WebMusicStudioOperation> {
   return musicJson(`/api/v3/web-music/studio/operations/${encodeURIComponent(id)}`);
+}
+export async function listWebMusicStudioOperations(
+  limit = 20,
+  operationType?: string
+): Promise<{ items: WebMusicStudioOperation[] }> {
+  const params = new URLSearchParams({ limit: String(limit) });
+  if (operationType) params.set("operation_type", operationType);
+  return musicJson(`/api/v3/web-music/studio/operations?${params.toString()}`);
 }

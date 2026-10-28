@@ -1070,6 +1070,20 @@ async def get_studio_readiness(
     return await service.get_studio_readiness()
 
 
+@router.get("/studio/operations")
+async def list_studio_operations(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(20, ge=1, le=50),
+    operation_type: str | None = Query(default=None),
+) -> dict:
+    return await service.list_studio_operations(
+        UUID(ctx.user_id),
+        limit=limit,
+        operation_type=operation_type,
+    )
+
+
 @router.get("/studio/operations/{operation_id}")
 async def get_studio_operation(
     operation_id: UUID,
