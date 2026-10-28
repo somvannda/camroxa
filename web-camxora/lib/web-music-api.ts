@@ -492,6 +492,12 @@ export type WebMusicStudioOperation = {
   updated_at?: string | null;
 };
 
+export async function listWebMusicStudioUploads(
+  limit = 50
+): Promise<{ items: WebMusicStudioUpload[] }> {
+  return musicJson(`/api/v3/web-music/studio/uploads?limit=${limit}`);
+}
+
 export async function uploadWebMusicStudioAudio(
   file: File,
   durationSeconds?: number

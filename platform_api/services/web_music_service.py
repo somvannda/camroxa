@@ -2746,6 +2746,43 @@ class WebMusicService:
             "size_bytes": len(data),
         }
 
+    async def list_studio_uploads(
+        self,
+        user_id: UUID,
+        *,
+        limit: int = 50,
+    ) -> dict[str, Any]:
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        safe_limit = max(1, min(int(limit), 100))
+        rows = await self._pool.fetch(
+            """
+            SELECT id, filename, content_type, size_bytes, duration_seconds,
+                   storage_key, created_at
+            FROM studio_uploads
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            user_id,
+            safe_limit,
+        )
+        config = await resolve_streaming_storage_config(self._pool)
+        storage = StorageService.from_config(config) if config.configured else None
+        items: list[dict[str, Any]] = []
+        for row in rows:
+            url = ""
+            if storage is not None:
+                try:
+                    url = await storage.get_signed_get_url(str(row["storage_key"]))
+                except Exception:
+                    logger.exception("Could not sign studio upload %s", row["id"])
+            items.append(self._studio_upload_payload(row, url))
+        return {"items": items}
+
     async def create_studio_upload(
         self,
         user_id: UUID,

@@ -1228,6 +1228,15 @@ async def upload_studio_audio(
     )
 
 
+@router.get("/studio/uploads")
+async def list_studio_uploads(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(default=50, ge=1, le=100),
+) -> dict:
+    return await service.list_studio_uploads(UUID(ctx.user_id), limit=limit)
+
+
 @router.get("/studio/uploads/{upload_id}")
 async def get_studio_audio(
     upload_id: UUID,

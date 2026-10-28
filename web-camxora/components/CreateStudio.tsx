@@ -45,6 +45,7 @@ import {
   listWebMusicStaffPicks,
   listWebMusicStudioOperations,
   listWebMusicStudioPersonas,
+  listWebMusicStudioUploads,
   requestWebMusicStaffPickRemix,
   saveWebMusicSavedLyrics,
   uploadWebMusicStudioAudio,
@@ -385,6 +386,10 @@ export function CreateStudio() {
   const [audioStatus, setAudioStatus] = useState("");
   const [audioKind, setAudioKind] = useState<"extend" | "cover" | null>(null);
   const [audioResult, setAudioResult] = useState<{ title: string; audioUrl: string } | null>(null);
+  const [audioBrowseOpen, setAudioBrowseOpen] = useState(false);
+  const [audioBrowseItems, setAudioBrowseItems] = useState<WebMusicStudioUpload[] | null>(null);
+  const [audioBrowseSearch, setAudioBrowseSearch] = useState("");
+  const [audioBrowseError, setAudioBrowseError] = useState("");
   const [playlistSource, setPlaylistSource] = useState<WebMusicPlaylistSummary[] | null>(null);
   const [playlistSourceBusy, setPlaylistSourceBusy] = useState(false);
   const [playlistSourceError, setPlaylistSourceError] = useState("");
@@ -433,7 +438,6 @@ export function CreateStudio() {
   const [audioDragging, setAudioDragging] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
-  const audioFileInputRef = useRef<HTMLInputElement | null>(null);
   const recordChunks = useRef<Blob[]>([]);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
@@ -863,9 +867,28 @@ export function CreateStudio() {
     setToast("New lyrics draft");
   }
 
+  async function loadAudioBrowse() {
+    setAudioBrowseOpen(true);
+    setAudioBrowseSearch("");
+    setAudioBrowseError("");
+    setAudioBrowseItems(null);
+    try {
+      const payload = await listWebMusicStudioUploads(50);
+      if (mounted.current) setAudioBrowseItems(payload.items);
+    } catch (cause) {
+      if (mounted.current) {
+        setAudioBrowseItems([]);
+        setAudioBrowseError(cause instanceof Error ? cause.message : "Could not load audio");
+      }
+    }
+  }
+
   function openAudioModal(intent: "browse" | "upload" | "record") {
     if (intent === "browse") {
-      audioFileInputRef.current?.click();
+      setRowMenuKey(null);
+      setAttachModal(null);
+      setRemixTab("library");
+      setRemixPickerOpen(true);
       return;
     }
     setAttachModal("audio");
@@ -2703,21 +2726,6 @@ export function CreateStudio() {
   return (
     <div className="s-page">
       <h1 className="sr-only">Create music</h1>
-      <input
-        ref={audioFileInputRef}
-        className="sr-only"
-        type="file"
-        accept="audio/*"
-        tabIndex={-1}
-        onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) {
-            setAttachModal("audio");
-            void uploadAudioFile(file);
-          }
-          event.target.value = "";
-        }}
-      />
       <div className="s-create-grid with-rail">
         <div
           className={`s-form-col${dragging ? " dragging" : ""}`}
@@ -4418,6 +4426,14 @@ export function CreateStudio() {
                       <Icon name={recording ? "fa-stop" : "fa-microphone"} />{" "}
                       {recording ? "Stop & upload" : "Record"}
                     </button>
+                    <button
+                      type="button"
+                      className="s-btn s-btn-secondary"
+                      onClick={() => void loadAudioBrowse()}
+                      disabled={audioUploading || audioBusy}
+                    >
+                      <Icon name="fa-folder-open" /> Browse uploads
+                    </button>
                     {audioUpload ? (
                       <>
                         <button
@@ -5061,6 +5077,88 @@ export function CreateStudio() {
                     : "No songs to remix yet. Create a song first."}
                 </p>
               )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {audioBrowseOpen ? (
+        <div
+          className="s-modal-overlay s-remix-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose audio"
+          onClick={() => setAudioBrowseOpen(false)}
+        >
+          <div className="s-remix-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="s-modal-head">
+              <h3>Choose audio</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Close audio browser"
+                onClick={() => setAudioBrowseOpen(false)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-remix-tools">
+              <label className="s-remix-search">
+                <Icon name="fa-magnifying-glass" />
+                <input
+                  value={audioBrowseSearch}
+                  onChange={(event) => setAudioBrowseSearch(event.target.value)}
+                  placeholder="Search"
+                  aria-label="Search audio"
+                />
+              </label>
+            </div>
+            <div className="s-remix-list">
+              {audioBrowseItems === null ? (
+                <p className="s-note">Loading audio…</p>
+              ) : (() => {
+                const query = audioBrowseSearch.trim().toLowerCase();
+                const items = audioBrowseItems.filter(
+                  (item) => !query || item.filename.toLowerCase().includes(query)
+                );
+                if (!items.length) {
+                  return (
+                    <p className="s-note">
+                      {audioBrowseError || "No audio yet. Upload or record one."}
+                    </p>
+                  );
+                }
+                return items.map((item) => (
+                  <div key={item.id} className="s-remix-row">
+                    <span className="s-remix-cover">
+                      <Icon name="fa-file-audio" />
+                    </span>
+                    <span className="s-remix-meta">
+                      <b>{item.filename}</b>
+                      <small>
+                        {item.duration_seconds
+                          ? `${formatClipDuration(item.duration_seconds)} · `
+                          : ""}
+                        {formatDate(item.created_at)}
+                      </small>
+                    </span>
+                    <span className="s-remix-actions">
+                      <button
+                        type="button"
+                        className="s-remix-pick"
+                        onClick={() => {
+                          setAudioUpload(item);
+                          setAudioResult(null);
+                          setAudioBrowseOpen(false);
+                          setAttachModal("audio");
+                        }}
+                      >
+                        Use
+                      </button>
+                    </span>
+                  </div>
+                ));
+              })()}
             </div>
           </div>
         </div>
