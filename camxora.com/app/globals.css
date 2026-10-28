@@ -35,8 +35,7 @@ html{color-scheme:dark}
 
 :root{
     --bg:#070a13;
-    --sidebar:#0a0d18;
-    --panel:#0f1322;
+    --sidebar:#0a0d18;    --panel:#0f1322;
     --panel2:#121728;
     --line:rgba(255,255,255,.065);
     --line2:rgba(255,255,255,.10);
@@ -3048,6 +3047,21 @@ html{color-scheme:dark}
 
 
 
+/* `.s-*` tokens are also published on :root so portalled popovers (Radix
+   renders menus under <body>) resolve the same palette as the .s-page scope. */
+:root{
+  --s-fs-11:11px;--s-fs-12:12px;--s-fs-13:13px;--s-fs-14:14px;--s-fs-15:15px;--s-fs-16:16px;--s-fs-18:18px;--s-fs-24:24px;--s-fs-30:30px;
+  --s-ico-12:12px;--s-ico-13:13px;--s-ico-14:14px;--s-ico-16:16px;--s-ico-18:18px;
+  --s-ctl-sm:28px;--s-ctl-md:34px;--s-ctl-lg:40px;--s-ctl-xl:46px;--s-ctl-2xl:48px;
+  --s-field:#0a0d18;--s-caret:11px;--s-danger:#b91c1c;--s-danger-soft:#fb9b85;--s-warn:#faed87;--s-ok-soft:#aefc76;--s-info-soft:#91c6ff;
+  --s-bg:#070a13;--s-bg2:#0f1322;--s-bg3:#181f36;--s-bg4:#222a45;
+  --s-text:#f4f5fb;--s-text2:#c9cde0;--s-text3:#8b90a6;--s-inactive:#6f748a;
+  --s-line:rgba(255,255,255,.075);--s-line2:rgba(255,255,255,.14);--s-accent:#a855f7;
+  --s-ok:#52d17c;--s-info:#60a5fa;
+  --s-r-sm:6px;--s-r-md:12px;--s-r-lg:16px;--s-pill:999px;
+  --s-shadow:0 12px 40px rgba(4,6,14,.66);
+}
+
 /* ==========================================================================
    SUNO-PARITY CREATE + LIBRARY  (scoped to .s-page only)
    ========================================================================== */
@@ -4279,3 +4293,21 @@ html{color-scheme:dark}
 .s-remix-filter-clear{height:30px;border-radius:7px;color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer}
 .s-remix-filter-clear:hover{background:rgba(255,255,255,.06);color:var(--s-text)}
 .s-remix-sort-select{height:36px;padding:0 8px;border-radius:999px;border:1px solid var(--s-line);background:rgba(255,255,255,.04);color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer}
+/* Radix menus render in a portal under <body>, outside `.s-page`, so mirror the
+   scoped menu sizing globally (same final values as the .s-page overrides). */
+.s-menu{max-width:min(320px,calc(100vw - 24px));padding:4px;border-radius:10px}
+.s-menu-item{height:28px;font-size:12px;gap:6px;padding:0 8px}
+.s-menu-item .icon,.s-menu-item svg{width:11px;height:11px}
+.s-menu-label{font-size:11px}
+/* Radix checkbox/radio items render their indicator on the left; the design
+   keeps the check on the right, so reorder it. */
+.s-menu [role="menuitemcheckbox"],.s-menu [role="menuitemradio"]{padding-left:8px;padding-right:8px}
+.s-menu [role="menuitemcheckbox"]>span:first-child,
+.s-menu [role="menuitemradio"]>span:first-child{
+  position:static;order:2;margin-left:auto;width:auto;height:auto;
+  display:inline-flex;align-items:center;justify-content:center;
+}
+.s-menu [role="menuitemcheckbox"] .icon,.s-menu [role="menuitemradio"] .icon{width:11px;height:11px;color:var(--s-accent)}
+/* Closed menus stay mounted for the 150ms exit animation; make sure a stalled
+   or backgrounded animation can never swallow clicks on the page beneath. */
+.s-menu[data-state="closed"]{pointer-events:none}

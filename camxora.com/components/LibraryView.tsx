@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
+import {
+  SMenu,
+  SMenuCheckboxItem,
+  SMenuItem,
+  SMenuRadioGroup,
+  SMenuRadioItem,
+  SMenuSeparator,
+} from "@/components/ui/s-menu";
 import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
 import {
@@ -137,9 +145,7 @@ export function LibraryView() {
   const [tab, setTab] = useState<LibTab>("songs");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<FeedFilter[]>([]);
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const [sort, setSort] = useState<FeedSort>("new");
-  const [sortOpen, setSortOpen] = useState(false);
   const [page, setPage] = useState(1);
 
   const [bootLoading, setBootLoading] = useState(true);
@@ -156,8 +162,6 @@ export function LibraryView() {
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
 
-  const [audioMenuOpen, setAudioMenuOpen] = useState(false);
-  const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
   const [trashMode, setTrashMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachNotice, setAttachNotice] = useState<null | "upload" | "record">(null);
@@ -264,30 +268,16 @@ export function LibraryView() {
   }, [tab, authLoading, bootLoading, detailOpen]);
 
   useEffect(() => {
-    const onDoc = (event: MouseEvent) => {
-      const target = event.target as HTMLElement | null;
-      if (target?.closest("[data-s-menu]")) return;
-      setFiltersOpen(false);
-      setSortOpen(false);
-      setAudioMenuOpen(false);
-      setRowMenuKey(null);
-    };
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
-      setFiltersOpen(false);
-      setSortOpen(false);
-      setAudioMenuOpen(false);
-      setRowMenuKey(null);
       closeDetail();
       setAttachNotice(null);
       setComposer(null);
       setConfirm(null);
       setPlaylistDetail(null);
     };
-    document.addEventListener("mousedown", onDoc);
     document.addEventListener("keydown", onKey);
     return () => {
-      document.removeEventListener("mousedown", onDoc);
       document.removeEventListener("keydown", onKey);
     };
   }, []);
@@ -837,99 +827,67 @@ export function LibraryView() {
 
         <div
           className="s-anchor"
-          data-s-menu
           style={{ position: "static" }}
           onClick={(event) => event.stopPropagation()}
         >
-          <button
-            type="button"
-            className="s-row-more"
-            aria-label="More options"
-            aria-expanded={rowMenuKey === key}
-            onClick={() => setRowMenuKey((current) => (current === key ? null : key))}
+          <SMenu
+            align="end"
+            sideOffset={6}
+            trigger={
+              <button
+                type="button"
+                className="s-row-more"
+                aria-label="More options"
+              >
+                <Icon name="fa-ellipsis-vertical" />
+              </button>
+            }
           >
-            <Icon name="fa-ellipsis-vertical" />
-          </button>
-          {rowMenuKey === key ? (
-            <div className="s-menu" role="menu" style={{ right: 12, top: 64, minWidth: 220 }}>
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  void copyClipLink(song, clip);
-                }}
-              >
-                <Icon name="fa-link" /> Copy link
-              </button>
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                disabled={!ready}
-                onClick={() => {
-                  setRowMenuKey(null);
-                  openDetail(song, clip);
-                }}
-              >
-                <Icon name="fa-list" /> Add to playlist
-              </button>
-              <div className="s-menu-sep" />
-              {DOWNLOAD_KINDS.filter(
-                (format) =>
-                  format.kind === "mp3" ||
-                  format.kind === "wav" ||
-                  !generationIsInstrumental(song)
-              ).map((format) => (
+            <SMenuItem onSelect={() => void copyClipLink(song, clip)}>
+              <Icon name="fa-link" /> Copy link
+            </SMenuItem>
+            <SMenuItem disabled={!ready} onSelect={() => openDetail(song, clip)}>
+              <Icon name="fa-list" /> Add to playlist
+            </SMenuItem>
+            <SMenuSeparator />
+            {DOWNLOAD_KINDS.filter(
+              (format) =>
+                format.kind === "mp3" ||
+                format.kind === "wav" ||
+                !generationIsInstrumental(song)
+            ).map((format) => (
+              <SMenuItem key={format.kind} asChild>
                 <a
-                  key={format.kind}
-                  className="s-menu-item"
-                  role="menuitem"
                   href={
                     format.kind === "mp3" && clip.download_url
                       ? clip.download_url
                       : clipDownloadUrl(song.id, clip.variant, format.kind)
                   }
-                  onClick={() => setRowMenuKey(null)}
                 >
                   <Icon name="fa-download" /> {format.label}
                 </a>
-              ))}
-              <div className="s-menu-sep" />
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  window.location.href = `/publish?clip=${encodeURIComponent(song.id)}`;
-                }}
-              >
-                <Icon name="fa-arrow-up-from-bracket" /> Publish
-              </button>
-              <Link
-                className="s-menu-item"
-                role="menuitem"
-                href="/studio/editor"
-                onClick={() => setRowMenuKey(null)}
-              >
+              </SMenuItem>
+            ))}
+            <SMenuSeparator />
+            <SMenuItem
+              onSelect={() => {
+                window.location.href = `/publish?clip=${encodeURIComponent(song.id)}`;
+              }}
+            >
+              <Icon name="fa-arrow-up-from-bracket" /> Publish
+            </SMenuItem>
+            <SMenuItem asChild>
+              <Link href="/studio/editor">
                 <Icon name="fa-table-columns" /> Open in Studio
               </Link>
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                disabled={deleting}
-                onClick={() => {
-                  setRowMenuKey(null);
-                  setConfirm({ kind: "generations", ids: [song.id] });
-                }}
-              >
-                <Icon name="fa-trash" /> Delete
-              </button>
-            </div>
-          ) : null}
+            </SMenuItem>
+            <SMenuItem
+              disabled={deleting}
+              onSelect={() => setConfirm({ kind: "generations", ids: [song.id] })}
+            >
+              <Icon name="fa-trash" /> Delete
+            </SMenuItem>
+          </SMenu>
         </div>
       </div>
     );
@@ -1211,42 +1169,23 @@ export function LibraryView() {
         <div className="s-lib-head">
           <h1 className="s-lib-title">Library</h1>
           <div className="s-lib-actions">
-            <div className="s-anchor" data-s-menu>
-              <button
-                type="button"
-                className="s-pill"
-                aria-expanded={audioMenuOpen}
-                aria-label="Audio actions"
-                onClick={() => setAudioMenuOpen((value) => !value)}
+            <div className="s-anchor">
+              <SMenu
+                align="end"
+                sideOffset={6}
+                trigger={
+                  <button type="button" className="s-pill" aria-label="Audio actions">
+                    Audio <Icon name="fa-plus" />
+                  </button>
+                }
               >
-                Audio <Icon name="fa-plus" />
-              </button>
-              {audioMenuOpen ? (
-                <div className="s-menu" role="menu" style={{ top: 50, right: 0, width: 190 }}>
-                  <button
-                    type="button"
-                    className="s-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setAudioMenuOpen(false);
-                      setAttachNotice("upload");
-                    }}
-                  >
-                    <Icon name="fa-arrow-up-from-bracket" /> Upload
-                  </button>
-                  <button
-                    type="button"
-                    className="s-menu-item"
-                    role="menuitem"
-                    onClick={() => {
-                      setAudioMenuOpen(false);
-                      setAttachNotice("record");
-                    }}
-                  >
-                    <Icon name="fa-microphone" /> Record
-                  </button>
-                </div>
-              ) : null}
+                <SMenuItem onSelect={() => setAttachNotice("upload")}>
+                  <Icon name="fa-arrow-up-from-bracket" /> Upload
+                </SMenuItem>
+                <SMenuItem onSelect={() => setAttachNotice("record")}>
+                  <Icon name="fa-microphone" /> Record
+                </SMenuItem>
+              </SMenu>
             </div>
             <button
               type="button"
@@ -1330,80 +1269,65 @@ export function LibraryView() {
             />
           </label>
 
-          <div className="s-anchor" data-s-menu>
-            <button
-              type="button"
-              className={`s-pill${activeFilterCount ? " on" : ""}`}
-              onClick={() => setFiltersOpen((value) => !value)}
-              aria-expanded={filtersOpen}
-              aria-label={`Filters (${activeFilterCount})`}
+          <div className="s-anchor">
+            <SMenu
+              align="end"
+              sideOffset={6}
+              trigger={
+                <button
+                  type="button"
+                  className={`s-pill${activeFilterCount ? " on" : ""}`}
+                  aria-label={`Filters (${activeFilterCount})`}
+                >
+                  <Icon name="fa-filter" /> <span className="s-btn-label">Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}</span>
+                </button>
+              }
             >
-              <Icon name="fa-filter" /> <span className="s-btn-label">Filters{activeFilterCount ? ` (${activeFilterCount})` : ""}</span>
-            </button>
-            {filtersOpen ? (
-              <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 200 }}>
-                {filterOptions.map((option) => {
-                  const on = filters.includes(option.id);
-                  return (
-                    <button
-                      key={option.id}
-                      type="button"
-                      className={`s-menu-item${on ? " on" : ""}`}
-                      role="menuitemcheckbox"
-                      aria-checked={on}
-                      disabled={option.disabled}
-                      onClick={() =>
-                        setFilters((current) =>
-                          current.includes(option.id)
-                            ? current.filter((item) => item !== option.id)
-                            : [...current, option.id]
-                        )
-                      }
-                    >
-                      {option.label}
-                      {option.disabled ? (
-                        <span className="check">—</span>
-                      ) : on ? (
-                        <span className="check">✓</span>
-                      ) : null}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-
-          <div className="s-anchor" data-s-menu>
-            <button
-              type="button"
-              className="s-pill"
-              onClick={() => setSortOpen((value) => !value)}
-              aria-expanded={sortOpen}
-              aria-label={`Sort: ${sortLabel}`}
-            >
-              {sortLabel}
-              <Icon name="fa-chevron-down" />
-            </button>
-            {sortOpen ? (
-              <div className="s-menu" role="menu" style={{ top: 46, right: 0, width: 180 }}>
-                {SORT_OPTIONS.map((option) => (
-                  <button
+              {filterOptions.map((option) => {
+                const on = filters.includes(option.id);
+                return (
+                  <SMenuCheckboxItem
                     key={option.id}
-                    type="button"
-                    className="s-menu-item"
-                    role="menuitemradio"
-                    aria-checked={sort === option.id}
-                    onClick={() => {
-                      setSort(option.id);
-                      setSortOpen(false);
-                    }}
+                    className={on ? "on" : undefined}
+                    checked={on}
+                    disabled={option.disabled}
+                    onCheckedChange={() =>
+                      setFilters((current) =>
+                        current.includes(option.id)
+                          ? current.filter((item) => item !== option.id)
+                          : [...current, option.id]
+                      )
+                    }
                   >
                     {option.label}
-                    {sort === option.id ? <span className="check">✓</span> : null}
-                  </button>
+                  </SMenuCheckboxItem>
+                );
+              })}
+            </SMenu>
+          </div>
+
+          <div className="s-anchor">
+            <SMenu
+              align="end"
+              sideOffset={6}
+              trigger={
+                <button type="button" className="s-pill" aria-label={`Sort: ${sortLabel}`}>
+                  {sortLabel}
+                  <Icon name="fa-chevron-down" />
+                </button>
+              }
+            >
+              <SMenuRadioGroup
+                value={sort}
+                onValueChange={(value) => setSort(value as typeof sort)}
+              >
+                {SORT_OPTIONS.map((option) => (
+                  <SMenuRadioItem key={option.id} value={option.id}>
+                    {option.label}
+                  </SMenuRadioItem>
                 ))}
-              </div>
-            ) : null}
+              </SMenuRadioGroup>
+            </SMenu>
           </div>
 
           <button

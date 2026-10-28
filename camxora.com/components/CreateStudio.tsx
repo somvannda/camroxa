@@ -4,6 +4,14 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
+import {
+  SMenu,
+  SMenuItem,
+  SMenuSeparator,
+  SMenuSub,
+  SMenuSubContent,
+  SMenuSubTrigger,
+} from "@/components/ui/s-menu";
 import { SelectField } from "@/components/ui/select-field";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
@@ -2331,208 +2339,151 @@ export function CreateStudio() {
                       </div>
                       <div
                         className="s-anchor"
-                        data-s-menu
                         style={{ position: "static" }}
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <button
-                          type="button"
-                          className="s-row-more"
-                          aria-label="More options"
-                          aria-expanded={rowMenuKey === `audio:${operation.id}`}
-                          onClick={() => {
-                            setDownloadMenuKey(null);
-                            setRowMenuKey((current) =>
-                              current === `audio:${operation.id}`
-                                ? null
-                                : `audio:${operation.id}`
-                            );
-                          }}
+                        <SMenu
+                          align="end"
+                          sideOffset={6}
+                          trigger={
+                            <button
+                              type="button"
+                              className="s-row-more"
+                              aria-label="More options"
+                            >
+                              <Icon name="fa-ellipsis-vertical" />
+                            </button>
+                          }
                         >
-                          <Icon name="fa-ellipsis-vertical" />
-                        </button>
-                        {rowMenuKey === `audio:${operation.id}` ? (
-                          <div
-                            className="s-menu"
-                            role="menu"
-                            style={{ right: 12, top: 40, minWidth: 210 }}
+                          <SMenuItem
+                            onSelect={() =>
+                              playTrack({
+                                title: clip.title || "Audio result",
+                                artist: "You",
+                                cover: clip.imageUrl || "/hero.png",
+                                duration: 180,
+                                audioUrl: clip.audioUrl as string,
+                              })
+                            }
                           >
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={() => {
-                                setRowMenuKey(null);
-                                playTrack({
-                                  title: clip.title || "Audio result",
-                                  artist: "You",
-                                  cover: clip.imageUrl || "/hero.png",
-                                  duration: 180,
-                                  audioUrl: clip.audioUrl as string,
-                                });
-                              }}
-                            >
-                              <Icon name="fa-play" /> Play
-                            </button>
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              aria-expanded={downloadMenuKey === operation.id}
-                              onClick={() =>
-                                setDownloadMenuKey((current) =>
-                                  current === operation.id ? null : operation.id
-                                )
-                              }
-                            >
+                            <Icon name="fa-play" /> Play
+                          </SMenuItem>
+                          <SMenuSub>
+                            <SMenuSubTrigger>
                               <Icon name="fa-download" /> Download
-                              <Icon name="fa-chevron-right" className="s-menu-caret" />
-                            </button>
-                            {downloadMenuKey === operation.id ? (
-                              <div className="s-menu s-menu-sub" role="menu">
-                                <a
-                                  className="s-menu-item"
-                                  role="menuitem"
-                                  href={clip.audioUrl}
-                                  download
-                                  onClick={() => setRowMenuKey(null)}
-                                >
+                            </SMenuSubTrigger>
+                            <SMenuSubContent>
+                              <SMenuItem asChild>
+                                <a href={clip.audioUrl} download>
                                   MP3
                                 </a>
-                                {clipFormatUrl(clip, "wav") ? (
-                                  <a
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    href={clipFormatUrl(clip, "wav")}
-                                    download
-                                    onClick={() => setRowMenuKey(null)}
-                                  >
+                              </SMenuItem>
+                              {clipFormatUrl(clip, "wav") ? (
+                                <SMenuItem asChild>
+                                  <a href={clipFormatUrl(clip, "wav")} download>
                                     WAV
                                   </a>
-                                ) : null}
-                                {clipFormatUrl(clip, "lrc") ? (
-                                  <a
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    href={clipFormatUrl(clip, "lrc")}
-                                    download
-                                    onClick={() => setRowMenuKey(null)}
-                                  >
+                                </SMenuItem>
+                              ) : null}
+                              {clipFormatUrl(clip, "lrc") ? (
+                                <SMenuItem asChild>
+                                  <a href={clipFormatUrl(clip, "lrc")} download>
                                     LRC
                                   </a>
-                                ) : null}
-                                {clipFormatUrl(clip, "srt") ? (
-                                  <a
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    href={clipFormatUrl(clip, "srt")}
-                                    download
-                                    onClick={() => setRowMenuKey(null)}
-                                  >
+                                </SMenuItem>
+                              ) : null}
+                              {clipFormatUrl(clip, "srt") ? (
+                                <SMenuItem asChild>
+                                  <a href={clipFormatUrl(clip, "srt")} download>
                                     SRT
                                   </a>
-                                ) : null}
-                              </div>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={async () => {
-                                setRowMenuKey(null);
-                                const url = clip.audioUrl as string;
-                                if (navigator.share) {
-                                  try {
-                                    await navigator.share({
-                                      title: clip.title || "Audio result",
-                                      url,
-                                    });
-                                    return;
-                                  } catch (cause) {
-                                    if ((cause as Error).name === "AbortError") return;
-                                  }
-                                }
+                                </SMenuItem>
+                              ) : null}
+                            </SMenuSubContent>
+                          </SMenuSub>
+                          <SMenuItem
+                            onSelect={async () => {
+                              const url = clip.audioUrl as string;
+                              if (navigator.share) {
                                 try {
-                                  await navigator.clipboard.writeText(url);
-                                  setToast("Link copied");
-                                } catch {
-                                  setToast("Could not copy link");
-                                }
-                              }}
-                            >
-                              <Icon name="fa-share-nodes" /> Share
-                            </button>
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={async () => {
-                                setRowMenuKey(null);
-                                try {
-                                  const created = await requestWebMusicOperationRemix(
-                                    operation.id,
-                                    clip.id
-                                  );
-                                  setToast("Remix started");
-                                  const finished = await followStudioOperation(created);
-                                  setAudioHistory((current) => [
-                                    finished,
-                                    ...current.filter((item) => item.id !== finished.id),
-                                  ]);
-                                  const state = String(finished.status).toLowerCase();
-                                  if (state === "error" || state === "failed") {
-                                    setToast(finished.error_message || "Remix failed");
-                                  } else {
-                                    setToast("Remix ready");
-                                    void refreshSongs();
-                                    void refresh();
-                                  }
+                                  await navigator.share({
+                                    title: clip.title || "Audio result",
+                                    url,
+                                  });
+                                  return;
                                 } catch (cause) {
-                                  setToast(
-                                    cause instanceof Error
-                                      ? cause.message
-                                      : "Could not start remix"
-                                  );
+                                  if ((cause as Error).name === "AbortError") return;
                                 }
-                              }}
-                            >
-                              <Icon name="fa-wand-magic-sparkles" /> Remix
-                            </button>
-                            <div className="s-menu-sep" />
-                            <Link
-                              className="s-menu-item"
-                              role="menuitem"
-                              href="/studio/editor"
-                              onClick={() => setRowMenuKey(null)}
-                            >
+                              }
+                              try {
+                                await navigator.clipboard.writeText(url);
+                                setToast("Link copied");
+                              } catch {
+                                setToast("Could not copy link");
+                              }
+                            }}
+                          >
+                            <Icon name="fa-share-nodes" /> Share
+                          </SMenuItem>
+                          <SMenuItem
+                            onSelect={async () => {
+                              try {
+                                const created = await requestWebMusicOperationRemix(
+                                  operation.id,
+                                  clip.id
+                                );
+                                setToast("Remix started");
+                                const finished = await followStudioOperation(created);
+                                setAudioHistory((current) => [
+                                  finished,
+                                  ...current.filter((item) => item.id !== finished.id),
+                                ]);
+                                const state = String(finished.status).toLowerCase();
+                                if (state === "error" || state === "failed") {
+                                  setToast(finished.error_message || "Remix failed");
+                                } else {
+                                  setToast("Remix ready");
+                                  void refreshSongs();
+                                  void refresh();
+                                }
+                              } catch (cause) {
+                                setToast(
+                                  cause instanceof Error
+                                    ? cause.message
+                                    : "Could not start remix"
+                                );
+                              }
+                            }}
+                          >
+                            <Icon name="fa-wand-magic-sparkles" /> Remix
+                          </SMenuItem>
+                          <SMenuSeparator />
+                          <SMenuItem asChild>
+                            <Link href="/studio/editor">
                               <Icon name="fa-table-columns" /> Open in Studio
                             </Link>
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={async () => {
-                                setRowMenuKey(null);
-                                if (!window.confirm("Move this audio result to trash?")) return;
-                                try {
-                                  await deleteWebMusicStudioOperation(operation.id);
-                                  setAudioHistory((current) =>
-                                    current.filter((item) => item.id !== operation.id)
-                                  );
-                                  setToast("Moved to trash");
-                                } catch (cause) {
-                                  setToast(
-                                    cause instanceof Error
-                                      ? cause.message
-                                      : "Could not move to trash"
-                                  );
-                                }
-                              }}
-                            >
-                              <Icon name="fa-trash" /> Move to Trash
-                            </button>
-                          </div>
-                        ) : null}
+                          </SMenuItem>
+                          <SMenuItem
+                            onSelect={async () => {
+                              if (!window.confirm("Move this audio result to trash?")) return;
+                              try {
+                                await deleteWebMusicStudioOperation(operation.id);
+                                setAudioHistory((current) =>
+                                  current.filter((item) => item.id !== operation.id)
+                                );
+                                setToast("Moved to trash");
+                              } catch (cause) {
+                                setToast(
+                                  cause instanceof Error
+                                    ? cause.message
+                                    : "Could not move to trash"
+                                );
+                              }
+                            }}
+                          >
+                            <Icon name="fa-trash" /> Move to Trash
+                          </SMenuItem>
+                        </SMenu>
                       </div>
                     </div>
                   );
@@ -2665,166 +2616,89 @@ export function CreateStudio() {
           ) : null}
         </div>
 
-        <div className="s-anchor" data-s-menu style={{ position: "static" }} onClick={(event) => event.stopPropagation()}>
-          <button
-            type="button"
-            className="s-row-more"
-            aria-label="More options"
-            aria-expanded={rowMenuKey === key}
-            onClick={() => {
-              setDownloadMenuKey(null);
-              setRowMenuKey((current) => (current === key ? null : key));
-            }}
+        <div className="s-anchor" style={{ position: "static" }} onClick={(event) => event.stopPropagation()}>
+          <SMenu
+            align="end"
+            sideOffset={6}
+            trigger={
+              <button type="button" className="s-row-more" aria-label="More options">
+                <Icon name="fa-ellipsis-vertical" />
+              </button>
+            }
           >
-            <Icon name="fa-ellipsis-vertical" />
-          </button>
-          {rowMenuKey === key ? (
-            <div className="s-menu" role="menu" style={{ right: 12, top: 40, minWidth: 220 }}>
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  void toggleLikeRow(song, clip);
-                }}
-              >
-                <Icon name="fa-heart" /> {liked ? "Remove like" : "Like"}
-              </button>
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  toggleDislikeRow(song, clip);
-                }}
-              >
-                <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
-              </button>
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  void shareClipLink(song, clip);
-                }}
-              >
-                <Icon name="fa-share-nodes" /> Share
-              </button>
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                disabled={!ready}
-                aria-expanded={downloadMenuKey === `song:${key}`}
-                onClick={() => {
-                  setDownloadMenuKey((current) =>
-                    current === `song:${key}` ? null : `song:${key}`
-                  );
-                }}
-              >
+            <SMenuItem onSelect={() => void toggleLikeRow(song, clip)}>
+              <Icon name="fa-heart" /> {liked ? "Remove like" : "Like"}
+            </SMenuItem>
+            <SMenuItem onSelect={() => toggleDislikeRow(song, clip)}>
+              <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
+            </SMenuItem>
+            <SMenuItem onSelect={() => void shareClipLink(song, clip)}>
+              <Icon name="fa-share-nodes" /> Share
+            </SMenuItem>
+            <SMenuSub>
+              <SMenuSubTrigger disabled={!ready}>
                 <Icon name="fa-download" /> Download
-                <Icon name="fa-chevron-right" className="s-menu-caret" />
-              </button>
-              {downloadMenuKey === `song:${key}` && ready ? (
-                <div className="s-menu s-menu-sub" role="menu">
+              </SMenuSubTrigger>
+              <SMenuSubContent>
+                <SMenuItem asChild>
                   <a
-                    className="s-menu-item"
-                    role="menuitem"
                     href={clip.download_url || clipDownloadUrl(song.id, clip.variant, "mp3")}
                     download
-                    onClick={() => setRowMenuKey(null)}
                   >
                     MP3
                   </a>
-                  <a
-                    className="s-menu-item"
-                    role="menuitem"
-                    href={clipDownloadUrl(song.id, clip.variant, "wav")}
-                    download
-                    onClick={() => setRowMenuKey(null)}
-                  >
+                </SMenuItem>
+                <SMenuItem asChild>
+                  <a href={clipDownloadUrl(song.id, clip.variant, "wav")} download>
                     WAV
                   </a>
-                  {!instrumental ? (
-                    <>
-                      <a
-                        className="s-menu-item"
-                        role="menuitem"
-                        href={clipDownloadUrl(song.id, clip.variant, "lrc")}
-                        download
-                        onClick={() => setRowMenuKey(null)}
-                      >
+                </SMenuItem>
+                {!instrumental ? (
+                  <>
+                    <SMenuItem asChild>
+                      <a href={clipDownloadUrl(song.id, clip.variant, "lrc")} download>
                         LRC
                       </a>
-                      <a
-                        className="s-menu-item"
-                        role="menuitem"
-                        href={clipDownloadUrl(song.id, clip.variant, "srt")}
-                        download
-                        onClick={() => setRowMenuKey(null)}
-                      >
+                    </SMenuItem>
+                    <SMenuItem asChild>
+                      <a href={clipDownloadUrl(song.id, clip.variant, "srt")} download>
                         SRT
                       </a>
-                    </>
-                  ) : null}
-                </div>
-              ) : null}
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  openRemixPicker();
-                }}
-              >
-                <Icon name="fa-wand-magic-sparkles" /> Remix
-              </button>
-              <div className="s-menu-sep" />
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  openDetail(song, clip);
-                }}
-                disabled={!selectedClipAddable && !ready}
-              >
-                <Icon name="fa-list" /> Add to playlist
-              </button>
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  window.location.href = `/publish?clip=${encodeURIComponent(song.id)}`;
-                }}
-              >
-                <Icon name="fa-arrow-up-from-bracket" /> Publish
-              </button>
-              <Link className="s-menu-item" role="menuitem" href="/studio/editor" onClick={() => setRowMenuKey(null)}>
+                    </SMenuItem>
+                  </>
+                ) : null}
+              </SMenuSubContent>
+            </SMenuSub>
+            <SMenuItem onSelect={() => openRemixPicker()}>
+              <Icon name="fa-wand-magic-sparkles" /> Remix
+            </SMenuItem>
+            <SMenuSeparator />
+            <SMenuItem
+              disabled={!selectedClipAddable && !ready}
+              onSelect={() => openDetail(song, clip)}
+            >
+              <Icon name="fa-list" /> Add to playlist
+            </SMenuItem>
+            <SMenuItem
+              onSelect={() => {
+                window.location.href = `/publish?clip=${encodeURIComponent(song.id)}`;
+              }}
+            >
+              <Icon name="fa-arrow-up-from-bracket" /> Publish
+            </SMenuItem>
+            <SMenuItem asChild>
+              <Link href="/studio/editor">
                 <Icon name="fa-table-columns" /> Open in Studio
               </Link>
-              <div className="s-menu-sep" />
-              <button
-                type="button"
-                className="s-menu-item"
-                role="menuitem"
-                onClick={() => {
-                  setRowMenuKey(null);
-                  void deleteRow(song);
-                }}
-                disabled={deletingId === song.id}
-              >
-                <Icon name="fa-trash" /> {deletingId === song.id ? "Deleting…" : "Delete"}
-              </button>
-            </div>
-          ) : null}
+            </SMenuItem>
+            <SMenuSeparator />
+            <SMenuItem
+              disabled={deletingId === song.id}
+              onSelect={() => void deleteRow(song)}
+            >
+              <Icon name="fa-trash" /> {deletingId === song.id ? "Deleting…" : "Delete"}
+            </SMenuItem>
+          </SMenu>
         </div>
       </div>
     );
@@ -4303,208 +4177,151 @@ export function CreateStudio() {
                       </div>
                       <div
                         className="s-anchor"
-                        data-s-menu
                         style={{ position: "static" }}
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <button
-                          type="button"
-                          className="s-row-more"
-                          aria-label="More options"
-                          aria-expanded={rowMenuKey === `audio:${operation.id}`}
-                          onClick={() => {
-                            setDownloadMenuKey(null);
-                            setRowMenuKey((current) =>
-                              current === `audio:${operation.id}`
-                                ? null
-                                : `audio:${operation.id}`
-                            );
-                          }}
+                        <SMenu
+                          align="end"
+                          sideOffset={6}
+                          trigger={
+                            <button
+                              type="button"
+                              className="s-row-more"
+                              aria-label="More options"
+                            >
+                              <Icon name="fa-ellipsis-vertical" />
+                            </button>
+                          }
                         >
-                          <Icon name="fa-ellipsis-vertical" />
-                        </button>
-                        {rowMenuKey === `audio:${operation.id}` ? (
-                          <div
-                            className="s-menu"
-                            role="menu"
-                            style={{ right: 12, top: 40, minWidth: 210 }}
+                          <SMenuItem
+                            onSelect={() =>
+                              playTrack({
+                                title: clip.title || "Audio result",
+                                artist: "You",
+                                cover: clip.imageUrl || "/hero.png",
+                                duration: 180,
+                                audioUrl: clip.audioUrl as string,
+                              })
+                            }
                           >
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={() => {
-                                setRowMenuKey(null);
-                                playTrack({
-                                  title: clip.title || "Audio result",
-                                  artist: "You",
-                                  cover: clip.imageUrl || "/hero.png",
-                                  duration: 180,
-                                  audioUrl: clip.audioUrl as string,
-                                });
-                              }}
-                            >
-                              <Icon name="fa-play" /> Play
-                            </button>
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              aria-expanded={downloadMenuKey === operation.id}
-                              onClick={() =>
-                                setDownloadMenuKey((current) =>
-                                  current === operation.id ? null : operation.id
-                                )
-                              }
-                            >
+                            <Icon name="fa-play" /> Play
+                          </SMenuItem>
+                          <SMenuSub>
+                            <SMenuSubTrigger>
                               <Icon name="fa-download" /> Download
-                              <Icon name="fa-chevron-right" className="s-menu-caret" />
-                            </button>
-                            {downloadMenuKey === operation.id ? (
-                              <div className="s-menu s-menu-sub" role="menu">
-                                <a
-                                  className="s-menu-item"
-                                  role="menuitem"
-                                  href={clip.audioUrl}
-                                  download
-                                  onClick={() => setRowMenuKey(null)}
-                                >
+                            </SMenuSubTrigger>
+                            <SMenuSubContent>
+                              <SMenuItem asChild>
+                                <a href={clip.audioUrl} download>
                                   MP3
                                 </a>
-                                {clipFormatUrl(clip, "wav") ? (
-                                  <a
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    href={clipFormatUrl(clip, "wav")}
-                                    download
-                                    onClick={() => setRowMenuKey(null)}
-                                  >
+                              </SMenuItem>
+                              {clipFormatUrl(clip, "wav") ? (
+                                <SMenuItem asChild>
+                                  <a href={clipFormatUrl(clip, "wav")} download>
                                     WAV
                                   </a>
-                                ) : null}
-                                {clipFormatUrl(clip, "lrc") ? (
-                                  <a
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    href={clipFormatUrl(clip, "lrc")}
-                                    download
-                                    onClick={() => setRowMenuKey(null)}
-                                  >
+                                </SMenuItem>
+                              ) : null}
+                              {clipFormatUrl(clip, "lrc") ? (
+                                <SMenuItem asChild>
+                                  <a href={clipFormatUrl(clip, "lrc")} download>
                                     LRC
                                   </a>
-                                ) : null}
-                                {clipFormatUrl(clip, "srt") ? (
-                                  <a
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    href={clipFormatUrl(clip, "srt")}
-                                    download
-                                    onClick={() => setRowMenuKey(null)}
-                                  >
+                                </SMenuItem>
+                              ) : null}
+                              {clipFormatUrl(clip, "srt") ? (
+                                <SMenuItem asChild>
+                                  <a href={clipFormatUrl(clip, "srt")} download>
                                     SRT
                                   </a>
-                                ) : null}
-                              </div>
-                            ) : null}
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={async () => {
-                                setRowMenuKey(null);
-                                const url = clip.audioUrl as string;
-                                if (navigator.share) {
-                                  try {
-                                    await navigator.share({
-                                      title: clip.title || "Audio result",
-                                      url,
-                                    });
-                                    return;
-                                  } catch (cause) {
-                                    if ((cause as Error).name === "AbortError") return;
-                                  }
-                                }
+                                </SMenuItem>
+                              ) : null}
+                            </SMenuSubContent>
+                          </SMenuSub>
+                          <SMenuItem
+                            onSelect={async () => {
+                              const url = clip.audioUrl as string;
+                              if (navigator.share) {
                                 try {
-                                  await navigator.clipboard.writeText(url);
-                                  setToast("Link copied");
-                                } catch {
-                                  setToast("Could not copy link");
-                                }
-                              }}
-                            >
-                              <Icon name="fa-share-nodes" /> Share
-                            </button>
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={async () => {
-                                setRowMenuKey(null);
-                                try {
-                                  const created = await requestWebMusicOperationRemix(
-                                    operation.id,
-                                    clip.id
-                                  );
-                                  setToast("Remix started");
-                                  const finished = await followStudioOperation(created);
-                                  setAudioHistory((current) => [
-                                    finished,
-                                    ...current.filter((item) => item.id !== finished.id),
-                                  ]);
-                                  const state = String(finished.status).toLowerCase();
-                                  if (state === "error" || state === "failed") {
-                                    setToast(finished.error_message || "Remix failed");
-                                  } else {
-                                    setToast("Remix ready");
-                                    void refreshSongs();
-                                    void refresh();
-                                  }
+                                  await navigator.share({
+                                    title: clip.title || "Audio result",
+                                    url,
+                                  });
+                                  return;
                                 } catch (cause) {
-                                  setToast(
-                                    cause instanceof Error
-                                      ? cause.message
-                                      : "Could not start remix"
-                                  );
+                                  if ((cause as Error).name === "AbortError") return;
                                 }
-                              }}
-                            >
-                              <Icon name="fa-wand-magic-sparkles" /> Remix
-                            </button>
-                            <div className="s-menu-sep" />
-                            <Link
-                              className="s-menu-item"
-                              role="menuitem"
-                              href="/studio/editor"
-                              onClick={() => setRowMenuKey(null)}
-                            >
+                              }
+                              try {
+                                await navigator.clipboard.writeText(url);
+                                setToast("Link copied");
+                              } catch {
+                                setToast("Could not copy link");
+                              }
+                            }}
+                          >
+                            <Icon name="fa-share-nodes" /> Share
+                          </SMenuItem>
+                          <SMenuItem
+                            onSelect={async () => {
+                              try {
+                                const created = await requestWebMusicOperationRemix(
+                                  operation.id,
+                                  clip.id
+                                );
+                                setToast("Remix started");
+                                const finished = await followStudioOperation(created);
+                                setAudioHistory((current) => [
+                                  finished,
+                                  ...current.filter((item) => item.id !== finished.id),
+                                ]);
+                                const state = String(finished.status).toLowerCase();
+                                if (state === "error" || state === "failed") {
+                                  setToast(finished.error_message || "Remix failed");
+                                } else {
+                                  setToast("Remix ready");
+                                  void refreshSongs();
+                                  void refresh();
+                                }
+                              } catch (cause) {
+                                setToast(
+                                  cause instanceof Error
+                                    ? cause.message
+                                    : "Could not start remix"
+                                );
+                              }
+                            }}
+                          >
+                            <Icon name="fa-wand-magic-sparkles" /> Remix
+                          </SMenuItem>
+                          <SMenuSeparator />
+                          <SMenuItem asChild>
+                            <Link href="/studio/editor">
                               <Icon name="fa-table-columns" /> Open in Studio
                             </Link>
-                            <button
-                              type="button"
-                              className="s-menu-item"
-                              role="menuitem"
-                              onClick={async () => {
-                                setRowMenuKey(null);
-                                if (!window.confirm("Move this audio result to trash?")) return;
-                                try {
-                                  await deleteWebMusicStudioOperation(operation.id);
-                                  setAudioHistory((current) =>
-                                    current.filter((item) => item.id !== operation.id)
-                                  );
-                                  setToast("Moved to trash");
-                                } catch (cause) {
-                                  setToast(
-                                    cause instanceof Error
-                                      ? cause.message
-                                      : "Could not move to trash"
-                                  );
-                                }
-                              }}
-                            >
-                              <Icon name="fa-trash" /> Move to Trash
-                            </button>
-                          </div>
-                        ) : null}
+                          </SMenuItem>
+                          <SMenuItem
+                            onSelect={async () => {
+                              if (!window.confirm("Move this audio result to trash?")) return;
+                              try {
+                                await deleteWebMusicStudioOperation(operation.id);
+                                setAudioHistory((current) =>
+                                  current.filter((item) => item.id !== operation.id)
+                                );
+                                setToast("Moved to trash");
+                              } catch (cause) {
+                                setToast(
+                                  cause instanceof Error
+                                    ? cause.message
+                                    : "Could not move to trash"
+                                );
+                              }
+                            }}
+                          >
+                            <Icon name="fa-trash" /> Move to Trash
+                          </SMenuItem>
+                        </SMenu>
                       </div>
                     </div>
                   );
