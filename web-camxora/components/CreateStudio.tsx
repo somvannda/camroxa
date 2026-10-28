@@ -700,7 +700,9 @@ export function CreateStudio() {
       .join("\n")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
+    const changed = cleaned !== lyrics;
     updateLyrics(cleaned);
+    setToast(changed ? "Lyrics formatted" : "Lyrics are already formatted");
   }
 
   async function openLyricsLibrary() {
