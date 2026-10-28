@@ -83,10 +83,12 @@ function runFfmpeg(args: string[]): Promise<void> {
  */
 export async function renderMusicVideo(opts: RenderVideoOptions): Promise<Buffer> {
   if (!opts.audio || opts.audio.length === 0) throw new Error("empty audio buffer");
-  const vertical = (opts.aspect ?? "16:9") === "9:16";
-  const W = vertical ? 720 : 1280;
+  const aspect = opts.aspect ?? "16:9";
+  const vertical = aspect === "9:16";
+  const square = aspect === "1:1";
+  const W = vertical ? 720 : square ? 720 : 1280;
   const H = vertical ? 1280 : 720;
-  const waveH = vertical ? 280 : 180;
+  const waveH = vertical ? 280 : square ? 220 : 180;
 
   const dir = mkdtempSync(path.join(os.tmpdir(), "camxora-mv-"));
   try {
