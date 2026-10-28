@@ -191,6 +191,10 @@ export function CreateStudio() {
   const [advancedOpen, setAdvancedOpen] = useState(false);
   const [stylesOpen, setStylesOpen] = useState(true);
   const [lyricsOpen, setLyricsOpen] = useState(true);
+  const [lyricsModalOpen, setLyricsModalOpen] = useState(false);
+  const [lyricsFullscreen, setLyricsFullscreen] = useState(false);
+  const [lyricsHistoryIndex, setLyricsHistoryIndex] = useState(0);
+  const lyricsHistoryRef = useRef<string[]>([""]);
   const [featureTab, setFeatureTab] = useState<FeatureTab>(null);
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [audioHistory, setAudioHistory] = useState<WebMusicStudioOperation[]>([]);
@@ -313,6 +317,15 @@ export function CreateStudio() {
   }, [toast]);
 
   useEffect(() => {
+    if (!lyricsModalOpen) return;
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [lyricsModalOpen]);
+
+  useEffect(() => {
     setFeedPage(1);
   }, [feedSearch, feedSort, feedFilters, activeWorkspaceId]);
 
@@ -347,6 +360,7 @@ export function CreateStudio() {
         setAddMenuOpen(false);
         setAddSubmenu(null);
         setAttachModal(null);
+        setLyricsModalOpen(false);
       }
     };
     document.addEventListener("mousedown", onDoc);
@@ -607,6 +621,50 @@ export function CreateStudio() {
       : instrumental
         ? style.trim().length > 0
         : style.trim().length > 0 && lyrics.trim().length > 0;
+
+  function openLyricsModal(autogenerate = false) {
+    setMode("custom");
+    setAdvancedOpen(false);
+    setLyricsOpen(true);
+    setLyricsFullscreen(false);
+    lyricsHistoryRef.current = [lyrics];
+    setLyricsHistoryIndex(0);
+    setLyricsModalOpen(true);
+    if (autogenerate) void writeLyrics();
+  }
+
+  function updateLyrics(value: string) {
+    setLyrics(value);
+    const next = lyricsHistoryRef.current.slice(0, lyricsHistoryIndex + 1);
+    if (next[next.length - 1] !== value) {
+      next.push(value);
+      if (next.length > 80) next.shift();
+      lyricsHistoryRef.current = next;
+      setLyricsHistoryIndex(next.length - 1);
+    }
+  }
+
+  function undoLyrics() {
+    const next = Math.max(0, lyricsHistoryIndex - 1);
+    setLyricsHistoryIndex(next);
+    setLyrics(lyricsHistoryRef.current[next] ?? "");
+  }
+
+  function redoLyrics() {
+    const next = Math.min(lyricsHistoryRef.current.length - 1, lyricsHistoryIndex + 1);
+    setLyricsHistoryIndex(next);
+    setLyrics(lyricsHistoryRef.current[next] ?? "");
+  }
+
+  function formatLyrics() {
+    const cleaned = lyrics
+      .split("\n")
+      .map((line) => line.replace(/\s+$/g, ""))
+      .join("\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    updateLyrics(cleaned);
+  }
 
   async function writeLyrics() {
     const seed =
@@ -1828,10 +1886,7 @@ export function CreateStudio() {
               role="menuitem"
               onClick={() => {
                 closeMenu();
-                setMode("custom");
-                setAdvancedOpen(false);
-                setLyricsOpen(true);
-                window.setTimeout(() => document.getElementById("create-lyrics")?.focus(), 80);
+                openLyricsModal(false);
               }}
             >
               <Icon name="fa-pen" /> Write lyrics
@@ -1842,9 +1897,7 @@ export function CreateStudio() {
               role="menuitem"
               onClick={() => {
                 closeMenu();
-                setMode("custom");
-                setLyricsOpen(true);
-                void writeLyrics();
+                openLyricsModal(true);
               }}
             >
               <Icon name="fa-wand-magic-sparkles" /> Auto-generate
@@ -3882,6 +3935,104 @@ export function CreateStudio() {
               <span style={{ flex: 1 }} />
               <button type="button" className="s-btn s-btn-ghost" onClick={() => setAttachModal(null)}>
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {lyricsModalOpen ? (
+        <div
+          className="s-lyrics-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Lyrics"
+          onClick={() => setLyricsModalOpen(false)}
+        >
+          <div
+            className={cn("s-lyrics-modal", lyricsFullscreen && "full")}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="s-lyrics-modal-head">
+              <h3>Lyrics</h3>
+              <div className="s-lyrics-tools">
+                <button
+                  type="button"
+                  className="s-lyrics-tool"
+                  aria-label="Undo"
+                  title="Undo"
+                  onClick={undoLyrics}
+                  disabled={lyricsHistoryIndex <= 0}
+                >
+                  <Icon name="fa-rotate-left" />
+                </button>
+                <button
+                  type="button"
+                  className="s-lyrics-tool"
+                  aria-label="Redo"
+                  title="Redo"
+                  onClick={redoLyrics}
+                  disabled={lyricsHistoryIndex >= lyricsHistoryRef.current.length - 1}
+                >
+                  <Icon name="fa-rotate-right" />
+                </button>
+                <button
+                  type="button"
+                  className="s-lyrics-tool"
+                  aria-label="Edit lyrics"
+                  title="Edit lyrics"
+                  onClick={() => document.getElementById("lyrics-modal-input")?.focus()}
+                >
+                  <Icon name="fa-pen" />
+                </button>
+                <button
+                  type="button"
+                  className="s-lyrics-tool"
+                  aria-label="Format lyrics"
+                  title="Format lyrics"
+                  onClick={formatLyrics}
+                >
+                  <Icon name="fa-align-left" />
+                </button>
+                <button
+                  type="button"
+                  className="s-lyrics-tool"
+                  aria-label={lyricsFullscreen ? "Exit fullscreen" : "Expand"}
+                  title={lyricsFullscreen ? "Exit fullscreen" : "Expand"}
+                  onClick={() => setLyricsFullscreen((value) => !value)}
+                >
+                  <Icon name="fa-expand" />
+                </button>
+                <button
+                  type="button"
+                  className="s-lyrics-tool"
+                  aria-label="Close lyrics"
+                  title="Close"
+                  onClick={() => setLyricsModalOpen(false)}
+                >
+                  <Icon name="fa-xmark" />
+                </button>
+              </div>
+            </div>
+            <textarea
+              id="lyrics-modal-input"
+              className="s-lyrics-modal-input"
+              value={lyrics}
+              onChange={(event) => updateLyrics(event.target.value)}
+              placeholder="Start writing lyrics, or leave this empty for instrumental"
+              maxLength={5000}
+              autoFocus
+            />
+            <div className="s-lyrics-modal-foot">
+              <button
+                type="button"
+                className="s-lyrics-wand"
+                onClick={() => void writeLyrics()}
+                disabled={writingLyrics}
+                aria-label={writingLyrics ? "Generating lyrics" : "Auto-generate lyrics"}
+                title="Auto-generate lyrics"
+              >
+                <Icon name="fa-wand-magic-sparkles" />
               </button>
             </div>
           </div>
