@@ -3989,6 +3989,12 @@ html{color-scheme:dark}
 .s-image-chip{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:var(--s-field);border:1px solid var(--s-line)}
 .s-image-chip img{width:32px;height:32px;border-radius:6px;object-fit:cover;flex:none}
 .s-image-chip span{flex:1;min-width:0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-video-chip{display:flex;align-items:center;gap:8px;padding:6px 8px;border-radius:10px;background:var(--s-field);border:1px solid var(--s-line)}
+.s-video-chip-frame{width:44px;height:32px;border-radius:6px;object-fit:cover;flex:none;background:var(--s-elev);display:flex;align-items:center;justify-content:center;color:var(--s-text3)}
+.s-video-chip-text{display:flex;flex-direction:column;gap:1px;flex:1;min-width:0}
+.s-video-chip-text b{font-size:12px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-video-chip-text small{font-size:11px;color:var(--s-text3)}
+.s-video-chip.is-busy .s-video-chip-frame svg{animation:s-spin 1s linear infinite}
 .s-image-attach{display:flex;flex-direction:column;gap:10px}
 .s-image-drop{
   display:flex;flex-direction:column;align-items:center;gap:6px;padding:20px;

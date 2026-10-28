@@ -143,7 +143,7 @@ The prompt composer `+` opens a 230px menu with the Suno item set:
 | Styles ▸ | Saved styles, Shuffle styles, Enhance styles |
 | Playlist | "Add playlist" modal — playlist reference upload is not enabled yet |
 | Image | "Add image" modal — uploads not enabled yet |
-| Video | "Add video" modal — uploads not enabled yet |
+| Video | Opens the file picker directly (`video/mp4`, `video/quicktime`, `video/webm`), uploads **one** reference clip, then shows a removable chip (thumbnail, filename, size). Picking a second clip is refused. The MP4 renderer moved to the song rail (`Video`). |
 | Audio ▸ | Upload audio / Record audio → "Add audio" modal (Studio hand-off) |
 | Voice ▸ | My voices / Browse voices → "Add voice reference" modal |
 

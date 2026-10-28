@@ -17,6 +17,7 @@ export type WebMusicGenerateInput = {
   weirdness_constraint?: number;
   audio_weight?: number;
   image_urls?: string[];
+  video_urls?: string[];
   persona_id?: string;
   workspace_id?: string;
 };
@@ -766,6 +767,25 @@ export async function uploadWebMusicStudioImage(file: File): Promise<WebMusicStu
   const form = new FormData();
   form.append("file", file);
   return musicJson<WebMusicStudioImage>("/api/v3/web-music/studio/images", {
+    method: "POST",
+    body: form,
+  });
+}
+
+export type WebMusicStudioVideoFile = {
+  url: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+};
+
+/** Suno's create composer accepts one reference clip: MP4, MOV, or WebM. */
+export async function uploadWebMusicStudioVideoFile(
+  file: File
+): Promise<WebMusicStudioVideoFile> {
+  const form = new FormData();
+  form.append("file", file);
+  return musicJson<WebMusicStudioVideoFile>("/api/v3/web-music/studio/video-uploads", {
     method: "POST",
     body: form,
   });

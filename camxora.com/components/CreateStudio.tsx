@@ -57,11 +57,13 @@ import {
   saveWebMusicSavedLyrics,
   uploadWebMusicStudioAudio,
   uploadWebMusicStudioImage,
+  uploadWebMusicStudioVideoFile,
   verifyWebMusicVoiceSample,
   type WebMusicSavedLyrics,
   type WebMusicStaffPick,
   type WebMusicStudioClipResult,
   type WebMusicStudioImage,
+  type WebMusicStudioVideoFile,
   type WebMusicStudioOperation,
   type WebMusicStudioPersona,
   type WebMusicStudioUpload,
@@ -416,6 +418,10 @@ export function CreateStudio() {
   const [referenceImage, setReferenceImage] = useState<WebMusicStudioImage | null>(null);
   const [imageUploading, setImageUploading] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [referenceVideo, setReferenceVideo] = useState<WebMusicStudioVideoFile | null>(null);
+  const [videoUploading, setVideoUploading] = useState(false);
+  const [videoUploadError, setVideoUploadError] = useState("");
+  const videoInputRef = useRef<HTMLInputElement | null>(null);
   const [videoSongs, setVideoSongs] = useState<WebMusicGeneration[] | null>(null);
   const [videoTaskId, setVideoTaskId] = useState("");
   const [videoVariant, setVideoVariant] = useState<"ok" | "alt">("ok");
@@ -1307,6 +1313,38 @@ export function CreateStudio() {
     }
   }
 
+  function pickReferenceVideo() {
+    if (referenceVideo) {
+      setToast("Remove the attached clip first — one video at a time.");
+      return;
+    }
+    videoInputRef.current?.click();
+  }
+
+  async function uploadReferenceVideoFile(file: File) {
+    const allowed = ["video/mp4", "video/quicktime", "video/webm"];
+    if (!allowed.includes(file.type)) {
+      setToast("Attach an MP4, MOV, or WebM clip.");
+      return;
+    }
+    setVideoUploading(true);
+    setVideoUploadError("");
+    try {
+      const video = await uploadWebMusicStudioVideoFile(file);
+      if (!mounted.current) return;
+      setReferenceVideo(video);
+      setToast("Video attached");
+    } catch (cause) {
+      if (mounted.current) {
+        setVideoUploadError(
+          cause instanceof Error ? cause.message : "Could not upload the video"
+        );
+      }
+    } finally {
+      if (mounted.current) setVideoUploading(false);
+    }
+  }
+
   async function uploadAudioFile(file: File) {
     setAudioUploading(true);
     setAudioError("");
@@ -1807,6 +1845,7 @@ export function CreateStudio() {
       weirdness_constraint: weirdness,
       audio_weight: audioWeight,
       image_urls: referenceImage ? [referenceImage.url] : undefined,
+      video_urls: referenceVideo ? [referenceVideo.url] : undefined,
       persona_id: selectedPersona?.provider_persona_id || undefined,
       workspace_id: activeWorkspaceId ?? undefined,
     };
@@ -3095,6 +3134,57 @@ export function CreateStudio() {
                   </div>
                 ) : null}
 
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/mp4,video/quicktime,video/webm"
+                  hidden
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    if (file) void uploadReferenceVideoFile(file);
+                    event.target.value = "";
+                  }}
+                />
+
+                {referenceVideo ? (
+                  <div className="s-video-chip">
+                    <video
+                      className="s-video-chip-frame"
+                      src={`${referenceVideo.url}#t=0.1`}
+                      muted
+                      playsInline
+                      preload="metadata"
+                      aria-hidden="true"
+                    />
+                    <span className="s-video-chip-text">
+                      <b>{referenceVideo.filename}</b>
+                      <small>
+                        {(referenceVideo.size_bytes / (1024 * 1024)).toFixed(1)} MB
+                      </small>
+                    </span>
+                    <button
+                      type="button"
+                      className="s-btn s-btn-icon sm"
+                      aria-label="Remove video"
+                      onClick={() => setReferenceVideo(null)}
+                    >
+                      <Icon name="fa-xmark" />
+                    </button>
+                  </div>
+                ) : videoUploading ? (
+                  <div className="s-video-chip is-busy">
+                    <span className="s-video-chip-frame">
+                      <Icon name="fa-circle-notch" />
+                    </span>
+                    <span className="s-video-chip-text">
+                      <b>Uploading video…</b>
+                      <small>Keep this tab open</small>
+                    </span>
+                  </div>
+                ) : null}
+
+                {videoUploadError ? <p className="s-error">{videoUploadError}</p> : null}
+
                 {selectedPersona ? (
                   <div className="s-voice-chip">
                     <Icon name="fa-microphone" />
@@ -3221,7 +3311,7 @@ export function CreateStudio() {
                                 onMouseEnter={() => setAddSubmenu(null)}
                                 onClick={() => {
                                   setAddMenuOpen(false);
-                                  setAttachModal("video");
+                                  pickReferenceVideo();
                                 }}
                               >
                                 <Icon name="fa-video" /> Video
@@ -4383,6 +4473,10 @@ export function CreateStudio() {
           onRemix={(song, clip) =>
             selectRemixSource(song, clip.variant === "alt" ? "alt" : "ok")
           }
+          onCreateVideo={() => {
+            setVideoError("");
+            setAttachModal("video");
+          }}
           onRename={async (nextTitle, variant) => {
             if (!selected) return false;
             try {

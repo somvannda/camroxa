@@ -1,0 +1,112 @@
+# Create "+" → Video: match Suno's reference-clip attach
+
+**Date:** 2026-10-28
+**Branch:** `feat/web-create-video-attach`
+**Surface:** `camxora.com` Create page + Platform API
+
+## Summary
+
+Suno's create composer `+ → Video` does **not** open a video renderer. It opens
+the OS file picker for one reference clip (`video/mp4`, `video/quicktime`,
+`video/webm`), uploads it, and shows a removable attachment chip. The clip then
+travels with the generation request as `user_uploaded_video_id`.
+
+Camxora's `+ → Video` opened a 520px "Add video" modal with a song picker,
+version chips, aspect-ratio chips, and a `Create video` button — a different
+feature. This change replaces it with the Suno flow and keeps the MP4 renderer
+reachable from the song rail.
+
+Verified against the live Suno create UI (authenticated with a pool account
+cookie) by reading the composer's React handlers:
+
+- `onPickVideo` creates `<input type="file" accept="video/mp4,video/quicktime,video/webm">`.
+- State machine: `uploading → processing → ready` with a `previewUrl`, plus
+  `clearVideo`.
+- One clip max: a second pick raises `magicBar.attachmentCapVideo`.
+- Payload key: `videoUploadId` → `user_uploaded_video_id`.
+
+## Product impact
+
+- `+ → Video` opens the file picker immediately; no intermediate modal.
+- The attached clip renders as a chip under the attach buttons (32px video
+  thumbnail, filename, size, remove `×`), next to the existing image chip.
+- Picking a second clip is refused: "Remove the attached clip first — one video
+  at a time."
+- Non-MP4/MOV/WebM files are rejected in the browser before upload.
+- The MP4 renderer is unchanged but now opens from the song rail's `Video`
+  action instead of the `+` menu.
+
+## Technical impact
+
+Frontend (`camxora.com`):
+
+- `lib/web-music-api.ts`: `video_urls` on `WebMusicGenerateInput`;
+  `WebMusicStudioVideoFile` + `uploadWebMusicStudioVideoFile()` posting to
+  `POST /api/v3/web-music/studio/video-uploads`.
+- `components/CreateStudio.tsx`: `referenceVideo` / `videoUploading` /
+  `videoUploadError` state, hidden `videoInputRef` input, `pickReferenceVideo()`,
+  `uploadReferenceVideoFile()`, chip UI, and `video_urls` on the generate payload.
+- `components/TrackRail.tsx`: new `onCreateVideo` prop + `Video` action.
+- `app/globals.css`: `.s-video-chip*` using `--s-*` tokens.
+
+Backend (`platform_api`):
+
+- Migration `168_reference_videos.py`: `suno_tasks.reference_video_urls JSONB
+  NOT NULL DEFAULT '[]'`.
+- `ports/generation_port.py`: `SunoRequest.video_urls`.
+- `clients/suno_client.py`: `video_urls` param → `payload["videoUrls"][:1]`.
+- `services/generation_service.py`: threaded through `_call_suno` and
+  `submit_suno_external_id`.
+- `services/web_music_service.py`: http(s)-only validation and a 1-item cap in
+  `generate()`, persisted in `_enqueue_web_generate`, read back in
+  `fulfill_queued_generate`, plus `create_studio_video_file()`.
+- `routers/web_music.py`: `video_urls` (max 1) on the generate body and
+  `POST /studio/video-uploads` (201, ≤200 MB).
+
+`musicapi` already accepted `videoUrls` (`uploadReferenceVideo`); no change there.
+
+## Files touched
+
+| File | Change |
+|---|---|
+| `platform_api/migrations/versions/168_reference_videos.py` | New column |
+| `platform_api/ports/generation_port.py` | `SunoRequest.video_urls` |
+| `platform_api/clients/suno_client.py` | `video_urls` → `videoUrls` |
+| `platform_api/services/generation_service.py` | Passthrough |
+| `platform_api/services/web_music_service.py` | Validate, persist, fulfill, upload |
+| `platform_api/routers/web_music.py` | Request field + upload route |
+| `platform_api/tests/test_web_music_reference_video.py` | New coverage |
+| `platform_api/tests/test_web_music_generate_queue.py` | Fixture gains reference columns |
+| `camxora.com/lib/web-music-api.ts` | Type + upload helper |
+| `camxora.com/components/CreateStudio.tsx` | Attach flow + chip |
+| `camxora.com/components/TrackRail.tsx` | Renderer entry |
+| `camxora.com/app/globals.css` | `.s-video-chip` |
+| `camxora.com/DESIGN_SYSTEM.md`, `camxora.com/API_PARITY.md` | Docs |
+
+## Migration/deploy
+
+- Run Alembic through `168_reference_videos` before the API serves the new
+  upload route. Additive column with a default, so it is safe to apply first.
+- Rollback: revert the code, then drop `reference_video_urls`.
+- No pricing change: the clip is an input to the normal charge, not a new SKU.
+
+## Tests
+
+- `python -m pytest platform_api/tests/test_web_music_reference_video.py
+  platform_api/tests/test_web_music_generate_queue.py -q` → **11 passed**
+- `python -m py_compile` on every touched Python file → OK
+- `npx tsc --noEmit` (camxora.com) → clean
+- `npm run check:ui` → compliant
+- `platform_api/tests/test_web_music_router.py::test_stream_proxies_without_exposing_origin`
+  still fails on `KeyError: 'request_headers'`; unrelated to this change
+  (playback proxy kwargs), pre-existing.
+
+## Follow-ups
+
+- Live QA needs Suno credits: all pool accounts are out
+  (`iamduke1987@gmail.com` = 0, renews ~2026-11-04). Retest attach + generate
+  then.
+- `DESIGN_SYSTEM.md` rows for `Image` and `Playlist` are also stale ("not
+  enabled yet") and should be corrected separately.
+- No duration validation yet; Suno warns when the clip exceeds its limit.
+  Consider mirroring that once we know the platform's cap.
