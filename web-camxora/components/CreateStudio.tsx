@@ -303,6 +303,15 @@ export function CreateStudio() {
   const [voiceTab, setVoiceTab] = useState<"mine" | "favorites">("mine");
   const [voiceSearch, setVoiceSearch] = useState("");
   const [voiceCreateView, setVoiceCreateView] = useState(false);
+  const [voiceCreateOpen, setVoiceCreateOpen] = useState(false);
+  const [voiceCreateStep, setVoiceCreateStep] = useState<"source" | "record" | "details">("source");
+  const [voiceSampleName, setVoiceSampleName] = useState("");
+  const [voiceSampleUrl, setVoiceSampleUrl] = useState<string | null>(null);
+  const [voiceRecording, setVoiceRecording] = useState(false);
+  const [voiceRecordSeconds, setVoiceRecordSeconds] = useState(0);
+  const voiceRecorderRef = useRef<MediaRecorder | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
+  const voiceTimerRef = useRef<number | null>(null);
   const [voiceSongs, setVoiceSongs] = useState<WebMusicGeneration[] | null>(null);
   const [voiceCreateTaskId, setVoiceCreateTaskId] = useState("");
   const [voiceName, setVoiceName] = useState("");
@@ -722,14 +731,74 @@ export function CreateStudio() {
     }
   }
 
+  function openVoiceCreate() {
+    setVoiceCreateOpen(true);
+    setVoiceCreateStep("source");
+    setVoiceSampleName("");
+    setVoiceSampleUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return null;
+    });
+    setVoiceRecordSeconds(0);
+    setVoiceRecording(false);
+  }
+
+  async function toggleVoiceRecording() {
+    if (voiceRecording) {
+      voiceRecorderRef.current?.stop();
+      setVoiceRecording(false);
+      if (voiceTimerRef.current) {
+        window.clearInterval(voiceTimerRef.current);
+        voiceTimerRef.current = null;
+      }
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      voiceChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) voiceChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        const blob = new Blob(voiceChunksRef.current, {
+          type: recorder.mimeType || "audio/webm",
+        });
+        setVoiceSampleUrl(URL.createObjectURL(blob));
+        setVoiceSampleName("Voice recording");
+        setVoiceCreateStep("details");
+      };
+      voiceRecorderRef.current = recorder;
+      recorder.start();
+      setVoiceRecording(true);
+      setVoiceRecordSeconds(0);
+      voiceTimerRef.current = window.setInterval(
+        () => setVoiceRecordSeconds((value) => value + 1),
+        1000
+      );
+    } catch {
+      setVoiceError("Microphone access was denied.");
+    }
+  }
+
+  function handleVoiceSampleFile(file: File) {
+    setVoiceSampleUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return URL.createObjectURL(file);
+    });
+    setVoiceSampleName(file.name);
+    setVoiceCreateStep("details");
+  }
+
   function openVoiceModal(intent: "use" | "new") {
     setVoiceTab("mine");
     setVoiceSearch("");
-    setVoiceCreateView(intent === "new");
+    setVoiceCreateView(false);
     setVoicePersonas(null);
     setAttachModal("voices");
     if (intent === "new") {
-      window.setTimeout(() => document.getElementById("voice-name-input")?.focus(), 350);
+      window.setTimeout(() => openVoiceCreate(), 200);
     }
   }
 
@@ -4081,7 +4150,7 @@ export function CreateStudio() {
                           <button
                             type="button"
                             className="s-voice-create-row"
-                            onClick={() => setVoiceCreateView(true)}
+                            onClick={() => openVoiceCreate()}
                           >
                             <span className="s-voice-avatar">
                               <Icon name="fa-microphone" />
@@ -4179,6 +4248,208 @@ export function CreateStudio() {
                 Close
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+
+      {voiceCreateOpen ? (
+        <div
+          className="s-voice-create-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Create a Voice"
+          onClick={() => setVoiceCreateOpen(false)}
+        >
+          <div className="s-voice-create-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="s-voice-create-top">
+              {voiceCreateStep === "source" ? (
+                <span className="s-voice-create-spacer" />
+              ) : (
+                <button
+                  type="button"
+                  className="s-voice-create-back"
+                  aria-label="Back"
+                  onClick={() => {
+                    if (voiceRecording) void toggleVoiceRecording();
+                    setVoiceCreateStep("source");
+                  }}
+                >
+                  <Icon name="fa-chevron-left" />
+                </button>
+              )}
+              <h3>
+                {voiceCreateStep === "record" ? "Record your Voice" : "Create a Voice"}{" "}
+                <span className="s-voice-beta">Beta</span>
+              </h3>
+              {voiceCreateStep === "record" ? (
+                <span className="s-voice-input-pill">Audio input</span>
+              ) : (
+                <span className="s-voice-create-spacer" />
+              )}
+              <button
+                type="button"
+                className="s-voice-create-close"
+                aria-label="Close create voice"
+                onClick={() => {
+                  if (voiceRecording) void toggleVoiceRecording();
+                  setVoiceCreateOpen(false);
+                }}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+
+            {voiceCreateStep === "source" ? (
+              <>
+                <div className="s-voice-glow">
+                  <h4>Add your voice to the mix.</h4>
+                  <p>
+                    Record or upload a sample and we&apos;ll use this content to influence how your
+                    generated songs sound.
+                  </p>
+                  <span className="s-voice-drop-label">Drag an audio file here</span>
+                  <div className="s-voice-source-actions">
+                    <button
+                      type="button"
+                      className="s-voice-source-btn"
+                      onClick={() => setVoiceCreateStep("record")}
+                    >
+                      <span className="s-voice-rec-dot" /> Record
+                    </button>
+                    <label className="s-voice-source-btn">
+                      <input
+                        type="file"
+                        accept="audio/*"
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) handleVoiceSampleFile(file);
+                          event.target.value = "";
+                        }}
+                      />
+                      <Icon name="fa-arrow-up-from-bracket" /> Upload Audio
+                    </label>
+                    <button
+                      type="button"
+                      className="s-voice-source-btn"
+                      onClick={() => setVoiceCreateStep("details")}
+                    >
+                      <Icon name="fa-layer-group" /> Select from library
+                    </button>
+                  </div>
+                </div>
+                <div className="s-voice-tips">
+                  {[
+                    ["fa-music", "Sing in the style and language you want", "Pop, Rock, Rap or whatever you like."],
+                    ["fa-microphone", "A good microphone helps", "Your built-in mic works just fine, too."],
+                    ["fa-volume-xmark", "Pick a quiet spot", "No roommates, no traffic, no barking dogs."],
+                    ["fa-wave-square", "Record at least 10 seconds", "Record or upload a recording of at least 10 seconds of your voice."],
+                  ].map(([icon, title, body]) => (
+                    <div key={title} className="s-voice-tip">
+                      <Icon name={icon} />
+                      <div>
+                        <b>{title}</b>
+                        <small>{body}</small>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : null}
+
+            {voiceCreateStep === "record" ? (
+              <div className="s-voice-record">
+                <div className="s-voice-record-timer">
+                  {String(Math.floor(voiceRecordSeconds / 60)).padStart(2, "0")}:
+                  {String(voiceRecordSeconds % 60).padStart(2, "0")}
+                </div>
+                <p className="s-voice-record-copy">Sing something in your natural voice.</p>
+                <div className="s-voice-record-divider" />
+                <div className="s-voice-record-main">
+                  <span>{voiceRecording ? "Recording…" : "Click to start recording"}</span>
+                  <button
+                    type="button"
+                    className={cn("s-voice-record-btn", voiceRecording && "recording")}
+                    aria-label={voiceRecording ? "Stop recording" : "Start recording"}
+                    onClick={() => void toggleVoiceRecording()}
+                  >
+                    {voiceRecording ? <span className="s-voice-stop" /> : null}
+                  </button>
+                </div>
+                <div className="s-voice-record-steps">
+                  {[0, 1, 2, 3].map((step) => (
+                    <span key={step} className={step === 0 ? "on" : ""} />
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {voiceCreateStep === "details" ? (
+              <div className="s-voice-details">
+                {voiceSampleUrl ? (
+                  <div className="s-voice-sample">
+                    <span className="s-voice-avatar">
+                      <Icon name="fa-microphone" />
+                    </span>
+                    <div>
+                      <b>{voiceSampleName || "Voice sample"}</b>
+                      <small>Captured voice sample</small>
+                    </div>
+                    <audio controls src={voiceSampleUrl} />
+                  </div>
+                ) : (
+                  <p className="s-note">Choose a finished song to clone the voice from.</p>
+                )}
+                {!voiceSampleUrl ? (
+                  <select
+                    className="s-input"
+                    value={voiceCreateTaskId}
+                    onChange={(event) => setVoiceCreateTaskId(event.target.value)}
+                  >
+                    <option value="">Choose a finished song</option>
+                    {(voiceSongs || []).map((song) => (
+                      <option key={song.id} value={song.id}>
+                        {song.title}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+                <input
+                  id="voice-name-input"
+                  className="s-input"
+                  placeholder="Voice name"
+                  maxLength={80}
+                  value={voiceName}
+                  onChange={(event) => setVoiceName(event.target.value)}
+                />
+                <input
+                  className="s-input"
+                  placeholder="Styles (optional)"
+                  value={voiceStyles}
+                  onChange={(event) => setVoiceStyles(event.target.value)}
+                />
+                {voiceError ? <p className="s-error">{voiceError}</p> : null}
+                {voiceSampleUrl ? (
+                  <p className="s-note">
+                    Raw sample cloning needs the Premier voice service; Select from library is
+                    available now.
+                  </p>
+                ) : null}
+                <button
+                  type="button"
+                  className="s-btn s-btn-primary"
+                  onClick={() => {
+                    if (voiceSampleUrl) {
+                      setVoiceError("Raw voice-sample cloning is waiting on the Premier voice service.");
+                      return;
+                    }
+                    void createVoicePersona();
+                  }}
+                  disabled={voiceBusy || !voiceName.trim() || (!voiceSampleUrl && !voiceCreateTaskId)}
+                >
+                  <Icon name="fa-microphone" /> {voiceBusy ? "Creating…" : "Create voice"}
+                </button>
+              </div>
+            ) : null}
           </div>
         </div>
       ) : null}
