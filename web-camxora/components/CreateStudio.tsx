@@ -300,6 +300,7 @@ export function CreateStudio() {
   const [videoOperation, setVideoOperation] = useState<WebMusicStudioOperation | null>(null);
   const [voicePersonas, setVoicePersonas] = useState<WebMusicStudioPersona[] | null>(null);
   const [selectedPersona, setSelectedPersona] = useState<WebMusicStudioPersona | null>(null);
+  const [voiceIntent, setVoiceIntent] = useState<"use" | "new">("use");
   const [voiceSongs, setVoiceSongs] = useState<WebMusicGeneration[] | null>(null);
   const [voiceCreateTaskId, setVoiceCreateTaskId] = useState("");
   const [voiceName, setVoiceName] = useState("");
@@ -704,6 +705,27 @@ export function CreateStudio() {
     setLyricistPrompt("");
     setError("");
     setToast("New lyrics draft");
+  }
+
+  function openAudioModal(intent: "browse" | "upload" | "record") {
+    setAttachModal("audio");
+    if (intent === "record") {
+      window.setTimeout(() => void toggleRecording(), 350);
+    }
+    if (intent === "browse") {
+      window.setTimeout(() => {
+        const input = document.querySelector<HTMLInputElement>(".s-audio-drop input");
+        input?.click();
+      }, 350);
+    }
+  }
+
+  function openVoiceModal(intent: "use" | "new") {
+    setVoiceIntent(intent);
+    setAttachModal("voices");
+    if (intent === "new") {
+      window.setTimeout(() => document.getElementById("voice-name-input")?.focus(), 350);
+    }
   }
 
   function openStylesModal(mode: "write" | "existing") {
@@ -2026,18 +2048,7 @@ export function CreateStudio() {
                 openLyricsModal(false);
               }}
             >
-              <Icon name="fa-pen" /> Write lyrics
-            </button>
-            <button
-              type="button"
-              className="s-menu-item"
-              role="menuitem"
-              onClick={() => {
-                closeMenu();
-                openLyricsModal(true);
-              }}
-            >
-              <Icon name="fa-wand-magic-sparkles" /> Auto-generate
+              <Icon name="fa-pen" /> Write new
             </button>
             <button
               type="button"
@@ -2048,7 +2059,7 @@ export function CreateStudio() {
                 void openLyricsLibrary();
               }}
             >
-              <Icon name="fa-bookmark" /> Saved lyrics
+              <Icon name="fa-layer-group" /> Use existing
             </button>
           </>
         ) : null}
@@ -2086,10 +2097,10 @@ export function CreateStudio() {
               role="menuitem"
               onClick={() => {
                 closeMenu();
-                setAttachModal("audio");
+                openAudioModal("browse");
               }}
             >
-              <Icon name="fa-arrow-up-from-bracket" /> Upload audio
+              <Icon name="fa-folder-open" /> Browse
             </button>
             <button
               type="button"
@@ -2097,10 +2108,21 @@ export function CreateStudio() {
               role="menuitem"
               onClick={() => {
                 closeMenu();
-                setAttachModal("audio");
+                openAudioModal("upload");
               }}
             >
-              <Icon name="fa-microphone" /> Record audio
+              <Icon name="fa-arrow-up-from-bracket" /> Upload
+            </button>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                openAudioModal("record");
+              }}
+            >
+              <Icon name="fa-microphone" /> Record
             </button>
           </>
         ) : null}
@@ -2112,10 +2134,10 @@ export function CreateStudio() {
               role="menuitem"
               onClick={() => {
                 closeMenu();
-                setAttachModal("voices");
+                openVoiceModal("use");
               }}
             >
-              <Icon name="fa-user" /> My voices
+              <Icon name="fa-user" /> Use Voice
             </button>
             <button
               type="button"
@@ -2123,10 +2145,10 @@ export function CreateStudio() {
               role="menuitem"
               onClick={() => {
                 closeMenu();
-                setAttachModal("voices");
+                openVoiceModal("new");
               }}
             >
-              <Icon name="fa-users" /> Browse voices
+              <Icon name="fa-plus" /> Add new
             </button>
           </>
         ) : null}
@@ -2330,7 +2352,7 @@ export function CreateStudio() {
                   <button
                     type="button"
                     className="s-attach-btn"
-                    onClick={() => setAttachModal("audio")}
+                    onClick={() => openAudioModal("upload")}
                     aria-label="Add audio - Browse, upload, or record audio"
                   >
                     <Icon name="fa-music" /> <span className="s-btn-label">Audio</span>
@@ -2338,7 +2360,7 @@ export function CreateStudio() {
                   <button
                     type="button"
                     className="s-attach-btn"
-                    onClick={() => setAttachModal("voice")}
+                    onClick={() => openVoiceModal("use")}
                     aria-label="Add Voice"
                   >
                     <Icon name="fa-microphone" /> <span className="s-btn-label">Voice</span>
@@ -4002,7 +4024,7 @@ export function CreateStudio() {
                     )}
                   </div>
 
-                  <div className="s-voice-create">
+                  <div className={cn("s-voice-create", voiceIntent === "new" && "active")}>
                     <p className="s-note">Or create a voice from one of your songs.</p>
                     <select
                       className="s-input"
@@ -4017,6 +4039,7 @@ export function CreateStudio() {
                       ))}
                     </select>
                     <input
+                      id="voice-name-input"
                       className="s-input"
                       placeholder="Voice name"
                       maxLength={80}
