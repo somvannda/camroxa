@@ -4137,6 +4137,7 @@ class WebMusicService:
         *,
         variant: str = "ok",
         aspect_ratio: str = "16:9",
+        background_video_url: str | None = None,
         project_id: UUID | None = None,
     ) -> dict[str, Any]:
         clean_variant = str(variant or "ok").strip().lower()
@@ -4151,6 +4152,12 @@ class WebMusicService:
                 "aspect_ratio must be 16:9, 9:16 or 1:1.",
                 details={"field": "aspect_ratio"},
             )
+        clean_background = str(background_video_url or "").strip() or None
+        if clean_background and not clean_background.lower().startswith(("http://", "https://")):
+            raise ValidationError(
+                "background_video_url must be an http(s) URL.",
+                details={"field": "background_video_url"},
+            )
         return await self._request_studio_clip_operation(
             user_id,
             task_id,
@@ -4159,7 +4166,10 @@ class WebMusicService:
             mode="video",
             project_id=project_id,
             internal_path="/internal/studio/video",
-            internal_body={"aspect_ratio": clean_aspect},
+            internal_body={
+                "aspect_ratio": clean_aspect,
+                **({"background_video_url": clean_background} if clean_background else {}),
+            },
             label="video",
         )
 

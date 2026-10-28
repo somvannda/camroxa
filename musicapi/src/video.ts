@@ -56,8 +56,11 @@ export interface RenderVideoOptions {
   /** Cover image bytes; when absent a solid brand background is used. */
   image?: Buffer | null;
   imageExt?: "jpg" | "png" | "webp";
+  /** User-supplied background clip; when present it replaces the cover art. */
+  backgroundVideo?: Buffer | null;
+  backgroundVideoExt?: "mp4" | "mov" | "webm";
   audioExt?: "mp3" | "wav" | "m4a";
-  /** Output size. 9:16 maps to 720×1280, anything else to 1280×720. */
+  /** Output size. 9:16 → 720×1280, 1:1 → 720×720, anything else → 1280×720. */
   aspect?: string;
 }
 
@@ -96,17 +99,31 @@ export async function renderMusicVideo(opts: RenderVideoOptions): Promise<Buffer
     writeFileSync(audioPath, opts.audio);
 
     let imageArgs: string[];
-    if (opts.image && opts.image.length > 0) {
+    let bgFilter: string;
+    if (opts.backgroundVideo && opts.backgroundVideo.length > 0) {
+      // User clip: loop it under the song, crop to fill the chosen aspect.
+      const bgPath = path.join(dir, `bg.${opts.backgroundVideoExt ?? "mp4"}`);
+      writeFileSync(bgPath, opts.backgroundVideo);
+      imageArgs = ["-stream_loop", "-1", "-i", bgPath];
+      bgFilter =
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=increase,` +
+        `crop=${W}:${H},setsar=1[bg];`;
+    } else if (opts.image && opts.image.length > 0) {
       const imgPath = path.join(dir, `cover.${opts.imageExt ?? "jpg"}`);
       writeFileSync(imgPath, opts.image);
       imageArgs = ["-loop", "1", "-i", imgPath];
+      bgFilter =
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
+        `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x0a0e27,setsar=1[bg];`;
     } else {
       imageArgs = ["-f", "lavfi", "-i", `color=c=0x0a0e27:s=${W}x${H}`];
+      bgFilter =
+        `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
+        `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x0a0e27,setsar=1[bg];`;
     }
 
     const filter =
-      `[0:v]scale=${W}:${H}:force_original_aspect_ratio=decrease,` +
-      `pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=0x0a0e27,setsar=1[bg];` +
+      bgFilter +
       `[1:a]showwaves=s=${W}x${waveH}:mode=cline:colors=0x7466F1|0xA259FF,format=yuva420p[w];` +
       `[bg][w]overlay=(W-w)/2:H-h-36:format=auto[v]`;
 

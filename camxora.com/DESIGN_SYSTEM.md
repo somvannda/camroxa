@@ -151,6 +151,17 @@ Submenus replace the list with a back header (no flyout overflow on narrow cards
 Unsupported attachments show an explicit "not enabled" explanation instead of a dead
 button; each modal links to Studio.
 
+### Song rail → "Video" (MP4 renderer)
+
+The cover-art renderer lives on the song rail, not in `+`. Modal controls:
+
+| Control | Behaviour |
+|---|---|
+| Song | Finished songs only; first ready song preselected |
+| Version | `ok` / `alt` clip, shown only when both are ready |
+| Aspect | `16:9` → 1280×720, `9:16` → 720×1280, `1:1` → 720×720 |
+| Background | `Browse` attaches an MP4/MOV/WebM from the user's PC; it loops under the song and replaces the cover art. No clip → cover art is used. |
+
 ## 8. Do / don't
 
 - ✅ Use `var(--s-*)` tokens and the scales above.

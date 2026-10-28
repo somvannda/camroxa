@@ -429,6 +429,10 @@ export function CreateStudio() {
   const [videoBusy, setVideoBusy] = useState(false);
   const [videoError, setVideoError] = useState("");
   const [videoOperation, setVideoOperation] = useState<WebMusicStudioOperation | null>(null);
+  const [videoBackground, setVideoBackground] = useState<WebMusicStudioVideoFile | null>(null);
+  const [videoBackgroundBusy, setVideoBackgroundBusy] = useState(false);
+  const [videoBackgroundError, setVideoBackgroundError] = useState("");
+  const videoBackgroundInputRef = useRef<HTMLInputElement | null>(null);
   const [voicePersonas, setVoicePersonas] = useState<WebMusicStudioPersona[] | null>(null);
   const [selectedPersona, setSelectedPersona] = useState<WebMusicStudioPersona | null>(null);
   const [voiceTab, setVoiceTab] = useState<"mine" | "favorites">("mine");
@@ -1345,6 +1349,30 @@ export function CreateStudio() {
     }
   }
 
+  async function uploadVideoBackgroundFile(file: File) {
+    const allowed = ["video/mp4", "video/quicktime", "video/webm"];
+    if (!allowed.includes(file.type)) {
+      setToast("Attach an MP4, MOV, or WebM clip.");
+      return;
+    }
+    setVideoBackgroundBusy(true);
+    setVideoBackgroundError("");
+    try {
+      const video = await uploadWebMusicStudioVideoFile(file);
+      if (!mounted.current) return;
+      setVideoBackground(video);
+      setToast("Background clip attached");
+    } catch (cause) {
+      if (mounted.current) {
+        setVideoBackgroundError(
+          cause instanceof Error ? cause.message : "Could not upload the video"
+        );
+      }
+    } finally {
+      if (mounted.current) setVideoBackgroundBusy(false);
+    }
+  }
+
   async function uploadAudioFile(file: File) {
     setAudioUploading(true);
     setAudioError("");
@@ -2182,6 +2210,7 @@ export function CreateStudio() {
         task_id: videoTaskId,
         variant: videoVariant,
         aspect_ratio: videoAspect,
+        background_video_url: videoBackground?.url ?? null,
       });
       if (!mounted.current) return;
       setVideoOperation(operation);
@@ -4858,6 +4887,70 @@ export function CreateStudio() {
                           ))}
                         </div>
                       </div>
+
+                      <div className="s-video-row">
+                        <span className="s-video-label">Background</span>
+                        <div className="s-chip-row">
+                          <button
+                            type="button"
+                            className="s-btn s-btn-secondary"
+                            onClick={() => videoBackgroundInputRef.current?.click()}
+                            disabled={videoBackgroundBusy}
+                          >
+                            <Icon name="fa-folder-open" />{" "}
+                            {videoBackgroundBusy ? "Uploading…" : "Browse"}
+                          </button>
+                        </div>
+                      </div>
+
+                      <input
+                        ref={videoBackgroundInputRef}
+                        type="file"
+                        accept="video/mp4,video/quicktime,video/webm"
+                        hidden
+                        onChange={(event) => {
+                          const file = event.target.files?.[0];
+                          if (file) void uploadVideoBackgroundFile(file);
+                          event.target.value = "";
+                        }}
+                      />
+
+                      {videoBackground ? (
+                        <div className="s-video-chip">
+                          <video
+                            className="s-video-chip-frame"
+                            src={`${videoBackground.url}#t=0.1`}
+                            muted
+                            playsInline
+                            preload="metadata"
+                            aria-hidden="true"
+                          />
+                          <span className="s-video-chip-text">
+                            <b>{videoBackground.filename}</b>
+                            <small>
+                              {(videoBackground.size_bytes / (1024 * 1024)).toFixed(1)} MB · loops
+                              under the song
+                            </small>
+                          </span>
+                          <button
+                            type="button"
+                            className="s-btn s-btn-icon sm"
+                            aria-label="Remove background video"
+                            onClick={() => setVideoBackground(null)}
+                          >
+                            <Icon name="fa-xmark" />
+                          </button>
+                        </div>
+                      ) : (
+                        <p className="s-note">
+                          No background clip — the cover art is used. Browse an MP4, MOV, or WebM to
+                          use it instead.
+                        </p>
+                      )}
+
+                      {videoBackgroundError ? (
+                        <p className="s-error">{videoBackgroundError}</p>
+                      ) : null}
 
                       {videoBusy ? (
                         <p className="s-note">

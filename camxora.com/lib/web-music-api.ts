@@ -593,6 +593,7 @@ export async function createWebMusicStudioVideo(input: {
   task_id: string;
   variant?: "ok" | "alt";
   aspect_ratio?: "16:9" | "9:16" | "1:1";
+  background_video_url?: string | null;
   project_id?: string | null;
 }): Promise<WebMusicStudioOperation> {
   return musicJson("/api/v3/web-music/studio/videos", {

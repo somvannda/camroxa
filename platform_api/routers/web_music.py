@@ -826,6 +826,8 @@ class StudioVideoRequest(BaseModel):
     task_id: UUID
     variant: Literal["ok", "alt"] = "ok"
     aspect_ratio: Literal["16:9", "9:16", "1:1"] = "16:9"
+    # Optional user clip used instead of the song's cover art.
+    background_video_url: str | None = Field(default=None, max_length=2048)
     project_id: UUID | None = None
 
 
@@ -943,6 +945,7 @@ async def create_studio_video(
         body.task_id,
         variant=body.variant,
         aspect_ratio=body.aspect_ratio,
+        background_video_url=body.background_video_url,
         project_id=body.project_id,
     )
 

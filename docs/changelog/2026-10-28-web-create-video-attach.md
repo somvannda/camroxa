@@ -101,6 +101,25 @@ Backend (`platform_api`):
   still fails on `KeyError: 'request_headers'`; unrelated to this change
   (playback proxy kwargs), pre-existing.
 
+## Update — renderer polish (same day)
+
+The kept MP4 renderer gained the controls you asked about, and two of them were
+wrong before this pass:
+
+- **Aspect 1:1 was broken.** `renderMusicVideo` only special-cased `9:16`, so
+  `1:1` silently produced 1280×720. It now renders 720×720. Verified with
+  ffprobe: `16:9 → 1280×720`, `9:16 → 720×1280`, `1:1 → 720×720`.
+- **Version** already worked (`variant` → `ok`/`alt` provider clip id); it only
+  appears when both clips are ready.
+- **Browse** was added: attach an MP4/MOV/WebM from the user's PC and it becomes
+  the video background instead of the cover art.
+  `renderMusicVideo` loops it (`-stream_loop -1`), crops to fill the chosen
+  aspect, and keeps the waveform overlay. Verified: a 1s clip under a 3s song
+  yields a 3.000s MP4.
+- New plumbing: `background_video_url` on `StudioVideoRequest` →
+  `/internal/studio/video` → musicapi fetches (≤100 MB) → `renderMusicVideo`.
+  The clip is stored by the existing `POST /studio/video-uploads` route.
+
 ## Follow-ups
 
 - **musicapi does not forward a video asset.** `processMusicSubmitWithVideo`
