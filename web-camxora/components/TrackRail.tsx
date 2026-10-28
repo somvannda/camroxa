@@ -29,6 +29,7 @@ export type TrackRailProps = {
   onLike?: () => void;
   onUnlock?: () => void;
   onDelete?: () => void;
+  onRemix?: (detail: WebMusicGeneration, clip: WebMusicClip) => void;
   onRename?: (title: string, variant?: string) => Promise<boolean>;
   onAddToPlaylist?: (playlist: WebMusicPlaylistSummary) => Promise<void>;
   onCreatePlaylist?: (name: string) => Promise<WebMusicPlaylistSummary | null>;
@@ -45,6 +46,7 @@ export function TrackRail({
   onLike,
   onUnlock,
   onDelete,
+  onRemix,
   onRename,
   onAddToPlaylist,
   onCreatePlaylist,
@@ -234,6 +236,16 @@ export function TrackRail({
                 aria-expanded={playlistOpen}
               >
                 <Icon name="fa-list" /> Playlist
+              </button>
+              <button
+                type="button"
+                className="s-btn s-btn-secondary"
+                onClick={() => {
+                  if (detail && clip) onRemix?.(detail, clip);
+                }}
+                disabled={!ready || !clip || !onRemix}
+              >
+                <Icon name="fa-wand-magic-sparkles" /> Remix
               </button>
               <button
                 type="button"

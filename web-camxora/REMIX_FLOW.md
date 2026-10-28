@@ -212,7 +212,7 @@ Cancel branches:
 ### Web
 
 - [x] `RemixPicker` modal component.
-- [x] Library tab + search/sort (status/model/instrumental filters still pending).
+- [x] Library tab + search/sort + model/type filters.
 - [x] Row selection with V1/V2 handling.
 - [x] `remixSource` state in `CreateStudio`.
 - [x] Source chip with remove.
@@ -220,7 +220,7 @@ Cancel branches:
 - [x] Poll operation and refresh Audio results.
 - [x] Empty/error states.
 - [x] Disable unsupported rows.
-- [x] Row-menu entry point (rail entry still pending).
+- [x] Row-menu entry point and detail-rail Remix button.
 
 ### Platform API
 

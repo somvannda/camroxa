@@ -339,6 +339,8 @@ export function CreateStudio() {
   const [remixPickerOpen, setRemixPickerOpen] = useState(false);
   const [remixSearch, setRemixSearch] = useState("");
   const [remixSort, setRemixSort] = useState<"new" | "old">("new");
+  const [remixModelFilter, setRemixModelFilter] = useState<"all" | "V6" | "V6_MINI" | "V6_WILD">("all");
+  const [remixTypeFilter, setRemixTypeFilter] = useState<"all" | "instrumental" | "vocal">("all");
   const [remixBusy, setRemixBusy] = useState(false);
   const [remixSource, setRemixSource] = useState<{
     taskId: string;
@@ -1799,9 +1801,15 @@ export function CreateStudio() {
   const remixOptions = remixReadySongs
     .filter(
       (song) =>
-        !remixQuery ||
-        song.title.toLowerCase().includes(remixQuery) ||
-        String(song.style || "").toLowerCase().includes(remixQuery)
+        (!remixQuery ||
+          song.title.toLowerCase().includes(remixQuery) ||
+          String(song.style || "").toLowerCase().includes(remixQuery)) &&
+        (remixModelFilter === "all" ||
+          String(song.model || "").toUpperCase() === remixModelFilter) &&
+        (remixTypeFilter === "all" ||
+          (remixTypeFilter === "instrumental"
+            ? generationIsInstrumental(song)
+            : !generationIsInstrumental(song)))
     )
     .sort((a, b) => {
       const left = new Date(a.created_at || 0).getTime();
@@ -3946,6 +3954,9 @@ export function CreateStudio() {
           }}
           onUnlock={() => void unlockSelected()}
           onDelete={() => void deleteSelected()}
+          onRemix={(song, clip) =>
+            selectRemixSource(song, clip.variant === "alt" ? "alt" : "ok")
+          }
           onRename={async (nextTitle, variant) => {
             if (!selected) return false;
             try {
@@ -4617,6 +4628,33 @@ export function CreateStudio() {
               >
                 Old
               </button>
+              <select
+                className="s-remix-filter"
+                value={remixModelFilter}
+                onChange={(event) =>
+                  setRemixModelFilter(
+                    event.target.value as "all" | "V6" | "V6_MINI" | "V6_WILD"
+                  )
+                }
+                aria-label="Filter by model"
+              >
+                <option value="all">All models</option>
+                <option value="V6">V6</option>
+                <option value="V6_MINI">V6 Mini</option>
+                <option value="V6_WILD">V6 Wild</option>
+              </select>
+              <select
+                className="s-remix-filter"
+                value={remixTypeFilter}
+                onChange={(event) =>
+                  setRemixTypeFilter(event.target.value as "all" | "instrumental" | "vocal")
+                }
+                aria-label="Filter by type"
+              >
+                <option value="all">All types</option>
+                <option value="vocal">Vocal</option>
+                <option value="instrumental">Instrumental</option>
+              </select>
             </div>
             <div className="s-remix-list">
               {remixOptions.length ? (
