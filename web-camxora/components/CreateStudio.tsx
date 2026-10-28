@@ -247,7 +247,9 @@ export function CreateStudio() {
   const [feedPage, setFeedPage] = useState(1);
   const [attachModal, setAttachModal] = useState<null | "audio" | "voice" | "image" | "video" | "playlist" | "voices">(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [addMenuBelow, setAddMenuBelow] = useState(false);
   const [addSubmenu, setAddSubmenu] = useState<null | "lyrics" | "styles" | "audio" | "voice">(null);
+  const addButtonRef = useRef<HTMLButtonElement | null>(null);
   const [audioUpload, setAudioUpload] = useState<WebMusicStudioUpload | null>(null);
   const [audioUploading, setAudioUploading] = useState(false);
   const [audioBusy, setAudioBusy] = useState(false);
@@ -1782,6 +1784,160 @@ export function CreateStudio() {
     );
   };
 
+  function renderAddSubmenu() {
+    if (!addSubmenu) return null;
+    const closeMenu = () => {
+      setAddMenuOpen(false);
+      setAddSubmenu(null);
+    };
+    const label =
+      addSubmenu === "lyrics"
+        ? "Lyrics"
+        : addSubmenu === "styles"
+          ? "Styles"
+          : addSubmenu === "audio"
+            ? "Audio"
+            : "Voice";
+    return (
+      <div className="s-add-submenu" role="menu" aria-label={label}>
+        {addSubmenu === "lyrics" ? (
+          <>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                setMode("custom");
+                setAdvancedOpen(false);
+                setLyricsOpen(true);
+                window.setTimeout(() => document.getElementById("create-lyrics")?.focus(), 80);
+              }}
+            >
+              <Icon name="fa-pen" /> Write lyrics
+            </button>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                setMode("custom");
+                setLyricsOpen(true);
+                void writeLyrics();
+              }}
+            >
+              <Icon name="fa-wand-magic-sparkles" /> Auto-generate
+            </button>
+            <button
+              type="button"
+              className={`s-menu-item${instrumental ? " on" : ""}`}
+              role="menuitemcheckbox"
+              aria-checked={instrumental}
+              onClick={() => {
+                closeMenu();
+                setInstrumental((value) => !value);
+              }}
+            >
+              <Icon name={instrumental ? "fa-check" : "fa-music"} /> Instrumental
+            </button>
+          </>
+        ) : null}
+        {addSubmenu === "styles" ? (
+          <>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                setMode("custom");
+                setStylePresetsOpen(true);
+              }}
+            >
+              <Icon name="fa-bookmark" /> Saved styles
+            </button>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                shuffleStyle();
+              }}
+            >
+              <Icon name="fa-shuffle" /> Shuffle styles
+            </button>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                setMode("custom");
+                void suggestStyles();
+              }}
+            >
+              <Icon name="fa-wand-magic-sparkles" /> Enhance styles
+            </button>
+          </>
+        ) : null}
+        {addSubmenu === "audio" ? (
+          <>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                setAttachModal("audio");
+              }}
+            >
+              <Icon name="fa-arrow-up-from-bracket" /> Upload audio
+            </button>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                setAttachModal("audio");
+              }}
+            >
+              <Icon name="fa-microphone" /> Record audio
+            </button>
+          </>
+        ) : null}
+        {addSubmenu === "voice" ? (
+          <>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                setAttachModal("voices");
+              }}
+            >
+              <Icon name="fa-user" /> My voices
+            </button>
+            <button
+              type="button"
+              className="s-menu-item"
+              role="menuitem"
+              onClick={() => {
+                closeMenu();
+                setAttachModal("voices");
+              }}
+            >
+              <Icon name="fa-users" /> Browse voices
+            </button>
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
   const selectedVideoSong = videoSongs?.find((song) => song.id === videoTaskId) ?? null;
   const selectedVideoClips = selectedVideoSong
     ? generationClips(selectedVideoSong).filter((clip) => clipIsReady(selectedVideoSong, clip))
@@ -2047,11 +2203,17 @@ export function CreateStudio() {
                       <div className="s-prompt-foot">
                         <div className="s-anchor" data-s-menu>
                           <button
+                            ref={addButtonRef}
                             type="button"
                             className="s-add-btn"
                             aria-label="Add to prompt"
                             aria-expanded={addMenuOpen}
                             onClick={() => {
+                              const rect = addButtonRef.current?.getBoundingClientRect();
+                              const spaceAbove = rect ? rect.top - 44 : 0;
+                              const spaceBelow = rect ? window.innerHeight - rect.bottom - 44 : 0;
+                              const menuHeight = 330;
+                              setAddMenuBelow(spaceAbove < menuHeight && spaceBelow > spaceAbove);
                               setAddMenuOpen((value) => !value);
                               setAddSubmenu(null);
                             }}
@@ -2059,239 +2221,92 @@ export function CreateStudio() {
                             <Icon name="fa-plus" />
                           </button>
                           {addMenuOpen ? (
-                            <div className="s-menu s-add-menu" role="menu" style={{ bottom: 44, left: 0, width: 230 }}>
-                              {addSubmenu ? (
-                                <>
-                                  <button
-                                    type="button"
-                                    className="s-add-back"
-                                    onClick={() => setAddSubmenu(null)}
-                                  >
-                                    <Icon name="fa-chevron-left" />
-                                    {addSubmenu === "lyrics"
-                                      ? "Lyrics"
-                                      : addSubmenu === "styles"
-                                        ? "Styles"
-                                        : addSubmenu === "audio"
-                                          ? "Audio"
-                                          : "Voice"}
-                                  </button>
-                                  {addSubmenu === "lyrics" ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setMode("custom");
-                                          setAdvancedOpen(false);
-                                          setLyricsOpen(true);
-                                          window.setTimeout(() => document.getElementById("create-lyrics")?.focus(), 80);
-                                        }}
-                                      >
-                                        <Icon name="fa-pen" /> Write lyrics
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setMode("custom");
-                                          setLyricsOpen(true);
-                                          void writeLyrics();
-                                        }}
-                                      >
-                                        <Icon name="fa-wand-magic-sparkles" /> Auto-generate
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className={`s-menu-item${instrumental ? " on" : ""}`}
-                                        role="menuitemcheckbox"
-                                        aria-checked={instrumental}
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setInstrumental((value) => !value);
-                                        }}
-                                      >
-                                        <Icon name={instrumental ? "fa-check" : "fa-music"} /> Instrumental
-                                      </button>
-                                    </>
-                                  ) : null}
-                                  {addSubmenu === "styles" ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setMode("custom");
-                                          setStylePresetsOpen(true);
-                                        }}
-                                      >
-                                        <Icon name="fa-bookmark" /> Saved styles
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          shuffleStyle();
-                                        }}
-                                      >
-                                        <Icon name="fa-shuffle" /> Shuffle styles
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setMode("custom");
-                                          void suggestStyles();
-                                        }}
-                                      >
-                                        <Icon name="fa-wand-magic-sparkles" /> Enhance styles
-                                      </button>
-                                    </>
-                                  ) : null}
-                                  {addSubmenu === "audio" ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setAttachModal("audio");
-                                        }}
-                                      >
-                                        <Icon name="fa-arrow-up-from-bracket" /> Upload audio
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setAttachModal("audio");
-                                        }}
-                                      >
-                                        <Icon name="fa-microphone" /> Record audio
-                                      </button>
-                                    </>
-                                  ) : null}
-                                  {addSubmenu === "voice" ? (
-                                    <>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setAttachModal("voices");
-                                        }}
-                                      >
-                                        <Icon name="fa-user" /> My voices
-                                      </button>
-                                      <button
-                                        type="button"
-                                        className="s-menu-item"
-                                        role="menuitem"
-                                        onClick={() => {
-                                          setAddMenuOpen(false);
-                                          setAddSubmenu(null);
-                                          setAttachModal("voices");
-                                        }}
-                                      >
-                                        <Icon name="fa-users" /> Browse voices
-                                      </button>
-                                    </>
-                                  ) : null}
-                                </>
-                              ) : (
-                                <>
-                                  {(
-                                    [
-                                      { id: "lyrics", icon: "fa-font", label: "Lyrics" },
-                                      { id: "styles", icon: "fa-music", label: "Styles" },
-                                    ] as const
-                                  ).map((item) => (
-                                    <button
-                                      key={item.id}
-                                      type="button"
-                                      className="s-menu-item"
-                                      role="menuitem"
-                                      onClick={() => setAddSubmenu(item.id)}
-                                    >
-                                      <Icon name={item.icon} /> {item.label}
-                                      <Icon name="fa-chevron-right" className="s-menu-caret" />
-                                    </button>
-                                  ))}
-                                  <button
-                                    type="button"
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    onClick={() => {
-                                      setAddMenuOpen(false);
-                                      setAttachModal("playlist");
-                                    }}
-                                  >
-                                    <Icon name="fa-rectangle-list" /> Playlist
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    onClick={() => {
-                                      setAddMenuOpen(false);
-                                      setAttachModal("image");
-                                    }}
-                                  >
-                                    <Icon name="fa-image" /> Image
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="s-menu-item"
-                                    role="menuitem"
-                                    onClick={() => {
-                                      setAddMenuOpen(false);
-                                      setAttachModal("video");
-                                    }}
-                                  >
-                                    <Icon name="fa-video" /> Video
-                                  </button>
-                                  {(
-                                    [
-                                      { id: "audio", icon: "fa-file-audio", label: "Audio" },
-                                      { id: "voice", icon: "fa-microphone", label: "Voice" },
-                                    ] as const
-                                  ).map((item) => (
-                                    <button
-                                      key={item.id}
-                                      type="button"
-                                      className="s-menu-item"
-                                      role="menuitem"
-                                      onClick={() => setAddSubmenu(item.id)}
-                                    >
-                                      <Icon name={item.icon} /> {item.label}
-                                      <Icon name="fa-chevron-right" className="s-menu-caret" />
-                                    </button>
-                                  ))}
-                                </>
-                              )}
+                            <div
+                              className={cn("s-menu s-add-menu", addMenuBelow && "below")}
+                              role="menu"
+                              style={{
+                                ...(addMenuBelow ? { top: 44, bottom: "auto" } : { bottom: 44 }),
+                                left: 0,
+                                width: 230,
+                              }}
+                            >
+                              <button
+                                type="button"
+                                className="s-menu-item"
+                                role="menuitem"
+                                onMouseEnter={() => setAddSubmenu("lyrics")}
+                                onClick={() => setAddSubmenu("lyrics")}
+                              >
+                                <Icon name="fa-font" /> Lyrics
+                                <Icon name="fa-chevron-right" className="s-menu-caret" />
+                              </button>
+                              <button
+                                type="button"
+                                className="s-menu-item"
+                                role="menuitem"
+                                onMouseEnter={() => setAddSubmenu("styles")}
+                                onClick={() => setAddSubmenu("styles")}
+                              >
+                                <Icon name="fa-music" /> Styles
+                                <Icon name="fa-chevron-right" className="s-menu-caret" />
+                              </button>
+                              <button
+                                type="button"
+                                className="s-menu-item"
+                                role="menuitem"
+                                onMouseEnter={() => setAddSubmenu(null)}
+                                onClick={() => {
+                                  setAddMenuOpen(false);
+                                  setAttachModal("playlist");
+                                }}
+                              >
+                                <Icon name="fa-rectangle-list" /> Playlist
+                              </button>
+                              <button
+                                type="button"
+                                className="s-menu-item"
+                                role="menuitem"
+                                onMouseEnter={() => setAddSubmenu(null)}
+                                onClick={() => {
+                                  setAddMenuOpen(false);
+                                  setAttachModal("image");
+                                }}
+                              >
+                                <Icon name="fa-image" /> Image
+                              </button>
+                              <button
+                                type="button"
+                                className="s-menu-item"
+                                role="menuitem"
+                                onMouseEnter={() => setAddSubmenu(null)}
+                                onClick={() => {
+                                  setAddMenuOpen(false);
+                                  setAttachModal("video");
+                                }}
+                              >
+                                <Icon name="fa-video" /> Video
+                              </button>
+                              <button
+                                type="button"
+                                className="s-menu-item"
+                                role="menuitem"
+                                onMouseEnter={() => setAddSubmenu("audio")}
+                                onClick={() => setAddSubmenu("audio")}
+                              >
+                                <Icon name="fa-file-audio" /> Audio
+                                <Icon name="fa-chevron-right" className="s-menu-caret" />
+                              </button>
+                              <button
+                                type="button"
+                                className="s-menu-item"
+                                role="menuitem"
+                                onMouseEnter={() => setAddSubmenu("voice")}
+                                onClick={() => setAddSubmenu("voice")}
+                              >
+                                <Icon name="fa-microphone" /> Voice
+                                <Icon name="fa-chevron-right" className="s-menu-caret" />
+                              </button>
+                              {renderAddSubmenu()}
                             </div>
                           ) : null}
                         </div>

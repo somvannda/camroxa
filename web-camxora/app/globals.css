@@ -784,7 +784,7 @@ html{color-scheme:dark}
   .btn-primary,.btn-create,.side-create,.side-buy,.auth-btn.primary,.pbtn.play{color:var(--glass-btn-text);border-color:rgba(255,255,255,.65)}
   .card:hover .play{color:var(--glass-btn-text)}
 
-  /* curved liquid glass buttons — static */
+  /* curved liquid glass buttons â€” static */
   .btn-primary,.btn-create,.side-create,.side-buy,.auth-btn.primary,.pbtn.play{
     position:relative;isolation:isolate;overflow:hidden;
     background:var(--glass-btn);
@@ -2100,7 +2100,7 @@ html{color-scheme:dark}
   .playlist-hero-copy p{font-size:13px;line-height:1.7;color:var(--muted);max-width:56ch}
   .playlist-meta{display:flex;gap:16px;flex-wrap:wrap;margin:14px 0 18px;font-size:10.5px;color:var(--muted2)}
   .playlist-meta span{display:inline-flex;align-items:center;gap:5px}
-  .playlist-meta span+span::before{content:"·";margin-right:10px;color:var(--muted2)}
+  .playlist-meta span+span::before{content:"Â·";margin-right:10px;color:var(--muted2)}
   @media(max-width:680px){.playlist-hero{min-height:340px;padding:22px}.playlist-hero::after{background:linear-gradient(180deg,rgba(7,10,19,.35),rgba(7,10,19,.94))}}
 
   /* ---------------- artist program ---------------- */
@@ -2126,7 +2126,7 @@ html{color-scheme:dark}
   .artist-hero-copy h1{font-size:clamp(32px,4vw,50px);letter-spacing:-.055em;line-height:1;margin:7px 0 8px}
   .artist-hero-copy p{font-size:12.5px;line-height:1.7;color:var(--muted);max-width:54ch}
   .artist-meta{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0 16px;font-size:10.5px;color:var(--muted2)}
-  .artist-meta span+span::before{content:"·";margin-right:10px}
+  .artist-meta span+span::before{content:"Â·";margin-right:10px}
   @media(max-width:900px){.artist-band{grid-template-columns:1fr}.artist-band-art{min-height:200px}.artist-steps{grid-template-columns:1fr 1fr}}
   @media(max-width:680px){.artist-hero{align-items:flex-start;flex-direction:column;min-height:340px}.artist-hero::after{background:linear-gradient(180deg,rgba(7,10,19,.4),rgba(7,10,19,.95))}}
 
@@ -3584,8 +3584,8 @@ html{color-scheme:dark}
 .s-dl{height:28px}
 .s-rail-head{height:40px;padding:0 12px}
 /* ============================================================
-   READABILITY PASS — effective sizing layer for .s-* pages
-   Rule: icon <= text+1, controls 30–36, CTA 44, cards 12/10.
+   READABILITY PASS â€” effective sizing layer for .s-* pages
+   Rule: icon <= text+1, controls 30â€“36, CTA 44, cards 12/10.
    ============================================================ */
 .s-page .s-btn{height:36px;padding:6px 12px;font-size:13px;gap:6px}
 .s-page .s-btn .icon,.s-page .s-btn svg{width:14px;height:14px}
@@ -3927,3 +3927,20 @@ html{color-scheme:dark}
 .s-voice-selected b{font-size:13px;font-weight:500}
 .s-voice-selected small{font-size:11px;color:var(--s-text3)}
 .s-voice-create{display:flex;flex-direction:column;gap:8px;padding-top:10px;border-top:1px solid var(--s-line)}
+/* two-tier add menu */
+.s-add-menu{overflow:visible;padding:8px;gap:4px;width:236px}
+.s-page .s-add-menu .s-menu-item{height:40px;padding:0 12px;gap:10px;font-size:13px;border-radius:9px}
+.s-add-menu .s-menu-caret{margin-left:auto;font-size:11px;opacity:.55}
+.s-add-submenu{
+  position:absolute;left:calc(100% + 8px);bottom:0;width:236px;z-index:130;
+  padding:8px;border-radius:12px;background:var(--s-bg2);border:1px solid var(--s-line);
+  box-shadow:var(--s-shadow);display:flex;flex-direction:column;gap:4px;
+}
+.s-add-submenu::before{content:"";position:absolute;left:-8px;top:0;bottom:0;width:8px}
+.s-add-menu.below .s-add-submenu{top:0;bottom:auto}
+.s-page .s-add-submenu .s-menu-item{height:40px;padding:0 12px;gap:10px;font-size:13px;border-radius:9px}
+@media (max-width: 720px){
+  .s-add-submenu{left:0;bottom:calc(100% + 8px);width:100%}
+  .s-add-menu.below .s-add-submenu{bottom:auto;top:calc(100% + 8px)}
+  .s-add-submenu::before{display:none}
+}
