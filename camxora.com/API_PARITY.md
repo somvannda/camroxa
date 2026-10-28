@@ -32,7 +32,8 @@ Honest "not enabled" panels (no backend wiring in the web app):
 | Attach audio (upload/record) | **Implemented**: file picker, mic recording, then Extend / Cover | `POST /api/v3/web-music/studio/uploads` + `/studio/uploads/{id}/extend|cover` |
 | Voice reference | **Implemented + verified**: pick a saved persona or create one from a song; attaches `persona_id` as a voice persona | `/studio/personas` + `persona_id`/`voice_persona`; source song must belong to a Voice-entitled account |
 | Image attach | **Implemented**: upload to B2, stored as `reference_image_urls`, forwarded as `imageUrls` | `POST /api/v3/web-music/studio/images` |
-| Video attach | **Implemented**: pick a finished song, render a cover-art MP4, download | `POST /api/v3/web-music/studio/videos` → internal `/internal/studio/video` |
+| Video attach | **Implemented**: `+ → Video` opens a picker (MP4/MOV/WebM), uploads one reference clip, shows a removable chip, and sends `video_urls` with the generation | `POST /api/v3/web-music/studio/video-uploads` → `videoUrls` (max 1) via `/internal/...` |
+| Video render | **Implemented**: pick a finished song on the song rail (`Video`), render a cover-art MP4, download | `POST /api/v3/web-music/studio/videos` → internal `/internal/studio/video` |
 | Playlist reference | **Implemented**: picker merges playlist track styles into Styles | Platform playlists + items APIs |
 
 ## 3. musicapi.camxora.com

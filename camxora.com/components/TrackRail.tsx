@@ -30,6 +30,7 @@ export type TrackRailProps = {
   onUnlock?: () => void;
   onDelete?: () => void;
   onRemix?: (detail: WebMusicGeneration, clip: WebMusicClip) => void;
+  onCreateVideo?: (detail: WebMusicGeneration) => void;
   onRename?: (title: string, variant?: string) => Promise<boolean>;
   onAddToPlaylist?: (playlist: WebMusicPlaylistSummary) => Promise<void>;
   onCreatePlaylist?: (name: string) => Promise<WebMusicPlaylistSummary | null>;
@@ -47,6 +48,7 @@ export function TrackRail({
   onUnlock,
   onDelete,
   onRemix,
+  onCreateVideo,
   onRename,
   onAddToPlaylist,
   onCreatePlaylist,
@@ -246,6 +248,16 @@ export function TrackRail({
                 disabled={!ready || !clip || !onRemix}
               >
                 <Icon name="fa-wand-magic-sparkles" /> Remix
+              </button>
+              <button
+                type="button"
+                className="s-btn s-btn-secondary"
+                onClick={() => {
+                  if (detail) onCreateVideo?.(detail);
+                }}
+                disabled={!ready || !onCreateVideo}
+              >
+                <Icon name="fa-video" /> Video
               </button>
               <button
                 type="button"
