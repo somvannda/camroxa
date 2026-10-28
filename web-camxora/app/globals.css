@@ -3949,17 +3949,17 @@ html{color-scheme:dark}
 .s-lyrics-modal-overlay{position:fixed;inset:0;z-index:220;background:rgba(0,0,0,.62);display:flex;align-items:center;justify-content:center;padding:24px}
 .s-lyrics-modal{width:min(920px,100%);height:min(78vh,780px);display:flex;flex-direction:column;background:var(--s-bg2);border:1px solid var(--s-line);border-radius:18px;box-shadow:var(--s-shadow);overflow:hidden}
 .s-lyrics-modal.full{width:calc(100vw - 24px);height:calc(100vh - 24px);border-radius:12px}
-.s-lyrics-modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px 8px}
+.s-lyrics-modal-head{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 14px 8px}
 .s-lyrics-modal-head h3{font-size:15px;font-weight:500;color:var(--s-text)}
 .s-lyrics-tools{display:flex;align-items:center;gap:2px}
-.s-lyrics-tool{width:32px;height:32px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:var(--s-text2)}
-.s-lyrics-tool:hover{background:rgba(255,255,255,.07);color:var(--s-text)}
+.s-lyrics-tool{width:32px;height:32px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;color:var(--s-text2);cursor:pointer}
+.s-lyrics-tool:hover{background:rgba(255,255,255,.07);color:var(--s-text)}\n.s-lyrics-tool:not(:disabled):active{background:rgba(255,255,255,.12);transform:scale(.96)}
 .s-lyrics-tool:disabled{opacity:.35;cursor:not-allowed}
 .s-lyrics-tool .icon,.s-lyrics-tool svg{width:14px;height:14px}
 .s-lyrics-modal-input{flex:1;width:100%;min-height:0;padding:4px 18px 10px;background:transparent;border:0;outline:none;resize:none;color:var(--s-text);font:inherit;font-size:15px;line-height:1.8}
 .s-lyrics-modal-input::placeholder{color:var(--s-text3)}
 .s-lyrics-modal-foot{position:relative;display:flex;align-items:center;justify-content:center;padding:10px 0 16px}
-.s-lyrics-wand{width:36px;height:36px;border-radius:999px;background:rgba(255,255,255,.06);display:inline-flex;align-items:center;justify-content:center;color:var(--s-text2)}
+.s-lyrics-wand{width:36px;height:36px;border-radius:999px;background:rgba(255,255,255,.06);display:inline-flex;align-items:center;justify-content:center;color:var(--s-text2);cursor:pointer}
 .s-lyrics-wand:hover{background:rgba(255,255,255,.1);color:var(--s-text)}
 .s-lyrics-error{position:absolute;left:0;right:0;bottom:56px;text-align:center;font-size:12px;color:var(--s-danger-soft);padding:0 18px}
 .s-lyrics-tool:last-child{background:rgba(255,255,255,.06)}
