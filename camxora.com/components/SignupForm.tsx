@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Icon } from "@/components/Icon";
 import TurnstileWidget from "@/components/TurnstileWidget";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/components/AuthProvider";
 
 const TURNSTILE_DISABLED = process.env.NEXT_PUBLIC_TURNSTILE_DISABLED === "1";
@@ -17,6 +18,7 @@ export function SignupForm() {
   const [token, setToken] = useState("");
   const [turnstileKey, setTurnstileKey] = useState(0);
   const [referralCode, setReferralCode] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -26,6 +28,10 @@ export function SignupForm() {
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!agreed) {
+      setError("Please agree to the Terms & Conditions and Privacy Policy to continue.");
+      return;
+    }
     if (!TURNSTILE_DISABLED && !token) {
       setError("Please complete the security check.");
       return;
@@ -102,8 +108,28 @@ export function SignupForm() {
           onError={() => setToken("")}
         />
       )}
+      <div className="auth-check">
+        <Checkbox
+          id="signup-terms"
+          checked={agreed}
+          onCheckedChange={(checked) => {
+            setAgreed(checked === true);
+            if (checked === true) setError("");
+          }}
+          aria-invalid={error && !agreed ? true : undefined}
+          aria-describedby={error && !agreed ? "signup-terms-error" : undefined}
+        />
+        <label htmlFor="signup-terms">
+          I agree to the <Link href="/terms">Terms &amp; Conditions</Link> and{" "}
+          <Link href="/privacy">Privacy Policy</Link>.
+        </label>
+      </div>
       {error ? (
-        <p className="fine" style={{ color: "#f87171", textAlign: "left", marginTop: 0 }} role="alert">
+        <p
+          className="auth-error"
+          id={!agreed ? "signup-terms-error" : undefined}
+          role="alert"
+        >
           {error}
         </p>
       ) : null}

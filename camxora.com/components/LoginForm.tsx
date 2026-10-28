@@ -5,6 +5,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { Icon } from "@/components/Icon";
 import TurnstileWidget from "@/components/TurnstileWidget";
 import { GoogleSignInButton } from "@/components/GoogleSignInButton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useAuth } from "@/components/AuthProvider";
 
 const TURNSTILE_DISABLED = process.env.NEXT_PUBLIC_TURNSTILE_DISABLED === "1";
@@ -86,14 +87,14 @@ export function LoginForm() {
         />
       </div>
       <div className="auth-row">
-        <label>
-          <input
-            type="checkbox"
+        <div className="auth-remember">
+          <Checkbox
+            id="remember-me"
             checked={remember}
-            onChange={(event) => setRemember(event.target.checked)}
-          />{" "}
-          Remember me
-        </label>
+            onCheckedChange={(checked) => setRemember(checked === true)}
+          />
+          <label htmlFor="remember-me">Remember me</label>
+        </div>
         <Link href="/forgot-password">Forgot password?</Link>
       </div>
       {TURNSTILE_DISABLED ? null : (
@@ -106,7 +107,7 @@ export function LoginForm() {
         />
       )}
       {error ? (
-        <p className="fine" style={{ color: "#f87171", textAlign: "left", marginTop: 0 }} role="alert">
+        <p className="auth-error" role="alert">
           {error}
         </p>
       ) : null}
