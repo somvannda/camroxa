@@ -433,6 +433,7 @@ export function CreateStudio() {
   const [audioDragging, setAudioDragging] = useState(false);
   const [audioPlaying, setAudioPlaying] = useState(false);
   const recorderRef = useRef<MediaRecorder | null>(null);
+  const audioFileInputRef = useRef<HTMLInputElement | null>(null);
   const recordChunks = useRef<Blob[]>([]);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const [modelOpen, setModelOpen] = useState(false);
@@ -868,10 +869,7 @@ export function CreateStudio() {
       window.setTimeout(() => void toggleRecording(), 350);
     }
     if (intent === "browse") {
-      window.setTimeout(() => {
-        const input = document.querySelector<HTMLInputElement>(".s-audio-drop input");
-        input?.click();
-      }, 350);
+      audioFileInputRef.current?.click();
     }
   }
 
@@ -2624,6 +2622,18 @@ export function CreateStudio() {
   return (
     <div className="s-page">
       <h1 className="sr-only">Create music</h1>
+      <input
+        ref={audioFileInputRef}
+        className="sr-only"
+        type="file"
+        accept="audio/*"
+        tabIndex={-1}
+        onChange={(event) => {
+          const file = event.target.files?.[0];
+          if (file) void uploadAudioFile(file);
+          event.target.value = "";
+        }}
+      />
       <div className="s-create-grid with-rail">
         <div
           className={`s-form-col${dragging ? " dragging" : ""}`}
