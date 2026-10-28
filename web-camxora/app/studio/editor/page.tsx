@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { StudioEditorView } from "@/components/StudioEditorView";
 
 export const metadata: Metadata = {
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function StudioEditorPage() {
-  return <StudioEditorView />;
+  return (
+    <Suspense fallback={null}>
+      <StudioEditorView />
+    </Suspense>
+  );
 }
