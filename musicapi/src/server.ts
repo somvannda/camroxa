@@ -2275,18 +2275,18 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
       // Audio: the progressive URL is AES-CTR encrypted (Suno "mango" DRM).
       // Fetch its license with the owning account and decrypt server-side, then
-      // store a playable MP3 plus the decrypted m4a master (source for WAV).
+      // store a playable MP3 plus the decrypted m4a master. The master is the
+      // source for WAV, which is transcoded on demand in `ensureAudio` when a
+      // user actually buys the WAV download — eagerly storing it here cost ~76%
+      // of all object bytes for a file most clips never had downloaded.
       if (!item.audio_storage_key) {
         try {
           const encryptedUrl = pickPublicAudioUrl(item) ?? undefined;
           const m4a = await decryptSunoClip(await accountClient(), clipId, encryptedUrl);
           const mp3Key = objectKey("clips", `${clipId}.mp3`);
-          const wavKey = objectKey("wav", `${clipId}.wav`);
           const masterKey = objectKey("masters", `${clipId}.m4a`);
           const mp3 = await transcodeAudio(m4a, "mp3");
-          const wav = await transcodeAudio(m4a, "wav");
           await putObject(mp3Key, mp3, "audio/mpeg");
-          await putObject(wavKey, wav, "audio/wav");
           await putObject(masterKey, m4a, "audio/mp4");
           item.audio_storage_key = mp3Key;
           item.master_storage_key = masterKey;
