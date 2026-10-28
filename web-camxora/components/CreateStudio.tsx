@@ -245,7 +245,7 @@ export function CreateStudio() {
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
   const [toast, setToast] = useState("");
   const [feedPage, setFeedPage] = useState(1);
-  const [attachModal, setAttachModal] = useState<null | "audio" | "voice" | "image" | "inspo" | "video" | "playlist" | "voices">(null);
+  const [attachModal, setAttachModal] = useState<null | "audio" | "voice" | "image" | "video" | "playlist" | "voices">(null);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
   const [addSubmenu, setAddSubmenu] = useState<null | "lyrics" | "styles" | "audio" | "voice">(null);
   const [audioUpload, setAudioUpload] = useState<WebMusicStudioUpload | null>(null);
@@ -1994,7 +1994,7 @@ export function CreateStudio() {
                   <button
                     type="button"
                     className="s-attach-btn"
-                    onClick={() => setAttachModal(mode === "custom" ? "inspo" : "image")}
+                    onClick={() => setAttachModal(mode === "custom" ? "playlist" : "image")}
                     aria-label={mode === "custom" ? "Add inspiration from a playlist" : "Add an image to your creation."}
                   >
                     <Icon name={mode === "custom" ? "fa-lightbulb" : "fa-image"} />{" "}
@@ -3366,9 +3366,7 @@ export function CreateStudio() {
                         ? "Add playlist"
                         : attachModal === "voice"
                           ? "Add voice"
-                          : attachModal === "inspo"
-                            ? "Add inspiration"
-                            : "Add image"}
+                          : "Add image"}
               </h3>
               <button type="button" className="s-btn s-btn-icon sm" onClick={() => setAttachModal(null)} aria-label="Close">
                 <Icon name="fa-xmark" />
@@ -3821,17 +3819,7 @@ export function CreateStudio() {
                     </p>
                   </div>
                 </div>
-              ) : (
-                <>
-                  <p className="s-note">
-                    Pull a style reference from one of your playlists.
-                  </p>
-                  <div className="s-box">
-                    Reference attachments are not enabled for this workspace yet. You can still upload and reuse audio
-                    from the Studio editor.
-                  </div>
-                </>
-              )}
+              ) : null}
             </div>
             <div className="s-modal-foot">
               <Link
