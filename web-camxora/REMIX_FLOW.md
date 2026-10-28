@@ -220,7 +220,7 @@ Cancel branches:
 - [x] Poll operation and refresh Audio results.
 - [x] Empty/error states.
 - [x] Disable unsupported rows.
-- [x] Row-menu entry point and detail-rail Remix button.
+- [x] Row-menu entry point, detail-rail Remix button, and Library row/rail deep link.
 
 ### Platform API
 

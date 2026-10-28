@@ -337,6 +337,7 @@ export function CreateStudio() {
   const [saveMenuOpen, setSaveMenuOpen] = useState(false);
   const [rowMenuKey, setRowMenuKey] = useState<string | null>(null);
   const [remixPickerOpen, setRemixPickerOpen] = useState(false);
+  const remixHandledRef = useRef(false);
   const [remixSearch, setRemixSearch] = useState("");
   const [remixSort, setRemixSort] = useState<"new" | "old">("new");
   const [remixModelFilter, setRemixModelFilter] = useState<"all" | "V6" | "V6_MINI" | "V6_WILD">("all");
@@ -666,6 +667,33 @@ export function CreateStudio() {
       window.removeEventListener("scroll", close, true);
     };
   }, [addMenuOpen]);
+
+  useEffect(() => {
+    if (remixHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const taskId = params.get("remix");
+    if (!taskId) return;
+    remixHandledRef.current = true;
+    const variant = params.get("variant") === "alt" ? "alt" : "ok";
+    const apply = (song: WebMusicGeneration) => {
+      if (!mounted.current) return;
+      selectRemixSource(song, variant);
+      window.history.replaceState(null, "", "/create");
+    };
+    const existing = songs.find((song) => song.id === taskId);
+    if (existing) {
+      apply(existing);
+      return;
+    }
+    getWebMusicGeneration(taskId)
+      .then((song) => apply(song))
+      .catch((cause) => {
+        if (mounted.current) {
+          setError(cause instanceof Error ? cause.message : "Could not load the remix source.");
+        }
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs]);
 
   useEffect(() => {
     if (!workspacesReady || loading || !user) return;

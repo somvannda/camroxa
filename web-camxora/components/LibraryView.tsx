@@ -825,7 +825,11 @@ export function LibraryView() {
             >
               <Icon name="fa-share" /> Share
             </button>
-            <Link className="s-act" href="/studio/editor" aria-label="Remix or edit clip">
+            <Link
+              className="s-act"
+              href={`/create?remix=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`}
+              aria-label="Remix clip"
+            >
               <Icon name="fa-wand-magic-sparkles" /> Remix
             </Link>
           </div>
@@ -1511,6 +1515,9 @@ export function LibraryView() {
             onUnlock={() => void unlockPreview()}
             onDelete={() => {
               if (detail) setConfirm({ kind: "generations", ids: [detail.id] });
+            }}
+            onRemix={(song, clip) => {
+              window.location.href = `/create?remix=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`;
             }}
             onRename={async (nextTitle, variant) => {
               if (!detail) return false;
