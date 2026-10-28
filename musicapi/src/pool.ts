@@ -121,6 +121,25 @@ export function belowCreditFloor(
 }
 
 /**
+ * Whether an account may serve a `paid_only` (premium) request.
+ *
+ * The operator-set `type` column is only a hint: Suno enforces the *plan*, so an
+ * account tagged `free` that has since upgraded must still be usable, or the
+ * pool refuses premium models while funded accounts sit idle. Conversely a row
+ * still tagged `paid` whose plan lapsed would be rejected upstream with 403
+ * "isn't available on your current plan", so it must not be selected either.
+ * The live `plan` (from `billing/info`) wins whenever it has been read; the tag
+ * is the fallback for an account that has never been probed.
+ */
+export function isPaidEligible(
+  dbType: "free" | "paid" | undefined,
+  plan: string | undefined,
+): boolean {
+  if (plan) return plan !== "free";
+  return (dbType ?? "free") === "paid";
+}
+
+/**
  * Operator-facing rendering of the accounts a selection scan skipped for a low
  * balance. Kept out of the error message itself: account labels are operator
  * data (usually the Suno account email), so they belong in logs, never in a
@@ -486,6 +505,7 @@ export class AccountPool {
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
     let lastError = "No healthy account available.";
     let fallback: SunoClient | null = null;
+    let sawIneligiblePaid = false;
     const drained: Array<{ id: string; credits: number }> = [];
     for (const client of this.prioritizeCooling(ordered)) {
       const probed = healths.get(client.account.id);
@@ -495,6 +515,13 @@ export class AccountPool {
         continue;
       }
       const health = probed.health;
+      if (policy === "paid_only" && !isPaidEligible(client.account.type, health.plan)) {
+        // Premium keys are refused upstream on a free plan, so this account is
+        // not even a last-resort fallback — that would just burn an attempt on a
+        // predictable 403.
+        sawIneligiblePaid = true;
+        continue;
+      }
       if (belowCreditFloor(health.credits)) {
         drained.push({ id: client.account.id, credits: health.credits });
         continue;
@@ -515,12 +542,21 @@ export class AccountPool {
         `model=${want ?? "*"}; policy=${policy}; below floor: ${lowCreditSummary(drained)}`,
       );
     }
+    if (sawIneligiblePaid) {
+      throw new Error(
+        "No paid Suno account is available for this model; premium models require a paid account.",
+      );
+    }
     throw new Error(lastError);
   }
 
   /**
    * Pick a healthy account that can use `model`, has credits, and matches the
    * routing `policy` (prefer_free / paid_only / any).
+   *
+   * The pool-wide candidate list is passed through unfiltered: `paid_only`
+   * eligibility is decided inside `pickFrom` from the live plan, because the
+   * `type` column can lag behind a Suno upgrade (or survive a lapse).
    */
   async pick(
     model?: string,
@@ -528,16 +564,7 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
-    const filtered = this.clients.filter((c) => {
-      if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
-      return true;
-    });
-    if (filtered.length === 0 && policy === "paid_only") {
-      throw new Error(
-        "No paid Suno account is available for this model; premium models require a paid account.",
-      );
-    }
-    return this.pickFrom(filtered, model, policy, opts);
+    return this.pickFrom(this.clients, model, policy, opts);
   }
 
   /**
@@ -552,15 +579,14 @@ export class AccountPool {
     opts: { load?: (id: string) => number; maxPerAccount?: number } = {},
   ): Promise<SunoClient> {
     const want = normalizeModel(model);
-    const candidates = this.clients.filter(
-      (c) => policy !== "paid_only" || (c.account.type ?? "free") === "paid",
-    );
+    const candidates = this.clients;
     const healths = await this.probeHealth(candidates);
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
     for (const client of this.prioritizeCooling(ordered)) {
       const probed = healths.get(client.account.id);
       if (!probed || "error" in probed) continue;
       const health = probed.health;
+      if (policy === "paid_only" && !isPaidEligible(client.account.type, health.plan)) continue;
       if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
       if (want && health.models.length && !health.models.includes(want)) continue;
       return client;
@@ -578,17 +604,14 @@ export class AccountPool {
   ): Promise<SunoClient> {
     const exclude = new Set(excludeIds);
     const want = normalizeModel(model);
-    const candidates = this.clients.filter(
-      (c) =>
-        !exclude.has(c.account.id) &&
-        (policy !== "paid_only" || (c.account.type ?? "free") === "paid"),
-    );
+    const candidates = this.clients.filter((c) => !exclude.has(c.account.id));
     const healths = await this.probeHealth(candidates);
     const ordered = this.orderCandidates(candidates, healths, policy, opts);
     for (const client of this.prioritizeCooling(ordered)) {
       const probed = healths.get(client.account.id);
       if (!probed || "error" in probed) continue;
       const health = probed.health;
+      if (policy === "paid_only" && !isPaidEligible(client.account.type, health.plan)) continue;
       if (belowCreditFloor(health.credits) || !health.features.includes(feature)) continue;
       if (want && health.models.length && !health.models.includes(want)) continue;
       return client;
@@ -613,18 +636,8 @@ export class AccountPool {
   ): Promise<SunoClient> {
     if (this.clients.length === 0) throw new Error("No Suno accounts configured.");
     const exclude = new Set(excludeIds);
-    const filtered = this.clients.filter((c) => {
-      if (exclude.has(c.account.id)) return false;
-      if (policy === "paid_only") return (c.account.type ?? "free") === "paid";
-      return true;
-    });
+    const filtered = this.clients.filter((c) => !exclude.has(c.account.id));
     if (filtered.length === 0) {
-      const anyPaid = this.clients.some((c) => (c.account.type ?? "free") === "paid");
-      if (policy === "paid_only" && !anyPaid) {
-        throw new Error(
-          "No paid Suno account is available for this model; premium models require a paid account.",
-        );
-      }
       throw new Error("No Suno accounts available after excluding attempted ones.");
     }
     return this.pickFrom(filtered, model, policy, opts);
