@@ -4021,3 +4021,21 @@ html{color-scheme:dark}
 .s-lyrics-save-current{display:flex;align-items:center;gap:8px;height:36px;padding:0 12px;margin:6px 4px 8px;border-radius:9px;border:1px dashed var(--s-line2);color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer;transition:border-color .15s,color .15s,background .15s}
 .s-lyrics-save-current:hover{border-color:var(--s-accent);color:var(--s-text);background:rgba(168,85,247,.08)}
 .s-lyrics-save-current .icon,.s-lyrics-save-current svg{width:12px;height:12px}
+/* styles modal */
+.s-styles-modal{width:min(760px,100%);max-height:min(82vh,820px);display:flex;flex-direction:column;background:var(--s-bg2);border:1px solid var(--s-line);border-radius:16px;box-shadow:var(--s-shadow);overflow:hidden;animation:s-pop .2s cubic-bezier(0,0,.2,1)}
+.s-styles-modal-body{overflow-y:auto;padding:6px 18px 14px;display:flex;flex-direction:column;gap:12px}
+.s-styles-tabs{display:flex;gap:4px;padding:4px;border-radius:10px;background:rgba(255,255,255,.04)}
+.s-styles-tabs button{height:34px;padding:0 12px;border-radius:8px;color:var(--s-text2);font:inherit;font-size:12px;cursor:pointer;transition:background .15s,color .15s}
+.s-styles-tabs button.on{background:var(--s-bg3);color:var(--s-text)}
+.s-styles-modal-input{width:100%;min-height:150px;max-height:260px;padding:12px;border-radius:10px;background:rgba(0,0,0,.2);border:1px solid var(--s-line);outline:none;resize:vertical;color:var(--s-text);font:inherit;font-size:13px;line-height:1.7}
+.s-styles-modal-input:focus{border-color:var(--s-accent)}
+.s-styles-modal-input::placeholder{color:var(--s-text3)}
+.s-styles-modal-meta{text-align:right;font-size:11px;color:var(--s-text3)}
+.s-styles-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:180px;overflow:auto}
+.s-styles-actions{display:flex;gap:8px;flex-wrap:wrap}
+.s-styles-existing{display:flex;flex-direction:column;gap:4px;max-height:320px;overflow:auto}
+.s-styles-existing-item{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:9px;border:1px solid transparent;color:inherit;font:inherit;font-size:13px;text-align:left;cursor:pointer}
+.s-styles-existing-item:hover{border-color:var(--s-line2);background:rgba(255,255,255,.04)}
+.s-styles-existing-item .icon,.s-styles-existing-item svg{width:12px;height:12px;color:var(--s-text3);flex:none}
+.s-styles-existing-item span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.s-styles-modal-foot{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:12px 18px 16px;border-top:1px solid var(--s-line)}

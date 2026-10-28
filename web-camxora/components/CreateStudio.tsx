@@ -315,6 +315,8 @@ export function CreateStudio() {
   const [modelOpen, setModelOpen] = useState(false);
   const [creditsOpen, setCreditsOpen] = useState(false);
   const [stylePresetsOpen, setStylePresetsOpen] = useState(false);
+  const [stylesModalOpen, setStylesModalOpen] = useState(false);
+  const [stylesModalMode, setStylesModalMode] = useState<"write" | "existing">("write");
   const [dragging, setDragging] = useState(false);
   const [durationMode, setDurationMode] = useState<"custom" | "auto">("auto");
   const [maxMode, setMaxMode] = useState(false);
@@ -702,6 +704,14 @@ export function CreateStudio() {
     setLyricistPrompt("");
     setError("");
     setToast("New lyrics draft");
+  }
+
+  function openStylesModal(mode: "write" | "existing") {
+    setMode("custom");
+    setStylesOpen(true);
+    setStylesModalMode(mode);
+    setStylesModalOpen(true);
+    setError("");
   }
 
   async function openLyricsLibrary() {
@@ -2050,11 +2060,10 @@ export function CreateStudio() {
               role="menuitem"
               onClick={() => {
                 closeMenu();
-                setMode("custom");
-                setStylePresetsOpen(true);
+                openStylesModal("write");
               }}
             >
-              <Icon name="fa-bookmark" /> Saved styles
+              <Icon name="fa-pen" /> Write new
             </button>
             <button
               type="button"
@@ -2062,22 +2071,10 @@ export function CreateStudio() {
               role="menuitem"
               onClick={() => {
                 closeMenu();
-                shuffleStyle();
+                openStylesModal("existing");
               }}
             >
-              <Icon name="fa-shuffle" /> Shuffle styles
-            </button>
-            <button
-              type="button"
-              className="s-menu-item"
-              role="menuitem"
-              onClick={() => {
-                closeMenu();
-                setMode("custom");
-                void suggestStyles();
-              }}
-            >
-              <Icon name="fa-wand-magic-sparkles" /> Enhance styles
+              <Icon name="fa-layer-group" /> Use existing
             </button>
           </>
         ) : null}
@@ -2570,9 +2567,9 @@ export function CreateStudio() {
                           <button
                             type="button"
                             className="s-sec-toggle"
-                            aria-label="Saved styles" aria-expanded={stylePresetsOpen}
+                            aria-label="Saved styles" aria-expanded={stylesModalOpen}
                             title="Saved style prompts"
-                            onClick={() => setStylePresetsOpen((value) => !value)}
+                            onClick={() => openStylesModal("existing")}
                           >
                             <Icon name="fa-bookmark" />
                           </button>
@@ -4061,6 +4058,131 @@ export function CreateStudio() {
               <span style={{ flex: 1 }} />
               <button type="button" className="s-btn s-btn-ghost" onClick={() => setAttachModal(null)}>
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {stylesModalOpen ? (
+        <div
+          className="s-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Styles"
+          onClick={() => setStylesModalOpen(false)}
+        >
+          <div className="s-styles-modal" onClick={(event) => event.stopPropagation()}>
+            <div className="s-modal-head">
+              <h3>Styles</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Close styles"
+                onClick={() => setStylesModalOpen(false)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-styles-modal-body">
+              <div className="s-styles-tabs" role="tablist" aria-label="Styles mode">
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={stylesModalMode === "write"}
+                  className={stylesModalMode === "write" ? "on" : ""}
+                  onClick={() => setStylesModalMode("write")}
+                >
+                  Write new
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={stylesModalMode === "existing"}
+                  className={stylesModalMode === "existing" ? "on" : ""}
+                  onClick={() => setStylesModalMode("existing")}
+                >
+                  Use existing
+                </button>
+              </div>
+
+              {stylesModalMode === "write" ? (
+                <>
+                  <textarea
+                    className="s-styles-modal-input"
+                    value={style}
+                    onChange={(event) => setStyle(event.target.value.slice(0, 1000))}
+                    placeholder="Describe genre, mood, instruments, tempo, and vocal style…"
+                    maxLength={1000}
+                    rows={5}
+                    autoFocus
+                    aria-label="Style prompt"
+                  />
+                  <div className="s-styles-modal-meta">
+                    <span>{style.length}/1000</span>
+                  </div>
+                  <div className="s-styles-chips">
+                    {styleChips.map((chip) => (
+                      <button
+                        key={chip}
+                        type="button"
+                        className={cn("s-chip", style.toLowerCase().includes(chip.toLowerCase()) && "on")}
+                        onClick={() => appendStyle(chip)}
+                      >
+                        {chip}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="s-styles-actions">
+                    <button type="button" className="s-btn s-btn-ghost" onClick={() => setStyle("")}>
+                      Clear
+                    </button>
+                    <button type="button" className="s-btn s-btn-secondary" onClick={shuffleStyle}>
+                      <Icon name="fa-shuffle" /> Shuffle
+                    </button>
+                    <button
+                      type="button"
+                      className="s-btn s-btn-secondary"
+                      onClick={() => void suggestStyles()}
+                    >
+                      <Icon name="fa-wand-magic-sparkles" /> Enhance
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="s-styles-existing">
+                  {savedStylePrompts.length ? (
+                    savedStylePrompts.map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        className="s-styles-existing-item"
+                        onClick={() => {
+                          setStyle(value);
+                          setStylesModalOpen(false);
+                          setToast("Style applied");
+                        }}
+                      >
+                        <Icon name="fa-bookmark" />
+                        <span>{value}</span>
+                      </button>
+                    ))
+                  ) : (
+                    <p className="s-note">
+                      No saved styles yet. Write one and it will appear here after generating a song.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="s-styles-modal-foot">
+              <span className="s-note">Styles apply to the next generation.</span>
+              <button
+                type="button"
+                className="s-btn s-btn-primary"
+                onClick={() => setStylesModalOpen(false)}
+              >
+                Apply
               </button>
             </div>
           </div>
