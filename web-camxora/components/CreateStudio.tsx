@@ -2236,6 +2236,86 @@ export function CreateStudio() {
                           MP3
                         </a>
                       </div>
+                      <div
+                        className="s-anchor"
+                        data-s-menu
+                        style={{ position: "static" }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="s-row-more"
+                          aria-label="More options"
+                          aria-expanded={rowMenuKey === `audio:${operation.id}`}
+                          onClick={() =>
+                            setRowMenuKey((current) =>
+                              current === `audio:${operation.id}`
+                                ? null
+                                : `audio:${operation.id}`
+                            )
+                          }
+                        >
+                          <Icon name="fa-ellipsis-vertical" />
+                        </button>
+                        {rowMenuKey === `audio:${operation.id}` ? (
+                          <div
+                            className="s-menu"
+                            role="menu"
+                            style={{ right: 12, top: 40, minWidth: 210 }}
+                          >
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={() => {
+                                setRowMenuKey(null);
+                                playTrack({
+                                  title: clip.title || "Audio result",
+                                  artist: "You",
+                                  cover: clip.imageUrl || "/hero.png",
+                                  duration: 180,
+                                  audioUrl: clip.audioUrl as string,
+                                });
+                              }}
+                            >
+                              <Icon name="fa-play" /> Play
+                            </button>
+                            <a
+                              className="s-menu-item"
+                              role="menuitem"
+                              href={clip.audioUrl}
+                              download
+                              onClick={() => setRowMenuKey(null)}
+                            >
+                              <Icon name="fa-download" /> Download MP3
+                            </a>
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={async () => {
+                                setRowMenuKey(null);
+                                try {
+                                  await navigator.clipboard.writeText(clip.audioUrl as string);
+                                  setToast("Link copied");
+                                } catch {
+                                  setToast("Could not copy link");
+                                }
+                              }}
+                            >
+                              <Icon name="fa-link" /> Copy link
+                            </button>
+                            <Link
+                              className="s-menu-item"
+                              role="menuitem"
+                              href="/studio/editor"
+                              onClick={() => setRowMenuKey(null)}
+                            >
+                              <Icon name="fa-table-columns" /> Open in Studio
+                            </Link>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   );
                 })}
@@ -3956,6 +4036,86 @@ export function CreateStudio() {
                         <a className="s-dl" href={clip.audioUrl} download>
                           MP3
                         </a>
+                      </div>
+                      <div
+                        className="s-anchor"
+                        data-s-menu
+                        style={{ position: "static" }}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <button
+                          type="button"
+                          className="s-row-more"
+                          aria-label="More options"
+                          aria-expanded={rowMenuKey === `audio:${operation.id}`}
+                          onClick={() =>
+                            setRowMenuKey((current) =>
+                              current === `audio:${operation.id}`
+                                ? null
+                                : `audio:${operation.id}`
+                            )
+                          }
+                        >
+                          <Icon name="fa-ellipsis-vertical" />
+                        </button>
+                        {rowMenuKey === `audio:${operation.id}` ? (
+                          <div
+                            className="s-menu"
+                            role="menu"
+                            style={{ right: 12, top: 40, minWidth: 210 }}
+                          >
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={() => {
+                                setRowMenuKey(null);
+                                playTrack({
+                                  title: clip.title || "Audio result",
+                                  artist: "You",
+                                  cover: clip.imageUrl || "/hero.png",
+                                  duration: 180,
+                                  audioUrl: clip.audioUrl as string,
+                                });
+                              }}
+                            >
+                              <Icon name="fa-play" /> Play
+                            </button>
+                            <a
+                              className="s-menu-item"
+                              role="menuitem"
+                              href={clip.audioUrl}
+                              download
+                              onClick={() => setRowMenuKey(null)}
+                            >
+                              <Icon name="fa-download" /> Download MP3
+                            </a>
+                            <button
+                              type="button"
+                              className="s-menu-item"
+                              role="menuitem"
+                              onClick={async () => {
+                                setRowMenuKey(null);
+                                try {
+                                  await navigator.clipboard.writeText(clip.audioUrl as string);
+                                  setToast("Link copied");
+                                } catch {
+                                  setToast("Could not copy link");
+                                }
+                              }}
+                            >
+                              <Icon name="fa-link" /> Copy link
+                            </button>
+                            <Link
+                              className="s-menu-item"
+                              role="menuitem"
+                              href="/studio/editor"
+                              onClick={() => setRowMenuKey(null)}
+                            >
+                              <Icon name="fa-table-columns" /> Open in Studio
+                            </Link>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   );
