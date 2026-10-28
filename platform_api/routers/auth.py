@@ -324,6 +324,16 @@ def _turnstile_is_configured() -> bool:
     return bool(get_settings().cloudflare_turnstile_secret_key.strip())
 
 
+# Cloudflare's documented always-pass test secret does not echo the widget
+# action or hostname. Only that exact test secret gets the relaxed canonical
+# checks; real secrets still enforce both.
+_TURNSTILE_TEST_SECRET = "1x0000000000000000000000000000000AA"
+
+
+def _turnstile_is_test_secret() -> bool:
+    return get_settings().cloudflare_turnstile_secret_key.strip() == _TURNSTILE_TEST_SECRET
+
+
 async def _verify_turnstile_token(
     *,
     token: str | None,
@@ -357,16 +367,17 @@ async def _verify_turnstile_token(
             ),
             details={"field": "cf_turnstile_response", "cloudflare_errors": error_codes},
         )
-    if result.get("action") != expected_action:
-        raise ValidationError(
-            message="Bot verification failed: invalid action",
-            details={"field": "cf_turnstile_response"},
-        )
-    if expected_hostnames and result.get("hostname") not in expected_hostnames:
-        raise ValidationError(
-            message="Bot verification failed: invalid hostname",
-            details={"field": "cf_turnstile_response"},
-        )
+    if not _turnstile_is_test_secret():
+        if result.get("action") != expected_action:
+            raise ValidationError(
+                message="Bot verification failed: invalid action",
+                details={"field": "cf_turnstile_response"},
+            )
+        if expected_hostnames and result.get("hostname") not in expected_hostnames:
+            raise ValidationError(
+                message="Bot verification failed: invalid hostname",
+                details={"field": "cf_turnstile_response"},
+            )
 
 
 async def _set_session_for_user(
@@ -584,19 +595,20 @@ async def login(
                         details={"field": "cf_turnstile_response", "cloudflare_errors": error_codes}
                     )
                 
-                if result.get("action") != "login":
-                    _log.error(f"Turnstile action mismatch: expected='login', got='{result.get('action')}'")
-                    raise ValidationError(
-                        message="Bot verification failed: invalid action",
-                        details={"field": "cf_turnstile_response"}
-                    )
-                
-                if expected_hostnames and result.get("hostname") not in expected_hostnames:
-                    _log.error(f"Turnstile hostname mismatch: got='{result.get('hostname')}', expected one of {expected_hostnames}")
-                    raise ValidationError(
-                        message="Bot verification failed: invalid hostname",
-                        details={"field": "cf_turnstile_response"}
-                    )
+                if not _turnstile_is_test_secret():
+                    if result.get("action") != "login":
+                        _log.error(f"Turnstile action mismatch: expected='login', got='{result.get('action')}'")
+                        raise ValidationError(
+                            message="Bot verification failed: invalid action",
+                            details={"field": "cf_turnstile_response"}
+                        )
+
+                    if expected_hostnames and result.get("hostname") not in expected_hostnames:
+                        _log.error(f"Turnstile hostname mismatch: got='{result.get('hostname')}', expected one of {expected_hostnames}")
+                        raise ValidationError(
+                            message="Bot verification failed: invalid hostname",
+                            details={"field": "cf_turnstile_response"}
+                        )
                 
                 _log.info("Turnstile verification passed all checks")
             except ValidationError:
