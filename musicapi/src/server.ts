@@ -7,7 +7,7 @@ import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { AccountPool, RoutingPolicy, daysUntilRenewal, forecastRenewals } from "./pool.js";
 import { SunoClient } from "./client.js";
-import { isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
+import { isCapacityExhaustionError, isInsufficientCreditsError, isRateLimitedSunoError, isRetryableSunoError } from "./sunoError.js";
 import { decryptCookie, encryptCookie } from "./cookieCrypto.js";
 import { generateTotpSecret, otpauthUrl, verifyTotp } from "./totp.js";
 import { query, queryOne, withTransaction, type QueryFn } from "./db.js";
@@ -3051,7 +3051,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
-    if (errors.length > 0 && errors.every(isCapacityExhaustion)) {
+    if (errors.length > 0 && errors.every(isCapacityExhaustionError)) {
       // A dry pool is temporary: keep the job alive (and the charge held) and
       // retry with backoff instead of failing out and refunding.
       if (
@@ -3090,15 +3090,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
    */
   const CAPACITY_DEFER_LIMIT = 6;
   const CAPACITY_DEFER_BASE_MS = 60_000;
-
-  /** True when the failure means "the pool is empty", not "this job is bad". */
-  function isCapacityExhaustion(err: unknown): boolean {
-    if (isInsufficientCreditsError(err)) return true;
-    const message = err instanceof Error ? err.message : String(err);
-    return /no suno account with available credits|no usable account|no paid suno account is available/i.test(
-      message,
-    );
-  }
 
   /** Re-arm a capacity-blocked job after a backoff. Returns false when out of deferrals. */
   async function deferForCapacity(
@@ -3180,7 +3171,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
     job.status = "error";
     job.error = `All ${errors.length} attempts failed: ${errors.join("; ")}`;
-    if (errors.length > 0 && errors.every(isCapacityExhaustion)) {
+    if (errors.length > 0 && errors.every(isCapacityExhaustionError)) {
       // A dry pool is temporary: keep the job alive (and the charge held) and
       // retry with backoff instead of failing out and refunding.
       if (

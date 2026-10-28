@@ -105,4 +105,7 @@ No migration: the counter is in-memory and the `jobs` row already carries the
 - **platform_api retry sweep**: `retry_song_suno` re-submits every ~5 min with no
   capacity awareness; it should read pool health (or the job's `pending` state)
   instead of hammering.
-- Extract `isCapacityExhaustion` to `sunoError.ts` with unit tests.
+- ~~Extract `isCapacityExhaustion` to `sunoError.ts` with unit tests.~~ Done:
+  `sunoError.isCapacityExhaustionError` is pure and covered by
+  `test/suno-error.test.ts` (pool-selection messages, provider 402, and the
+  content-policy/server-error negatives).
