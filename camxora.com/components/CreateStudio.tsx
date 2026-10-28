@@ -2683,7 +2683,10 @@ export function CreateStudio() {
             className="s-row-more"
             aria-label="More options"
             aria-expanded={rowMenuKey === key}
-            onClick={() => setRowMenuKey((current) => (current === key ? null : key))}
+            onClick={() => {
+              setDownloadMenuKey(null);
+              setRowMenuKey((current) => (current === key ? null : key));
+            }}
           >
             <Icon name="fa-ellipsis-vertical" />
           </button>
@@ -2717,11 +2720,70 @@ export function CreateStudio() {
                 role="menuitem"
                 onClick={() => {
                   setRowMenuKey(null);
-                  void copyClipLink(song, clip);
+                  void shareClipLink(song, clip);
                 }}
               >
-                <Icon name="fa-link" /> Copy link
+                <Icon name="fa-share-nodes" /> Share
               </button>
+              <button
+                type="button"
+                className="s-menu-item"
+                role="menuitem"
+                disabled={!ready}
+                aria-expanded={downloadMenuKey === `song:${key}`}
+                onClick={() => {
+                  setDownloadMenuKey((current) =>
+                    current === `song:${key}` ? null : `song:${key}`
+                  );
+                }}
+              >
+                <Icon name="fa-download" /> Download
+                <Icon name="fa-chevron-right" className="s-menu-caret" />
+              </button>
+              {downloadMenuKey === `song:${key}` && ready ? (
+                <div className="s-menu s-menu-sub" role="menu">
+                  <a
+                    className="s-menu-item"
+                    role="menuitem"
+                    href={clip.download_url || clipDownloadUrl(song.id, clip.variant, "mp3")}
+                    download
+                    onClick={() => setRowMenuKey(null)}
+                  >
+                    MP3
+                  </a>
+                  <a
+                    className="s-menu-item"
+                    role="menuitem"
+                    href={clipDownloadUrl(song.id, clip.variant, "wav")}
+                    download
+                    onClick={() => setRowMenuKey(null)}
+                  >
+                    WAV
+                  </a>
+                  {!instrumental ? (
+                    <>
+                      <a
+                        className="s-menu-item"
+                        role="menuitem"
+                        href={clipDownloadUrl(song.id, clip.variant, "lrc")}
+                        download
+                        onClick={() => setRowMenuKey(null)}
+                      >
+                        LRC
+                      </a>
+                      <a
+                        className="s-menu-item"
+                        role="menuitem"
+                        href={clipDownloadUrl(song.id, clip.variant, "srt")}
+                        download
+                        onClick={() => setRowMenuKey(null)}
+                      >
+                        SRT
+                      </a>
+                    </>
+                  ) : null}
+                </div>
+              ) : null}
               <button
                 type="button"
                 className="s-menu-item"
