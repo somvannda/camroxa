@@ -211,7 +211,13 @@ class TestWebMusicRouter:
         assert b"cdn1.suno.ai" not in response.content
         assert b"ID3fake" in response.content
         mock_web_music_service.proxy_playback.assert_awaited()
-        assert mock_web_music_service.proxy_playback.await_args.kwargs["request_headers"] is not None
+        # The route forwards the client Range header; the anti-stitch guard is
+        # applied by _enforce_stream_rate_limit (stricter when Range is absent),
+        # so no raw request_headers mapping is passed to the service.
+        assert (
+            mock_web_music_service.proxy_playback.await_args.kwargs["range_header"]
+            == "bytes=0-1023"
+        )
         mock_web_music_service.download_mp3.assert_not_awaited()
 
         path_response = await client.get(
