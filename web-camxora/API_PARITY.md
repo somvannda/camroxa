@@ -71,11 +71,21 @@ lyrics drafts, playlist style import, plans.
 2. **Image attach — done** (B2 upload → `image_urls` → `imageUrls`).
 3. **Video — done** (cover-art MP4 render + download).
 4. **Playlist reference — done** (style import).
-5. **Voice — verified** (saved persona attach + generation); create-from-song
-   needs a Voice-entitled account that owns the source song.
+5. **Voice — done for saved personas and library songs**; raw sample
+   Record → Trim → Phrase → Verify → Persona is implemented end-to-end through
+   platform_api → musicapi but still needs a live microphone test.
 
 ## 6. Pre-deploy retest queue
 
+- [ ] **Raw voice sample verification**
+  - Source sample extraction is verified (internal route returned 200 for a real
+    vocal MP3).
+  - Test the full UI flow with a real microphone: Record → Trim → Use Voice →
+    read the phrase → Verify → name → appears in My Voices.
+  - Trim is currently visual only; the full sample is submitted. Implement
+    range-trimming before claiming exact Suno parity.
+  - Verification/persona creation still depends on the Premier voice entitlement
+    and available credits.
 - [ ] **Voice persona creation after the Premier credit refresh**
   - On 2026-10-28 the Premier account `iamduke1987@gmail.com` had **0 credits**
     (plan renews around **2026-11-07**), so it could not generate new source songs.
