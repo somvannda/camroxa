@@ -58,6 +58,7 @@ export async function putObject(
   key: string,
   body: Buffer,
   contentType: string,
+  opts: { cacheControl?: string } = {},
 ): Promise<string> {
   await getClient().send(
     new PutObjectCommand({
@@ -65,6 +66,9 @@ export async function putObject(
       Key: key,
       Body: body,
       ContentType: contentType,
+      // Browsers and the CDN both need an explicit lifetime; Cloudflare only
+      // caches ~120 minutes for a response that carries no Cache-Control.
+      CacheControl: opts.cacheControl ?? config.storage.cacheControl,
     }),
   );
   return key;
