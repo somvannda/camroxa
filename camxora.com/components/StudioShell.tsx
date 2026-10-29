@@ -313,7 +313,7 @@ export function StudioShell() {
               </span>
             ))}
           </div>
-          <div className="stv-grid">
+          <div className="stv-grid" style={{ width: `${Math.round(zoom * 100)}%` }}>
             {Array.from({ length: BARS }).map((_, index) => (
               <span key={index} style={{ left: `${(index / BARS) * 100}%` }} />
             ))}
@@ -336,6 +336,16 @@ export function StudioShell() {
                     <span
                       key={`${clipId}-${clipIndex}`}
                       className="stv-clip"
+                      onClick={() => {
+                        const clip =
+                          song?.clips?.find((item) => item.ready) ??
+                          song?.clips?.[0];
+                        const variant = clip?.variant === "alt" ? "alt" : "ok";
+                        setActiveUrl(
+                          clip?.audio_url ||
+                            `/api/v3/web-music/generations/${clipId}/stream/${variant}`
+                        );
+                      }}
                       style={{
                         left: `${clipIndex * 18}%`,
                         width: "16%",

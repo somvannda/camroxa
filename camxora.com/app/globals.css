@@ -4591,3 +4591,8 @@ html{color-scheme:dark}
 .s-btn,.btn,.s-btn-icon{justify-content:center;align-items:center;text-align:center}
 .s-btn .icon,.btn .icon,.s-btn svg{flex:none}
 .stv-pill,.st-landing .s-btn{justify-content:center}
+
+/* Timeline clips: click to load, hover affordance */
+.stv-clip{cursor:pointer}
+.stv-clip:hover{filter:brightness(1.08)}
+.stv-grid{max-width:400%;transition:width .15s ease}
