@@ -663,6 +663,21 @@ export async function requestWebMusicStaffPickRemix(
   });
 }
 
+/** Sonu Studio project that owns this clip (milestone 1 of the Studio clone). */
+export async function studioSessionForClip(
+  taskId: string,
+  variant: "ok" | "alt" = "ok"
+): Promise<{ project_id: string }> {
+  return musicJson<{ project_id: string }>(
+    "/api/v3/web-music/studio/sessions/from-clip",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId, variant }),
+    }
+  );
+}
+
 export type WebMusicReportReason =
   | "copyright"
   | "explicit"
