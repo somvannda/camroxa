@@ -59,6 +59,14 @@ import {
 
 const PAGE_SIZE = 50;
 
+/** Badge tone for the model label (one colour per V6 variant), matching Create. */
+function modelBadgeTone(model?: string | null): "pro" | "mini" | "wild" {
+  const value = String(model ?? "").toUpperCase().replace(/[\s-]/g, "_");
+  if (value.includes("WILD")) return "wild";
+  if (value.includes("MINI")) return "mini";
+  return "pro";
+}
+
 const TABS = [
   { id: "songs", label: "Songs" },
   { id: "playlists", label: "Playlists" },
@@ -748,10 +756,11 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
 
   const renderClipRow = (row: LibRow) => {
     const { song, clip, key, title, ready, duration, liked, disliked } = row;
+    const failed = !ready && /fail|error|cancel/i.test(String(song.status ?? ""));
     const selectedForTrash = trashMode && selectedIds.includes(song.id);
     return (
       <div
-        className={`s-row${selectedForTrash ? " selected" : ""}`}
+        className={`s-row${selectedForTrash ? " selected" : ""}${failed ? " failed" : ""}`}
         key={key}
         role="group"
         aria-label={title}
@@ -787,7 +796,10 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           <img src={clip.image_url || "/hero.png"} alt="" loading="lazy" />
           <span className="s-cover-play">
             <span>
-              <Icon name={ready ? "fa-play" : "fa-hourglass-half"} />
+              <Icon
+                name={ready ? "fa-play" : failed ? "fa-circle-xmark" : "fa-hourglass-half"}
+                className={ready ? "" : failed ? "s-row-failed-icon" : "s-hourglass"}
+              />
             </span>
           </span>
           {duration ? <span className="s-dur">{formatClipDuration(duration)}</span> : null}
@@ -806,16 +818,20 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             >
               {title}
             </a>
-            <span className="s-tag">{song.model_label || song.model || "V6"}</span>
+            <span className={`s-model-badge ${modelBadgeTone(song.model || song.model_label)}`}>
+              {song.model_label || song.model || "V6"}
+            </span>
             {!ready ? (
-              <span className={`s-status ${statusClass(song.status)}`}>
+              <span
+                className={`s-status ${statusClass(song.status)}${failed ? " s-row-failed-text" : ""}`}
+              >
                 {statusLabel(song.status)}
               </span>
             ) : null}
             {song.is_preview ? <span className="s-status live">Preview</span> : null}
           </div>
           <div className="s-row-desc">
-            {clipVersionLabel(clip.variant)} Â· {song.style || "No style tags"}
+            {clipVersionLabel(clip.variant)} · {song.style || "No style tags"}
           </div>
           <div className="s-row-actions" onClick={(event) => event.stopPropagation()}>
             <button
@@ -981,8 +997,8 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
         </div>
         <div className="s-row-desc">
           {track.artist_name || "Camxora"}
-          {track.duration_seconds ? ` Â· ${formatClipDuration(track.duration_seconds)}` : ""}
-          {track.added_at ? ` Â· ${formatDate(track.added_at)}` : ""}
+          {track.duration_seconds ? ` · ${formatClipDuration(track.duration_seconds)}` : ""}
+          {track.added_at ? ` · ${formatDate(track.added_at)}` : ""}
         </div>
         <div className="s-row-actions" onClick={(event) => event.stopPropagation()}>
           <button
@@ -1010,7 +1026,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       </span>
       <b>{playlist.name}</b>
       <small>
-        {playlist.song_count ?? 0} {playlist.song_count === 1 ? "track" : "tracks"} Â·{" "}
+        {playlist.song_count ?? 0} {playlist.song_count === 1 ? "track" : "tracks"} ·{" "}
         {playlist.is_public ? "Public" : "Private"}
       </small>
     </button>
@@ -1156,13 +1172,13 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 <div className="s-row-body">
                   <div className="s-row-title">
                     <b>{clip?.title || song.title}</b>
-                    <span className="s-row-version">Â· {versionLabel}</span>
+                    <span className="s-row-version">· {versionLabel}</span>
                     <span className="s-model-badge">
                       {song.model_label || song.model || "V6"}
                     </span>
                   </div>
                   <div className="s-row-desc">
-                    In Trash{song.created_at ? ` Â· ${formatDate(song.created_at)}` : ""}
+                    In Trash{song.created_at ? ` · ${formatDate(song.created_at)}` : ""}
                   </div>
                 </div>
                 <div className="s-trash-actions">
@@ -1281,7 +1297,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 <b>{workspace.name}</b>
                 <small>
                   {workspace.is_default ? "Default workspace" : "Workspace"}
-                  {workspace.created_at ? ` Â· ${formatDate(workspace.created_at)}` : ""}
+                  {workspace.created_at ? ` · ${formatDate(workspace.created_at)}` : ""}
                 </small>
               </div>
             ))}
@@ -1315,8 +1331,8 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
               </span>
               <b>{project.title}</b>
               <small>
-                v{project.major_version} Â· {project.bpm} BPM Â· {project.time_signature}
-                {project.updated_at ? ` Â· ${formatDate(project.updated_at)}` : ""}
+                v{project.major_version} · {project.bpm} BPM · {project.time_signature}
+                {project.updated_at ? ` · ${formatDate(project.updated_at)}` : ""}
               </small>
             </Link>
           ))}
