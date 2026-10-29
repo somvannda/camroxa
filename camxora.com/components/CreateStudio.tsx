@@ -755,6 +755,16 @@ export function CreateStudio() {
   }, [addMenuOpen]);
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prefill = params.get("prompt");
+    if (!prefill) return;
+    setMode("simple");
+    setPrompt(prefill);
+    window.history.replaceState(null, "", "/create");
+    document.getElementById("create-prompt")?.focus();
+  }, []);
+
+  useEffect(() => {
     if (remixHandledRef.current) return;
     const params = new URLSearchParams(window.location.search);
     const taskId = params.get("remix");
@@ -1592,6 +1602,30 @@ export function CreateStudio() {
       audioUrl,
     });
     setToast("Added to queue");
+  }
+
+  function reusePromptFrom(song: WebMusicGeneration) {
+    const text = (song.style || song.lyrics || song.title || "").trim();
+    if (!text) {
+      setToast("This song has no prompt to reuse");
+      return;
+    }
+    if (mode !== "simple") setMode("simple");
+    setPrompt(text);
+    document.getElementById("create-prompt")?.focus();
+    setToast("Prompt reused");
+  }
+
+  async function coverFromRow(song: WebMusicGeneration, clip: WebMusicClip) {
+    try {
+      await coverWebMusicGeneration(song.id, {
+        variant: clip.variant === "alt" ? "alt" : "ok",
+        prompt: (song.style || song.title || "").trim(),
+      });
+      setToast("Cover queued");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not cover this song");
+    }
   }
 
   async function addRowToPlaylist(
@@ -2897,9 +2931,34 @@ export function CreateStudio() {
                 ) : null}
               </SMenuSubContent>
             </SMenuSub>
-            <SMenuItem onSelect={() => openRemixPicker()}>
-              <Icon name="fa-wand-magic-sparkles" /> Remix
-            </SMenuItem>
+            <SMenuSub>
+              <SMenuSubTrigger>
+                <Icon name="fa-repeat" /> Remix
+              </SMenuSubTrigger>
+              <SMenuSubContent>
+                <SMenuItem disabled={!ready} onSelect={() => void coverFromRow(song, clip)}>
+                  <Icon name="fa-retweet" /> Cover
+                </SMenuItem>
+                <SMenuItem onSelect={() => reusePromptFrom(song)}>
+                  <Icon name="fa-quote-left" /> Reuse Prompt
+                </SMenuItem>
+                <SMenuItem disabled title="Mashup picks a second song — coming soon">
+                  <Icon name="fa-code-merge" /> Mashup
+                </SMenuItem>
+                <SMenuItem disabled title="Coming soon">
+                  <Icon name="fa-waveform" /> Sample this song
+                </SMenuItem>
+                <SMenuItem disabled title="Needs a Pro entitlement">
+                  <Icon name="fa-wand-sparkles" /> Use as Inspiration
+                  <span className="s-tag">Pro</span>
+                </SMenuItem>
+                <SMenuItem disabled title="Needs a Voice-entitled account">
+                  <Icon name="fa-microphone-lines" /> Voice
+                  <span className="s-tag">Pro</span>
+                </SMenuItem>
+              </SMenuSubContent>
+            </SMenuSub>
+            <SMenuSeparator />
             <SMenuItem disabled={!ready} onSelect={() => enqueueSong(song, clip)}>
               <Icon name="fa-bars-staggered" /> Add to Queue
             </SMenuItem>

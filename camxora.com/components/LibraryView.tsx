@@ -30,6 +30,7 @@ import {
   deleteWebMusicGeneration,
   restoreWebMusicGeneration,
   setWebMusicTrash,
+  coverWebMusicGeneration,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
   fetchWebMusicDislikedKeys,
@@ -565,6 +566,18 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     }
   }
 
+  async function coverFromLibrary(song: WebMusicGeneration, clip: WebMusicClip) {
+    try {
+      await coverWebMusicGeneration(song.id, {
+        variant: clip.variant === "alt" ? "alt" : "ok",
+        prompt: (song.style || song.title || "").trim(),
+      });
+      setToast("Cover queued");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not cover this song");
+    }
+  }
+
   function enqueueClip(song: WebMusicGeneration, clip: WebMusicClip) {
     const variant = clip.variant || "ok";
     const audioUrl =
@@ -1036,13 +1049,41 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             <SMenuItem onSelect={() => toggleDislike(song, clip)}>
               <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
             </SMenuItem>
-            <SMenuItem asChild>
-              <Link
-                href={`/create?remix=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`}
-              >
-                <Icon name="fa-wand-magic-sparkles" /> Remix
-              </Link>
-            </SMenuItem>
+            <SMenuSub>
+              <SMenuSubTrigger>
+                <Icon name="fa-repeat" /> Remix
+              </SMenuSubTrigger>
+              <SMenuSubContent>
+                <SMenuItem
+                  disabled={!ready}
+                  onSelect={() => void coverFromLibrary(song, clip)}
+                >
+                  <Icon name="fa-retweet" /> Cover
+                </SMenuItem>
+                <SMenuItem
+                  onSelect={() => {
+                    const text = (song.style || song.lyrics || song.title || "").trim();
+                    window.location.href = `/create?prompt=${encodeURIComponent(text)}`;
+                  }}
+                >
+                  <Icon name="fa-quote-left" /> Reuse Prompt
+                </SMenuItem>
+                <SMenuItem disabled title="Mashup picks a second song — coming soon">
+                  <Icon name="fa-code-merge" /> Mashup
+                </SMenuItem>
+                <SMenuItem disabled title="Coming soon">
+                  <Icon name="fa-waveform" /> Sample this song
+                </SMenuItem>
+                <SMenuItem disabled title="Needs a Pro entitlement">
+                  <Icon name="fa-wand-sparkles" /> Use as Inspiration
+                  <span className="s-tag">Pro</span>
+                </SMenuItem>
+                <SMenuItem disabled title="Needs a Voice-entitled account">
+                  <Icon name="fa-microphone-lines" /> Voice
+                  <span className="s-tag">Pro</span>
+                </SMenuItem>
+              </SMenuSubContent>
+            </SMenuSub>
             <SMenuItem disabled={!ready} onSelect={() => enqueueClip(song, clip)}>
               <Icon name="fa-bars-staggered" /> Add to Queue
             </SMenuItem>
