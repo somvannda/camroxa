@@ -3275,6 +3275,12 @@ html{color-scheme:dark}
 .s-menu-item:disabled{color:var(--s-inactive);cursor:not-allowed}
 .s-menu-item:disabled:hover{background:transparent;color:var(--s-inactive)}
 .s-menu-item .check{margin-left:auto;font-size:11px;color:var(--s-accent)}
+/* Radix items carry `focus:bg-accent`; keep the dark menu surface so the
+   custom two-line model items stay readable when highlighted. */
+.s-menu .s-menu-item:focus,
+.s-menu .s-menu-item[data-highlighted]{background:rgba(255,255,255,.07);color:var(--s-text)}
+.s-menu .s-menu-item:focus .s-note,
+.s-menu .s-menu-item[data-highlighted] .s-note{color:var(--s-text2)}
 .s-menu-sep{height:1px;background:var(--s-line);margin:4px 0}
 .s-menu-sub{position:absolute;right:calc(100% + 4px);top:0;min-width:140px}
 

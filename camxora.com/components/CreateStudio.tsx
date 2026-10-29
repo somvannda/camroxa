@@ -3154,7 +3154,7 @@ export function CreateStudio() {
                         {[
                           { value: "V6" as WebMusicModel, name: "v6", tag: "Pro", desc: "Powerful. Versatile. Refined. Our best model yet." },
                           { value: "V6_WILD" as WebMusicModel, name: "v6-wild", tag: "Pro", desc: "Best for experimental ideas." },
-                          { value: "V6_MINI" as WebMusicModel, name: "v6-mini", tag: "", desc: "A free, more efficient version of premium v6 models." },
+                          { value: "V6_MINI" as WebMusicModel, name: "v6-mini", tag: "", desc: "A faster, more efficient version of the premium v6 models." },
                         ].map((option) => (
                           <SMenuRadioItem
                             key={option.value}
