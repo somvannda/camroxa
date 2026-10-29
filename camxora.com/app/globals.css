@@ -4563,3 +4563,11 @@ html{color-scheme:dark}
 .st-song-list{border-radius:12px}
 .st-song-row{padding:12px 16px}
 .st-landing-right .s-day{margin-bottom:14px}
+
+/* Studio landing rows reuse .s-row; give the artwork the shared row scale */
+.st-landing .s-row .st-song-art{width:40px;height:40px;border-radius:6px;flex:none}
+.st-landing .s-row{padding:10px 14px}
+.st-landing .s-row+.s-row{border-top:1px solid var(--s-line)}
+.st-landing .s-row .s-btn{flex:none}
+.st-landing .st-group{margin-top:6px}
+.st-landing .st-song-list{background:var(--s-bg2)}

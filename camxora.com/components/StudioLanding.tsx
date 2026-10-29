@@ -187,7 +187,7 @@ export function StudioLanding() {
               <div key={label}>
                 <div className="st-group">{label}</div>
                 {list.map((song) => (
-                  <div className="st-song-row" key={song.id}>
+                  <div className="s-row s-row-compact" key={song.id}>
                     <span
                       className="st-song-art"
                       style={
@@ -196,12 +196,14 @@ export function StudioLanding() {
                           : undefined
                       }
                     />
-                    <div className="st-song-body">
-                      <b>{song.title}</b>
-                      <small>{song.style || "—"}</small>
-                      <small className="st-song-tags">
-                        {song.model_label || song.model || "V6"}
-                      </small>
+                    <div className="s-row-body">
+                      <div className="s-row-title">
+                        <b>{song.title}</b>
+                        <span className="s-tag">
+                          {song.model_label || song.model || "V6"}
+                        </span>
+                      </div>
+                      <div className="s-row-desc">{song.style || "—"}</div>
                     </div>
                     <button
                       type="button"
