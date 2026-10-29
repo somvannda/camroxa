@@ -4532,9 +4532,16 @@ html{color-scheme:dark}
 .sidebar.collapsed .side-user-out{padding:4px}
 
 /* Sidebar: collapse handle in the logo row, compact account only when collapsed */
-.side-head{display:flex;align-items:center;gap:8px;padding:0 14px;margin-bottom:18px;position:relative;z-index:10}
+.side-head{display:flex;align-items:center;gap:8px;padding:0 14px;margin-bottom:18px;position:static;z-index:10}
 .side-head .brand{flex:1;min-width:0;padding:0;margin:0}
-.side-head .side-collapse{position:static;right:auto;top:auto;width:22px;height:22px;flex:none;border-radius:50%;border:1px solid var(--s-line);background:transparent;color:var(--s-text3);display:grid;place-items:center;cursor:pointer;z-index:10}
+.side-head .side-collapse{position:absolute;right:-10px;top:26px;width:22px;height:22px;flex:none;border-radius:50%;border:1px solid var(--s-line);background:transparent;color:var(--s-text3);display:grid;place-items:center;cursor:pointer;z-index:10}
 .side-head .side-collapse:hover{color:var(--s-text);border-color:var(--s-line2)}
 .side-mini{display:flex;flex-direction:column;align-items:center;gap:8px;padding:10px 8px 14px;background:transparent;border:0}
 .side-mini .side-user-out{padding:4px;border-radius:50%}
+
+/* Animate the collapse (the grid column is driven by --side) */
+@property --side{syntax:"<length>";inherits:true;initial-value:288px}
+:root{transition:--side .22s cubic-bezier(.4,0,.2,1)}
+.sidebar{transition:width .22s cubic-bezier(.4,0,.2,1)}
+.side-collapse{transition:transform .22s ease,color .15s ease,border-color .15s ease}
+.side-collapse:hover{transform:scale(1.08)}
