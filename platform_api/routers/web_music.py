@@ -57,6 +57,11 @@ class WebMusicGenerateRequest(BaseModel):
     workspace_id: UUID | None = None
 
 
+class TrashClipsRequest(BaseModel):
+    trash: bool
+    clip_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
 class WebMusicClipResponse(BaseModel):
     variant: str
     label: str
@@ -271,6 +276,8 @@ class WebMusicGenerationResponse(BaseModel):
     style_weight: float | None = None
     weirdness_constraint: float | None = None
     audio_weight: float | None = None
+    trashed_variants: list[str] = Field(default_factory=list)
+    purged_variants: list[str] = Field(default_factory=list)
     clips: list[WebMusicClipResponse] = Field(default_factory=list)
 
 
@@ -307,6 +314,12 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         style_weight=_optional_float(payload.get("style_weight")),
         weirdness_constraint=_optional_float(payload.get("weirdness_constraint")),
         audio_weight=_optional_float(payload.get("audio_weight")),
+        trashed_variants=[
+            str(value) for value in (payload.get("trashed_variants") or [])
+        ],
+        purged_variants=[
+            str(value) for value in (payload.get("purged_variants") or [])
+        ],
         clips=[WebMusicClipResponse(**clip) for clip in payload.get("clips") or []],
     )
 
@@ -1521,12 +1534,14 @@ async def list_generations(
     limit: int = Query(40, ge=1, le=100),
     offset: int = Query(0, ge=0),
     workspace_id: UUID | None = None,
+    trashed: bool = False,
 ) -> WebMusicGenerationListResponse:
     payload = await service.list_generations(
         UUID(ctx.user_id),
         limit=limit,
         offset=offset,
         workspace_id=workspace_id,
+        trashed=trashed,
     )
     return WebMusicGenerationListResponse(
         items=[_generation_response(item) for item in payload["items"]],
@@ -1587,14 +1602,51 @@ async def unlock_preview(
     return _generation_response(payload)
 
 
+@router.post("/generations/trash", status_code=200)
+async def set_generations_trash(
+    body: TrashClipsRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    """Batch move/restore clips, mirroring Suno's `POST /api/gen/trash`."""
+    updated = await service.set_trash(
+        UUID(ctx.user_id), body.clip_ids, trashed=body.trash
+    )
+    return {"updated": updated}
+
+
 @router.delete("/generations/{task_id}", status_code=204)
 async def delete_generation(
     task_id: UUID,
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
+    permanent: bool = Query(False),
+    variant: Literal["ok", "alt"] | None = Query(None),
 ) -> Response:
-    await service.delete_generation(UUID(ctx.user_id), task_id)
+    await service.delete_generation(
+        UUID(ctx.user_id), task_id, variant=variant, permanent=permanent
+    )
     return Response(status_code=204)
+
+
+@router.post("/generations/{task_id}/restore", status_code=200)
+async def restore_generation(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    variant: Literal["ok", "alt"] | None = Query(None),
+) -> dict:
+    await service.restore_generation(UUID(ctx.user_id), task_id, variant=variant)
+    return {"status": "restored"}
+
+
+@router.delete("/trash", status_code=200)
+async def empty_trash(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    deleted = await service.empty_trash(UUID(ctx.user_id))
+    return {"deleted": deleted}
 
 
 @router.get("/generations/{task_id}/download")

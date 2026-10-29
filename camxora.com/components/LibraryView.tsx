@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -25,6 +25,8 @@ import {
   createWebMusicPlaylist,
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
+  restoreWebMusicGeneration,
+  setWebMusicTrash,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
   getWebMusicGeneration,
@@ -67,6 +69,7 @@ const TABS = [
   { id: "hooks", label: "Hooks" },
   { id: "likedHooks", label: "Liked Hooks" },
   { id: "history", label: "History" },
+  { id: "trash", label: "Trash" },
 ] as const;
 
 type LibTab = (typeof TABS)[number]["id"];
@@ -99,7 +102,7 @@ type LibRow = {
 };
 
 type ConfirmState =
-  | { kind: "generations"; ids: string[] }
+  | { kind: "generations"; ids: string[]; permanent?: boolean }
   | { kind: "playlist"; playlist: WebMusicPlaylistSummary }
   | null;
 
@@ -137,12 +140,12 @@ function errorText(result: PromiseSettledResult<unknown>, fallback: string): str
     : fallback;
 }
 
-export function LibraryView() {
+export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const { user, loading: authLoading } = useAuth();
   const { playTrack } = usePlayer();
   const mounted = useRef(true);
 
-  const [tab, setTab] = useState<LibTab>("songs");
+  const [tab, setTab] = useState<LibTab>(initialTab ?? "songs");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<FeedFilter[]>([]);
   const [sort, setSort] = useState<FeedSort>("new");
@@ -163,6 +166,9 @@ export function LibraryView() {
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
 
   const [trashMode, setTrashMode] = useState(false);
+  const [trashItems, setTrashItems] = useState<WebMusicGeneration[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
+  const [trashSelected, setTrashSelected] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachNotice, setAttachNotice] = useState<null | "upload" | "record">(null);
 
@@ -254,6 +260,35 @@ export function LibraryView() {
   }, [tab, search, filters, sort]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("trash") === "1") setTrashMode(true);
+  }, []);
+
+  useEffect(() => {
+    setTrashMode(tab === "trash");
+  }, [tab]);
+
+  useEffect(() => {
+    if (!trashMode) return;
+    let active = true;
+    setTrashLoading(true);
+    listWebMusicGenerations(100, 0, undefined, true)
+      .then((page) => {
+        if (active) setTrashItems(page.items);
+      })
+      .catch(() => {
+        if (active) setTrashItems([]);
+      })
+      .finally(() => {
+        if (active) setTrashLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [trashMode]);
+
+  useEffect(() => {
     const measure = () => {
       const list = tabListRef.current;
       if (!list) return;
@@ -323,7 +358,9 @@ export function LibraryView() {
     dislikedKeys.includes(clipTrackKey(song.id, clip.variant));
 
   const allRows: LibRow[] = generations.flatMap((song) =>
-    generationClips(song).map((clip) => ({
+    generationClips(song)
+      .filter((clip) => ![...(song.trashed_variants ?? []), ...(song.purged_variants ?? [])].includes(clip.variant))
+      .map((clip) => ({
       song,
       clip,
       key: clipTrackKey(song.id, clip.variant),
@@ -554,7 +591,7 @@ export function LibraryView() {
     }
   }
 
-  async function deleteGenerations(ids: string[]) {
+  async function deleteGenerations(ids: string[], permanent = false) {
     setConfirm(null);
     if (!ids.length || deleting) return;
     setDeleting(true);
@@ -562,7 +599,7 @@ export function LibraryView() {
     const failures: string[] = [];
     for (const id of ids) {
       try {
-        await deleteWebMusicGeneration(id);
+        await deleteWebMusicGeneration(id, { permanent });
         deleted.push(id);
       } catch (cause) {
         failures.push(cause instanceof Error ? cause.message : "Could not delete song");
@@ -573,6 +610,7 @@ export function LibraryView() {
     setGenerations((current) => current.filter((item) => !gone.has(item.id)));
     setTotalGenerations((current) => Math.max(0, current - deleted.length));
     setSelectedIds((current) => current.filter((id) => !gone.has(id)));
+    setTrashItems((current) => current.filter((item) => !gone.has(item.id)));
     if (detailId && gone.has(detailId)) {
       closeDetail();
       setDetail(null);
@@ -581,7 +619,13 @@ export function LibraryView() {
     }
     setDeleting(false);
     setToast(
-      deleted.length === 1 ? "Song deleted" : `${deleted.length} songs deleted`
+      permanent
+        ? deleted.length === 1
+          ? "Deleted forever"
+          : `${deleted.length} songs deleted forever`
+        : deleted.length === 1
+          ? "Moved to Trash"
+          : `${deleted.length} songs moved to Trash`
     );
     if (failures.length) setError(failures[0]);
     if (!deleted.length) setToast("Could not delete song");
@@ -647,14 +691,8 @@ export function LibraryView() {
   }
 
   function toggleTrash() {
-    if (trashMode) {
-      setTrashMode(false);
-      setSelectedIds([]);
-      return;
-    }
-    setTrashMode(true);
     setSelectedIds([]);
-    setTab("songs");
+    setTab(trashMode ? "songs" : "trash");
   }
 
   function toggleSelected(id: string) {
@@ -777,7 +815,7 @@ export function LibraryView() {
             {song.is_preview ? <span className="s-status live">Preview</span> : null}
           </div>
           <div className="s-row-desc">
-            {clipVersionLabel(clip.variant)} · {song.style || "No style tags"}
+            {clipVersionLabel(clip.variant)} Â· {song.style || "No style tags"}
           </div>
           <div className="s-row-actions" onClick={(event) => event.stopPropagation()}>
             <button
@@ -943,8 +981,8 @@ export function LibraryView() {
         </div>
         <div className="s-row-desc">
           {track.artist_name || "Camxora"}
-          {track.duration_seconds ? ` · ${formatClipDuration(track.duration_seconds)}` : ""}
-          {track.added_at ? ` · ${formatDate(track.added_at)}` : ""}
+          {track.duration_seconds ? ` Â· ${formatClipDuration(track.duration_seconds)}` : ""}
+          {track.added_at ? ` Â· ${formatDate(track.added_at)}` : ""}
         </div>
         <div className="s-row-actions" onClick={(event) => event.stopPropagation()}>
           <button
@@ -972,13 +1010,189 @@ export function LibraryView() {
       </span>
       <b>{playlist.name}</b>
       <small>
-        {playlist.song_count ?? 0} {playlist.song_count === 1 ? "track" : "tracks"} ·{" "}
+        {playlist.song_count ?? 0} {playlist.song_count === 1 ? "track" : "tracks"} Â·{" "}
         {playlist.is_public ? "Public" : "Private"}
       </small>
     </button>
   );
 
+  async function reloadTrash() {
+    try {
+      const page = await listWebMusicGenerations(100, 0, undefined, true);
+      if (mounted.current) setTrashItems(page.items);
+    } catch {
+      /* keep the current list */
+    }
+  }
+
+  async function purgeTrashVersion(id: string, variant: string) {
+    try {
+      await deleteWebMusicGeneration(id, {
+        permanent: true,
+        variant: variant as "ok" | "alt",
+      });
+      if (!mounted.current) return;
+      setTrashSelected((current) => current.filter((key) => key !== `${id}:${variant}`));
+      await reloadTrash();
+      setToast("Deleted permanently");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not delete");
+    }
+  }
+
+  async function purgeSelectedTrash() {
+    if (!trashSelected.length) return;
+    try {
+      for (const key of trashSelected) {
+        const [id, variant] = key.split(":");
+        await deleteWebMusicGeneration(id, {
+          permanent: true,
+          variant: variant as "ok" | "alt",
+        });
+      }
+      setTrashSelected([]);
+      await reloadTrash();
+      setToast("Deleted permanently");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not delete");
+    }
+  }
+
+  async function restoreSelectedTrash() {
+    const keys = trashSelected;
+    if (!keys.length) return;
+    try {
+      await setWebMusicTrash(keys, false);
+      if (!mounted.current) return;
+      setTrashItems((current) =>
+        current
+          .map((item) => {
+            const remove = keys
+              .filter((key) => key.startsWith(`${item.id}:`))
+              .map((key) => key.split(":")[1]);
+            return remove.length
+              ? {
+                  ...item,
+                  trashed_variants: (item.trashed_variants ?? []).filter(
+                    (value) => !remove.includes(value)
+                  ),
+                }
+              : item;
+          })
+          .filter((item) => (item.trashed_variants ?? []).length > 0)
+      );
+      setTrashSelected([]);
+      setToast("Restored to library");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not restore");
+    }
+  }
+
+  async function restoreSong(id: string, variant?: "ok" | "alt") {
+    try {
+      await restoreWebMusicGeneration(id, variant);
+      if (!mounted.current) return;
+      setTrashItems((current) =>
+        current
+          .map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  trashed_variants: (item.trashed_variants ?? []).filter(
+                    (value) => (variant ? value !== variant : false)
+                  ),
+                }
+              : item
+          )
+          .filter((item) => (item.trashed_variants ?? []).length > 0)
+      );
+      setToast("Restored to library");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not restore the song");
+    }
+  }
+
+  const renderTrash = () => {
+    if (trashLoading) return <p className="s-note">Loading Trashâ€¦</p>;
+    if (!trashItems.length) {
+      return renderEmpty(
+        "fa-trash",
+        "Trash is empty",
+        "Songs you move to Trash land here first, so you can restore them.",
+        <button
+          type="button"
+          className="s-btn s-btn-secondary"
+          onClick={() => setTab("songs")}
+        >
+          Back to library
+        </button>
+      );
+    }
+    return (
+      <div>
+        {trashItems.flatMap((song) =>
+          (song.trashed_variants ?? []).map((variant) => {
+            const clip = generationClips(song).find((item) => item.variant === variant);
+            const versionLabel = variant === "alt" ? "Version 2" : "Version 1";
+            return (
+              <div className="s-row" key={`${song.id}:${variant}`}>
+                <button
+                  type="button"
+                  className={`s-selectbox${trashSelected.includes(`${song.id}:${variant}`) ? " on" : ""}`}
+                  aria-label={`Select ${clip?.title || song.title}`}
+                  aria-pressed={trashSelected.includes(`${song.id}:${variant}`)}
+                  onClick={() =>
+                    setTrashSelected((current) =>
+                      current.includes(`${song.id}:${variant}`)
+                        ? current.filter((key) => key !== `${song.id}:${variant}`)
+                        : [...current, `${song.id}:${variant}`]
+                    )
+                  }
+                >
+                  {trashSelected.includes(`${song.id}:${variant}`) ? (
+                    <Icon name="fa-check" />
+                  ) : null}
+                </button>
+                <div className="s-row-body">
+                  <div className="s-row-title">
+                    <b>{clip?.title || song.title}</b>
+                    <span className="s-row-version">Â· {versionLabel}</span>
+                    <span className="s-model-badge">
+                      {song.model_label || song.model || "V6"}
+                    </span>
+                  </div>
+                  <div className="s-row-desc">
+                    In Trash{song.created_at ? ` Â· ${formatDate(song.created_at)}` : ""}
+                  </div>
+                </div>
+                <div className="s-trash-actions">
+                  <button
+                    type="button"
+                    className="s-btn s-btn-sm s-btn-secondary"
+                    onClick={() => void restoreSong(song.id, variant as "ok" | "alt")}
+                    disabled={deleting}
+                  >
+                    <Icon name="fa-rotate-left" /> Restore to library
+                  </button>
+                  <button
+                    type="button"
+                    className="s-btn s-btn-sm s-danger-text"
+                    onClick={() => void purgeTrashVersion(song.id, variant)}
+                    disabled={deleting}
+                  >
+                    <Icon name="fa-trash" /> Delete permanently
+                  </button>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    );
+  };
+
   const tabBody = () => {
+    if (trashMode) return renderTrash();
     if (bootLoading) return skeletonRows;
 
     if (tab === "songs" || tab === "history") {
@@ -1067,7 +1281,7 @@ export function LibraryView() {
                 <b>{workspace.name}</b>
                 <small>
                   {workspace.is_default ? "Default workspace" : "Workspace"}
-                  {workspace.created_at ? ` · ${formatDate(workspace.created_at)}` : ""}
+                  {workspace.created_at ? ` Â· ${formatDate(workspace.created_at)}` : ""}
                 </small>
               </div>
             ))}
@@ -1101,8 +1315,8 @@ export function LibraryView() {
               </span>
               <b>{project.title}</b>
               <small>
-                v{project.major_version} · {project.bpm} BPM · {project.time_signature}
-                {project.updated_at ? ` · ${formatDate(project.updated_at)}` : ""}
+                v{project.major_version} Â· {project.bpm} BPM Â· {project.time_signature}
+                {project.updated_at ? ` Â· ${formatDate(project.updated_at)}` : ""}
               </small>
             </Link>
           ))}
@@ -1227,33 +1441,46 @@ export function LibraryView() {
 
         {trashMode ? (
           <div className="s-lib-bar">
-            <span className="s-note">{selectedIds.length} selected</span>
+            <span className="s-note">{trashSelected.length} selected</span>
             <span className="s-spacer" />
             <button
               type="button"
               className="s-btn s-btn-sm s-btn-secondary"
-              onClick={selectAllVisible}
-              disabled={!pageRows.length}
+              onClick={() => void restoreSelectedTrash()}
+              disabled={!trashSelected.length || deleting}
             >
-              Select all
+              <Icon name="fa-rotate-left" /> Restore selected
             </button>
             <button
               type="button"
               className="s-btn s-btn-sm s-danger-text"
-              onClick={() => setConfirm({ kind: "generations", ids: selectedIds })}
-              disabled={!selectedIds.length || deleting}
+              onClick={() => void purgeSelectedTrash()}
+              disabled={!trashSelected.length || deleting}
             >
-              <Icon name="fa-trash" /> Delete selected
+              <Icon name="fa-trash" /> Delete permanently
+            </button>
+            <button
+              type="button"
+              className="s-btn s-btn-sm s-danger-text"
+              onClick={() =>
+                setConfirm({
+                  kind: "generations",
+                  ids: trashItems.map((item) => item.id),
+                  permanent: true,
+                })
+              }
+              disabled={!trashItems.length || deleting}
+            >
+              <Icon name="fa-trash" /> Empty Trash
             </button>
             <button
               type="button"
               className="s-btn s-btn-sm s-btn-ghost"
               onClick={() => {
-                setTrashMode(false);
-                setSelectedIds([]);
+                setTab("songs");
               }}
             >
-              Cancel
+              Close
             </button>
           </div>
         ) : null}
@@ -1702,7 +1929,9 @@ export function LibraryView() {
             <div className="s-modal-head">
               <h3>
                 {confirm.kind === "generations"
-                  ? `Delete ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"}?`
+                  ? confirm.permanent
+                    ? `Delete ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"} forever?`
+                    : `Move ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"} to Trash?`
                   : "Delete playlist?"}
               </h3>
               <button
@@ -1717,7 +1946,9 @@ export function LibraryView() {
             <div className="s-modal-body">
               <p className="s-note">
                 {confirm.kind === "generations"
-                  ? "This permanently removes the selected songs and their files from your library."
+                  ? confirm.permanent
+                    ? "This permanently removes the selected songs and their files. It cannot be undone."
+                    : "They move to Trash first â€” restore them any time, or empty the trash to delete them for good."
                   : `"${confirm.playlist.name}" will be permanently deleted. The songs stay in your library.`}
               </p>
             </div>
@@ -1735,11 +1966,16 @@ export function LibraryView() {
                 className="s-btn s-btn-danger"
                 disabled={deleting}
                 onClick={() => {
-                  if (confirm.kind === "generations") void deleteGenerations(confirm.ids);
+                  if (confirm.kind === "generations")
+                    void deleteGenerations(confirm.ids, confirm.permanent);
                   else void deletePlaylist(confirm.playlist);
                 }}
               >
-                {deleting ? "Deleting..." : "Delete"}
+                {deleting
+                  ? "Workingâ€¦"
+                  : confirm.kind === "generations" && !confirm.permanent
+                    ? "Move to Trash"
+                    : "Delete forever"}
               </button>
             </div>
           </div>

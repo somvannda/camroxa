@@ -301,10 +301,12 @@ export async function generateWebMusic(
 export async function listWebMusicGenerations(
   limit = 40,
   offset = 0,
-  workspaceId?: string
+  workspaceId?: string,
+  trashed = false
 ): Promise<WebMusicGenerationPage> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (workspaceId) params.set("workspace_id", workspaceId);
+  if (trashed) params.set("trashed", "true");
   return musicJson<WebMusicGenerationPage>(`/api/v3/web-music/generations?${params.toString()}`);
 }
 
@@ -324,8 +326,49 @@ export async function updateWebMusicGenerationTitle(
   });
 }
 
-export async function deleteWebMusicGeneration(id: string): Promise<void> {
-  await musicJson<void>(`/api/v3/web-music/generations/${encodeURIComponent(id)}`, {
+export async function deleteWebMusicGeneration(
+  id: string,
+  options: { variant?: "ok" | "alt"; permanent?: boolean } = {}
+): Promise<void> {
+  const params = new URLSearchParams();
+  if (options.permanent) params.set("permanent", "true");
+  if (options.variant) params.set("variant", options.variant);
+  const query = params.toString() ? `?${params.toString()}` : "";
+  await musicJson<void>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}${query}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+/** Bring a trashed version (or the whole song) back into the library. */
+export async function restoreWebMusicGeneration(
+  id: string,
+  variant?: "ok" | "alt"
+): Promise<void> {
+  const query = variant ? `?variant=${variant}` : "";
+  await musicJson<unknown>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/restore${query}`,
+    { method: "POST" }
+  );
+}
+
+/** Batch trash/restore clips, mirroring Suno's `POST /api/gen/trash`. */
+export async function setWebMusicTrash(
+  clipIds: string[],
+  trashed: boolean
+): Promise<{ updated: number }> {
+  return musicJson<{ updated: number }>("/api/v3/web-music/generations/trash", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trash: trashed, clip_ids: clipIds }),
+  });
+}
+
+/** Permanently delete everything in the user's trash. */
+export async function emptyWebMusicTrash(): Promise<{ deleted: number }> {
+  return musicJson<{ deleted: number }>("/api/v3/web-music/trash", {
     method: "DELETE",
   });
 }

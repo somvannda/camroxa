@@ -4626,15 +4626,22 @@ class WebMusicService:
         limit: int = 40,
         offset: int = 0,
         workspace_id: UUID | None = None,
+        trashed: bool = False,
     ) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 100))
         safe_offset = max(0, int(offset))
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
+        trash_filter = (
+            "cardinality(trashed_variants) > 0"
+            if trashed
+            else "cardinality(trashed_variants) + cardinality(purged_variants) < 2"
+        )
         total = int(
             await self._pool.fetchval(
-                """
+                f"""
                 SELECT COUNT(*)::int FROM suno_tasks
                 WHERE user_id = $1 AND source = $2 AND workspace_id = $3
+                  AND {trash_filter}
                 """,
                 user_id,
                 SUNO_TASK_SOURCE_WEB_MUSIC,
@@ -4643,7 +4650,7 @@ class WebMusicService:
             or 0
         )
         rows = await self._pool.fetch(
-            """
+            f"""
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    external_task_id, negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
@@ -4655,9 +4662,11 @@ class WebMusicService:
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
-                   packaged_storage_key_ok, packaged_storage_key_alt
+                   packaged_storage_key_ok, packaged_storage_key_alt,
+                   trashed_variants, purged_variants
             FROM suno_tasks
             WHERE user_id = $1 AND source = $2 AND workspace_id = $3
+              AND {trash_filter}
             ORDER BY created_at DESC
             LIMIT $4 OFFSET $5
             """,
@@ -4940,7 +4949,8 @@ class WebMusicService:
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
-                   packaged_storage_key_ok, packaged_storage_key_alt
+                   packaged_storage_key_ok, packaged_storage_key_alt,
+                   trashed_variants, purged_variants
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -4955,7 +4965,16 @@ class WebMusicService:
         row = await self._ensure_durations(row)
         row = await self._ensure_stream_ready(row)
         self._schedule_ingest_if_unready(row)
-        return await self._task_payload(row, user_id)
+        payload = await self._task_payload(row, user_id)
+        # The refresh helpers rebuild `row` from narrower SELECTs, so read the
+        # trash state from the source row and always return it.
+        state = await self._pool.fetchrow(
+            "SELECT trashed_variants, purged_variants FROM suno_tasks WHERE id = $1",
+            task_id,
+        )
+        payload["trashed_variants"] = list((state or {}).get("trashed_variants") or [])
+        payload["purged_variants"] = list((state or {}).get("purged_variants") or [])
+        return payload
 
     async def update_generation_title(
         self,
@@ -5002,15 +5021,27 @@ class WebMusicService:
             raise NotFoundError("Generation not found.")
         return await self.get_generation(user_id, task_id)
 
-    async def delete_generation(self, user_id: UUID, task_id: UUID) -> None:
-        """Permanently remove one of the user's own web-music songs.
+    async def delete_generation(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str | None = None,
+        permanent: bool = False,
+    ) -> None:
+        """Move one version (or both) of a song to Trash.
 
-        Credits for a failed generation were already refunded, so this never
-        touches the wallet — it only drops the song from the user's workspace.
-        Rows that depend on the task (playlist items, likes, play counts) cascade
-        on delete via their foreign keys. In-flight generations are refused so an
-        active Suno job is not orphaned mid-flight.
+        ``variant`` is ``ok`` (Version 1), ``alt`` (Version 2) or ``None`` for
+        the whole song. ``permanent`` deletes the row for good — used by
+        "Delete forever" / "Empty trash". In-flight generations are refused so
+        an active Suno job is not orphaned mid-flight.
         """
+        clean_variant = str(variant or "").strip().lower() or None
+        if clean_variant is not None and clean_variant not in ("ok", "alt"):
+            raise ValidationError(
+                "variant must be ok or alt.",
+                details={"field": "variant"},
+            )
         row = await self._pool.fetchrow(
             """
             SELECT id, status FROM suno_tasks
@@ -5027,15 +5058,175 @@ class WebMusicService:
                 "This song is still generating. Wait until it finishes or fails before deleting it.",
                 details={"status": str(row["status"] or "")},
             )
+        if permanent:
+            if clean_variant is None:
+                await self._pool.execute(
+                    """
+                    DELETE FROM suno_tasks
+                    WHERE id = $1 AND user_id = $2 AND source = $3
+                    """,
+                    task_id,
+                    user_id,
+                    SUNO_TASK_SOURCE_WEB_MUSIC,
+                )
+                return
+            # Purge one version: hide it, clear it from Trash, keep the sibling.
+            purged = await self._pool.fetchval(
+                """
+                UPDATE suno_tasks
+                SET purged_variants = ARRAY(
+                        SELECT DISTINCT v
+                        FROM unnest(purged_variants || ARRAY[$4::text]) AS v
+                    ),
+                    trashed_variants = ARRAY(
+                        SELECT v FROM unnest(trashed_variants) AS v WHERE v <> $4
+                    ),
+                    updated_at = NOW()
+                WHERE id = $1 AND user_id = $2 AND source = $3
+                RETURNING purged_variants
+                """,
+                task_id,
+                user_id,
+                SUNO_TASK_SOURCE_WEB_MUSIC,
+                clean_variant,
+            )
+            if purged is not None and len(list(purged)) >= 2:
+                await self._pool.execute(
+                    """
+                    DELETE FROM suno_tasks
+                    WHERE id = $1 AND user_id = $2 AND source = $3
+                    """,
+                    task_id,
+                    user_id,
+                    SUNO_TASK_SOURCE_WEB_MUSIC,
+                )
+            return
+        targets = [clean_variant] if clean_variant else ["ok", "alt"]
         await self._pool.execute(
             """
-            DELETE FROM suno_tasks
+            UPDATE suno_tasks
+            SET trashed_variants = ARRAY(
+                    SELECT DISTINCT v
+                    FROM unnest(trashed_variants || $4::text[]) AS v
+                ),
+                updated_at = NOW()
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
             task_id,
             user_id,
             SUNO_TASK_SOURCE_WEB_MUSIC,
+            targets,
         )
+
+    async def restore_generation(
+        self, user_id: UUID, task_id: UUID, *, variant: str | None = None
+    ) -> None:
+        """Bring one version (or the whole song) back from Trash."""
+        clean_variant = str(variant or "").strip().lower() or None
+        if clean_variant is not None and clean_variant not in ("ok", "alt"):
+            raise ValidationError(
+                "variant must be ok or alt.",
+                details={"field": "variant"},
+            )
+        row = await self._pool.fetchrow(
+            """
+            SELECT id FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+              AND cardinality(trashed_variants) > 0
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found in Trash.")
+        targets = [clean_variant] if clean_variant else ["ok", "alt"]
+        await self._pool.execute(
+            """
+            UPDATE suno_tasks
+            SET trashed_variants = ARRAY(
+                    SELECT v FROM unnest(trashed_variants) AS v
+                    WHERE NOT (v = ANY($4::text[]))
+                ),
+                updated_at = NOW()
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+            targets,
+        )
+
+    async def set_trash(
+        self,
+        user_id: UUID,
+        clip_ids: list[str],
+        *,
+        trashed: bool,
+    ) -> int:
+        """Batch trash/restore, mirroring Suno's `POST /api/gen/trash`.
+
+        Each clip id is ``taskId:variant`` (`ok` = Version 1, `alt` = 2).
+        Invalid entries are skipped rather than failing the whole batch.
+        """
+        updated = 0
+        for raw in clip_ids:
+            task_text, _, variant_text = str(raw).partition(":")
+            variant = variant_text.strip().lower()
+            if variant not in ("ok", "alt"):
+                continue
+            try:
+                task_id = UUID(task_text.strip())
+            except ValueError:
+                continue
+            if trashed:
+                await self._pool.execute(
+                    """
+                    UPDATE suno_tasks
+                    SET trashed_variants = ARRAY(
+                            SELECT DISTINCT v
+                            FROM unnest(trashed_variants || ARRAY[$4::text]) AS v
+                        ),
+                        updated_at = NOW()
+                    WHERE id = $1 AND user_id = $2 AND source = $3
+                    """,
+                    task_id,
+                    user_id,
+                    SUNO_TASK_SOURCE_WEB_MUSIC,
+                    variant,
+                )
+            else:
+                await self._pool.execute(
+                    """
+                    UPDATE suno_tasks
+                    SET trashed_variants = ARRAY(
+                            SELECT v FROM unnest(trashed_variants) AS v
+                            WHERE v <> $4
+                        ),
+                        updated_at = NOW()
+                    WHERE id = $1 AND user_id = $2 AND source = $3
+                    """,
+                    task_id,
+                    user_id,
+                    SUNO_TASK_SOURCE_WEB_MUSIC,
+                    variant,
+                )
+            updated += 1
+        return updated
+
+    async def empty_trash(self, user_id: UUID) -> int:
+        """Permanently delete songs whose versions are both in Trash."""
+        rows = await self._pool.fetch(
+            """
+            DELETE FROM suno_tasks
+            WHERE user_id = $1 AND source = $2
+              AND cardinality(trashed_variants) >= 2
+            RETURNING id
+            """,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        return len(rows)
 
     async def _poll_suno_task_status(self, external_task_id: str):
         """Poll record-info across the pool's keys.
@@ -5128,7 +5319,8 @@ class WebMusicService:
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
-                   packaged_storage_key_ok, packaged_storage_key_alt
+                   packaged_storage_key_ok, packaged_storage_key_alt,
+                   trashed_variants, purged_variants
             FROM suno_tasks
             WHERE id = $1
             """,
@@ -5513,10 +5705,13 @@ class WebMusicService:
                        is_preview, preview_seconds
                 FROM suno_tasks
                 WHERE id = $1 AND user_id = $2 AND source = $3
+                  AND NOT ($4 = ANY(trashed_variants))
+                  AND NOT ($4 = ANY(purged_variants))
                 """,
                 task_id,
                 user_id,
                 SUNO_TASK_SOURCE_WEB_MUSIC,
+                variant_key,
             )
             if row is not None:
                 return row
@@ -5535,6 +5730,8 @@ class WebMusicService:
             JOIN web_music_playlists p
               ON p.id = i.playlist_id AND p.is_public = TRUE
             WHERE t.id = $1 AND t.source = $2
+              AND NOT ($3 = ANY(t.trashed_variants))
+              AND NOT ($3 = ANY(t.purged_variants))
             LIMIT 1
             """,
             task_id,
@@ -6372,6 +6569,8 @@ class WebMusicService:
             "instrumental": bool(row["instrumental"]),
             "status": str(row["status"] or "pending").upper(),
             "error_message": row["error_message"],
+            "trashed_variants": list(_row_value(row, "trashed_variants") or []),
+            "purged_variants": list(_row_value(row, "purged_variants") or []),
             "created_at": created,
             "is_preview": bool(_row_value(row, "is_preview")),
             "unlockable": bool(
