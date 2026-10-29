@@ -2,10 +2,15 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { Icon } from "./Icon";
 
 export function Footer() {
+  const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  // Studio is a workspace: no marketing footer.
+  if (pathname.startsWith("/studio")) return null;
 
   return (
     <footer className={`site-footer${open ? " is-open" : ""}`}>
