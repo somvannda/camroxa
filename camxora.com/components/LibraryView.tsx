@@ -928,6 +928,15 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 >
                   WAV
                 </a>
+                <button
+                  type="button"
+                  className="s-act"
+                  onClick={() => {
+                    window.location.href = `/publish?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`;
+                  }}
+                >
+                  <Icon name="fa-arrow-up-from-bracket" /> Publish
+                </button>
               </>
             ) : null}
             <button
@@ -1018,7 +1027,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             <SMenuSeparator />
             <SMenuItem
               onSelect={() => {
-                window.location.href = `/publish?clip=${encodeURIComponent(song.id)}`;
+                window.location.href = `/publish?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`;
               }}
             >
               <Icon name="fa-arrow-up-from-bracket" /> Publish
@@ -1027,12 +1036,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
               <Link href="/studio/editor">
                 <Icon name="fa-table-columns" /> Open in Studio
               </Link>
-            </SMenuItem>
-            <SMenuItem
-              disabled={deleting}
-              onSelect={() => setConfirm({ kind: "generations", ids: [song.id] })}
-            >
-              <Icon name="fa-trash" /> Delete
             </SMenuItem>
           </SMenu>
         </div>

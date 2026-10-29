@@ -232,70 +232,100 @@ export function TrackRail({
             <div className="s-rail-action-grid">
               <button
                 type="button"
-                className="s-btn s-btn-secondary"
+                className="s-btn s-btn-secondary s-btn-icon"
                 onClick={() => setPlaylistOpen((value) => !value)}
                 disabled={!ready || !clip?.ready || playlistBusy || !onAddToPlaylist}
                 aria-expanded={playlistOpen}
+                aria-label="Add to playlist"
+                title="Add to playlist"
               >
-                <Icon name="fa-list" /> Playlist
+                <Icon name="fa-list" />
               </button>
               <button
                 type="button"
-                className="s-btn s-btn-secondary"
+                className="s-btn s-btn-secondary s-btn-icon"
                 onClick={() => {
                   if (detail && clip) onRemix?.(detail, clip);
                 }}
                 disabled={!ready || !clip || !onRemix}
+                aria-label="Remix"
+                title="Remix"
               >
-                <Icon name="fa-wand-magic-sparkles" /> Remix
+                <Icon name="fa-wand-magic-sparkles" />
               </button>
               <button
                 type="button"
-                className="s-btn s-btn-secondary"
+                className="s-btn s-btn-secondary s-btn-icon"
                 onClick={() => {
                   if (detail) onCreateVideo?.(detail);
                 }}
                 disabled={!ready || !onCreateVideo}
+                aria-label="Create video"
+                title="Create video"
               >
-                <Icon name="fa-video" /> Video
+                <Icon name="fa-video" />
               </button>
               <button
                 type="button"
-                className={`s-btn s-btn-secondary${liked ? " on" : ""}`}
+                className={`s-btn s-btn-secondary s-btn-icon${liked ? " on" : ""}`}
                 onClick={() => onLike?.()}
                 aria-pressed={liked}
+                aria-label={liked ? "Unlike" : "Like"}
+                title={liked ? "Unlike" : "Like"}
                 disabled={!onLike}
               >
-                <Icon name="fa-heart" /> {liked ? "Liked" : "Like"}
+                <Icon name="fa-heart" />
               </button>
               {ready && clip && !instrumental ? (
-                <a className="s-btn s-btn-secondary" href={clipDownloadUrl(detail.id, clip.variant || "ok", "lrc")}>
-                  LRC
+                <a
+                  className="s-btn s-btn-secondary s-btn-icon"
+                  href={clipDownloadUrl(detail.id, clip.variant || "ok", "lrc")}
+                  aria-label="Download LRC"
+                  title="Download LRC"
+                >
+                  <Icon name="fa-closed-captioning" />
                 </a>
               ) : null}
               {ready && clip && !instrumental ? (
-                <a className="s-btn s-btn-secondary" href={clipDownloadUrl(detail.id, clip.variant || "ok", "srt")}>
-                  SRT
+                <a
+                  className="s-btn s-btn-secondary s-btn-icon"
+                  href={clipDownloadUrl(detail.id, clip.variant || "ok", "srt")}
+                  aria-label="Download SRT"
+                  title="Download SRT"
+                >
+                  <Icon name="fa-file-lines" />
                 </a>
               ) : null}
               {ready && clip ? (
-                <a className="s-btn s-btn-secondary" href={clip.download_url || clipDownloadUrl(detail.id, clip.variant || "ok", "mp3")}>
-                  MP3
+                <a
+                  className="s-btn s-btn-secondary s-btn-icon"
+                  href={clip.download_url || clipDownloadUrl(detail.id, clip.variant || "ok", "mp3")}
+                  aria-label="Download MP3"
+                  title="Download MP3"
+                >
+                  <Icon name="fa-music" />
                 </a>
               ) : null}
               {ready && clip ? (
-                <a className="s-btn s-btn-secondary" href={clipDownloadUrl(detail.id, clip.variant || "ok", "wav")}>
-                  WAV
+                <a
+                  className="s-btn s-btn-secondary s-btn-icon"
+                  href={clipDownloadUrl(detail.id, clip.variant || "ok", "wav")}
+                  aria-label="Download WAV"
+                  title="Download WAV"
+                >
+                  <Icon name="fa-wave-square" />
                 </a>
               ) : null}
               {detail.unlockable ? (
                 <button
                   type="button"
-                  className="s-btn s-btn-secondary"
+                  className="s-btn s-btn-secondary s-btn-icon"
                   onClick={() => onUnlock?.()}
                   disabled={loading}
+                  aria-label="Unlock"
+                  title="Unlock"
                 >
-                  <Icon name="fa-lock-open" /> Unlock
+                  <Icon name="fa-lock-open" />
                 </button>
               ) : null}
             </div>
