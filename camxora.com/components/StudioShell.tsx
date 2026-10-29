@@ -46,6 +46,13 @@ export function StudioShell() {
   const [selectedClip, setSelectedClip] = useState<
     { trackId: string; index: number } | null
   >(null);
+  const [offsets, setOffsets] = useState<Record<string, number>>({});
+  const dragRef = useRef<{
+    key: string;
+    startX: number;
+    startLeft: number;
+    laneWidth: number;
+  } | null>(null);
   const [projectName, setProjectName] = useState("Untitled Project");
   const [projectId, setProjectId] = useState<string | null>(projectParam);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -368,6 +375,22 @@ export function StudioShell() {
                 key={track.id}
                 style={{ top: index * 58 }}
                 onDragOver={(event) => event.preventDefault()}
+                onPointerMove={(event) => {
+                  const drag = dragRef.current;
+                  if (!drag) return;
+                  const delta =
+                    ((event.clientX - drag.startX) / Math.max(1, drag.laneWidth)) * 100;
+                  setOffsets((current) => ({
+                    ...current,
+                    [drag.key]: Math.min(82, Math.max(0, drag.startLeft + delta)),
+                  }));
+                }}
+                onPointerUp={() => {
+                  dragRef.current = null;
+                }}
+                onPointerLeave={() => {
+                  dragRef.current = null;
+                }}
                 onDrop={(event) => {
                   event.preventDefault();
                   const songId = event.dataTransfer.getData("text/song");
@@ -392,8 +415,18 @@ export function StudioShell() {
                             `/api/v3/web-music/generations/${clipId}/stream/${variant}`
                         );
                       }}
+                      onPointerDown={(event) => {
+                        const lane = (event.currentTarget as HTMLElement).parentElement;
+                        const key = `${track.id}:${clipId}`;
+                        dragRef.current = {
+                          key,
+                          startX: event.clientX,
+                          startLeft: offsets[key] ?? clipIndex * 18,
+                          laneWidth: lane?.clientWidth || 1,
+                        };
+                      }}
                       style={{
-                        left: `${clipIndex * 18}%`,
+                        left: `${offsets[`${track.id}:${clipId}`] ?? clipIndex * 18}%`,
                         width: "16%",
                         background: `linear-gradient(90deg, ${track.color}dd, ${track.color}77)`,
                       }}
