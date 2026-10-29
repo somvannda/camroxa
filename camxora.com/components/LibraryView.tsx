@@ -110,7 +110,7 @@ type LibRow = {
 };
 
 type ConfirmState =
-  | { kind: "generations"; ids: string[]; permanent?: boolean }
+  | { kind: "generations"; ids: string[]; permanent?: boolean; variant?: "ok" | "alt" }
   | { kind: "playlist"; playlist: WebMusicPlaylistSummary }
   | null;
 
@@ -599,7 +599,11 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     }
   }
 
-  async function deleteGenerations(ids: string[], permanent = false) {
+  async function deleteGenerations(
+    ids: string[],
+    permanent = false,
+    variant?: "ok" | "alt"
+  ) {
     setConfirm(null);
     if (!ids.length || deleting) return;
     setDeleting(true);
@@ -607,7 +611,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     const failures: string[] = [];
     for (const id of ids) {
       try {
-        await deleteWebMusicGeneration(id, { permanent });
+        await deleteWebMusicGeneration(id, { permanent, variant });
         deleted.push(id);
       } catch (cause) {
         failures.push(cause instanceof Error ? cause.message : "Could not delete song");
@@ -615,11 +619,39 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     }
     if (!mounted.current) return;
     const gone = new Set(deleted);
-    setGenerations((current) => current.filter((item) => !gone.has(item.id)));
-    setTotalGenerations((current) => Math.max(0, current - deleted.length));
+    if (permanent) {
+      setGenerations((current) => current.filter((item) => !gone.has(item.id)));
+      setTrashItems((current) => current.filter((item) => !gone.has(item.id)));
+      setTotalGenerations((current) => Math.max(0, current - deleted.length));
+    } else if (variant) {
+      // Soft-deleting one version: keep the song, hide only that clip.
+      setGenerations((current) => {
+        let removed = 0;
+        const next = current
+          .map((item) =>
+            gone.has(item.id)
+              ? {
+                  ...item,
+                  trashed_variants: Array.from(
+                    new Set([...(item.trashed_variants ?? []), variant])
+                  ),
+                }
+              : item
+          )
+          .filter((item) => {
+            const fullyTrashed = (item.trashed_variants ?? []).length >= 2;
+            if (fullyTrashed) removed += 1;
+            return !fullyTrashed;
+          });
+        setTotalGenerations((total) => Math.max(0, total - removed));
+        return next;
+      });
+    } else {
+      setGenerations((current) => current.filter((item) => !gone.has(item.id)));
+      setTotalGenerations((current) => Math.max(0, current - deleted.length));
+    }
     setSelectedIds((current) => current.filter((id) => !gone.has(id)));
-    setTrashItems((current) => current.filter((item) => !gone.has(item.id)));
-    if (detailId && gone.has(detailId)) {
+    if (detailId && gone.has(detailId) && !variant) {
       closeDetail();
       setDetail(null);
       setDetailId(null);
@@ -629,11 +661,13 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     setToast(
       permanent
         ? deleted.length === 1
-          ? "Deleted forever"
-          : `${deleted.length} songs deleted forever`
-        : deleted.length === 1
-          ? "Moved to Trash"
-          : `${deleted.length} songs moved to Trash`
+          ? "Deleted permanently"
+          : `${deleted.length} songs deleted permanently`
+        : variant
+          ? `${variant === "alt" ? "Version 2" : "Version 1"} moved to Trash`
+          : deleted.length === 1
+            ? "Moved to Trash"
+            : `${deleted.length} songs moved to Trash`
     );
     if (failures.length) setError(failures[0]);
     if (!deleted.length) setToast("Could not delete song");
@@ -902,6 +936,18 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             </SMenuItem>
             <SMenuItem disabled={!ready} onSelect={() => openDetail(song, clip)}>
               <Icon name="fa-list" /> Add to playlist
+            </SMenuItem>
+            <SMenuSeparator />
+            <SMenuItem
+              onSelect={() =>
+                setConfirm({
+                  kind: "generations",
+                  ids: [song.id],
+                  variant: clip.variant === "alt" ? "alt" : "ok",
+                })
+              }
+            >
+              <Icon name="fa-trash" /> Move to Trash
             </SMenuItem>
             <SMenuSeparator />
             {DOWNLOAD_KINDS.filter(
@@ -1945,9 +1991,13 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             <div className="s-modal-head">
               <h3>
                 {confirm.kind === "generations"
-                  ? confirm.permanent
-                    ? `Delete ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"} forever?`
-                    : `Move ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"} to Trash?`
+                  ? confirm.variant
+                    ? confirm.permanent
+                      ? `Delete ${confirm.variant === "alt" ? "Version 2" : "Version 1"} permanently?`
+                      : `Move ${confirm.variant === "alt" ? "Version 2" : "Version 1"} to Trash?`
+                    : confirm.permanent
+                      ? `Delete ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"} permanently?`
+                      : `Move ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"} to Trash?`
                   : "Delete playlist?"}
               </h3>
               <button
@@ -1962,9 +2012,13 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             <div className="s-modal-body">
               <p className="s-note">
                 {confirm.kind === "generations"
-                  ? confirm.permanent
-                    ? "This permanently removes the selected songs and their files. It cannot be undone."
-                    : "They move to Trash first â€” restore them any time, or empty the trash to delete them for good."
+                  ? confirm.variant
+                    ? confirm.permanent
+                      ? "That version is removed for good. The other version stays in your library."
+                      : "That version moves to Trash; the other version stays in your library. Restore it from Library → Trash."
+                    : confirm.permanent
+                      ? "This permanently removes the selected songs and their files. It cannot be undone."
+                      : "They move to Trash first — restore them any time, or empty the trash to delete them for good."
                   : `"${confirm.playlist.name}" will be permanently deleted. The songs stay in your library.`}
               </p>
             </div>
@@ -1983,15 +2037,19 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 disabled={deleting}
                 onClick={() => {
                   if (confirm.kind === "generations")
-                    void deleteGenerations(confirm.ids, confirm.permanent);
+                    void deleteGenerations(
+                      confirm.ids,
+                      confirm.permanent,
+                      confirm.variant
+                    );
                   else void deletePlaylist(confirm.playlist);
                 }}
               >
                 {deleting
-                  ? "Workingâ€¦"
+                  ? "Working…"
                   : confirm.kind === "generations" && !confirm.permanent
                     ? "Move to Trash"
-                    : "Delete forever"}
+                    : "Delete permanently"}
               </button>
             </div>
           </div>
