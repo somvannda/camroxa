@@ -3895,6 +3895,13 @@ class WebMusicService:
             audio_url = _clip_field(clip, "audioUrl", "audio_url")
             image_url = _clip_field(clip, "imageUrl", "image_url", "cover_url")
             duration = _clip_field(clip, "duration", "duration_seconds")
+            if not isinstance(duration, (int, float)):
+                # Clip payloads carry the length inside metadata.duration.
+                metadata = clip.get("metadata")
+                if isinstance(metadata, dict):
+                    candidate = metadata.get("duration")
+                    if isinstance(candidate, (int, float)):
+                        duration = candidate
             clip_title = _clip_field(clip, "title")
             provider_clip_id = _clip_field(clip, "id", "clip_id")
             row = await self._pool.fetchrow(
