@@ -108,6 +108,16 @@ const models: Array<{ value: WebMusicModel; label: string }> = [
 ];
 
 const SIMPLE_SONG_COUNTS = [1, 5, 10, 20] as const;
+/** Compare batch: one song per model, so each version carries its own badge. */
+const COMPARE_MODELS = ["V6", "V6_MINI", "V6_WILD"] as const;
+
+/** Badge tone for the model label (one colour per V6 variant). */
+function modelBadgeTone(model?: string | null): "pro" | "mini" | "wild" {
+  const value = String(model ?? "").toUpperCase().replace(/[\s-]/g, "_");
+  if (value.includes("WILD")) return "wild";
+  if (value.includes("MINI")) return "mini";
+  return "pro";
+}
 const BATCH_SUBMIT_GAP_MS = 900;
 
 const LYRICIST_SUGGESTIONS = [
@@ -335,6 +345,7 @@ export function CreateStudio() {
   const [totalSongs, setTotalSongs] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [simpleSongCount, setSimpleSongCount] = useState<number>(1);
+  const [compareModels, setCompareModels] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [generatingStyles, setGeneratingStyles] = useState(false);
   const [stylesError, setStylesError] = useState("");
@@ -347,6 +358,7 @@ export function CreateStudio() {
   const [batchError, setBatchError] = useState("");
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WebMusicGeneration | null>(null);
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -1688,20 +1700,28 @@ export function CreateStudio() {
     }
   }
 
-  async function deleteSelected() {
+  function deleteSelected() {
     if (!selected || deletingId) return;
-    if (!window.confirm(`Delete "${selected.title}" permanently?`)) return;
-    setDeletingId(selected.id);
+    setDeleteTarget(selected);
+  }
+
+  async function confirmDeleteSelected() {
+    const target = deleteTarget;
+    if (!target || deletingId) return;
+    setDeletingId(target.id);
     setError("");
     try {
-      await deleteWebMusicGeneration(selected.id);
+      await deleteWebMusicGeneration(target.id);
       if (!mounted.current) return;
-      setSongs((current) => current.filter((item) => item.id !== selected.id));
+      setSongs((current) => current.filter((item) => item.id !== target.id));
       setTotalSongs((current) => Math.max(0, current - 1));
       setSelectedId(null);
       setSelectedDetail(null);
       setSelectedVariant(null);
-      setSelectedClipKeys((current) => current.filter((key) => !key.startsWith(`${selected.id}:`)));
+      setSelectedClipKeys((current) =>
+        current.filter((key) => !key.startsWith(`${target.id}:`))
+      );
+      setDeleteTarget(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not delete this track");
     } finally {
@@ -1871,7 +1891,10 @@ export function CreateStudio() {
         return;
       }
     }
-    const count = mode === "simple" ? simpleSongCount : 1;
+    const count =
+      mode === "simple" ? (compareModels ? COMPARE_MODELS.length : simpleSongCount) : 1;
+    const modelForSong = (index: number) =>
+      mode === "simple" && compareModels ? COMPARE_MODELS[index] ?? model : model;
     const payload: WebMusicGenerateInput = {
       mode: mode === "simple" ? "simple" : "advanced",
       prompt:
@@ -1902,7 +1925,7 @@ export function CreateStudio() {
         if (index > 0) {
           await new Promise((resolve) => window.setTimeout(resolve, BATCH_SUBMIT_GAP_MS));
         }
-        const created = await generateWebMusic(payload);
+        const created = await generateWebMusic({ ...payload, model: modelForSong(index) });
         createdCount += 1;
         setQuota(created.quota);
         setBatchProgress({ done: createdCount, total: count });
@@ -1912,7 +1935,7 @@ export function CreateStudio() {
           title: created.title || title || "Untitled",
           lyrics: finalLyrics,
           style: created.style || style,
-          model,
+          model: modelForSong(index),
           model_label: created.model_label,
           is_preview: created.is_preview,
           unlockable: created.unlockable,
@@ -1977,7 +2000,8 @@ export function CreateStudio() {
     selected && selectedClip
       ? clipIsReady(selected, selectedClip)
       : String(selected?.status || "").toLowerCase() === "success";
-  const batchCount = mode === "simple" ? simpleSongCount : 1;
+  const batchCount =
+    mode === "simple" ? (compareModels ? COMPARE_MODELS.length : simpleSongCount) : 1;
   const requiredCredits = (quota?.credits_per_song ?? 0) * batchCount;
   const availableCredits = quota?.credits_remaining ?? credits ?? 0;
   const needsCredits = requiredCredits > 0 && availableCredits < requiredCredits;
@@ -2637,12 +2661,13 @@ export function CreateStudio() {
     const { song, clip, key, title, ready } = row;
     const liked = isLikedRow(song, clip);
     const disliked = isDislikedRow(song, clip);
+    const failed = !ready && /fail|error|cancel/i.test(String(song.status ?? ""));
     const isSelected = selectedId === song.id && selectedVariant === clip.variant;
     const selectedForBatch = selectedClipKeys.includes(key);
     const instrumental = generationIsInstrumental(song);
     return (
       <div
-        className={`s-row s-row-compact${isSelected ? " selected" : ""}`}
+        className={`s-row s-row-compact${isSelected ? " selected" : ""}${failed ? " failed" : ""}`}
         key={key}
         role="group"
         aria-label={title}
@@ -2679,8 +2704,8 @@ export function CreateStudio() {
           }}
         >
           <Icon
-            name={ready ? "fa-play" : "fa-hourglass-half"}
-            className={ready ? "" : "s-hourglass"}
+            name={ready ? "fa-play" : failed ? "fa-circle-xmark" : "fa-hourglass-half"}
+            className={ready ? "" : failed ? "s-row-failed-icon" : "s-hourglass"}
           />
         </button>
 
@@ -2699,8 +2724,16 @@ export function CreateStudio() {
             {song.is_preview ? <span className="s-status live">Preview</span> : null}
           </div>
           <div className="s-row-desc">
-            {ready ? "Ready" : statusLabel(song.status)} · {song.model_label || song.model || shortModel} ·{" "}
-            {formatDate(song.created_at)}
+            <span className={failed ? "s-row-failed-text" : undefined}>
+              {ready ? "Ready" : statusLabel(song.status)}
+            </span>{" "}
+            ·{" "}
+            <span
+              className={`s-model-badge ${modelBadgeTone(song.model || song.model_label)}`}
+            >
+              {song.model_label || song.model || shortModel}
+            </span>{" "}
+            · {formatDate(song.created_at)}
             {row.duration ? ` · ${formatClipDuration(row.duration)}` : ""}
           </div>
         </div>
@@ -3134,7 +3167,7 @@ export function CreateStudio() {
                         {[
                           { value: "V6" as WebMusicModel, name: "v6", tag: "Pro", desc: "Powerful. Versatile. Refined. Our best model yet." },
                           { value: "V6_WILD" as WebMusicModel, name: "v6-wild", tag: "Pro", desc: "Best for experimental ideas." },
-                          { value: "V6_MINI" as WebMusicModel, name: "v6-mini", tag: "", desc: "A free, more efficient version of premium v6 models." },
+                          { value: "V6_MINI" as WebMusicModel, name: "v6-mini", tag: "", desc: "A faster, more efficient version of the premium v6 models." },
                         ].map((option) => (
                           <SMenuRadioItem
                             key={option.value}
@@ -3417,13 +3450,14 @@ export function CreateStudio() {
                     <div className="s-form-card">
                       <div className="s-rowline">
                         <span className="s-rowline-label">Songs to generate</span>
-                        <div className="s-radio-pair" role="group" aria-label="Songs to generate">
+                        <div className="s-radio-pair accent" role="group" aria-label="Songs to generate">
                           {SIMPLE_SONG_COUNTS.map((count) => (
                             <button
                               key={count}
                               type="button"
                               className={simpleSongCount === count ? "on" : ""}
                               aria-pressed={simpleSongCount === count}
+                              disabled={compareModels}
                               onClick={() => setSimpleSongCount(count)}
                             >
                               {count}
@@ -3431,7 +3465,24 @@ export function CreateStudio() {
                           ))}
                         </div>
                       </div>
-                      {simpleSongCount > 1 ? (
+                      <div className="s-rowline">
+                        <span className="s-rowline-label">Models</span>
+                        <button
+                          type="button"
+                          className={`s-chip accent${compareModels ? " on" : ""}`}
+                          aria-pressed={compareModels}
+                          onClick={() => setCompareModels((value) => !value)}
+                          title="Generate one song per model so each version shows its badge"
+                        >
+                          <Icon name="fa-layer-group" /> Compare all three
+                        </button>
+                      </div>
+                      {compareModels ? (
+                        <p className="s-note">
+                          3 songs · one per model (V6 Pro · V6 Mini · V6 Wild)
+                          {requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}
+                        </p>
+                      ) : simpleSongCount > 1 ? (
                         <p className="s-note">
                           {simpleSongCount} songs · {simpleSongCount * 2} versions
                           {requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}
@@ -4577,6 +4628,58 @@ export function CreateStudio() {
             }
           }}
         />      </div>
+
+      {deleteTarget ? (
+        <div
+          className="s-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm delete"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="s-modal"
+            style={{ width: "min(440px,100%)" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="s-modal-head">
+              <h3>Delete song?</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Close"
+                onClick={() => setDeleteTarget(null)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-modal-body">
+              <p className="s-note">
+                &quot;{deleteTarget.title}&quot; and both versions will be permanently
+                removed from your library. This cannot be undone.
+              </p>
+            </div>
+            <div className="s-modal-foot">
+              <span style={{ flex: 1 }} />
+              <button
+                type="button"
+                className="s-btn s-btn-ghost"
+                onClick={() => setDeleteTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s-btn s-btn-danger"
+                disabled={deletingId === deleteTarget.id}
+                onClick={() => void confirmDeleteSelected()}
+              >
+                {deletingId === deleteTarget.id ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {attachModal ? (
         <div className="s-modal-overlay" role="dialog" aria-modal="true" onClick={() => setAttachModal(null)}>
