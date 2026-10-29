@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
 import { ReportClipModal } from "@/components/ReportClipModal";
+import { ShareClipModal } from "@/components/ShareClipModal";
 import {
   SMenu,
   SMenuCheckboxItem,
@@ -374,6 +375,9 @@ export function CreateStudio() {
     { song: WebMusicGeneration; variant: "ok" | "alt" } | null
   >(null);
   const [reportBusy, setReportBusy] = useState(false);
+  const [shareTarget, setShareTarget] = useState<
+    { song: WebMusicGeneration; clip: WebMusicClip } | null
+  >(null);
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -1648,11 +1652,31 @@ export function CreateStudio() {
 
   async function coverFromRow(song: WebMusicGeneration, clip: WebMusicClip) {
     try {
-      await coverWebMusicGeneration(song.id, {
+      const operation = await coverWebMusicGeneration(song.id, {
         variant: clip.variant === "alt" ? "alt" : "ok",
         prompt: (song.style || song.title || "").trim(),
       });
-      setToast("Cover queued");
+      setAudioHistory((current) => [
+        operation,
+        ...current.filter((item) => item.id !== operation.id),
+      ]);
+      setToast("Cover queued — see Cover queue");
+      const terminal = new Set(["complete", "completed", "success", "error", "failed"]);
+      for (let attempt = 0; attempt < 40; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        if (!mounted.current) return;
+        const next = await getWebMusicStudioOperation(operation.id).catch(() => null);
+        if (!next) continue;
+        setAudioHistory((current) =>
+          current.map((item) => (item.id === next.id ? next : item))
+        );
+        if (terminal.has(String(next.status).toLowerCase())) {
+          if (!["error", "failed"].includes(String(next.status).toLowerCase())) {
+            setToast("Cover ready — see Audio results");
+          }
+          break;
+        }
+      }
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : "Could not cover this song");
     }
@@ -2217,6 +2241,32 @@ export function CreateStudio() {
             ? `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`
             : null;
   const audioResultRows = audioHistory.filter((operation) => Boolean(operation.result?.clips?.[0]?.audioUrl));
+  const queuedOperations = audioHistory.filter((operation) =>
+    ["queued", "pending", "running", "processing"].includes(
+      String(operation.status || "").toLowerCase()
+    )
+  );
+  const coverQueue = queuedOperations.length ? (
+    <div>
+      <h3 className="s-day">Cover queue</h3>
+      {queuedOperations.map((operation) => (
+        <div className="s-row s-row-compact" key={operation.id}>
+          <span className="s-row-play" aria-hidden="true">
+            <Icon name="fa-hourglass-half" className="s-hourglass" />
+          </span>
+          <div className="s-row-body">
+            <div className="s-row-title">
+              <b>{operation.label || operation.operation_type || "Cover"}</b>
+            </div>
+            <div className="s-row-desc">
+              {String(operation.status || "queued").toUpperCase()}
+              {operation.variant ? ` · ${clipVersionLabel(operation.variant)}` : ""}
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  ) : null;
   const remixReadySongs = songs.filter(
     (song) =>
       String(song.status).toLowerCase() === "success" &&
@@ -2596,6 +2646,7 @@ export function CreateStudio() {
           <div className="s-feed">
             <div className="s-feed-head" />
             <div className="s-feed-scroll">
+            {coverQueue}
             {audioResultRows.length ? (
               <div>
                 <h3 className="s-day">Audio results</h3>
@@ -2966,7 +3017,7 @@ export function CreateStudio() {
             <SMenuItem onSelect={() => toggleDislikeRow(song, clip)}>
               <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
             </SMenuItem>
-            <SMenuItem onSelect={() => void shareClipLink(song, clip)}>
+            <SMenuItem onSelect={() => setShareTarget({ song, clip })}>
               <Icon name="fa-share-nodes" /> Share
             </SMenuItem>
             <SMenuSub>
@@ -4547,6 +4598,7 @@ export function CreateStudio() {
           {batchError ? <p className="s-error">{batchError}</p> : null}
 
           <div className="s-feed-scroll">
+            {coverQueue}
             {audioResultRows.length ? (
               <div>
                 <h3 className="s-day">Audio results</h3>
@@ -4891,6 +4943,19 @@ export function CreateStudio() {
             }
           }}
         />      </div>
+
+      {shareTarget ? (
+        <ShareClipModal
+          url={`${typeof window !== "undefined" ? window.location.origin : ""}/library?clip=${encodeURIComponent(shareTarget.song.id)}&variant=${encodeURIComponent(shareTarget.clip.variant || "ok")}`}
+          title={shareTarget.clip.title || shareTarget.song.title || "Untitled"}
+          downloadUrl={
+            shareTarget.clip.download_url ||
+            clipDownloadUrl(shareTarget.song.id, shareTarget.clip.variant, "mp3")
+          }
+          onClose={() => setShareTarget(null)}
+          onToast={setToast}
+        />
+      ) : null}
 
       {reportTarget ? (
         <ReportClipModal

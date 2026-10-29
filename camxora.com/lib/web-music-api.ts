@@ -548,6 +548,8 @@ export type WebMusicStudioOperation = {
   operation_type: string;
   mode: string;
   task_id?: string | null;
+  variant?: string | null;
+  label?: string | null;
   error_message?: string | null;
   result?: {
     clips?: WebMusicStudioClipResult[];

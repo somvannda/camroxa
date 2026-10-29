@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
 import { ReportClipModal } from "@/components/ReportClipModal";
+import { ShareClipModal } from "@/components/ShareClipModal";
 import {
   SMenu,
   SMenuCheckboxItem,
@@ -190,6 +191,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     { song: WebMusicGeneration; variant: "ok" | "alt" } | null
   >(null);
   const [reportBusy, setReportBusy] = useState(false);
+  const [shareTarget, setShareTarget] = useState<
+    { song: WebMusicGeneration; clip: WebMusicClip } | null
+  >(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachNotice, setAttachNotice] = useState<null | "upload" | "record">(null);
 
@@ -1036,8 +1040,8 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
               type="button"
               className="s-act icon-only"
               aria-label="Share clip"
-              title="Copy link"
-              onClick={() => void copyClipLink(song, clip)}
+              title="Share"
+              onClick={() => setShareTarget({ song, clip })}
             >
               <Icon name="fa-share" />
             </button>
@@ -2269,6 +2273,19 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {shareTarget ? (
+        <ShareClipModal
+          url={`${typeof window !== "undefined" ? window.location.origin : ""}/library?clip=${encodeURIComponent(shareTarget.song.id)}&variant=${encodeURIComponent(shareTarget.clip.variant || "ok")}`}
+          title={shareTarget.clip.title || shareTarget.song.title || "Untitled"}
+          downloadUrl={
+            shareTarget.clip.download_url ||
+            clipDownloadUrl(shareTarget.song.id, shareTarget.clip.variant, "mp3")
+          }
+          onClose={() => setShareTarget(null)}
+          onToast={setToast}
+        />
       ) : null}
 
       {reportTarget ? (
