@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { SMenu, SMenuItem } from "@/components/ui/s-menu";
 import type { WebMusicClip, WebMusicGeneration } from "@/lib/library-api";
 import type { WebMusicPlaylistSummary } from "@/lib/web-music-api";
 import {
@@ -276,45 +277,48 @@ export function TrackRail({
               >
                 <Icon name="fa-heart" />
               </button>
-              {ready && clip && !instrumental ? (
-                <a
-                  className="s-btn s-btn-secondary s-btn-icon"
-                  href={clipDownloadUrl(detail.id, clip.variant || "ok", "lrc")}
-                  aria-label="Download LRC"
-                  title="Download LRC"
-                >
-                  <Icon name="fa-closed-captioning" />
-                </a>
-              ) : null}
-              {ready && clip && !instrumental ? (
-                <a
-                  className="s-btn s-btn-secondary s-btn-icon"
-                  href={clipDownloadUrl(detail.id, clip.variant || "ok", "srt")}
-                  aria-label="Download SRT"
-                  title="Download SRT"
-                >
-                  <Icon name="fa-file-lines" />
-                </a>
-              ) : null}
               {ready && clip ? (
-                <a
-                  className="s-btn s-btn-secondary s-btn-icon"
-                  href={clip.download_url || clipDownloadUrl(detail.id, clip.variant || "ok", "mp3")}
-                  aria-label="Download MP3"
-                  title="Download MP3"
+                <SMenu
+                  align="end"
+                  trigger={
+                    <button
+                      type="button"
+                      className="s-btn s-btn-secondary s-btn-icon"
+                      aria-label="Download"
+                      title="Download"
+                    >
+                      <Icon name="fa-download" />
+                    </button>
+                  }
                 >
-                  <Icon name="fa-music" />
-                </a>
-              ) : null}
-              {ready && clip ? (
-                <a
-                  className="s-btn s-btn-secondary s-btn-icon"
-                  href={clipDownloadUrl(detail.id, clip.variant || "ok", "wav")}
-                  aria-label="Download WAV"
-                  title="Download WAV"
-                >
-                  <Icon name="fa-wave-square" />
-                </a>
+                  <SMenuItem asChild>
+                    <a
+                      href={clip.download_url || clipDownloadUrl(detail.id, clip.variant || "ok", "mp3")}
+                      download
+                    >
+                      <Icon name="fa-music" /> MP3
+                    </a>
+                  </SMenuItem>
+                  <SMenuItem asChild>
+                    <a href={clipDownloadUrl(detail.id, clip.variant || "ok", "wav")} download>
+                      <Icon name="fa-wave-square" /> WAV
+                    </a>
+                  </SMenuItem>
+                  {!instrumental ? (
+                    <>
+                      <SMenuItem asChild>
+                        <a href={clipDownloadUrl(detail.id, clip.variant || "ok", "lrc")} download>
+                          <Icon name="fa-closed-captioning" /> LRC
+                        </a>
+                      </SMenuItem>
+                      <SMenuItem asChild>
+                        <a href={clipDownloadUrl(detail.id, clip.variant || "ok", "srt")} download>
+                          <Icon name="fa-file-lines" /> SRT
+                        </a>
+                      </SMenuItem>
+                    </>
+                  ) : null}
+                </SMenu>
               ) : null}
               {detail.unlockable ? (
                 <button
