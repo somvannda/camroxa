@@ -7,6 +7,7 @@ import { TrackRail } from "@/components/TrackRail";
 import { ReportClipModal } from "@/components/ReportClipModal";
 import { ShareClipModal } from "@/components/ShareClipModal";
 import { SongDetailsModal } from "@/components/SongDetailsModal";
+import { SongRowMenu } from "@/components/SongRowMenu";
 import {
   SMenu,
   SMenuCheckboxItem,
@@ -1136,203 +1137,60 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           style={{ position: "static" }}
           onClick={(event) => event.stopPropagation()}
         >
-          <SMenu
-            align="end"
-            sideOffset={6}
-            trigger={
-              <button
-                type="button"
-                className="s-row-more"
-                aria-label="More options"
-              >
-                <Icon name="fa-ellipsis-vertical" />
-              </button>
-            }
-          >
-            <SMenuItem onSelect={() => void copyClipLink(song, clip)}>
-              <Icon name="fa-link" /> Copy link
-            </SMenuItem>
-            <SMenuItem onSelect={() => toggleDislike(song, clip)}>
-              <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
-            </SMenuItem>
-            <SMenuSub>
-              <SMenuSubTrigger>
-                <Icon name="fa-repeat" /> Remix
-              </SMenuSubTrigger>
-              <SMenuSubContent>
-                <SMenuItem
-                  disabled={!ready}
-                  onSelect={() => void coverFromLibrary(song, clip)}
-                >
-                  <Icon name="fa-retweet" /> Cover
-                </SMenuItem>
-                <SMenuItem
-                  onSelect={() => {
-                    const text = (song.style || song.lyrics || song.title || "").trim();
-                    window.location.href = `/create?prompt=${encodeURIComponent(text)}`;
-                  }}
-                >
-                  <Icon name="fa-quote-left" /> Reuse Prompt
-                </SMenuItem>
-                <SMenuItem
-                  disabled={!ready}
-                  onSelect={() =>
-                    (window.location.href = `/create?mashup=${encodeURIComponent(
-                      song.id
-                    )}&variant=${encodeURIComponent(clip.variant || "ok")}`)
-                  }
-                >
-                  <Icon name="fa-code-merge" /> Mashup
-                </SMenuItem>
-                <SMenuItem disabled title="Coming soon">
-                  <Icon name="fa-waveform" /> Sample this song
-                </SMenuItem>
-                <SMenuItem disabled title="Coming soon">
-                  <Icon name="fa-wand-sparkles" /> Use as Inspiration
-                </SMenuItem>
-                <SMenuItem
-                  onSelect={() => {
-                    window.location.href = `/create?remix=${encodeURIComponent(
-                      song.id
-                    )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
-                  }}
-                >
-                  <Icon name="fa-microphone-lines" /> Voice
-                </SMenuItem>
-              </SMenuSubContent>
-            </SMenuSub>
-            <SMenuSub>
-              <SMenuSubTrigger>
-                <Icon name="fa-pen-to-square" /> Edit
-              </SMenuSubTrigger>
-              <SMenuSubContent>
-                <SMenuItem
-                  onSelect={() =>
-                    setDetailsTarget({
-                      song,
-                      variant: clip.variant === "alt" ? "alt" : "ok",
-                    })
-                  }
-                >
-                  <Icon name="fa-circle-info" /> Song Details
-                </SMenuItem>
-                <SMenuItem asChild>
-                  <Link href="/studio/editor">
-                    <Icon name="fa-table-columns" /> Open in Editor
-                  </Link>
-                </SMenuItem>
-                <SMenuItem
-                  disabled
-                  title="Replace Section needs the section editor — coming soon"
-                >
-                  <Icon name="fa-scissors" /> Replace Section
-                </SMenuItem>
-                <SMenuItem disabled title="No crop service yet">
-                  <Icon name="fa-crop-simple" /> Crop Song
-                </SMenuItem>
-              </SMenuSubContent>
-            </SMenuSub>
-            <SMenuSub>
-              <SMenuSubTrigger>
-                <Icon name="fa-folder-tree" /> Manage
-              </SMenuSubTrigger>
-              <SMenuSubContent>
-                {workspaces.length ? (
-                  workspaces.map((workspace) => (
-                    <SMenuItem
-                      key={workspace.id}
-                      disabled={workspace.id === song.workspace_id}
-                      onSelect={() => void moveClipToWorkspace(song, workspace)}
-                    >
-                      <Icon name="fa-folder" /> {workspace.name}
-                    </SMenuItem>
-                  ))
-                ) : (
-                  <SMenuItem disabled>No workspaces yet</SMenuItem>
-                )}
-              </SMenuSubContent>
-            </SMenuSub>
-            <SMenuItem disabled={!ready} onSelect={() => enqueueClip(song, clip)}>
-              <Icon name="fa-bars-staggered" /> Add to Queue
-            </SMenuItem>
-            <SMenuSub>
-              <SMenuSubTrigger>
-                <Icon name="fa-list" /> Add to Playlist
-              </SMenuSubTrigger>
-              <SMenuSubContent>
-                {playlists.length ? (
-                  playlists.map((playlist) => (
-                    <SMenuItem
-                      key={playlist.id}
-                      onSelect={() => void addClipToPlaylist(song, clip, playlist)}
-                    >
-                      <Icon name="fa-rectangle-list" /> {playlist.name}
-                    </SMenuItem>
-                  ))
-                ) : (
-                  <SMenuItem disabled>No playlists yet</SMenuItem>
-                )}
-              </SMenuSubContent>
-            </SMenuSub>
-            <SMenuItem disabled={!ready} onSelect={() => void startRadio(song, clip)}>
-              <Icon name="fa-tower-broadcast" /> Song Radio
-            </SMenuItem>
-            <SMenuSeparator />
-            <SMenuItem
-              onSelect={() =>
-                setReportTarget({
-                  song,
-                  variant: clip.variant === "alt" ? "alt" : "ok",
-                })
-              }
-            >
-              <Icon name="fa-flag" /> Report
-            </SMenuItem>
-            <SMenuSeparator />
-            <SMenuItem
-              onSelect={() =>
-                setConfirm({
-                  kind: "generations",
-                  ids: [song.id],
-                  variant: clip.variant === "alt" ? "alt" : "ok",
-                })
-              }
-            >
-              <Icon name="fa-trash" /> Move to Trash
-            </SMenuItem>
-            <SMenuSeparator />
-            {DOWNLOAD_KINDS.filter(
-              (format) =>
-                format.kind === "mp3" ||
-                format.kind === "wav" ||
-                !generationIsInstrumental(song)
-            ).map((format) => (
-              <SMenuItem key={format.kind} asChild>
-                <a
-                  href={
-                    format.kind === "mp3" && clip.download_url
-                      ? clip.download_url
-                      : clipDownloadUrl(song.id, clip.variant, format.kind)
-                  }
-                >
-                  <Icon name="fa-download" /> {format.label}
-                </a>
-              </SMenuItem>
-            ))}
-            <SMenuSeparator />
-            <SMenuItem
-              onSelect={() => {
-                window.location.href = `/publish?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`;
-              }}
-            >
-              <Icon name="fa-arrow-up-from-bracket" /> Publish
-            </SMenuItem>
-            <SMenuItem asChild>
-              <Link href="/studio/editor">
-                <Icon name="fa-table-columns" /> Open in Studio
-              </Link>
-            </SMenuItem>
-          </SMenu>
+                    <SongRowMenu
+                      song={song}
+                      clip={clip}
+                      ready={ready}
+                      instrumental={generationIsInstrumental(song)}
+                      liked={isLikedRow(song, clip)}
+                      disliked={isDislikedRow(song, clip)}
+                      playlists={playlists}
+                      workspaces={workspaces}
+                      onLike={() => void toggleLike(song, clip)}
+                      onDislike={() => void toggleDislike(song, clip)}
+                      onShare={() => setShareTarget({ song, clip })}
+                      onCopyLink={() => void copyClipLink(song, clip)}
+                      onCover={() => void coverFromLibrary(song, clip)}
+                      onReusePrompt={() => {
+                        const text = (song.style || song.lyrics || song.title || "").trim();
+                        window.location.href = `/create?prompt=${encodeURIComponent(text)}`;
+                      }}
+                      onMashup={() => {
+                        window.location.href = `/create?mashup=${encodeURIComponent(
+                          song.id
+                        )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
+                      }}
+                      onVoice={() => {
+                        window.location.href = `/create?remix=${encodeURIComponent(
+                          song.id
+                        )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
+                      }}
+                      onDetails={() =>
+                        setDetailsTarget({
+                          song,
+                          variant: clip.variant === "alt" ? "alt" : "ok",
+                        })
+                      }
+                      onMove={(workspace) => void moveClipToWorkspace(song, workspace)}
+                      onQueue={() => enqueueClip(song, clip)}
+                      onAddToPlaylist={(playlist) =>
+                        void addClipToPlaylist(song, clip, playlist)
+                      }
+                      onRadio={() => void startRadio(song, clip)}
+                      onReport={() =>
+                        setReportTarget({
+                          song,
+                          variant: clip.variant === "alt" ? "alt" : "ok",
+                        })
+                      }
+                      onTrash={() =>
+                        setConfirm({
+                          kind: "generations",
+                          ids: [song.id],
+                          variant: clip.variant === "alt" ? "alt" : "ok",
+                        })
+                      }
+                    />
         </div>
       </div>
     );

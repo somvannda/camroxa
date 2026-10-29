@@ -170,3 +170,23 @@ Workspace, also available in bulk). Ours:
 Verified: move → 200 and the response/DB show the new workspace; a foreign
 workspace id → 404 `Workspace not found`; router tests 13 passed.
 
+## One song menu for both surfaces
+
+Create and Library had drifted: Library had no Like or Share and a flat
+download list, Create had no Copy link, and the order differed.
+
+Both now render `components/SongRowMenu.tsx` with one item order:
+
+```
+Like · Dislike · Share · Copy link · Download ▸ · Remix ▸ · Edit ▸ · Manage ▸ ·
+Add to Queue · Add to Playlist ▸ · Song Radio · Publish · Open in Studio ·
+Report · Move to Trash
+```
+
+Each page supplies only its own handlers (Create opens the modals in place;
+Library routes Reuse Prompt / Mashup / Voice to `/create` and confirms Trash in
+its own dialog). Adding a menu action in future means touching one file.
+
+Verified in the browser: both row menus list the same fifteen entries in the
+same order.
+
