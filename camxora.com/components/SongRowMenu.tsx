@@ -3,6 +3,7 @@
 import Link from "next/link";
 
 import { Icon } from "@/components/Icon";
+import type { EditKind } from "@/components/EditSongModal";
 import {
   SMenu,
   SMenuItem,
@@ -36,7 +37,12 @@ export type SongRowMenuProps = {
   onReusePrompt: () => void;
   onMashup: () => void;
   onVoice: () => void;
+  onSample: () => void;
   onDetails: () => void;
+  onEdit: (kind: EditKind) => void;
+  onStems: (mode: "vocal" | "stems" | "advanced") => void;
+  onRemaster: () => void;
+  onCollaborate: () => void;
   onMove: (workspace: WebMusicWorkspace) => void;
   onQueue: () => void;
   onAddToPlaylist: (playlist: WebMusicPlaylistSummary) => void;
@@ -67,7 +73,12 @@ export function SongRowMenu({
   onReusePrompt,
   onMashup,
   onVoice,
+  onSample,
   onDetails,
+  onEdit,
+  onStems,
+  onRemaster,
+  onCollaborate,
   onMove,
   onQueue,
   onAddToPlaylist,
@@ -146,7 +157,7 @@ export function SongRowMenu({
           <SMenuItem disabled={!ready} onSelect={onMashup}>
             <Icon name="fa-code-merge" /> Mashup
           </SMenuItem>
-          <SMenuItem disabled title="Coming soon">
+          <SMenuItem disabled={!ready} onSelect={onSample}>
             <Icon name="fa-waveform" /> Sample this song
           </SMenuItem>
           <SMenuItem disabled title="Coming soon">
@@ -163,6 +174,48 @@ export function SongRowMenu({
           <Icon name="fa-pen-to-square" /> Edit
         </SMenuSubTrigger>
         <SMenuSubContent>
+          <SMenuItem disabled={!ready} onSelect={() => onEdit("extend")}>
+            <Icon name="fa-arrow-right-to-bracket" /> Extend
+          </SMenuItem>
+          <SMenuItem disabled={!ready} onSelect={() => onEdit("crop")}>
+            <Icon name="fa-scissors" /> Crop
+          </SMenuItem>
+          <SMenuItem disabled={!ready} onSelect={() => onEdit("remove_section")}>
+            <Icon name="fa-scissors" /> Remove Section
+          </SMenuItem>
+          <SMenuItem disabled={!ready} onSelect={() => onEdit("reverse")}>
+            <Icon name="fa-arrows-rotate" /> Reverse
+          </SMenuItem>
+          <SMenuItem disabled={!ready} onSelect={() => onEdit("adjust_speed")}>
+            <Icon name="fa-gauge-high" /> Adjust Speed
+          </SMenuItem>
+          <SMenuItem onSelect={onCollaborate}>
+            <Icon name="fa-user-group" /> Find a Collaborator
+          </SMenuItem>
+          <SMenuItem disabled={!ready} onSelect={() => onEdit("fade_in")}>
+            <Icon name="fa-arrow-trend-up" /> Fade In
+          </SMenuItem>
+          <SMenuItem disabled={!ready} onSelect={() => onEdit("fade_out")}>
+            <Icon name="fa-arrow-trend-down" /> Fade Out
+          </SMenuItem>
+          <SMenuSeparator />
+          <SMenuItem disabled={!ready} onSelect={() => onEdit("replace_section")}>
+            <Icon name="fa-arrows-left-right" /> Replace Section
+          </SMenuItem>
+          <SMenuSub>
+            <SMenuSubTrigger disabled={!ready}>
+              <Icon name="fa-layer-group" /> Get Stems / MIDI
+            </SMenuSubTrigger>
+            <SMenuSubContent>
+              <SMenuItem onSelect={() => onStems("vocal")}>Vocals only</SMenuItem>
+              <SMenuItem onSelect={() => onStems("stems")}>2 stems</SMenuItem>
+              <SMenuItem onSelect={() => onStems("advanced")}>12 stems</SMenuItem>
+            </SMenuSubContent>
+          </SMenuSub>
+          <SMenuItem disabled={!ready} onSelect={onRemaster}>
+            <Icon name="fa-wand-magic-sparkles" /> Remaster
+          </SMenuItem>
+          <SMenuSeparator />
           <SMenuItem onSelect={onDetails}>
             <Icon name="fa-circle-info" /> Song Details
           </SMenuItem>
@@ -170,12 +223,6 @@ export function SongRowMenu({
             <Link href="/studio/editor">
               <Icon name="fa-table-columns" /> Open in Editor
             </Link>
-          </SMenuItem>
-          <SMenuItem disabled title="Replace Section needs the section editor — coming soon">
-            <Icon name="fa-scissors" /> Replace Section
-          </SMenuItem>
-          <SMenuItem disabled title="No crop service yet">
-            <Icon name="fa-crop-simple" /> Crop Song
           </SMenuItem>
         </SMenuSubContent>
       </SMenuSub>
