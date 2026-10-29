@@ -51,6 +51,7 @@ type PlayerContextValue = {
   queueOpen: boolean;
   currentIndex: number;
   playTrack: (track: Track) => void;
+  enqueue: (track: Track) => void;
   loadIndex: (index: number) => void;
   togglePlay: () => void;
   seek: (seconds: number) => void;
@@ -141,8 +142,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(timer);
   }, [playing, current.audioUrl, current.duration]);
 
-  const playTrack = (track: Track) => {
-    setTracks((items) =>
+  const playTrack = (track: Track) => {    setTracks((items) =>
       items.some(
         (item) => item.title === track.title && item.artist === track.artist
       )
@@ -155,8 +155,18 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     setQueueOpen(false);
   };
 
-  const loadIndex = (index: number) => {
-    const track = tracks[index];
+  /** Append a track to the play queue without starting playback. */
+  const enqueue = (track: Track) => {
+    setTracks((items) =>
+      items.some(
+        (item) => item.title === track.title && item.artist === track.artist
+      )
+        ? items
+        : [...items, track]
+    );
+  };
+
+  const loadIndex = (index: number) => {    const track = tracks[index];
     if (!track) return;
     setCurrent(track);
     setElapsed(0);
@@ -207,6 +217,7 @@ export function PlayerProvider({ children }: { children: ReactNode }) {
     queueOpen,
     currentIndex,
     playTrack,
+    enqueue,
     loadIndex,
     togglePlay,
     seek,

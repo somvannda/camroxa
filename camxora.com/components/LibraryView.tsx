@@ -8,6 +8,9 @@ import {
   SMenu,
   SMenuCheckboxItem,
   SMenuItem,
+  SMenuSub,
+  SMenuSubContent,
+  SMenuSubTrigger,
   SMenuRadioGroup,
   SMenuRadioItem,
   SMenuSeparator,
@@ -152,7 +155,7 @@ function errorText(result: PromiseSettledResult<unknown>, fallback: string): str
 
 export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const { user, loading: authLoading } = useAuth();
-  const { playTrack } = usePlayer();
+  const { playTrack, enqueue } = usePlayer();
   const mounted = useRef(true);
 
   const [tab, setTab] = useState<LibTab>(initialTab ?? "songs");
@@ -559,6 +562,36 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
         nextDisliked ? current.filter((item) => item !== key) : [...current, key]
       );
       setToast("Could not update dislike");
+    }
+  }
+
+  function enqueueClip(song: WebMusicGeneration, clip: WebMusicClip) {
+    const variant = clip.variant || "ok";
+    const audioUrl =
+      clip.audio_url ||
+      clip.download_url ||
+      `/api/v3/web-music/generations/${song.id}/stream/${variant}`;
+    if (!audioUrl) return;
+    enqueue({
+      title: clip.title || song.title || "Untitled",
+      artist: "You",
+      cover: clip.image_url || "/hero.png",
+      duration: Math.max(1, Math.round(clip.duration_seconds || 180)),
+      audioUrl,
+    });
+    setToast("Added to queue");
+  }
+
+  async function addClipToPlaylist(
+    song: WebMusicGeneration,
+    clip: WebMusicClip,
+    playlist: WebMusicPlaylistSummary
+  ) {
+    try {
+      await addWebMusicPlaylistItem(playlist.id, song.id, clip.variant);
+      setToast(`Added to ${playlist.name}`);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not add to playlist");
     }
   }
 
@@ -1010,9 +1043,28 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 <Icon name="fa-wand-magic-sparkles" /> Remix
               </Link>
             </SMenuItem>
-            <SMenuItem disabled={!ready} onSelect={() => openDetail(song, clip)}>
-              <Icon name="fa-list" /> Add to playlist
+            <SMenuItem disabled={!ready} onSelect={() => enqueueClip(song, clip)}>
+              <Icon name="fa-bars-staggered" /> Add to Queue
             </SMenuItem>
+            <SMenuSub>
+              <SMenuSubTrigger>
+                <Icon name="fa-list" /> Add to Playlist
+              </SMenuSubTrigger>
+              <SMenuSubContent>
+                {playlists.length ? (
+                  playlists.map((playlist) => (
+                    <SMenuItem
+                      key={playlist.id}
+                      onSelect={() => void addClipToPlaylist(song, clip, playlist)}
+                    >
+                      <Icon name="fa-rectangle-list" /> {playlist.name}
+                    </SMenuItem>
+                  ))
+                ) : (
+                  <SMenuItem disabled>No playlists yet</SMenuItem>
+                )}
+              </SMenuSubContent>
+            </SMenuSub>
             <SMenuSeparator />
             <SMenuItem
               onSelect={() =>
