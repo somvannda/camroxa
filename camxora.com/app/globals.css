@@ -4516,3 +4516,17 @@ html{color-scheme:dark}
 .side-head .side-collapse{margin:0;flex:none;width:28px;height:28px;padding:0}
 .sidebar.collapsed .side-head{justify-content:center;padding:0}
 .sidebar.collapsed .side-head .brand{flex:none}
+
+/* Sidebar polish: floating collapse handle, plain account block */
+.sidebar{position:relative}
+.side-collapse{position:absolute;right:-9px;top:52px;width:18px;height:18px;padding:0;border-radius:50%;border:1px solid var(--s-line2);background:var(--s-bg2);color:var(--s-text3);cursor:pointer;display:grid;place-items:center;font-size:11px;z-index:6}
+.side-collapse:hover{color:var(--s-text);border-color:var(--s-accent)}
+.side-head{padding:0 14px;margin-bottom:18px}
+.side-account.side-user{display:flex;flex-direction:column;align-items:center;gap:6px;padding:12px 10px 14px;background:transparent;border:0}
+.side-avatar img{width:34px;height:34px;border-radius:50%;object-fit:cover}
+.side-user-name{font-size:12px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-user-credits{font-size:11px;color:var(--s-text3)}
+.side-user-out{display:inline-flex;align-items:center;gap:6px;margin-top:2px;padding:4px 10px;border-radius:999px;border:1px solid var(--s-line);background:transparent;color:var(--s-text2);font-size:11px;cursor:pointer}
+.side-user-out:hover{color:var(--s-text);border-color:var(--s-line2)}
+.sidebar.collapsed .side-user-name,.sidebar.collapsed .side-user-credits,.sidebar.collapsed .side-user-out span{display:none}
+.sidebar.collapsed .side-user-out{padding:4px}
