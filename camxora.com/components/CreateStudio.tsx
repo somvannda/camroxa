@@ -2652,12 +2652,13 @@ export function CreateStudio() {
     const { song, clip, key, title, ready } = row;
     const liked = isLikedRow(song, clip);
     const disliked = isDislikedRow(song, clip);
+    const failed = !ready && /fail|error|cancel/i.test(String(song.status ?? ""));
     const isSelected = selectedId === song.id && selectedVariant === clip.variant;
     const selectedForBatch = selectedClipKeys.includes(key);
     const instrumental = generationIsInstrumental(song);
     return (
       <div
-        className={`s-row s-row-compact${isSelected ? " selected" : ""}`}
+        className={`s-row s-row-compact${isSelected ? " selected" : ""}${failed ? " failed" : ""}`}
         key={key}
         role="group"
         aria-label={title}
@@ -2694,8 +2695,8 @@ export function CreateStudio() {
           }}
         >
           <Icon
-            name={ready ? "fa-play" : "fa-hourglass-half"}
-            className={ready ? "" : "s-hourglass"}
+            name={ready ? "fa-play" : failed ? "fa-circle-xmark" : "fa-hourglass-half"}
+            className={ready ? "" : failed ? "s-row-failed-icon" : "s-hourglass"}
           />
         </button>
 
@@ -2714,7 +2715,10 @@ export function CreateStudio() {
             {song.is_preview ? <span className="s-status live">Preview</span> : null}
           </div>
           <div className="s-row-desc">
-            {ready ? "Ready" : statusLabel(song.status)} ·{" "}
+            <span className={failed ? "s-row-failed-text" : undefined}>
+              {ready ? "Ready" : statusLabel(song.status)}
+            </span>{" "}
+            ·{" "}
             <span
               className={`s-model-badge ${modelBadgeTone(song.model || song.model_label)}`}
             >
