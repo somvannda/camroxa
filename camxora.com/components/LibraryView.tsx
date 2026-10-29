@@ -4,16 +4,16 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
+import { ReportClipModal } from "@/components/ReportClipModal";
+import { ShareClipModal } from "@/components/ShareClipModal";
+import { SongDetailsModal } from "@/components/SongDetailsModal";
+import { SongRowMenu } from "@/components/SongRowMenu";
 import {
   SMenu,
   SMenuCheckboxItem,
   SMenuItem,
-  SMenuSub,
-  SMenuSubContent,
-  SMenuSubTrigger,
   SMenuRadioGroup,
   SMenuRadioItem,
-  SMenuSeparator,
 } from "@/components/ui/s-menu";
 import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
@@ -30,6 +30,9 @@ import {
   deleteWebMusicGeneration,
   restoreWebMusicGeneration,
   setWebMusicTrash,
+  coverWebMusicGeneration,
+  reportWebMusicGeneration,
+  radioWebMusicGeneration,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
   fetchWebMusicDislikedKeys,
@@ -42,6 +45,7 @@ import {
   listWebMusicStudioProjects,
   listWebMusicWorkspaces,
   unlockWebMusicPreview,
+  updateWebMusicGeneration,
   updateWebMusicGenerationTitle,
   type WebMusicPlaylistItem,
   type WebMusicPlaylistSummary,
@@ -183,6 +187,17 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashSelected, setTrashSelected] = useState<string[]>([]);
   const [trashCount, setTrashCount] = useState(0);
+  const [reportTarget, setReportTarget] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [detailsTarget, setDetailsTarget] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [detailsBusy, setDetailsBusy] = useState(false);
+  const [shareTarget, setShareTarget] = useState<
+    { song: WebMusicGeneration; clip: WebMusicClip } | null
+  >(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachNotice, setAttachNotice] = useState<null | "upload" | "record">(null);
 
@@ -565,13 +580,93 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     }
   }
 
+  async function submitReport(input: {
+    reason: Parameters<typeof reportWebMusicGeneration>[1]["reason"];
+    details: string;
+  }) {
+    if (!reportTarget) return;
+    setReportBusy(true);
+    try {
+      await reportWebMusicGeneration(reportTarget.song.id, {
+        variant: reportTarget.variant,
+        reason: input.reason,
+        details: input.details,
+      });
+      setToast("Report sent — thanks");
+      setReportTarget(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not send the report");
+    } finally {
+      if (mounted.current) setReportBusy(false);
+    }
+  }
+
+  /** Suno's Manage ▸ Move to Workspace. */
+  async function moveClipToWorkspace(
+    song: WebMusicGeneration,
+    workspace: WebMusicWorkspace
+  ) {
+    if (song.workspace_id === workspace.id) {
+      setToast(`Already in ${workspace.name}`);
+      return;
+    }
+    try {
+      await updateWebMusicGeneration(song.id, { workspace_id: workspace.id });
+      setToast(`Moved to ${workspace.name}`);
+      await loadGenerations(0);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not move this song");
+    }
+  }
+
+  async function submitSongDetails(input: { title: string; lyrics: string }) {
+    if (!detailsTarget) return;
+    setDetailsBusy(true);
+    try {
+      const updated = await updateWebMusicGeneration(detailsTarget.song.id, {
+        title: input.title,
+        lyrics: input.lyrics,
+        variant: detailsTarget.variant,
+      });
+      setGenerations((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
+      );
+      setDetail((current) => (current && current.id === updated.id ? updated : current));
+      setToast("Song details saved");
+      setDetailsTarget(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not save the details");
+    } finally {
+      if (mounted.current) setDetailsBusy(false);
+    }
+  }
+
+  async function coverFromLibrary(song: WebMusicGeneration, clip: WebMusicClip) {
+    try {
+      await coverWebMusicGeneration(song.id, {
+        variant: clip.variant === "alt" ? "alt" : "ok",
+        prompt: (song.style || song.title || "").trim(),
+      });
+      setToast("Cover started — it will appear in your library");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not cover this song");
+    }
+  }
+
   function enqueueClip(song: WebMusicGeneration, clip: WebMusicClip) {
+    if (appendClipToQueue(song, clip)) setToast("Added to queue");
+  }
+
+  function appendClipToQueue(
+    song: WebMusicGeneration,
+    clip: WebMusicClip
+  ): boolean {
     const variant = clip.variant || "ok";
     const audioUrl =
       clip.audio_url ||
       clip.download_url ||
       `/api/v3/web-music/generations/${song.id}/stream/${variant}`;
-    if (!audioUrl) return;
+    if (!audioUrl) return false;
     enqueue({
       title: clip.title || song.title || "Untitled",
       artist: "You",
@@ -579,7 +674,28 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       duration: Math.max(1, Math.round(clip.duration_seconds || 180)),
       audioUrl,
     });
-    setToast("Added to queue");
+    return true;
+  }
+
+  /** Suno's "Song Radio": play this song, then keep queueing similar ones. */
+  async function startRadio(song: WebMusicGeneration, clip: WebMusicClip) {
+    try {
+      const station = await radioWebMusicGeneration(song.id, 20);
+      playClip(song, clip);
+      for (const item of station.items) {
+        const match = generationClips(item).find(
+          (candidate) => candidate.ready && candidate.audio_url
+        );
+        if (match) appendClipToQueue(item, match);
+      }
+      setToast(
+        station.items.length
+          ? `Song Radio started — ${station.items.length} songs queued`
+          : "Song Radio started — no similar songs yet"
+      );
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not start Song Radio");
+    }
   }
 
   async function addClipToPlaylist(
@@ -996,8 +1112,8 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
               type="button"
               className="s-act icon-only"
               aria-label="Share clip"
-              title="Copy link"
-              onClick={() => void copyClipLink(song, clip)}
+              title="Share"
+              onClick={() => setShareTarget({ song, clip })}
             >
               <Icon name="fa-share" />
             </button>
@@ -1017,99 +1133,60 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           style={{ position: "static" }}
           onClick={(event) => event.stopPropagation()}
         >
-          <SMenu
-            align="end"
-            sideOffset={6}
-            trigger={
-              <button
-                type="button"
-                className="s-row-more"
-                aria-label="More options"
-              >
-                <Icon name="fa-ellipsis-vertical" />
-              </button>
-            }
-          >
-            <SMenuItem onSelect={() => void copyClipLink(song, clip)}>
-              <Icon name="fa-link" /> Copy link
-            </SMenuItem>
-            <SMenuItem onSelect={() => toggleDislike(song, clip)}>
-              <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
-            </SMenuItem>
-            <SMenuItem asChild>
-              <Link
-                href={`/create?remix=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`}
-              >
-                <Icon name="fa-wand-magic-sparkles" /> Remix
-              </Link>
-            </SMenuItem>
-            <SMenuItem disabled={!ready} onSelect={() => enqueueClip(song, clip)}>
-              <Icon name="fa-bars-staggered" /> Add to Queue
-            </SMenuItem>
-            <SMenuSub>
-              <SMenuSubTrigger>
-                <Icon name="fa-list" /> Add to Playlist
-              </SMenuSubTrigger>
-              <SMenuSubContent>
-                {playlists.length ? (
-                  playlists.map((playlist) => (
-                    <SMenuItem
-                      key={playlist.id}
-                      onSelect={() => void addClipToPlaylist(song, clip, playlist)}
-                    >
-                      <Icon name="fa-rectangle-list" /> {playlist.name}
-                    </SMenuItem>
-                  ))
-                ) : (
-                  <SMenuItem disabled>No playlists yet</SMenuItem>
-                )}
-              </SMenuSubContent>
-            </SMenuSub>
-            <SMenuSeparator />
-            <SMenuItem
-              onSelect={() =>
-                setConfirm({
-                  kind: "generations",
-                  ids: [song.id],
-                  variant: clip.variant === "alt" ? "alt" : "ok",
-                })
-              }
-            >
-              <Icon name="fa-trash" /> Move to Trash
-            </SMenuItem>
-            <SMenuSeparator />
-            {DOWNLOAD_KINDS.filter(
-              (format) =>
-                format.kind === "mp3" ||
-                format.kind === "wav" ||
-                !generationIsInstrumental(song)
-            ).map((format) => (
-              <SMenuItem key={format.kind} asChild>
-                <a
-                  href={
-                    format.kind === "mp3" && clip.download_url
-                      ? clip.download_url
-                      : clipDownloadUrl(song.id, clip.variant, format.kind)
-                  }
-                >
-                  <Icon name="fa-download" /> {format.label}
-                </a>
-              </SMenuItem>
-            ))}
-            <SMenuSeparator />
-            <SMenuItem
-              onSelect={() => {
-                window.location.href = `/publish?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`;
-              }}
-            >
-              <Icon name="fa-arrow-up-from-bracket" /> Publish
-            </SMenuItem>
-            <SMenuItem asChild>
-              <Link href="/studio/editor">
-                <Icon name="fa-table-columns" /> Open in Studio
-              </Link>
-            </SMenuItem>
-          </SMenu>
+                    <SongRowMenu
+                      song={song}
+                      clip={clip}
+                      ready={ready}
+                      instrumental={generationIsInstrumental(song)}
+                      liked={isLikedRow(song, clip)}
+                      disliked={isDislikedRow(song, clip)}
+                      playlists={playlists}
+                      workspaces={workspaces}
+                      onLike={() => void toggleLike(song, clip)}
+                      onDislike={() => void toggleDislike(song, clip)}
+                      onShare={() => setShareTarget({ song, clip })}
+                      onCopyLink={() => void copyClipLink(song, clip)}
+                      onCover={() => void coverFromLibrary(song, clip)}
+                      onReusePrompt={() => {
+                        const text = (song.style || song.lyrics || song.title || "").trim();
+                        window.location.href = `/create?prompt=${encodeURIComponent(text)}`;
+                      }}
+                      onMashup={() => {
+                        window.location.href = `/create?mashup=${encodeURIComponent(
+                          song.id
+                        )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
+                      }}
+                      onVoice={() => {
+                        window.location.href = `/create?remix=${encodeURIComponent(
+                          song.id
+                        )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
+                      }}
+                      onDetails={() =>
+                        setDetailsTarget({
+                          song,
+                          variant: clip.variant === "alt" ? "alt" : "ok",
+                        })
+                      }
+                      onMove={(workspace) => void moveClipToWorkspace(song, workspace)}
+                      onQueue={() => enqueueClip(song, clip)}
+                      onAddToPlaylist={(playlist) =>
+                        void addClipToPlaylist(song, clip, playlist)
+                      }
+                      onRadio={() => void startRadio(song, clip)}
+                      onReport={() =>
+                        setReportTarget({
+                          song,
+                          variant: clip.variant === "alt" ? "alt" : "ok",
+                        })
+                      }
+                      onTrash={() =>
+                        setConfirm({
+                          kind: "generations",
+                          ids: [song.id],
+                          variant: clip.variant === "alt" ? "alt" : "ok",
+                        })
+                      }
+                    />
         </div>
       </div>
     );
@@ -2179,6 +2256,38 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {detailsTarget ? (
+        <SongDetailsModal
+          title={detailsTarget.song.title}
+          lyrics={detailsTarget.song.lyrics || ""}
+          busy={detailsBusy}
+          onClose={() => setDetailsTarget(null)}
+          onSubmit={submitSongDetails}
+        />
+      ) : null}
+
+      {shareTarget ? (
+        <ShareClipModal
+          url={`${typeof window !== "undefined" ? window.location.origin : ""}/library?clip=${encodeURIComponent(shareTarget.song.id)}&variant=${encodeURIComponent(shareTarget.clip.variant || "ok")}`}
+          title={shareTarget.clip.title || shareTarget.song.title || "Untitled"}
+          downloadUrl={
+            shareTarget.clip.download_url ||
+            clipDownloadUrl(shareTarget.song.id, shareTarget.clip.variant, "mp3")
+          }
+          onClose={() => setShareTarget(null)}
+          onToast={setToast}
+        />
+      ) : null}
+
+      {reportTarget ? (
+        <ReportClipModal
+          title={reportTarget.song.title}
+          busy={reportBusy}
+          onClose={() => setReportTarget(null)}
+          onSubmit={submitReport}
+        />
       ) : null}
 
       {toast ? (

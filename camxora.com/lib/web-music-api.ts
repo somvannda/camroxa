@@ -314,15 +314,45 @@ export async function getWebMusicGeneration(id: string): Promise<WebMusicGenerat
   return musicJson<WebMusicGeneration>(`/api/v3/web-music/generations/${encodeURIComponent(id)}`);
 }
 
+/** Songs that sound like this one, for Song Radio. */
+export async function radioWebMusicGeneration(
+  id: string,
+  limit = 20
+): Promise<{ seed: WebMusicGeneration; items: WebMusicGeneration[] }> {
+  return musicJson<{ seed: WebMusicGeneration; items: WebMusicGeneration[] }>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/radio?limit=${limit}`
+  );
+}
+
 export async function updateWebMusicGenerationTitle(
   id: string,
   title: string,
   variant?: string
 ): Promise<WebMusicGeneration> {
+  return updateWebMusicGeneration(id, { title, variant });
+}
+
+/** Suno's Edit ▸ Song Details and Manage ▸ Move to Workspace. */
+export async function updateWebMusicGeneration(
+  id: string,
+  input: {
+    title?: string;
+    lyrics?: string;
+    variant?: string;
+    workspace_id?: string;
+  }
+): Promise<WebMusicGeneration> {
   return musicJson<WebMusicGeneration>(`/api/v3/web-music/generations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, ...(variant ? { variant } : {}) }),
+    body: JSON.stringify({
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.lyrics !== undefined ? { lyrics: input.lyrics } : {}),
+      ...(input.workspace_id !== undefined
+        ? { workspace_id: input.workspace_id }
+        : {}),
+      ...(input.variant ? { variant: input.variant } : {}),
+    }),
   });
 }
 
@@ -548,6 +578,8 @@ export type WebMusicStudioOperation = {
   operation_type: string;
   mode: string;
   task_id?: string | null;
+  variant?: string | null;
+  label?: string | null;
   error_message?: string | null;
   result?: {
     clips?: WebMusicStudioClipResult[];
@@ -628,6 +660,43 @@ export async function requestWebMusicStaffPickRemix(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt }),
+  });
+}
+
+export type WebMusicReportReason =
+  | "copyright"
+  | "explicit"
+  | "spam"
+  | "harassment"
+  | "other";
+
+export async function reportWebMusicGeneration(
+  id: string,
+  input: { variant?: "ok" | "alt"; reason: WebMusicReportReason; details?: string }
+): Promise<void> {
+  await musicJson(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/report`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        reason: input.reason,
+        details: input.details?.trim() || null,
+      }),
+    }
+  );
+}
+
+export async function mashupWebMusicGeneration(
+  taskIds: string[],
+  variants: Array<"ok" | "alt">,
+  prompt = ""
+): Promise<WebMusicStudioOperation> {
+  return musicJson("/api/v3/web-music/studio/mashup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task_ids: taskIds, variants, prompt }),
   });
 }
 

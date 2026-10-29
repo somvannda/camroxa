@@ -150,6 +150,75 @@ def _normalize_slider(value: float | None, *, default: float = _DEFAULT_SLIDER_V
 
 _VALID_MODELS = frozenset(SUNO_MUSIC_MODEL_IDS)
 
+# Studio edits that produce a new song. Suno surfaces these in the workspace
+# feed as a pending song the moment the edit is requested, then flips that
+# same row to the finished audio — never as a separate "queue" screen.
+_STUDIO_SONG_OPERATION_TYPES = frozenset(
+    {
+        "cover",
+        "remaster",
+        "mashup",
+        "extend",
+        "add_vocals",
+        "add_instrumental",
+        "replace_section",
+    }
+)
+
+_STUDIO_SONG_TITLE_SUFFIX = {
+    "cover": "Cover",
+    "remaster": "Remaster",
+    "mashup": "Mashup",
+    "extend": "Extended",
+    "add_vocals": "Vocals",
+    "add_instrumental": "Instrumental",
+    "replace_section": "Edit",
+}
+
+
+def _studio_song_request_hash(operation_id: Any) -> str:
+    """Idempotency key that links a feed row to its studio operation."""
+    return f"studio:{operation_id}"
+
+
+def _clip_field(clip: Any, *names: str) -> Any:
+    if not isinstance(clip, dict):
+        return None
+    for name in names:
+        value = clip.get(name)
+        if value not in (None, ""):
+            return value
+    return None
+
+
+_STYLE_STOPWORDS = frozenset(
+    {
+        "and",
+        "the",
+        "with",
+        "for",
+        "that",
+        "this",
+        "from",
+        "into",
+        "over",
+        "very",
+        "like",
+        "song",
+        "music",
+        "style",
+    }
+)
+
+
+def _style_tokens(value: Any) -> set[str]:
+    """Words of a style prompt, used to rank Song Radio neighbours."""
+    return {
+        word
+        for word in re.split(r"[^a-z0-9]+", str(value or "").lower())
+        if len(word) > 2 and word not in _STYLE_STOPWORDS
+    }
+
 _WEB_MUSIC_STYLE_SYSTEM_PROMPT = (
     "You are a Suno AI music production prompt engineer.\n"
     "Turn the user's notes into ONE Suno-ready style string for the style field.\n\n"
@@ -3765,7 +3834,170 @@ class WebMusicService:
             job_id or None,
             str(payload.get("status") or "queued").lower(),
         )
+        try:
+            await self._materialize_studio_operation_song(user_id, updated)
+        except Exception:
+            logger.exception("Studio operation song row failed for %s", updated["id"])
         return self._studio_operation_payload(updated)
+
+    async def _materialize_studio_operation_song(
+        self, user_id: UUID, operation: Any
+    ) -> None:
+        """Show a requested studio edit as a pending song in the workspace.
+
+        Suno creates the song row immediately (so the feed shows it while it
+        renders) and fills in the audio when the job finishes. ``request_hash``
+        is the idempotency key that links the row back to its operation.
+        """
+        operation_type = str(_row_value(operation, "operation_type") or "").strip().lower()
+        if operation_type not in _STUDIO_SONG_OPERATION_TYPES:
+            return
+        source_task_id = _row_value(operation, "task_id")
+        if source_task_id is None:
+            return
+        source = await self._pool.fetchrow(
+            """
+            SELECT title, lyrics, style, model, instrumental, workspace_id,
+                   image_url_ok, persona_id, negative_tags, vocal_gender
+            FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            source_task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if source is None:
+            return
+        base_title = str(source["title"] or "").strip() or "Untitled"
+        suffix = _STUDIO_SONG_TITLE_SUFFIX.get(operation_type)
+        title = f"{base_title} ({suffix})" if suffix else base_title
+        await self._pool.execute(
+            """
+            INSERT INTO suno_tasks (
+                user_id, request_hash, model, title, lyrics, style, instrumental,
+                status, source, workspace_id, image_url_ok, persona_id,
+                negative_tags, vocal_gender, purged_variants, created_at, updated_at
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7,
+                $8, $9, $10, $11, $12,
+                $13, $14, ARRAY['alt'], NOW(), NOW()
+            )
+            ON CONFLICT (user_id, request_hash) DO NOTHING
+            """,
+            user_id,
+            _studio_song_request_hash(operation["id"]),
+            str(source["model"] or "").strip() or "chirp-v3-5",
+            title[:200],
+            source["lyrics"],
+            source["style"],
+            bool(source["instrumental"]),
+            TaskStatus.PENDING.value,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+            source["workspace_id"],
+            source["image_url_ok"],
+            source["persona_id"],
+            source["negative_tags"],
+            source["vocal_gender"],
+        )
+
+    async def _sync_studio_operation_song(
+        self,
+        user_id: UUID,
+        operation: Any,
+        *,
+        status: str,
+        result: Any,
+        error: str | None,
+        _retried: bool = False,
+    ) -> None:
+        """Write a finished studio edit back onto its feed row."""
+        operation_type = str(_row_value(operation, "operation_type") or "").strip().lower()
+        if operation_type not in _STUDIO_SONG_OPERATION_TYPES:
+            return
+        request_hash = _studio_song_request_hash(operation["id"])
+        status_key = str(status or "").strip().lower()
+        if status_key in ("complete", "completed", "success"):
+            clips = result.get("clips") if isinstance(result, dict) else None
+            clip = clips[0] if isinstance(clips, list) and clips else None
+            if not isinstance(clip, dict):
+                return
+            audio_url = _clip_field(clip, "audioUrl", "audio_url")
+            image_url = _clip_field(clip, "imageUrl", "image_url", "cover_url")
+            duration = _clip_field(clip, "duration", "duration_seconds")
+            if not isinstance(duration, (int, float)):
+                # Clip payloads carry the length inside metadata.duration.
+                metadata = clip.get("metadata")
+                if isinstance(metadata, dict):
+                    candidate = metadata.get("duration")
+                    if isinstance(candidate, (int, float)):
+                        duration = candidate
+            clip_title = _clip_field(clip, "title")
+            provider_clip_id = _clip_field(clip, "id", "clip_id")
+            row = await self._pool.fetchrow(
+                """
+                UPDATE suno_tasks
+                SET status = $3,
+                    audio_url_ok = COALESCE($4, audio_url_ok),
+                    image_url_ok = COALESCE($5, image_url_ok),
+                    duration_ok = COALESCE($6::double precision, duration_ok),
+                    title_ok = COALESCE($7, title_ok),
+                    external_task_id = COALESCE($8, external_task_id),
+                    error_message = NULL,
+                    updated_at = now()
+                WHERE user_id = $1 AND request_hash = $2
+                RETURNING id
+                """,
+                user_id,
+                request_hash,
+                TaskStatus.SUCCESS.value,
+                str(audio_url) if audio_url else None,
+                str(image_url) if image_url else None,
+                float(duration) if isinstance(duration, (int, float)) else None,
+                str(clip_title) if clip_title else None,
+                str(provider_clip_id) if provider_clip_id else None,
+            )
+            if row is not None and audio_url:
+                # Pull the finished audio into B2 so the clip becomes playable
+                # (the feed only marks a clip ready once it is stored).
+                try:
+                    self._upload_service.schedule_web_music_b2_backfill(
+                        suno_task_id=row["id"], variant="ok"
+                    )
+                except Exception:
+                    logger.exception(
+                        "Studio song B2 backfill scheduling failed for %s", operation["id"]
+                    )
+            elif row is None and not _retried:
+                # Operation created before feed rows existed (or by the sweeper
+                # after a restart): create the row, then apply the result once.
+                try:
+                    await self._materialize_studio_operation_song(user_id, operation)
+                except Exception:
+                    logger.exception(
+                        "Studio song row backfill failed for %s", operation["id"]
+                    )
+                await self._sync_studio_operation_song(
+                    user_id,
+                    operation,
+                    status=status,
+                    result=result,
+                    error=error,
+                    _retried=True,
+                )
+            return
+        if status_key in ("error", "failed", "cancelled"):
+            await self._pool.execute(
+                """
+                UPDATE suno_tasks
+                SET status = $3, error_message = $4, updated_at = now()
+                WHERE user_id = $1 AND request_hash = $2
+                """,
+                user_id,
+                request_hash,
+                TaskStatus.FAILED.value,
+                str(error or "The studio edit failed.")[:2000],
+            )
 
     async def _request_studio_upload_operation(
         self,
@@ -4544,6 +4776,27 @@ class WebMusicService:
                     operation_id,
                     user_id,
                 )
+            else:
+                # Self-heal: the process may have restarted between the job
+                # finishing and the feed row being updated.
+                stored = row["result_json"]
+                if isinstance(stored, str):
+                    try:
+                        stored = json.loads(stored)
+                    except Exception:
+                        stored = None
+                try:
+                    await self._sync_studio_operation_song(
+                        user_id,
+                        row,
+                        status=str(row["status"]),
+                        result=stored,
+                        error=None,
+                    )
+                except Exception:
+                    logger.exception(
+                        "Studio operation song sync failed for %s", operation_id
+                    )
             return self._studio_operation_payload(row)
         job_id = str(row["musicapi_job_id"] or "").strip()
         if not job_id:
@@ -4593,7 +4846,57 @@ class WebMusicService:
                 await self._refund_studio_operation(user_id, operation_id)
             except Exception:
                 logger.exception("Studio operation refund failed for %s", operation_id)
+        try:
+            await self._sync_studio_operation_song(
+                user_id,
+                updated,
+                status=status,
+                result=result,
+                error=str(error) if error else None,
+            )
+        except Exception:
+            logger.exception("Studio operation song sync failed for %s", operation_id)
         return self._studio_operation_payload(updated)
+
+    async def sweep_studio_operations(
+        self,
+        *,
+        older_than_seconds: int = 20,
+        limit: int = 10,
+        max_age_seconds: int = 21600,
+    ) -> int:
+        """Poll operations nobody is watching.
+
+        A cover started from the feed only advances while a client polls it, so
+        closing the tab used to leave the new song pending forever. The startup
+        loop calls this to keep those rows moving. Rows older than
+        ``max_age_seconds`` are left alone so a dead job is not polled forever.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id, user_id
+            FROM studio_operations
+            WHERE status IN ('queued', 'pending', 'running', 'processing')
+              AND musicapi_job_id IS NOT NULL
+              AND updated_at < now() - make_interval(secs => $1)
+              AND updated_at > now() - make_interval(secs => $3)
+            ORDER BY updated_at ASC
+            LIMIT $2
+            """,
+            max(1, int(older_than_seconds)),
+            max(1, int(limit)),
+            max(60, int(max_age_seconds)),
+        )
+        swept = 0
+        for row in rows:
+            try:
+                await self.get_studio_operation(row["user_id"], row["id"])
+                swept += 1
+            except Exception:
+                logger.warning(
+                    "Studio operation sweep failed for %s", row["id"], exc_info=True
+                )
+        return swept
 
     async def list_studio_operations(
         self,
@@ -4618,6 +4921,56 @@ class WebMusicService:
             operation_type or None,
         )
         return {"items": [self._studio_operation_payload(row) for row in rows]}
+
+    async def radio_station(
+        self, user_id: UUID, task_id: UUID, *, limit: int = 20
+    ) -> dict[str, Any]:
+        """Suno's "Song Radio": the seed plus songs that sound like it."""
+        seed = await self._pool.fetchrow(
+            """
+            SELECT * FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if seed is None:
+            raise NotFoundError("Generation not found.", details={"task_id": str(task_id)})
+        rows = await self._pool.fetch(
+            """
+            SELECT * FROM suno_tasks
+            WHERE user_id = $1 AND source = $2 AND id <> $3
+              AND status = 'success'
+              AND cardinality(trashed_variants) + cardinality(purged_variants) < 2
+            ORDER BY created_at DESC
+            LIMIT 200
+            """,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+            task_id,
+        )
+        seed_tokens = _style_tokens(seed["style"])
+        seed_model = str(seed["model"] or "")
+        seed_workspace = str(seed["workspace_id"] or "")
+
+        def rank(row: Any) -> float:
+            tokens = _style_tokens(row["style"])
+            overlap = (
+                len(tokens & seed_tokens) / len(seed_tokens) if seed_tokens else 0.0
+            )
+            if seed_model and str(row["model"] or "") == seed_model:
+                overlap += 0.25
+            if seed_workspace and str(row["workspace_id"] or "") == seed_workspace:
+                overlap += 0.1
+            return overlap
+
+        ranked = sorted(rows, key=rank, reverse=True)
+        safe_limit = max(1, min(int(limit), 50))
+        station = ranked[:safe_limit]
+        seed_payload = await self._task_payload(seed, user_id)
+        items = [await self._task_payload(row, user_id) for row in station]
+        return {"seed": seed_payload, "items": items}
 
     async def list_generations(
         self,
@@ -4950,7 +5303,7 @@ class WebMusicService:
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
                    packaged_storage_key_ok, packaged_storage_key_alt,
-                   trashed_variants, purged_variants
+                   trashed_variants, purged_variants, workspace_id
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -4969,11 +5322,16 @@ class WebMusicService:
         # The refresh helpers rebuild `row` from narrower SELECTs, so read the
         # trash state from the source row and always return it.
         state = await self._pool.fetchrow(
-            "SELECT trashed_variants, purged_variants FROM suno_tasks WHERE id = $1",
+            "SELECT trashed_variants, purged_variants, workspace_id FROM suno_tasks WHERE id = $1",
             task_id,
         )
         payload["trashed_variants"] = list((state or {}).get("trashed_variants") or [])
         payload["purged_variants"] = list((state or {}).get("purged_variants") or [])
+        payload["workspace_id"] = (
+            str(state["workspace_id"])
+            if state and state.get("workspace_id")
+            else None
+        )
         return payload
 
     async def update_generation_title(
@@ -4981,42 +5339,60 @@ class WebMusicService:
         user_id: UUID,
         task_id: UUID,
         *,
-        title: str,
+        title: str | None = None,
+        lyrics: str | None = None,
+        workspace_id: UUID | None = None,
         variant: str | None = None,
     ) -> dict[str, Any]:
-        cleaned = " ".join(str(title or "").split()).strip()
-        if not cleaned:
-            raise ValidationError("Title is required.", details={"field": "title"})
-        if len(cleaned) > 200:
-            cleaned = cleaned[:200]
+        """Suno's Edit ▸ Song Details plus Manage ▸ Move to Workspace."""
         variant_key = str(variant or "").strip().lower()
-        if variant_key in ("ok", "alt"):
-            column = "title_ok" if variant_key == "ok" else "title_alt"
-            updated = await self._pool.fetchrow(
-                f"""
-                UPDATE suno_tasks
-                SET {column} = $1, updated_at = NOW()
-                WHERE id = $2 AND user_id = $3 AND source = $4
-                RETURNING id
-                """,
-                cleaned,
-                task_id,
-                user_id,
-                SUNO_TASK_SOURCE_WEB_MUSIC,
+        assignments: list[str] = []
+        params: list[Any] = []
+        if title is not None:
+            cleaned = " ".join(str(title or "").split()).strip()
+            if not cleaned:
+                raise ValidationError("Title is required.", details={"field": "title"})
+            column = (
+                "title_ok"
+                if variant_key == "ok"
+                else "title_alt"
+                if variant_key == "alt"
+                else "title"
             )
-        else:
-            updated = await self._pool.fetchrow(
-                """
-                UPDATE suno_tasks
-                SET title = $1, updated_at = NOW()
-                WHERE id = $2 AND user_id = $3 AND source = $4
-                RETURNING id
-                """,
-                cleaned,
-                task_id,
+            params.append(cleaned[:200])
+            assignments.append(f"{column} = ${len(params)}")
+        if lyrics is not None:
+            params.append(str(lyrics))
+            assignments.append(f"lyrics = ${len(params)}")
+        if workspace_id is not None:
+            owned = await self._pool.fetchval(
+                "SELECT 1 FROM web_music_workspaces WHERE id = $1 AND user_id = $2",
+                workspace_id,
                 user_id,
-                SUNO_TASK_SOURCE_WEB_MUSIC,
             )
+            if not owned:
+                raise NotFoundError(
+                    "Workspace not found.", details={"workspace_id": str(workspace_id)}
+                )
+            params.append(workspace_id)
+            assignments.append(f"workspace_id = ${len(params)}")
+        if not assignments:
+            raise ValidationError(
+                "Nothing to update.", details={"field": "title"}
+            )
+        id_index = len(params) + 1
+        updated = await self._pool.fetchrow(
+            f"""
+            UPDATE suno_tasks
+            SET {", ".join(assignments)}, updated_at = NOW()
+            WHERE id = ${id_index} AND user_id = ${id_index + 1} AND source = ${id_index + 2}
+            RETURNING id
+            """,
+            *params,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
         if updated is None:
             raise NotFoundError("Generation not found.")
         return await self.get_generation(user_id, task_id)
@@ -6571,6 +6947,11 @@ class WebMusicService:
             "error_message": row["error_message"],
             "trashed_variants": list(_row_value(row, "trashed_variants") or []),
             "purged_variants": list(_row_value(row, "purged_variants") or []),
+            "workspace_id": (
+                str(_row_value(row, "workspace_id"))
+                if _row_value(row, "workspace_id")
+                else None
+            ),
             "created_at": created,
             "is_preview": bool(_row_value(row, "is_preview")),
             "unlockable": bool(
@@ -7399,6 +7780,51 @@ class WebMusicService:
             user_id,
         )
         return [f"{row['task_id']}:{row['variant']}" for row in rows]
+
+    async def report_generation(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str,
+        reason: str,
+        details: str | None = None,
+    ) -> None:
+        """Record a user report for one clip (Suno's Report action)."""
+        variant_key = str(variant or "ok").strip().lower()
+        if variant_key not in ("ok", "alt"):
+            raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
+        reason_key = str(reason or "").strip().lower()
+        allowed = {"copyright", "explicit", "spam", "harassment", "other"}
+        if reason_key not in allowed:
+            raise ValidationError(
+                "reason must be one of copyright, explicit, spam, harassment, other.",
+                details={"field": "reason"},
+            )
+        row = await self._pool.fetchrow(
+            """
+            SELECT t.id
+            FROM suno_tasks t
+            WHERE t.id = $1 AND t.source = $2 AND t.user_id = $3
+            """,
+            task_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found.")
+        await self._pool.execute(
+            """
+            INSERT INTO web_music_reports (user_id, task_id, variant, reason, details)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (user_id, task_id, variant, reason) DO NOTHING
+            """,
+            user_id,
+            task_id,
+            variant_key,
+            reason_key,
+            (str(details or "").strip() or None),
+        )
 
     async def dislike_generation(
         self,

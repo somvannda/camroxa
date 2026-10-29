@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
+import { ReportClipModal } from "@/components/ReportClipModal";
+import { ShareClipModal } from "@/components/ShareClipModal";
+import { SongDetailsModal } from "@/components/SongDetailsModal";
+import { SongRowMenu } from "@/components/SongRowMenu";
 import {
   SMenu,
   SMenuCheckboxItem,
@@ -27,6 +31,9 @@ import {
   addWebMusicPlaylistItem,
   clipFilename,
   coverWebMusicGeneration,
+  mashupWebMusicGeneration,
+  reportWebMusicGeneration,
+  radioWebMusicGeneration,
   coverWebMusicStudioUpload,
   createWebMusicPlaylist,
   createWebMusicStudioPersona,
@@ -78,6 +85,7 @@ import {
   likeWebMusicGeneration,
   saveBlob,
   unlockWebMusicPreview,
+  updateWebMusicGeneration,
   updateWebMusicGenerationTitle,
   updateWebMusicWorkspace,
   type WebMusicGenerateInput,
@@ -362,6 +370,21 @@ export function CreateStudio() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<
     { song: WebMusicGeneration; variant?: "ok" | "alt" } | null
+  >(null);
+  const [mashupSource, setMashupSource] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [mashupBusy, setMashupBusy] = useState(false);
+  const [reportTarget, setReportTarget] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [detailsTarget, setDetailsTarget] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [detailsBusy, setDetailsBusy] = useState(false);
+  const [shareTarget, setShareTarget] = useState<
+    { song: WebMusicGeneration; clip: WebMusicClip } | null
   >(null);
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
@@ -753,6 +776,35 @@ export function CreateStudio() {
       window.removeEventListener("scroll", close, true);
     };
   }, [addMenuOpen]);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const prefill = params.get("prompt");
+    if (!prefill) return;
+    setMode("simple");
+    setPrompt(prefill);
+    window.history.replaceState(null, "", "/create");
+    document.getElementById("create-prompt")?.focus();
+  }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const taskId = params.get("mashup");
+    if (!taskId) return;
+    const variant = params.get("variant") === "alt" ? "alt" : "ok";
+    const apply = (song: WebMusicGeneration) => {
+      if (!mounted.current) return;
+      setMashupSource({ song, variant });
+      window.history.replaceState(null, "", "/create");
+    };
+    const existing = songs.find((song) => song.id === taskId);
+    if (existing) {
+      apply(existing);
+      return;
+    }
+    getWebMusicGeneration(taskId).then(apply).catch(() => null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs]);
 
   useEffect(() => {
     if (remixHandledRef.current) return;
@@ -1578,12 +1630,16 @@ export function CreateStudio() {
 
   /** Suno's "Add to Queue": append the clip without interrupting playback. */
   function enqueueSong(song: WebMusicGeneration, clip: WebMusicClip) {
+    if (appendToQueue(song, clip)) setToast("Added to queue");
+  }
+
+  function appendToQueue(song: WebMusicGeneration, clip: WebMusicClip): boolean {
     const variant = clip.variant || "ok";
     const audioUrl =
       clip.audio_url ||
       clip.download_url ||
       `/api/v3/web-music/generations/${song.id}/stream/${variant}`;
-    if (!audioUrl) return;
+    if (!audioUrl) return false;
     enqueue({
       title: clip.title || song.title || "Untitled",
       artist: "You",
@@ -1591,7 +1647,135 @@ export function CreateStudio() {
       duration: Math.max(1, Math.round(clip.duration_seconds || 180)),
       audioUrl,
     });
-    setToast("Added to queue");
+    return true;
+  }
+
+  /** Suno's "Song Radio": play this song, then keep queueing similar ones. */
+  async function startRadio(song: WebMusicGeneration, clip: WebMusicClip) {
+    try {
+      const station = await radioWebMusicGeneration(song.id, 20);
+      playSong(song, clip);
+      for (const item of station.items) {
+        const match = generationClips(item).find(
+          (candidate) => candidate.ready && candidate.audio_url
+        );
+        if (match) appendToQueue(item, match);
+      }
+      setToast(
+        station.items.length
+          ? `Song Radio started — ${station.items.length} songs queued`
+          : "Song Radio started — no similar songs yet"
+      );
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not start Song Radio");
+    }
+  }
+
+  function reusePromptFrom(song: WebMusicGeneration) {
+    const text = (song.style || song.lyrics || song.title || "").trim();
+    if (!text) {
+      setToast("This song has no prompt to reuse");
+      return;
+    }
+    if (mode !== "simple") setMode("simple");
+    setPrompt(text);
+    document.getElementById("create-prompt")?.focus();
+    setToast("Prompt reused");
+  }
+
+  async function coverFromRow(song: WebMusicGeneration, clip: WebMusicClip) {
+    try {
+      await coverWebMusicGeneration(song.id, {
+        variant: clip.variant === "alt" ? "alt" : "ok",
+        prompt: (song.style || song.title || "").trim(),
+      });
+      // Suno creates a pending song in the feed; refresh so the new row shows.
+      setToast("Cover started — it will appear in your feed");
+      await refreshSongs();
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not cover this song");
+    }
+  }
+
+  /** Suno's Manage ▸ Move to Workspace. */
+  async function moveSongToWorkspace(
+    song: WebMusicGeneration,
+    workspace: WebMusicWorkspace
+  ) {
+    if (song.workspace_id === workspace.id) {
+      setToast(`Already in ${workspace.name}`);
+      return;
+    }
+    try {
+      await updateWebMusicGeneration(song.id, { workspace_id: workspace.id });
+      setToast(`Moved to ${workspace.name}`);
+      await refreshSongs();
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not move this song");
+    }
+  }
+
+  async function submitSongDetails(input: { title: string; lyrics: string }) {    if (!detailsTarget) return;
+    setDetailsBusy(true);
+    try {
+      const updated = await updateWebMusicGeneration(detailsTarget.song.id, {
+        title: input.title,
+        lyrics: input.lyrics,
+        variant: detailsTarget.variant,
+      });
+      setSongs((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
+      );
+      if (selectedId === updated.id) setSelectedDetail(updated);
+      setToast("Song details saved");
+      setDetailsTarget(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not save the details");
+    } finally {
+      if (mounted.current) setDetailsBusy(false);
+    }
+  }
+
+  async function submitReport(input: {
+    reason: Parameters<typeof reportWebMusicGeneration>[1]["reason"];
+    details: string;
+  }) {
+    if (!reportTarget) return;
+    setReportBusy(true);
+    try {
+      await reportWebMusicGeneration(reportTarget.song.id, {
+        variant: reportTarget.variant,
+        reason: input.reason,
+        details: input.details,
+      });
+      setToast("Report sent — thanks");
+      setReportTarget(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not send the report");
+    } finally {
+      if (mounted.current) setReportBusy(false);
+    }
+  }
+
+  async function runMashup(
+    other: WebMusicGeneration,
+    otherVariant: "ok" | "alt"
+  ) {
+    if (!mashupSource || mashupBusy) return;
+    setMashupBusy(true);
+    try {
+      await mashupWebMusicGeneration(
+        [mashupSource.song.id, other.id],
+        [mashupSource.variant, otherVariant],
+        prompt.trim()
+      );
+      setToast("Mashup queued");
+      setMashupSource(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not start the mashup");
+    } finally {
+      if (mounted.current) setMashupBusy(false);
+    }
   }
 
   async function addRowToPlaylist(
@@ -2110,7 +2294,22 @@ export function CreateStudio() {
           : batchOverQueue
             ? `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`
             : null;
-  const audioResultRows = audioHistory.filter((operation) => Boolean(operation.result?.clips?.[0]?.audioUrl));
+  // Studio edits that now land as a song row in the feed (Suno-style) must not
+  // also appear under "Audio results", or the same take shows up twice.
+  const feedBackedOperations = new Set([
+    "cover",
+    "remaster",
+    "mashup",
+    "extend",
+    "add_vocals",
+    "add_instrumental",
+    "replace_section",
+  ]);
+  const audioResultRows = audioHistory.filter(
+    (operation) =>
+      Boolean(operation.result?.clips?.[0]?.audioUrl) &&
+      !feedBackedOperations.has(String(operation.operation_type || "").toLowerCase())
+  );
   const remixReadySongs = songs.filter(
     (song) =>
       String(song.status).toLowerCase() === "success" &&
@@ -2845,109 +3044,54 @@ export function CreateStudio() {
         </div>
 
         <div className="s-anchor" style={{ position: "static" }} onClick={(event) => event.stopPropagation()}>
-          <SMenu
-            align="end"
-            sideOffset={6}
-            trigger={
-              <button type="button" className="s-row-more" aria-label="More options">
-                <Icon name="fa-ellipsis-vertical" />
-              </button>
-            }
-          >
-            <SMenuItem onSelect={() => void toggleLikeRow(song, clip)}>
-              <Icon name="fa-heart" /> {liked ? "Remove like" : "Like"}
-            </SMenuItem>
-            <SMenuItem onSelect={() => toggleDislikeRow(song, clip)}>
-              <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
-            </SMenuItem>
-            <SMenuItem onSelect={() => void shareClipLink(song, clip)}>
-              <Icon name="fa-share-nodes" /> Share
-            </SMenuItem>
-            <SMenuSub>
-              <SMenuSubTrigger disabled={!ready}>
-                <Icon name="fa-download" /> Download
-              </SMenuSubTrigger>
-              <SMenuSubContent>
-                <SMenuItem asChild>
-                  <a
-                    href={clip.download_url || clipDownloadUrl(song.id, clip.variant, "mp3")}
-                    download
-                  >
-                    MP3
-                  </a>
-                </SMenuItem>
-                <SMenuItem asChild>
-                  <a href={clipDownloadUrl(song.id, clip.variant, "wav")} download>
-                    WAV
-                  </a>
-                </SMenuItem>
-                {!instrumental ? (
-                  <>
-                    <SMenuItem asChild>
-                      <a href={clipDownloadUrl(song.id, clip.variant, "lrc")} download>
-                        LRC
-                      </a>
-                    </SMenuItem>
-                    <SMenuItem asChild>
-                      <a href={clipDownloadUrl(song.id, clip.variant, "srt")} download>
-                        SRT
-                      </a>
-                    </SMenuItem>
-                  </>
-                ) : null}
-              </SMenuSubContent>
-            </SMenuSub>
-            <SMenuItem onSelect={() => openRemixPicker()}>
-              <Icon name="fa-wand-magic-sparkles" /> Remix
-            </SMenuItem>
-            <SMenuItem disabled={!ready} onSelect={() => enqueueSong(song, clip)}>
-              <Icon name="fa-bars-staggered" /> Add to Queue
-            </SMenuItem>
-            <SMenuSub>
-              <SMenuSubTrigger>
-                <Icon name="fa-list" /> Add to Playlist
-              </SMenuSubTrigger>
-              <SMenuSubContent>
-                {playlists.length ? (
-                  playlists.map((playlist) => (
-                    <SMenuItem
-                      key={playlist.id}
-                      onSelect={() => void addRowToPlaylist(song, clip, playlist)}
-                    >
-                      <Icon name="fa-rectangle-list" /> {playlist.name}
-                    </SMenuItem>
-                  ))
-                ) : (
-                  <SMenuItem disabled>No playlists yet</SMenuItem>
-                )}
-              </SMenuSubContent>
-            </SMenuSub>
-            <SMenuSeparator />
-            <SMenuItem
-              onSelect={() => {
-                window.location.href = `/publish?clip=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`;
-              }}
-            >
-              <Icon name="fa-arrow-up-from-bracket" /> Publish
-            </SMenuItem>
-            <SMenuItem asChild>
-              <Link href="/studio/editor">
-                <Icon name="fa-table-columns" /> Open in Studio
-              </Link>
-            </SMenuItem>
-            <SMenuSeparator />
-            <SMenuItem
-              disabled={deletingId === song.id}
-              onSelect={() =>
-                setDeleteTarget({
-                  song,
-                  variant: clip.variant === "alt" ? "alt" : "ok",
-                })
-              }
-            >
-              <Icon name="fa-trash" /> Move to Trash
-            </SMenuItem>
-          </SMenu>
+                    <SongRowMenu
+                        song={song}
+                        clip={clip}
+                        ready={ready}
+                        instrumental={instrumental}
+                        liked={liked}
+                        disliked={disliked}
+                        playlists={playlists}
+                        workspaces={workspaces}
+                        trashDisabled={deletingId === song.id}
+                        onLike={() => void toggleLikeRow(song, clip)}
+                        onDislike={() => toggleDislikeRow(song, clip)}
+                        onShare={() => setShareTarget({ song, clip })}
+                        onCopyLink={() => void copyClipLink(song, clip)}
+                        onCover={() => void coverFromRow(song, clip)}
+                        onReusePrompt={() => reusePromptFrom(song)}
+                        onMashup={() =>
+                          setMashupSource({
+                            song,
+                            variant: clip.variant === "alt" ? "alt" : "ok",
+                          })
+                        }
+                        onVoice={() => setAttachModal("voice")}
+                        onDetails={() =>
+                          setDetailsTarget({
+                            song,
+                            variant: clip.variant === "alt" ? "alt" : "ok",
+                          })
+                        }
+                        onMove={(workspace) => void moveSongToWorkspace(song, workspace)}
+                        onQueue={() => enqueueSong(song, clip)}
+                        onAddToPlaylist={(playlist) =>
+                          void addRowToPlaylist(song, clip, playlist)
+                        }
+                        onRadio={() => void startRadio(song, clip)}
+                        onReport={() =>
+                          setReportTarget({
+                            song,
+                            variant: clip.variant === "alt" ? "alt" : "ok",
+                          })
+                        }
+                        onTrash={() =>
+                          setDeleteTarget({
+                            song,
+                            variant: clip.variant === "alt" ? "alt" : "ok",
+                          })
+                        }
+                      />
         </div>
       </div>
     );
@@ -4744,6 +4888,117 @@ export function CreateStudio() {
             }
           }}
         />      </div>
+
+      {detailsTarget ? (
+        <SongDetailsModal
+          title={detailsTarget.song.title}
+          lyrics={detailsTarget.song.lyrics || ""}
+          busy={detailsBusy}
+          onClose={() => setDetailsTarget(null)}
+          onSubmit={submitSongDetails}
+        />
+      ) : null}
+
+      {shareTarget ? (
+        <ShareClipModal
+          url={`${typeof window !== "undefined" ? window.location.origin : ""}/library?clip=${encodeURIComponent(shareTarget.song.id)}&variant=${encodeURIComponent(shareTarget.clip.variant || "ok")}`}
+          title={shareTarget.clip.title || shareTarget.song.title || "Untitled"}
+          downloadUrl={
+            shareTarget.clip.download_url ||
+            clipDownloadUrl(shareTarget.song.id, shareTarget.clip.variant, "mp3")
+          }
+          onClose={() => setShareTarget(null)}
+          onToast={setToast}
+        />
+      ) : null}
+
+      {reportTarget ? (
+        <ReportClipModal
+          title={reportTarget.song.title}
+          busy={reportBusy}
+          onClose={() => setReportTarget(null)}
+          onSubmit={submitReport}
+        />
+      ) : null}
+
+      {mashupSource ? (
+        <div
+          className="s-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose a song to mash up"
+          onClick={() => setMashupSource(null)}
+        >
+          <div
+            className="s-modal"
+            style={{ width: "min(520px,100%)" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="s-modal-head">
+              <h3>Mashup with…</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Close"
+                onClick={() => setMashupSource(null)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-modal-body">
+              <p className="s-note">
+                Pick a second finished song. Both clips are sent to Suno as a mashup.
+              </p>
+              {songs.filter((item) => item.id !== mashupSource.song.id).length ? (
+                <div className="s-video-songs">
+                  {songs
+                    .filter((item) => item.id !== mashupSource.song.id)
+                    .map((item) => {
+                      const clip = generationClips(item).find(
+                        (candidate) => clipIsReady(item, candidate)
+                      );
+                      if (!clip) return null;
+                      const cover = generationClips(item).find(
+                        (candidate) => candidate.image_url
+                      )?.image_url;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="s-video-song"
+                          disabled={mashupBusy}
+                          onClick={() =>
+                            void runMashup(
+                              item,
+                              clip.variant === "alt" ? "alt" : "ok"
+                            )
+                          }
+                        >
+                          <span
+                            className="s-video-cover"
+                            style={cover ? { backgroundImage: `url(${cover})` } : undefined}
+                          >
+                            {cover ? null : <Icon name="fa-music" />}
+                          </span>
+                          <span className="s-video-meta">
+                            <b>{item.title}</b>
+                            <small>
+                              {clipVersionLabel(clip.variant)} ·{" "}
+                              {item.model_label || item.model || "V6"}
+                            </small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              ) : (
+                <p className="s-note">Create another finished song to mash up with.</p>
+              )}
+              {mashupBusy ? <p className="s-note">Starting mashup…</p> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {deleteTarget ? (
         <div

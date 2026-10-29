@@ -62,6 +62,12 @@ class TrashClipsRequest(BaseModel):
     clip_ids: list[str] = Field(default_factory=list, max_length=200)
 
 
+class ReportClipRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    reason: Literal["copyright", "explicit", "spam", "harassment", "other"]
+    details: str | None = Field(default=None, max_length=1000)
+
+
 class WebMusicClipResponse(BaseModel):
     variant: str
     label: str
@@ -278,6 +284,7 @@ class WebMusicGenerationResponse(BaseModel):
     audio_weight: float | None = None
     trashed_variants: list[str] = Field(default_factory=list)
     purged_variants: list[str] = Field(default_factory=list)
+    workspace_id: str | None = None
     clips: list[WebMusicClipResponse] = Field(default_factory=list)
 
 
@@ -320,6 +327,9 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         purged_variants=[
             str(value) for value in (payload.get("purged_variants") or [])
         ],
+        workspace_id=(
+            str(payload["workspace_id"]) if payload.get("workspace_id") else None
+        ),
         clips=[WebMusicClipResponse(**clip) for clip in payload.get("clips") or []],
     )
 
@@ -1523,7 +1533,9 @@ async def generate(
 
 
 class WebMusicGenerationUpdateRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: str | None = Field(default=None, max_length=200)
+    lyrics: str | None = Field(default=None, max_length=20000)
+    workspace_id: UUID | None = None
     variant: Literal["ok", "alt"] | None = None
 
 
@@ -1561,6 +1573,16 @@ async def get_generation(
     return _generation_response(payload)
 
 
+@router.get("/generations/{task_id}/radio")
+async def song_radio(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict:
+    return await service.radio_station(UUID(ctx.user_id), task_id, limit=limit)
+
+
 @router.patch("/generations/{task_id}", response_model=WebMusicGenerationResponse)
 async def update_generation(
     task_id: UUID,
@@ -1572,6 +1594,8 @@ async def update_generation(
         UUID(ctx.user_id),
         task_id,
         title=body.title,
+        lyrics=body.lyrics,
+        workspace_id=body.workspace_id,
         variant=body.variant,
     )
     return _generation_response(payload)
@@ -1600,6 +1624,23 @@ async def unlock_preview(
             },
         )
     return _generation_response(payload)
+
+
+@router.post("/generations/{task_id}/report", status_code=201)
+async def report_web_music_generation(
+    task_id: UUID,
+    body: ReportClipRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    await service.report_generation(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        reason=body.reason,
+        details=body.details,
+    )
+    return {"ok": True}
 
 
 @router.post("/generations/trash", status_code=200)
