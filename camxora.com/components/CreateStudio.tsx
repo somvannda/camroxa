@@ -358,6 +358,7 @@ export function CreateStudio() {
   const [batchError, setBatchError] = useState("");
   const [cooldownSeconds, setCooldownSeconds] = useState(0);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<WebMusicGeneration | null>(null);
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -1699,20 +1700,28 @@ export function CreateStudio() {
     }
   }
 
-  async function deleteSelected() {
+  function deleteSelected() {
     if (!selected || deletingId) return;
-    if (!window.confirm(`Delete "${selected.title}" permanently?`)) return;
-    setDeletingId(selected.id);
+    setDeleteTarget(selected);
+  }
+
+  async function confirmDeleteSelected() {
+    const target = deleteTarget;
+    if (!target || deletingId) return;
+    setDeletingId(target.id);
     setError("");
     try {
-      await deleteWebMusicGeneration(selected.id);
+      await deleteWebMusicGeneration(target.id);
       if (!mounted.current) return;
-      setSongs((current) => current.filter((item) => item.id !== selected.id));
+      setSongs((current) => current.filter((item) => item.id !== target.id));
       setTotalSongs((current) => Math.max(0, current - 1));
       setSelectedId(null);
       setSelectedDetail(null);
       setSelectedVariant(null);
-      setSelectedClipKeys((current) => current.filter((key) => !key.startsWith(`${selected.id}:`)));
+      setSelectedClipKeys((current) =>
+        current.filter((key) => !key.startsWith(`${target.id}:`))
+      );
+      setDeleteTarget(null);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not delete this track");
     } finally {
@@ -4619,6 +4628,58 @@ export function CreateStudio() {
             }
           }}
         />      </div>
+
+      {deleteTarget ? (
+        <div
+          className="s-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Confirm delete"
+          onClick={() => setDeleteTarget(null)}
+        >
+          <div
+            className="s-modal"
+            style={{ width: "min(440px,100%)" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="s-modal-head">
+              <h3>Delete song?</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Close"
+                onClick={() => setDeleteTarget(null)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-modal-body">
+              <p className="s-note">
+                &quot;{deleteTarget.title}&quot; and both versions will be permanently
+                removed from your library. This cannot be undone.
+              </p>
+            </div>
+            <div className="s-modal-foot">
+              <span style={{ flex: 1 }} />
+              <button
+                type="button"
+                className="s-btn s-btn-ghost"
+                onClick={() => setDeleteTarget(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="s-btn s-btn-danger"
+                disabled={deletingId === deleteTarget.id}
+                onClick={() => void confirmDeleteSelected()}
+              >
+                {deletingId === deleteTarget.id ? "Deleting..." : "Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {attachModal ? (
         <div className="s-modal-overlay" role="dialog" aria-modal="true" onClick={() => setAttachModal(null)}>
