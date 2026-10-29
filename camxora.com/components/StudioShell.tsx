@@ -9,6 +9,7 @@ import {
   getStudioSession,
   listWebMusicGenerations,
   studioSessionForClip,
+  updateStudioSessionClips,
 } from "@/lib/web-music-api";
 
 const BARS = 24;
@@ -166,6 +167,10 @@ export function StudioShell() {
         clip?.audio_url ||
           `/api/v3/web-music/generations/${song.id}/stream/${variant}`
       );
+      // Persist on Suno's surface: the clip joins the Studio project.
+      await updateStudioSessionClips(session.project_id, [song.id], [variant]).catch(
+        () => null
+      );
       setTracks((current) =>
         current.map((track) =>
           track.id === trackId
@@ -191,6 +196,10 @@ export function StudioShell() {
       setActiveUrl(
         clip?.audio_url ||
           `/api/v3/web-music/generations/${song.id}/stream/${variant}`
+      );
+      // Persist on Suno's surface: the clip joins the Studio project.
+      await updateStudioSessionClips(session.project_id, [song.id], [variant]).catch(
+        () => null
       );
       setTracks((current) => {
         const target = current.find((track) => track.id === selectedTrack) ?? current[0];

@@ -701,6 +701,23 @@ export async function getStudioSession(
   );
 }
 
+/** Add or remove clips in a Suno Studio project. */
+export async function updateStudioSessionClips(
+  projectId: string,
+  taskIds: string[],
+  variants: Array<"ok" | "alt">,
+  remove = false
+): Promise<{ ok?: boolean; count?: number }> {
+  return musicJson<{ ok?: boolean; count?: number }>(
+    `/api/v3/web-music/studio/sessions/${encodeURIComponent(projectId)}/clips`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_ids: taskIds, variants, remove }),
+    }
+  );
+}
+
 export type WebMusicReportReason =
   | "copyright"
   | "explicit"
