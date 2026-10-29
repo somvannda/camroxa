@@ -108,6 +108,8 @@ const models: Array<{ value: WebMusicModel; label: string }> = [
 ];
 
 const SIMPLE_SONG_COUNTS = [1, 5, 10, 20] as const;
+/** Compare batch: one song per model, so each version carries its own badge. */
+const COMPARE_MODELS = ["V6", "V6_MINI", "V6_WILD"] as const;
 const BATCH_SUBMIT_GAP_MS = 900;
 
 const LYRICIST_SUGGESTIONS = [
@@ -335,6 +337,7 @@ export function CreateStudio() {
   const [totalSongs, setTotalSongs] = useState(0);
   const [loadingMore, setLoadingMore] = useState(false);
   const [simpleSongCount, setSimpleSongCount] = useState<number>(1);
+  const [compareModels, setCompareModels] = useState(false);
   const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [generatingStyles, setGeneratingStyles] = useState(false);
   const [stylesError, setStylesError] = useState("");
@@ -1871,7 +1874,10 @@ export function CreateStudio() {
         return;
       }
     }
-    const count = mode === "simple" ? simpleSongCount : 1;
+    const count =
+      mode === "simple" ? (compareModels ? COMPARE_MODELS.length : simpleSongCount) : 1;
+    const modelForSong = (index: number) =>
+      mode === "simple" && compareModels ? COMPARE_MODELS[index] ?? model : model;
     const payload: WebMusicGenerateInput = {
       mode: mode === "simple" ? "simple" : "advanced",
       prompt:
@@ -1902,7 +1908,7 @@ export function CreateStudio() {
         if (index > 0) {
           await new Promise((resolve) => window.setTimeout(resolve, BATCH_SUBMIT_GAP_MS));
         }
-        const created = await generateWebMusic(payload);
+        const created = await generateWebMusic({ ...payload, model: modelForSong(index) });
         createdCount += 1;
         setQuota(created.quota);
         setBatchProgress({ done: createdCount, total: count });
@@ -1912,7 +1918,7 @@ export function CreateStudio() {
           title: created.title || title || "Untitled",
           lyrics: finalLyrics,
           style: created.style || style,
-          model,
+          model: modelForSong(index),
           model_label: created.model_label,
           is_preview: created.is_preview,
           unlockable: created.unlockable,
@@ -1977,7 +1983,8 @@ export function CreateStudio() {
     selected && selectedClip
       ? clipIsReady(selected, selectedClip)
       : String(selected?.status || "").toLowerCase() === "success";
-  const batchCount = mode === "simple" ? simpleSongCount : 1;
+  const batchCount =
+    mode === "simple" ? (compareModels ? COMPARE_MODELS.length : simpleSongCount) : 1;
   const requiredCredits = (quota?.credits_per_song ?? 0) * batchCount;
   const availableCredits = quota?.credits_remaining ?? credits ?? 0;
   const needsCredits = requiredCredits > 0 && availableCredits < requiredCredits;
@@ -2696,6 +2703,9 @@ export function CreateStudio() {
               {title}
             </a>
             <span className="s-row-version">· {clipVersionLabel(clip.variant)}</span>
+            <span className="s-model-badge">
+              {song.model_label || song.model || shortModel}
+            </span>
             {song.is_preview ? <span className="s-status live">Preview</span> : null}
           </div>
           <div className="s-row-desc">
@@ -3424,6 +3434,7 @@ export function CreateStudio() {
                               type="button"
                               className={simpleSongCount === count ? "on" : ""}
                               aria-pressed={simpleSongCount === count}
+                              disabled={compareModels}
                               onClick={() => setSimpleSongCount(count)}
                             >
                               {count}
@@ -3431,7 +3442,24 @@ export function CreateStudio() {
                           ))}
                         </div>
                       </div>
-                      {simpleSongCount > 1 ? (
+                      <div className="s-rowline">
+                        <span className="s-rowline-label">Models</span>
+                        <button
+                          type="button"
+                          className={`s-chip${compareModels ? " active" : ""}`}
+                          aria-pressed={compareModels}
+                          onClick={() => setCompareModels((value) => !value)}
+                          title="Generate one song per model so each version shows its badge"
+                        >
+                          <Icon name="fa-layer-group" /> Compare all three
+                        </button>
+                      </div>
+                      {compareModels ? (
+                        <p className="s-note">
+                          3 songs · one per model (V6 Pro · V6 Mini · V6 Wild)
+                          {requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}
+                        </p>
+                      ) : simpleSongCount > 1 ? (
                         <p className="s-note">
                           {simpleSongCount} songs · {simpleSongCount * 2} versions
                           {requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}
