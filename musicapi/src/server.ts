@@ -8943,22 +8943,31 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.post("/internal/studio/projects", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
-    try {
-      const client = await pool.pick();
-      const project = await client.createStudioProject({
-        title: typeof body.title === "string" ? body.title : undefined,
-        majorVersion:
-          typeof body.major_version === "number" ? body.major_version : undefined,
-        trigger: typeof body.trigger === "string" ? body.trigger : undefined,
-        entrySource:
-          typeof body.entry_source === "string" ? body.entry_source : undefined,
-      });
-      return reply.code(201).send(project);
-    } catch (err) {
-      return reply
-        .code(502)
-        .send({ error: err instanceof Error ? err.message : "create project failed" });
+    // Studio project creation costs no credits, so do not let pool.pick() filter
+    // accounts by balance; use whichever stored cookie can open a project.
+    const candidates = ((pool as unknown as { clients: any[] }).clients ?? []).slice();
+    let lastError: unknown = null;
+    for (const candidate of candidates) {
+      try {
+        const project = await candidate.createStudioProject({
+          title: typeof body.title === "string" ? body.title : undefined,
+          majorVersion:
+            typeof body.major_version === "number" ? body.major_version : undefined,
+          trigger: typeof body.trigger === "string" ? body.trigger : undefined,
+          entrySource:
+            typeof body.entry_source === "string" ? body.entry_source : undefined,
+        });
+        return reply.code(201).send(project);
+      } catch (err) {
+        lastError = err;
+      }
     }
+    return reply.code(502).send({
+      error:
+        lastError instanceof Error
+          ? lastError.message
+          : "no stored Suno account could open a Studio project",
+    });
   });
 
   app.post("/internal/studio/projects/for-clip/:clip_id", async (req, reply) => {
