@@ -171,11 +171,11 @@ PLATFORM_CUTLUY_PAYMENT_LINK_ID=YOUR_PAYMENT_LINK_ID
 PLATFORM_CUTLUY_WEBHOOK_SECRET=whsec_YOUR_WEBHOOK_SECRET
 
 # --- AI providers (staging keys / budgets) ---
-# Suno-compatible reseller. Camxora's own musicapi is a sunoapi.org drop-in;
-# legacy upstream was https://apibox.erweima.ai.
+# Suno generation goes through Camxora's own musicapi, which talks to the Suno
+# interface directly. Keep this on our own host; the Key Pool base_url override
+# exists only as an emergency escape hatch.
 PLATFORM_SUNO_API_BASE_URL=https://musicapi.camxora.com
 # Add musicapi keys via Admin → API Key Pool (provider "suno") after first login
-# Runtime switch / rollback between sunoapi.org and musicapi: docs/PROVIDER_SWITCHING.md
 
 PLATFORM_DEEPSEEK_API_BASE_URL=https://api.deepseek.com
 PLATFORM_SLAI_API_BASE_URL=https://your-slai-endpoint

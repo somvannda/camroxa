@@ -206,7 +206,7 @@ def _extract_clip_download_url(clip: dict[str, Any]) -> str:
         if url and not is_disallowed_suno_audio_url(url):
             primary = prefer_suno_mpeg_cdn_url(url, audio_id)
             break
-    # Reseller hosts (sunoapi.org / apibox) return the short-lived
+    # Legacy reseller payloads return the short-lived
     # ``tempfile.aiquickdraw.com`` link as ``audio_url`` and the durable
     # ``audiostream.api.box`` link as ``stream_audio_url``. The temp link is
     # purged within hours, so prefer the stream host when we see it.

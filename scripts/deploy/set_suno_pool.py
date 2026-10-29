@@ -3,19 +3,21 @@
 
 Adds keys tagged with a host (idempotently, by label) and points the provider's
 active ``base_url`` at that host — the CLI equivalent of the admin Key Pool
-provider switch. Works for either Suno-compatible provider:
+provider setting. Both Suno-compatible providers now target Camxora's own
+musicapi; they exist as separate provider ids only because AI Routing prices
+them differently:
 
-  * ``suno``               -> sunoapi.org / apibox (https://apibox.erweima.ai)
-  * ``camxora_music_api``  -> Camxora musicapi      (https://musicapi.camxora.com)
+  * ``suno``               -> https://musicapi.camxora.com
+  * ``camxora_music_api``  -> https://musicapi.camxora.com
 
 Set the matching **Settings -> AI Routing -> Music Generation** provider too;
 the routed provider is what drives the credit price and the generating host.
 
 Examples:
-    # Suno pool -> sunoapi.org, with two tagged keys
+    # Suno pool -> our musicapi, with two tagged keys
     python scripts/deploy/set_suno_pool.py --env sandbox --provider suno \
-        --key "sunoapi account 1=sk_..." --key "sunoapi account 2=sk_..." \
-        --base-url https://apibox.erweima.ai
+        --key "musicapi account 1=sk_..." --key "musicapi account 2=sk_..." \
+        --base-url https://musicapi.camxora.com
 
     # Camxora Music API pool -> musicapi, with two tagged keys
     python scripts/deploy/set_suno_pool.py --env sandbox --provider camxora_music_api \

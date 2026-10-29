@@ -2,6 +2,18 @@ import path from "node:path";
 import { promises as fs } from "node:fs";
 import { createHash } from "node:crypto";
 
+/**
+ * Archived desktop client. Generation now goes through Camxora's own musicapi,
+ * which talks to the Suno interface directly; the old reseller host is no
+ * longer a dependency. Env-overridable only so this archive can be pointed
+ * somewhere else if it is ever revived.
+ */
+const SUNO_API_BASE = (
+  process.env.MUSICAPI_BASE_URL ??
+  process.env.SUNO_API_BASE_URL ??
+  "https://musicapi.camxora.com"
+).replace(/\/+$/, "");
+
 export type SunoApiModel = "V5" | "V5_5";
 
 export type SunoApiGenerateInput = {
@@ -140,7 +152,7 @@ export async function sunoApiGenerate(input: SunoApiGenerateInput): Promise<Suno
     callBackUrl: String(input.callbackUrl || "https://api.example.com/callback").trim(),
   };
 
-  const res = await httpJson<GenerateResponse>("https://api.sunoapi.org/api/v1/generate", {
+  const res = await httpJson<GenerateResponse>(`${SUNO_API_BASE}/api/v1/generate`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${input.apiKey}`,
@@ -160,7 +172,7 @@ export async function sunoApiGenerate(input: SunoApiGenerateInput): Promise<Suno
 }
 
 export async function sunoApiGetRecordInfo(apiKey: string, taskId: string): Promise<SunoApiRecordInfo> {
-  const url = new URL("https://api.sunoapi.org/api/v1/generate/record-info");
+  const url = new URL(`${SUNO_API_BASE}/api/v1/generate/record-info`);
   url.searchParams.set("taskId", taskId);
   const res = await httpJson<RecordInfoResponse>(url.toString(), {
     method: "GET",

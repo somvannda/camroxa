@@ -76,7 +76,7 @@ def _as_float(value: Any) -> float | None:
 
 
 def _normalize_suno(raw: dict[str, Any]) -> tuple[float | None, str | None, str]:
-    """Suno/APIBox returns ``{"code":200,"data":100}`` (data is int) or nested credits."""
+    """Legacy reseller payloads return ``{"code":200,"data":100}`` (data is int) or nested credits."""
     data = raw.get("data")
     # Official shape: data is the remaining credit count itself.
     if isinstance(data, (int, float, str)) and not isinstance(data, bool):
@@ -345,7 +345,7 @@ class ProviderKeyBalanceService:
             raw = response.json()
         if not isinstance(raw, dict):
             return None, None, "credits", raw, "error", "Suno credit response was not JSON object"
-        # APIBox wraps failures as HTTP 200 + code != 200
+        # Legacy reseller payloads wrap failures as HTTP 200 + code != 200
         code = raw.get("code")
         if code is not None and int(code) != 200:
             return (

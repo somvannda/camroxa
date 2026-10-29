@@ -122,12 +122,12 @@ wrong before this pass:
 
 ## Follow-ups
 
-- **musicapi does not forward a video asset.** `processMusicSubmitWithVideo`
-  (`musicapi/src/server.ts`) extracts a frame at `t=1s`
-  (`musicapi/src/video.ts`) and uploads it as an *image*, then generates with
-  `task: "agentic_thinking"`. Suno instead uploads the clip and sends
-  `user_uploaded_video_id`. UI parity is complete; the audio result is a
-  frame-driven approximation until `SunoClient` grows a visual-upload path.
+- **musicapi forwarded a frame, not the clip (resolved 2026-10-29).**
+  `processMusicSubmitWithVideo` used to extract a frame at `t=1s` because the
+  client had no video upload. `SunoClient.uploadVideo()` now performs Suno's
+  own `/api/uploads/video/` 3-step upload and sends `user_uploaded_video_id`,
+  so the model receives the real reference clip. See
+  `2026-10-29-musicapi-reference-video.md`.
 - **Image + video precedence.** `musicSubmitFactory` tries inline images, then
   reference images, then videos — so attaching both silently drops the video.
   Suno sends `user_uploaded_image_ids` and `user_uploaded_video_id` together.

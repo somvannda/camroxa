@@ -1711,7 +1711,7 @@ async def test_get_key_filters_by_active_provider_host(
 ) -> None:
     """Only keys tagged with the configured active host are eligible."""
     legacy = _make_entry(encryption, label="legacy", key_value="sk-legacy")
-    legacy.base_url = "https://apibox.erweima.ai"
+    legacy.base_url = "https://legacy.example.test"
     modern = _make_entry(encryption, label="modern", key_value="sk-modern")
     modern.base_url = "https://musicapi.camxora.com"
     fake_repo._entries[legacy.id] = legacy

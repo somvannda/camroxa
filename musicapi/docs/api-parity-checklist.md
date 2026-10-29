@@ -153,7 +153,7 @@ Done since §I was first written:
 - [x] **§G contract test** — `npm run test:contract` asserts all 37 sunoapi.org paths (37/37).
 - [x] **Reference media** — image/audio/video wired into the API + playground and
       **live-verified** (image & audio use `user_uploaded_*_ids` + `task:"agentic_thinking"`;
-      video extracts a frame via `ffmpeg-static`).
+      video uses Suno's `/api/uploads/video/` 3-step upload and `user_uploaded_video_id`).
 
 Still open:
 
