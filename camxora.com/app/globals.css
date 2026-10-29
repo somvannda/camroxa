@@ -4571,3 +4571,18 @@ html{color-scheme:dark}
 .st-landing .s-row .s-btn{flex:none}
 .st-landing .st-group{margin-top:6px}
 .st-landing .st-song-list{background:var(--s-bg2)}
+
+/* Studio landing: plain list, compact controls (matches Library rows) */
+.st-landing .st-song-list{background:transparent;border:0;border-radius:0}
+.st-landing .s-row{padding:8px 4px;min-height:44px}
+.st-landing .s-row+.s-row{border-top:1px solid var(--s-line)}
+.st-landing .s-row .st-song-art{width:32px;height:32px}
+.st-landing .s-row-title b{font-size:13px;font-weight:500}
+.st-landing .s-row-desc{font-size:12px;height:16px;line-height:16px}
+.st-landing .s-tag{height:16px;font-size:11px}
+.st-landing .s-btn{height:30px;padding:0 10px;font-size:12px;border-radius:8px}
+.st-landing .s-btn .icon{font-size:11px}
+.st-landing .st-group{font-size:11px;letter-spacing:.04em;color:var(--s-text3);padding:10px 4px 6px;position:static;background:transparent;border:0}
+.st-landing .st-song-head{gap:8px}
+.st-landing .st-song-head .s-input{height:36px;font-size:13px}
+.st-landing .st-song-head .s-btn{height:36px}
