@@ -1567,6 +1567,16 @@ async def get_generation(
     return _generation_response(payload)
 
 
+@router.get("/generations/{task_id}/radio")
+async def song_radio(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    limit: int = Query(default=20, ge=1, le=50),
+) -> dict:
+    return await service.radio_station(UUID(ctx.user_id), task_id, limit=limit)
+
+
 @router.patch("/generations/{task_id}", response_model=WebMusicGenerationResponse)
 async def update_generation(
     task_id: UUID,

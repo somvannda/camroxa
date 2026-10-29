@@ -112,5 +112,22 @@ new service code is loaded.
 - No background sweeper for `studio_operations`: a user who closes the tab
   immediately after starting a cover leaves the row pending until the next poll.
 - Cover results are single-take; Suno sometimes returns two takes.
-- Still missing vs Suno's menu: Edit ▸, Manage ▸, Song Radio, Sample this song,
+- Still missing vs Suno's menu: Edit ▸, Manage ▸, Sample this song,
   Use as Inspiration.
+
+## Song Radio
+
+Suno's **Song Radio** starts a station from a song and keeps similar tracks
+playing. Ours:
+
+- `GET /web-music/generations/{id}/radio?limit=` returns
+  `{ seed, items }`. Neighbours are scored by style-word overlap, with a bonus for
+  the same model and workspace, drawn from the user's finished, non-trashed
+  songs.
+- The menu item plays the seed clip and enqueues the rest, so `Next` continues
+  the station; the toast reports how many songs were queued.
+- Both Create and Library, disabled until the clip is ready.
+
+Verified: `radio?limit=5` → 200 with seed `Quiet Morning River Five` and four
+ranked neighbours.
+

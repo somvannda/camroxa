@@ -34,6 +34,7 @@ import {
   setWebMusicTrash,
   coverWebMusicGeneration,
   reportWebMusicGeneration,
+  radioWebMusicGeneration,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
   fetchWebMusicDislikedKeys,
@@ -610,12 +611,19 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   }
 
   function enqueueClip(song: WebMusicGeneration, clip: WebMusicClip) {
+    if (appendClipToQueue(song, clip)) setToast("Added to queue");
+  }
+
+  function appendClipToQueue(
+    song: WebMusicGeneration,
+    clip: WebMusicClip
+  ): boolean {
     const variant = clip.variant || "ok";
     const audioUrl =
       clip.audio_url ||
       clip.download_url ||
       `/api/v3/web-music/generations/${song.id}/stream/${variant}`;
-    if (!audioUrl) return;
+    if (!audioUrl) return false;
     enqueue({
       title: clip.title || song.title || "Untitled",
       artist: "You",
@@ -623,7 +631,28 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       duration: Math.max(1, Math.round(clip.duration_seconds || 180)),
       audioUrl,
     });
-    setToast("Added to queue");
+    return true;
+  }
+
+  /** Suno's "Song Radio": play this song, then keep queueing similar ones. */
+  async function startRadio(song: WebMusicGeneration, clip: WebMusicClip) {
+    try {
+      const station = await radioWebMusicGeneration(song.id, 20);
+      playClip(song, clip);
+      for (const item of station.items) {
+        const match = generationClips(item).find(
+          (candidate) => candidate.ready && candidate.audio_url
+        );
+        if (match) appendClipToQueue(item, match);
+      }
+      setToast(
+        station.items.length
+          ? `Song Radio started — ${station.items.length} songs queued`
+          : "Song Radio started — no similar songs yet"
+      );
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not start Song Radio");
+    }
   }
 
   async function addClipToPlaylist(
@@ -1148,6 +1177,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 )}
               </SMenuSubContent>
             </SMenuSub>
+            <SMenuItem disabled={!ready} onSelect={() => void startRadio(song, clip)}>
+              <Icon name="fa-tower-broadcast" /> Song Radio
+            </SMenuItem>
             <SMenuSeparator />
             <SMenuItem
               onSelect={() =>

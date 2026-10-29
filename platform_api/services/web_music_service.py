@@ -190,6 +190,35 @@ def _clip_field(clip: Any, *names: str) -> Any:
             return value
     return None
 
+
+_STYLE_STOPWORDS = frozenset(
+    {
+        "and",
+        "the",
+        "with",
+        "for",
+        "that",
+        "this",
+        "from",
+        "into",
+        "over",
+        "very",
+        "like",
+        "song",
+        "music",
+        "style",
+    }
+)
+
+
+def _style_tokens(value: Any) -> set[str]:
+    """Words of a style prompt, used to rank Song Radio neighbours."""
+    return {
+        word
+        for word in re.split(r"[^a-z0-9]+", str(value or "").lower())
+        if len(word) > 2 and word not in _STYLE_STOPWORDS
+    }
+
 _WEB_MUSIC_STYLE_SYSTEM_PROMPT = (
     "You are a Suno AI music production prompt engineer.\n"
     "Turn the user's notes into ONE Suno-ready style string for the style field.\n\n"
@@ -4834,6 +4863,56 @@ class WebMusicService:
             operation_type or None,
         )
         return {"items": [self._studio_operation_payload(row) for row in rows]}
+
+    async def radio_station(
+        self, user_id: UUID, task_id: UUID, *, limit: int = 20
+    ) -> dict[str, Any]:
+        """Suno's "Song Radio": the seed plus songs that sound like it."""
+        seed = await self._pool.fetchrow(
+            """
+            SELECT * FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if seed is None:
+            raise NotFoundError("Generation not found.", details={"task_id": str(task_id)})
+        rows = await self._pool.fetch(
+            """
+            SELECT * FROM suno_tasks
+            WHERE user_id = $1 AND source = $2 AND id <> $3
+              AND status = 'success'
+              AND cardinality(trashed_variants) + cardinality(purged_variants) < 2
+            ORDER BY created_at DESC
+            LIMIT 200
+            """,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+            task_id,
+        )
+        seed_tokens = _style_tokens(seed["style"])
+        seed_model = str(seed["model"] or "")
+        seed_workspace = str(seed["workspace_id"] or "")
+
+        def rank(row: Any) -> float:
+            tokens = _style_tokens(row["style"])
+            overlap = (
+                len(tokens & seed_tokens) / len(seed_tokens) if seed_tokens else 0.0
+            )
+            if seed_model and str(row["model"] or "") == seed_model:
+                overlap += 0.25
+            if seed_workspace and str(row["workspace_id"] or "") == seed_workspace:
+                overlap += 0.1
+            return overlap
+
+        ranked = sorted(rows, key=rank, reverse=True)
+        safe_limit = max(1, min(int(limit), 50))
+        station = ranked[:safe_limit]
+        seed_payload = await self._task_payload(seed, user_id)
+        items = [await self._task_payload(row, user_id) for row in station]
+        return {"seed": seed_payload, "items": items}
 
     async def list_generations(
         self,

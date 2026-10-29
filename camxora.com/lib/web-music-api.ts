@@ -314,6 +314,16 @@ export async function getWebMusicGeneration(id: string): Promise<WebMusicGenerat
   return musicJson<WebMusicGeneration>(`/api/v3/web-music/generations/${encodeURIComponent(id)}`);
 }
 
+/** Songs that sound like this one, for Song Radio. */
+export async function radioWebMusicGeneration(
+  id: string,
+  limit = 20
+): Promise<{ seed: WebMusicGeneration; items: WebMusicGeneration[] }> {
+  return musicJson<{ seed: WebMusicGeneration; items: WebMusicGeneration[] }>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/radio?limit=${limit}`
+  );
+}
+
 export async function updateWebMusicGenerationTitle(
   id: string,
   title: string,
