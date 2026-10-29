@@ -1068,19 +1068,30 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 >
                   <Icon name="fa-quote-left" /> Reuse Prompt
                 </SMenuItem>
-                <SMenuItem disabled title="Mashup picks a second song — coming soon">
+                <SMenuItem
+                  disabled={!ready}
+                  onSelect={() =>
+                    (window.location.href = `/create?mashup=${encodeURIComponent(
+                      song.id
+                    )}&variant=${encodeURIComponent(clip.variant || "ok")}`)
+                  }
+                >
                   <Icon name="fa-code-merge" /> Mashup
                 </SMenuItem>
                 <SMenuItem disabled title="Coming soon">
                   <Icon name="fa-waveform" /> Sample this song
                 </SMenuItem>
-                <SMenuItem disabled title="Needs a Pro entitlement">
+                <SMenuItem disabled title="Coming soon">
                   <Icon name="fa-wand-sparkles" /> Use as Inspiration
-                  <span className="s-tag">Pro</span>
                 </SMenuItem>
-                <SMenuItem disabled title="Needs a Voice-entitled account">
+                <SMenuItem
+                  onSelect={() => {
+                    window.location.href = `/create?remix=${encodeURIComponent(
+                      song.id
+                    )}&variant=${encodeURIComponent(clip.variant || "ok")}`;
+                  }}
+                >
                   <Icon name="fa-microphone-lines" /> Voice
-                  <span className="s-tag">Pro</span>
                 </SMenuItem>
               </SMenuSubContent>
             </SMenuSub>

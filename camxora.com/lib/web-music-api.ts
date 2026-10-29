@@ -631,6 +631,18 @@ export async function requestWebMusicStaffPickRemix(
   });
 }
 
+export async function mashupWebMusicGeneration(
+  taskIds: string[],
+  variants: Array<"ok" | "alt">,
+  prompt = ""
+): Promise<WebMusicStudioOperation> {
+  return musicJson("/api/v3/web-music/studio/mashup", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ task_ids: taskIds, variants, prompt }),
+  });
+}
+
 export async function coverWebMusicGeneration(
   taskId: string,
   input: { variant?: "ok" | "alt"; prompt?: string; project_id?: string | null } = {}

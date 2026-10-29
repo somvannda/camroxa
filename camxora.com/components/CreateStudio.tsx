@@ -27,6 +27,7 @@ import {
   addWebMusicPlaylistItem,
   clipFilename,
   coverWebMusicGeneration,
+  mashupWebMusicGeneration,
   coverWebMusicStudioUpload,
   createWebMusicPlaylist,
   createWebMusicStudioPersona,
@@ -363,6 +364,10 @@ export function CreateStudio() {
   const [deleteTarget, setDeleteTarget] = useState<
     { song: WebMusicGeneration; variant?: "ok" | "alt" } | null
   >(null);
+  const [mashupSource, setMashupSource] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [mashupBusy, setMashupBusy] = useState(false);
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -763,6 +768,25 @@ export function CreateStudio() {
     window.history.replaceState(null, "", "/create");
     document.getElementById("create-prompt")?.focus();
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const taskId = params.get("mashup");
+    if (!taskId) return;
+    const variant = params.get("variant") === "alt" ? "alt" : "ok";
+    const apply = (song: WebMusicGeneration) => {
+      if (!mounted.current) return;
+      setMashupSource({ song, variant });
+      window.history.replaceState(null, "", "/create");
+    };
+    const existing = songs.find((song) => song.id === taskId);
+    if (existing) {
+      apply(existing);
+      return;
+    }
+    getWebMusicGeneration(taskId).then(apply).catch(() => null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songs]);
 
   useEffect(() => {
     if (remixHandledRef.current) return;
@@ -1625,6 +1649,27 @@ export function CreateStudio() {
       setToast("Cover queued");
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : "Could not cover this song");
+    }
+  }
+
+  async function runMashup(
+    other: WebMusicGeneration,
+    otherVariant: "ok" | "alt"
+  ) {
+    if (!mashupSource || mashupBusy) return;
+    setMashupBusy(true);
+    try {
+      await mashupWebMusicGeneration(
+        [mashupSource.song.id, other.id],
+        [mashupSource.variant, otherVariant],
+        prompt.trim()
+      );
+      setToast("Mashup queued");
+      setMashupSource(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not start the mashup");
+    } finally {
+      if (mounted.current) setMashupBusy(false);
     }
   }
 
@@ -2942,19 +2987,25 @@ export function CreateStudio() {
                 <SMenuItem onSelect={() => reusePromptFrom(song)}>
                   <Icon name="fa-quote-left" /> Reuse Prompt
                 </SMenuItem>
-                <SMenuItem disabled title="Mashup picks a second song — coming soon">
+                <SMenuItem
+                  disabled={!ready}
+                  onSelect={() =>
+                    setMashupSource({
+                      song,
+                      variant: clip.variant === "alt" ? "alt" : "ok",
+                    })
+                  }
+                >
                   <Icon name="fa-code-merge" /> Mashup
                 </SMenuItem>
                 <SMenuItem disabled title="Coming soon">
                   <Icon name="fa-waveform" /> Sample this song
                 </SMenuItem>
-                <SMenuItem disabled title="Needs a Pro entitlement">
+                <SMenuItem disabled title="Coming soon">
                   <Icon name="fa-wand-sparkles" /> Use as Inspiration
-                  <span className="s-tag">Pro</span>
                 </SMenuItem>
-                <SMenuItem disabled title="Needs a Voice-entitled account">
+                <SMenuItem onSelect={() => setAttachModal("voice")}>
                   <Icon name="fa-microphone-lines" /> Voice
-                  <span className="s-tag">Pro</span>
                 </SMenuItem>
               </SMenuSubContent>
             </SMenuSub>
@@ -4803,6 +4854,85 @@ export function CreateStudio() {
             }
           }}
         />      </div>
+
+      {mashupSource ? (
+        <div
+          className="s-modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Choose a song to mash up"
+          onClick={() => setMashupSource(null)}
+        >
+          <div
+            className="s-modal"
+            style={{ width: "min(520px,100%)" }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="s-modal-head">
+              <h3>Mashup with…</h3>
+              <button
+                type="button"
+                className="s-btn s-btn-icon sm"
+                aria-label="Close"
+                onClick={() => setMashupSource(null)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="s-modal-body">
+              <p className="s-note">
+                Pick a second finished song. Both clips are sent to Suno as a mashup.
+              </p>
+              {songs.filter((item) => item.id !== mashupSource.song.id).length ? (
+                <div className="s-video-songs">
+                  {songs
+                    .filter((item) => item.id !== mashupSource.song.id)
+                    .map((item) => {
+                      const clip = generationClips(item).find(
+                        (candidate) => clipIsReady(item, candidate)
+                      );
+                      if (!clip) return null;
+                      const cover = generationClips(item).find(
+                        (candidate) => candidate.image_url
+                      )?.image_url;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          className="s-video-song"
+                          disabled={mashupBusy}
+                          onClick={() =>
+                            void runMashup(
+                              item,
+                              clip.variant === "alt" ? "alt" : "ok"
+                            )
+                          }
+                        >
+                          <span
+                            className="s-video-cover"
+                            style={cover ? { backgroundImage: `url(${cover})` } : undefined}
+                          >
+                            {cover ? null : <Icon name="fa-music" />}
+                          </span>
+                          <span className="s-video-meta">
+                            <b>{item.title}</b>
+                            <small>
+                              {clipVersionLabel(clip.variant)} ·{" "}
+                              {item.model_label || item.model || "V6"}
+                            </small>
+                          </span>
+                        </button>
+                      );
+                    })}
+                </div>
+              ) : (
+                <p className="s-note">Create another finished song to mash up with.</p>
+              )}
+              {mashupBusy ? <p className="s-note">Starting mashup…</p> : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {deleteTarget ? (
         <div
