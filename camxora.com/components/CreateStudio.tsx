@@ -2398,7 +2398,7 @@ export function CreateStudio() {
         <Icon name="fa-wand-magic-sparkles" />
       )}
       <span>
-        Remix Â· {remixSource.title} Â·{" "}
+        Remix · {remixSource.title} ·{" "}
         {remixSource.kind === "catalog"
           ? "Staff Pick"
           : remixSource.variant === "alt"
@@ -2466,7 +2466,7 @@ export function CreateStudio() {
                           <span className="s-tag">{operation.mode === "cover" ? "Cover" : "Extend"}</span>
                         </div>
                         <div className="s-row-desc">
-                          {operation.operation_type === "upload_cover" ? "Cover" : "Extend"} Â·{" "}
+                          {operation.operation_type === "upload_cover" ? "Cover" : "Extend"} ·{" "}
                           {formatDate(operation.created_at)}
                         </div>
                       </div>
@@ -2736,21 +2736,21 @@ export function CreateStudio() {
             >
               {title}
             </a>
-            <span className="s-row-version">Â· {clipVersionLabel(clip.variant)}</span>
+            <span className="s-row-version">· {clipVersionLabel(clip.variant)}</span>
             {song.is_preview ? <span className="s-status live">Preview</span> : null}
           </div>
           <div className="s-row-desc">
             <span className={failed ? "s-row-failed-text" : undefined}>
               {ready ? "Ready" : statusLabel(song.status)}
             </span>{" "}
-            Â·{" "}
+            ·{" "}
             <span
               className={`s-model-badge ${modelBadgeTone(song.model || song.model_label)}`}
             >
               {song.model_label || song.model || shortModel}
             </span>{" "}
-            Â· {formatDate(song.created_at)}
-            {row.duration ? ` Â· ${formatClipDuration(row.duration)}` : ""}
+            · {formatDate(song.created_at)}
+            {row.duration ? ` · ${formatClipDuration(row.duration)}` : ""}
           </div>
         </div>
 
@@ -3042,7 +3042,7 @@ export function CreateStudio() {
           }}
         >
           <div className="s-drop-hint" aria-hidden="true">
-            Drop to attach Â· Drop here to remix
+            Drop to attach · Drop here to remix
           </div>
 
           <div className="s-tabs" role="tablist" aria-label="What to create">
@@ -3500,16 +3500,16 @@ export function CreateStudio() {
                       </div>
                       {compareModels ? (
                         <p className="s-note">
-                          3 songs Â· one per model (V6 Pro Â· V6 Mini Â· V6 Wild)
-                          {requiredCredits > 0 ? ` Â· ${requiredCredits.toLocaleString()} credits` : ""}
+                          3 songs · one per model (V6 Pro · V6 Mini · V6 Wild)
+                          {requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}
                         </p>
                       ) : simpleSongCount > 1 ? (
                         <p className="s-note">
-                          {simpleSongCount} songs Â· {simpleSongCount * 2} versions
-                          {requiredCredits > 0 ? ` Â· ${requiredCredits.toLocaleString()} credits` : ""}
+                          {simpleSongCount} songs · {simpleSongCount * 2} versions
+                          {requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}
                         </p>
                       ) : (
-                        <p className="s-note">Each song returns 2 versions{requiredCredits > 0 ? ` Â· ${requiredCredits.toLocaleString()} credits` : ""}</p>
+                        <p className="s-note">Each song returns 2 versions{requiredCredits > 0 ? ` · ${requiredCredits.toLocaleString()} credits` : ""}</p>
                       )}
                     </div>
                   </>
@@ -4023,7 +4023,7 @@ export function CreateStudio() {
                 </div>
                 <p className="s-note" style={{ textAlign: "center" }}>
                   {requiredCredits > 0
-                    ? `${requiredCredits.toLocaleString()} credits Â· ${availableCredits.toLocaleString()} available`
+                    ? `${requiredCredits.toLocaleString()} credits · ${availableCredits.toLocaleString()} available`
                     : "Uses your credit balance"}
                 </p>
               </div>
@@ -4351,7 +4351,7 @@ export function CreateStudio() {
                           <span className="s-tag">{operation.mode === "cover" ? "Cover" : "Extend"}</span>
                         </div>
                         <div className="s-row-desc">
-                          {operation.operation_type === "upload_cover" ? "Cover" : "Extend"} Â·{" "}
+                          {operation.operation_type === "upload_cover" ? "Cover" : "Extend"} ·{" "}
                           {formatDate(operation.created_at)}
                         </div>
                       </div>
@@ -4781,7 +4781,7 @@ export function CreateStudio() {
                       />
                       <Icon name="fa-image" />
                       <b>Choose an image</b>
-                      <span>JPG, PNG, WebP or GIF Â· up to 10 MB</span>
+                      <span>JPG, PNG, WebP or GIF · up to 10 MB</span>
                     </label>
                   )}
                   {imageUploading ? <p className="s-note">Uploadingâ€¦</p> : null}
@@ -4825,7 +4825,7 @@ export function CreateStudio() {
                         <b>{audioUpload.filename}</b>
                         <small>
                           {audioUpload.duration_seconds
-                            ? `${formatClipDuration(audioUpload.duration_seconds)} Â· `
+                            ? `${formatClipDuration(audioUpload.duration_seconds)} · `
                             : ""}
                           {Math.max(1, Math.round(audioUpload.size_bytes / 1024))} KB
                         </small>
@@ -4877,7 +4877,7 @@ export function CreateStudio() {
                       />
                       <Icon name="fa-arrow-up-from-bracket" />
                       <b>Choose an audio file</b>
-                      <span>MP3, WAV, M4A, OGG or WebM Â· up to 50 MB</span>
+                      <span>MP3, WAV, M4A, OGG or WebM · up to 50 MB</span>
                     </label>
                   )}
                   <div className="s-counts">
@@ -5021,7 +5021,7 @@ export function CreateStudio() {
                                 <span className="s-video-meta">
                                   <b>{song.title}</b>
                                   <small>
-                                    {song.model_label || song.model || "V6"} Â·{" "}
+                                    {song.model_label || song.model || "V6"} ·{" "}
                                     {formatDate(song.created_at)}
                                   </small>
                                 </span>
@@ -5113,7 +5113,7 @@ export function CreateStudio() {
                           <span className="s-video-chip-text">
                             <b>{videoBackground.filename}</b>
                             <small>
-                              {(videoBackground.size_bytes / (1024 * 1024)).toFixed(1)} MB Â· loops
+                              {(videoBackground.size_bytes / (1024 * 1024)).toFixed(1)} MB · loops
                               under the song
                             </small>
                           </span>
@@ -5545,7 +5545,7 @@ export function CreateStudio() {
                         <span className="s-remix-meta">
                           <b>{pick.title}</b>
                           <small>
-                            {pick.model || "V6"} Â· {pick.styles || "Staff pick"}
+                            {pick.model || "V6"} · {pick.styles || "Staff pick"}
                           </small>
                         </span>
                         <span className="s-remix-actions">
@@ -5585,7 +5585,7 @@ export function CreateStudio() {
                       <span className="s-remix-meta">
                         <b>{song.title}</b>
                         <small>
-                          {song.model_label || song.model || "V6"} Â· {song.style || "No style"}
+                          {song.model_label || song.model || "V6"} · {song.style || "No style"}
                         </small>
                       </span>
                       <span className="s-remix-actions">
@@ -5674,7 +5674,7 @@ export function CreateStudio() {
                       <b>{item.filename}</b>
                       <small>
                         {item.duration_seconds
-                          ? `${formatClipDuration(item.duration_seconds)} Â· `
+                          ? `${formatClipDuration(item.duration_seconds)} · `
                           : ""}
                         {formatDate(item.created_at)}
                       </small>

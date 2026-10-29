@@ -2174,7 +2174,7 @@ html{color-scheme:dark}
   .playlist-hero-copy p{font-size:13px;line-height:1.7;color:var(--muted);max-width:56ch}
   .playlist-meta{display:flex;gap:16px;flex-wrap:wrap;margin:14px 0 18px;font-size:10.5px;color:var(--muted2)}
   .playlist-meta span{display:inline-flex;align-items:center;gap:5px}
-  .playlist-meta span+span::before{content:"Â·";margin-right:10px;color:var(--muted2)}
+  .playlist-meta span+span::before{content:"·";margin-right:10px;color:var(--muted2)}
   @media(max-width:680px){.playlist-hero{min-height:340px;padding:22px}.playlist-hero::after{background:linear-gradient(180deg,rgba(7,10,19,.35),rgba(7,10,19,.94))}}
 
   /* ---------------- artist program ---------------- */
@@ -2200,7 +2200,7 @@ html{color-scheme:dark}
   .artist-hero-copy h1{font-size:clamp(32px,4vw,50px);letter-spacing:-.055em;line-height:1;margin:7px 0 8px}
   .artist-hero-copy p{font-size:12.5px;line-height:1.7;color:var(--muted);max-width:54ch}
   .artist-meta{display:flex;gap:16px;flex-wrap:wrap;margin:12px 0 16px;font-size:10.5px;color:var(--muted2)}
-  .artist-meta span+span::before{content:"Â·";margin-right:10px}
+  .artist-meta span+span::before{content:"·";margin-right:10px}
   @media(max-width:900px){.artist-band{grid-template-columns:1fr}.artist-band-art{min-height:200px}.artist-steps{grid-template-columns:1fr 1fr}}
   @media(max-width:680px){.artist-hero{align-items:flex-start;flex-direction:column;min-height:340px}.artist-hero::after{background:linear-gradient(180deg,rgba(7,10,19,.4),rgba(7,10,19,.95))}}
 
@@ -3241,7 +3241,7 @@ html{color-scheme:dark}
 .s-row-badges{display:flex;align-items:center;gap:6px}
 .s-status{display:inline-flex;align-items:center;gap:4px;height:18px;padding:0 6px;border-radius:6px;font-size:11px;background:rgba(255,255,255,.08);color:var(--s-text2)}
 .s-status.ok{background:rgba(74,171,4,.16);color:#aefc76}
-.s-status.err{background:rgba(248,68,27,.16);color:#fb9b85}
+.s-status.err{background:rgba(185,28,28,.22);color:#fecaca}
 .s-status.live{background:rgba(31,139,255,.16);color:#91c6ff}
 
 /* ---------- library ---------- */
