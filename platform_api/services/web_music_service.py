@@ -163,6 +163,10 @@ _STUDIO_SONG_OPERATION_TYPES = frozenset(
         "add_instrumental",
         "replace_section",
         "sample",
+        "crop",
+        "fade",
+        "speed",
+        "reverse",
     }
 )
 
@@ -175,6 +179,10 @@ _STUDIO_SONG_TITLE_SUFFIX = {
     "add_instrumental": "Instrumental",
     "replace_section": "Edit",
     "sample": "Sample",
+    "crop": "Crop",
+    "fade": "Fade",
+    "speed": "Sped Up",
+    "reverse": "Reversed",
 }
 
 
@@ -3626,6 +3634,26 @@ class WebMusicService:
         if duration <= 1:
             raise ValidationError("This song is too short to edit.")
 
+        base_title = str(_row_value(row, "title") or "Untitled").strip() or "Untitled"
+        edit_title = f"{base_title} ({suffixes[op]})"[:200]
+        try:
+            return await self._request_suno_derived_edit(
+                user_id,
+                task_id,
+                variant=variant_key,
+                operation=op,
+                title=edit_title,
+                start_s=start_s,
+                end_s=end_s,
+                speed=speed,
+                fade_seconds=fade_seconds,
+                duration=duration,
+            )
+        except Exception:
+            logger.warning(
+                "Suno %s edit failed; falling back to local audio", op, exc_info=True
+            )
+
         if op in ("crop", "remove_section"):
             start = min(max(0.0, float(start_s or 0.0)), duration - 1.0)
             end = float(end_s if end_s is not None else duration)
@@ -3708,6 +3736,66 @@ class WebMusicService:
             storage_key,
         )
         return await self.get_generation(user_id, new_id)
+
+    async def _request_suno_derived_edit(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str,
+        operation: str,
+        title: str,
+        start_s: float | None,
+        end_s: float | None,
+        speed: float | None,
+        fade_seconds: float | None,
+        duration: float,
+    ) -> dict[str, Any]:
+        """Call Suno's own editor endpoints (captured from its shipped bundle)."""
+        fade = min(duration, max(0.5, float(fade_seconds or 2.0)))
+        if operation in ("crop", "remove_section"):
+            path = "/internal/studio/crop"
+            body = {
+                "start_s": float(start_s or 0.0),
+                "end_s": float(end_s if end_s is not None else duration),
+                "remove": operation == "remove_section",
+                "title": title,
+            }
+            op_type = "crop"
+        elif operation in ("fade_in", "fade_out"):
+            path = "/internal/studio/fade"
+            body = {
+                "title": title,
+                **(
+                    {"fade_in_time": fade}
+                    if operation == "fade_in"
+                    else {"fade_out_time": max(0.5, duration - fade)}
+                ),
+            }
+            op_type = "fade"
+        elif operation == "speed":
+            path = "/internal/studio/speed"
+            body = {
+                "speed_multiplier": min(2.0, max(0.5, float(speed or 1.0))),
+                "keep_pitch": True,
+                "title": title,
+            }
+            op_type = "speed"
+        else:
+            path = "/internal/studio/reverse"
+            body = {"title": title}
+            op_type = "reverse"
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type=op_type,
+            variant=variant,
+            mode=op_type,
+            project_id=None,
+            internal_path=path,
+            internal_body=body,
+            label=op_type,
+        )
 
     async def get_studio_readiness(self) -> dict[str, Any]:
         from platform_api.config import get_settings
