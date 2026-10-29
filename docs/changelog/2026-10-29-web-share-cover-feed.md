@@ -112,8 +112,7 @@ new service code is loaded.
 - No background sweeper for `studio_operations`: a user who closes the tab
   immediately after starting a cover leaves the row pending until the next poll.
 - Cover results are single-take; Suno sometimes returns two takes.
-- Still missing vs Suno's menu: Manage ▸, Sample this song,
-  Use as Inspiration.
+- Still missing vs Suno's menu: Sample this song, Use as Inspiration.
 
 ## Song Radio
 
@@ -152,4 +151,22 @@ serve:
 
 Verified: title-only → 200, lyrics-only → 200, `{}` → 422;
 `pytest test_web_music_router.py` → 13 passed.
+
+## Manage ▸
+
+Suno's documented manage action is **Move to Workspace** (Library → ⋯ → Move to
+Workspace, also available in bulk). Ours:
+
+- **Manage ▸** in Create and Library lists the user's workspaces; the current one
+  is disabled.
+- `PATCH /generations/{id}` accepts `workspace_id` (alongside `title`/`lyrics`).
+  The workspace must belong to the caller — a foreign id is a 404.
+- Responses now carry `workspace_id`; `get_generation()` re-reads it after the
+  refresh helpers rebuild the row (same trick already used for trash state), and
+  `_generation_response()` forwards it.
+- Moving refreshes the list, so a song leaving the active workspace disappears
+  from the current view.
+
+Verified: move → 200 and the response/DB show the new workspace; a foreign
+workspace id → 404 `Workspace not found`; router tests 13 passed.
 

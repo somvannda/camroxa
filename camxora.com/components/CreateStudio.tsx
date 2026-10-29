@@ -1696,8 +1696,25 @@ export function CreateStudio() {
     }
   }
 
-  async function submitSongDetails(input: { title: string; lyrics: string }) {
-    if (!detailsTarget) return;
+  /** Suno's Manage ▸ Move to Workspace. */
+  async function moveSongToWorkspace(
+    song: WebMusicGeneration,
+    workspace: WebMusicWorkspace
+  ) {
+    if (song.workspace_id === workspace.id) {
+      setToast(`Already in ${workspace.name}`);
+      return;
+    }
+    try {
+      await updateWebMusicGeneration(song.id, { workspace_id: workspace.id });
+      setToast(`Moved to ${workspace.name}`);
+      await refreshSongs();
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not move this song");
+    }
+  }
+
+  async function submitSongDetails(input: { title: string; lyrics: string }) {    if (!detailsTarget) return;
     setDetailsBusy(true);
     try {
       const updated = await updateWebMusicGeneration(detailsTarget.song.id, {
@@ -3140,6 +3157,26 @@ export function CreateStudio() {
                 <SMenuItem disabled title="No crop service yet">
                   <Icon name="fa-crop-simple" /> Crop Song
                 </SMenuItem>
+              </SMenuSubContent>
+            </SMenuSub>
+            <SMenuSub>
+              <SMenuSubTrigger>
+                <Icon name="fa-folder-tree" /> Manage
+              </SMenuSubTrigger>
+              <SMenuSubContent>
+                {workspaces.length ? (
+                  workspaces.map((workspace) => (
+                    <SMenuItem
+                      key={workspace.id}
+                      disabled={workspace.id === song.workspace_id}
+                      onSelect={() => void moveSongToWorkspace(song, workspace)}
+                    >
+                      <Icon name="fa-folder" /> {workspace.name}
+                    </SMenuItem>
+                  ))
+                ) : (
+                  <SMenuItem disabled>No workspaces yet</SMenuItem>
+                )}
               </SMenuSubContent>
             </SMenuSub>
             <SMenuSeparator />

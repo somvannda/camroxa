@@ -5245,7 +5245,7 @@ class WebMusicService:
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
                    packaged_storage_key_ok, packaged_storage_key_alt,
-                   trashed_variants, purged_variants
+                   trashed_variants, purged_variants, workspace_id
             FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
@@ -5264,11 +5264,16 @@ class WebMusicService:
         # The refresh helpers rebuild `row` from narrower SELECTs, so read the
         # trash state from the source row and always return it.
         state = await self._pool.fetchrow(
-            "SELECT trashed_variants, purged_variants FROM suno_tasks WHERE id = $1",
+            "SELECT trashed_variants, purged_variants, workspace_id FROM suno_tasks WHERE id = $1",
             task_id,
         )
         payload["trashed_variants"] = list((state or {}).get("trashed_variants") or [])
         payload["purged_variants"] = list((state or {}).get("purged_variants") or [])
+        payload["workspace_id"] = (
+            str(state["workspace_id"])
+            if state and state.get("workspace_id")
+            else None
+        )
         return payload
 
     async def update_generation_title(
@@ -5278,9 +5283,10 @@ class WebMusicService:
         *,
         title: str | None = None,
         lyrics: str | None = None,
+        workspace_id: UUID | None = None,
         variant: str | None = None,
     ) -> dict[str, Any]:
-        """Suno's Edit ▸ Song Details: rename a version and/or edit its lyrics."""
+        """Suno's Edit ▸ Song Details plus Manage ▸ Move to Workspace."""
         variant_key = str(variant or "").strip().lower()
         assignments: list[str] = []
         params: list[Any] = []
@@ -5300,6 +5306,18 @@ class WebMusicService:
         if lyrics is not None:
             params.append(str(lyrics))
             assignments.append(f"lyrics = ${len(params)}")
+        if workspace_id is not None:
+            owned = await self._pool.fetchval(
+                "SELECT 1 FROM web_music_workspaces WHERE id = $1 AND user_id = $2",
+                workspace_id,
+                user_id,
+            )
+            if not owned:
+                raise NotFoundError(
+                    "Workspace not found.", details={"workspace_id": str(workspace_id)}
+                )
+            params.append(workspace_id)
+            assignments.append(f"workspace_id = ${len(params)}")
         if not assignments:
             raise ValidationError(
                 "Nothing to update.", details={"field": "title"}
@@ -6871,6 +6889,11 @@ class WebMusicService:
             "error_message": row["error_message"],
             "trashed_variants": list(_row_value(row, "trashed_variants") or []),
             "purged_variants": list(_row_value(row, "purged_variants") or []),
+            "workspace_id": (
+                str(_row_value(row, "workspace_id"))
+                if _row_value(row, "workspace_id")
+                else None
+            ),
             "created_at": created,
             "is_preview": bool(_row_value(row, "is_preview")),
             "unlockable": bool(

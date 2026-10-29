@@ -604,6 +604,24 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     }
   }
 
+  /** Suno's Manage ▸ Move to Workspace. */
+  async function moveClipToWorkspace(
+    song: WebMusicGeneration,
+    workspace: WebMusicWorkspace
+  ) {
+    if (song.workspace_id === workspace.id) {
+      setToast(`Already in ${workspace.name}`);
+      return;
+    }
+    try {
+      await updateWebMusicGeneration(song.id, { workspace_id: workspace.id });
+      setToast(`Moved to ${workspace.name}`);
+      await loadGenerations(0);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not move this song");
+    }
+  }
+
   async function submitSongDetails(input: { title: string; lyrics: string }) {
     if (!detailsTarget) return;
     setDetailsBusy(true);
@@ -1212,6 +1230,26 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 <SMenuItem disabled title="No crop service yet">
                   <Icon name="fa-crop-simple" /> Crop Song
                 </SMenuItem>
+              </SMenuSubContent>
+            </SMenuSub>
+            <SMenuSub>
+              <SMenuSubTrigger>
+                <Icon name="fa-folder-tree" /> Manage
+              </SMenuSubTrigger>
+              <SMenuSubContent>
+                {workspaces.length ? (
+                  workspaces.map((workspace) => (
+                    <SMenuItem
+                      key={workspace.id}
+                      disabled={workspace.id === song.workspace_id}
+                      onSelect={() => void moveClipToWorkspace(song, workspace)}
+                    >
+                      <Icon name="fa-folder" /> {workspace.name}
+                    </SMenuItem>
+                  ))
+                ) : (
+                  <SMenuItem disabled>No workspaces yet</SMenuItem>
+                )}
               </SMenuSubContent>
             </SMenuSub>
             <SMenuItem disabled={!ready} onSelect={() => enqueueClip(song, clip)}>

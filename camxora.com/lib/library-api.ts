@@ -37,6 +37,8 @@ export type WebMusicGeneration = {
   trashed_variants?: string[];
   /** Versions deleted permanently; hidden while the sibling stays. */
   purged_variants?: string[];
+  /** Workspace this song lives in (Suno's Manage ▸ Move to Workspace). */
+  workspace_id?: string | null;
   clips: WebMusicClip[];
 };
 

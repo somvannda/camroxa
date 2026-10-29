@@ -332,10 +332,15 @@ export async function updateWebMusicGenerationTitle(
   return updateWebMusicGeneration(id, { title, variant });
 }
 
-/** Suno's Edit ▸ Song Details: rename a version and/or edit its lyrics. */
+/** Suno's Edit ▸ Song Details and Manage ▸ Move to Workspace. */
 export async function updateWebMusicGeneration(
   id: string,
-  input: { title?: string; lyrics?: string; variant?: string }
+  input: {
+    title?: string;
+    lyrics?: string;
+    variant?: string;
+    workspace_id?: string;
+  }
 ): Promise<WebMusicGeneration> {
   return musicJson<WebMusicGeneration>(`/api/v3/web-music/generations/${encodeURIComponent(id)}`, {
     method: "PATCH",
@@ -343,6 +348,9 @@ export async function updateWebMusicGeneration(
     body: JSON.stringify({
       ...(input.title !== undefined ? { title: input.title } : {}),
       ...(input.lyrics !== undefined ? { lyrics: input.lyrics } : {}),
+      ...(input.workspace_id !== undefined
+        ? { workspace_id: input.workspace_id }
+        : {}),
       ...(input.variant ? { variant: input.variant } : {}),
     }),
   });

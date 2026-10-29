@@ -284,6 +284,7 @@ class WebMusicGenerationResponse(BaseModel):
     audio_weight: float | None = None
     trashed_variants: list[str] = Field(default_factory=list)
     purged_variants: list[str] = Field(default_factory=list)
+    workspace_id: str | None = None
     clips: list[WebMusicClipResponse] = Field(default_factory=list)
 
 
@@ -326,6 +327,9 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         purged_variants=[
             str(value) for value in (payload.get("purged_variants") or [])
         ],
+        workspace_id=(
+            str(payload["workspace_id"]) if payload.get("workspace_id") else None
+        ),
         clips=[WebMusicClipResponse(**clip) for clip in payload.get("clips") or []],
     )
 
@@ -1531,6 +1535,7 @@ async def generate(
 class WebMusicGenerationUpdateRequest(BaseModel):
     title: str | None = Field(default=None, max_length=200)
     lyrics: str | None = Field(default=None, max_length=20000)
+    workspace_id: UUID | None = None
     variant: Literal["ok", "alt"] | None = None
 
 
@@ -1590,6 +1595,7 @@ async def update_generation(
         task_id,
         title=body.title,
         lyrics=body.lyrics,
+        workspace_id=body.workspace_id,
         variant=body.variant,
     )
     return _generation_response(payload)
