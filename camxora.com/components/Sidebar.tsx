@@ -50,7 +50,9 @@ export function Sidebar() {
     const next = !collapsed;
     setCollapsed(next);
     window.localStorage.setItem("camxora.sidebar.collapsed", next ? "1" : "0");
-    document.documentElement.style.setProperty("--side", next ? "76px" : "264px");
+    const root = document.documentElement;
+    if (next) root.style.setProperty("--side", "76px");
+    else root.style.removeProperty("--side");
   }
   const { user, credits, creditExpiry, creditAllowance, creditIsFree, logout } = useAuth();
   const allowance =
