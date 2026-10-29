@@ -771,6 +771,31 @@ class StudioCoverRequest(BaseModel):
     project_id: UUID | None = None
 
 
+class StudioSampleRequest(BaseModel):
+    """Suno's "Sample this song": a waveform section plus the new-song details."""
+
+    variant: Literal["ok", "alt"] = "ok"
+    start_s: float = Field(default=0.0, ge=0, le=600)
+    end_s: float = Field(default=30.0, gt=0, le=600)
+    prompt: str = Field(default="", max_length=1000)
+    title: str = Field(default="", max_length=200)
+    tags: str = Field(default="", max_length=1000)
+    project_id: UUID | None = None
+
+
+class DeriveGenerationRequest(BaseModel):
+    """Suno's Edit ▸ local audio edits (crop, reverse, speed, fades)."""
+
+    variant: Literal["ok", "alt"] = "ok"
+    operation: Literal[
+        "crop", "remove_section", "reverse", "speed", "fade_in", "fade_out"
+    ]
+    start_s: float | None = Field(default=None, ge=0, le=3600)
+    end_s: float | None = Field(default=None, gt=0, le=3600)
+    speed: float | None = Field(default=None, ge=0.5, le=2.0)
+    fade_seconds: float | None = Field(default=None, ge=0.5, le=30)
+
+
 class StudioPromptRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     prompt: str
@@ -893,6 +918,46 @@ async def request_studio_cover(
         prompt=body.prompt,
         project_id=body.project_id,
     )
+
+
+@router.post("/studio/generations/{task_id}/sample", status_code=202)
+async def request_studio_sample(
+    task_id: UUID,
+    body: StudioSampleRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.request_studio_sample(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        start_s=body.start_s,
+        end_s=body.end_s,
+        prompt=body.prompt,
+        title=body.title,
+        tags=body.tags,
+        project_id=body.project_id,
+    )
+
+
+@router.post("/generations/{task_id}/derive", status_code=201)
+async def derive_generation(
+    task_id: UUID,
+    body: DeriveGenerationRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicGenerationResponse:
+    payload = await service.derive_generation(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        operation=body.operation,
+        start_s=body.start_s,
+        end_s=body.end_s,
+        speed=body.speed,
+        fade_seconds=body.fade_seconds,
+    )
+    return _generation_response(payload)
 
 
 @router.post("/studio/generations/{task_id}/add-vocals", status_code=202)
