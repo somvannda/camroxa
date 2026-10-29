@@ -76,20 +76,22 @@ export function Sidebar() {
 
   return (
     <aside className={`sidebar${collapsed ? " collapsed" : ""}`}>
-      <Link className="brand" href="/">
-        <img className="brand-mark" src="/camxora-logo.svg" alt="Camxora" />
-        <span className="brand-name">Camxora</span>
-      </Link>
+      <div className="side-head">
+        <Link className="brand" href="/">
+          <img className="brand-mark" src="/camxora-logo.svg" alt="Camxora" />
+          <span className="brand-name">Camxora</span>
+        </Link>
 
-      <button
-        type="button"
-        className="side-collapse"
-        onClick={toggleSidebar}
-        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-        title={collapsed ? "Expand navigation" : "Collapse navigation"}
-      >
-        <Icon name={collapsed ? "fa-angles-right" : "fa-angles-left"} />
-      </button>
+        <button
+          type="button"
+          className="side-collapse"
+          onClick={toggleSidebar}
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          title={collapsed ? "Expand navigation" : "Collapse navigation"}
+        >
+          <Icon name={collapsed ? "fa-angles-right" : "fa-angles-left"} />
+        </button>
+      </div>
 
       <div className="side-scroll">
         <nav className="nav" aria-label="Main navigation">

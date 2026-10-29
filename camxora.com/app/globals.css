@@ -4500,7 +4500,7 @@ html{color-scheme:dark}
 
 /* Collapsible sidebar */
 .sidebar{transition:width .16s ease}
-.side-collapse{margin:0 10px 8px;height:28px;border:1px solid var(--s-line);border-radius:8px;background:transparent;color:var(--s-text2);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.side-collapse{height:28px;border:1px solid var(--s-line);border-radius:8px;background:transparent;color:var(--s-text2);cursor:pointer;display:flex;align-items:center;justify-content:center}
 .side-collapse:hover{color:var(--s-text);border-color:var(--s-line2)}
 .sidebar.collapsed{width:76px}
 .sidebar.collapsed .brand-name,.sidebar.collapsed .side-label,.sidebar.collapsed .side-grid,.sidebar.collapsed .playlists,.sidebar.collapsed .nav-divider,.sidebar.collapsed .guest-offer,.sidebar.collapsed .member-copy,.sidebar.collapsed .member-tier{display:none}
@@ -4509,3 +4509,10 @@ html{color-scheme:dark}
 .sidebar.collapsed .nav a .icon{font-size:14px}
 .sidebar.collapsed .side-account{padding:8px}
 .sidebar.collapsed .member-profile{justify-content:center}
+
+/* Sidebar header: logo and collapse toggle on one row */
+.side-head{display:flex;align-items:center;gap:8px;padding:0 10px}
+.side-head .brand{flex:1;min-width:0;padding:0;margin:0}
+.side-head .side-collapse{margin:0;flex:none;width:28px;height:28px;padding:0}
+.sidebar.collapsed .side-head{justify-content:center;padding:0}
+.sidebar.collapsed .side-head .brand{flex:none}
