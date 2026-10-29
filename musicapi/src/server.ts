@@ -8940,6 +8940,21 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
 
   // --- Studio project surface (milestone 1 of the Studio clone) ---
 
+  // Studio calls are free, so pick any account whose cookie still authenticates
+  // instead of letting pool.pick() filter by credit balance.
+  async function pickStudioClient(): Promise<any> {
+    const candidates = ((pool as unknown as { clients: any[] }).clients ?? []).slice();
+    for (const candidate of candidates) {
+      try {
+        await candidate.billingInfo();
+        return candidate;
+      } catch {
+        /* dead cookie: try the next stored account */
+      }
+    }
+    return candidates[0];
+  }
+
   app.post("/internal/studio/projects", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
@@ -8977,10 +8992,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!accountId) {
       return reply.code(409).send({ error: "The clip's Suno account is not recorded." });
     }
-    const client = pool.get(accountId);
-    if (!client) {
-      return reply.code(409).send({ error: "The clip's Suno account is unavailable." });
-    }
+    const client = pool.get(accountId) ?? (await pickStudioClient());
     try {
       return reply.send({ project_id: await client.projectForClip(clipId) });
     } catch (err) {
@@ -9026,7 +9038,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     if (!clipIds.length) {
       return reply.code(400).send({ error: "clip_ids is required." });
     }
-    const client = await pool.pick();
+    const client = await pickStudioClient();
     try {
       await client.updateProjectClips(projectId, clipIds, updateType);
       return reply.send({ ok: true, update_type: updateType, count: clipIds.length });
@@ -9043,7 +9055,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const body = (req.body ?? {}) as Record<string, unknown>;
     const name = typeof body.name === "string" ? body.name.trim() : "";
     if (!name) return reply.code(400).send({ error: "name is required." });
-    const client = await pool.pick();
+    const client = await pickStudioClient();
     try {
       await client.renameStudioProject(projectId, name);
       return reply.send({ ok: true });
