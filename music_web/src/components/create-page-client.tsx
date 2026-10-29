@@ -791,7 +791,10 @@ export default function CreatePageClient() {
   const hasSubscription = Boolean(quota?.has_subscription || quota?.is_pro);
   const queueLimit = queueLimitForUser(hasSubscription);
   const insufficientCredits = totalCredits < requiredCredits;
-  const batchRequiresUpgrade = batchCount > 1 && !hasSubscription;
+  // Batch is a pack feature: the Free plan's monthly grant (50) is single-song
+  // only, so batch stays locked until a pack is bought.
+  const packUnlocked = Boolean(quota?.premium_unlocked ?? quota?.has_subscription ?? quota?.is_pro);
+  const batchRequiresUpgrade = batchCount > 1 && !packUnlocked;
   const queueSlotsFree = Math.max(0, queueLimit - (quota?.queue_used ?? 0));
   const batchOverQueue = batchCount > 1 && batchCount > queueSlotsFree;
   const batchBlocked = batchCount > 1 && (batchRequiresUpgrade || insufficientCredits);
@@ -799,10 +802,10 @@ export default function CreatePageClient() {
   const batchWarning = useMemo(() => {
     if (mode !== 'simple' || batchCount <= 1) return null;
     if (batchRequiresUpgrade) {
-      return `Batch generation is a Pro feature. Upgrade to Pro or buy a credit pack to create ${batchCount} songs at once.`;
+      return `Batch generation comes with credit packs. Buy a pack to create ${batchCount} songs at once.`;
     }
     if (insufficientCredits) {
-      return `You need ${requiredCredits} credits to create ${batchCount} songs but have ${totalCredits}. Top up or upgrade to continue.`;
+      return `You need ${requiredCredits} credits to create ${batchCount} songs but have ${totalCredits}. Top up to continue.`;
     }
     if (batchOverQueue) {
       return `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`;
@@ -1589,7 +1592,7 @@ export default function CreatePageClient() {
                     onClick={() => setShowUpgradeModal(true)}
                     className="shrink-0 rounded-full border border-white/20 bg-white/10 px-3 py-1 font-medium text-white hover:bg-white/20"
                   >
-                    Upgrade / Top up
+                    Top up
                   </button>
                 ) : null}
               </div>
@@ -1814,7 +1817,7 @@ export default function CreatePageClient() {
               className="flex h-12 w-full items-center justify-center gap-2 rounded-[7px] bg-gradient-to-r from-violet-500 via-purple-500 to-fuchsia-500 px-6 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(118,77,255,0.4)] md:rounded-full md:shadow-[0_18px_44px_rgba(118,77,255,0.38)]"
             >
               <Sparkles className="h-4 w-4" />
-              Upgrade to Pro
+              Buy credits
             </button>
           ) : (
             <button
@@ -1829,7 +1832,7 @@ export default function CreatePageClient() {
           )}
           {needsUpgrade ? (
             <p className="mt-2 hidden text-center text-xs text-fuchsia-100/80 md:block">
-              You have used today&apos;s free credits. Upgrade to Pro for more.
+              You have used today&apos;s free credits. Buy a credit pack for more.
             </p>
           ) : null}
         </MusicFloatingActionBar>

@@ -36,8 +36,11 @@ PRI_WEB_MUSIC_FREE = 8
 PRI_RUN_IMAGE_JOBS = 12
 PRI_YOUTUBE_UPLOADS = 6
 
+# Packs-only billing: credits are the only gate on Web Create, so an unsubscribed
+# (pack/Free-plan) user can already queue a 5/10/20-song batch. The per-user cap
+# is queue protection only, which is why both tiers share one number.
 WEB_MUSIC_GENERATE_QUEUE_CAP_PAID = 20
-WEB_MUSIC_GENERATE_QUEUE_CAP_FREE = 2
+WEB_MUSIC_GENERATE_QUEUE_CAP_FREE = 20
 
 
 def draft_priority_for_index(batch_index: int) -> int:

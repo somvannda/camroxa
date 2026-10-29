@@ -33,7 +33,8 @@ def mute_blocklist(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_desktop_suno_still_outranks_web_paid() -> None:
     assert PRI_SUNO_SUBMIT > PRI_WEB_MUSIC_PAID > PRI_WEB_MUSIC_FREE
     assert WEB_MUSIC_GENERATE_QUEUE_CAP_PAID == 20
-    assert WEB_MUSIC_GENERATE_QUEUE_CAP_FREE == 2
+    # Packs-only: unsubscribed users pay per song, so they get the batch cap too.
+    assert WEB_MUSIC_GENERATE_QUEUE_CAP_FREE == 20
     assert JOB_WEB_MUSIC_GENERATE in resolve_worker_job_types("suno")
 
 
@@ -58,13 +59,22 @@ async def test_paid_user_is_capped_at_20(mute_blocklist) -> None:
 
 
 @pytest.mark.asyncio
-async def test_free_user_is_capped_at_2(mute_blocklist) -> None:
+async def test_unsubscribed_user_gets_the_batch_cap() -> None:
+    """Packs-only: a Free-plan/pack user can batch, so the cap is not tiered."""
+    service = WebMusicService(MagicMock(), MagicMock())
+    service._is_paid_queue_user = AsyncMock(return_value=False)
+
+    assert await service._queue_cap_for_user(uuid4()) == WEB_MUSIC_GENERATE_QUEUE_CAP_PAID
+
+
+@pytest.mark.asyncio
+async def test_unsubscribed_user_is_capped_at_20(mute_blocklist) -> None:
     user_id = uuid4()
     service = WebMusicService(MagicMock(), MagicMock())
     service._is_paid_queue_user = AsyncMock(return_value=False)
-    service._active_generate_queue_count = AsyncMock(return_value=2)
+    service._active_generate_queue_count = AsyncMock(return_value=20)
 
-    with pytest.raises(RateLimitedError, match="already have 2"):
+    with pytest.raises(RateLimitedError, match="already have 20"):
         await service.generate(
             user_id,
             mode="advanced",

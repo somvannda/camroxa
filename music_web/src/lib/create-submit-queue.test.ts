@@ -25,11 +25,11 @@ describe('create-submit-queue', () => {
     assert.equal(cooldownMsForAttempt(20), 20_000);
   });
 
-  it('caps paid at 20 and free at 2', () => {
+  it('caps every user at 20 (packs-only: credits are the gate)', () => {
     assert.equal(queueLimitForUser(true), CREATE_MAX_QUEUE_PAID);
     assert.equal(queueLimitForUser(false), CREATE_MAX_QUEUE_FREE);
     assert.equal(CREATE_MAX_QUEUE_PAID, 20);
-    assert.equal(CREATE_MAX_QUEUE_FREE, 2);
+    assert.equal(CREATE_MAX_QUEUE_FREE, 20);
   });
 
   it('keeps Create disabled for 5 seconds after a click', () => {

@@ -304,6 +304,9 @@ class WebMusicService:
                 "can_download": can_download,
                 "daily_free_remaining": balance.daily_free_remaining,
                 "daily_free_limit": balance.daily_free_limit,
+                # Packs-only: the Free plan's monthly grant is single-song only, so
+                # batch generation stays locked until a pack is bought.
+                "premium_unlocked": self._legacy_pack_unlocked(balance),
             },
         )
 
@@ -534,6 +537,19 @@ class WebMusicService:
             user_id,
         )
         return row is not None
+
+    @staticmethod
+    def _legacy_pack_unlocked(balance: Any) -> bool:
+        """Packs-only entitlement for the pre-v3 credit ledger.
+
+        The Free plan's monthly grant is single-song only, so premium models and
+        batch generation stay locked until a pack is bought (or the account is a
+        grandfathered paid plan). Mirrors
+        ``WebMusicChargeBridge.premium_unlocked`` on the v3 wallet.
+        """
+        return bool(getattr(balance, "has_subscription", False)) or int(
+            getattr(balance, "topup_balance", 0) or 0
+        ) > 0
 
     async def _credits_only_v3_enabled(self) -> bool:
         from platform_api.services.v3.generate_charge import (
@@ -945,6 +961,7 @@ class WebMusicService:
             "has_subscription": updated.has_subscription,
             "daily_free_remaining": updated.daily_free_remaining,
             "daily_free_limit": updated.daily_free_limit,
+            "premium_unlocked": self._legacy_pack_unlocked(updated),
         }
 
     async def _reserve_daily_slot(
