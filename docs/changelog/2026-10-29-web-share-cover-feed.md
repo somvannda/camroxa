@@ -109,8 +109,6 @@ new service code is loaded.
 
 ## Follow-ups
 
-- No background sweeper for `studio_operations`: a user who closes the tab
-  immediately after starting a cover leaves the row pending until the next poll.
 - Cover results are single-take; Suno sometimes returns two takes.
 - Still missing vs Suno's menu: Sample this song, Use as Inspiration.
 
@@ -189,4 +187,25 @@ its own dialog). Adding a menu action in future means touching one file.
 
 Verified in the browser: both row menus list the same fifteen entries in the
 same order.
+
+## Abandoned operations no longer stay pending
+
+A cover/remaster/mashup only advanced while a client polled it, so closing the
+tab right after starting one left the song pending forever.
+
+- `WebMusicService.sweep_studio_operations()` polls operations that are still
+  queued/running, older than 20 s, and younger than 6 h (so a dead job is not
+  polled forever). It reuses `get_studio_operation()`, which keeps the refund
+  path intact.
+- `main.py` starts a 20 s loop for it (`studio-operation-sweeper`).
+- If a completed operation has no feed row yet (started before feed rows
+  existed, or swept after a restart), the sync now materializes the row and
+  applies the result in one pass instead of dropping the audio.
+
+Verified: the loop logs "Studio operation sweeper polled 2 operation(s)" on
+startup and moved the two stuck covers out of `pending` (they failed with
+`Account acct-2: no active Clerk session`, as expected for a signed-out pool
+account). The row-backfill path is covered by a DB-level test that syncs a
+completed operation with no prior row.
+
 

@@ -3909,6 +3909,7 @@ class WebMusicService:
         status: str,
         result: Any,
         error: str | None,
+        _retried: bool = False,
     ) -> None:
         """Write a finished studio edit back onto its feed row."""
         operation_type = str(_row_value(operation, "operation_type") or "").strip().lower()
@@ -3967,6 +3968,23 @@ class WebMusicService:
                     logger.exception(
                         "Studio song B2 backfill scheduling failed for %s", operation["id"]
                     )
+            elif row is None and not _retried:
+                # Operation created before feed rows existed (or by the sweeper
+                # after a restart): create the row, then apply the result once.
+                try:
+                    await self._materialize_studio_operation_song(user_id, operation)
+                except Exception:
+                    logger.exception(
+                        "Studio song row backfill failed for %s", operation["id"]
+                    )
+                await self._sync_studio_operation_song(
+                    user_id,
+                    operation,
+                    status=status,
+                    result=result,
+                    error=error,
+                    _retried=True,
+                )
             return
         if status_key in ("error", "failed", "cancelled"):
             await self._pool.execute(
@@ -4839,6 +4857,46 @@ class WebMusicService:
         except Exception:
             logger.exception("Studio operation song sync failed for %s", operation_id)
         return self._studio_operation_payload(updated)
+
+    async def sweep_studio_operations(
+        self,
+        *,
+        older_than_seconds: int = 20,
+        limit: int = 10,
+        max_age_seconds: int = 21600,
+    ) -> int:
+        """Poll operations nobody is watching.
+
+        A cover started from the feed only advances while a client polls it, so
+        closing the tab used to leave the new song pending forever. The startup
+        loop calls this to keep those rows moving. Rows older than
+        ``max_age_seconds`` are left alone so a dead job is not polled forever.
+        """
+        rows = await self._pool.fetch(
+            """
+            SELECT id, user_id
+            FROM studio_operations
+            WHERE status IN ('queued', 'pending', 'running', 'processing')
+              AND musicapi_job_id IS NOT NULL
+              AND updated_at < now() - make_interval(secs => $1)
+              AND updated_at > now() - make_interval(secs => $3)
+            ORDER BY updated_at ASC
+            LIMIT $2
+            """,
+            max(1, int(older_than_seconds)),
+            max(1, int(limit)),
+            max(60, int(max_age_seconds)),
+        )
+        swept = 0
+        for row in rows:
+            try:
+                await self.get_studio_operation(row["user_id"], row["id"])
+                swept += 1
+            except Exception:
+                logger.warning(
+                    "Studio operation sweep failed for %s", row["id"], exc_info=True
+                )
+        return swept
 
     async def list_studio_operations(
         self,

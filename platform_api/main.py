@@ -322,6 +322,36 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Pipeline stuck-batch alert service not configured (non-fatal): %s", exc)
 
+        # --- Studio operation sweeper ---
+        # Cover/remaster/mashup rows only advance while a client polls them, so
+        # poll abandoned ones here; otherwise a cover started just before a tab
+        # closes stays pending forever.
+        try:
+            from platform_api.services.web_music_service import WebMusicService
+
+            studio_sweeper = WebMusicService(db_pool, None)  # type: ignore[arg-type]
+
+            async def _studio_operation_sweep_loop() -> None:
+                while True:
+                    try:
+                        swept = await studio_sweeper.sweep_studio_operations()
+                        if swept:
+                            logger.info(
+                                "Studio operation sweeper polled %s operation(s)", swept
+                            )
+                    except Exception as exc:
+                        logger.warning("Studio operation sweep failed: %s", exc)
+                    await asyncio.sleep(20)
+
+            asyncio.create_task(
+                _studio_operation_sweep_loop(), name="studio-operation-sweeper"
+            )
+            logger.info("Studio operation sweeper started (every 20s).")
+        except Exception as exc:
+            logger.warning(
+                "Studio operation sweeper not started (non-fatal): %s", exc
+            )
+
         # --- Web music subscription period maintenance ---
         try:
             from platform_api.db.asyncpg_adapter import wrap_pool
