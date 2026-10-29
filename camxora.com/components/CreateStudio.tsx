@@ -1847,7 +1847,7 @@ export function CreateStudio() {
       return;
     }
     if (batchRequiresUpgrade) {
-      setError("Batch generation is a Pro feature. Upgrade or buy a credit pack to continue.");
+      setError("Batch generation comes with credit packs. Open Buy packs to create several songs at once.");
       return;
     }
     if (quota?.requires_upgrade) {
@@ -1981,8 +1981,9 @@ export function CreateStudio() {
   const requiredCredits = (quota?.credits_per_song ?? 0) * batchCount;
   const availableCredits = quota?.credits_remaining ?? credits ?? 0;
   const needsCredits = requiredCredits > 0 && availableCredits < requiredCredits;
-  const hasSubscription = Boolean(quota?.has_subscription || quota?.is_pro);
-  const batchRequiresUpgrade = batchCount > 1 && !hasSubscription;
+  // Batch is a pack feature: the Free plan's monthly grant (50) is single-song only.
+  const packUnlocked = Boolean(quota?.premium_unlocked ?? quota?.has_subscription ?? quota?.is_pro);
+  const batchRequiresUpgrade = batchCount > 1 && !packUnlocked;
   const queueLimit = quota?.queue_limit ?? 20;
   const queueUsed = quota?.queue_used ?? 0;
   const queueSlotsFree = Math.max(0, queueLimit - queueUsed);
@@ -2016,9 +2017,9 @@ export function CreateStudio() {
     mode !== "simple" || batchCount <= 1
       ? null
       : batchRequiresUpgrade
-        ? `Batch generation is a Pro feature. Upgrade to Pro or buy a credit pack to create ${batchCount} songs at once.`
+        ? `Batch generation comes with credit packs. Buy a pack to create ${batchCount} songs at once.`
         : needsCredits
-          ? `You need ${requiredCredits.toLocaleString()} credits to create ${batchCount} songs but have ${availableCredits.toLocaleString()}. Top up or upgrade to continue.`
+          ? `You need ${requiredCredits.toLocaleString()} credits to create ${batchCount} songs but have ${availableCredits.toLocaleString()}. Top up to continue.`
           : batchOverQueue
             ? `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`
             : null;

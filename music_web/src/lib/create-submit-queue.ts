@@ -3,7 +3,8 @@
 export const CREATE_COOLDOWN_MS = 5_000;
 export const CREATE_HARD_LOCK_MS = 5_000;
 export const CREATE_MAX_QUEUE_PAID = 20;
-export const CREATE_MAX_QUEUE_FREE = 2;
+/** Packs-only billing: credits gate generation, so unsubscribed users can batch too. */
+export const CREATE_MAX_QUEUE_FREE = 20;
 export const CREATE_MAX_QUEUE = CREATE_MAX_QUEUE_FREE;
 
 export type WebMusicGenerateInput = {
