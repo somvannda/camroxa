@@ -2703,14 +2703,14 @@ export function CreateStudio() {
               {title}
             </a>
             <span className="s-row-version">· {clipVersionLabel(clip.variant)}</span>
-            <span className="s-model-badge">
-              {song.model_label || song.model || shortModel}
-            </span>
             {song.is_preview ? <span className="s-status live">Preview</span> : null}
           </div>
           <div className="s-row-desc">
-            {ready ? "Ready" : statusLabel(song.status)} · {song.model_label || song.model || shortModel} ·{" "}
-            {formatDate(song.created_at)}
+            {ready ? "Ready" : statusLabel(song.status)} ·{" "}
+            <span className="s-model-badge">
+              {song.model_label || song.model || shortModel}
+            </span>{" "}
+            · {formatDate(song.created_at)}
             {row.duration ? ` · ${formatClipDuration(row.duration)}` : ""}
           </div>
         </div>
