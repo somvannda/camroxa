@@ -105,6 +105,48 @@ async def test_list_recent_failed_mp3_errors_missing_b2_excludes_permanent_faile
     assert "permanent_failed" in query
 
 
+async def test_count_web_music_missing_assets_ignores_lazy_wav() -> None:
+    """WAV is built on demand since 2026-10-28 and never written back to B2.
+
+    A missing `b2_wav_storage_key_*` is therefore the normal state for every
+    new web-music track, not a capture failure: counting it paged ops with a
+    "missing assets" number that only tracked generation volume (production
+    2026-10-29: 122). Only package and LRC gaps are actionable.
+    """
+    pool = _FakePool({"n": 0})
+    repo = StreamingRepository(pool)
+
+    assert await repo.count_web_music_missing_assets(max_age_hours=24) == 0
+
+    query, args = pool.calls[0]
+    assert "package_status_ok, 'none') <> 'ready'" in query
+    assert "b2_lrc_storage_key_ok" in query
+    assert "b2_wav_storage_key" not in query
+    assert "wav_status" not in query
+    assert args == (24,)
+
+
+async def test_list_web_music_asset_tasks_skips_wav_only_backlog() -> None:
+    """The recovery pass no longer recovers WAV, so it must not select it.
+
+    Otherwise WAV-only tasks consume the per-pass task budget forever and
+    starve the LRC/package gaps that can actually be fixed.
+    """
+    pool = _FakePool({"n": 0})
+    repo = StreamingRepository(pool)
+
+    await repo.list_web_music_asset_tasks(limit=8)
+
+    query, _ = pool.calls[0]
+    assert "package_status_ok, 'none') <> 'ready'" in query
+    assert "b2_lrc_storage_key_ok, '') = ''" in query
+    # The WHERE predicate must not test a WAV column (the SELECT list may still
+    # carry them for the worker's row shape).
+    where_clause = query.split("WHERE", 1)[1]
+    assert "b2_wav_storage_key" not in where_clause
+    assert "wav_status" not in where_clause
+
+
 class _InsertPool:
     """Minimal pool double for create_upload_job."""
 
