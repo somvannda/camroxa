@@ -8993,17 +8993,26 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   app.get("/internal/studio/projects/:project_id", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { project_id: projectId } = req.params as { project_id: string };
-    const requested = req.query && typeof (req.query as any).account_id === "string"
-      ? String((req.query as any).account_id)
-      : "";
-    const client = requested && pool.get(requested) ? pool.get(requested)! : await pool.pick();
-    try {
-      return reply.send(await client.getStudioProject(projectId));
-    } catch (err) {
-      return reply
-        .code(502)
-        .send({ error: err instanceof Error ? err.message : "get project failed" });
+    const requested =
+      req.query && typeof (req.query as any).account_id === "string"
+        ? String((req.query as any).account_id)
+        : "";
+    const pinned = requested ? pool.get(requested) : null;
+    const candidates = pinned
+      ? [pinned]
+      : ((pool as unknown as { clients: any[] }).clients ?? []).slice();
+    let lastError: unknown = null;
+    for (const candidate of candidates) {
+      try {
+        return reply.send(await candidate.getStudioProject(projectId));
+      } catch (err) {
+        lastError = err;
+      }
     }
+    return reply.code(502).send({
+      error:
+        lastError instanceof Error ? lastError.message : "get project failed",
+    });
   });
 
   app.post("/internal/studio/projects/:project_id/clips", async (req, reply) => {
