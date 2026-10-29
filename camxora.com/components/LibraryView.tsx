@@ -901,6 +901,52 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             >
               <Icon name="fa-heart" />
             </button>
+            <button
+              type="button"
+              className={`s-act icon-only${disliked ? " on" : ""}`}
+              aria-label={disliked ? "Remove dislike" : "Dislike clip"}
+              aria-pressed={disliked}
+              onClick={() => toggleDislike(song, clip)}
+            >
+              <Icon name="fa-thumbs-down" />
+            </button>
+            {ready ? (
+              <>
+                <a
+                  className="s-act"
+                  href={clipDownloadUrl(song.id, clip.variant || "ok", "mp3")}
+                  download
+                  aria-label="Download MP3"
+                >
+                  MP3
+                </a>
+                <a
+                  className="s-act"
+                  href={clipDownloadUrl(song.id, clip.variant || "ok", "wav")}
+                  download
+                  aria-label="Download WAV"
+                >
+                  WAV
+                </a>
+              </>
+            ) : null}
+            <button
+              type="button"
+              className="s-act icon-only"
+              aria-label="Share clip"
+              title="Copy link"
+              onClick={() => void copyClipLink(song, clip)}
+            >
+              <Icon name="fa-share" />
+            </button>
+            <Link
+              className="s-act icon-only"
+              href={`/create?remix=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`}
+              aria-label="Remix clip"
+              title="Remix"
+            >
+              <Icon name="fa-wand-magic-sparkles" />
+            </Link>
           </div>
         </div>
 

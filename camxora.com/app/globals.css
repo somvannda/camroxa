@@ -3278,7 +3278,7 @@ html{color-scheme:dark}
 @keyframes s-pulse{0%,100%{opacity:.55}50%{opacity:1}}
 
 /* ---------- menus / popovers ---------- */
-.s-menu{position:absolute;z-index:120;min-width:180px;padding:6px;border-radius:12px;background:var(--s-bg2);border:1px solid var(--s-line);box-shadow:var(--s-shadow);display:flex;flex-direction:column;gap:2px}
+.s-menu{z-index:120;min-width:180px;padding:6px;border-radius:12px;background:var(--s-bg2);border:1px solid var(--s-line);box-shadow:var(--s-shadow);display:flex;flex-direction:column;gap:2px}
 .s-menu-label{font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:var(--s-text3);padding:6px 10px}
 .s-menu-item{display:flex;align-items:center;gap:10px;height:34px;padding:0 10px;border-radius:8px;font-size:13px;color:var(--s-text2);text-align:left;width:100%}
 .s-menu-item:hover{background:rgba(255,255,255,.07);color:var(--s-text)}
