@@ -81,17 +81,16 @@ export function Sidebar() {
           <img className="brand-mark" src="/camxora-logo.svg" alt="Camxora" />
           <span className="brand-name">Camxora</span>
         </Link>
+        <button
+          type="button"
+          className="side-collapse"
+          onClick={toggleSidebar}
+          aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+          title={collapsed ? "Expand navigation" : "Collapse navigation"}
+        >
+          <Icon name={collapsed ? "fa-angle-right" : "fa-angle-left"} />
+        </button>
       </div>
-
-      <button
-        type="button"
-        className="side-collapse"
-        onClick={toggleSidebar}
-        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
-        title={collapsed ? "Expand navigation" : "Collapse navigation"}
-      >
-        <Icon name={collapsed ? "fa-angle-right" : "fa-angle-left"} />
-      </button>
 
       <div className="side-scroll">
         <nav className="nav" aria-label="Main navigation">
@@ -145,27 +144,66 @@ export function Sidebar() {
       </div>
 
       {user ? (
-        <div className="side-account side-user">
-          <Link className="side-avatar" href="/account" title={user.display_name}>
-            <img src={user.avatar_url || "/hero.png"} alt={user.display_name} />
-          </Link>
-          <span className="side-user-name">{user.display_name}</span>
-          <span className="side-user-credits">
-            {(credits ?? user.credit_balance ?? 0).toLocaleString()} credits
-          </span>
-          <button
-            className="side-user-out"
-            type="button"
-            aria-label="Sign out"
-            onClick={async () => {
-              await logout();
-              window.location.href = "/";
-            }}
-          >
-            <Icon name="fa-arrow-right-from-bracket" />
-            <span>Sign out</span>
-          </button>
-        </div>
+        collapsed ? (
+          <div className="side-account side-mini">
+            <Link className="side-avatar" href="/account" title={user.display_name}>
+              <img src={user.avatar_url || "/hero.png"} alt={user.display_name} />
+            </Link>
+            <button
+              className="side-user-out"
+              type="button"
+              aria-label="Sign out"
+              onClick={async () => {
+                await logout();
+                window.location.href = "/";
+              }}
+            >
+              <Icon name="fa-arrow-right-from-bracket" />
+            </button>
+          </div>
+        ) : (
+          <div className="side-account">
+            <div className="guest-offer member-credit">
+              <div className="guest-offer-head">
+                <span className="guest-kicker">Your credits</span>
+                <span className="guest-price member-tier">{user.plan_name || "Free"}</span>
+              </div>
+              <strong className="guest-amount member-amount">
+                {(credits ?? user.credit_balance ?? 0).toLocaleString()} <small>credits</small>
+              </strong>
+              <div className="credit-bar">
+                <i style={{ width: `${creditPercent}%` }} />
+              </div>
+              <div className="credit-meta">
+                <span>1,000 = $5</span>
+                <span>{user.email_confirmed === false ? "Verify email" : expiryLabel}</span>
+              </div>
+              <Link className="btn btn-primary" href="/pricing">
+                <Icon name="fa-plus" /> Buy packs
+              </Link>
+            </div>
+            <div className="member-profile">
+              <Link className="member-profile-main" href="/account">
+                <img src={user.avatar_url || "/hero.png"} alt={user.display_name} />
+                <span className="member-copy">
+                  <strong>{user.display_name}</strong>
+                </span>
+              </Link>
+              <button
+                className="member-signout"
+                type="button"
+                aria-label="Sign out"
+                title="Sign out"
+                onClick={async () => {
+                  await logout();
+                  window.location.href = "/";
+                }}
+              >
+                <Icon name="fa-arrow-right-from-bracket" />
+              </button>
+            </div>
+          </div>
+        )
       ) : (
         <div className="side-account">
           <div className="guest-offer">
