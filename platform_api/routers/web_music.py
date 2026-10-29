@@ -444,6 +444,63 @@ class StudioProjectForkRequest(BaseModel):
     title: str | None = Field(default=None, min_length=1, max_length=120)
 
 
+@router.post("/studio/sessions", status_code=201)
+async def create_studio_session(
+    body: StudioSessionCreateRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.create_studio_session(UUID(ctx.user_id), title=body.title)
+
+
+@router.post("/studio/sessions/from-clip", status_code=201)
+async def create_studio_session_for_clip(
+    body: StudioSessionForClipRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.studio_session_for_clip(
+        UUID(ctx.user_id), body.task_id, variant=body.variant
+    )
+
+
+@router.get("/studio/sessions/{project_id}")
+async def get_studio_session(
+    project_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.get_studio_session(UUID(ctx.user_id), project_id)
+
+
+@router.post("/studio/sessions/{project_id}/clips")
+async def add_studio_session_clips(
+    project_id: str,
+    body: StudioSessionClipsRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.add_studio_session_clips(
+        UUID(ctx.user_id),
+        project_id,
+        task_ids=body.task_ids,
+        variants=list(body.variants),
+        remove=body.remove,
+    )
+
+
+@router.post("/studio/sessions/{project_id}/metadata")
+async def rename_studio_session(
+    project_id: str,
+    body: StudioSessionRenameRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.rename_studio_session(
+        UUID(ctx.user_id), project_id, name=body.name
+    )
+
+
 @router.get("/studio/projects")
 async def list_studio_projects(
     ctx: CurrentUserDep,
@@ -763,6 +820,25 @@ class StudioExtendRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
     continue_at: float | None = None
     project_id: UUID | None = None
+
+
+class StudioSessionCreateRequest(BaseModel):
+    title: str = Field(default="Untitled Project", max_length=100)
+
+
+class StudioSessionForClipRequest(BaseModel):
+    task_id: UUID
+    variant: Literal["ok", "alt"] = "ok"
+
+
+class StudioSessionClipsRequest(BaseModel):
+    task_ids: list[UUID] = Field(min_length=1, max_length=200)
+    variants: list[Literal["ok", "alt"]] = Field(default_factory=list, max_length=200)
+    remove: bool = False
+
+
+class StudioSessionRenameRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
 
 
 class StudioCoverRequest(BaseModel):

@@ -3488,6 +3488,111 @@ class WebMusicService:
             label="mashup",
         )
 
+    async def _musicapi_studio_call(
+        self, method: str, path: str, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Call one of musicapi's /internal/studio routes."""
+        from platform_api.config import get_settings
+
+        settings = get_settings()
+        token = str(settings.studio_internal_token or "").strip()
+        if not token:
+            raise ExternalServiceError(
+                "Studio operations are not configured.",
+                is_retryable=False,
+                details={"reason": "studio_internal_token_missing"},
+            )
+        base = str(settings.suno_api_base_url or "").rstrip("/")
+        try:
+            async with httpx.AsyncClient(timeout=45) as client:
+                response = await client.request(
+                    method,
+                    f"{base}{path}",
+                    headers={"x-internal-token": token},
+                    json=payload,
+                )
+        except Exception as exc:
+            raise ExternalServiceError(
+                "Could not reach the Studio service.",
+                is_retryable=True,
+                details={"provider": "musicapi", "path": path},
+            ) from exc
+        if response.status_code >= 400:
+            detail = "Studio request failed."
+            try:
+                detail = str((response.json() or {}).get("error") or detail)
+            except Exception:
+                pass
+            raise ExternalServiceError(
+                detail,
+                is_retryable=False,
+                details={"provider": "musicapi", "path": path},
+            )
+        try:
+            data = response.json()
+        except Exception:
+            return {}
+        return data if isinstance(data, dict) else {}
+
+    async def create_studio_session(
+        self, user_id: UUID, *, title: str = "Untitled Project"
+    ) -> dict[str, Any]:
+        del user_id
+        return await self._musicapi_studio_call(
+            "POST", "/internal/studio/projects", {"title": str(title or "")[:100]}
+        )
+
+    async def studio_session_for_clip(
+        self, user_id: UUID, task_id: UUID, *, variant: str = "ok"
+    ) -> dict[str, Any]:
+        clip_id = await self._studio_source_clip(user_id, task_id, variant=variant)
+        payload = await self._musicapi_studio_call(
+            "POST", f"/internal/studio/projects/for-clip/{clip_id}"
+        )
+        return {"project_id": str(payload.get("project_id") or "")}
+
+    async def get_studio_session(
+        self, user_id: UUID, project_id: str
+    ) -> dict[str, Any]:
+        del user_id
+        return await self._musicapi_studio_call(
+            "GET", f"/internal/studio/projects/{project_id}"
+        )
+
+    async def add_studio_session_clips(
+        self,
+        user_id: UUID,
+        project_id: str,
+        *,
+        task_ids: list[UUID],
+        variants: list[str],
+        remove: bool = False,
+    ) -> dict[str, Any]:
+        clip_ids: list[str] = []
+        for index, task_id in enumerate(task_ids):
+            variant = variants[index] if index < len(variants) else "ok"
+            clip_ids.append(
+                await self._studio_source_clip(user_id, task_id, variant=variant)
+            )
+        return await self._musicapi_studio_call(
+            "POST",
+            f"/internal/studio/projects/{project_id}/clips",
+            {
+                "clip_ids": clip_ids,
+                "update_type": "remove" if remove else "add",
+            },
+        )
+
+    async def rename_studio_session(
+        self, user_id: UUID, project_id: str, *, name: str
+    ) -> dict[str, Any]:
+        del user_id
+        return await self._musicapi_studio_call(
+            "POST",
+            f"/internal/studio/projects/{project_id}/metadata",
+            {"name": str(name or "").strip()[:100]},
+        )
+
     async def get_studio_readiness(self) -> dict[str, Any]:
         from platform_api.config import get_settings
         from platform_api.services.streaming_config_service import (
