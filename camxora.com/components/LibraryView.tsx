@@ -603,7 +603,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
         variant: clip.variant === "alt" ? "alt" : "ok",
         prompt: (song.style || song.title || "").trim(),
       });
-      setToast("Cover queued");
+      setToast("Cover started — it will appear in your library");
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : "Could not cover this song");
     }

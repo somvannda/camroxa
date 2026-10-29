@@ -1652,31 +1652,13 @@ export function CreateStudio() {
 
   async function coverFromRow(song: WebMusicGeneration, clip: WebMusicClip) {
     try {
-      const operation = await coverWebMusicGeneration(song.id, {
+      await coverWebMusicGeneration(song.id, {
         variant: clip.variant === "alt" ? "alt" : "ok",
         prompt: (song.style || song.title || "").trim(),
       });
-      setAudioHistory((current) => [
-        operation,
-        ...current.filter((item) => item.id !== operation.id),
-      ]);
-      setToast("Cover queued — see Cover queue");
-      const terminal = new Set(["complete", "completed", "success", "error", "failed"]);
-      for (let attempt = 0; attempt < 40; attempt += 1) {
-        await new Promise((resolve) => window.setTimeout(resolve, 3000));
-        if (!mounted.current) return;
-        const next = await getWebMusicStudioOperation(operation.id).catch(() => null);
-        if (!next) continue;
-        setAudioHistory((current) =>
-          current.map((item) => (item.id === next.id ? next : item))
-        );
-        if (terminal.has(String(next.status).toLowerCase())) {
-          if (!["error", "failed"].includes(String(next.status).toLowerCase())) {
-            setToast("Cover ready — see Audio results");
-          }
-          break;
-        }
-      }
+      // Suno creates a pending song in the feed; refresh so the new row shows.
+      setToast("Cover started — it will appear in your feed");
+      await refreshSongs();
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : "Could not cover this song");
     }
@@ -2240,33 +2222,22 @@ export function CreateStudio() {
           : batchOverQueue
             ? `Only ${queueSlotsFree} of ${queueLimit} queue slots are free. Extra songs wait in the queue until earlier ones start at Suno.`
             : null;
-  const audioResultRows = audioHistory.filter((operation) => Boolean(operation.result?.clips?.[0]?.audioUrl));
-  const queuedOperations = audioHistory.filter((operation) =>
-    ["queued", "pending", "running", "processing"].includes(
-      String(operation.status || "").toLowerCase()
-    )
+  // Studio edits that now land as a song row in the feed (Suno-style) must not
+  // also appear under "Audio results", or the same take shows up twice.
+  const feedBackedOperations = new Set([
+    "cover",
+    "remaster",
+    "mashup",
+    "extend",
+    "add_vocals",
+    "add_instrumental",
+    "replace_section",
+  ]);
+  const audioResultRows = audioHistory.filter(
+    (operation) =>
+      Boolean(operation.result?.clips?.[0]?.audioUrl) &&
+      !feedBackedOperations.has(String(operation.operation_type || "").toLowerCase())
   );
-  const coverQueue = queuedOperations.length ? (
-    <div>
-      <h3 className="s-day">Cover queue</h3>
-      {queuedOperations.map((operation) => (
-        <div className="s-row s-row-compact" key={operation.id}>
-          <span className="s-row-play" aria-hidden="true">
-            <Icon name="fa-hourglass-half" className="s-hourglass" />
-          </span>
-          <div className="s-row-body">
-            <div className="s-row-title">
-              <b>{operation.label || operation.operation_type || "Cover"}</b>
-            </div>
-            <div className="s-row-desc">
-              {String(operation.status || "queued").toUpperCase()}
-              {operation.variant ? ` · ${clipVersionLabel(operation.variant)}` : ""}
-            </div>
-          </div>
-        </div>
-      ))}
-    </div>
-  ) : null;
   const remixReadySongs = songs.filter(
     (song) =>
       String(song.status).toLowerCase() === "success" &&
@@ -2646,7 +2617,6 @@ export function CreateStudio() {
           <div className="s-feed">
             <div className="s-feed-head" />
             <div className="s-feed-scroll">
-            {coverQueue}
             {audioResultRows.length ? (
               <div>
                 <h3 className="s-day">Audio results</h3>
@@ -4598,7 +4568,6 @@ export function CreateStudio() {
           {batchError ? <p className="s-error">{batchError}</p> : null}
 
           <div className="s-feed-scroll">
-            {coverQueue}
             {audioResultRows.length ? (
               <div>
                 <h3 className="s-day">Audio results</h3>
