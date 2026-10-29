@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Probe a Suno-compatible reseller for platform_api contract compatibility.
+"""Probe Camxora's musicapi for platform_api contract compatibility.
 
-Purpose: before switching `platform_api` from sunoapi.org/apibox to Camxora's
-`musicapi`, confirm the endpoints the backend actually calls match the response
+Purpose: confirm the endpoints the backend actually calls return the response
 shapes its parsers expect, and confirm multi-account task ownership (record-info
-is scoped to the account that created the task).
+is scoped to the account that created the task). The old reseller is retired;
+this probe targets ``musicapi.camxora.com``.
 
 Read-only by default: it only calls the free `/api/v1/generate/credit` and
 `/api/v1/generate/record-info` endpoints. Credit-spending calls (generate, WAV,

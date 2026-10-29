@@ -1,10 +1,10 @@
 """Per-request active upstream host for the Suno-compatible provider.
 
-``platform_api`` can talk to more than one Suno-compatible reseller
-(sunoapi.org / apibox and Camxora's own ``musicapi``). Key selection resolves
-which host a request should use and publishes it here, so the HTTP client can
-pick the right base URL without threading the value through every call
-signature.
+Both Suno-compatible provider ids (``suno`` and ``camxora_music_api``) now
+resolve to Camxora's own ``musicapi``; the split exists only so AI Routing can
+price them differently. Key selection resolves which host a request should use
+and publishes it here, so the HTTP client can pick the right base URL without
+threading the value through every call signature.
 
 The value is a :class:`contextvars.ContextVar`, so concurrent requests never see
 each other's host.
@@ -15,8 +15,8 @@ from __future__ import annotations
 from contextvars import ContextVar
 
 #: Providers that speak the Suno-compatible HTTP contract through the shared
-#: Suno client. ``suno`` targets sunoapi.org / apibox; ``camxora_music_api``
-#: targets Camxora's own ``musicapi.camxora.com``.
+#: Suno client. Both target Camxora's own ``musicapi.camxora.com``; the ids are
+#: kept separate only for AI Routing credit pricing.
 SUNO_COMPATIBLE_PROVIDERS: frozenset[str] = frozenset({"suno", "camxora_music_api"})
 
 #: Music provider used when AI Routing has no explicit assignment.

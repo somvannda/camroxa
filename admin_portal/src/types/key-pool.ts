@@ -75,7 +75,6 @@ export interface ProviderConfigRequest {
 /** Known Suno-compatible upstream hosts offered as presets in the admin UI. */
 export const UPSTREAM_HOST_PRESETS: { label: string; value: string }[] = [
   { label: 'Camxora musicapi', value: 'https://musicapi.camxora.com' },
-  { label: 'sunoapi.org (apibox)', value: 'https://apibox.erweima.ai' },
 ];
 
 export interface AllProvidersHealth {

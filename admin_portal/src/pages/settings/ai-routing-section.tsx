@@ -774,13 +774,13 @@ function ServiceTypeGroup({
       ) : null}
       {serviceType === 'music_generation' ? (
         <p className="mb-3 text-xs text-slate-400">
-          Choose the music provider. <strong className="font-medium text-slate-300">Suno</strong>{' '}
-          (sunoapi.org) and{' '}
+          Choose the music provider.{' '}
+          <strong className="font-medium text-slate-300">Suno</strong> and{' '}
           <strong className="font-medium text-slate-300">Camxora Music API</strong>{' '}
-          (musicapi) are Suno-compatible; the provider must have active keys in
-          the Key Pool. The Credit price follows this choice: Suno 15 credits,
-          Camxora Music API 10 credits. Users still pick the model version in
-          their app settings.
+          speak the same Suno-compatible API and both run through Camxora&apos;s
+          own musicapi; the provider must have active keys in the Key Pool. The
+          Credit price follows this choice: Suno 15 credits, Camxora Music API 10
+          credits. Users still pick the model version in their app settings.
         </p>
       ) : null}
       <div className="space-y-3">

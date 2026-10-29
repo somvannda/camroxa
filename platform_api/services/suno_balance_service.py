@@ -230,7 +230,7 @@ class SunoBalanceService:
     def _normalize_balance(raw: dict[str, Any]) -> dict[str, Any]:
         """Normalize raw Suno balance response into a consistent format.
 
-        APIBox returns ``{"code":200,"msg":"success","data":100}`` where data is the credit count.
+        Legacy reseller payloads return ``{"code":200,"msg":"success","data":100}`` where data is the credit count.
         """
         data = raw.get("data")
         credits = None

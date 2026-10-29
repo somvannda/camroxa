@@ -42,7 +42,7 @@ async def main():
         print("missing row or key")
         return
     ext = row["external_task_id"]
-    base = os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://api.sunoapi.org").rstrip("/")
+    base = os.environ.get("PLATFORM_SUNO_API_BASE_URL", "https://musicapi.camxora.com").rstrip("/")
     async with httpx.AsyncClient(timeout=60.0) as client:
         resp = await client.get(
             f"{base}/api/v1/generate/record-info",

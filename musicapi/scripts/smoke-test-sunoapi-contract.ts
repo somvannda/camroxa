@@ -1,6 +1,6 @@
 /**
  * smoke-test-sunoapi-contract — asserts our registered routes cover sunoapi.org's
- * public API surface, so any client written against api.sunoapi.org is drop-in.
+ * public API surface, so any client written against the public Suno API spec is drop-in.
  *
  * Pure and offline: boots the server in-process (no DB, no network, no credits)
  * and checks Fastify's `hasRoute()` for every documented path.

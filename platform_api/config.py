@@ -88,9 +88,9 @@ class Settings(BaseSettings):
     ]
 
     # --- External API Keys ---
-    # Suno-compatible reseller endpoint. Camxora's own `musicapi` is a
-    # sunoapi.org drop-in (same /api/v1 contract, Bearer auth, {code,msg,data}
-    # envelope), so it replaces the legacy upstream `https://apibox.erweima.ai`.
+    # Suno generation goes through Camxora's own `musicapi`, which talks to the
+    # Suno interface directly (same /api/v1 contract, Bearer auth,
+    # {code,msg,data} envelope). Do not point this at a third-party reseller.
     # Overridable per environment via PLATFORM_SUNO_API_BASE_URL.
     suno_api_base_url: str = "https://musicapi.camxora.com"
     # Service-to-service bearer for musicapi /internal/studio/* routes.
