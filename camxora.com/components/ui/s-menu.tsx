@@ -51,6 +51,7 @@ export function SMenu({
         align={align}
         side={side}
         sideOffset={sideOffset}
+        collisionPadding={12}
         className={cn("s-menu", className)}
         style={style}
       >

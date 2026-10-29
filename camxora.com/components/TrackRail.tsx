@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { Icon } from "@/components/Icon";
+import { SMenu, SMenuItem } from "@/components/ui/s-menu";
 import type { WebMusicClip, WebMusicGeneration } from "@/lib/library-api";
 import type { WebMusicPlaylistSummary } from "@/lib/web-music-api";
 import {
@@ -232,70 +233,103 @@ export function TrackRail({
             <div className="s-rail-action-grid">
               <button
                 type="button"
-                className="s-btn s-btn-secondary"
+                className="s-btn s-btn-secondary s-btn-icon"
                 onClick={() => setPlaylistOpen((value) => !value)}
                 disabled={!ready || !clip?.ready || playlistBusy || !onAddToPlaylist}
                 aria-expanded={playlistOpen}
+                aria-label="Add to playlist"
+                title="Add to playlist"
               >
-                <Icon name="fa-list" /> Playlist
+                <Icon name="fa-list" />
               </button>
               <button
                 type="button"
-                className="s-btn s-btn-secondary"
+                className="s-btn s-btn-secondary s-btn-icon"
                 onClick={() => {
                   if (detail && clip) onRemix?.(detail, clip);
                 }}
                 disabled={!ready || !clip || !onRemix}
+                aria-label="Remix"
+                title="Remix"
               >
-                <Icon name="fa-wand-magic-sparkles" /> Remix
+                <Icon name="fa-wand-magic-sparkles" />
               </button>
               <button
                 type="button"
-                className="s-btn s-btn-secondary"
+                className="s-btn s-btn-secondary s-btn-icon"
                 onClick={() => {
                   if (detail) onCreateVideo?.(detail);
                 }}
                 disabled={!ready || !onCreateVideo}
+                aria-label="Create video"
+                title="Create video"
               >
-                <Icon name="fa-video" /> Video
+                <Icon name="fa-video" />
               </button>
               <button
                 type="button"
-                className={`s-btn s-btn-secondary${liked ? " on" : ""}`}
+                className={`s-btn s-btn-secondary s-btn-icon${liked ? " on" : ""}`}
                 onClick={() => onLike?.()}
                 aria-pressed={liked}
+                aria-label={liked ? "Unlike" : "Like"}
+                title={liked ? "Unlike" : "Like"}
                 disabled={!onLike}
               >
-                <Icon name="fa-heart" /> {liked ? "Liked" : "Like"}
+                <Icon name="fa-heart" />
               </button>
-              {ready && clip && !instrumental ? (
-                <a className="s-btn s-btn-secondary" href={clipDownloadUrl(detail.id, clip.variant || "ok", "lrc")}>
-                  LRC
-                </a>
-              ) : null}
-              {ready && clip && !instrumental ? (
-                <a className="s-btn s-btn-secondary" href={clipDownloadUrl(detail.id, clip.variant || "ok", "srt")}>
-                  SRT
-                </a>
-              ) : null}
               {ready && clip ? (
-                <a className="s-btn s-btn-secondary" href={clip.download_url || clipDownloadUrl(detail.id, clip.variant || "ok", "mp3")}>
-                  MP3
-                </a>
-              ) : null}
-              {ready && clip ? (
-                <a className="s-btn s-btn-secondary" href={clipDownloadUrl(detail.id, clip.variant || "ok", "wav")}>
-                  WAV
-                </a>
+                <SMenu
+                  align="end"
+                  trigger={
+                    <button
+                      type="button"
+                      className="s-btn s-btn-secondary s-btn-icon"
+                      aria-label="Download"
+                      title="Download"
+                    >
+                      <Icon name="fa-download" />
+                    </button>
+                  }
+                >
+                  <SMenuItem asChild>
+                    <a
+                      href={clip.download_url || clipDownloadUrl(detail.id, clip.variant || "ok", "mp3")}
+                      download
+                    >
+                      <Icon name="fa-music" /> MP3
+                    </a>
+                  </SMenuItem>
+                  <SMenuItem asChild>
+                    <a href={clipDownloadUrl(detail.id, clip.variant || "ok", "wav")} download>
+                      <Icon name="fa-wave-square" /> WAV
+                    </a>
+                  </SMenuItem>
+                  {!instrumental ? (
+                    <>
+                      <SMenuItem asChild>
+                        <a href={clipDownloadUrl(detail.id, clip.variant || "ok", "lrc")} download>
+                          <Icon name="fa-closed-captioning" /> LRC
+                        </a>
+                      </SMenuItem>
+                      <SMenuItem asChild>
+                        <a href={clipDownloadUrl(detail.id, clip.variant || "ok", "srt")} download>
+                          <Icon name="fa-file-lines" /> SRT
+                        </a>
+                      </SMenuItem>
+                    </>
+                  ) : null}
+                </SMenu>
               ) : null}
               {detail.unlockable ? (
                 <button
                   type="button"
-                  className="s-btn s-btn-secondary"
+                  className="s-btn s-btn-secondary s-btn-icon"
                   onClick={() => onUnlock?.()}
                   disabled={loading}
+                  aria-label="Unlock"
+                  title="Unlock"
                 >
-                  <Icon name="fa-lock-open" /> Unlock
+                  <Icon name="fa-lock-open" />
                 </button>
               ) : null}
             </div>
