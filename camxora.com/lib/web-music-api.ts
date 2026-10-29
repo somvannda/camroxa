@@ -692,6 +692,15 @@ export async function createStudioSession(
   );
 }
 
+/** Read a Suno Studio project back (title, tracks, clips). */
+export async function getStudioSession(
+  projectId: string
+): Promise<Record<string, unknown>> {
+  return musicJson<Record<string, unknown>>(
+    `/api/v3/web-music/studio/sessions/${encodeURIComponent(projectId)}`
+  );
+}
+
 export type WebMusicReportReason =
   | "copyright"
   | "explicit"

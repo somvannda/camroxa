@@ -1,50 +1,57 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import { Icon } from "@/components/Icon";
 import type { WebMusicGeneration } from "@/lib/library-api";
-import { listWebMusicGenerations, studioSessionForClip } from "@/lib/web-music-api";
+import {
+  getStudioSession,
+  listWebMusicGenerations,
+  studioSessionForClip,
+} from "@/lib/web-music-api";
 
-type Dock = "songs" | "liked" | "stems" | "uploads" | "workspaces" | "projects";
+const BARS = 24;
+const COLORS = ["#7466F1", "#A259FF", "#2f7bf6", "#25d366", "#f59e0b"];
 
-const DOCK: Array<{ id: Dock; label: string; icon: string }> = [
-  { id: "songs", label: "All songs", icon: "fa-music" },
-  { id: "liked", label: "Liked", icon: "fa-heart" },
-  { id: "stems", label: "Stems", icon: "fa-layer-group" },
-  { id: "uploads", label: "Uploads", icon: "fa-arrow-up-from-bracket" },
-  { id: "workspaces", label: "Workspaces", icon: "fa-folder-tree" },
-  { id: "projects", label: "Projects", icon: "fa-table-columns" },
-];
-
-const TRACK_COLORS = ["#7466F1", "#A259FF", "#2f7bf6", "#25d366", "#f59e0b"];
-
-type TrackBlock = {
+type Track = {
   id: string;
-  title: string;
+  name: string;
   color: string;
-  offset: number;
-  width: number;
+  clipIds: string[];
+  muted: boolean;
+  solo: boolean;
+  volume: number;
 };
 
+function clock(seconds: number) {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+}
+
 /**
- * Studio shell in Suno's arrangement: library dock on the left, timeline in the
- * middle, details on the right, transport along the bottom. Built on Suno Studio
- * projects through the platform proxy.
+ * Suno's project view: track panel on the left, bar-numbered timeline in the
+ * middle, prompt bar along the bottom, transport in the header.
  */
 export function StudioShell() {
+  const params = useSearchParams();
+  const projectParam = params.get("project");
+
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
-  const [dock, setDock] = useState<Dock>("songs");
-  const [search, setSearch] = useState("");
-  const [selected, setSelected] = useState<WebMusicGeneration | null>(null);
-  const [projectId, setProjectId] = useState<string | null>(null);
+  const [tracks, setTracks] = useState<Track[]>([]);
+  const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [projectName, setProjectName] = useState("Untitled Project");
-  const [tracks, setTracks] = useState<TrackBlock[]>([]);
+  const [projectId, setProjectId] = useState<string | null>(projectParam);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [playing, setPlaying] = useState(false);
+  const [seconds, setSeconds] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [zoom, setZoom] = useState(1);
-  const [playing, setPlaying] = useState(false);
-  const [position, setPosition] = useState(0);
+  const timer = useRef<number | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -52,255 +59,347 @@ export function StudioShell() {
       .then((page) => {
         if (active) setSongs(page.items);
       })
-      .catch((cause) => {
-        if (active) setError(cause instanceof Error ? cause.message : "Could not load songs");
+      .catch(() => {
+        if (active) setError("Could not load your songs");
       });
     return () => {
       active = false;
     };
   }, []);
 
-  const visibleSongs = useMemo(() => {
-    const term = search.trim().toLowerCase();
-    const ready = songs.filter((song) => String(song.status).toUpperCase() === "SUCCESS");
-    if (!term) return ready;
-    return ready.filter((song) =>
-      `${song.title} ${song.style ?? ""}`.toLowerCase().includes(term)
-    );
-  }, [songs, search]);
+  useEffect(() => {
+    if (!projectParam) return;
+    let active = true;
+    setProjectId(projectParam);
+    getStudioSession(projectParam)
+      .then((session) => {
+        if (!active) return;
+        const title = (session as { title?: string }).title;
+        if (title) setProjectName(title);
+      })
+      .catch(() => {
+        /* older project or a signed-out pool: keep the id we have */
+      });
+    return () => {
+      active = false;
+    };
+  }, [projectParam]);
 
-  async function openSong(song: WebMusicGeneration) {
-    setSelected(song);
+  useEffect(() => {
+    if (!playing) {
+      if (timer.current) window.clearInterval(timer.current);
+      timer.current = null;
+      return;
+    }
+    timer.current = window.setInterval(() => {
+      setSeconds((value) => (value >= 30 ? 0 : value + 0.1));
+    }, 100);
+    return () => {
+      if (timer.current) window.clearInterval(timer.current);
+    };
+  }, [playing]);
+
+  const readySongs = useMemo(
+    () => songs.filter((song) => String(song.status).toUpperCase() === "SUCCESS"),
+    [songs]
+  );
+  const positionPercent = (seconds / 30) * 100;
+  const bar = Math.max(1, Math.floor(seconds / 1.25) + 1);
+
+  function addTrack(name = "Audio Track") {
+    const track: Track = {
+      id: `${Date.now()}-${tracks.length}`,
+      name,
+      color: COLORS[tracks.length % COLORS.length],
+      clipIds: [],
+      muted: false,
+      solo: false,
+      volume: 80,
+    };
+    setTracks((current) => [...current, track]);
+    setSelectedTrack(track.id);
+  }
+
+  async function addSongToTimeline(song: WebMusicGeneration) {
     setBusy(true);
     setError("");
     try {
       const clip = song.clips?.find((item) => item.ready) ?? song.clips?.[0];
       const variant = clip?.variant === "alt" ? "alt" : "ok";
       const session = await studioSessionForClip(song.id, variant);
-      if (!projectId) {
-        setProjectId(session.project_id);
-        setProjectName(song.title || "Untitled Project");
-      }
-      setTracks((current) =>
-        current.some((item) => item.id === song.id)
-          ? current
-          : [
-              ...current,
-              {
-                id: song.id,
-                title: clip?.title || song.title || "Clip",
-                color: TRACK_COLORS[current.length % TRACK_COLORS.length],
-                offset: Math.min(78, current.length * 6),
-                width: 18,
-              },
-            ]
-      );
+      if (!projectId) setProjectId(session.project_id);
+      setTracks((current) => {
+        const target = current.find((track) => track.id === selectedTrack) ?? current[0];
+        if (target) {
+          return current.map((track) =>
+            track.id === target.id
+              ? { ...track, clipIds: [...track.clipIds, song.id] }
+              : track
+          );
+        }
+        return [
+          {
+            id: `${Date.now()}-0`,
+            name: "Audio Track",
+            color: COLORS[0],
+            clipIds: [song.id],
+            muted: false,
+            solo: false,
+            volume: 80,
+          },
+        ];
+      });
+      if (!tracks.length) setSelectedTrack(null);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Could not open the project");
+      setError(cause instanceof Error ? cause.message : "Could not open this song");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <div className="st-shell">
-      <header className="st-top">
-        <strong>CAMXORA Studio</strong>
-        <span className="st-dot">·</span>
-        <span className="st-project">{projectId ? projectName : "No project yet"}</span>
-        {projectId ? <code className="st-pid">{projectId.slice(0, 8)}</code> : null}
+    <div className="stv">
+      <header className="stv-top">
+        <span className="st-brand">
+          <img src="/camxora-logo.svg" alt="" />
+          <b>CAMXORA</b>
+        </span>
+        <span className="st-chrome-project">{projectName}</span>
+        <span className="st-chrome-dots">···</span>
         <span style={{ flex: 1 }} />
+        <div className="stv-transport">
+          <button type="button" className="stv-icon" aria-label="Go to start" onClick={() => setSeconds(0)}>
+            <Icon name="fa-backward-step" />
+          </button>
+          <button
+            type="button"
+            className="stv-icon"
+            aria-label={playing ? "Pause" : "Play"}
+            onClick={() => setPlaying((value) => !value)}
+          >
+            <Icon name={playing ? "fa-pause" : "fa-play"} />
+          </button>
+          <button type="button" className="stv-icon" aria-label="Metronome">
+            <Icon name="fa-hourglass-half" />
+          </button>
+          <span className="stv-clock">{clock(seconds)}</span>
+          <span className="stv-bars">{String(bar).padStart(3, "0")}.1.1</span>
+        </div>
+        <span style={{ flex: 1 }} />
+        <span className="stv-bpm">120 BPM</span>
+        <span className="stv-sig">4/4</span>
+        <button type="button" className="s-btn s-btn-ghost" disabled={!tracks.length}>
+          <Icon name="fa-arrow-up-from-bracket" /> Export
+        </button>
         <button
           type="button"
           className="s-btn s-btn-ghost"
-          onClick={() => {
-            setTracks([]);
-            setProjectId(null);
-            setSelected(null);
-            setProjectName("Untitled Project");
-          }}
+          onClick={() => setLibraryOpen((value) => !value)}
         >
-          <Icon name="fa-plus" /> New project
-        </button>
-        <button type="button" className="s-btn s-btn-primary" disabled={!tracks.length}>
-          <Icon name="fa-download" /> Export
+          <Icon name="fa-folder-open" /> Library
         </button>
       </header>
 
-      <div className="st-body">
-        <aside className="st-dock">
-          <div className="st-dock-tabs">
-            {DOCK.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={`st-dock-tab${dock === item.id ? " on" : ""}`}
-                onClick={() => setDock(item.id)}
-                title={item.label}
-              >
-                <Icon name={item.icon} />
-              </button>
+      <div className="stv-body">
+        <aside className="stv-tracks">
+          {tracks.map((track, index) => (
+            <div
+              key={track.id}
+              className={`stv-track${selectedTrack === track.id ? " on" : ""}`}
+              onClick={() => setSelectedTrack(track.id)}
+            >
+              <div className="stv-track-top">
+                <span className="stv-track-num">{index + 1}</span>
+                <b>{track.name}</b>
+                <span style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  className={`stv-pill${track.solo ? " on" : ""}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setTracks((current) =>
+                      current.map((item) =>
+                        item.id === track.id ? { ...item, solo: !item.solo } : item
+                      )
+                    );
+                  }}
+                >
+                  S
+                </button>
+                <button
+                  type="button"
+                  className={`stv-pill${track.muted ? " on" : ""}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setTracks((current) =>
+                      current.map((item) =>
+                        item.id === track.id ? { ...item, muted: !item.muted } : item
+                      )
+                    );
+                  }}
+                >
+                  M
+                </button>
+                <button type="button" className="stv-pill" aria-label="Record arm">
+                  <Icon name="fa-circle" />
+                </button>
+              </div>
+              <div className="stv-fader">
+                <input
+                  type="range"
+                  min={0}
+                  max={100}
+                  value={track.volume}
+                  aria-label={`${track.name} volume`}
+                  onChange={(event) =>
+                    setTracks((current) =>
+                      current.map((item) =>
+                        item.id === track.id
+                          ? { ...item, volume: Number(event.target.value) }
+                          : item
+                      )
+                    )
+                  }
+                />
+                <span className="stv-track-fx"><Icon name="fa-sliders" /></span>
+              </div>
+            </div>
+          ))}
+          <button type="button" className="stv-add-track" onClick={() => addTrack()}>
+            <Icon name="fa-plus" /> Add new track
+          </button>
+        </aside>
+
+        <main className="stv-canvas">
+          <div className="stv-ruler">
+            {Array.from({ length: BARS }).map((_, index) => (
+              <span key={index} style={{ width: `${100 / BARS}%` }}>
+                {index + 1}
+              </span>
             ))}
           </div>
-          <div className="st-dock-panel">
-            <div className="st-dock-title">{DOCK.find((d) => d.id === dock)?.label}</div>
-            {dock === "songs" ? (
-              <input
-                className="s-input"
-                placeholder="Search your songs"
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-              />
+          <div className="stv-grid">
+            {Array.from({ length: BARS }).map((_, index) => (
+              <span key={index} style={{ left: `${(index / BARS) * 100}%` }} />
+            ))}
+            {tracks.map((track, index) => (
+              <div className="stv-lane" key={track.id} style={{ top: index * 58 }}>
+                {track.clipIds.map((clipId, clipIndex) => {
+                  const song = songs.find((item) => item.id === clipId);
+                  return (
+                    <span
+                      key={`${clipId}-${clipIndex}`}
+                      className="stv-clip"
+                      style={{
+                        left: `${clipIndex * 18}%`,
+                        width: "16%",
+                        background: `linear-gradient(90deg, ${track.color}dd, ${track.color}77)`,
+                      }}
+                    >
+                      {song?.title || "Clip"}
+                    </span>
+                  );
+                })}
+              </div>
+            ))}
+            <div className="stv-playhead" style={{ left: `${positionPercent}%` }} />
+            {!tracks.length ? (
+              <div className="stv-empty">
+                <Icon name="fa-music" />
+                <b>Add a track, then drop a song on it</b>
+                <p className="s-note">Use “Add new track” on the left, then Library.</p>
+              </div>
             ) : null}
-            <div className="st-list">
-              {dock === "songs" && visibleSongs.length ? (
-                visibleSongs.map((song) => (
+          </div>
+        </main>
+
+        {libraryOpen ? (
+          <aside className="stv-library">
+            <div className="stv-library-head">
+              <b>Library</b>
+              <button
+                type="button"
+                className="stv-icon"
+                aria-label="Close library"
+                onClick={() => setLibraryOpen(false)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <div className="stv-library-list">
+              {readySongs.length ? (
+                readySongs.map((song) => (
                   <button
                     key={song.id}
                     type="button"
-                    className={`st-item${selected?.id === song.id ? " on" : ""}`}
-                    onClick={() => void openSong(song)}
+                    className="stv-library-row"
+                    disabled={busy}
+                    onClick={() => void addSongToTimeline(song)}
                   >
                     <span
-                      className="st-thumb"
+                      className="stv-art"
                       style={
                         song.clips?.[0]?.image_url
                           ? { backgroundImage: `url(${song.clips[0].image_url})` }
                           : undefined
                       }
                     />
-                    <span className="st-item-body">
+                    <span className="stv-library-body">
                       <b>{song.title}</b>
                       <small>{song.style || "—"}</small>
                     </span>
+                    <Icon name="fa-plus" />
                   </button>
                 ))
-              ) : dock === "songs" ? (
-                <p className="s-note">No finished songs yet.</p>
               ) : (
-                <p className="s-note">
-                  {DOCK.find((d) => d.id === dock)?.label} is coming with the next
-                  milestone.
-                </p>
+                <p className="s-note">No finished songs yet.</p>
               )}
             </div>
-          </div>
-        </aside>
-
-        <main className="st-canvas">
-          <div className="st-ruler">
-            {Array.from({ length: 16 }).map((_, index) => (
-              <span key={index}>{index * 15}s</span>
-            ))}
-          </div>
-          <div className="st-timeline">
-            {tracks.length ? (
-              tracks.map((track, index) => (
-                <div className="st-track" key={track.id}>
-                  <div className="st-track-head">
-                    <span className="st-track-dot" style={{ background: track.color }} />
-                    <b>{track.title}</b>
-                    <span style={{ flex: 1 }} />
-                    <button type="button" className="s-btn s-btn-icon sm" aria-label="Mute">
-                      <Icon name="fa-volume-xmark" />
-                    </button>
-                    <button type="button" className="s-btn s-btn-icon sm" aria-label="Solo">
-                      <Icon name="fa-headphones" />
-                    </button>
-                  </div>
-                  <div className="st-lane">
-                    <span
-                      className="st-clip"
-                      style={{
-                        left: `${track.offset}%`,
-                        width: `${track.width}%`,
-                        background: `linear-gradient(90deg, ${track.color}cc, ${track.color}66)`,
-                      }}
-                    >
-                      {track.title}
-                    </span>
-                  </div>
-                  <span className="st-track-index">{index + 1}</span>
-                </div>
-              ))
-            ) : (
-              <div className="st-empty">
-                <Icon name="fa-music" />
-                <b>Add a clip to the timeline</b>
-                <p className="s-note">
-                  Pick a song in the library on the left. It opens its Suno Studio
-                  project and drops onto a track.
-                </p>
-              </div>
-            )}
-            <div
-              className="st-playhead"
-              style={{ left: `${Math.min(98, position * zoom)}%` }}
-            />
-          </div>
-        </main>
-
-        <aside className="st-details">
-          <div className="st-dock-title">Details</div>
-          {selected ? (
-            <>
-              <b className="st-details-title">{selected.title}</b>
-              <p className="s-note">{selected.style || "No style"}</p>
-              <div className="st-detail-row">
-                <span>Model</span>
-                <b>{selected.model_label || selected.model || "V6"}</b>
-              </div>
-              <div className="st-detail-row">
-                <span>Project</span>
-                <b>{projectId ? projectId.slice(0, 8) : "—"}</b>
-              </div>
-              <div className="st-detail-row">
-                <span>Clips</span>
-                <b>{tracks.length}</b>
-              </div>
-              <div className="st-dock-title" style={{ marginTop: 16 }}>
-                Lyrics
-              </div>
-              <pre className="st-lyrics">{selected.lyrics || "Instrumental"}</pre>
-            </>
-          ) : (
-            <p className="s-note">Select a clip to see its details and lyrics.</p>
-          )}
-        </aside>
+          </aside>
+        ) : null}
       </div>
 
-      <footer className="st-transport">
-        <button
-          type="button"
-          className="s-btn s-btn-icon"
-          aria-label="Play"
-          onClick={() => setPlaying((value) => !value)}
-        >
-          <Icon name={playing ? "fa-pause" : "fa-play"} />
-        </button>
-        <span className="st-time">0:00 / {tracks.length ? "3:00" : "0:00"}</span>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          value={position}
-          aria-label="Playhead"
-          onChange={(event) => setPosition(Number(event.target.value))}
-          style={{ flex: 1 }}
-        />
-        <span className="s-note">Zoom</span>
-        <input
-          type="range"
-          min={0.5}
-          max={2}
-          step={0.1}
-          value={zoom}
-          aria-label="Zoom"
-          onChange={(event) => setZoom(Number(event.target.value))}
-          style={{ width: 120 }}
-        />
-        {busy ? <span className="s-note">Opening project…</span> : null}
-        {error ? <span className="s-error">{error}</span> : null}
+      <footer className="stv-bottom">
+        <div className="stv-master">
+          <span className="stv-master-label">Main</span>
+          <input type="range" min={0} max={100} defaultValue={80} aria-label="Master volume" />
+          <Icon name="fa-volume-high" />
+        </div>
+        <div className="stv-prompt">
+          <button type="button" className="stv-icon" aria-label="Add">
+            <Icon name="fa-plus" />
+          </button>
+          <input
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="Select a spot on the timeline and ask me to add a part"
+            aria-label="Ask Studio to add a part"
+          />
+          <span className="stv-model">V6</span>
+          <button
+            type="button"
+            className="stv-icon"
+            aria-label="Send"
+            disabled={!prompt.trim()}
+            onClick={() => setPrompt("")}
+          >
+            <Icon name="fa-arrow-up" />
+          </button>
+        </div>
+        <div className="stv-tools">
+          <span className="s-note">Zoom</span>
+          <input
+            type="range"
+            min={0.5}
+            max={2}
+            step={0.1}
+            value={zoom}
+            aria-label="Zoom"
+            onChange={(event) => setZoom(Number(event.target.value))}
+          />
+          {busy ? <span className="s-note">Opening…</span> : null}
+          {error ? <span className="s-error">{error}</span> : null}
+        </div>
       </footer>
     </div>
   );
