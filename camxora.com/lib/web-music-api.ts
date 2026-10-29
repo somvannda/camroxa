@@ -631,6 +631,31 @@ export async function requestWebMusicStaffPickRemix(
   });
 }
 
+export type WebMusicReportReason =
+  | "copyright"
+  | "explicit"
+  | "spam"
+  | "harassment"
+  | "other";
+
+export async function reportWebMusicGeneration(
+  id: string,
+  input: { variant?: "ok" | "alt"; reason: WebMusicReportReason; details?: string }
+): Promise<void> {
+  await musicJson(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/report`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        variant: input.variant ?? "ok",
+        reason: input.reason,
+        details: input.details?.trim() || null,
+      }),
+    }
+  );
+}
+
 export async function mashupWebMusicGeneration(
   taskIds: string[],
   variants: Array<"ok" | "alt">,

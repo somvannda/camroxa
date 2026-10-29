@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
+import { ReportClipModal } from "@/components/ReportClipModal";
 import {
   SMenu,
   SMenuCheckboxItem,
@@ -31,6 +32,7 @@ import {
   restoreWebMusicGeneration,
   setWebMusicTrash,
   coverWebMusicGeneration,
+  reportWebMusicGeneration,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
   fetchWebMusicDislikedKeys,
@@ -184,6 +186,10 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashSelected, setTrashSelected] = useState<string[]>([]);
   const [trashCount, setTrashCount] = useState(0);
+  const [reportTarget, setReportTarget] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [reportBusy, setReportBusy] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachNotice, setAttachNotice] = useState<null | "upload" | "record">(null);
 
@@ -563,6 +569,27 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
         nextDisliked ? current.filter((item) => item !== key) : [...current, key]
       );
       setToast("Could not update dislike");
+    }
+  }
+
+  async function submitReport(input: {
+    reason: Parameters<typeof reportWebMusicGeneration>[1]["reason"];
+    details: string;
+  }) {
+    if (!reportTarget) return;
+    setReportBusy(true);
+    try {
+      await reportWebMusicGeneration(reportTarget.song.id, {
+        variant: reportTarget.variant,
+        reason: input.reason,
+        details: input.details,
+      });
+      setToast("Report sent — thanks");
+      setReportTarget(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not send the report");
+    } finally {
+      if (mounted.current) setReportBusy(false);
     }
   }
 
@@ -1117,6 +1144,17 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
                 )}
               </SMenuSubContent>
             </SMenuSub>
+            <SMenuSeparator />
+            <SMenuItem
+              onSelect={() =>
+                setReportTarget({
+                  song,
+                  variant: clip.variant === "alt" ? "alt" : "ok",
+                })
+              }
+            >
+              <Icon name="fa-flag" /> Report
+            </SMenuItem>
             <SMenuSeparator />
             <SMenuItem
               onSelect={() =>
@@ -2231,6 +2269,15 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             </div>
           </div>
         </div>
+      ) : null}
+
+      {reportTarget ? (
+        <ReportClipModal
+          title={reportTarget.song.title}
+          busy={reportBusy}
+          onClose={() => setReportTarget(null)}
+          onSubmit={submitReport}
+        />
       ) : null}
 
       {toast ? (

@@ -62,6 +62,12 @@ class TrashClipsRequest(BaseModel):
     clip_ids: list[str] = Field(default_factory=list, max_length=200)
 
 
+class ReportClipRequest(BaseModel):
+    variant: Literal["ok", "alt"] = "ok"
+    reason: Literal["copyright", "explicit", "spam", "harassment", "other"]
+    details: str | None = Field(default=None, max_length=1000)
+
+
 class WebMusicClipResponse(BaseModel):
     variant: str
     label: str
@@ -1600,6 +1606,23 @@ async def unlock_preview(
             },
         )
     return _generation_response(payload)
+
+
+@router.post("/generations/{task_id}/report", status_code=201)
+async def report_web_music_generation(
+    task_id: UUID,
+    body: ReportClipRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    await service.report_generation(
+        UUID(ctx.user_id),
+        task_id,
+        variant=body.variant,
+        reason=body.reason,
+        details=body.details,
+    )
+    return {"ok": True}
 
 
 @router.post("/generations/trash", status_code=200)

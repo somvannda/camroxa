@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
+import { ReportClipModal } from "@/components/ReportClipModal";
 import {
   SMenu,
   SMenuCheckboxItem,
@@ -28,6 +29,7 @@ import {
   clipFilename,
   coverWebMusicGeneration,
   mashupWebMusicGeneration,
+  reportWebMusicGeneration,
   coverWebMusicStudioUpload,
   createWebMusicPlaylist,
   createWebMusicStudioPersona,
@@ -368,6 +370,10 @@ export function CreateStudio() {
     { song: WebMusicGeneration; variant: "ok" | "alt" } | null
   >(null);
   const [mashupBusy, setMashupBusy] = useState(false);
+  const [reportTarget, setReportTarget] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [reportBusy, setReportBusy] = useState(false);
   const mounted = useRef(true);
   const cardBodyRef = useRef<HTMLDivElement | null>(null);
 
@@ -1649,6 +1655,27 @@ export function CreateStudio() {
       setToast("Cover queued");
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : "Could not cover this song");
+    }
+  }
+
+  async function submitReport(input: {
+    reason: Parameters<typeof reportWebMusicGeneration>[1]["reason"];
+    details: string;
+  }) {
+    if (!reportTarget) return;
+    setReportBusy(true);
+    try {
+      await reportWebMusicGeneration(reportTarget.song.id, {
+        variant: reportTarget.variant,
+        reason: input.reason,
+        details: input.details,
+      });
+      setToast("Report sent — thanks");
+      setReportTarget(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not send the report");
+    } finally {
+      if (mounted.current) setReportBusy(false);
     }
   }
 
@@ -3046,6 +3073,16 @@ export function CreateStudio() {
               </Link>
             </SMenuItem>
             <SMenuSeparator />
+            <SMenuItem
+              onSelect={() =>
+                setReportTarget({
+                  song,
+                  variant: clip.variant === "alt" ? "alt" : "ok",
+                })
+              }
+            >
+              <Icon name="fa-flag" /> Report
+            </SMenuItem>
             <SMenuItem
               disabled={deletingId === song.id}
               onSelect={() =>
@@ -4854,6 +4891,15 @@ export function CreateStudio() {
             }
           }}
         />      </div>
+
+      {reportTarget ? (
+        <ReportClipModal
+          title={reportTarget.song.title}
+          busy={reportBusy}
+          onClose={() => setReportTarget(null)}
+          onSubmit={submitReport}
+        />
+      ) : null}
 
       {mashupSource ? (
         <div

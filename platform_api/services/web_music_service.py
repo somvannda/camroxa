@@ -7400,6 +7400,51 @@ class WebMusicService:
         )
         return [f"{row['task_id']}:{row['variant']}" for row in rows]
 
+    async def report_generation(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str,
+        reason: str,
+        details: str | None = None,
+    ) -> None:
+        """Record a user report for one clip (Suno's Report action)."""
+        variant_key = str(variant or "ok").strip().lower()
+        if variant_key not in ("ok", "alt"):
+            raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
+        reason_key = str(reason or "").strip().lower()
+        allowed = {"copyright", "explicit", "spam", "harassment", "other"}
+        if reason_key not in allowed:
+            raise ValidationError(
+                "reason must be one of copyright, explicit, spam, harassment, other.",
+                details={"field": "reason"},
+            )
+        row = await self._pool.fetchrow(
+            """
+            SELECT t.id
+            FROM suno_tasks t
+            WHERE t.id = $1 AND t.source = $2 AND t.user_id = $3
+            """,
+            task_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+            user_id,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found.")
+        await self._pool.execute(
+            """
+            INSERT INTO web_music_reports (user_id, task_id, variant, reason, details)
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (user_id, task_id, variant, reason) DO NOTHING
+            """,
+            user_id,
+            task_id,
+            variant_key,
+            reason_key,
+            (str(details or "").strip() or None),
+        )
+
     async def dislike_generation(
         self,
         user_id: UUID,
