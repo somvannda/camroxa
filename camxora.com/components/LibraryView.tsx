@@ -177,6 +177,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const [trashItems, setTrashItems] = useState<WebMusicGeneration[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
   const [trashSelected, setTrashSelected] = useState<string[]>([]);
+  const [trashCount, setTrashCount] = useState(0);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachNotice, setAttachNotice] = useState<null | "upload" | "record">(null);
 
@@ -276,6 +277,20 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   useEffect(() => {
     setTrashMode(tab === "trash");
   }, [tab]);
+
+  useEffect(() => {
+    let active = true;
+    listWebMusicGenerations(1, 0, undefined, true)
+      .then((page) => {
+        if (active) setTrashCount(page.total);
+      })
+      .catch(() => {
+        /* count is cosmetic */
+      });
+    return () => {
+      active = false;
+    };
+  }, [trashMode, tab]);
 
   useEffect(() => {
     if (!trashMode) return;
@@ -886,30 +901,6 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
             >
               <Icon name="fa-heart" />
             </button>
-            <button
-              type="button"
-              className={`s-act icon-only${disliked ? " on" : ""}`}
-              aria-label="Dislike clip"
-              aria-pressed={disliked}
-              onClick={() => toggleDislike(song, clip)}
-            >
-              <Icon name="fa-thumbs-down" />
-            </button>
-            <button
-              type="button"
-              className="s-act"
-              aria-label="Share clip"
-              onClick={() => void copyClipLink(song, clip)}
-            >
-              <Icon name="fa-share" /> Share
-            </button>
-            <Link
-              className="s-act"
-              href={`/create?remix=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`}
-              aria-label="Remix clip"
-            >
-              <Icon name="fa-wand-magic-sparkles" /> Remix
-            </Link>
           </div>
         </div>
 
@@ -933,6 +924,16 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
           >
             <SMenuItem onSelect={() => void copyClipLink(song, clip)}>
               <Icon name="fa-link" /> Copy link
+            </SMenuItem>
+            <SMenuItem onSelect={() => toggleDislike(song, clip)}>
+              <Icon name="fa-thumbs-down" /> {disliked ? "Remove dislike" : "Dislike"}
+            </SMenuItem>
+            <SMenuItem asChild>
+              <Link
+                href={`/create?remix=${encodeURIComponent(song.id)}&variant=${encodeURIComponent(clip.variant || "ok")}`}
+              >
+                <Icon name="fa-wand-magic-sparkles" /> Remix
+              </Link>
             </SMenuItem>
             <SMenuItem disabled={!ready} onSelect={() => openDetail(song, clip)}>
               <Icon name="fa-list" /> Add to playlist
@@ -1492,6 +1493,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
               onClick={() => setTab(item.id)}
             >
               {item.label}
+              {item.id === "trash" && trashCount > 0 ? (
+                <span className="s-tab-count">{trashCount}</span>
+              ) : null}
             </button>
           ))}
           <span
