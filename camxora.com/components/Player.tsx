@@ -1,5 +1,7 @@
 "use client";
 
+import { usePathname } from "next/navigation";
+
 import { Icon } from "./Icon";
 import { usePlayer } from "./PlayerProvider";
 
@@ -9,6 +11,7 @@ const fmt = (value: number) => {
 };
 
 export function Player() {
+  const pathname = usePathname();
   const {
     tracks,
     current,
@@ -29,6 +32,9 @@ export function Player() {
   } = usePlayer();
 
   const progress = Math.min(100, (elapsed / current.duration) * 100);
+
+  // Studio is a workspace: no global player bar (Suno Studio has none either).
+  if (pathname.startsWith("/studio")) return null;
 
   return (
     <div className={`player${playing ? " is-playing" : ""}`}>
