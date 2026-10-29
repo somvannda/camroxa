@@ -42,6 +42,9 @@ export function StudioShell() {
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
+  const [selectedClip, setSelectedClip] = useState<
+    { trackId: string; index: number } | null
+  >(null);
   const [projectName, setProjectName] = useState("Untitled Project");
   const [projectId, setProjectId] = useState<string | null>(projectParam);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -86,6 +89,29 @@ export function StudioShell() {
       active = false;
     };
   }, [projectParam]);
+
+  useEffect(() => {
+    function onKey(event: KeyboardEvent) {
+      if (event.key !== "Delete" && event.key !== "Backspace") return;
+      if (!selectedClip) return;
+      const target = document.activeElement;
+      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
+      event.preventDefault();
+      setTracks((current) =>
+        current.map((track) =>
+          track.id === selectedClip.trackId
+            ? {
+                ...track,
+                clipIds: track.clipIds.filter((_, i) => i !== selectedClip.index),
+              }
+            : track
+        )
+      );
+      setSelectedClip(null);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedClip]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -335,8 +361,9 @@ export function StudioShell() {
                   return (
                     <span
                       key={`${clipId}-${clipIndex}`}
-                      className="stv-clip"
+                      className={`stv-clip${selectedClip?.trackId === track.id && selectedClip.index === clipIndex ? " on" : ""}`}
                       onClick={() => {
+                        setSelectedClip({ trackId: track.id, index: clipIndex });
                         const clip =
                           song?.clips?.find((item) => item.ready) ??
                           song?.clips?.[0];
