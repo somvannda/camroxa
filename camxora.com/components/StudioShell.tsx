@@ -160,10 +160,6 @@ export function StudioShell() {
   return (
     <div className="stv">
       <header className="stv-top">
-        <span className="st-brand">
-          <img src="/camxora-logo.svg" alt="" />
-          <b>CAMXORA</b>
-        </span>
         <span className="st-chrome-project">{projectName}</span>
         <span className="st-chrome-dots">···</span>
         <span style={{ flex: 1 }} />
