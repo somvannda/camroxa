@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-10-29] — Streaming report stops counting on-demand WAVs
+
+### Fixed
+
+- `_WEB_MUSIC_MISSING_ASSETS_PREDICATE` still treated an absent `b2_wav_storage_key_*` as a missing companion asset after web-music WAVs became on-demand-only (2026-10-28, never written back to B2). Production paged `web music missing assets: 122` on 2026-10-29 while missing MP3s were `0` — the number was tracking generation volume, and the on-demand download path only sets `wav_status_* = 'success'` (never a B2 key), so downloading a WAV also kept the task flagged. The WAV clause is removed from the shared predicate, which also stops the asset recovery pass from spending its 8-task-per-pass budget on WAV gaps it no longer recovers. Package (`package_status <> 'ready'`) and LRC gaps still alert. See `docs/changelog/2026-10-29-streaming-health-ignore-lazy-wav.md`.
+
 ## [2026-10-28] — Thumbnails are no longer charged before their background exists
 
 ### Fixed

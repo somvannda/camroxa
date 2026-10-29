@@ -40,14 +40,20 @@ _WEB_MUSIC_MISSING_MP3_ALT = (
     "AND COALESCE(audio_url_alt, '') <> '' "
     "AND NOT COALESCE(download_unavailable_alt, false))"
 )
-# Companion B2 assets (wav/lrc/srt/package) still absent for an already-captured MP3.
+# Companion B2 assets (lrc/srt/package) still absent for an already-captured MP3.
+#
+# WAV is deliberately NOT part of this predicate. Since 2026-10-28
+# (`docs/changelog/2026-10-28-web-music-lazy-wav.md`) web-music WAVs are built on
+# first download and are never written back to B2, so `b2_wav_storage_key_*` is
+# null for every new track by design. Counting it flagged each new song for the
+# whole report window (production 2026-10-29: 122 "missing assets", all WAV-only)
+# and made the asset recovery pass spend its per-pass task budget on WAV gaps it
+# no longer recovers, starving LRC/package work. The on-demand download path only
+# sets `wav_status_* = 'success'`, so the old clause also counted songs that HAD
+# just been downloaded.
 _WEB_MUSIC_MISSING_ASSETS_PREDICATE = """
 (
-      (COALESCE(b2_wav_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
-       AND (COALESCE(wav_task_id_ok::text, '') = '' OR wav_status_ok = 'success'))
-   OR (COALESCE(b2_wav_storage_key_alt, '') = '' AND COALESCE(b2_storage_key_alt, '') <> ''
-       AND (COALESCE(wav_task_id_alt::text, '') = '' OR wav_status_alt = 'success'))
-   OR (COALESCE(package_status_ok, 'none') <> 'ready' AND COALESCE(b2_storage_key_ok, '') <> '')
+      (COALESCE(package_status_ok, 'none') <> 'ready' AND COALESCE(b2_storage_key_ok, '') <> '')
    OR (COALESCE(package_status_alt, 'none') <> 'ready' AND COALESCE(b2_storage_key_alt, '') <> '')
    OR (COALESCE(b2_lrc_storage_key_ok, '') = '' AND COALESCE(b2_storage_key_ok, '') <> ''
        AND NOT COALESCE(instrumental, false))
@@ -608,7 +614,7 @@ class StreamingRepository:
         self, *, limit: int, before: str | None = None
     ) -> list[dict[str, Any]]:
         """Web-music suno_tasks that captured an MP3 but are missing companion
-        B2 assets (wav / lrc / encrypted package), newest first, capped.
+        B2 assets (lrc / encrypted package), newest first, capped.
 
         ``before`` is a moving watermark (created_at ISO of the oldest task from
         the previous pass): the next pass keeps scanning strictly older tasks so
@@ -616,8 +622,9 @@ class StreamingRepository:
         clog the newest window and starve the historical backlog. Pass None to
         start from the newest again (wrap-around).
 
-        WAV eligibility excludes variants whose conversion was attempted but did
-        not succeed (no repeated Suno conversion resubmits by automation).
+        WAV is excluded on purpose: since 2026-10-28 it is built on first
+        download and never written back to B2, so it is not a recoverable gap
+        (see ``_WEB_MUSIC_MISSING_ASSETS_PREDICATE``).
         """
         params: list[Any] = [limit]
         before_dt: Any = None
