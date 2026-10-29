@@ -110,6 +110,14 @@ const models: Array<{ value: WebMusicModel; label: string }> = [
 const SIMPLE_SONG_COUNTS = [1, 5, 10, 20] as const;
 /** Compare batch: one song per model, so each version carries its own badge. */
 const COMPARE_MODELS = ["V6", "V6_MINI", "V6_WILD"] as const;
+
+/** Badge tone for the model label (one colour per V6 variant). */
+function modelBadgeTone(model?: string | null): "pro" | "mini" | "wild" {
+  const value = String(model ?? "").toUpperCase().replace(/[\s-]/g, "_");
+  if (value.includes("WILD")) return "wild";
+  if (value.includes("MINI")) return "mini";
+  return "pro";
+}
 const BATCH_SUBMIT_GAP_MS = 900;
 
 const LYRICIST_SUGGESTIONS = [
@@ -2707,7 +2715,9 @@ export function CreateStudio() {
           </div>
           <div className="s-row-desc">
             {ready ? "Ready" : statusLabel(song.status)} ·{" "}
-            <span className="s-model-badge">
+            <span
+              className={`s-model-badge ${modelBadgeTone(song.model || song.model_label)}`}
+            >
               {song.model_label || song.model || shortModel}
             </span>{" "}
             · {formatDate(song.created_at)}
