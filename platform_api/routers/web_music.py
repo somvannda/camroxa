@@ -1529,7 +1529,8 @@ async def generate(
 
 
 class WebMusicGenerationUpdateRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=200)
+    title: str | None = Field(default=None, max_length=200)
+    lyrics: str | None = Field(default=None, max_length=20000)
     variant: Literal["ok", "alt"] | None = None
 
 
@@ -1588,6 +1589,7 @@ async def update_generation(
         UUID(ctx.user_id),
         task_id,
         title=body.title,
+        lyrics=body.lyrics,
         variant=body.variant,
     )
     return _generation_response(payload)

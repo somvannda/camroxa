@@ -5276,42 +5276,47 @@ class WebMusicService:
         user_id: UUID,
         task_id: UUID,
         *,
-        title: str,
+        title: str | None = None,
+        lyrics: str | None = None,
         variant: str | None = None,
     ) -> dict[str, Any]:
-        cleaned = " ".join(str(title or "").split()).strip()
-        if not cleaned:
-            raise ValidationError("Title is required.", details={"field": "title"})
-        if len(cleaned) > 200:
-            cleaned = cleaned[:200]
+        """Suno's Edit ▸ Song Details: rename a version and/or edit its lyrics."""
         variant_key = str(variant or "").strip().lower()
-        if variant_key in ("ok", "alt"):
-            column = "title_ok" if variant_key == "ok" else "title_alt"
-            updated = await self._pool.fetchrow(
-                f"""
-                UPDATE suno_tasks
-                SET {column} = $1, updated_at = NOW()
-                WHERE id = $2 AND user_id = $3 AND source = $4
-                RETURNING id
-                """,
-                cleaned,
-                task_id,
-                user_id,
-                SUNO_TASK_SOURCE_WEB_MUSIC,
+        assignments: list[str] = []
+        params: list[Any] = []
+        if title is not None:
+            cleaned = " ".join(str(title or "").split()).strip()
+            if not cleaned:
+                raise ValidationError("Title is required.", details={"field": "title"})
+            column = (
+                "title_ok"
+                if variant_key == "ok"
+                else "title_alt"
+                if variant_key == "alt"
+                else "title"
             )
-        else:
-            updated = await self._pool.fetchrow(
-                """
-                UPDATE suno_tasks
-                SET title = $1, updated_at = NOW()
-                WHERE id = $2 AND user_id = $3 AND source = $4
-                RETURNING id
-                """,
-                cleaned,
-                task_id,
-                user_id,
-                SUNO_TASK_SOURCE_WEB_MUSIC,
+            params.append(cleaned[:200])
+            assignments.append(f"{column} = ${len(params)}")
+        if lyrics is not None:
+            params.append(str(lyrics))
+            assignments.append(f"lyrics = ${len(params)}")
+        if not assignments:
+            raise ValidationError(
+                "Nothing to update.", details={"field": "title"}
             )
+        id_index = len(params) + 1
+        updated = await self._pool.fetchrow(
+            f"""
+            UPDATE suno_tasks
+            SET {", ".join(assignments)}, updated_at = NOW()
+            WHERE id = ${id_index} AND user_id = ${id_index + 1} AND source = ${id_index + 2}
+            RETURNING id
+            """,
+            *params,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
         if updated is None:
             raise NotFoundError("Generation not found.")
         return await self.get_generation(user_id, task_id)

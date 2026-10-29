@@ -6,6 +6,7 @@ import { Icon } from "@/components/Icon";
 import { TrackRail } from "@/components/TrackRail";
 import { ReportClipModal } from "@/components/ReportClipModal";
 import { ShareClipModal } from "@/components/ShareClipModal";
+import { SongDetailsModal } from "@/components/SongDetailsModal";
 import {
   SMenu,
   SMenuCheckboxItem,
@@ -83,6 +84,7 @@ import {
   likeWebMusicGeneration,
   saveBlob,
   unlockWebMusicPreview,
+  updateWebMusicGeneration,
   updateWebMusicGenerationTitle,
   updateWebMusicWorkspace,
   type WebMusicGenerateInput,
@@ -376,6 +378,10 @@ export function CreateStudio() {
     { song: WebMusicGeneration; variant: "ok" | "alt" } | null
   >(null);
   const [reportBusy, setReportBusy] = useState(false);
+  const [detailsTarget, setDetailsTarget] = useState<
+    { song: WebMusicGeneration; variant: "ok" | "alt" } | null
+  >(null);
+  const [detailsBusy, setDetailsBusy] = useState(false);
   const [shareTarget, setShareTarget] = useState<
     { song: WebMusicGeneration; clip: WebMusicClip } | null
   >(null);
@@ -1687,6 +1693,28 @@ export function CreateStudio() {
       await refreshSongs();
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : "Could not cover this song");
+    }
+  }
+
+  async function submitSongDetails(input: { title: string; lyrics: string }) {
+    if (!detailsTarget) return;
+    setDetailsBusy(true);
+    try {
+      const updated = await updateWebMusicGeneration(detailsTarget.song.id, {
+        title: input.title,
+        lyrics: input.lyrics,
+        variant: detailsTarget.variant,
+      });
+      setSongs((current) =>
+        current.map((item) => (item.id === updated.id ? updated : item))
+      );
+      if (selectedId === updated.id) setSelectedDetail(updated);
+      setToast("Song details saved");
+      setDetailsTarget(null);
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not save the details");
+    } finally {
+      if (mounted.current) setDetailsBusy(false);
     }
   }
 
@@ -3080,6 +3108,37 @@ export function CreateStudio() {
                 </SMenuItem>
                 <SMenuItem onSelect={() => setAttachModal("voice")}>
                   <Icon name="fa-microphone-lines" /> Voice
+                </SMenuItem>
+              </SMenuSubContent>
+            </SMenuSub>
+            <SMenuSub>
+              <SMenuSubTrigger>
+                <Icon name="fa-pen-to-square" /> Edit
+              </SMenuSubTrigger>
+              <SMenuSubContent>
+                <SMenuItem
+                  onSelect={() =>
+                    setDetailsTarget({
+                      song,
+                      variant: clip.variant === "alt" ? "alt" : "ok",
+                    })
+                  }
+                >
+                  <Icon name="fa-circle-info" /> Song Details
+                </SMenuItem>
+                <SMenuItem asChild>
+                  <Link href="/studio/editor">
+                    <Icon name="fa-table-columns" /> Open in Editor
+                  </Link>
+                </SMenuItem>
+                <SMenuItem
+                  disabled
+                  title="Replace Section needs the section editor — coming soon"
+                >
+                  <Icon name="fa-scissors" /> Replace Section
+                </SMenuItem>
+                <SMenuItem disabled title="No crop service yet">
+                  <Icon name="fa-crop-simple" /> Crop Song
                 </SMenuItem>
               </SMenuSubContent>
             </SMenuSub>
@@ -4941,6 +5000,16 @@ export function CreateStudio() {
             }
           }}
         />      </div>
+
+      {detailsTarget ? (
+        <SongDetailsModal
+          title={detailsTarget.song.title}
+          lyrics={detailsTarget.song.lyrics || ""}
+          busy={detailsBusy}
+          onClose={() => setDetailsTarget(null)}
+          onSubmit={submitSongDetails}
+        />
+      ) : null}
 
       {shareTarget ? (
         <ShareClipModal

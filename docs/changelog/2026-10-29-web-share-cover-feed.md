@@ -112,7 +112,7 @@ new service code is loaded.
 - No background sweeper for `studio_operations`: a user who closes the tab
   immediately after starting a cover leaves the row pending until the next poll.
 - Cover results are single-take; Suno sometimes returns two takes.
-- Still missing vs Suno's menu: Edit ▸, Manage ▸, Sample this song,
+- Still missing vs Suno's menu: Manage ▸, Sample this song,
   Use as Inspiration.
 
 ## Song Radio
@@ -130,4 +130,26 @@ playing. Ours:
 
 Verified: `radio?limit=5` → 200 with seed `Quiet Morning River Five` and four
 ranked neighbours.
+
+## Edit ▸
+
+Suno's edit menu (per its help centre) holds **Song Details**, **Open in
+editor**, **Replace Section** and **Crop Song**. Ours now mirrors the two we can
+serve:
+
+| Item | Status |
+|---|---|
+| Song Details | ✅ modal renames the version and edits the displayed lyrics |
+| Open in Editor | ✅ `/studio/editor` |
+| Replace Section | disabled — needs a waveform section picker |
+| Crop Song | disabled — no crop service yet |
+
+- `PATCH /generations/{id}` now takes `title` and/or `lyrics` (either alone),
+  plus the existing `variant` (title is per version). An empty body is a 422.
+- `updateWebMusicGeneration()` helper; `SongDetailsModal` shared by Create and
+  Library. Lyrics edits change what is displayed and downloaded — the audio is
+  not regenerated, which matches Suno's "Edit Displayed Lyrics".
+
+Verified: title-only → 200, lyrics-only → 200, `{}` → 422;
+`pytest test_web_music_router.py` → 13 passed.
 

@@ -329,10 +329,22 @@ export async function updateWebMusicGenerationTitle(
   title: string,
   variant?: string
 ): Promise<WebMusicGeneration> {
+  return updateWebMusicGeneration(id, { title, variant });
+}
+
+/** Suno's Edit ▸ Song Details: rename a version and/or edit its lyrics. */
+export async function updateWebMusicGeneration(
+  id: string,
+  input: { title?: string; lyrics?: string; variant?: string }
+): Promise<WebMusicGeneration> {
   return musicJson<WebMusicGeneration>(`/api/v3/web-music/generations/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title, ...(variant ? { variant } : {}) }),
+    body: JSON.stringify({
+      ...(input.title !== undefined ? { title: input.title } : {}),
+      ...(input.lyrics !== undefined ? { lyrics: input.lyrics } : {}),
+      ...(input.variant ? { variant: input.variant } : {}),
+    }),
   });
 }
 
