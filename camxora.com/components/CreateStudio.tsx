@@ -41,6 +41,8 @@ import {
   fetchWebMusicClipBlob,
   fetchWebMusicClipWavBlob,
   fetchWebMusicLikedKeys,
+  fetchWebMusicDislikedKeys,
+  dislikeWebMusicGeneration,
   fetchWebMusicQuota,
   fetchWebMusicTimedLyricsBlob,
   getWebMusicStudioOperation,
@@ -500,6 +502,11 @@ export function CreateStudio() {
     fetchWebMusicLikedKeys()
       .then((keys) => {
         if (active) setLikedKeys(keys);
+      })
+      .catch(() => null);
+    fetchWebMusicDislikedKeys()
+      .then((keys) => {
+        if (active) setDislikedKeys(keys);
       })
       .catch(() => null);
     return () => {
@@ -2226,6 +2233,9 @@ export function CreateStudio() {
     setLikedKeys((current) =>
       nextLiked ? [...current, key] : current.filter((item) => item !== key)
     );
+    if (nextLiked) {
+      setDislikedKeys((current) => current.filter((item) => item !== key));
+    }
     setToast(nextLiked ? "Saved to Liked" : "Removed from Liked");
     try {
       await likeWebMusicGeneration(song.id, clip.variant, nextLiked);
@@ -2237,11 +2247,24 @@ export function CreateStudio() {
     }
   }
 
-  function toggleDislikeRow(song: WebMusicGeneration, clip: WebMusicClip) {
+  async function toggleDislikeRow(song: WebMusicGeneration, clip: WebMusicClip) {
     const key = rowKeyOf(song, clip);
+    const nextDisliked = !dislikedKeys.includes(key);
     setDislikedKeys((current) =>
-      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+      nextDisliked ? [...current, key] : current.filter((item) => item !== key)
     );
+    if (nextDisliked) {
+      setLikedKeys((current) => current.filter((item) => item !== key));
+    }
+    setToast(nextDisliked ? "Noted — fewer like this" : "Dislike removed");
+    try {
+      await dislikeWebMusicGeneration(song.id, clip.variant, nextDisliked);
+    } catch {
+      setDislikedKeys((current) =>
+        nextDisliked ? current.filter((item) => item !== key) : [...current, key]
+      );
+      setToast("Could not update dislike");
+    }
   }
 
   async function copyClipLink(song: WebMusicGeneration, clip: WebMusicClip) {

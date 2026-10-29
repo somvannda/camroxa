@@ -1964,6 +1964,51 @@ class WebMusicLikeMutationResponse(BaseModel):
     removed: bool | None = None
 
 
+@router.get("/dislikes/keys", response_model=WebMusicLikeIdsResponse)
+async def list_web_music_dislike_keys(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> WebMusicLikeIdsResponse:
+    keys = await service.list_disliked_generation_keys(UUID(ctx.user_id))
+    return WebMusicLikeIdsResponse(keys=keys)
+
+
+@router.put(
+    "/generations/{task_id}/dislike",
+    response_model=WebMusicLikeMutationResponse,
+)
+async def dislike_web_music_generation(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    variant: Literal["ok", "alt"] = "ok",
+) -> WebMusicLikeMutationResponse:
+    created = await service.dislike_generation(
+        UUID(ctx.user_id),
+        task_id,
+        variant=variant,
+    )
+    return WebMusicLikeMutationResponse(ok=True, liked=False, created=created)
+
+
+@router.delete(
+    "/generations/{task_id}/dislike",
+    response_model=WebMusicLikeMutationResponse,
+)
+async def undislike_web_music_generation(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    variant: Literal["ok", "alt"] = "ok",
+) -> WebMusicLikeMutationResponse:
+    removed = await service.undislike_generation(
+        UUID(ctx.user_id),
+        task_id,
+        variant=variant,
+    )
+    return WebMusicLikeMutationResponse(ok=True, liked=False, removed=removed)
+
+
 @router.get("/likes/keys", response_model=WebMusicLikeIdsResponse)
 async def list_web_music_like_keys(
     ctx: CurrentUserDep,

@@ -475,6 +475,23 @@ export async function likeWebMusicGeneration(
   );
 }
 
+/** Generation keys the viewer has disliked, formatted `${id}:${variant}`. */
+export async function fetchWebMusicDislikedKeys(): Promise<string[]> {
+  const data = await musicJson<{ keys?: string[] }>("/api/v3/web-music/dislikes/keys");
+  return Array.isArray(data?.keys) ? data.keys : [];
+}
+
+export async function dislikeWebMusicGeneration(
+  id: string,
+  variant: string,
+  disliked: boolean
+): Promise<void> {
+  await musicJson(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/dislike?variant=${encodeURIComponent(variant)}`,
+    { method: disliked ? "PUT" : "DELETE" }
+  );
+}
+
 export async function listWebMusicPlaylistItems(
   playlistId: string
 ): Promise<{ items: WebMusicPlaylistItem[] }> {

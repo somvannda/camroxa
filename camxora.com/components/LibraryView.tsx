@@ -29,6 +29,8 @@ import {
   setWebMusicTrash,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
+  fetchWebMusicDislikedKeys,
+  dislikeWebMusicGeneration,
   getWebMusicGeneration,
   likeWebMusicGeneration,
   listWebMusicGenerations,
@@ -221,13 +223,14 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     setLoadingGenerations(true);
     setError("");
     void (async () => {
-      const [gens, pls, wss, prjs, liked, keys] = await Promise.allSettled([
+      const [gens, pls, wss, prjs, liked, keys, disliked] = await Promise.allSettled([
         listWebMusicGenerations(PAGE_SIZE, 0),
         listWebMusicPlaylists(),
         listWebMusicWorkspaces(),
         listWebMusicStudioProjects(),
         fetchLikedTracks(50),
         fetchWebMusicLikedKeys(),
+        fetchWebMusicDislikedKeys(),
       ] as const);
       if (!active) return;
       const problems: string[] = [];
@@ -248,6 +251,7 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
       else problems.push(errorText(liked, "Could not load liked tracks"));
       if (keys.status === "fulfilled") setLikedKeys(keys.value);
       else problems.push(errorText(keys, "Could not load your likes"));
+      if (disliked.status === "fulfilled") setDislikedKeys(disliked.value);
 
       if (problems.length) setError(problems[0]);
       setBootLoading(false);
@@ -524,6 +528,9 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     setLikedKeys((current) =>
       nextLiked ? [...current, key] : current.filter((item) => item !== key)
     );
+    if (nextLiked) {
+      setDislikedKeys((current) => current.filter((item) => item !== key));
+    }
     setToast(nextLiked ? "Saved to Liked" : "Removed from Liked");
     try {
       await likeWebMusicGeneration(song.id, clip.variant, nextLiked);
@@ -535,11 +542,24 @@ export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
     }
   }
 
-  function toggleDislike(song: WebMusicGeneration, clip: WebMusicClip) {
+  async function toggleDislike(song: WebMusicGeneration, clip: WebMusicClip) {
     const key = clipTrackKey(song.id, clip.variant);
+    const nextDisliked = !dislikedKeys.includes(key);
     setDislikedKeys((current) =>
-      current.includes(key) ? current.filter((item) => item !== key) : [...current, key]
+      nextDisliked ? [...current, key] : current.filter((item) => item !== key)
     );
+    if (nextDisliked) {
+      setLikedKeys((current) => current.filter((item) => item !== key));
+    }
+    setToast(nextDisliked ? "Noted — fewer like this" : "Dislike removed");
+    try {
+      await dislikeWebMusicGeneration(song.id, clip.variant, nextDisliked);
+    } catch {
+      setDislikedKeys((current) =>
+        nextDisliked ? current.filter((item) => item !== key) : [...current, key]
+      );
+      setToast("Could not update dislike");
+    }
   }
 
   async function copyClipLink(song: WebMusicGeneration, clip: WebMusicClip) {

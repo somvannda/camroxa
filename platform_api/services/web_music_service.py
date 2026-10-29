@@ -7388,6 +7388,96 @@ class WebMusicService:
         )
         return [f"{row['task_id']}:{row['variant']}" for row in rows]
 
+    async def list_disliked_generation_keys(self, user_id: UUID) -> list[str]:
+        rows = await self._pool.fetch(
+            """
+            SELECT task_id, variant
+            FROM web_music_dislikes
+            WHERE user_id = $1
+            ORDER BY created_at DESC
+            """,
+            user_id,
+        )
+        return [f"{row['task_id']}:{row['variant']}" for row in rows]
+
+    async def dislike_generation(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str,
+    ) -> bool:
+        variant_key = str(variant or "ok").strip().lower()
+        if variant_key not in ("ok", "alt"):
+            raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
+        row = await self._pool.fetchrow(
+            """
+            SELECT t.id
+            FROM suno_tasks t
+            WHERE t.id = $1
+              AND t.source = $2
+              AND UPPER(t.status) = 'SUCCESS'
+              AND (
+                t.user_id = $3
+                OR EXISTS (
+                  SELECT 1
+                  FROM web_music_playlist_items i
+                  JOIN web_music_playlists p
+                    ON p.id = i.playlist_id AND p.is_public = TRUE
+                  WHERE i.suno_task_id = t.id AND i.variant = $4
+                )
+              )
+            """,
+            task_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+            user_id,
+            variant_key,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found.")
+        result = await self._pool.execute(
+            """
+            INSERT INTO web_music_dislikes (user_id, task_id, variant)
+            VALUES ($1, $2, $3)
+            ON CONFLICT (user_id, task_id, variant) DO NOTHING
+            """,
+            user_id,
+            task_id,
+            variant_key,
+        )
+        # A clip cannot be liked and disliked at the same time.
+        await self._pool.execute(
+            """
+            DELETE FROM web_music_likes
+            WHERE user_id = $1 AND task_id = $2 AND variant = $3
+            """,
+            user_id,
+            task_id,
+            variant_key,
+        )
+        return result.endswith("INSERT 0 1")
+
+    async def undislike_generation(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str,
+    ) -> bool:
+        variant_key = str(variant or "ok").strip().lower()
+        if variant_key not in ("ok", "alt"):
+            raise ValidationError("variant must be ok or alt.", details={"field": "variant"})
+        result = await self._pool.execute(
+            """
+            DELETE FROM web_music_dislikes
+            WHERE user_id = $1 AND task_id = $2 AND variant = $3
+            """,
+            user_id,
+            task_id,
+            variant_key,
+        )
+        return result.endswith("DELETE 1")
+
     async def like_generation(
         self,
         user_id: UUID,
@@ -7428,6 +7518,16 @@ class WebMusicService:
             INSERT INTO web_music_likes (user_id, task_id, variant)
             VALUES ($1, $2, $3)
             ON CONFLICT (user_id, task_id, variant) DO NOTHING
+            """,
+            user_id,
+            task_id,
+            variant_key,
+        )
+        # A clip cannot be liked and disliked at the same time.
+        await self._pool.execute(
+            """
+            DELETE FROM web_music_dislikes
+            WHERE user_id = $1 AND task_id = $2 AND variant = $3
             """,
             user_id,
             task_id,
