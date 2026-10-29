@@ -3456,7 +3456,7 @@ export function CreateStudio() {
                         <span className="s-rowline-label">Models</span>
                         <button
                           type="button"
-                          className={`s-chip${compareModels ? " active" : ""}`}
+                          className={`s-chip accent${compareModels ? " on" : ""}`}
                           aria-pressed={compareModels}
                           onClick={() => setCompareModels((value) => !value)}
                           title="Generate one song per model so each version shows its badge"

@@ -3125,6 +3125,9 @@ html{color-scheme:dark}
 .s-pill.on{background:var(--s-text);color:var(--s-bg)}
 .s-pill.on:hover{background:#fff}
 .s-chip{display:inline-flex;align-items:center;gap:6px;height:32px;padding:4px 12px;border-radius:var(--s-pill);background:var(--s-bg3);font-size:14px;color:var(--s-text);transition:background .15s}
+.s-chip.accent{background:rgba(124,58,237,.30);color:#ded5ff}
+.s-chip.accent:hover{background:rgba(124,58,237,.42)}
+.s-chip.accent.on{background:rgba(124,58,237,.55);color:#fff}
 .s-chip:hover{background:var(--s-bg4)}
 .s-tag{display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:6px;background:rgba(255,255,255,.08);font-size:11px;font-weight:500;letter-spacing:.04em;color:var(--s-text2)}
 
