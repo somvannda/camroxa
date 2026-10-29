@@ -715,6 +715,91 @@ export class SunoClient {
    * Cover / reinterpret a clip using a previously uploaded audio file as the source material.
    * Submits task: cover_infill with the params wrapper confirmed via 422.
    */
+  /** Suno Studio project surface (milestone 1 of the Studio clone). */
+  async createStudioProject(params: {
+    title?: string;
+    majorVersion?: number;
+    trigger?: string;
+    entrySource?: string;
+  } = {}): Promise<{ id: string; title: string }> {
+    const query = new URLSearchParams();
+    query.set("title", params.title ?? "Untitled Project");
+    if (params.majorVersion !== undefined) {
+      query.set("major_version", String(params.majorVersion));
+    }
+    if (params.trigger) query.set("trigger", params.trigger);
+    if (params.entrySource) query.set("entry_source", params.entrySource);
+    const res = await this.request(`/api/studio/create-project?${query.toString()}`, {
+      method: "POST",
+    });
+    if (!res.ok) throw await sunoHttpError("createStudioProject", res);
+    const data = (await res.json()) as { id?: string; title?: string };
+    if (!data?.id) throw new Error("create-project returned no id.");
+    return { id: data.id, title: data.title ?? params.title ?? "Untitled Project" };
+  }
+
+  async projectForClip(clipId: string): Promise<string> {
+    const res = await this.request(
+      `/api/studio/create-or-load-project-for-clip/${encodeURIComponent(clipId)}`,
+      { method: "POST" }
+    );
+    if (!res.ok) throw await sunoHttpError("projectForClip", res);
+    const data = (await res.json()) as { id?: string };
+    if (!data?.id) throw new Error("project-for-clip returned no id.");
+    return data.id;
+  }
+
+  async getStudioProject(projectId: string): Promise<Record<string, unknown>> {
+    const res = await this.request(
+      `/api/studio/project/${encodeURIComponent(projectId)}`,
+      { method: "GET" }
+    );
+    if (!res.ok) throw await sunoHttpError("getStudioProject", res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  async getStudioProjectRevision(
+    revisionId: string
+  ): Promise<Record<string, unknown>> {
+    const res = await this.request(
+      `/api/studio/project_revision/${encodeURIComponent(revisionId)}`,
+      { method: "GET" }
+    );
+    if (!res.ok) throw await sunoHttpError("getStudioProjectRevision", res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  async updateProjectClips(
+    projectId: string,
+    clipIds: string[],
+    updateType: "add" | "remove" = "add"
+  ): Promise<void> {
+    const res = await this.request(
+      `/api/project/${encodeURIComponent(projectId)}/clips`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          update_type: updateType,
+          metadata: { clip_ids: clipIds },
+        }),
+      }
+    );
+    if (!res.ok) throw await sunoHttpError("updateProjectClips", res);
+  }
+
+  async renameStudioProject(projectId: string, name: string): Promise<void> {
+    const res = await this.request(
+      `/api/project/${encodeURIComponent(projectId)}/metadata`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description: name }),
+      }
+    );
+    if (!res.ok) throw await sunoHttpError("renameStudioProject", res);
+  }
+
   async uploadCoverMusic(params: {
     uploadedClipId?: string;
     audioUrl?: string;

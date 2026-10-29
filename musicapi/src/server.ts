@@ -8938,6 +8938,104 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
+  // --- Studio project surface (milestone 1 of the Studio clone) ---
+
+  app.post("/internal/studio/projects", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const client = await pool.pick();
+      const project = await client.createStudioProject({
+        title: typeof body.title === "string" ? body.title : undefined,
+        majorVersion:
+          typeof body.major_version === "number" ? body.major_version : undefined,
+        trigger: typeof body.trigger === "string" ? body.trigger : undefined,
+        entrySource:
+          typeof body.entry_source === "string" ? body.entry_source : undefined,
+      });
+      return reply.code(201).send(project);
+    } catch (err) {
+      return reply
+        .code(502)
+        .send({ error: err instanceof Error ? err.message : "create project failed" });
+    }
+  });
+
+  app.post("/internal/studio/projects/for-clip/:clip_id", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { clip_id: clipId } = req.params as { clip_id: string };
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The clip's Suno account is not recorded." });
+    }
+    const client = pool.get(accountId);
+    if (!client) {
+      return reply.code(409).send({ error: "The clip's Suno account is unavailable." });
+    }
+    try {
+      return reply.send({ project_id: await client.projectForClip(clipId) });
+    } catch (err) {
+      return reply
+        .code(502)
+        .send({ error: err instanceof Error ? err.message : "project for clip failed" });
+    }
+  });
+
+  app.get("/internal/studio/projects/:project_id", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { project_id: projectId } = req.params as { project_id: string };
+    const requested = req.query && typeof (req.query as any).account_id === "string"
+      ? String((req.query as any).account_id)
+      : "";
+    const client = requested && pool.get(requested) ? pool.get(requested)! : await pool.pick();
+    try {
+      return reply.send(await client.getStudioProject(projectId));
+    } catch (err) {
+      return reply
+        .code(502)
+        .send({ error: err instanceof Error ? err.message : "get project failed" });
+    }
+  });
+
+  app.post("/internal/studio/projects/:project_id/clips", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { project_id: projectId } = req.params as { project_id: string };
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipIds = Array.isArray(body.clip_ids)
+      ? body.clip_ids.filter((id): id is string => typeof id === "string")
+      : [];
+    const updateType = body.update_type === "remove" ? "remove" : "add";
+    if (!clipIds.length) {
+      return reply.code(400).send({ error: "clip_ids is required." });
+    }
+    const client = await pool.pick();
+    try {
+      await client.updateProjectClips(projectId, clipIds, updateType);
+      return reply.send({ ok: true, update_type: updateType, count: clipIds.length });
+    } catch (err) {
+      return reply
+        .code(502)
+        .send({ error: err instanceof Error ? err.message : "update clips failed" });
+    }
+  });
+
+  app.post("/internal/studio/projects/:project_id/metadata", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { project_id: projectId } = req.params as { project_id: string };
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const name = typeof body.name === "string" ? body.name.trim() : "";
+    if (!name) return reply.code(400).send({ error: "name is required." });
+    const client = await pool.pick();
+    try {
+      await client.renameStudioProject(projectId, name);
+      return reply.send({ ok: true });
+    } catch (err) {
+      return reply
+        .code(502)
+        .send({ error: err instanceof Error ? err.message : "rename project failed" });
+    }
+  });
+
   app.post("/internal/studio/replace-section", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const body = (req.body ?? {}) as Record<string, unknown>;
