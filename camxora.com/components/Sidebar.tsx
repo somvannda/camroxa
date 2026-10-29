@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 import { Icon } from "./Icon";
 import { useAuth } from "./AuthProvider";
 
@@ -29,6 +30,28 @@ const products = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [collapsed, setCollapsed] = useState(false);
+  const inStudio =
+    pathname === "/studio" || pathname.startsWith("/studio/");
+
+  useEffect(() => {
+    const root = document.documentElement;
+    const stored = window.localStorage.getItem("camxora.sidebar.collapsed") === "1";
+    const next = inStudio ? true : stored;
+    setCollapsed(next);
+    if (next) root.style.setProperty("--side", "76px");
+    else root.style.removeProperty("--side");
+    return () => {
+      root.style.removeProperty("--side");
+    };
+  }, [inStudio]);
+
+  function toggleSidebar() {
+    const next = !collapsed;
+    setCollapsed(next);
+    window.localStorage.setItem("camxora.sidebar.collapsed", next ? "1" : "0");
+    document.documentElement.style.setProperty("--side", next ? "76px" : "264px");
+  }
   const { user, credits, creditExpiry, creditAllowance, creditIsFree, logout } = useAuth();
   const allowance =
     creditAllowance && creditAllowance > 0
@@ -50,11 +73,21 @@ export function Sidebar() {
     href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar${collapsed ? " collapsed" : ""}`}>
       <Link className="brand" href="/">
         <img className="brand-mark" src="/camxora-logo.svg" alt="Camxora" />
         <span className="brand-name">Camxora</span>
       </Link>
+
+      <button
+        type="button"
+        className="side-collapse"
+        onClick={toggleSidebar}
+        aria-label={collapsed ? "Expand navigation" : "Collapse navigation"}
+        title={collapsed ? "Expand navigation" : "Collapse navigation"}
+      >
+        <Icon name={collapsed ? "fa-angles-right" : "fa-angles-left"} />
+      </button>
 
       <div className="side-scroll">
         <nav className="nav" aria-label="Main navigation">
