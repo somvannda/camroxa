@@ -715,6 +715,96 @@ export class SunoClient {
    * Cover / reinterpret a clip using a previously uploaded audio file as the source material.
    * Submits task: cover_infill with the params wrapper confirmed via 422.
    */
+  /**
+   * Suno's editor endpoints, captured from its shipped bundle. `/api/edit/crop`
+   * serves both Crop and Remove Section (`is_crop_remove`), `/api/edit/fade`
+   * serves Fade In/Out, and the two `/api/clips/*` calls return the new clip
+   * immediately.
+   */
+  async cropClip(params: {
+    clipId: string;
+    startS: number;
+    endS: number;
+    remove?: boolean;
+    title: string;
+  }): Promise<{ actionClipId: string }> {
+    const res = await this.request(
+      `/api/edit/crop/${encodeURIComponent(params.clipId)}/`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          crop_start_s: params.startS,
+          crop_end_s: params.endS,
+          is_crop_remove: Boolean(params.remove),
+          title: params.title,
+          ui_surface: "song_actions",
+        }),
+      }
+    );
+    if (!res.ok) throw await sunoHttpError("cropClip", res);
+    const data = (await res.json()) as { action_clip_id?: string };
+    if (!data?.action_clip_id) throw new Error("crop returned no action clip.");
+    return { actionClipId: data.action_clip_id };
+  }
+
+  async fadeClip(params: {
+    clipId: string;
+    fadeInTime?: number | null;
+    fadeOutTime?: number | null;
+    title: string;
+  }): Promise<{ actionClipId: string }> {
+    const body: Record<string, unknown> = { title: params.title };
+    if (typeof params.fadeInTime === "number") body.fade_in_time = params.fadeInTime;
+    if (typeof params.fadeOutTime === "number") body.fade_out_time = params.fadeOutTime;
+    const res = await this.request(
+      `/api/edit/fade/${encodeURIComponent(params.clipId)}/`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }
+    );
+    if (!res.ok) throw await sunoHttpError("fadeClip", res);
+    const data = (await res.json()) as { action_clip_id?: string };
+    if (!data?.action_clip_id) throw new Error("fade returned no action clip.");
+    return { actionClipId: data.action_clip_id };
+  }
+
+  async adjustSpeedClip(params: {
+    clipId: string;
+    speedMultiplier: number;
+    keepPitch?: boolean;
+    title: string;
+  }): Promise<Clip> {
+    const res = await this.request(`/api/clips/adjust-speed/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clip_id: params.clipId,
+        speed_multiplier: params.speedMultiplier,
+        keep_pitch: params.keepPitch ?? true,
+        title: params.title,
+      }),
+    });
+    if (!res.ok) throw await sunoHttpError("adjustSpeedClip", res);
+    const data = (await res.json()) as Clip;
+    if (!data?.id) throw new Error("adjust speed returned no clip.");
+    return data;
+  }
+
+  async reverseClip(params: { clipId: string; title: string }): Promise<Clip> {
+    const res = await this.request(`/api/clips/reverse-clip/`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ clip_id: params.clipId, title: params.title }),
+    });
+    if (!res.ok) throw await sunoHttpError("reverseClip", res);
+    const data = (await res.json()) as Clip;
+    if (!data?.id) throw new Error("reverse returned no clip.");
+    return data;
+  }
+
   async uploadCoverMusic(params: {
     uploadedClipId?: string;
     audioUrl?: string;

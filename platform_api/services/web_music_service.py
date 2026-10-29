@@ -162,6 +162,11 @@ _STUDIO_SONG_OPERATION_TYPES = frozenset(
         "add_vocals",
         "add_instrumental",
         "replace_section",
+        "sample",
+        "crop",
+        "fade",
+        "speed",
+        "reverse",
     }
 )
 
@@ -173,6 +178,11 @@ _STUDIO_SONG_TITLE_SUFFIX = {
     "add_vocals": "Vocals",
     "add_instrumental": "Instrumental",
     "replace_section": "Edit",
+    "sample": "Sample",
+    "crop": "Crop",
+    "fade": "Fade",
+    "speed": "Sped Up",
+    "reverse": "Reversed",
 }
 
 
@@ -3486,6 +3496,305 @@ class WebMusicService:
             internal_path="/internal/studio/mashup",
             internal_body={"clip_ids": clip_ids, "prompt": prompt.strip()},
             label="mashup",
+        )
+
+    async def request_studio_sample(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        start_s: float = 0.0,
+        end_s: float = 30.0,
+        prompt: str = "",
+        title: str = "",
+        tags: str = "",
+        project_id: UUID | None = None,
+    ) -> dict[str, Any]:
+        """Suno's "Sample this song": start a new song from a section.
+
+        The slice is cut server-side, stored, and handed to Suno as an uploaded
+        clip so the new song is built from that section rather than the whole
+        track.
+        """
+        from platform_api.services.audio_preview_trim import trim_audio_range_bytes
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        variant_key = "alt" if str(variant or "").strip().lower() == "alt" else "ok"
+        start = max(0.0, float(start_s or 0.0))
+        end = max(start, float(end_s or 0.0))
+        if end - start < 1.0:
+            raise ValidationError(
+                "Select at least one second to sample.", details={"field": "end_s"}
+            )
+        if end - start > 30.0:
+            raise ValidationError(
+                "Samples are limited to 30 seconds.", details={"field": "end_s"}
+            )
+
+        row = await self._fetch_playable_task_row(user_id, task_id, variant_key)
+        if str(_row_value(row, "status") or "").upper() != "SUCCESS":
+            raise ValidationError("This song is not ready to sample yet.")
+        data, _filename, _content_type = await self._serve_mp3_row(
+            row, task_id=task_id, variant_key=variant_key
+        )
+        sliced = await trim_audio_range_bytes(
+            data, start_s=start, end_s=end, fmt="mp3"
+        )
+
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Samples are not configured for storage.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        storage = StorageService.from_config(config)
+        storage_key = f"samples/{user_id}/{uuid4()}.mp3"
+        await storage.upload_bytes(
+            key=storage_key, data=sliced, content_type="audio/mpeg"
+        )
+        audio_url = await storage.get_signed_get_url(storage_key)
+        if not audio_url:
+            raise ExternalServiceError(
+                "Could not prepare the sample.",
+                is_retryable=True,
+                details={"reason": "sample_url_unavailable"},
+            )
+
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type="sample",
+            variant=variant_key,
+            mode="sample",
+            project_id=project_id,
+            internal_path="/internal/studio/upload-cover",
+            internal_body={
+                "audio_url": audio_url,
+                "prompt": str(prompt or "").strip(),
+                "title": str(title or "").strip(),
+                "tags": str(tags or "").strip(),
+            },
+            label="sample",
+        )
+
+    async def derive_generation(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str = "ok",
+        operation: str,
+        start_s: float | None = None,
+        end_s: float | None = None,
+        speed: float | None = None,
+        fade_seconds: float | None = None,
+    ) -> dict[str, Any]:
+        """Suno's Edit ▸ Crop / Remove Section / Reverse / Adjust Speed / Fade.
+
+        These are pure audio transformations, so they run here and land as a new
+        song in the feed rather than going back to Suno.
+        """
+        from platform_api.services.audio_preview_trim import (
+            probe_audio_duration_bytes,
+            remove_audio_range_bytes,
+            transform_audio_bytes,
+            trim_audio_range_bytes,
+        )
+        from platform_api.services.storage_service import StorageService
+        from platform_api.services.streaming_config_service import (
+            resolve_streaming_storage_config,
+        )
+
+        op = str(operation or "").strip().lower()
+        suffixes = {
+            "crop": "Crop",
+            "remove_section": "Edited",
+            "reverse": "Reversed",
+            "speed": "Sped Up",
+            "fade_in": "Fade In",
+            "fade_out": "Fade Out",
+        }
+        if op not in suffixes:
+            raise ValidationError(
+                "Unsupported edit.", details={"field": "operation"}
+            )
+        variant_key = "alt" if str(variant or "").strip().lower() == "alt" else "ok"
+        row = await self._fetch_playable_task_row(user_id, task_id, variant_key)
+        if str(_row_value(row, "status") or "").upper() != "SUCCESS":
+            raise ValidationError("This song is not ready to edit yet.")
+        data, _filename, _content_type = await self._serve_mp3_row(
+            row, task_id=task_id, variant_key=variant_key
+        )
+        duration = await probe_audio_duration_bytes(data)
+        if duration <= 1:
+            raise ValidationError("This song is too short to edit.")
+
+        base_title = str(_row_value(row, "title") or "Untitled").strip() or "Untitled"
+        edit_title = f"{base_title} ({suffixes[op]})"[:200]
+        try:
+            return await self._request_suno_derived_edit(
+                user_id,
+                task_id,
+                variant=variant_key,
+                operation=op,
+                title=edit_title,
+                start_s=start_s,
+                end_s=end_s,
+                speed=speed,
+                fade_seconds=fade_seconds,
+                duration=duration,
+            )
+        except Exception:
+            logger.warning(
+                "Suno %s edit failed; falling back to local audio", op, exc_info=True
+            )
+
+        if op in ("crop", "remove_section"):
+            start = min(max(0.0, float(start_s or 0.0)), duration - 1.0)
+            end = float(end_s if end_s is not None else duration)
+            end = min(max(start + 1.0, end), duration)
+            if op == "crop":
+                edited = await trim_audio_range_bytes(
+                    data, start_s=start, end_s=end, fmt="mp3"
+                )
+            else:
+                if start <= 0.1 and end >= duration - 0.1:
+                    raise ValidationError(
+                        "Pick a section to remove.", details={"field": "start_s"}
+                    )
+                edited = await remove_audio_range_bytes(
+                    data, start_s=start, end_s=end, fmt="mp3"
+                )
+        elif op == "reverse":
+            edited = await transform_audio_bytes(data, audio_filter="areverse")
+        elif op == "speed":
+            factor = min(2.0, max(0.5, float(speed or 1.0)))
+            edited = await transform_audio_bytes(
+                data, audio_filter=f"atempo={factor:.3f}"
+            )
+        elif op == "fade_in":
+            seconds = min(duration, max(0.5, float(fade_seconds or 2.0)))
+            edited = await transform_audio_bytes(
+                data, audio_filter=f"afade=t=in:st=0:d={seconds:.2f}"
+            )
+        else:  # fade_out
+            seconds = min(duration, max(0.5, float(fade_seconds or 2.0)))
+            start_at = max(0.0, duration - seconds)
+            edited = await transform_audio_bytes(
+                data, audio_filter=f"afade=t=out:st={start_at:.2f}:d={seconds:.2f}"
+            )
+
+        config = await resolve_streaming_storage_config(self._pool)
+        if not config.configured:
+            raise ExternalServiceError(
+                "Edits are not configured for storage.",
+                is_retryable=False,
+                details={"reason": "storage_not_configured"},
+            )
+        new_id = uuid4()
+        # The task id must be its own path segment: playback validation only
+        # trusts keys scoped to the task they belong to.
+        storage_key = f"edits/{user_id}/{new_id}/ok.mp3"
+        await StorageService.from_config(config).upload_bytes(
+            key=storage_key, data=edited, content_type="audio/mpeg"
+        )
+        new_duration = await probe_audio_duration_bytes(edited)
+
+        base_title = str(_row_value(row, "title") or "Untitled").strip() or "Untitled"
+        await self._pool.execute(
+            """
+            INSERT INTO suno_tasks (
+                id, user_id, request_hash, model, title, lyrics, style, instrumental,
+                status, source, workspace_id, image_url_ok, duration_ok, title_ok,
+                b2_storage_key_ok, b2_uploaded_at_ok, purged_variants, created_at, updated_at
+            )
+            VALUES (
+                $1, $2, $3, $4, $5, $6, $7, $8,
+                $9, $10, $11, $12, $13, $14,
+                $15, NOW(), ARRAY['alt'], NOW(), NOW()
+            )
+            """,
+            new_id,
+            user_id,
+            f"derive:{new_id}",
+            str(_row_value(row, "model") or "").strip() or "chirp-v3-5",
+            f"{base_title} ({suffixes[op]})"[:200],
+            _row_value(row, "lyrics"),
+            _row_value(row, "style"),
+            bool(_row_value(row, "instrumental")),
+            TaskStatus.SUCCESS.value,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+            _row_value(row, "workspace_id"),
+            _row_value(row, "image_url_ok"),
+            new_duration,
+            f"{base_title} ({suffixes[op]})"[:200],
+            storage_key,
+        )
+        return await self.get_generation(user_id, new_id)
+
+    async def _request_suno_derived_edit(
+        self,
+        user_id: UUID,
+        task_id: UUID,
+        *,
+        variant: str,
+        operation: str,
+        title: str,
+        start_s: float | None,
+        end_s: float | None,
+        speed: float | None,
+        fade_seconds: float | None,
+        duration: float,
+    ) -> dict[str, Any]:
+        """Call Suno's own editor endpoints (captured from its shipped bundle)."""
+        fade = min(duration, max(0.5, float(fade_seconds or 2.0)))
+        if operation in ("crop", "remove_section"):
+            path = "/internal/studio/crop"
+            body = {
+                "start_s": float(start_s or 0.0),
+                "end_s": float(end_s if end_s is not None else duration),
+                "remove": operation == "remove_section",
+                "title": title,
+            }
+            op_type = "crop"
+        elif operation in ("fade_in", "fade_out"):
+            path = "/internal/studio/fade"
+            body = {
+                "title": title,
+                **(
+                    {"fade_in_time": fade}
+                    if operation == "fade_in"
+                    else {"fade_out_time": max(0.5, duration - fade)}
+                ),
+            }
+            op_type = "fade"
+        elif operation == "speed":
+            path = "/internal/studio/speed"
+            body = {
+                "speed_multiplier": min(2.0, max(0.5, float(speed or 1.0))),
+                "keep_pitch": True,
+                "title": title,
+            }
+            op_type = "speed"
+        else:
+            path = "/internal/studio/reverse"
+            body = {"title": title}
+            op_type = "reverse"
+        return await self._request_studio_clip_operation(
+            user_id,
+            task_id,
+            operation_type=op_type,
+            variant=variant,
+            mode=op_type,
+            project_id=None,
+            internal_path=path,
+            internal_body=body,
+            label=op_type,
         )
 
     async def get_studio_readiness(self) -> dict[str, Any]:

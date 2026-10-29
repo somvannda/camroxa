@@ -429,7 +429,7 @@ interface DbUser {
 
 interface Job {
   id: string;
-  type: "lyrics" | "music" | "extend" | "cover" | "stems" | "sounds" | "remaster" | "mashup" | "add_vocals" | "add_instrumental" | "replace_section" | "cover_image" | "persona" | "wav" | "upload_extend" | "upload_cover" | "upload_init" | "upload_register" | "recovery_audio" | "mp4_generate" | "boost_style" | "midi_generate" | "voice_phrase" | "voice_validate" | "voice_record" | "voice_generate" | "voice_apply" | "voice_extend" | "lyrics_detail" | "wav_detail" | "stems_detail" | "video_detail" | "cover_detail" | "subtitle_detail" | "recovery_detail" | "mp4_detail" | "midi_detail" | "timestamped_lyrics_detail";
+  type: "lyrics" | "music" | "extend" | "cover" | "stems" | "sounds" | "remaster" | "mashup" | "add_vocals" | "add_instrumental" | "replace_section" | "cover_image" | "persona" | "wav" | "upload_extend" | "upload_cover" | "upload_init" | "upload_register" | "recovery_audio" | "mp4_generate" | "boost_style" | "midi_generate" | "voice_phrase" | "voice_validate" | "voice_record" | "voice_generate" | "voice_apply" | "voice_extend" | "lyrics_detail" | "wav_detail" | "stems_detail" | "video_detail" | "cover_detail" | "subtitle_detail" | "recovery_detail" | "mp4_detail" | "midi_detail" | "timestamped_lyrics_detail" | "crop" | "fade" | "speed" | "reverse";
   status: "pending" | "running" | "streaming" | "complete" | "error";
   accountId?: string;
   result?: unknown;
@@ -8935,6 +8935,135 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     job.credits = 0;
     job.prompt = prompt;
     void runClipJobWithRetry(job, (client) => client.addInstrumental(clipId, prompt), { accountId });
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/crop", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const startS = Number(body.start_s);
+    const endS = Number(body.end_s);
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const remove = body.remove === true;
+    if (!clipId || !Number.isFinite(startS) || !Number.isFinite(endS) || endS <= startS) {
+      return reply.code(400).send({
+        error: "clip_id, start_s, end_s are required (end_s > start_s).",
+      });
+    }
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("crop");
+    job.endpoint = "studio_crop";
+    job.credits = 0;
+    void runClipJobWithRetry(
+      job,
+      async (client) => {
+        const { actionClipId } = await client.cropClip({
+          clipId,
+          startS,
+          endS,
+          remove,
+          title: title || (remove ? "Edited" : "Cropped"),
+        });
+        return [{ id: actionClipId } as import("./client.js").Clip];
+      },
+      { accountId }
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/fade", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    const fadeIn = Number(body.fade_in_time);
+    const fadeOut = Number(body.fade_out_time);
+    if (!clipId || (!Number.isFinite(fadeIn) && !Number.isFinite(fadeOut))) {
+      return reply.code(400).send({
+        error: "clip_id and one of fade_in_time / fade_out_time are required.",
+      });
+    }
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("fade");
+    job.endpoint = "studio_fade";
+    job.credits = 0;
+    void runClipJobWithRetry(
+      job,
+      async (client) => {
+        const { actionClipId } = await client.fadeClip({
+          clipId,
+          fadeInTime: Number.isFinite(fadeIn) ? fadeIn : null,
+          fadeOutTime: Number.isFinite(fadeOut) ? fadeOut : null,
+          title: title || "Fade",
+        });
+        return [{ id: actionClipId } as import("./client.js").Clip];
+      },
+      { accountId }
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/speed", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const speed = Number(body.speed_multiplier);
+    const keepPitch = body.keep_pitch !== false;
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!clipId || !Number.isFinite(speed) || speed <= 0) {
+      return reply.code(400).send({ error: "clip_id and speed_multiplier are required." });
+    }
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("speed");
+    job.endpoint = "studio_speed";
+    job.credits = 0;
+    void runClipJobWithRetry(
+      job,
+      async (client) => {
+        const clip = await client.adjustSpeedClip({
+          clipId,
+          speedMultiplier: speed,
+          keepPitch,
+          title: title || "Sped Up",
+        });
+        return [clip];
+      },
+      { accountId }
+    );
+    return reply.code(202).send({ job_id: job.id, status: job.status });
+  });
+
+  app.post("/internal/studio/reverse", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const clipId = typeof body.clip_id === "string" ? body.clip_id : "";
+    const title = typeof body.title === "string" ? body.title.trim() : "";
+    if (!clipId) return reply.code(400).send({ error: "clip_id is required." });
+    const accountId = await findAssetAccountAny(clipId);
+    if (!accountId) {
+      return reply.code(409).send({ error: "The source clip's Suno account is not recorded." });
+    }
+    const job = newJob("reverse");
+    job.endpoint = "studio_reverse";
+    job.credits = 0;
+    void runClipJobWithRetry(
+      job,
+      async (client) => {
+        const clip = await client.reverseClip({ clipId, title: title || "Reversed" });
+        return [clip];
+      },
+      { accountId }
+    );
     return reply.code(202).send({ job_id: job.id, status: job.status });
   });
 
