@@ -12,12 +12,8 @@ import {
   SMenu,
   SMenuCheckboxItem,
   SMenuItem,
-  SMenuSub,
-  SMenuSubContent,
-  SMenuSubTrigger,
   SMenuRadioGroup,
   SMenuRadioItem,
-  SMenuSeparator,
 } from "@/components/ui/s-menu";
 import { useAuth } from "@/components/AuthProvider";
 import { usePlayer } from "@/components/PlayerProvider";
