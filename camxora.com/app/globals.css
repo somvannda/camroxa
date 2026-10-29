@@ -4545,3 +4545,8 @@ html{color-scheme:dark}
 .sidebar{transition:width .22s cubic-bezier(.4,0,.2,1)}
 .side-collapse{transition:transform .22s ease,color .15s ease,border-color .15s ease}
 .side-collapse:hover{transform:scale(1.08)}
+
+/* Keep the collapse handle above the sidebar edge and the main content */
+.sidebar{overflow:visible;z-index:50}
+.side-head{overflow:visible}
+.side-head .side-collapse{right:-12px;z-index:80;box-shadow:0 2px 6px rgba(0,0,0,.45)}
