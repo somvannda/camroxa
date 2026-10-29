@@ -120,6 +120,28 @@ export function StudioShell() {
     setSelectedTrack(track.id);
   }
 
+  async function addSongToTrack(song: WebMusicGeneration, trackId: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const clip = song.clips?.find((item) => item.ready) ?? song.clips?.[0];
+      const variant = clip?.variant === "alt" ? "alt" : "ok";
+      const session = await studioSessionForClip(song.id, variant);
+      if (!projectId) setProjectId(session.project_id);
+      setTracks((current) =>
+        current.map((track) =>
+          track.id === trackId
+            ? { ...track, clipIds: [...track.clipIds, song.id] }
+            : track
+        )
+      );
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Could not open this song");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function addSongToTimeline(song: WebMusicGeneration) {
     setBusy(true);
     setError("");
@@ -279,7 +301,18 @@ export function StudioShell() {
               <span key={index} style={{ left: `${(index / BARS) * 100}%` }} />
             ))}
             {tracks.map((track, index) => (
-              <div className="stv-lane" key={track.id} style={{ top: index * 58 }}>
+              <div
+                className="stv-lane"
+                key={track.id}
+                style={{ top: index * 58 }}
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const songId = event.dataTransfer.getData("text/song");
+                  const song = songs.find((item) => item.id === songId);
+                  if (song) void addSongToTrack(song, track.id);
+                }}
+              >
                 {track.clipIds.map((clipId, clipIndex) => {
                   const song = songs.find((item) => item.id === clipId);
                   return (
@@ -329,6 +362,11 @@ export function StudioShell() {
                     key={song.id}
                     type="button"
                     className="stv-library-row"
+                    draggable
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData("text/song", song.id);
+                      event.dataTransfer.effectAllowed = "copy";
+                    }}
                     disabled={busy}
                     onClick={() => void addSongToTimeline(song)}
                   >
