@@ -1,4 +1,4 @@
-# Web-music Trash: delete is recoverable
+﻿# Web-music Trash: per-version, Suno-shaped
 
 **Date:** 2026-10-29
 **Branch:** `feat/web-trash-workspace`
@@ -6,72 +6,83 @@
 
 ## Summary
 
-Deleting a song used to run `DELETE FROM suno_tasks`, so one click was final.
-Delete now moves the song to **Trash** first; Trash is the only place that can
-remove it for good. Matches Suno's two-step delete.
+Deleting used to hard-delete a song row (both versions) with no way back. Suno
+trashes **clips** first and only deletes permanently from `/me/trash`. Ours now
+does the same, per version.
+
+Verified against the live Suno bundle/UI:
+
+- `/me/trash` is a real route (sibling of `/me`, `/me/albums`, `/me/playlists`).
+- `POST /api/gen/trash` with `{ trash: boolean, clip_ids: string[] }` toggles
+  `is_trashed` on clips (batch).
+- Song menu action `songActions.moveToTrash` opens a confirm modal with a count.
+- Trash actions: `clipBrowserElements.restoreToLibrary` and
+  `TrashedClipDeletePermanentlyClicked`, both using `selectedCount`.
 
 ## Product impact
 
-- **Create**: row `⋮ → Move to Trash` and the rail action open a confirm modal
-  ("Move to Trash?", restore hint), then a `Moved to Trash` toast.
-- **Library**: the trash button opens a real Trash view instead of a bulk-delete
-  selector. Each row has **Restore** and **Delete forever**; the toolbar has
-  **Empty Trash** (confirm modal says "Delete forever").
-- Trashed songs disappear from the library/feed counts, and cannot be played,
-  streamed, or downloaded while in Trash.
-- Library bulk delete now also moves to Trash; only the Trash view deletes
-  permanently.
+- **Create**: row `⋮ → Move to Trash` and the rail action trash **that version**
+  only, with a confirm modal naming it ("Move Version 1 to Trash?"); the other
+  version stays in the library.
+- **Library**: a **Trash** tab next to History. It lists trashed versions with
+  **Restore to library** and **Delete permanently**, plus **Empty Trash**.
+- Trashed versions disappear from the feed/library counts and cannot be played,
+  streamed, or downloaded.
+- Library bulk delete also soft-deletes (moves to Trash).
 
 ## Technical impact
 
-- Migration `169_suno_task_trash`: `suno_tasks.trashed_at TIMESTAMPTZ NULL` and a
-  partial index `(user_id, trashed_at)`.
-- `WebMusicService.delete_generation(..., permanent=False)` — soft by default,
-  idempotent for already-trashed rows, hard delete only with `permanent=True`;
-  in-flight generations still refused.
-- `restore_generation()`, `empty_trash()`.
-- `list_generations(..., trashed=)` filters both the page and its count.
-- `_fetch_playable_task_row` requires `trashed_at IS NULL`, so playback,
-  downloads, streams and public-playlist joins skip trashed rows.
-- Routes: `GET /generations?trashed=true`, `DELETE /generations/{id}?permanent=true`,
-  `POST /generations/{id}/restore`, `DELETE /trash`.
-- Frontend helpers: `deleteWebMusicGeneration(id, permanent?)`,
-  `restoreWebMusicGeneration`, `emptyWebMusicTrash`, `listWebMusicGenerations(..., trashed)`.
+- Migration `169_suno_task_trash` (superseded): `trashed_at`.
+- Migration `170_trash_variants`: `trashed_variants TEXT[]` (`ok` = Version 1,
+  `alt` = Version 2), backfilling old trashed rows with both, dropping
+  `trashed_at`, and adding a partial index.
+- `delete_generation(..., variant=None, permanent=False)` — appends the version
+  to `trashed_variants`; `permanent` keeps the hard delete.
+- `restore_generation(..., variant=None)` — removes versions from the array.
+- `empty_trash()` — deletes songs whose versions are both trashed.
+- `list_generations(trashed=)` — `cardinality < 2` for the library,
+  `> 0` for Trash.
+- Playback guard is per version: `NOT (variant = ANY(trashed_variants))`.
+- Responses expose `trashed_variants` (list **and** detail; the detail payload is
+  read from the source row because refresh helpers rebuild it).
+- Routes: `DELETE /generations/{id}?variant=&permanent=`,
+  `POST /generations/{id}/restore?variant=`, `DELETE /trash`.
 
 ## Files touched
 
 | File | Change |
 |---|---|
-| `platform_api/migrations/versions/169_suno_task_trash.py` | New column + index |
-| `platform_api/services/web_music_service.py` | Soft/permanent delete, restore, empty, list filter, playback guard |
-| `platform_api/routers/web_music.py` | `trashed`, `permanent`, restore, empty-trash routes |
-| `platform_api/tests/test_web_music_delete_generation.py` | Rewritten for trash semantics |
-| `camxora.com/lib/web-music-api.ts` | Trash helpers |
-| `camxora.com/components/CreateStudio.tsx` | "Move to Trash" confirm flow |
-| `camxora.com/components/LibraryView.tsx` | Trash view, restore, delete forever, empty |
+| `platform_api/migrations/versions/169_suno_task_trash.py` | First pass (song-level) |
+| `platform_api/migrations/versions/170_trash_variants.py` | Per-version `trashed_variants` |
+| `platform_api/services/web_music_service.py` | Variant delete/restore, list filter, playback guard, payload |
+| `platform_api/routers/web_music.py` | `variant` params, `trashed_variants` in the response model |
+| `platform_api/tests/test_web_music_delete_generation.py` | 14 tests for trash semantics |
+| `camxora.com/lib/library-api.ts` | `trashed_variants` type |
+| `camxora.com/lib/web-music-api.ts` | `delete(id, {variant, permanent})`, `restore(id, variant)` |
+| `camxora.com/components/CreateStudio.tsx` | Per-version Move to Trash + modal copy |
+| `camxora.com/components/LibraryView.tsx` | Trash tab, per-version list, restore/delete permanently |
 | `camxora.com/app/globals.css` | `.s-trash-actions` |
 
 ## Migration/deploy
 
-1. Run Alembic through `169_suno_task_trash` **before** deploying the API.
-2. No new env var. Rollback: revert code, then drop the column/index.
-3. Existing rows have `trashed_at = NULL`, so nothing becomes invisible on
-   deploy.
+1. Run Alembic through `170_trash_variants` **before** the API serves the code.
+2. No new env var. Rollback: revert code, then downgrade 170 (restores
+   `trashed_at` and marks any trashed row).
+3. Existing rows default to `{}`, so nothing disappears on deploy.
 
 ## Tests
 
-- `pytest platform_api/tests/test_web_music_delete_generation.py` → **11 passed**
-  (soft delete, idempotency, permanent delete, missing row, pending refusal,
-  restore, restore-missing, empty-trash count).
-- Live smoke test against the local API: trashed row absent from the library and
-  present in `?trashed=true`; `stream` → 404; restore → back in the library;
-  soft delete → Trash; permanent delete → gone from both.
+- `pytest test_web_music_delete_generation.py` → **14 passed**
+- Wider web-music group (`router`, `generate_queue`, `reference_video`) → **36 passed**
+- Live smoke test: trash V1 → `trashed_variants: ok`, V1 stream → 404, V2 stream →
+  422 `encrypted_playback_required` (packaged tracks), row present in Trash list,
+  restore → `[]`.
+- `npx tsc --noEmit` clean; `npm run check:ui` compliant.
 
 ## Follow-ups
 
-- Trashed songs keep their B2 files until permanently deleted. No automatic
-  purge (manual-only by decision); a 30-day sweep can be added later.
-- Admin listings (`admin_user_web_music`) and desktop pipeline queries still see
-  every row; they were deliberately left unfiltered.
-- The audio-result "Move to Trash" actions use a different table
-  (`studio_operations`) and still hard-delete with `window.confirm`.
+- Suno batches: one `POST /api/gen/trash {clip_ids: [...]}` for many clips and
+  multi-select in Trash. Ours is per-row for now.
+- No `/library/trash` URL: Trash is a tab, and `?trash=1` opens it.
+- Trashed files stay in B2 until permanently deleted; no auto-purge (manual only).
+- Audio-result "Move to Trash" uses `studio_operations` and still hard-deletes.

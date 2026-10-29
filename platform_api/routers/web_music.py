@@ -271,6 +271,7 @@ class WebMusicGenerationResponse(BaseModel):
     style_weight: float | None = None
     weirdness_constraint: float | None = None
     audio_weight: float | None = None
+    trashed_variants: list[str] = Field(default_factory=list)
     clips: list[WebMusicClipResponse] = Field(default_factory=list)
 
 
@@ -307,6 +308,9 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         style_weight=_optional_float(payload.get("style_weight")),
         weirdness_constraint=_optional_float(payload.get("weirdness_constraint")),
         audio_weight=_optional_float(payload.get("audio_weight")),
+        trashed_variants=[
+            str(value) for value in (payload.get("trashed_variants") or [])
+        ],
         clips=[WebMusicClipResponse(**clip) for clip in payload.get("clips") or []],
     )
 
@@ -1595,8 +1599,11 @@ async def delete_generation(
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
     permanent: bool = Query(False),
+    variant: Literal["ok", "alt"] | None = Query(None),
 ) -> Response:
-    await service.delete_generation(UUID(ctx.user_id), task_id, permanent=permanent)
+    await service.delete_generation(
+        UUID(ctx.user_id), task_id, variant=variant, permanent=permanent
+    )
     return Response(status_code=204)
 
 
@@ -1605,8 +1612,9 @@ async def restore_generation(
     task_id: UUID,
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
+    variant: Literal["ok", "alt"] | None = Query(None),
 ) -> dict:
-    await service.restore_generation(UUID(ctx.user_id), task_id)
+    await service.restore_generation(UUID(ctx.user_id), task_id, variant=variant)
     return {"status": "restored"}
 
 

@@ -33,6 +33,8 @@ export type WebMusicGeneration = {
   is_preview?: boolean;
   unlockable?: boolean;
   preview_seconds?: number | null;
+  /** Versions currently in Trash (`ok` = Version 1, `alt` = Version 2). */
+  trashed_variants?: string[];
   clips: WebMusicClip[];
 };
 

@@ -328,9 +328,12 @@ export async function updateWebMusicGenerationTitle(
 
 export async function deleteWebMusicGeneration(
   id: string,
-  permanent = false
+  options: { variant?: "ok" | "alt"; permanent?: boolean } = {}
 ): Promise<void> {
-  const query = permanent ? "?permanent=true" : "";
+  const params = new URLSearchParams();
+  if (options.permanent) params.set("permanent", "true");
+  if (options.variant) params.set("variant", options.variant);
+  const query = params.toString() ? `?${params.toString()}` : "";
   await musicJson<void>(
     `/api/v3/web-music/generations/${encodeURIComponent(id)}${query}`,
     {
@@ -339,10 +342,14 @@ export async function deleteWebMusicGeneration(
   );
 }
 
-/** Bring a trashed song back into the library. */
-export async function restoreWebMusicGeneration(id: string): Promise<void> {
+/** Bring a trashed version (or the whole song) back into the library. */
+export async function restoreWebMusicGeneration(
+  id: string,
+  variant?: "ok" | "alt"
+): Promise<void> {
+  const query = variant ? `?variant=${variant}` : "";
   await musicJson<unknown>(
-    `/api/v3/web-music/generations/${encodeURIComponent(id)}/restore`,
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/restore${query}`,
     { method: "POST" }
   );
 }

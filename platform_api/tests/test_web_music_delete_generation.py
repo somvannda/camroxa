@@ -1,8 +1,8 @@
-"""Trash semantics for web-music songs.
+"""Trash semantics for web-music songs (per version).
 
-Deleting is a soft delete by default (``trashed_at``), so the song can be
-restored from Trash. ``permanent=True`` keeps the old hard delete. In-flight
-generations are still refused so active Suno jobs are not orphaned.
+Deleting is a soft delete by default and targets a single version (`ok` =
+Version 1, `alt` = Version 2) or both. Stored in `trashed_variants`.
+`permanent=True` keeps the old hard delete. In-flight generations are refused.
 """
 
 from __future__ import annotations
@@ -22,35 +22,39 @@ def _service(pool: AsyncMock) -> WebMusicService:
 
 
 @pytest.mark.asyncio
-async def test_delete_moves_song_to_trash_by_default() -> None:
+@pytest.mark.parametrize(
+    ("variant", "expected"),
+    [(None, ["ok", "alt"]), ("ok", ["ok"]), ("alt", ["alt"])],
+)
+async def test_delete_moves_selected_version_to_trash(
+    variant: str | None, expected: list[str]
+) -> None:
     user_id = uuid4()
     task_id = uuid4()
     pool = AsyncMock()
-    pool.fetchrow = AsyncMock(
-        return_value={"id": task_id, "status": "FAILED", "trashed_at": None}
-    )
+    pool.fetchrow = AsyncMock(return_value={"id": task_id, "status": "FAILED"})
     pool.execute = AsyncMock(return_value="UPDATE 1")
 
-    await _service(pool).delete_generation(user_id, task_id)
+    await _service(pool).delete_generation(user_id, task_id, variant=variant)
 
     sql = pool.execute.await_args.args[0]
     assert "UPDATE suno_tasks" in sql
-    assert "trashed_at = NOW()" in sql
+    assert "trashed_variants" in sql
     assert "DELETE FROM suno_tasks" not in sql
     assert pool.execute.await_args.args[1] == task_id
     assert pool.execute.await_args.args[2] == user_id
     assert pool.execute.await_args.args[3] == SUNO_TASK_SOURCE_WEB_MUSIC
+    assert pool.execute.await_args.args[4] == expected
 
 
 @pytest.mark.asyncio
-async def test_delete_is_idempotent_for_already_trashed_song() -> None:
+async def test_delete_rejects_unknown_variant() -> None:
     pool = AsyncMock()
-    pool.fetchrow = AsyncMock(
-        return_value={"id": uuid4(), "status": "SUCCESS", "trashed_at": "2026-10-29"}
-    )
+    pool.fetchrow = AsyncMock()
     pool.execute = AsyncMock()
 
-    await _service(pool).delete_generation(uuid4(), uuid4())
+    with pytest.raises(ValidationError):
+        await _service(pool).delete_generation(uuid4(), uuid4(), variant="both")
 
     pool.execute.assert_not_awaited()
 
@@ -60,9 +64,7 @@ async def test_permanent_delete_removes_row() -> None:
     user_id = uuid4()
     task_id = uuid4()
     pool = AsyncMock()
-    pool.fetchrow = AsyncMock(
-        return_value={"id": task_id, "status": "FAILED", "trashed_at": None}
-    )
+    pool.fetchrow = AsyncMock(return_value={"id": task_id, "status": "FAILED"})
     pool.execute = AsyncMock(return_value="DELETE 1")
 
     await _service(pool).delete_generation(user_id, task_id, permanent=True)
@@ -89,9 +91,7 @@ async def test_delete_pending_generation_is_refused(status: str) -> None:
     user_id = uuid4()
     task_id = uuid4()
     pool = AsyncMock()
-    pool.fetchrow = AsyncMock(
-        return_value={"id": task_id, "status": status, "trashed_at": None}
-    )
+    pool.fetchrow = AsyncMock(return_value={"id": task_id, "status": status})
     pool.execute = AsyncMock()
 
     with pytest.raises(ValidationError):
@@ -101,18 +101,25 @@ async def test_delete_pending_generation_is_refused(status: str) -> None:
 
 
 @pytest.mark.asyncio
-async def test_restore_clears_trashed_at() -> None:
+@pytest.mark.parametrize(
+    ("variant", "expected"), [(None, ["ok", "alt"]), ("ok", ["ok"])]
+)
+async def test_restore_removes_versions_from_trash(
+    variant: str | None, expected: list[str]
+) -> None:
     user_id = uuid4()
     task_id = uuid4()
     pool = AsyncMock()
     pool.fetchrow = AsyncMock(return_value={"id": task_id})
     pool.execute = AsyncMock(return_value="UPDATE 1")
 
-    await _service(pool).restore_generation(user_id, task_id)
+    await _service(pool).restore_generation(user_id, task_id, variant=variant)
 
     sql = pool.execute.await_args.args[0]
-    assert "trashed_at = NULL" in sql
+    assert "trashed_variants" in sql
+    assert "NOT (v = ANY" in sql
     assert pool.execute.await_args.args[1] == task_id
+    assert pool.execute.await_args.args[4] == expected
 
 
 @pytest.mark.asyncio
@@ -128,7 +135,7 @@ async def test_restore_missing_song_raises_not_found() -> None:
 
 
 @pytest.mark.asyncio
-async def test_empty_trash_returns_deleted_count() -> None:
+async def test_empty_trash_deletes_fully_trashed_songs() -> None:
     pool = AsyncMock()
     pool.fetch = AsyncMock(return_value=[{"id": uuid4()}, {"id": uuid4()}])
 
@@ -136,4 +143,4 @@ async def test_empty_trash_returns_deleted_count() -> None:
 
     assert deleted == 2
     sql = pool.fetch.await_args.args[0]
-    assert "trashed_at IS NOT NULL" in sql
+    assert "cardinality(trashed_variants) >= 2" in sql

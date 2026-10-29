@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useEffect, useRef, useState, type ReactNode } from "react";
@@ -68,6 +68,7 @@ const TABS = [
   { id: "hooks", label: "Hooks" },
   { id: "likedHooks", label: "Liked Hooks" },
   { id: "history", label: "History" },
+  { id: "trash", label: "Trash" },
 ] as const;
 
 type LibTab = (typeof TABS)[number]["id"];
@@ -257,6 +258,16 @@ export function LibraryView() {
   }, [tab, search, filters, sort]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("trash") === "1") setTrashMode(true);
+  }, []);
+
+  useEffect(() => {
+    setTrashMode(tab === "trash");
+  }, [tab]);
+
+  useEffect(() => {
     if (!trashMode) return;
     let active = true;
     setTrashLoading(true);
@@ -345,7 +356,9 @@ export function LibraryView() {
     dislikedKeys.includes(clipTrackKey(song.id, clip.variant));
 
   const allRows: LibRow[] = generations.flatMap((song) =>
-    generationClips(song).map((clip) => ({
+    generationClips(song)
+      .filter((clip) => !(song.trashed_variants ?? []).includes(clip.variant))
+      .map((clip) => ({
       song,
       clip,
       key: clipTrackKey(song.id, clip.variant),
@@ -584,7 +597,7 @@ export function LibraryView() {
     const failures: string[] = [];
     for (const id of ids) {
       try {
-        await deleteWebMusicGeneration(id, permanent);
+        await deleteWebMusicGeneration(id, { permanent });
         deleted.push(id);
       } catch (cause) {
         failures.push(cause instanceof Error ? cause.message : "Could not delete song");
@@ -676,14 +689,8 @@ export function LibraryView() {
   }
 
   function toggleTrash() {
-    if (trashMode) {
-      setTrashMode(false);
-      setSelectedIds([]);
-      return;
-    }
-    setTrashMode(true);
     setSelectedIds([]);
-    setTab("songs");
+    setTab(trashMode ? "songs" : "trash");
   }
 
   function toggleSelected(id: string) {
@@ -806,7 +813,7 @@ export function LibraryView() {
             {song.is_preview ? <span className="s-status live">Preview</span> : null}
           </div>
           <div className="s-row-desc">
-            {clipVersionLabel(clip.variant)} · {song.style || "No style tags"}
+            {clipVersionLabel(clip.variant)} Â· {song.style || "No style tags"}
           </div>
           <div className="s-row-actions" onClick={(event) => event.stopPropagation()}>
             <button
@@ -972,8 +979,8 @@ export function LibraryView() {
         </div>
         <div className="s-row-desc">
           {track.artist_name || "Camxora"}
-          {track.duration_seconds ? ` · ${formatClipDuration(track.duration_seconds)}` : ""}
-          {track.added_at ? ` · ${formatDate(track.added_at)}` : ""}
+          {track.duration_seconds ? ` Â· ${formatClipDuration(track.duration_seconds)}` : ""}
+          {track.added_at ? ` Â· ${formatDate(track.added_at)}` : ""}
         </div>
         <div className="s-row-actions" onClick={(event) => event.stopPropagation()}>
           <button
@@ -1001,17 +1008,30 @@ export function LibraryView() {
       </span>
       <b>{playlist.name}</b>
       <small>
-        {playlist.song_count ?? 0} {playlist.song_count === 1 ? "track" : "tracks"} ·{" "}
+        {playlist.song_count ?? 0} {playlist.song_count === 1 ? "track" : "tracks"} Â·{" "}
         {playlist.is_public ? "Public" : "Private"}
       </small>
     </button>
   );
 
-  async function restoreSong(id: string) {
+  async function restoreSong(id: string, variant?: "ok" | "alt") {
     try {
-      await restoreWebMusicGeneration(id);
+      await restoreWebMusicGeneration(id, variant);
       if (!mounted.current) return;
-      setTrashItems((current) => current.filter((item) => item.id !== id));
+      setTrashItems((current) =>
+        current
+          .map((item) =>
+            item.id === id
+              ? {
+                  ...item,
+                  trashed_variants: (item.trashed_variants ?? []).filter(
+                    (value) => (variant ? value !== variant : false)
+                  ),
+                }
+              : item
+          )
+          .filter((item) => (item.trashed_variants ?? []).length > 0)
+      );
       setToast("Restored to library");
     } catch (cause) {
       setToast(cause instanceof Error ? cause.message : "Could not restore the song");
@@ -1019,7 +1039,7 @@ export function LibraryView() {
   }
 
   const renderTrash = () => {
-    if (trashLoading) return <p className="s-note">Loading Trash…</p>;
+    if (trashLoading) return <p className="s-note">Loading Trashâ€¦</p>;
     if (!trashItems.length) {
       return renderEmpty(
         "fa-trash",
@@ -1028,7 +1048,7 @@ export function LibraryView() {
         <button
           type="button"
           className="s-btn s-btn-secondary"
-          onClick={() => setTrashMode(false)}
+          onClick={() => setTab("songs")}
         >
           Back to library
         </button>
@@ -1036,41 +1056,48 @@ export function LibraryView() {
     }
     return (
       <div>
-        {trashItems.map((song) => (
-          <div className="s-row" key={song.id}>
-            <div className="s-row-body">
-              <div className="s-row-title">
-                <b>{song.title}</b>
-                <span className="s-row-version">
-                  · {song.model_label || song.model || "V6"}
-                </span>
+        {trashItems.flatMap((song) =>
+          (song.trashed_variants ?? []).map((variant) => {
+            const clip = generationClips(song).find((item) => item.variant === variant);
+            const versionLabel = variant === "alt" ? "Version 2" : "Version 1";
+            return (
+              <div className="s-row" key={`${song.id}:${variant}`}>
+                <div className="s-row-body">
+                  <div className="s-row-title">
+                    <b>{clip?.title || song.title}</b>
+                    <span className="s-row-version">Â· {versionLabel}</span>
+                    <span className="s-model-badge">
+                      {song.model_label || song.model || "V6"}
+                    </span>
+                  </div>
+                  <div className="s-row-desc">
+                    In Trash{song.created_at ? ` Â· ${formatDate(song.created_at)}` : ""}
+                  </div>
+                </div>
+                <div className="s-trash-actions">
+                  <button
+                    type="button"
+                    className="s-btn s-btn-sm s-btn-secondary"
+                    onClick={() => void restoreSong(song.id, variant as "ok" | "alt")}
+                    disabled={deleting}
+                  >
+                    <Icon name="fa-rotate-left" /> Restore to library
+                  </button>
+                  <button
+                    type="button"
+                    className="s-btn s-btn-sm s-danger-text"
+                    onClick={() =>
+                      setConfirm({ kind: "generations", ids: [song.id], permanent: true })
+                    }
+                    disabled={deleting}
+                  >
+                    <Icon name="fa-trash" /> Delete permanently
+                  </button>
+                </div>
               </div>
-              <div className="s-row-desc">
-                In Trash{song.created_at ? ` · ${formatDate(song.created_at)}` : ""}
-              </div>
-            </div>
-            <div className="s-trash-actions">
-              <button
-                type="button"
-                className="s-btn s-btn-sm s-btn-secondary"
-                onClick={() => void restoreSong(song.id)}
-                disabled={deleting}
-              >
-                <Icon name="fa-rotate-left" /> Restore
-              </button>
-              <button
-                type="button"
-                className="s-btn s-btn-sm s-danger-text"
-                onClick={() =>
-                  setConfirm({ kind: "generations", ids: [song.id], permanent: true })
-                }
-                disabled={deleting}
-              >
-                <Icon name="fa-trash" /> Delete forever
-              </button>
-            </div>
-          </div>
-        ))}
+            );
+          })
+        )}
       </div>
     );
   };
@@ -1165,7 +1192,7 @@ export function LibraryView() {
                 <b>{workspace.name}</b>
                 <small>
                   {workspace.is_default ? "Default workspace" : "Workspace"}
-                  {workspace.created_at ? ` · ${formatDate(workspace.created_at)}` : ""}
+                  {workspace.created_at ? ` Â· ${formatDate(workspace.created_at)}` : ""}
                 </small>
               </div>
             ))}
@@ -1199,8 +1226,8 @@ export function LibraryView() {
               </span>
               <b>{project.title}</b>
               <small>
-                v{project.major_version} · {project.bpm} BPM · {project.time_signature}
-                {project.updated_at ? ` · ${formatDate(project.updated_at)}` : ""}
+                v{project.major_version} Â· {project.bpm} BPM Â· {project.time_signature}
+                {project.updated_at ? ` Â· ${formatDate(project.updated_at)}` : ""}
               </small>
             </Link>
           ))}
@@ -1345,8 +1372,7 @@ export function LibraryView() {
               type="button"
               className="s-btn s-btn-sm s-btn-ghost"
               onClick={() => {
-                setTrashMode(false);
-                setSelectedIds([]);
+                setTab("songs");
               }}
             >
               Close
@@ -1817,7 +1843,7 @@ export function LibraryView() {
                 {confirm.kind === "generations"
                   ? confirm.permanent
                     ? "This permanently removes the selected songs and their files. It cannot be undone."
-                    : "They move to Trash first — restore them any time, or empty the trash to delete them for good."
+                    : "They move to Trash first â€” restore them any time, or empty the trash to delete them for good."
                   : `"${confirm.playlist.name}" will be permanently deleted. The songs stay in your library.`}
               </p>
             </div>
@@ -1841,7 +1867,7 @@ export function LibraryView() {
                 }}
               >
                 {deleting
-                  ? "Working…"
+                  ? "Workingâ€¦"
                   : confirm.kind === "generations" && !confirm.permanent
                     ? "Move to Trash"
                     : "Delete forever"}
