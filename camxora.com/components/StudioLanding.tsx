@@ -117,7 +117,7 @@ export function StudioLanding() {
   return (
     <div className="st-landing">
       <section className="st-landing-left">
-        <h2 className="st-h2">Pick up where you left off</h2>
+        <h3 className="s-day">Pick up where you left off</h3>
         <div className="st-resume">
           <button
             type="button"
@@ -162,7 +162,7 @@ export function StudioLanding() {
       </section>
 
       <section className="st-landing-right">
-        <h2 className="st-h2">Or start from one of your songs</h2>
+        <h3 className="s-day">Or start from one of your songs</h3>
         <div className="st-song-head">
           <input
             className="s-input"

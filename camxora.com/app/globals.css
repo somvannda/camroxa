@@ -4550,3 +4550,16 @@ html{color-scheme:dark}
 .sidebar{overflow:visible;z-index:50}
 .side-head{overflow:visible}
 .side-head .side-collapse{right:-12px;top:50%;transform:translateY(-50%);z-index:80;box-shadow:0 2px 6px rgba(0,0,0,.45)}
+
+/* Studio landing aligned with the app's page system */
+.st-landing{padding:0;gap:28px;height:auto;align-items:start}
+.st-landing .s-day{margin:0 0 14px}
+.st-new-card,.st-recent{min-height:200px;background:var(--s-bg2);border:1px solid var(--s-line);border-radius:12px}
+.st-new-card{border-style:dashed}
+.st-recent-card{display:flex}
+.st-recent{height:100%;align-items:flex-end;padding:12px}
+.st-see-all{background:none;border:0;padding:0;font-size:12px;color:var(--s-text2)}
+.st-song-head .s-btn{height:40px}
+.st-song-list{border-radius:12px}
+.st-song-row{padding:12px 16px}
+.st-landing-right .s-day{margin-bottom:14px}
