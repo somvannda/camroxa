@@ -4586,3 +4586,8 @@ html{color-scheme:dark}
 .st-landing .st-song-head{gap:8px}
 .st-landing .st-song-head .s-input{height:36px;font-size:13px}
 .st-landing .st-song-head .s-btn{height:36px}
+
+/* Buttons: icon and label share the centre line */
+.s-btn,.btn,.s-btn-icon{justify-content:center;align-items:center;text-align:center}
+.s-btn .icon,.btn .icon,.s-btn svg{flex:none}
+.stv-pill,.st-landing .s-btn{justify-content:center}
