@@ -678,6 +678,20 @@ export async function studioSessionForClip(
   );
 }
 
+/** Create an empty Suno Studio project. */
+export async function createStudioSession(
+  title = "Untitled Project"
+): Promise<{ id: string; title: string }> {
+  return musicJson<{ id: string; title: string }>(
+    "/api/v3/web-music/studio/sessions",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    }
+  );
+}
+
 export type WebMusicReportReason =
   | "copyright"
   | "explicit"

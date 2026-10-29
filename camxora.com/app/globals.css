@@ -4409,3 +4409,31 @@ html{color-scheme:dark}
 .st-transport{display:flex;align-items:center;gap:10px;padding:10px 16px;border-top:1px solid rgba(255,255,255,.08);background:var(--s-bg2)}
 .st-time{font-variant-numeric:tabular-nums;color:var(--s-text2);font-size:12px}
 @media (max-width:1100px){.st-details{display:none}}
+
+/* Studio landing (suno.com/studio) */
+.st-landing{display:grid;grid-template-columns:minmax(0,420px) minmax(0,1fr);gap:40px;padding:28px 32px;height:100vh;box-sizing:border-box;overflow:auto;background:var(--s-bg);color:var(--s-text)}
+.st-h2{font-size:15px;font-weight:600;margin:0 0 14px}
+.st-resume{display:flex;gap:14px;align-items:stretch}
+.st-new-card{width:220px;height:200px;border:1px dashed var(--s-line2);border-radius:14px;background:transparent;color:var(--s-text2);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;cursor:pointer;font-size:13px}
+.st-new-card:hover{border-color:var(--s-accent);color:var(--s-text)}
+.st-recent-card{flex:1;min-width:0;display:flex;align-items:flex-end}
+.st-recent{display:flex;align-items:center;gap:10px;width:100%;padding:10px;border:1px solid var(--s-line);border-radius:12px;background:var(--s-bg2);color:inherit;cursor:pointer;text-align:left}
+.st-recent.empty{opacity:.7;cursor:default}
+.st-recent-art{width:34px;height:34px;border-radius:6px;background:var(--s-bg3);flex:none}
+.st-recent b{display:block;font-size:12px}
+.st-recent small{color:var(--s-text2);font-size:11px}
+.st-see-all{margin-top:18px;background:none;border:0;color:var(--s-text2);font-size:12px;display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+.st-see-all:hover{color:var(--s-text)}
+.st-landing-right{min-width:0;display:flex;flex-direction:column}
+.st-song-head{display:flex;gap:8px;margin-bottom:10px}
+.st-song-head .s-input{flex:1}
+.st-song-list{border:1px solid var(--s-line);border-radius:14px;background:var(--s-bg2);overflow:auto;min-height:0;flex:1}
+.st-group{position:sticky;top:0;padding:8px 14px;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--s-text2);background:var(--s-bg2);border-bottom:1px solid var(--s-line)}
+.st-song-row{display:flex;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid var(--s-line)}
+.st-song-row:hover{background:rgba(255,255,255,.03)}
+.st-song-art{width:44px;height:44px;border-radius:8px;background:var(--s-bg3) center/cover no-repeat;flex:none}
+.st-song-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.st-song-body b{font-size:13px}
+.st-song-body small{font-size:11px;color:var(--s-text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.st-song-tags{text-transform:uppercase;letter-spacing:.04em;font-size:11px}
+@media (max-width:1000px){.st-landing{grid-template-columns:1fr;height:auto}}
