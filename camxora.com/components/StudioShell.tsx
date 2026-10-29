@@ -48,6 +48,8 @@ export function StudioShell() {
   const [playing, setPlaying] = useState(false);
   const [seconds, setSeconds] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [activeUrl, setActiveUrl] = useState("");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -86,18 +88,24 @@ export function StudioShell() {
   }, [projectParam]);
 
   useEffect(() => {
-    if (!playing) {
-      if (timer.current) window.clearInterval(timer.current);
-      timer.current = null;
-      return;
-    }
-    timer.current = window.setInterval(() => {
-      setSeconds((value) => (value >= 30 ? 0 : value + 0.1));
-    }, 100);
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (playing) void audio.play().catch(() => setPlaying(false));
+    else audio.pause();
+  }, [playing, activeUrl]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    const onTime = () => setSeconds(audio.currentTime);
+    const onEnd = () => setPlaying(false);
+    audio.addEventListener("timeupdate", onTime);
+    audio.addEventListener("ended", onEnd);
     return () => {
-      if (timer.current) window.clearInterval(timer.current);
+      audio.removeEventListener("timeupdate", onTime);
+      audio.removeEventListener("ended", onEnd);
     };
-  }, [playing]);
+  }, []);
 
   const readySongs = useMemo(
     () => songs.filter((song) => String(song.status).toUpperCase() === "SUCCESS"),
@@ -128,6 +136,10 @@ export function StudioShell() {
       const variant = clip?.variant === "alt" ? "alt" : "ok";
       const session = await studioSessionForClip(song.id, variant);
       if (!projectId) setProjectId(session.project_id);
+      setActiveUrl(
+        clip?.audio_url ||
+          `/api/v3/web-music/generations/${song.id}/stream/${variant}`
+      );
       setTracks((current) =>
         current.map((track) =>
           track.id === trackId
@@ -150,6 +162,10 @@ export function StudioShell() {
       const variant = clip?.variant === "alt" ? "alt" : "ok";
       const session = await studioSessionForClip(song.id, variant);
       if (!projectId) setProjectId(session.project_id);
+      setActiveUrl(
+        clip?.audio_url ||
+          `/api/v3/web-music/generations/${song.id}/stream/${variant}`
+      );
       setTracks((current) => {
         const target = current.find((track) => track.id === selectedTrack) ?? current[0];
         if (target) {
@@ -181,6 +197,7 @@ export function StudioShell() {
 
   return (
     <div className="stv">
+      <audio ref={audioRef} src={activeUrl} preload="metadata" />
       <header className="stv-top">
         <span className="st-chrome-project">{projectName}</span>
         <span className="st-chrome-dots">···</span>
