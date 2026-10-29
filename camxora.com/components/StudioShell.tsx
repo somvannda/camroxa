@@ -98,21 +98,31 @@ export function StudioShell() {
       const target = document.activeElement;
       if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
       event.preventDefault();
+      const track = tracks.find((item) => item.id === selectedClip.trackId);
+      const songId = track?.clipIds[selectedClip.index];
+      if (songId && projectId) {
+        const song = songs.find((item) => item.id === songId);
+        const clip = song?.clips?.find((item) => item.ready) ?? song?.clips?.[0];
+        const variant = clip?.variant === "alt" ? "alt" : "ok";
+        void updateStudioSessionClips(projectId, [songId], [variant], true).catch(
+          () => null
+        );
+      }
       setTracks((current) =>
-        current.map((track) =>
-          track.id === selectedClip.trackId
+        current.map((item) =>
+          item.id === selectedClip.trackId
             ? {
-                ...track,
-                clipIds: track.clipIds.filter((_, i) => i !== selectedClip.index),
+                ...item,
+                clipIds: item.clipIds.filter((_, i) => i !== selectedClip.index),
               }
-            : track
+            : item
         )
       );
       setSelectedClip(null);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedClip]);
+  }, [selectedClip, tracks, songs, projectId]);
 
   useEffect(() => {
     const audio = audioRef.current;
