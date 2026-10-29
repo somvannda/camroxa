@@ -140,12 +140,12 @@ function errorText(result: PromiseSettledResult<unknown>, fallback: string): str
     : fallback;
 }
 
-export function LibraryView() {
+export function LibraryView({ initialTab }: { initialTab?: LibTab } = {}) {
   const { user, loading: authLoading } = useAuth();
   const { playTrack } = usePlayer();
   const mounted = useRef(true);
 
-  const [tab, setTab] = useState<LibTab>("songs");
+  const [tab, setTab] = useState<LibTab>(initialTab ?? "songs");
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<FeedFilter[]>([]);
   const [sort, setSort] = useState<FeedSort>("new");
@@ -359,7 +359,7 @@ export function LibraryView() {
 
   const allRows: LibRow[] = generations.flatMap((song) =>
     generationClips(song)
-      .filter((clip) => !(song.trashed_variants ?? []).includes(clip.variant))
+      .filter((clip) => ![...(song.trashed_variants ?? []), ...(song.purged_variants ?? [])].includes(clip.variant))
       .map((clip) => ({
       song,
       clip,
@@ -1016,6 +1016,48 @@ export function LibraryView() {
     </button>
   );
 
+  async function reloadTrash() {
+    try {
+      const page = await listWebMusicGenerations(100, 0, undefined, true);
+      if (mounted.current) setTrashItems(page.items);
+    } catch {
+      /* keep the current list */
+    }
+  }
+
+  async function purgeTrashVersion(id: string, variant: string) {
+    try {
+      await deleteWebMusicGeneration(id, {
+        permanent: true,
+        variant: variant as "ok" | "alt",
+      });
+      if (!mounted.current) return;
+      setTrashSelected((current) => current.filter((key) => key !== `${id}:${variant}`));
+      await reloadTrash();
+      setToast("Deleted permanently");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not delete");
+    }
+  }
+
+  async function purgeSelectedTrash() {
+    if (!trashSelected.length) return;
+    try {
+      for (const key of trashSelected) {
+        const [id, variant] = key.split(":");
+        await deleteWebMusicGeneration(id, {
+          permanent: true,
+          variant: variant as "ok" | "alt",
+        });
+      }
+      setTrashSelected([]);
+      await reloadTrash();
+      setToast("Deleted permanently");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not delete");
+    }
+  }
+
   async function restoreSelectedTrash() {
     const keys = trashSelected;
     if (!keys.length) return;
@@ -1135,9 +1177,7 @@ export function LibraryView() {
                   <button
                     type="button"
                     className="s-btn s-btn-sm s-danger-text"
-                    onClick={() =>
-                      setConfirm({ kind: "generations", ids: [song.id], permanent: true })
-                    }
+                    onClick={() => void purgeTrashVersion(song.id, variant)}
                     disabled={deleting}
                   >
                     <Icon name="fa-trash" /> Delete permanently
@@ -1414,13 +1454,7 @@ export function LibraryView() {
             <button
               type="button"
               className="s-btn s-btn-sm s-danger-text"
-              onClick={() =>
-                setConfirm({
-                  kind: "generations",
-                  ids: Array.from(new Set(trashSelected.map((key) => key.split(":")[0]))),
-                  permanent: true,
-                })
-              }
+              onClick={() => void purgeSelectedTrash()}
               disabled={!trashSelected.length || deleting}
             >
               <Icon name="fa-trash" /> Delete permanently

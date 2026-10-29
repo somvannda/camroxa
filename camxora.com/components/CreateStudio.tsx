@@ -2147,7 +2147,12 @@ export function CreateStudio() {
 
   const feedRows: FeedRow[] = songs.flatMap((song) =>
     generationClips(song)
-      .filter((clip) => !(song.trashed_variants ?? []).includes(clip.variant))
+      .filter(
+        (clip) =>
+          ![...(song.trashed_variants ?? []), ...(song.purged_variants ?? [])].includes(
+            clip.variant
+          )
+      )
       .map((clip) => ({
       song,
       clip,
@@ -3888,7 +3893,7 @@ export function CreateStudio() {
                           <SMenuSeparator />
                           <SMenuItem
                             onSelect={() => {
-                              window.location.href = "/library?trash=1";
+                              window.location.href = "/library/trash";
                             }}
                           >
                             <Icon name="fa-trash" /> Trash
@@ -4063,7 +4068,7 @@ export function CreateStudio() {
                 <SMenuSeparator />
                 <SMenuItem
                   onSelect={() => {
-                    window.location.href = "/library?trash=1";
+                    window.location.href = "/library/trash";
                   }}
                 >
                   <Icon name="fa-trash" /> Trash

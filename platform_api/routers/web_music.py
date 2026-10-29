@@ -277,6 +277,7 @@ class WebMusicGenerationResponse(BaseModel):
     weirdness_constraint: float | None = None
     audio_weight: float | None = None
     trashed_variants: list[str] = Field(default_factory=list)
+    purged_variants: list[str] = Field(default_factory=list)
     clips: list[WebMusicClipResponse] = Field(default_factory=list)
 
 
@@ -315,6 +316,9 @@ def _generation_response(payload: dict) -> WebMusicGenerationResponse:
         audio_weight=_optional_float(payload.get("audio_weight")),
         trashed_variants=[
             str(value) for value in (payload.get("trashed_variants") or [])
+        ],
+        purged_variants=[
+            str(value) for value in (payload.get("purged_variants") or [])
         ],
         clips=[WebMusicClipResponse(**clip) for clip in payload.get("clips") or []],
     )

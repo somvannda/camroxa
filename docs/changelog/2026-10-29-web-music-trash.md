@@ -86,3 +86,17 @@ Verified against the live Suno bundle/UI:
 - No `/library/trash` URL: Trash is a tab, and `?trash=1` opens it.
 - Trashed files stay in B2 until permanently deleted; no auto-purge (manual only).
 - Audio-result "Move to Trash" uses `studio_operations` and still hard-deletes.
+
+## Update — per-version permanent delete and a Trash route
+
+- **`171_purged_variants`** adds `purged_variants TEXT[]`. Deleting one version
+  permanently hides that version (`purged`) while the sibling stays playable; the
+  row is removed once both are purged. `permanent=true` without a `variant`
+  still deletes the whole song.
+- List filter is now `cardinality(trashed_variants) + cardinality(purged_variants) < 2`;
+  playback guards both arrays.
+- **`POST /generations/trash`** `{ trash, clip_ids: ["taskId:variant"] }` mirrors
+  Suno's `POST /api/gen/trash`, used by multi-select in Trash.
+- Trash view supports selection with **Restore selected** / **Delete permanently**.
+- **`/library/trash`** route renders the Library on the Trash tab (Suno's
+  `/me/trash` equivalent); the workspace dropdown shortcut points at it.
