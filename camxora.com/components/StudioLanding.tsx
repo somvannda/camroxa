@@ -36,6 +36,7 @@ export function StudioLanding() {
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
   const [search, setSearch] = useState("");
+  const [kind, setKind] = useState<"all" | "instrumental" | "vocal">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
@@ -69,11 +70,16 @@ export function StudioLanding() {
   );
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
-    if (!term) return readySongs;
-    return readySongs.filter((song) =>
+    const byKind = readySongs.filter((song) => {
+      if (kind === "all") return true;
+      const instrumental = song.instrumental === true;
+      return kind === "instrumental" ? instrumental : !instrumental;
+    });
+    if (!term) return byKind;
+    return byKind.filter((song) =>
       `${song.title} ${song.style ?? ""}`.toLowerCase().includes(term)
     );
-  }, [readySongs, search]);
+  }, [readySongs, search, kind]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, WebMusicGeneration[]>();
@@ -156,7 +162,18 @@ export function StudioLanding() {
             )}
           </div>
         </div>
-        <button type="button" className="st-see-all">
+        <button
+          type="button"
+          className="st-see-all"
+          onClick={() => {
+            const first = projects[0];
+            if (first) {
+              router.push(`/studio/editor?project=${encodeURIComponent(first.id)}`);
+            }
+          }}
+          disabled={!projects.length}
+          title={projects.length ? "Open your latest project" : "No projects yet"}
+        >
           See all projects <Icon name="fa-chevron-right" />
         </button>
       </section>
@@ -171,10 +188,19 @@ export function StudioLanding() {
             onChange={(event) => setSearch(event.target.value)}
             aria-label="Search your songs"
           />
-          <button type="button" className="s-btn s-btn-ghost">
-            <Icon name="fa-filter" /> Filters
-          </button>
-          <button type="button" className="s-btn s-btn-ghost">
+          <select
+            className="s-input st-kind"
+            value={kind}
+            aria-label="Filter songs"
+            onChange={(event) =>
+              setKind(event.target.value as "all" | "instrumental" | "vocal")
+            }
+          >
+            <option value="all">All songs</option>
+            <option value="instrumental">Instrumental</option>
+            <option value="vocal">With vocals</option>
+          </select>
+          <button type="button" className="s-btn s-btn-ghost" onClick={() => void newProject()}>
             <Icon name="fa-plus" /> New
           </button>
         </div>
