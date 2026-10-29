@@ -354,6 +354,18 @@ export async function restoreWebMusicGeneration(
   );
 }
 
+/** Batch trash/restore clips, mirroring Suno's `POST /api/gen/trash`. */
+export async function setWebMusicTrash(
+  clipIds: string[],
+  trashed: boolean
+): Promise<{ updated: number }> {
+  return musicJson<{ updated: number }>("/api/v3/web-music/generations/trash", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ trash: trashed, clip_ids: clipIds }),
+  });
+}
+
 /** Permanently delete everything in the user's trash. */
 export async function emptyWebMusicTrash(): Promise<{ deleted: number }> {
   return musicJson<{ deleted: number }>("/api/v3/web-music/trash", {

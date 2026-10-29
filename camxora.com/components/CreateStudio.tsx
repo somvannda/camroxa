@@ -3888,6 +3888,14 @@ export function CreateStudio() {
                           <SMenuSeparator />
                           <SMenuItem
                             onSelect={() => {
+                              window.location.href = "/library?trash=1";
+                            }}
+                          >
+                            <Icon name="fa-trash" /> Trash
+                          </SMenuItem>
+                          <SMenuSeparator />
+                          <SMenuItem
+                            onSelect={() => {
                               setNewWorkspaceOpen(true);
                               setNewWorkspaceName("");
                             }}
@@ -4052,6 +4060,14 @@ export function CreateStudio() {
                       </SMenuRadioItem>
                     ))}
                 </SMenuRadioGroup>
+                <SMenuSeparator />
+                <SMenuItem
+                  onSelect={() => {
+                    window.location.href = "/library?trash=1";
+                  }}
+                >
+                  <Icon name="fa-trash" /> Trash
+                </SMenuItem>
                 <SMenuSeparator />
                 <SMenuItem
                   onSelect={() => {

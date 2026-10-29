@@ -57,6 +57,11 @@ class WebMusicGenerateRequest(BaseModel):
     workspace_id: UUID | None = None
 
 
+class TrashClipsRequest(BaseModel):
+    trash: bool
+    clip_ids: list[str] = Field(default_factory=list, max_length=200)
+
+
 class WebMusicClipResponse(BaseModel):
     variant: str
     label: str
@@ -1591,6 +1596,19 @@ async def unlock_preview(
             },
         )
     return _generation_response(payload)
+
+
+@router.post("/generations/trash", status_code=200)
+async def set_generations_trash(
+    body: TrashClipsRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    """Batch move/restore clips, mirroring Suno's `POST /api/gen/trash`."""
+    updated = await service.set_trash(
+        UUID(ctx.user_id), body.clip_ids, trashed=body.trash
+    )
+    return {"updated": updated}
 
 
 @router.delete("/generations/{task_id}", status_code=204)

@@ -5123,6 +5123,63 @@ class WebMusicService:
             targets,
         )
 
+    async def set_trash(
+        self,
+        user_id: UUID,
+        clip_ids: list[str],
+        *,
+        trashed: bool,
+    ) -> int:
+        """Batch trash/restore, mirroring Suno's `POST /api/gen/trash`.
+
+        Each clip id is ``taskId:variant`` (`ok` = Version 1, `alt` = 2).
+        Invalid entries are skipped rather than failing the whole batch.
+        """
+        updated = 0
+        for raw in clip_ids:
+            task_text, _, variant_text = str(raw).partition(":")
+            variant = variant_text.strip().lower()
+            if variant not in ("ok", "alt"):
+                continue
+            try:
+                task_id = UUID(task_text.strip())
+            except ValueError:
+                continue
+            if trashed:
+                await self._pool.execute(
+                    """
+                    UPDATE suno_tasks
+                    SET trashed_variants = ARRAY(
+                            SELECT DISTINCT v
+                            FROM unnest(trashed_variants || ARRAY[$4::text]) AS v
+                        ),
+                        updated_at = NOW()
+                    WHERE id = $1 AND user_id = $2 AND source = $3
+                    """,
+                    task_id,
+                    user_id,
+                    SUNO_TASK_SOURCE_WEB_MUSIC,
+                    variant,
+                )
+            else:
+                await self._pool.execute(
+                    """
+                    UPDATE suno_tasks
+                    SET trashed_variants = ARRAY(
+                            SELECT v FROM unnest(trashed_variants) AS v
+                            WHERE v <> $4
+                        ),
+                        updated_at = NOW()
+                    WHERE id = $1 AND user_id = $2 AND source = $3
+                    """,
+                    task_id,
+                    user_id,
+                    SUNO_TASK_SOURCE_WEB_MUSIC,
+                    variant,
+                )
+            updated += 1
+        return updated
+
     async def empty_trash(self, user_id: UUID) -> int:
         """Permanently delete songs whose versions are both in Trash."""
         rows = await self._pool.fetch(

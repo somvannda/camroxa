@@ -26,6 +26,7 @@ import {
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
   restoreWebMusicGeneration,
+  setWebMusicTrash,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
   getWebMusicGeneration,
@@ -167,6 +168,7 @@ export function LibraryView() {
   const [trashMode, setTrashMode] = useState(false);
   const [trashItems, setTrashItems] = useState<WebMusicGeneration[]>([]);
   const [trashLoading, setTrashLoading] = useState(false);
+  const [trashSelected, setTrashSelected] = useState<string[]>([]);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachNotice, setAttachNotice] = useState<null | "upload" | "record">(null);
 
@@ -1014,6 +1016,36 @@ export function LibraryView() {
     </button>
   );
 
+  async function restoreSelectedTrash() {
+    const keys = trashSelected;
+    if (!keys.length) return;
+    try {
+      await setWebMusicTrash(keys, false);
+      if (!mounted.current) return;
+      setTrashItems((current) =>
+        current
+          .map((item) => {
+            const remove = keys
+              .filter((key) => key.startsWith(`${item.id}:`))
+              .map((key) => key.split(":")[1]);
+            return remove.length
+              ? {
+                  ...item,
+                  trashed_variants: (item.trashed_variants ?? []).filter(
+                    (value) => !remove.includes(value)
+                  ),
+                }
+              : item;
+          })
+          .filter((item) => (item.trashed_variants ?? []).length > 0)
+      );
+      setTrashSelected([]);
+      setToast("Restored to library");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not restore");
+    }
+  }
+
   async function restoreSong(id: string, variant?: "ok" | "alt") {
     try {
       await restoreWebMusicGeneration(id, variant);
@@ -1062,6 +1094,23 @@ export function LibraryView() {
             const versionLabel = variant === "alt" ? "Version 2" : "Version 1";
             return (
               <div className="s-row" key={`${song.id}:${variant}`}>
+                <button
+                  type="button"
+                  className={`s-selectbox${trashSelected.includes(`${song.id}:${variant}`) ? " on" : ""}`}
+                  aria-label={`Select ${clip?.title || song.title}`}
+                  aria-pressed={trashSelected.includes(`${song.id}:${variant}`)}
+                  onClick={() =>
+                    setTrashSelected((current) =>
+                      current.includes(`${song.id}:${variant}`)
+                        ? current.filter((key) => key !== `${song.id}:${variant}`)
+                        : [...current, `${song.id}:${variant}`]
+                    )
+                  }
+                >
+                  {trashSelected.includes(`${song.id}:${variant}`) ? (
+                    <Icon name="fa-check" />
+                  ) : null}
+                </button>
                 <div className="s-row-body">
                   <div className="s-row-title">
                     <b>{clip?.title || song.title}</b>
@@ -1352,8 +1401,30 @@ export function LibraryView() {
 
         {trashMode ? (
           <div className="s-lib-bar">
-            <span className="s-note">{trashItems.length} in Trash</span>
+            <span className="s-note">{trashSelected.length} selected</span>
             <span className="s-spacer" />
+            <button
+              type="button"
+              className="s-btn s-btn-sm s-btn-secondary"
+              onClick={() => void restoreSelectedTrash()}
+              disabled={!trashSelected.length || deleting}
+            >
+              <Icon name="fa-rotate-left" /> Restore selected
+            </button>
+            <button
+              type="button"
+              className="s-btn s-btn-sm s-danger-text"
+              onClick={() =>
+                setConfirm({
+                  kind: "generations",
+                  ids: Array.from(new Set(trashSelected.map((key) => key.split(":")[0]))),
+                  permanent: true,
+                })
+              }
+              disabled={!trashSelected.length || deleting}
+            >
+              <Icon name="fa-trash" /> Delete permanently
+            </button>
             <button
               type="button"
               className="s-btn s-btn-sm s-danger-text"

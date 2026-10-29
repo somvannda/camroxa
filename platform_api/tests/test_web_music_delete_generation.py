@@ -144,3 +144,25 @@ async def test_empty_trash_deletes_fully_trashed_songs() -> None:
     assert deleted == 2
     sql = pool.fetch.await_args.args[0]
     assert "cardinality(trashed_variants) >= 2" in sql
+
+@pytest.mark.asyncio
+async def test_set_trash_batches_clip_ids() -> None:
+    pool = AsyncMock()
+    pool.execute = AsyncMock(return_value="UPDATE 1")
+    task_a = uuid4()
+    task_b = uuid4()
+
+    updated = await _service(pool).set_trash(
+        uuid4(),
+        [f"{task_a}:ok", f"{task_b}:alt", "not-a-clip", f"{task_a}:both"],
+        trashed=True,
+    )
+
+    assert updated == 2
+    assert pool.execute.await_count == 2
+    first = pool.execute.await_args_list[0].args
+    assert first[1] == task_a
+    assert first[4] == "ok"
+    second = pool.execute.await_args_list[1].args
+    assert second[1] == task_b
+    assert second[4] == "alt"
