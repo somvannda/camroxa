@@ -4048,6 +4048,7 @@ html{color-scheme:dark}
 .s-video-row{display:flex;align-items:center;gap:10px}
 .s-video-label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--s-text3);min-width:52px}
 .s-chip-row{display:flex;flex-wrap:wrap;gap:6px}
+.s-trash-actions{display:flex;align-items:center;gap:8px;flex:none}
 .s-video-result{display:flex;flex-direction:column;gap:10px}
 .s-video-player{width:100%;border-radius:12px;background:#000;aspect-ratio:16/9}
 .s-video-actions{display:flex;gap:8px;flex-wrap:wrap}

@@ -1521,12 +1521,14 @@ async def list_generations(
     limit: int = Query(40, ge=1, le=100),
     offset: int = Query(0, ge=0),
     workspace_id: UUID | None = None,
+    trashed: bool = False,
 ) -> WebMusicGenerationListResponse:
     payload = await service.list_generations(
         UUID(ctx.user_id),
         limit=limit,
         offset=offset,
         workspace_id=workspace_id,
+        trashed=trashed,
     )
     return WebMusicGenerationListResponse(
         items=[_generation_response(item) for item in payload["items"]],
@@ -1592,9 +1594,29 @@ async def delete_generation(
     task_id: UUID,
     ctx: CurrentUserDep,
     service: WebMusicServiceDep,
+    permanent: bool = Query(False),
 ) -> Response:
-    await service.delete_generation(UUID(ctx.user_id), task_id)
+    await service.delete_generation(UUID(ctx.user_id), task_id, permanent=permanent)
     return Response(status_code=204)
+
+
+@router.post("/generations/{task_id}/restore", status_code=200)
+async def restore_generation(
+    task_id: UUID,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    await service.restore_generation(UUID(ctx.user_id), task_id)
+    return {"status": "restored"}
+
+
+@router.delete("/trash", status_code=200)
+async def empty_trash(
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    deleted = await service.empty_trash(UUID(ctx.user_id))
+    return {"deleted": deleted}
 
 
 @router.get("/generations/{task_id}/download")

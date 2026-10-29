@@ -301,10 +301,12 @@ export async function generateWebMusic(
 export async function listWebMusicGenerations(
   limit = 40,
   offset = 0,
-  workspaceId?: string
+  workspaceId?: string,
+  trashed = false
 ): Promise<WebMusicGenerationPage> {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
   if (workspaceId) params.set("workspace_id", workspaceId);
+  if (trashed) params.set("trashed", "true");
   return musicJson<WebMusicGenerationPage>(`/api/v3/web-music/generations?${params.toString()}`);
 }
 
@@ -324,8 +326,30 @@ export async function updateWebMusicGenerationTitle(
   });
 }
 
-export async function deleteWebMusicGeneration(id: string): Promise<void> {
-  await musicJson<void>(`/api/v3/web-music/generations/${encodeURIComponent(id)}`, {
+export async function deleteWebMusicGeneration(
+  id: string,
+  permanent = false
+): Promise<void> {
+  const query = permanent ? "?permanent=true" : "";
+  await musicJson<void>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}${query}`,
+    {
+      method: "DELETE",
+    }
+  );
+}
+
+/** Bring a trashed song back into the library. */
+export async function restoreWebMusicGeneration(id: string): Promise<void> {
+  await musicJson<unknown>(
+    `/api/v3/web-music/generations/${encodeURIComponent(id)}/restore`,
+    { method: "POST" }
+  );
+}
+
+/** Permanently delete everything in the user's trash. */
+export async function emptyWebMusicTrash(): Promise<{ deleted: number }> {
+  return musicJson<{ deleted: number }>("/api/v3/web-music/trash", {
     method: "DELETE",
   });
 }

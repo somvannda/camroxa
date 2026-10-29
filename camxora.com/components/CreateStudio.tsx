@@ -1715,13 +1715,16 @@ export function CreateStudio() {
       if (!mounted.current) return;
       setSongs((current) => current.filter((item) => item.id !== target.id));
       setTotalSongs((current) => Math.max(0, current - 1));
-      setSelectedId(null);
-      setSelectedDetail(null);
-      setSelectedVariant(null);
+      if (selectedId === target.id) {
+        setSelectedId(null);
+        setSelectedDetail(null);
+        setSelectedVariant(null);
+      }
       setSelectedClipKeys((current) =>
         current.filter((key) => !key.startsWith(`${target.id}:`))
       );
       setDeleteTarget(null);
+      setToast("Moved to Trash");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Could not delete this track");
     } finally {
@@ -2233,22 +2236,6 @@ export function CreateStudio() {
       }
     }
     await copyClipLink(song, clip);
-  }
-
-  async function deleteRow(song: WebMusicGeneration) {
-    setDeletingId(song.id);
-    try {
-      await deleteWebMusicGeneration(song.id);
-      setSongs((current) => current.filter((item) => item.id !== song.id));
-      if (selectedId === song.id) {
-        setSelectedId(null);
-        }
-      setToast("Song deleted");
-    } catch (cause) {
-      setToast(cause instanceof Error ? cause.message : "Could not delete song");
-    } finally {
-      if (mounted.current) setDeletingId(null);
-    }
   }
 
   function openDetail(song: WebMusicGeneration, clip: WebMusicClip) {
@@ -2843,9 +2830,9 @@ export function CreateStudio() {
             <SMenuSeparator />
             <SMenuItem
               disabled={deletingId === song.id}
-              onSelect={() => void deleteRow(song)}
+              onSelect={() => setDeleteTarget(song)}
             >
-              <Icon name="fa-trash" /> {deletingId === song.id ? "Deleting…" : "Delete"}
+              <Icon name="fa-trash" /> Move to Trash
             </SMenuItem>
           </SMenu>
         </div>
@@ -4643,7 +4630,7 @@ export function CreateStudio() {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="s-modal-head">
-              <h3>Delete song?</h3>
+              <h3>Move to Trash?</h3>
               <button
                 type="button"
                 className="s-btn s-btn-icon sm"
@@ -4655,8 +4642,9 @@ export function CreateStudio() {
             </div>
             <div className="s-modal-body">
               <p className="s-note">
-                &quot;{deleteTarget.title}&quot; and both versions will be permanently
-                removed from your library. This cannot be undone.
+                &quot;{deleteTarget.title}&quot; and both versions move to Trash.
+                You can restore them from Library → Trash, or empty the trash to
+                remove them for good.
               </p>
             </div>
             <div className="s-modal-foot">
@@ -4674,7 +4662,7 @@ export function CreateStudio() {
                 disabled={deletingId === deleteTarget.id}
                 onClick={() => void confirmDeleteSelected()}
               >
-                {deletingId === deleteTarget.id ? "Deleting..." : "Delete"}
+                {deletingId === deleteTarget.id ? "Moving…" : "Move to Trash"}
               </button>
             </div>
           </div>

@@ -25,6 +25,7 @@ import {
   createWebMusicPlaylist,
   createWebMusicWorkspace,
   deleteWebMusicGeneration,
+  restoreWebMusicGeneration,
   deleteWebMusicPlaylist,
   fetchWebMusicLikedKeys,
   getWebMusicGeneration,
@@ -99,7 +100,7 @@ type LibRow = {
 };
 
 type ConfirmState =
-  | { kind: "generations"; ids: string[] }
+  | { kind: "generations"; ids: string[]; permanent?: boolean }
   | { kind: "playlist"; playlist: WebMusicPlaylistSummary }
   | null;
 
@@ -163,6 +164,8 @@ export function LibraryView() {
   const [dislikedKeys, setDislikedKeys] = useState<string[]>([]);
 
   const [trashMode, setTrashMode] = useState(false);
+  const [trashItems, setTrashItems] = useState<WebMusicGeneration[]>([]);
+  const [trashLoading, setTrashLoading] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [attachNotice, setAttachNotice] = useState<null | "upload" | "record">(null);
 
@@ -252,6 +255,25 @@ export function LibraryView() {
   useEffect(() => {
     setPage(1);
   }, [tab, search, filters, sort]);
+
+  useEffect(() => {
+    if (!trashMode) return;
+    let active = true;
+    setTrashLoading(true);
+    listWebMusicGenerations(100, 0, undefined, true)
+      .then((page) => {
+        if (active) setTrashItems(page.items);
+      })
+      .catch(() => {
+        if (active) setTrashItems([]);
+      })
+      .finally(() => {
+        if (active) setTrashLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [trashMode]);
 
   useEffect(() => {
     const measure = () => {
@@ -554,7 +576,7 @@ export function LibraryView() {
     }
   }
 
-  async function deleteGenerations(ids: string[]) {
+  async function deleteGenerations(ids: string[], permanent = false) {
     setConfirm(null);
     if (!ids.length || deleting) return;
     setDeleting(true);
@@ -562,7 +584,7 @@ export function LibraryView() {
     const failures: string[] = [];
     for (const id of ids) {
       try {
-        await deleteWebMusicGeneration(id);
+        await deleteWebMusicGeneration(id, permanent);
         deleted.push(id);
       } catch (cause) {
         failures.push(cause instanceof Error ? cause.message : "Could not delete song");
@@ -573,6 +595,7 @@ export function LibraryView() {
     setGenerations((current) => current.filter((item) => !gone.has(item.id)));
     setTotalGenerations((current) => Math.max(0, current - deleted.length));
     setSelectedIds((current) => current.filter((id) => !gone.has(id)));
+    setTrashItems((current) => current.filter((item) => !gone.has(item.id)));
     if (detailId && gone.has(detailId)) {
       closeDetail();
       setDetail(null);
@@ -581,7 +604,13 @@ export function LibraryView() {
     }
     setDeleting(false);
     setToast(
-      deleted.length === 1 ? "Song deleted" : `${deleted.length} songs deleted`
+      permanent
+        ? deleted.length === 1
+          ? "Deleted forever"
+          : `${deleted.length} songs deleted forever`
+        : deleted.length === 1
+          ? "Moved to Trash"
+          : `${deleted.length} songs moved to Trash`
     );
     if (failures.length) setError(failures[0]);
     if (!deleted.length) setToast("Could not delete song");
@@ -978,7 +1007,76 @@ export function LibraryView() {
     </button>
   );
 
+  async function restoreSong(id: string) {
+    try {
+      await restoreWebMusicGeneration(id);
+      if (!mounted.current) return;
+      setTrashItems((current) => current.filter((item) => item.id !== id));
+      setToast("Restored to library");
+    } catch (cause) {
+      setToast(cause instanceof Error ? cause.message : "Could not restore the song");
+    }
+  }
+
+  const renderTrash = () => {
+    if (trashLoading) return <p className="s-note">Loading Trash…</p>;
+    if (!trashItems.length) {
+      return renderEmpty(
+        "fa-trash",
+        "Trash is empty",
+        "Songs you move to Trash land here first, so you can restore them.",
+        <button
+          type="button"
+          className="s-btn s-btn-secondary"
+          onClick={() => setTrashMode(false)}
+        >
+          Back to library
+        </button>
+      );
+    }
+    return (
+      <div>
+        {trashItems.map((song) => (
+          <div className="s-row" key={song.id}>
+            <div className="s-row-body">
+              <div className="s-row-title">
+                <b>{song.title}</b>
+                <span className="s-row-version">
+                  · {song.model_label || song.model || "V6"}
+                </span>
+              </div>
+              <div className="s-row-desc">
+                In Trash{song.created_at ? ` · ${formatDate(song.created_at)}` : ""}
+              </div>
+            </div>
+            <div className="s-trash-actions">
+              <button
+                type="button"
+                className="s-btn s-btn-sm s-btn-secondary"
+                onClick={() => void restoreSong(song.id)}
+                disabled={deleting}
+              >
+                <Icon name="fa-rotate-left" /> Restore
+              </button>
+              <button
+                type="button"
+                className="s-btn s-btn-sm s-danger-text"
+                onClick={() =>
+                  setConfirm({ kind: "generations", ids: [song.id], permanent: true })
+                }
+                disabled={deleting}
+              >
+                <Icon name="fa-trash" /> Delete forever
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
+
   const tabBody = () => {
+    if (trashMode) return renderTrash();
     if (bootLoading) return skeletonRows;
 
     if (tab === "songs" || tab === "history") {
@@ -1227,23 +1325,21 @@ export function LibraryView() {
 
         {trashMode ? (
           <div className="s-lib-bar">
-            <span className="s-note">{selectedIds.length} selected</span>
+            <span className="s-note">{trashItems.length} in Trash</span>
             <span className="s-spacer" />
             <button
               type="button"
-              className="s-btn s-btn-sm s-btn-secondary"
-              onClick={selectAllVisible}
-              disabled={!pageRows.length}
-            >
-              Select all
-            </button>
-            <button
-              type="button"
               className="s-btn s-btn-sm s-danger-text"
-              onClick={() => setConfirm({ kind: "generations", ids: selectedIds })}
-              disabled={!selectedIds.length || deleting}
+              onClick={() =>
+                setConfirm({
+                  kind: "generations",
+                  ids: trashItems.map((item) => item.id),
+                  permanent: true,
+                })
+              }
+              disabled={!trashItems.length || deleting}
             >
-              <Icon name="fa-trash" /> Delete selected
+              <Icon name="fa-trash" /> Empty Trash
             </button>
             <button
               type="button"
@@ -1253,7 +1349,7 @@ export function LibraryView() {
                 setSelectedIds([]);
               }}
             >
-              Cancel
+              Close
             </button>
           </div>
         ) : null}
@@ -1702,7 +1798,9 @@ export function LibraryView() {
             <div className="s-modal-head">
               <h3>
                 {confirm.kind === "generations"
-                  ? `Delete ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"}?`
+                  ? confirm.permanent
+                    ? `Delete ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"} forever?`
+                    : `Move ${confirm.ids.length} ${confirm.ids.length === 1 ? "song" : "songs"} to Trash?`
                   : "Delete playlist?"}
               </h3>
               <button
@@ -1717,7 +1815,9 @@ export function LibraryView() {
             <div className="s-modal-body">
               <p className="s-note">
                 {confirm.kind === "generations"
-                  ? "This permanently removes the selected songs and their files from your library."
+                  ? confirm.permanent
+                    ? "This permanently removes the selected songs and their files. It cannot be undone."
+                    : "They move to Trash first — restore them any time, or empty the trash to delete them for good."
                   : `"${confirm.playlist.name}" will be permanently deleted. The songs stay in your library.`}
               </p>
             </div>
@@ -1735,11 +1835,16 @@ export function LibraryView() {
                 className="s-btn s-btn-danger"
                 disabled={deleting}
                 onClick={() => {
-                  if (confirm.kind === "generations") void deleteGenerations(confirm.ids);
+                  if (confirm.kind === "generations")
+                    void deleteGenerations(confirm.ids, confirm.permanent);
                   else void deletePlaylist(confirm.playlist);
                 }}
               >
-                {deleting ? "Deleting..." : "Delete"}
+                {deleting
+                  ? "Working…"
+                  : confirm.kind === "generations" && !confirm.permanent
+                    ? "Move to Trash"
+                    : "Delete forever"}
               </button>
             </div>
           </div>

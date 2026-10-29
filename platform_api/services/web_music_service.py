@@ -4626,15 +4626,18 @@ class WebMusicService:
         limit: int = 40,
         offset: int = 0,
         workspace_id: UUID | None = None,
+        trashed: bool = False,
     ) -> dict[str, Any]:
         safe_limit = max(1, min(int(limit), 100))
         safe_offset = max(0, int(offset))
         resolved_workspace_id = await self._resolve_workspace_id(user_id, workspace_id)
+        trash_filter = "trashed_at IS NOT NULL" if trashed else "trashed_at IS NULL"
         total = int(
             await self._pool.fetchval(
-                """
+                f"""
                 SELECT COUNT(*)::int FROM suno_tasks
                 WHERE user_id = $1 AND source = $2 AND workspace_id = $3
+                  AND {trash_filter}
                 """,
                 user_id,
                 SUNO_TASK_SOURCE_WEB_MUSIC,
@@ -4643,7 +4646,7 @@ class WebMusicService:
             or 0
         )
         rows = await self._pool.fetch(
-            """
+            f"""
             SELECT id, title, lyrics, style, model, instrumental, status,
                    audio_url_ok, audio_url_alt, error_message, created_at, updated_at,
                    external_task_id, negative_tags, vocal_gender, style_weight, weirdness_constraint, audio_weight,
@@ -4655,9 +4658,11 @@ class WebMusicService:
                    encrypted_original_key_ok, encrypted_original_key_alt,
                    package_status_ok, package_status_alt,
                    content_key_id_ok, content_key_id_alt,
-                   packaged_storage_key_ok, packaged_storage_key_alt
+                   packaged_storage_key_ok, packaged_storage_key_alt,
+                   trashed_at
             FROM suno_tasks
             WHERE user_id = $1 AND source = $2 AND workspace_id = $3
+              AND {trash_filter}
             ORDER BY created_at DESC
             LIMIT $4 OFFSET $5
             """,
@@ -5002,18 +5007,20 @@ class WebMusicService:
             raise NotFoundError("Generation not found.")
         return await self.get_generation(user_id, task_id)
 
-    async def delete_generation(self, user_id: UUID, task_id: UUID) -> None:
-        """Permanently remove one of the user's own web-music songs.
+    async def delete_generation(
+        self, user_id: UUID, task_id: UUID, *, permanent: bool = False
+    ) -> None:
+        """Move one of the user's own songs to Trash, or delete it for good.
 
-        Credits for a failed generation were already refunded, so this never
-        touches the wallet — it only drops the song from the user's workspace.
-        Rows that depend on the task (playlist items, likes, play counts) cascade
-        on delete via their foreign keys. In-flight generations are refused so an
-        active Suno job is not orphaned mid-flight.
+        A soft delete only sets ``trashed_at``: the row, its files and its
+        playlist/like links survive so the track can be restored. ``permanent``
+        keeps the old hard-delete behaviour, used by "Delete forever" and by
+        "Empty trash". In-flight generations are refused so an active Suno job
+        is not orphaned mid-flight.
         """
         row = await self._pool.fetchrow(
             """
-            SELECT id, status FROM suno_tasks
+            SELECT id, status, trashed_at FROM suno_tasks
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
             task_id,
@@ -5027,15 +5034,66 @@ class WebMusicService:
                 "This song is still generating. Wait until it finishes or fails before deleting it.",
                 details={"status": str(row["status"] or "")},
             )
+        if permanent:
+            await self._pool.execute(
+                """
+                DELETE FROM suno_tasks
+                WHERE id = $1 AND user_id = $2 AND source = $3
+                """,
+                task_id,
+                user_id,
+                SUNO_TASK_SOURCE_WEB_MUSIC,
+            )
+            return
+        if row["trashed_at"] is not None:
+            return
         await self._pool.execute(
             """
-            DELETE FROM suno_tasks
+            UPDATE suno_tasks
+            SET trashed_at = NOW(), updated_at = NOW()
             WHERE id = $1 AND user_id = $2 AND source = $3
             """,
             task_id,
             user_id,
             SUNO_TASK_SOURCE_WEB_MUSIC,
         )
+
+    async def restore_generation(self, user_id: UUID, task_id: UUID) -> None:
+        """Bring a trashed song back into the library."""
+        row = await self._pool.fetchrow(
+            """
+            SELECT id FROM suno_tasks
+            WHERE id = $1 AND user_id = $2 AND source = $3 AND trashed_at IS NOT NULL
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        if row is None:
+            raise NotFoundError("Generation not found in Trash.")
+        await self._pool.execute(
+            """
+            UPDATE suno_tasks
+            SET trashed_at = NULL, updated_at = NOW()
+            WHERE id = $1 AND user_id = $2 AND source = $3
+            """,
+            task_id,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+
+    async def empty_trash(self, user_id: UUID) -> int:
+        """Permanently delete every trashed song for this user."""
+        rows = await self._pool.fetch(
+            """
+            DELETE FROM suno_tasks
+            WHERE user_id = $1 AND source = $2 AND trashed_at IS NOT NULL
+            RETURNING id
+            """,
+            user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
+        )
+        return len(rows)
 
     async def _poll_suno_task_status(self, external_task_id: str):
         """Poll record-info across the pool's keys.
@@ -5513,6 +5571,7 @@ class WebMusicService:
                        is_preview, preview_seconds
                 FROM suno_tasks
                 WHERE id = $1 AND user_id = $2 AND source = $3
+                  AND trashed_at IS NULL
                 """,
                 task_id,
                 user_id,
@@ -5535,6 +5594,7 @@ class WebMusicService:
             JOIN web_music_playlists p
               ON p.id = i.playlist_id AND p.is_public = TRUE
             WHERE t.id = $1 AND t.source = $2
+              AND t.trashed_at IS NULL
             LIMIT 1
             """,
             task_id,
