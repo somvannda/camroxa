@@ -3437,7 +3437,7 @@ export function CreateStudio() {
                     <div className="s-form-card">
                       <div className="s-rowline">
                         <span className="s-rowline-label">Songs to generate</span>
-                        <div className="s-radio-pair" role="group" aria-label="Songs to generate">
+                        <div className="s-radio-pair accent" role="group" aria-label="Songs to generate">
                           {SIMPLE_SONG_COUNTS.map((count) => (
                             <button
                               key={count}

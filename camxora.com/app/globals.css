@@ -3152,6 +3152,10 @@ html{color-scheme:dark}
 .s-radio-pair{display:inline-flex;gap:4px;background:var(--s-bg3);padding:2px;border-radius:var(--s-pill)}
 .s-radio-pair button{height:28px;min-width:44px;padding:0 10px;border-radius:var(--s-pill);font-size:13px;color:var(--s-text3)}
 .s-radio-pair button.on{background:#3a3a40;color:var(--s-text)}
+.s-radio-pair.accent{background:rgba(124,58,237,.22)}
+.s-radio-pair.accent button{color:#ded5ff}
+.s-radio-pair.accent button.on{background:rgba(124,58,237,.60);color:#fff}
+.s-radio-pair.accent button:disabled{color:rgba(222,213,255,.55)}
 .s-switch{position:relative;width:40px;height:22px;border-radius:var(--s-pill);background:var(--s-bg4);transition:background .15s;flex:none}
 .s-switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:var(--s-text2);transition:transform .18s,background .18s}
 .s-switch.on{background:var(--s-text)}
