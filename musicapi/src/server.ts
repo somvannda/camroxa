@@ -80,7 +80,6 @@ import { createJobQueue } from "./jobQueue.js";
 import { ConcurrencyGate, QueueFullError } from "./concurrency.js";
 import { defaultRoutingPolicy, normalizeModel } from "./models.js";
 import { getObjectBytes, getReadUrl, objectExists, objectKey, putObject, storageConfigured, storageInfo } from "./storage.js";
-import { extractVideoFrames } from "./video.js";
 import { transcodeAudio, pickPublicAudioUrl } from "./audio.js";
 import { renderMusicVideo } from "./video.js";
 import { decryptSunoClip, openDecryptedM4aStream } from "./sunoAudio.js";
@@ -3567,16 +3566,20 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       : [];
   }
 
-  /** Extract representative frames from a reference video and upload them to
-   *  Suno as images. The upstream API exposes image ids only, so several frames
-   *  are the closest durable approximation of Suno's native video reference. */
-  async function uploadReferenceVideoFrames(client: SunoClient, url: string): Promise<string[]> {
+  /** Upload a reference clip to Suno and return the upload id used as
+   *  `user_uploaded_video_id`. Suno processes clips asynchronously. */
+  async function uploadReferenceVideo(client: SunoClient, url: string): Promise<string> {
     const resp = await fetch(url, { signal: AbortSignal.timeout(60_000), redirect: "follow" });
     if (!resp.ok) throw new Error(`reference video fetch failed (${resp.status})`);
     const bytes = Buffer.from(await resp.arrayBuffer());
     if (bytes.length > 100 * 1024 * 1024) throw new Error("reference video exceeds 100MB");
-    const frames = await extractVideoFrames(bytes);
-    return Promise.all(frames.map((frame) => client.uploadImage(frame, "jpg")));
+    const contentType = (resp.headers.get("content-type") || "").split(";")[0].trim().toLowerCase();
+    const ext: "mp4" | "mov" | "webm" = contentType.includes("quicktime")
+      ? "mov"
+      : contentType.includes("webm")
+        ? "webm"
+        : "mp4";
+    return client.uploadVideo(bytes, ext, `reference.${ext}`);
   }
 
   type MusicReferences = {
@@ -3595,7 +3598,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
   ) {
     const gen = buildMusicGen(params);
     return async (client: SunoClient): Promise<import("./client.js").Clip[]> => {
-      const [inlineImageIds, imageIds, videoIdGroups, audioIds] = await Promise.all([
+      const [inlineImageIds, imageIds, videoIds, audioIds] = await Promise.all([
         Promise.all(
           refs.inlineImages.map((dataUrl) => {
             const { bytes, ext } = decodeImageData(dataUrl);
@@ -3603,14 +3606,16 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           }),
         ),
         Promise.all(refs.imageUrls.map((url) => uploadReferenceImage(client, url))),
-        Promise.all(refs.videoUrls.map((url) => uploadReferenceVideoFrames(client, url))),
+        Promise.all(refs.videoUrls.map((url) => uploadReferenceVideo(client, url))),
         Promise.all(refs.audioUrls.map((url) => uploadReferenceAudio(client, url))),
       ]);
-      const allImageIds = [...inlineImageIds, ...imageIds, ...videoIdGroups.flat()];
-      const hasReferences = allImageIds.length > 0 || audioIds.length > 0;
+      const allImageIds = [...inlineImageIds, ...imageIds];
+      const hasReferences =
+        allImageIds.length > 0 || videoIds.length > 0 || audioIds.length > 0;
       return client.generateMusic({
         ...gen,
         ...(allImageIds.length ? { imageIds: allImageIds } : {}),
+        ...(videoIds.length ? { videoIds } : {}),
         ...(audioIds.length ? { audioIds } : {}),
         ...(hasReferences ? { task: "agentic_thinking" } : {}),
       });

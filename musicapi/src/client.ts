@@ -45,6 +45,8 @@ export interface GenerateParams {
   imageIds?: string[];
   /** Audio upload ids (from `createAudioUpload`) sent as `user_uploaded_audio_ids`. */
   audioIds?: string[];
+  /** Video upload id (from `uploadVideo`) sent as `user_uploaded_video_id` (max 1). */
+  videoIds?: string[];
   /** Suno internal task (e.g. "agentic_thinking") and create metadata. */
   task?: string;
   metadata?: Record<string, unknown>;
@@ -395,6 +397,10 @@ export class SunoClient {
     }
     if (params.audioIds && params.audioIds.length) {
       payload.user_uploaded_audio_ids = params.audioIds;
+    }
+    if (params.videoIds && params.videoIds.length) {
+      // Suno's create composer accepts exactly one reference clip.
+      payload.user_uploaded_video_id = params.videoIds[0];
     }
     if (params.artistClipId) payload.artist_clip_id = params.artistClipId;
 
@@ -1161,6 +1167,67 @@ export class SunoClient {
       throw new Error(`image upload-finish failed (${finish.status}): ${await finish.text()}`);
     }
     return id;
+  }
+
+  // =========================================
+  // Video upload (reference clip)
+  // =========================================
+
+  /** Step 1: create a video upload session → { id, url, fields }.
+   *  Mirrors Suno's composer: POST /api/uploads/video/ with { extension }. */
+  async createVideoUpload(
+    extension: string,
+  ): Promise<{ id: string; url: string; fields: Record<string, string> }> {
+    const res = await this.request("/api/uploads/video/", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ extension: extension.replace(/^\./, "") }),
+    });
+    if (!res.ok) throw await sunoHttpError(`createVideoUpload`, res);
+    return (await res.json()) as { id: string; url: string; fields: Record<string, string> };
+  }
+
+  /**
+   * Full reference-video upload: create session → S3 → upload-finish → poll
+   * processing. Returns the upload id that goes in `user_uploaded_video_id`.
+   * Suno processes clips asynchronously (3s poll, up to ~6 minutes).
+   */
+  async uploadVideo(bytes: Buffer, extension = "mp4", filename = "reference.mp4"): Promise<string> {
+    const ext = extension.replace(/^\./, "").toLowerCase();
+    const { id, url, fields } = await this.createVideoUpload(ext);
+    const contentType = fields["Content-Type"] || `video/${ext}`;
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, v);
+    form.append("file", new Blob([new Uint8Array(bytes)], { type: contentType }), filename);
+    const up = await fetch(url, { method: "POST", body: form });
+    if (!up.ok && up.status !== 204) {
+      throw new Error(`video S3 upload failed (${up.status}): ${await up.text()}`);
+    }
+    // Confirm with Suno; without this the generate call rejects the clip.
+    const finish = await this.request(`/api/uploads/video/${id}/upload-finish/`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        upload_type: "studio_file_upload",
+        upload_filename: filename,
+        fail_task_on_moderation: false,
+      }),
+    });
+    if (!finish.ok) {
+      throw new Error(`video upload-finish failed (${finish.status}): ${await finish.text()}`);
+    }
+    const deadline = Date.now() + 6 * 60_000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 3_000));
+      const statusRes = await this.request(`/api/uploads/video/${id}/`);
+      if (!statusRes.ok) continue;
+      const body = (await statusRes.json()) as { status?: string; error_type?: string };
+      if (body.status === "error") {
+        throw new Error(`video processing failed: ${body.error_type ?? "unknown"}`);
+      }
+      if (body.status === "complete") return id;
+    }
+    throw new Error("video processing timed out");
   }
 
   // =========================================
