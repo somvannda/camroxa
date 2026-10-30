@@ -100,7 +100,13 @@ Camxora: button disabled.
 ## F12 — Project menu
 
 Rename (`/api/project/{id}/metadata`), versions, archive, delete — `B`/`H`.
-Camxora: rename wrapped, not surfaced.
+Camxora: not surfaced. Verified live 2026-10-30: `POST /api/project/{id}/metadata`
+returns `404 Project not found` for a Studio project id (same as the clip list),
+so the Studio rename path is still unknown and must not be shipped as a guess.
+The version **list** endpoint is also uncaptured; candidate read-only probes
+(`/api/studio/project/{id}/versions`, `/api/studio/{id}/versions`,
+`/api/studio/project_versions`, `/api/project/{id}/versions`) all returned
+404/401.
 
 ## F13 — Collaborators
 
