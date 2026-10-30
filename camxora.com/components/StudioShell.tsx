@@ -440,7 +440,7 @@ export function StudioShell() {
   const [projectName, setProjectName] = useState("Untitled Project");
   const [projectId, setProjectId] = useState<string | null>(projectParam);
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const [addTrackMenuPos, setAddTrackMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const [addTrackMenuPos, setAddTrackMenuPos] = useState<{ x: number; y: number; up: boolean } | null>(null);
   const addTrackMenuOpen = Boolean(addTrackMenuPos);
   const [libraryTab, setLibraryTab] = useState<"songs" | "liked">("songs");
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
@@ -1898,6 +1898,9 @@ export function StudioShell() {
                       Math.min(addTrackMenuPos.x, window.innerWidth - 200)
                     ),
                     top: addTrackMenuPos.y,
+                    transform: addTrackMenuPos.up
+                      ? "translateY(-100%)"
+                      : "none",
                   }}
                 >
                 <button
@@ -1950,7 +1953,15 @@ export function StudioShell() {
               aria-expanded={addTrackMenuOpen}
               onClick={(event) => {
               const rect = event.currentTarget.getBoundingClientRect();
-              setAddTrackMenuPos((current) => (current ? null : { x: rect.left, y: rect.top - 8 }));
+              setAddTrackMenuPos((current) =>
+                current
+                  ? null
+                  : {
+                      x: rect.left,
+                      up: rect.top > 200,
+                      y: rect.top > 200 ? rect.top - 8 : rect.bottom + 8,
+                    }
+              );
             }}
             >
               <Icon name="fa-plus" /> Add new track
