@@ -41,6 +41,9 @@ rather than shipping a guess.
   edit; nothing is written while idle.
 - **One version per edit burst**, with `base_version_id`; on `409` reload
   `latest_version_id` and replay.
+- **Ownership is checked at the proxy.** Studio session routes verify the Suno
+  project id against the local index (`studio_projects.suno_project_id`) and
+  return `403` for another user's project.
 - **No invented controls.** A control that has no matching Suno behaviour is
   either removed or disabled with a reason.
 - **No local-only state pretending to be saved.** If it isn't persisted through

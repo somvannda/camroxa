@@ -3565,12 +3565,22 @@ class WebMusicService:
         payload = await self._musicapi_studio_call(
             "POST", f"/internal/studio/projects/for-clip/{clip_id}"
         )
-        return {"project_id": str(payload.get("project_id") or "")}
+        project_id = str(payload.get("project_id") or "")
+        title = await self._pool.fetchval(
+            "SELECT title FROM suno_tasks WHERE id = $1 AND user_id = $2",
+            task_id,
+            user_id,
+        )
+        # Index the project so later reads/writes can be ownership-checked.
+        await self._ensure_studio_project_index(
+            user_id, project_id, title=str(title or "Untitled Project")
+        )
+        return {"project_id": project_id}
 
     async def get_studio_session(
         self, user_id: UUID, project_id: str
     ) -> dict[str, Any]:
-        del user_id
+        await self._assert_studio_project_access(user_id, project_id)
         return await self._musicapi_studio_call(
             "GET", f"/internal/studio/projects/{project_id}"
         )
@@ -3584,6 +3594,7 @@ class WebMusicService:
         variants: list[str],
         remove: bool = False,
     ) -> dict[str, Any]:
+        await self._assert_studio_project_access(user_id, project_id)
         clip_ids: list[str] = []
         for index, task_id in enumerate(task_ids):
             variant = variants[index] if index < len(variants) else "ok"
@@ -3599,6 +3610,48 @@ class WebMusicService:
             },
         )
         return {**payload, "clip_ids": clip_ids}
+
+    async def _studio_project_owner(self, suno_project_id: str) -> UUID | None:
+        """Owner of an indexed Suno project, if it is indexed at all."""
+        if not suno_project_id:
+            return None
+        row = await self._pool.fetchrow(
+            "SELECT user_id FROM studio_projects WHERE suno_project_id = $1 LIMIT 1",
+            suno_project_id,
+        )
+        return UUID(str(row["user_id"])) if row else None
+
+    async def _assert_studio_project_access(
+        self, user_id: UUID, suno_project_id: str
+    ) -> None:
+        """Reject writes/reads of another user's indexed Studio project.
+
+        Projects that predate the index (no row references them) are allowed so
+        legacy clip projects keep working; every project created or opened from
+        now on is indexed and therefore checked.
+        """
+        owner = await self._studio_project_owner(suno_project_id)
+        if owner is not None and owner != user_id:
+            raise ForbiddenError("You do not have access to this Studio project.")
+
+    async def _ensure_studio_project_index(
+        self, user_id: UUID, suno_project_id: str, *, title: str = "Untitled Project"
+    ) -> None:
+        if not suno_project_id:
+            return
+        owner = await self._studio_project_owner(suno_project_id)
+        if owner is not None:
+            return
+        await self._pool.execute(
+            """
+            INSERT INTO studio_projects
+                (user_id, title, major_version, bpm, time_signature, data, suno_project_id)
+            VALUES ($1, $2, 2, 120, '4/4', '{}'::jsonb, $3)
+            """,
+            user_id,
+            str(title or "Untitled Project").strip()[:120] or "Untitled Project",
+            suno_project_id,
+        )
 
     async def resolve_studio_clip_id(
         self, user_id: UUID, task_id: UUID, *, variant: str = "ok"
@@ -3641,7 +3694,7 @@ class WebMusicService:
     async def rename_studio_session(
         self, user_id: UUID, project_id: str, *, name: str
     ) -> dict[str, Any]:
-        del user_id
+        await self._assert_studio_project_access(user_id, project_id)
         return await self._musicapi_studio_call(
             "POST",
             f"/internal/studio/projects/{project_id}/metadata",
@@ -3658,7 +3711,7 @@ class WebMusicService:
         base_version_id: str | None = None,
     ) -> dict[str, Any]:
         """Versioned autosave. 409 carries the newer version, 429 means throttled."""
-        del user_id
+        await self._assert_studio_project_access(user_id, project_id)
         path = f"/internal/studio/projects/{project_id}/save"
         status, payload = await self._musicapi_studio_request(
             "POST",
@@ -3694,7 +3747,7 @@ class WebMusicService:
     async def get_studio_session_version(
         self, user_id: UUID, project_id: str, version_id: str
     ) -> dict[str, Any]:
-        del user_id
+        await self._assert_studio_project_access(user_id, project_id)
         return await self._musicapi_studio_call(
             "GET", f"/internal/studio/projects/{project_id}/version/{version_id}"
         )
