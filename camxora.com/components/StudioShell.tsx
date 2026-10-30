@@ -1504,6 +1504,16 @@ export function StudioShell() {
 
   const timelineSeconds = TIMELINE_BEATS / bps;
 
+  // One status slot keeps the footer readable; errors win over progress.
+  const statusText =
+    error ||
+    exportStatus ||
+    (saveStatus === "conflict" ? "Reconciling…" : "") ||
+    (saving ? "Saving…" : "") ||
+    (hydrating ? "Loading…" : "") ||
+    (busy ? "Opening…" : "") ||
+    (playbackIssue ? "Some clips can't play in the browser yet" : "");
+
   return (
     <div className="stv">
       <div ref={audioHostRef} hidden aria-hidden="true" />
@@ -1710,7 +1720,12 @@ export function StudioShell() {
                   </span>
                 ))}
               </div>
-              <div className="stv-grid">
+              <div
+                className="stv-grid"
+                style={{
+                  minHeight: Math.max(420, tracks.length * 58),
+                }}
+              >
             {Array.from({ length: BARS }).map((_, index) => (
               <span key={index} style={{ left: `${(index / BARS) * 100}%` }} />
             ))}
@@ -2097,22 +2112,18 @@ export function StudioShell() {
             aria-label="Zoom"
             onChange={(event) => setZoom(Number(event.target.value))}
           />
-          {hydrating ? <span className="s-note">Loading…</span> : null}
-          {saving ? <span className="s-note">Saving…</span> : null}
-          {saveStatus === "conflict" ? (
-            <span className="s-note">Reconciling…</span>
-          ) : null}
-          {busy ? <span className="s-note">Opening…</span> : null}
-          {exportStatus ? <span className="s-note">{exportStatus}</span> : null}
-          {playbackIssue ? (
+          {statusText ? (
             <span
-              className="s-note"
-              title="Suno returns 422 encrypted_playback_required for clips with a packaged master."
+              className={error ? "s-error stv-status" : "s-note stv-status"}
+              title={
+                playbackIssue && !error
+                  ? "Suno returns 422 encrypted_playback_required for clips with a packaged master."
+                  : statusText
+              }
             >
-              Some clips can&apos;t play in the browser yet
+              {statusText}
             </span>
           ) : null}
-          {error ? <span className="s-error">{error}</span> : null}
         </div>
       </footer>
 
