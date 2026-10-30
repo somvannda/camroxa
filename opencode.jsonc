@@ -1,31 +1,36 @@
 {
   "$schema": "https://opencode.ai/config.json",
 
-  // Limit how many agentic iterations each agent can perform.
+  // Limit how many model steps each agent may take inside one turn.
   // On the final step OpenCode removes tools and forces a text summary, so a
-  // run can't loop forever and burn tokens. Tune these per agent as needed.
-  // build.steps matches the Chmaba project (40) so a full feature can be run
-  // end to end instead of stopping to summarize after a dozen steps.
+  // run can't loop forever and burn tokens. New user input RESETS the
+  // allowance, so this caps a single turn, not the whole session.
+  // Raised from 40/8/6 after a real task hit "Maximum steps reached" mid-work
+  // with the documentation still uncommitted.
   "agents": {
     "build": {
-      "steps": 40
+      "steps": 360
     },
     "general": {
-      "steps": 8
+      "steps": 360
     },
     "explore": {
-      "steps": 6
+      "steps": 360
     }
   },
 
   // Automatically reduce old conversation context so long sessions
-  // don't accumulate a huge (expensive) context window. Values mirror the
-  // Chmaba project: keep.tokens is how much recent detail survives a
-  // compaction, so a feature in flight keeps its exact details.
+  // don't accumulate a huge (expensive) context window.
+  // keep.tokens is how much recent detail survives a compaction, so a feature
+  // in flight keeps its exact details.
+  // NOTE: 1,000,000 must not exceed the model's usable input window. If the
+  // active model caps lower (128k-256k is common), compaction cannot retain a
+  // tail that big and long sessions will compact repeatedly. Lower this to
+  // match the model if that happens.
   "compaction": {
     "auto": true,
     "keep": {
-      "tokens": 40000
+      "tokens": 1000000
     },
     "buffer": 20000
   },
