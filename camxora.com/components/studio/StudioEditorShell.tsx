@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, updateStudioProject, type StudioProject } from "@/lib/studio-api";
-import { migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
+import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 
@@ -140,7 +140,7 @@ export function StudioEditorShell() {
     const next: StudioTrack = {
       id: `track-${Date.now().toString(36)}`,
       name: `Track ${tracks.length + 1}`,
-      color: "#8b5cf6",
+      color: colorForTrackName(`Track ${tracks.length + 1}`),
       index: tracks.length,
       volume: 80,
       pan: 0,

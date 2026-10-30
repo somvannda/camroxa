@@ -49,6 +49,17 @@ type LegacyClipLike = {
   groupId?: string | null;
 };
 
+/** Reference colour families: vocals magenta, bass blue, strings/violet, SFX orange, drums olive. */
+export function colorForTrackName(name: string): string {
+  const value = name.toLowerCase();
+  if (/vocal|voice|sing|choir|harmon/.test(value)) return "#ec4899";
+  if (/bass|sub|808/.test(value)) return "#2f7bf6";
+  if (/string|piano|key|synth|pad|guitar|brass|horn|lead/.test(value)) return "#7c5cf0";
+  if (/effect|sfx|alarm|crash|riser|impact|noise/.test(value)) return "#f97316";
+  if (/drum|kit|hat|snare|kick|perc|tom|clap/.test(value)) return "#a3a327";
+  return "#8b5cf6";
+}
+
 function num(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
@@ -63,7 +74,7 @@ export function migrateLanesToTracks(lanes: LegacyClipLike[]): StudioTrack[] {
   return lanes.map((clip, index) => ({
     id: `track-${clip.id}`,
     name: clip.title || `Track ${index + 1}`,
-    color: clip.color || "#8b5cf6",
+    color: clip.color || colorForTrackName(clip.title || ""),
     index,
     volume: num(clip.volume, 80),
     pan: num(clip.pan, 0),
@@ -92,7 +103,7 @@ export function sanitizeTracks(input: unknown): StudioTrack[] {
     out.push({
       id: candidate.id,
       name: typeof candidate.name === "string" && candidate.name ? candidate.name : "Track",
-      color: typeof candidate.color === "string" && candidate.color ? candidate.color : "#8b5cf6",
+      color: typeof candidate.color === "string" && candidate.color ? candidate.color : colorForTrackName(typeof candidate.name === "string" ? candidate.name : ""),
       index: num(candidate.index, out.length),
       volume: Math.min(100, Math.max(0, num(candidate.volume, 80))),
       pan: Math.min(100, Math.max(-100, num(candidate.pan, 0))),
