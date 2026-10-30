@@ -4460,13 +4460,14 @@ html{color-scheme:dark}
 .stv-bpm,.stv-sig{padding:3px 8px;border-radius:999px;background:var(--s-bg2);border:1px solid var(--s-line);color:var(--s-text2);font-size:11px}
 .stv-body{display:flex;flex:1;min-height:0}
 .stv-tracks{width:250px;border-right:1px solid var(--s-line);display:flex;flex-direction:column;overflow:auto;background:var(--s-bg)}
-.stv-track{padding:10px 12px;border-bottom:1px solid var(--s-line);cursor:pointer}
+.stv-tracks-head{height:26px;flex:none;border-bottom:1px solid var(--s-line)}
+.stv-track{height:58px;box-sizing:border-box;padding:6px 12px;border-bottom:1px solid var(--s-line);cursor:pointer;overflow:hidden}
 .stv-track.on{background:var(--s-bg2)}
 .stv-track-top{display:flex;align-items:center;gap:6px}
 .stv-track-num{color:var(--s-text3);width:14px}
 .stv-pill{min-width:22px;height:20px;padding:0 6px;border-radius:6px;border:1px solid var(--s-line2);background:transparent;color:var(--s-text2);font-size:11px;cursor:pointer;display:grid;place-items:center}
 .stv-pill.on{background:var(--s-accent);border-color:var(--s-accent);color:#fff}
-.stv-fader{display:flex;align-items:center;gap:8px;margin-top:8px}
+.stv-fader{display:flex;align-items:center;gap:8px;margin-top:4px}
 .stv-fader input{flex:1}
 .stv-track-fx{color:var(--s-text3)}
 .stv-add-track{margin:10px 12px;padding:8px;border:1px dashed var(--s-line2);border-radius:8px;background:transparent;color:var(--s-text2);cursor:pointer;display:flex;align-items:center;gap:8px;justify-content:center}
@@ -4479,7 +4480,7 @@ html{color-scheme:dark}
 .stv-lane{position:absolute;left:0;right:0;height:52px;border-bottom:1px solid var(--s-line)}
 .stv-clip{position:absolute;top:10px;height:32px;border-radius:6px;color:var(--s-bg);font-weight:600;font-size:11px;display:flex;align-items:center;padding:0 10px;overflow:hidden;white-space:nowrap;cursor:grab;user-select:none}
 .stv-clip.on{outline:2px solid var(--s-text);outline-offset:-2px}
-.stv-clip-label{overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.stv-clip-label{overflow:hidden;text-overflow:ellipsis;pointer-events:none;position:relative;z-index:1}
 .stv-clip-handle{position:absolute;top:0;bottom:0;width:6px;cursor:ew-resize;background:rgba(0,0,0,.22)}
 .stv-clip-handle.start{left:0;border-radius:6px 0 0 6px}
 .stv-clip-handle.end{right:0;border-radius:0 6px 6px 0}

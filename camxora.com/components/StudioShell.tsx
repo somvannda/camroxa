@@ -1588,6 +1588,7 @@ export function StudioShell() {
 
       <div className="stv-body">
         <aside className="stv-tracks">
+          <div className="stv-tracks-head" aria-hidden="true" />
           {tracks.map((track, index) => (
             <div
               key={track.id}

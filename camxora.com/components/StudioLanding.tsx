@@ -35,6 +35,7 @@ export function StudioLanding() {
   const router = useRouter();
   const [songs, setSongs] = useState<WebMusicGeneration[]>([]);
   const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [kind, setKind] = useState<"all" | "instrumental" | "vocal">("all");
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -62,6 +63,9 @@ export function StudioLanding() {
       })
       .catch(() => {
         if (active) setError("Could not load your studio.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
     return () => {
       active = false;
@@ -159,8 +163,12 @@ export function StudioLanding() {
               <div className="st-recent empty">
                 <span className="st-recent-art" />
                 <span>
-                  <b>No projects yet</b>
-                  <small>Start with a song on the right</small>
+                  <b>{loading ? "Loading…" : "No projects yet"}</b>
+                  <small>
+                    {loading
+                      ? "Fetching your Studio projects"
+                      : "Start with a song on the right"}
+                  </small>
                 </span>
               </div>
             )}
@@ -248,7 +256,11 @@ export function StudioLanding() {
               </div>
             ))
           ) : (
-            <p className="s-note">No finished songs yet — create one first.</p>
+            <p className="s-note">
+              {loading
+                ? "Loading your songs…"
+                : "No finished songs yet — create one first."}
+            </p>
           )}
         </div>
       </section>
