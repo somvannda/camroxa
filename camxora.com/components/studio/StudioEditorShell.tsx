@@ -56,6 +56,9 @@ export function StudioEditorShell() {
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [playhead, setPlayhead] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [loop, setLoop] = useState(false);
+  const [metronome, setMetronome] = useState(false);
   const [bpm, setBpm] = useState(120);
   const [projectId, setProjectId] = useState<string | null>(null);
 
@@ -124,6 +127,29 @@ export function StudioEditorShell() {
     return Math.max(240, Math.ceil(end));
   }, [clips]);
 
+  /** Transport: advance the playhead in real time while playing. */
+  useEffect(() => {
+    if (!playing) return;
+    let raf = 0;
+    let last = performance.now();
+    const tick = (now: number) => {
+      const delta = Math.min(0.25, (now - last) / 1000);
+      last = now;
+      setPlayhead((current) => {
+        const next = current + delta;
+        if (next >= duration) return loop ? 0 : duration;
+        return next;
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, duration, loop]);
+
+  useEffect(() => {
+    if (playing && !loop && playhead >= duration) setPlaying(false);
+  }, [playing, loop, playhead, duration]);
+
   const secondsPerBar = 240 / bpm;
   const barCount = Math.max(1, Math.ceil((duration * bpm) / 240));
 
@@ -163,11 +189,44 @@ export function StudioEditorShell() {
         </div>
 
         <div className="se-head-center">
-          <button type="button" className="se-icon" onClick={() => setPlayhead(0)} aria-label="Back to start"><Icon name="fa-backward-step" /></button>
-          <button type="button" className="se-icon" disabled aria-label="Rewind (not wired)"><Icon name="fa-backward" /></button>
-          <button type="button" className="se-icon" disabled aria-label="Stop (not wired)"><Icon name="fa-stop" /></button>
-          <button type="button" className="se-icon se-play" disabled aria-label="Play (not wired)" title="Playback is not wired in the shell yet"><Icon name="fa-play" /></button>
-          <button type="button" className="se-icon" disabled aria-label="Forward (not wired)"><Icon name="fa-forward" /></button>
+          <button type="button" className="se-icon" onClick={() => { setPlaying(false); setPlayhead(0); }} aria-label="Back to start"><Icon name="fa-backward-step" /></button>
+          <button
+            type="button"
+            className={`se-icon${loop ? " on" : ""}`}
+            onClick={() => setLoop((value) => !value)}
+            aria-pressed={loop}
+            aria-label="Loop"
+            title="Loop"
+          >
+            <Icon name="fa-repeat" />
+          </button>
+          <button
+            type="button"
+            className="se-icon"
+            onClick={() => { setPlaying(false); setPlayhead(0); }}
+            aria-label="Stop"
+          >
+            <Icon name="fa-stop" />
+          </button>
+          <button
+            type="button"
+            className={`se-icon se-play${playing ? " on" : ""}`}
+            onClick={() => setPlaying((value) => !value)}
+            aria-label={playing ? "Pause" : "Play"}
+            title={playing ? "Pause" : "Play"}
+          >
+            <Icon name={playing ? "fa-pause" : "fa-play"} />
+          </button>
+          <button
+            type="button"
+            className={`se-icon${metronome ? " on" : ""}`}
+            onClick={() => setMetronome((value) => !value)}
+            aria-pressed={metronome}
+            aria-label="Metronome (visual only)"
+            title="Metronome (visual only — no click audio yet)"
+          >
+            <Icon name="fa-bell" />
+          </button>
           <span className="se-readout" aria-label="Time">{clock(playhead)}</span>
           <span className="se-readout" aria-label="Bar and beat">{barBeat(playhead, bpm)}</span>
         </div>
