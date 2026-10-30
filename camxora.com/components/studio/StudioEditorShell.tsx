@@ -1,0 +1,332 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+
+import { Icon } from "@/components/Icon";
+import { useAuth } from "@/components/AuthProvider";
+import { getStudioProject, type StudioProject } from "@/lib/studio-api";
+import { migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
+import type { PluginChainEntry } from "@/lib/studio-plugins";
+
+const ROW_HEIGHT = 85;
+const ROW_STEP = 86;
+const PANEL_W = 260;
+const LIBRARY_W = 368;
+const BAR_PX = 96;
+
+type ClipLike = {
+  id: string;
+  title?: string;
+  color?: string;
+  start?: number;
+  duration?: number;
+  volume?: number;
+  pan?: number;
+  muted?: boolean;
+  solo?: boolean;
+  groupId?: string | null;
+};
+
+function clock(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = Math.floor(seconds % 60);
+  const ms = Math.floor((seconds % 1) * 1000);
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
+}
+
+function barBeat(seconds: number, bpm: number): string {
+  const beats = (seconds * bpm) / 60;
+  const bar = Math.floor(beats / 4) + 1;
+  const beat = Math.floor(beats % 4) + 1;
+  return `${String(bar).padStart(3, "0")}.${beat}.1`;
+}
+
+/**
+ * Studio editor shell built to the measured reference layout.
+ *
+ * Reads the real project, so the arrangement shown is genuine. Controls that are
+ * not wired yet are disabled and labelled — none of them pretend to work.
+ */
+export function StudioEditorShell() {
+  const { user, loading: authLoading } = useAuth();
+  const [project, setProject] = useState<StudioProject | null>(null);
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
+  const [libraryOpen, setLibraryOpen] = useState(false);
+  const [playhead, setPlayhead] = useState(0);
+  const [bpm, setBpm] = useState(120);
+  const [projectId, setProjectId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setProjectId(params.get("project"));
+  }, []);
+
+  useEffect(() => {
+    if (authLoading) return;
+    if (!user || !projectId) {
+      setLoading(false);
+      return;
+    }
+    let active = true;
+    setLoading(true);
+    getStudioProject(projectId)
+      .then((next) => {
+        if (!active) return;
+        setProject(next);
+        setBpm(next.bpm || 120);
+        setError("");
+      })
+      .catch((cause) => {
+        if (!active) return;
+        setError(cause instanceof Error ? cause.message : "Could not open this project.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [authLoading, user, projectId]);
+
+  const clips = useMemo<ClipLike[]>(() => {
+    const data = (project?.data || {}) as { lanes?: unknown };
+    return Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+  }, [project]);
+
+  const tracks = useMemo<StudioTrack[]>(() => {
+    const data = (project?.data || {}) as { tracks?: unknown };
+    const stored = sanitizeTracks(data.tracks);
+    if (stored.length) return stored;
+    return migrateLanesToTracks(
+      clips.map((clip) => ({
+        id: clip.id,
+        title: clip.title,
+        color: clip.color,
+        volume: clip.volume,
+        pan: clip.pan,
+        muted: clip.muted,
+        solo: clip.solo,
+        groupId: clip.groupId ?? null,
+      }))
+    );
+  }, [project, clips]);
+
+  const chains = useMemo<Record<string, PluginChainEntry[]>>(() => {
+    const data = (project?.data || {}) as { chains?: unknown };
+    return (data.chains as Record<string, PluginChainEntry[]>) || {};
+  }, [project]);
+
+  const duration = useMemo(() => {
+    const end = clips.reduce((max, clip) => Math.max(max, (clip.start ?? 0) + (clip.duration ?? 0)), 0);
+    return Math.max(240, Math.ceil(end));
+  }, [clips]);
+
+  const secondsPerBar = 240 / bpm;
+  const barCount = Math.max(1, Math.ceil((duration * bpm) / 240));
+
+  if (authLoading) return <div className="se-shell is-loading" aria-busy="true" />;
+
+  if (!user) {
+    return (
+      <div className="se-gate">
+        <h1>Studio</h1>
+        <p>Sign in to open a project.</p>
+        <Link className="btn btn-primary" href="/login?next=/studio">Sign in</Link>
+      </div>
+    );
+  }
+
+  if (!projectId) {
+    return (
+      <div className="se-gate">
+        <h1>No project selected</h1>
+        <p>Choose a project from the Studio home.</p>
+        <Link className="btn btn-primary" href="/studio">Open Studio home</Link>
+      </div>
+    );
+  }
+
+  return (
+    <div className="se-shell">
+      <header className="se-head">
+        <div className="se-head-left">
+          <span className="se-logo">SUNO</span>
+          <button type="button" className="se-chip" disabled title="Project menu is not wired in the shell yet">
+            {project?.title || "Untitled project"}
+            <Icon name="fa-chevron-down" />
+          </button>
+          <button type="button" className="se-icon" disabled aria-label="Undo (not wired)"><Icon name="fa-rotate-left" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Redo (not wired)"><Icon name="fa-rotate-right" /></button>
+        </div>
+
+        <div className="se-head-center">
+          <button type="button" className="se-icon" onClick={() => setPlayhead(0)} aria-label="Back to start"><Icon name="fa-backward-step" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Rewind (not wired)"><Icon name="fa-backward" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Stop (not wired)"><Icon name="fa-stop" /></button>
+          <button type="button" className="se-icon se-play" disabled aria-label="Play (not wired)" title="Playback is not wired in the shell yet"><Icon name="fa-play" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Forward (not wired)"><Icon name="fa-forward" /></button>
+          <span className="se-readout" aria-label="Time">{clock(playhead)}</span>
+          <span className="se-readout" aria-label="Bar and beat">{barBeat(playhead, bpm)}</span>
+        </div>
+
+        <div className="se-head-right">
+          <span className="se-pill">{bpm} BPM</span>
+          <span className="se-pill">{project?.time_signature || "4/4"}</span>
+          <button type="button" className="se-pill" disabled aria-label="Export (not wired)"><Icon name="fa-arrow-up-from-bracket" /> Export</button>
+          <button
+            type="button"
+            className={`se-pill${libraryOpen ? " on" : ""}`}
+            onClick={() => setLibraryOpen((open) => !open)}
+            aria-expanded={libraryOpen}
+          >
+            <Icon name="fa-table-columns" /> Library
+          </button>
+        </div>
+      </header>
+
+      <div className={`se-body${libraryOpen ? " with-library" : ""}`}>
+        <aside className="se-tracks" aria-label="Tracks">
+          <div className="se-tracks-head">
+            <span className="se-tracks-title">{tracks.length} track{tracks.length === 1 ? "" : "s"}</span>
+          </div>
+
+          <div className="se-track-list">
+            {tracks.map((track, index) => {
+              const active = selectedTrack === track.id;
+              return (
+                <div
+                  key={track.id}
+                  className={`se-track${active ? " selected" : ""}`}
+                  style={{ height: ROW_HEIGHT, marginBottom: ROW_STEP - ROW_HEIGHT }}
+                >
+                  <span className="se-track-color" style={{ background: track.color }} aria-hidden="true" />
+                  <span className="se-track-index">{index + 1}</span>
+                  <button
+                    type="button"
+                    className="se-track-name"
+                    onClick={() => setSelectedTrack(track.id)}
+                    aria-pressed={active}
+                  >
+                    {track.name}
+                  </button>
+                  <span className="se-track-buttons">
+                    <button type="button" disabled aria-label={`Mute ${track.name} (not wired)`}>M</button>
+                    <button type="button" disabled aria-label={`Solo ${track.name} (not wired)`}>S</button>
+                    <button type="button" disabled aria-label={`Arm ${track.name} (not wired)`}>A</button>
+                  </span>
+                  <div className="se-track-meter" aria-hidden="true">
+                    <span style={{ width: `${track.volume}%`, background: track.color }} />
+                  </div>
+                </div>
+              );
+            })}
+
+            <button type="button" className="se-add-track" disabled title="Adding tracks is not wired in the shell yet">
+              <Icon name="fa-plus" /> Add new track
+            </button>
+          </div>
+        </aside>
+
+        <div className="se-timeline">
+          <div className="se-ruler-bars" aria-hidden="true">
+            <div className="se-ruler-inner" style={{ width: barCount * BAR_PX }}>
+              {Array.from({ length: barCount }).map((_, bar) => (
+                <span key={bar} className="se-bar-tick" style={{ left: bar * BAR_PX }}>
+                  {bar + 1}
+                </span>
+              ))}
+            </div>
+          </div>
+
+          <div
+            className="se-lanes"
+            onPointerDown={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              const barsIn = (event.clientX - rect.left) / BAR_PX;
+              setPlayhead(Math.max(0, Math.min(duration, barsIn * secondsPerBar)));
+            }}
+          >
+            <div className="se-lanes-inner" style={{ width: barCount * BAR_PX }}>
+              {tracks.map((track) => (
+                <div key={track.id} className="se-lane" style={{ height: ROW_STEP }}>
+                  {clips
+                    .filter((clip) => track.clipIds.includes(clip.id))
+                    .map((clip) => {
+                      const left = ((clip.start ?? 0) / secondsPerBar) * BAR_PX;
+                      const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * BAR_PX);
+                      return (
+                        <button
+                          type="button"
+                          key={clip.id}
+                          className="se-clip"
+                          style={{ left, width, background: track.color }}
+                          onClick={() => setSelectedTrack(track.id)}
+                        >
+                          <span className="se-clip-head">{clip.title || "Clip"}</span>
+                        </button>
+                      );
+                    })}
+                </div>
+              ))}
+
+              <div className="se-playhead" style={{ left: (playhead / secondsPerBar) * BAR_PX }} aria-hidden="true" />
+            </div>
+
+            {!tracks.length ? (
+              <div className="se-empty">
+                <strong>Your session is empty</strong>
+                <span>Add a track to start arranging.</span>
+              </div>
+            ) : null}
+          </div>
+
+          <div className="se-ruler-time" aria-hidden="true">
+            <div className="se-ruler-inner" style={{ width: barCount * BAR_PX }}>
+              {Array.from({ length: Math.ceil(duration / 30) }).map((_, index) => (
+                <span key={index} className="se-time-tick" style={{ left: (index * 30 / secondsPerBar) * BAR_PX }}>
+                  {clock(index * 30).slice(0, 5)}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {libraryOpen ? (
+          <aside className="se-library" aria-label="Library" style={{ width: LIBRARY_W }}>
+            <div className="se-library-head">
+              <strong>Library</strong>
+              <button type="button" className="se-icon" onClick={() => setLibraryOpen(false)} aria-label="Close library">
+                <Icon name="fa-xmark" />
+              </button>
+            </div>
+            <p className="se-lib-empty">Song library is not wired into this shell yet.</p>
+          </aside>
+        ) : null}
+      </div>
+
+      <footer className="se-foot">
+        <div className="se-chain">
+          {selectedTrack && chains[selectedTrack]?.length ? (
+            chains[selectedTrack].map((entry) => (
+              <span key={entry.entryId} className="se-chain-chip">{entry.pluginId}</span>
+            ))
+          ) : (
+            <span className="se-foot-note">No effects on this track yet.</span>
+          )}
+          <button type="button" className="se-chain-add" disabled title="Add effect is wired in the full editor">
+            <Icon name="fa-plus" />
+          </button>
+        </div>
+        <Link className="se-foot-link" href={`/studio/editor?project=${projectId}`}>
+          Open full editor
+        </Link>
+      </footer>
+
+      {error ? <div className="se-error" role="alert">{error}</div> : null}
+      {loading ? <div className="se-loading" aria-live="polite">Loading project…</div> : null}
+    </div>
+  );
+}
