@@ -1,0 +1,2412 @@
+# Reference UI strings (derived)
+
+Generated 2026-10-30T12:48:34.947Z from 134 chunks (mode: **authenticated**).
+
+- Unique candidate UI strings: **9679**
+- In chunks that reference `/api/studio`: **2400**
+
+> Labels only, deduplicated. No component structure or source is copied.
+> Use this as a checklist of controls to account for; decide independently how each behaves.
+
+## Studio-chunk strings
+
+- !==a.kind)continue;let e=rJ(a.widget),o=
+- !==e,target:
+- !==e.kind)return t;let r=(0,o.L)(e.source);return void 0===r||
+- !==o[w.l.CUSTOM].title,audioMode:c?.[w.s.COVER]?
+- !==t)return;let n=(0,a.y)(e)?.title?.trim()??
+- !==t.asset.type||t.asset.id!==e)return;let l=(0,n.c)(o,r.D.clips,t.id);l&&(0,n.a)(l,
+- !==t.state)return t.alignment;throw Error(t.error_message||
+- !==u.borderRadius?u.borderRadius:
+- !=typeof e.id||
+- !=typeof e.image_s3_id&&void 0!==e.image_s3_id)return!1;let t=
+- !=typeof e.isDeleted||
+- !=typeof e||
+- !=typeof e||t&&
+- !=typeof r.text||
+- !=typeof r||
+- !=typeof r||0===r.length||!(
+- !=typeof t&&(t=t.endsWith(
+- !=typeof t)throw TypeError(
+- !=typeof t||!(
+- !=typeof t||0===t.length||
+- !bg-transparent !backdrop-blur-none
+- !h-8 shrink-0 !text-xs
+- !overflow-visible !bg-transparent !shadow-none
+- !p-2 text-xs
+- !p-2 text-xs hover:before:!bg-transparent
+- #000 0px
+- %3E%3CfeTurbulence type=
+- %3E%3Cfilter id=
+- (Auto Color)
+- (No styles)
+- (fetching clip records…)
+- (height - 11)
+- (hover: hover)
+- (hover: none) and (pointer: coarse)
+- (no arrangements)\n
+- (no differing entry found)
+- (none in last 5s)
+- (paths not identified)
+- (pointer: coarse)
+- (prefers-reduced-motion: reduce)
+- )&&i.add(e);let a=new Set;for(let t of i)void 0!==n.get(t).get(
+- )),c=new RegExp((
+- )),d=new RegExp((
+- )),l=new RegExp((
+- )),o=new RegExp((
+- )),s=new RegExp((
+- ));else if(e.includes(
+- ))return a(
+- ))return ea(e,t.substring(5).split(
+- ))return f.n.V4;else if(e.includes(
+- ))return f.n.V4_5;else if(e.includes(
+- ))return f.n.V4_5_PLUS;else if(e.includes(
+- ))return!1;let t=e.capabilities??[];return t.includes(
+- ))return;let u=y(e,c,a);n.dispatchNative(
+- ),[c,f]=(0,t.f)(n,a.startSeconds,a.endSeconds),p=(0,u.f)(c),m=(0,u.f)(f),h=(0,r.R)(e)??
+- ),auraImage:
+- ),children:
+- ),className:
+- ),className:l,contentClassName:
+- ),contextLyrics:
+- ),contextLyrics:p,infillLyrics:h||m,lyricsUpdated:
+- ),description:
+- ),description:r,type:
+- ),description:t,type:
+- ),e_=new Set([
+- ),enableForIncompleteClips:!0,children:
+- ),expanded:i,setExpanded:o,textareaClassName:
+- ),fallbackSrc:i?(0,c.f)(i):
+- ),hasVoxPersona:
+- ),initialFocus:s,disablePadding:!0,wrapperClasses:
+- ),instance:e,namespace:
+- ),isDisabled:n||D,side:
+- ),items:h,promptType:
+- ),l=r&&!!e?.id&&q.has(e.status??
+- ),o=t(e.muted?
+- ),preview:n?.preview,bodyPreview:(0,i.y)(n?.body??
+- ),r,n);let i=t.split(
+- ),r=t.trimStart().match(/^[+-]/)?.[0]??
+- ),rows:10,className:
+- ),rows:4,className:
+- ),shouldAutoGenerate:
+- ),side:
+- ),t&&t!==(e.content??
+- ),titleClassName:
+- ),type:
+- ),upgradeNote:
+- ),visible:
+- ).replace(/hasOwnProperty|(function).*?(?=\\\()| for .+?(?=\\\])/g,
+- ):e.canCreate?void 0:x(
+- ):e.display_tags?e.display_tags:
+- ):e.isDraftTooLong?a(r?
+- ):g&&(i.style.background=l?m.current:
+- );await (0,ih.i)(e,f,
+- );case n.OUT_OF_CREDITS:return r(
+- );case n.VOICE_REQUIRES_V5:return r(i?
+- );case o.I.Commenter:return e(
+- );case o.I.Editor:return e(
+- );case o.I.Viewer:return e(
+- );color:var(--color-foreground-primary);font-size:0.75rem;opacity:
+- );e.i(696800);var eV=e.i(37874);let eU=(0,a.f)(
+- );e.width=192,e.height=192;let t=e.getContext(
+- );if(!(0,s.z)(r))throw Error(
+- );if(!Array.isArray(t.text)||!Array.isArray(t.text[0]))throw Error(
+- );if(!t)throw Error(
+- );if(-1===e)continue;let a=n.substring(0,e),o=n.substring(e+1),l=
+- );if(-1===e||n.substring(0,e)!==t)continue;let a=
+- );if(-1===f)continue;let p=o.substring(0,f),h=o.substring(f+1);if(
+- );if(-1===t)continue;let o=e.substring(0,t),s=e.substring(t+1),d=
+- );let _=(0,k.f)(
+- );let a=(0,th.f)(r);if(!a.contentDurationSeconds||!a.contentEndSeconds)throw Error(
+- );let e0=(0,i.f)(
+- );let e=(0,c.t)()[t];return e&&
+- );let ea=(0,K.f)(
+- );let r=t.data;if(
+- );let s3=(0,a.f)(
+- );let s8=(0,a.f)(
+- );let u=a.current;return u&&(v(u,n,h(t),m(t)),u.style.visibility=k(u)?
+- );line-height:calc(1.25rem *
+- );line-height:calc(1rem *
+- );margin-right:
+- );return X[t.includes(
+- );return e.metadata?.type===
+- );return ed.metadata?.type===
+- );return o.href=i,o.download=
+- );return r.type=
+- );return t&&(t.scale(8,8),t.fillStyle=
+- );return t.join(
+- );return t.type=
+- );transform-origin:
+- );transform:translateY(-50%);display:flex;align-items:center;justify-content:center;width:
+- );transition:
+- );transition:transform 0.12s ease;
+- );transition:transform 0.15s ease;
+- );transition:transform 0.18s ease;
+- );transition:transform 0.28s cubic-bezier(0.34,1.4,0.64,1);
+- );var el=e.i(907989);e.i(439522),(0,n.f)(
+- )===t)return;let o=new Map(i);
+- )?d.n.V4_5_PLUS:
+- )?d.n.V6_MINI:
+- )],l=r?.sourceCode.trim();return l&&o.push([
+- )||(0,i.A)(e))return f.n.V5;if(e.includes(
+- )||void 0:(0,i.l)(e.lyrics)||void 0,s=n?(0,i.y)(t?.body??
+- + Start fake generation
+- ,"neutral-pill":
+- ,"primary-outline":
+- ,(e.centered||eE)&&e_?
+- ,...em,...
+- ,.5/511),stroke:
+- ,0,1],47300);let u=
+- ,0,32],871350);var eS=e.i(412535);let eP=
+- ,0,A],550834);var U=e.i(127762);let F=(0,a.f)(
+- ,0,H],646913);let Z=new Set([1,3,6,8,10]),Q=[
+- ,0,J],10938);var Z=e.i(608220),ee=e.i(873613),et=e.i(847994);let er=[
+- ,0,P],473815);let O=
+- ,0,S],291524);var I=e.i(870357),N=e.i(725516);let M=
+- ,0,X],583510);var Y=e.i(379694);e.s([
+- ,0,Z],650286);var ee=e.i(905687);let et=[
+- ,0,a],200010);let o=(0,r.f)(
+- ,0,b],644101);let x=(0,a.f)(
+- ,0,c],277645);var d=e.i(870357);e.s([
+- ,0,c],50066);var d=e.i(261940),u=e.i(200345);e.s([
+- ,0,d],675472);var u=e.i(986138),f=e.i(702413);e.s([
+- ,0,eC],803518);var eS=e.i(757855),eI=e.i(784056),eT=e.i(371590);let ez=(0,r.f)(
+- ,0,eU],505356);var eF=e.i(634782),eO=e.i(847994),eV=e.i(801426),eA=e.i(104108);let eM=
+- ,0,ea],584351);var ei=e.i(418627);e.s([
+- ,0,el],314743);var eo=e.i(799593);e.i(696800);var es=e.i(117440);let ec=
+- ,0,ep],818306);var eh=e.i(497382);let em=(0,C.f)(
+- ,0,f],382501),e.i(696800);var h=e.i(178387),g=e.i(254452),v=e.i(46472);let y=
+- ,0,g],710698);var b=e.i(839368),v=e.i(996172),y=e.i(815142),k=e.i(998555);let w=Symbol(
+- ,0,g],852308);var B=e.i(418627);let E=[
+- ,0,h],329176);let w=
+- ,0,l],859887);let s=(0,r.f)(
+- ,0,nO],912694);let nF=(0,a.f)(
+- ,0,n],149034);var l=e.i(913442),o=e.i(454468);let s=(0,l.f)(
+- ,0,n],504288);var i=e.i(989229),a=e.i(354019);e.s([
+- ,0,o],134191);var s=e.i(936781);e.s([
+- ,0,rT],503658);var rA=e.i(716430),rL=e.i(859887);let rD=(0,n.f)(
+- ,0,rU],367113);let rq=(0,n.f)(
+- ,0,rq],236761);var rK=e.i(109),rG=e.i(99463),rX=e.i(276986),rY=e.i(746629);let rZ=[
+- ,0,tX],700804);var tY=e.i(756490);e.s([
+- ,0,t],789924);var r=e.i(306157);e.s([
+- ,0,u],527046);var p=e.i(673359),m=e.i(740304);e.s([
+- ,0,v],294102);let k=(0,a.f)(
+- ,0,x],108751);let I=(0,v.f)(
+- ,0,z],758702);let G=(0,d.f)(
+- ,BASE_URL:
+- ,Backing_Vocals:
+- ,Bass:
+- ,Brass:
+- ,Drums:
+- ,FX:
+- ,Guitar:
+- ,Icon:C.f,conditionType:P.s.COVER,mode:
+- ,Icon:I.f,mode:
+- ,Icon:M.f,conditionType:P.s.STEM_CONDITION,actionName:
+- ,Icon:N.f,actionName:
+- ,Icon:S.f,actionName:
+- ,Icon:b.f,mode:
+- ,Icon:e.i(246897).f,accent:
+- ,Icon:eB.f,accent:
+- ,Icon:eR.f,accent:
+- ,Icon:f.f,conditionType:P.s.EXTEND,actionName:
+- ,Icon:g.f,conditionType:P.s.FADE_IN,actionName:
+- ,Icon:h.f,conditionType:P.s.FADE_OUT,actionName:
+- ,Icon:k.f,conditionType:P.s.CROP,actionName:
+- ,Icon:k.f,conditionType:P.s.CUT,actionName:
+- ,Icon:v.f,conditionType:P.s.OVERPAINT,actionName:
+- ,Icon:w.f,mode:
+- ,Icon:x.f,conditionType:P.s.INFILL,actionName:
+- ,Icon:y.f,conditionType:P.s.UNDERPAINT,actionName:
+- ,Keyboard:
+- ,Percussion:
+- ,StemsModal:
+- ,Strings:
+- ,StudioV2:
+- ,Synth:
+- ,WebkitMaskPosition:
+- ,WebkitMaskRepeat:
+- ,WebkitMaskSize:
+- ,Woodwinds:
+- ,[f.s.COVER]:
+- ,[f.s.INFILL]:
+- ,[f.s.OVERPAINT]:
+- ,[f.s.PERSONA]:
+- ,[f.s.PLAYLIST]:
+- ,[f.s.UNDERPAINT]:
+- ,[f.s.VOX_PERSONA]:
+- ,[s.B.MIDI]:
+- ,a.textContent=e.value.slice(0,t);let i=document.createElement(
+- ,accept:
+- ,accept:re.W,className:
+- ,actionName:
+- ,align:
+- ,alignItems:
+- ,allowFullScreen:!0,referrerPolicy:
+- ,area:
+- ,assetId:
+- ,attackParam:
+- ,b=a===tx.f.Premier?
+- ,b=e.lyrics??
+- ,background:
+- ,backgroundColor:M?void 0:
+- ,backgroundImage:
+- ,backgroundPosition:
+- ,backgroundRepeat:
+- ,backgroundSize:
+- ,baseline:
+- ,bigButtonPadding:
+- ,body:e.body??
+- ,border:
+- ,borderRadius:
+- ,borderRadius:3,background:i.has(e.id)?
+- ,borderRadius:4,minWidth:0,overflow:
+- ,caption:
+- ,category:
+- ,channels:2,orientation:
+- ,children:
+- ,children:j(eu&&ep?
+- ,children:l(t?
+- ,className:
+- ,className:eH?
+- ,clipId:n,createNew:
+- ,clipRule:
+- ,clipTags:(0,D.l)(a),initialEngagementMode:u?void 0:
+- ,closeButtonClasses:
+- ,code:
+- ,color:
+- ,contentClassName:
+- ,contentWrapperClasses:
+- ,curves:
+- ,cx:e.cx,cy:e.cy,r:3.5,fill:
+- ,cx:t,cy:r,r:1.5,fill:
+- ,cx:t,cy:r,r:3,fill:
+- ,d=o.defaultView?o.defaultView.getComputedStyle(o.body).backgroundColor:
+- ,decayParam:
+- ,default:1,scale:
+- ,density:
+- ,description:
+- ,description:ey?
+- ,description:i?.prompt??
+- ,disabled:a,onClick:_,className:
+- ,display:
+- ,displayName:
+- ,dominantBaseline:
+- ,e.hasLyricsEarlierOnTrack?
+- ,e.metadata?.tags??
+- ,e.selectionHasLyrics?
+- ,e.selectionOverlapsOtherTrackContent?
+- ,ec&&void 0!==eo&&eo!==U.d.MANUAL?eN(
+- ,effect:
+- ,effectId:
+- ,end:
+- ,entityType:
+- ,excludeStyles:
+- ,faders:
+- ,fill:
+- ,fill:e.includes(0)?
+- ,fill:e.includes(1)?
+- ,fill:e.includes(2)?
+- ,fill:e.includes(3)?
+- ,fill:t.includes(0)?
+- ,fill:t.includes(1)?
+- ,fill:t.includes(2)?
+- ,fill:t.includes(3)?
+- ,fill:t.includes(4)?
+- ,filter:
+- ,fit:
+- ,flex:
+- ,flexDirection:
+- ,fontSize:
+- ,fontVariantNumeric:
+- ,fontWeight:
+- ,format:
+- ,g=e.styles??
+- ,gainParam:
+- ,gap:
+- ,green:
+- ,handle:r.handle,avatarUrl:r.avatarImageUrl,status:
+- ,height:
+- ,height:e[0],rx:
+- ,height:e[1],rx:
+- ,height:e[2],rx:
+- ,height:e[3],rx:
+- ,height:e[4],rx:
+- ,hitLeft:
+- ,hitWidth:
+- ,humanSummary:
+- ,i18nKey:
+- ,i=new RegExp((
+- ,i=t.envelope??
+- ,iconEnd:x.f,iconClassName:
+- ,imageSize:ts.k.SMALL,className:
+- ,infillLyrics:t,lyricsUpdated:
+- ,initialName:
+- ,inset:
+- ,instrument:
+- ,isDisabled:!a,side:
+- ,isDisabled:!i,side:
+- ,isVideo:
+- ,key:
+- ,kind:
+- ,label:
+- ,labelClassName:
+- ,large:
+- ,lastColor:
+- ,lexicalState:
+- ,lexicalState:e.lexicalState??
+- ,lexicalState:i?o.lexicalState:
+- ,lifecycleState:s.lifecycleState??
+- ,lineHeight:
+- ,loading:
+- ,lyrics:
+- ,lyrics:l,language:
+- ,lyrics:n.metadata?.prompt??
+- ,lyrics:t?.metadata?.prompt??
+- ,margin:
+- ,maskImage:
+- ,maskPosition:
+- ,maskRepeat:
+- ,maxWidth:
+- ,medium:
+- ,menuClassName:
+- ,meters:
+- ,method:
+- ,midiEffect:
+- ,mixBlendMode:
+- ,mixBlendMode:T?
+- ,mode:
+- ,modestbranding:
+- ,ne:
+- ,negativeTags:
+- ,negative_tags:
+- ,opacity:
+- ,options:[],variant:
+- ,orange:
+- ,orientation:
+- ,overflow:
+- ,padding:
+- ,pads:
+- ,paramName:
+- ,paramNameX:
+- ,paramNameY:
+- ,pattern:
+- ,persistedTitle:
+- ,placeholder:
+- ,placeholder:ed?.toString()??
+- ,playsinline:
+- ,pointerEvents:
+- ,points:512,x:
+- ,port:
+- ,portMismatch:
+- ,preserveAspectRatio:
+- ,primary:
+- ,principalObjectType:
+- ,projectRelativeContext:P,projectRelativeSelection:S,renderEngine:
+- ,projectRelativeContext:g,projectRelativeSelection:m,renderEngine:
+- ,projectRelativeContext:p,projectRelativeSelection:p,renderEngine:
+- ,projectRelativeContext:u,projectRelativeSelection:u,renderEngine:
+- ,project_title:t2??
+- ,purple:
+- ,qParam:
+- ,r=t.message.replace(/Node \d+/g,
+- ,readouts:
+- ,reason:
+- ,red:
+- ,rel:
+- ,releaseParam:
+- ,renderEngine:
+- ,role:
+- ,runtimeError:
+- ,rx:
+- ,se:
+- ,selection_type:
+- ,shape:C.W.Pill,variant:C.N.Primary,disabled:!t.canSubmitInvite,children:r(t.isSharing?
+- ,shape:f.W.Pill,size:f.S.Medium,variant:f.N.Primary,className:
+- ,shortcut:
+- ,side:
+- ,signed:!0,variant:
+- ,smallButtonPadding:
+- ,sourceName:
+- ,sources:
+- ,src:e,alt:
+- ,start:
+- ,stateAfter:r?
+- ,status:
+- ,stroke:
+- ,stroke:t,strokeWidth:1.8,strokeLinecap:
+- ,strokeLinecap:
+- ,strokeLinejoin:
+- ,strokeMiterlimit:
+- ,strokeWidth:
+- ,strokeWidth:.7,strokeLinecap:
+- ,strokeWidth:1,strokeLinecap:
+- ,strokeWidth:4,strokeLinecap:
+- ,strokeWidth:t.arcW,fill:
+- ,style:
+- ,style:(0,t.S)(e)??
+- ,style:a.tags??
+- ,style_summary:
+- ,styles:
+- ,suggestion:
+- ,sustainParam:
+- ,sw:
+- ,switches:
+- ,t(e.background?
+- ,t);let a=[
+- ,t.fill(new Path2D(
+- ,t.label??
+- ,t:e,i18nKey:
+- ,t=ef?_(k-1):
+- ,t?.gpt_description_prompt??
+- ,t?.negative_tags??
+- ,t?.tags??
+- ,tabIndex:0,className:
+- ,tags:l,negativeTags:
+- ,target:
+- ,targetPort:
+- ,text:
+- ,textClassName:
+- ,textOverflow:
+- ,title:
+- ,title:e.title,text:e.tags??
+- ,titleKey:
+- ,titleWrapperClasses:
+- ,transform:
+- ,transformOrigin:
+- ,transition:
+- ,trigger:
+- ,typeParam:
+- ,unit:
+- ,unitDisplay:
+- ,variant:
+- ,view:
+- ,viewBox:
+- ,waveformParam:
+- ,webkitMaskImage:
+- ,whiteSpace:
+- ,width:
+- ,willChange:
+- ,wrapperClasses:
+- ,x.current.delete(t.peerId);let n=r.querySelector(
+- ,x:e.c,y:e.c,textAnchor:
+- ,x:e.c-i/2,y:n-2.9*r-i/2,width:i,height:i,fill:
+- ,xmlns:
+- ,y:12-e[0]/2,width:
+- ,y:12-e[1]/2,width:
+- ,y:12-e[2]/2,width:
+- ,y:12-e[3]/2,width:
+- ,y:12-e[4]/2,width:
+- ,y:s(d),stroke:
+- ,y=s.subscriptionPeriod??
+- ,yellow:
+- ,zIndex:
+- ,zIndex:2,opacity:+!eS,transition:
+- -0.125rem 0
+- -ml-1 h-4 w-4
+- -ml-1 h-[1.375rem] w-[1.375rem]
+- -mr-0.5 -ml-1 transition-transform duration-200
+- -mr-1 h-4 w-4
+- -mr-1.5 p-2
+- -mr-2.5 -ml-1
+- -mr-6 pr-6 mask-r-from-[calc(100%-1.5rem)]
+- -mt-[0.125rem] inline-block
+- -mt-[0.125rem] text-nowrap
+- -mx-1 h-40
+- -mx-1 min-h-24
+- -mx-3 -mb-3 flex items-center
+- -mx-4 flex w-[calc(100%+2rem)] [scrollbar-width:none] gap-2.5 overflow-x-auto px-4
+- .clip-interaction-button, .context-menu-button, button, a, input, label
+- .multi-select-button, .multi-select-button *
+- .send-to-chat-button *
+- /%3E%3C/feComponentTransfer%3E%3C/filter%3E%3Crect width=
+- /%3E%3CfeColorMatrix type=
+- /%3E%3CfeComponentTransfer%3E%3CfeFuncA type=
+- 0 -0.25rem 1.5rem var(--color-opacity-black-50)
+- 0 -0.5rem 0.75rem -0.375rem rgba(0, 0, 0, 0.4)
+- 0 0 0 0.125rem var(--color-background-primary)
+- 0 0 0.5rem
+- 0 0 0.5rem 1px var(--organ-accent, #f9268c)
+- 0 0 auto
+- 0 0.5rem
+- 0 0.5rem 0 0
+- 0 0.75rem
+- 0 12px 0 8px
+- 0 1rem
+- 0 6px 20px rgba(0, 0, 0, 1)
+- 0.125rem 0.375rem
+- 0.125rem solid var(--color-accent-purple)
+- 0.25rem 0
+- 0.28s ease both;
+- 0.2s ease-in-out both;height:
+- 0.33 * (width - 2)
+- 0.75rem 0 1rem
+- 0px 0px 300px 0px
+- 0px 1px 16px 0 rgba(0, 0, 0, 0.4)
+- 0rem 0.1875rem 0rem 0.1875rem
+- 0rem 0.393125rem 1.47375rem 0 rgba(0, 0, 0, 0.3)
+- 0rem 0.589375rem 0.589375rem 0 rgba(0, 0, 0, 0.23)
+- 1 0;min-width:0;min-height:0;gap:0.75rem;
+- 1 · Plugins in this project
+- 10px 16px
+- 12px "PP Neue Montreal", sans-serif
+- 1px 0.25rem 1px 0.25rem
+- 1px 1px 3px var(--foreground-primary-on-dark)
+- 1px dashed var(--color-border-secondary)
+- 1px solid #0a0a0a
+- 1px solid #1a1a1a
+- 1px solid #222
+- 1px solid #2a2a2a
+- 1px solid rgba(255, 255, 255, 0.1)
+- 1px solid rgba(255, 255, 255, 0.2)
+- 1px solid transparent
+- 1px solid var(--color-border-primary)
+- 1px solid var(--color-opacity-white-4)
+- 1px var(--color-opacity-white-10)
+- 3 · Wavetables
+- 3px 6px
+- 4px 12px
+- 4px 8px
+- :!0,className:
+- :N&&L(g.l.CUSTOM),await b(r.id,p.Y.COVER,void 0);break;case
+- :N&&L(g.l.CUSTOM),y(u.U),y((0,S.f)(r)),await b(r.id,p.Y.COVER,void 0);break;case
+- :await b(r.id,p.Y.CROP);break;case
+- :await b(r.id,p.Y.CUT);break;case
+- :await b(r.id,p.Y.EXTEND,void 0);break;case
+- :await b(r.id,p.Y.FADE_IN);break;case
+- :await b(r.id,p.Y.FADE_OUT);break;case
+- :await b(r.id,p.Y.INFILL);break;case
+- :await b(r.id,p.Y.OVERPAINT);break;case
+- :await b(r.id,p.Y.UNDERPAINT);break;case
+- :c?.[w.s.EXTEND]?
+- :e.dataset.youtubeSrc??
+- :e.inSchedule?
+- :e.lyrics,o=n?t?.preview||(0,i.l)(t?.body??
+- :ea?
+- :eg?
+- :ep?
+- :ep?q:void 0,
+- :es?
+- :eu?
+- :if(!Array.isArray(t)||!Array.isArray(t[0]))throw Error(
+- :l.lyrics??
+- :r.keepFocusedAreaOnClear?t:
+- :return String(e.view);case
+- :return e(
+- :return e.name;case
+- :return e.title;case
+- :return i.q.HoldPedal;case
+- :return i.q.PitchBend;case
+- :return nA;case
+- :return nL;case
+- :return r(
+- :return rp.f;case
+- :return t(
+- :return t?.stretchArmed&&t.canStretchEdge(e.arrangementId,
+- :return tW.f;case
+- :u?d:void 0,
+- :void 0,
+- :void 0,className:(0,W.X)(
+- :void 0,className:(0,n.U)(
+- :void 0,role:
+- :void 0===r?
+- ;align-items:center;gap:0.125rem;flex:0 0 auto;
+- ;animation:
+- ;aspect-ratio:1;border-radius:
+- ;background-color:
+- ;background:
+- ;background:var(--color-background-primary);backdrop-filter:
+- ;border-bottom-color:
+- ;border-bottom:
+- ;border-bottom:0.125rem solid\n
+- ;border-color:
+- ;border-radius:
+- ;border-radius:0 0 2rem 2rem;display:flex;flex-direction:column;
+- ;border-radius:0.25rem;border:
+- ;border-radius:0.625rem;background:
+- ;border-radius:0.75rem;text-align:left;cursor:
+- ;border-radius:6.25rem;cursor:pointer;background:
+- ;border-top:
+- ;border:
+- ;border:1px dashed\n
+- ;border:1px solid\n
+- ;bottom:
+- ;box-shadow:
+- ;case o.o.FEMALE:return
+- ;color:
+- ;color:var(--color-foreground-primary);transition:background 0.12s ease;
+- ;cursor:
+- ;cursor:pointer;background:
+- ;display:flex;gap:0.5rem;align-items:
+- ;flex-shrink:
+- ;font-family:inherit;font-size:12px;border-radius:999px;background:
+- ;font-size:0.6875rem;color:
+- ;font-weight:
+- ;for(let t of e.tileSlots)t.node.style.transition=
+- ;height:
+- ;height:32px;padding:
+- ;if(!n)return console.warn(
+- ;if(e instanceof ew.R)return
+- ;justify-content:
+- ;justify-content:stretch;flex-direction:
+- ;left:
+- ;left:0;right:0;bottom:0;transition:opacity 180ms ease,transform 180ms ease;opacity:
+- ;line-height:
+- ;line-height:1;transition:color 0.12s ease-out;
+- ;margin-bottom:
+- ;margin-left:
+- ;margin-right:
+- ;margin-top:
+- ;max-height:
+- ;max-height:100%;min-height:0;border-radius:
+- ;max-width:100%;height:
+- ;min-height:
+- ;n.textContent!==a&&(n.textContent=a),n.style.display=i?
+- ;opacity:
+- ;opacity:0;transition:opacity 0.14s ease,transform 0.16s ease;
+- ;outline-offset:3px;transition:outline-color 0.12s ease-in-out;
+- ;outline:
+- ;overflow:clip;overflow-clip-margin:0.25rem;pointer-events:
+- ;overflow:hidden;transition:max-height 0.25s ease,opacity 0.2s ease;
+- ;overflow:hidden;transition:opacity 0.3s ease-out;
+- ;padding:
+- ;padding:0;border-radius:
+- ;pointer-events:
+- ;pointer-events:none;transition:opacity 0.15s ease-out;
+- ;position:absolute;z-index:
+- ;position:relative;cursor:
+- ;right:
+- ;touch-action:none;opacity:
+- ;transform:
+- ;transform:translate(-50%,-50%);border-radius:0.75rem;background:
+- ;transition:background 0.12s ease,color 0.12s ease;
+- ;transition:background 0.12s ease,color 0.12s ease;color:
+- ;transition:background 0.12s ease;background:
+- ;transition:background 100ms;background:
+- ;transition:background 140ms ease;
+- ;transition:background 140ms;
+- ;transition:background-color 0.1s ease-in-out,border-color 0.1s ease-in-out;border-radius:
+- ;transition:background-color 0.2s ease;
+- ;transition:filter 0.2s ease-in-out;
+- ;transition:height 0.2s ease,margin-top 0.2s ease,opacity 0.2s ease;
+- ;transition:left 160ms
+- ;transition:opacity 0.12s ease;
+- ;transition:opacity 0.14s ease;
+- ;transition:opacity 0.18s ease,visibility 0.18s;
+- ;transition:opacity 0.2s ease,transform 0.2s ease;
+- ;transition:opacity 0.2s ease-in-out;
+- ;transition:opacity 140ms ease;
+- ;transition:width 0.12s ease;
+- ;transition:width 0.2s ease,margin-left 0.2s ease,opacity 0.2s ease;
+- ;transition:width 0.2s ease,margin-right 0.2s ease,opacity 0.2s ease;
+- ;var t=e+
+- ;visibility:
+- ;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:
+- ;width:
+- ;width:0.625rem;height:0.5rem;border-radius:0.4375rem;background:
+- ;width:0.625rem;height:0.625rem;border-radius:6.25rem;background:
+- ;width:100%;max-width:100%;padding:
+- ;z-index:
+- ===(0,n.d)(eo(e).trim())?
+- ===(a=String(ex).toLowerCase())?
+- ===G.kind?G.clipId:
+- ===G.kind?G.id:
+- ===G.kind?G.view:
+- ===a.focusedArea||o,tracksAreaFocused:
+- ===e.align?
+- ===e.key&&(e.ctrlKey||e.metaKey)?(e.preventDefault(),e.shiftKey?f():m()):
+- ===e.key&&(e.metaKey||e.ctrlKey)?e.shiftKey?p():u():
+- ===e.kind)P(ra(_,e.view));else if(
+- ===e.kind?e.track.color:
+- ===e.kind?e.video_id:
+- ===e.kind?rQ(e.widget):
+- ===e.kind?rU(e.widget):
+- ===e.major_model_version?d.n.V3:
+- ===e.major_model_version?d.n.V3_5:
+- ===e.major_model_version?d.n.V4:
+- ===e.name),a=e.matrix??i?.default;return new Set((0,n.Y)((0,r.T)(
+- ===e.scale?
+- ===e.selected_version?e.selected_version:
+- ===e.status)?
+- ===e.subTarget?
+- ===e.tab.selection.focusedArea)?(0,S.f)(e):
+- ===e.target.value?
+- ===e.type)return a(
+- ===e.type)return e.prompt.replaceAll(
+- ===e.type?e.beats:
+- ===e.width.unit?32*e.width.value:void 0,c=e.height&&
+- ===eu?
+- ===o)void 0!==d?n[s]=e3(d):delete n[s];else if(o.startsWith(
+- ===o?t.o.FEMALE:t.o.UNSPECIFIED,lyricsPrompt:
+- ===o?t.o.MALE:
+- ===p)e=t[h],l=r[h];else if(p.startsWith(
+- ===r&&n?n:void 0,className:(0,A.U)(
+- ===r.status)throw Error(r.error_message||
+- ===r?Math.floor(e/n)*n:
+- ===r?delete i[t]:i[t]=r,
+- ===t)return ea((0,Z.m)(e,r),[],r,n);if(t.startsWith(
+- ===t.default.env.VITEST?
+- ===t.detail)return await (0,l.e)(2500),d(e);if(
+- ===t.load.kind||t.load.seq!==e.seq)return t;let r=
+- ===t.status?e.successCount++:
+- ===t.surface?
+- ===t.surface?t.tileShifts[r]??0:0;e.node.style.transition=o8,e.node.style.transform=0===n?
+- ===t.target.value?
+- ===t.type?[t.payload.clipId]:
+- ===t?(0,s.f)(e.trackId,r):
+- ===u,variant:
+- ===u?oE.Mini:oE.Micro,checked:
+- ==typeof a&&
+- ==typeof a.detail?a.detail:
+- ==typeof a.prompt?a.prompt.slice(0,(0,eR.k)(n)):
+- ==typeof a?a:
+- ==typeof e&&
+- ==typeof e)&&
+- ==typeof e)return e;if(F(e))return B?B.call(e):
+- ==typeof e)return e;if(F(e))return E?E.call(e):
+- ==typeof e)return e;if(R(e))return B?B.call(e):
+- ==typeof e.detail?e.detail:
+- ==typeof e.infill_context_start_s?e.infill_context_start_s:0,contextEndSeconds:
+- ==typeof e.infill_end_s?e.infill_end_s:0,contextStartSeconds:
+- ==typeof e.infill_start_s?e.infill_start_s:0,endSeconds:
+- ==typeof e.persona_id?e.persona_id:void 0;if(!r)break;let n=
+- ==typeof e.splice||q(e)||(n=t=e)&&
+- ==typeof e.start_s&&
+- ==typeof e;e.s([
+- ==typeof e||
+- ==typeof e||F(e))return e;var t=e+
+- ==typeof i&&
+- ==typeof i)return i;let a=(0,r.L)(e,t,
+- ==typeof i.durationSec?i.durationSec:eR.h.durationSec,resolution:
+- ==typeof i?i:void 0,materialized:(0,eA.Q)(r.get(
+- ==typeof n&&H(t)&&w.call(e,
+- ==typeof n||
+- ==typeof r&&eF(n)&&Q.call(t,
+- ==typeof r?r:
+- ==typeof self&&self&&self.Object===Object&&self,j=L||U||Function(
+- ==typeof self&&self&&self.Object===Object&&self,m=f||p||Function(
+- ==typeof t&&
+- ==typeof t.projectId&&
+- @container w-full
+- A custom MIDI effect.
+- A custom audio effect.
+- A custom instrument.
+- A custom plugin.
+- A pinned image's URL could not be read
+- APIC frame value should be an object with keys type, data and description
+- Aborted
+- Acoustic Drum Kit
+- Acoustic Guitar
+- Acting as
+- Add a bass line here
+- Add a track with a signal chain first.
+- Add a warm reverb to this track
+- Agent
+- Agent thinking
+- Algorithmic reverb with time, mix, width, damping, predelay, and low/high cut shaping.
+- All
+- Already on Master
+- Alt
+- Alto Saxophone
+- Amber Hall
+- Amount
+- Amphitheatre
+- An unknown error occurred
+- Ancient Theatre
+- Apartment Alley
+- Appalachian Dulcimer
+- Aria Plate
+- Arr. Acoustic Guitar
+- Arr. Electric Guitar
+- Arranging the panel layout…
+- Artist infill is not supported
+- Ask me to generate or add something here
+- Ask me to write or change notes on this track
+- Atrium
+- Attach an audio file
+- Attack
+- Audio Effects
+- Audio engine not ready
+- Audio passthrough
+- Audio play error:
+- AudioContext.playbackStats not available
+- Auto
+- Auto-attach mode
+- Avoid relying on iteration order of unordered collections or any external state.
+- B Vocals
+- Backing Vocals
+- Backspace
+- Ballroom A
+- Ballroom B
+- Baritone Saxophone
+- Bass
+- Bass Drum
+- Bedroom
+- Boom Spring
+- Boreal Chapel
+- Boxing it up…
+- Brass Instruments
+- Brass Section
+- Brass section
+- Brick Stairwell
+- Bridge Underpass
+- Broken (port mismatch)
+- Broken: invalid ID
+- Broken: invalid class
+- Build a gritty delay and put it on this track
+- Building the processing chain stage by stage…
+- Bulk-export presets
+- Bunker A
+- Bunker B
+- COMM frame value should be an object with keys description and text
+- CREDITS REFUNDED
+- Cache page should have been created by loadPage
+- Cached
+- Calibrating the test bench…
+- Cannot arrange recording: DSP module unavailable
+- Cannot regenerate from a private clip not shared with you
+- Capture worklet unavailable; cannot calibrate latency.
+- Carrying your settings into the new version…
+- Change origin that edits and undo/redo attribute to.
+- Chaos Long
+- Chaos Short
+- Checking levels and headroom…
+- Checking nothing else drifted…
+- Checking the docs for the new pieces…
+- Checking the user interface…
+- Choosing knobs and switches…
+- Choosing the right signal-processing approach…
+- Chord
+- City Terrace
+- Clean Plate
+- Clip
+- Clip generation failed, please try again
+- Clip generation timed out, please try again
+- Clip is not complete
+- ClipMenuItem must be rendered in a ClipContext
+- Clips returned → take lanes (preview Take 1)
+- Clone project function not available
+- Club Room
+- Code
+- Coffee Shop A
+- Coffee Shop B
+- Coil Spring
+- College Arena
+- Colonial Bedroom
+- Compact
+- Comparing candidate architectures…
+- Comparing it against the previous version…
+- Compiling and validating…
+- Compiling the new version…
+- Completed video has no download URL
+- Computer Keyboard
+- Confirming the sound matches the plan…
+- Confirming the theory behind the design…
+- Confirming what should stay untouched…
+- Context not available - is provider mounted?
+- Continuous value gesture aborted
+- Control details:
+- Controls
+- Convention Arena
+- Converting to MIDI…
+- Copy
+- Could not add file
+- Could not create media file
+- Crop
+- Crop operation failed:
+- Crop worker reported error
+- Curio Shop
+- Current Grid
+- Custom
+- Custom Model
+- Cut operation failed:
+- Cut worker reported error
+- DIY Spring
+- DIY Spring Soft
+- DSP-sync decision of the drag gesture in flight (moves ghost, edge trims/fades stay live)
+- Debug plugin controls
+- Debug recording
+- Debug: soundfont (staff)
+- Decay
+- Default
+- Default -
+- Delete
+- Demo projects are only defined in staging and prod
+- Dialing in smooth control curves…
+- Digital Piano
+- Distorted Electric Guitar
+- Does Not Meet Guidelines
+- Double Bass
+- Download URL missing. Please try again.
+- Download WAV failed:
+- Download bundle
+- Download failed.
+- Download failed:
+- Download preparation failed.
+- Download preparation timed out. Please try again.
+- Driven Plate
+- Drum Kit
+- Drums
+- Drums and Percussion
+- Dry
+- Duplicate non-persona reference types are not allowed
+- EQ curve
+- Edit clip materialized but load failed
+- Editing the DSP code…
+- Eerie Loading Dock
+- Eighth
+- Electric Bass
+- Electric Guitar
+- Electric Piano
+- Electronic Drum Kit
+- Electronic Percussion
+- Empty
+- End
+- End & copy debug log
+- Endpoint not found. Please check the API path.
+- English Horn
+- Enter
+- Error
+- Error checking for pending choice:
+- Error disconnecting Analyser:
+- Error disconnecting MediaStreamSource:
+- Error fetching v3 lyrics, falling back to v2
+- Error generating share link:
+- Error in clip creation intent resolver:
+- Error opting out:
+- Error releasing recording input stream:
+- Error saving project details:
+- Error sharing:
+- Error stopping audio tracks:
+- Error submitting abandon:
+- Error submitting choice:
+- Error submitting keep both:
+- Error submitting keep neither:
+- Error submitting keep one:
+- Error uploading image:
+- Escape
+- Exception submitting choice:
+- Exhibit Hall
+- Expected a valid hex string
+- Export failed.
+- Extend cannot be combined with other operations
+- Fade
+- Fade In
+- Fade Out
+- Fade operation failed:
+- Fade worker reported error
+- Failed to acquire audio input streams:
+- Failed to clone project
+- Failed to clone project:
+- Failed to compile
+- Failed to copy lyrics to clipboard:
+- Failed to copy:
+- Failed to copy: clipboard write rejected
+- Failed to create custom model
+- Failed to create lyricist
+- Failed to create or load project for clip
+- Failed to decode audio file
+- Failed to decode audio file:
+- Failed to delete lyricist
+- Failed to fetch contest clips
+- Failed to fetch cover art:
+- Failed to fetch custom model bases
+- Failed to fetch latest version:
+- Failed to fetch persona
+- Failed to fetch project
+- Failed to fetch project revision
+- Failed to fetch project version
+- Failed to fetch projects for clip
+- Failed to finalize recording:
+- Failed to generate sample pack
+- Failed to get contextual suggestions
+- Failed to get download URL.
+- Failed to get full song:
+- Failed to get prompts and tags
+- Failed to get upload ID
+- Failed to load agent profiles
+- Failed to load lyricists
+- Failed to load pending upload:
+- Failed to load preview status
+- Failed to load recent clips
+- Failed to load soundfont asset:
+- Failed to load soundfont:
+- Failed to load the impulse-response library.
+- Failed to load the soundfont library.
+- Failed to load video metadata
+- Failed to load your impulse responses.
+- Failed to load your soundfonts.
+- Failed to load your wavetables.
+- Failed to open audio input stream:
+- Failed to persist dropped soundfont:
+- Failed to render state
+- Failed to save designed impulse response:
+- Failed to save designed wavetable:
+- Failed to save project
+- Failed to save project:
+- Failed to set metadata
+- Failed to start MIDI recording:
+- Failed to start audio recording:
+- Failed to start lyrics mashup
+- Failed to update favorite
+- Failed to update lyricist
+- Failed to update project details
+- Female Backing Vocals
+- Female Lead Vocal
+- File is too large to upload (500MB max)
+- Files
+- Filing it over the previous version…
+- Filters
+- First argument should be an instance of ArrayBuffer or Buffer
+- Fitting the new controls beside the old…
+- Fixed duplicate clip id:
+- Focus a track with a signal chain (audio or MIDI) first.
+- Focus a track with a signal chain first.
+- Force-load JSON
+- Force-load plugin
+- Forest Clearing
+- Foyer Stairwell
+- Freight Elevator
+- French Horn
+- Freq
+- Fretless Bass
+- Full Song
+- GET /api/lyrics-projects
+- Gain
+- Garage Stairwell
+- Garden Stage
+- Gated Throb
+- Gazebo
+- GenStem cannot be combined with other operations
+- Generate a guitar solo in this section
+- Generate an 8-bar drum loop and drop it here
+- Generating...
+- Generation analytics require a request snapshot or a configured analytics snapshot getter
+- Generation didn't start — no audio was returned.
+- Generation didn't start — no clips were returned.
+- Generation failed:
+- Generation is already being prepared.
+- Generation returned an empty response
+- Get MIDI failed:
+- Getting ready to build a plugin…
+- Getting ready to update your plugin…
+- Giving it one last listen…
+- Giving the update one last listen…
+- Granular Room 1
+- Granular Room 2
+- Grotto
+- Grounding the design in first principles…
+- Group
+- Guitar
+- Guitar Synth
+- Half
+- Hand Clap
+- Handling edge cases in the audio loop…
+- Helvetica Neue
+- History
+- Home
+- Home Office
+- Hotel Bathroom
+- Hotel Room
+- Human Beatbox
+- I can't generate — the project isn't loaded.
+- Illegal argument
+- Implementing the core algorithm…
+- Incorrect APIC frame picture type
+- Infill cannot be combined with both cover and persona
+- Infill cover is not supported
+- Ingest with
+- Inherit
+- Input
+- Input Sans
+- Instruments
+- Instruments can only load onto a MIDI track (audio tracks use the structural source slot).
+- Insufficient Credits
+- Interface
+- Intro Count (Click + Key)
+- Intro Count (Click)
+- Intro Count (Key)
+- Invalid JSON
+- Invalid UUID
+- Invalid alignment spec
+- Invalid audio ports
+- Invalid plugin
+- Invalid project state
+- Invalid project state format
+- Invalid request. Please check your input.
+- It shows in your Visuals library and the song's videos when it's ready.
+- Item
+- Jingle Bells
+- Keep
+- Keeping familiar controls where they were…
+- Keeping the rest of the circuit intact…
+- Keeping the signal path clean and efficient…
+- Key
+- Keyboards
+- Kick
+- LFO waveform
+- LIVE (frames flow to the engine)
+- La Brea Chamber
+- Label
+- Language must be coded following the ISO 639-2 standards
+- Lap Steel Guitar
+- Latin Percussion
+- Laying out the schematic…
+- Lead Acoustic Guitar
+- Lead Electric Guitar
+- Lead Vocal
+- Lead Vocals
+- Left the project room
+- List
+- Listening for artifacts…
+- Listening for what changed…
+- Little Church
+- Living Room A
+- Living Room B
+- Load
+- Loading
+- Loading Dock
+- Loading the current version onto the bench…
+- Loading the plugin toolchain…
+- Log score attaches
+- Lyric video started
+- Lyrics 2.0 M1 cowriter drafts.
+- Lyrics appear to contain copyrighted material.
+- Lyrics likely contain copyrighted material
+- Lyrics mashup failed
+- Lyrics mashup timed out. Please try again.
+- M4A download URL resolution failed:
+- M4A download failed.
+- MIDI Effects
+- MIDI context as condition
+- MIDI effects can only load onto a MIDI track.
+- MIDI file contains no tracks
+- MIDI transcription failed, please try again.
+- MMM d, yyyy
+- MMMM d, yyyy
+- MP4 download URL refresh failed
+- Make a variation of this MIDI clip
+- Make lyric video
+- Make these notes swing
+- Making sure the control panel makes sense…
+- Making sure the panel still makes sense…
+- Making sure your change landed…
+- Making the song now.
+- Male Backing Vocals
+- Male Lead Vocal
+- Malformed ports
+- Map
+- Mapping controls to the DSP under the hood…
+- Mapping the request onto known DSP techniques…
+- Mapping your change onto the current design…
+- Mashup cannot be combined with other operations
+- Mashup lyrics generation failed
+- Mashup lyrics generation failed:
+- Master
+- Master bus
+- Master limiter lookahead
+- Master limiter lookahead (ms)
+- Math.random is disabled during tracing (determinism)
+- Measuring the frequency response…
+- Message
+- Metal bars
+- Mip map level is too high
+- Mode
+- Model (staff)
+- Moderation
+- Modulated Room
+- Modulation surface
+- Move
+- Move Song
+- Multitrack download failed.
+- Music Box
+- Namespace must be array-like (16 iterable integer values, 0-255)
+- Naming the new parameters…
+- Naming the parameters…
+- New Clip
+- New England Hall
+- New Track
+- New workspace
+- Newer versions kept landing during the save
+- No MIDI score was staged for this generation.
+- No aligned words found in v2 response
+- No chain plugins found (or descriptors still loading).
+- No download URL returned from server
+- No focused track
+- No high-quality stems found
+- No load point
+- No project ID in cloned project response
+- No project ID in response
+- No project version ID available for cloning
+- No revision data found
+- No song was sent
+- No studio project ID available
+- No submit visual-api can take
+- No track
+- No version ID in save response
+- Noggin Mode
+- Noise effects
+- Not a plugin descriptor
+- Not found
+- Not in a project room
+- Not responding
+- Off
+- Old Hallway
+- Old Living Room
+- Only audio effects can load onto Master
+- Open Living Room
+- Open in Content Dashboard
+- Opening the workshop…
+- Opening up your plugin…
+- Optimizing the inner loop for real time…
+- Orchestra Hit
+- Orchestral Percussion
+- Organ
+- Original
+- Other
+- Our moderation system wasn't sure about those lyrics, please try again
+- Our moderation system wasn't sure about those lyrics, please try again.
+- Out
+- PAN: C
+- PP Monument Condensed
+- PP Neue Montreal
+- PREVIEW CLIP
+- Packaging the new version…
+- Packaging the plugin…
+- Pad
+- Pan
+- Parking Garage
+- Pass instructions describing what to create.
+- Pass start_beats and end_beats together.
+- Pedal Steel Guitar
+- Percussion
+- Piano
+- Picking musical default settings…
+- Pitched Percussion
+- Playlist cannot be combined with other operations except persona
+- Plugin not found
+- Plugin version id
+- Plugins
+- Polishing the faceplate…
+- Popup
+- Portal
+- Positioner
+- Powering up the build rig…
+- Prefunction Hall
+- Preparing a new version…
+- Preparing it for the rack…
+- Preserving what already works…
+- Pro
+- Prod
+- Project ID not found for version
+- Promise
+- Prompt contained inappropriate material
+- Prompt likely malformed
+- Pulling the schematic of the current version…
+- Quarter
+- Queue generation (placeholder on track)
+- Queued Generation
+- Quick Start tutorial track setup failed
+- Racking up a fresh unit…
+- Rate Limited
+- Re-reading the current design…
+- Readahead cache
+- Reading the plugin development docs…
+- Ready
+- Record
+- Recording tap worklet failed to load:
+- RecordingState must always have at least one arrangement!
+- Recreate
+- Redo
+- Release
+- Remove
+- Remove Section
+- Render context (API in flight)
+- Rendering context...
+- Rendering test audio…
+- Rendering the selected audio failed, please try again.
+- Request has expired
+- Reset
+- Reset clip colors
+- Resolving referenced assets…
+- Rewiring just the parts that change…
+- Reworking the control panel…
+- Rhythm Acoustic Guitar
+- Rhythm Acoustic Guitar (Arpeggio)
+- Rhythm Electric Guitar
+- Rhythm Electric Guitar (Arpeggio)
+- Risers
+- Root
+- Run completes (auto-audition first take)
+- Running final quality checks…
+- Running the plugin through its paces…
+- Running the updated plugin through its paces…
+- SF Mono
+- SONG REFUNDED
+- Safari decodeAudioData error
+- Safari decodeAudioData timed out
+- Safari: No compatible MIME type found, using default
+- Sample cannot be combined with other operations
+- Sample pack generation failed
+- Sample pack generation timed out. Please try again.
+- Saving the preset failed.
+- Scale
+- Screwing the faceplate back on…
+- Sculpting the signal path…
+- Sealing the signal path…
+- Search projects
+- Select a range over an audio clip first.
+- Select a spot on the timeline and ask me to add a part
+- Selecting the right building blocks from the SDK…
+- Selection
+- Selection from "
+- Selection is empty
+- Send prompt
+- Sequoia Basin
+- Set
+- Setting sensible parameter ranges…
+- Sharpening the virtual soldering iron…
+- Shift
+- Shimmerstorm
+- Show stats bar
+- Silly Space 1
+- Silly Space 2
+- Silly Space 3
+- Silly Space 4
+- Simulated upload failure (debug toolbar)
+- Sing a verse that calls back to the intro
+- Sixteenth
+- Sketching the control panel…
+- Smoothing parameter changes to avoid clicks…
+- Snap (Fingers)
+- Snare
+- Song
+- Soprano Saxophone
+- Sorry but we are currently experiencing elevated usage. Please try again later. Thanks!
+- Sound Effects
+- Sound effects
+- SoundFont auto-load failed:
+- SoundFont rehydrate failed:
+- Source
+- Space
+- Spinning up a dedicated build environment…
+- Split from mix
+- Spring Tank
+- Stack cannot be combined with references other than Persona
+- Staff
+- Staging
+- Stamping the new version number…
+- Stamping the serial number…
+- Standard catalog
+- Start
+- State loaded from storage couldn't be migrated since no migrate function was provided
+- Station Overhang
+- Steel Drums
+- Stem generation is missing its context render.
+- StemCondition can be combined with a persona only as a plain stem-add with a vox persona
+- StemCondition cannot be combined with extend, genStem, playlist, underpaint, or overpaint
+- Storm Drain
+- Streamed audio frontier:
+- Streaming finishes
+- Streaming source was empty and no DRM media could be fetched
+- Stress-testing extreme settings…
+- String Section
+- Studio file upload failed:
+- Studio project is not loaded.
+- StudioDoc(native): materialized state does not match the supplied oldState.
+- Studying Suno reference plugins…
+- Studying the existing DSP code…
+- Suno
+- Suno Studio MIDI
+- Surveying proven circuit topologies…
+- Sustain
+- Sweeping the frequency range…
+- Synth
+- Synth Ambiant
+- Synth Bass
+- Synth Brass
+- Synth Flute
+- Synth Keys
+- Synth Lead
+- Synth Pad
+- Synth Room 1
+- Synth Room 2
+- Synth Room 3
+- Synth Room 4
+- Synth Room 5
+- Synth Strings
+- Synth Voice
+- Synthetic Resonance
+- TXXX frame value should be an object with keys description and value
+- Tab
+- Takes start streaming
+- Tenor Saxophone
+- Terrazzo Room
+- The
+- The Pantheon
+- The build likely contains an unbounded loop or far too much work.
+- The clip's audio is still loading. Try again shortly.
+- The collaboration message is too large to send
+- The cover destination must be an audio track.
+- The destination track is no longer in the project.
+- The generation was cancelled (simulated failure).
+- The project room refused or failed the connection
+- The selection is too short to sample cycles from.
+- Theater Storage
+- There is no active project to load into.
+- Thinking about the user interface…
+- This clip used personalization. Results may differ as your taste profile has changed.
+- This isn't supported with the new Create form yet
+- This request can't be completed.
+- This song didn't pass our content checks.
+- Threshold
+- Thumb Piano
+- Tightening the last screws…
+- Tiled Bathroom
+- Tiled Dormitory
+- Timber Room
+- Time series display
+- Timeout
+- Timeout waiting for clip to be playable
+- Title too long.
+- Transcription needs the infill context render.
+- Transfer curve
+- Transpose this clip up an octave
+- True
+- Tubular Bell
+- Tuning coefficients and time constants…
+- Twelve
+- Two
+- Type
+- USLT frame value should be an object with keys description and lyrics
+- Underpaint and Overpaint cannot be combined
+- Underpaint/Overpaint cannot be combined with other operations
+- Underrun logging
+- Undo
+- Undo / redo as origin
+- Unknown Error
+- Unknown error
+- Unknown picture MIME type
+- Unscrewing the faceplate…
+- Unsupported format
+- Untitled
+- Untitled Project
+- Untitled User
+- Updating the processing chain…
+- Upload failed
+- Upload failure forced via the debug toolbar
+- Upright Bass
+- User
+- Uses Sliders!
+- Velocity policy
+- Velvet Plate
+- Venetian Home
+- Verifying the controls behave as designed…
+- Version
+- Version data not found
+- Video generation request failed
+- Video generation timed out
+- Video processing completed but no s3_id
+- Video processing timed out
+- Video status unavailable
+- Video upload completed without an upload id
+- View
+- Villa Hallway
+- Vocals
+- Vocals + Instrumental
+- Voice
+- Volume
+- WARNING: OrbitControls.js encountered an unknown camera type - dolly/zoom disabled.
+- WARNING: OrbitControls.js encountered an unknown camera type - pan disabled.
+- WARNING: OrbitControls.js encountered an unknown camera type - zoom to cursor disabled.
+- Warbled Decay 1
+- Warbled Decay 2
+- Warm Plate
+- Warming up the DSP sandbox…
+- Waveform
+- We couldn't check your MIDI file. Please try again.
+- We were unable to generate lyrics for your song — please change your prompt and try again.
+- Weaving the change into the signal path…
+- Wide Air
+- Wind Chimes
+- Wind Instruments
+- Wiring inputs to outputs…
+- Wooden Church
+- Working out where the change fits…
+- Write a bassline on this track
+- Writing the DSP code…
+- Writing the spec sheet…
+- Your lyrics contain copyrighted material. Please change it and try again.
+- Your lyrics contain inappropriate material. Please change them and try again.
+- Your prompt contains inappropriate material. Please change it and try again.
+- Your prompt was flagged for moderation. Please change it and try again.
+- Your title contains inappropriate material. Please change it and try again.
+- Your title was flagged for moderation. Please change it and try again.
+- [--hxc-btn-px:1rem] px-(--hxc-btn-py) hover:px-(--hxc-btn-px)
+- [--hxc-tag-font-size:1rem] leading-normal [text-box:normal]
+- [DspSyncEngine] attaching MIDI clips to the track source threw — skipping track
+- [DspSyncEngine] failed to dispose a plugin after its load failed
+- [DspSyncEngine] plugin descriptor has malformed ports — skipping create
+- [DspSyncEngine] plugin descriptor has malformed ports — skipping recreate
+- [DspSyncEngine] plugin graph port/signal mismatch — skipping create.
+- [DspSyncEngine] plugin graph port/signal mismatch — skipping recreate.
+- [DspSyncEngine] plugin source.code did not compile — skipping create
+- [DspSyncEngine] plugin source.code did not compile — skipping recreate
+- [DspSyncEngine] plugin threw while loading — skipping create
+- [DspSyncEngine] session controller plugin graph port/signal mismatch — skipping.
+- [DspSyncEngine] session controller plugin has malformed ports — skipping
+- [DspSyncEngine] session controller plugin source did not compile — skipping
+- [DspSyncEngine] unresolved plugin class — skipping create
+- [DspSyncEngine] unresolved plugin class — skipping recreate
+- [Song Editor Auxiliary Clip]
+- [Studio] Buffer population failed
+- [Studio] Eden: clip resolution failed, falling back
+- [Studio] Eden: encrypted fetch/decrypt failed, falling back
+- [Studio] Eden: license/media fetch failed, falling back
+- [Studio] Unencrypted progressive fetch failed
+- [data-context-menu] input, [data-context-menu] textarea
+- [data-rack-device], [data-rack-add-tile]
+- [data-tour-target], [data-knob-param]
+- [lyrics-editor] delete failed:
+- [lyrics-editor] discard empty draft failed:
+- [lyrics-editor] get failed:
+- [lyrics-editor] lazy backend create failed:
+- [lyrics-editor] list failed:
+- [lyrics-editor] prune empty drafts failed:
+- [object Function]
+- [object Number]
+- [object Object]
+- [object String]
+- [object Symbol]
+- [plugin rack drag] Transaction failed:
+- [studio] creating simple synth (saw) for track
+- [useContinuousValueGesture] failed:
+- [useStudioV2UrlIntent] createProjectFromClip failed
+- [useStudioV2UrlIntent] fetchProjectsForClip failed, falling back to create
+- [zustand devtools middleware] Could not parse the received json
+- [zustand devtools middleware] Unsupported action format
+- \n  filter:
+- \n  font-size:0.6875rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:
+- \n  margin-right:
+- \n  transition:
+- ],defaultValue:
+- ]=A[s]=A[y]=!1;var L=e.g&&e.g.Object===Object&&e.g,U=
+- absolute end-0 bottom-0 h-3 w-3 drop-shadow-avatar-overlay
+- absolute inset-0
+- absolute inset-0 bg-gradient-to-b from-black/25 via-black/40 to-black/75
+- absolute inset-0 flex cursor-pointer items-center justify-center bg-black/40
+- absolute inset-0 flex items-center justify-center transition-all duration-200
+- absolute inset-0 overflow-hidden rounded-full mask-border-[0.125rem]
+- absolute inset-0 rounded-lg bg-background-glass-thick
+- absolute inset-0 scale-125
+- absolute inset-0 z-0
+- absolute inset-0 z-0 rounded-2xl
+- absolute inset-x-0 top-[0.5625rem] h-[3.625rem] touch-none overflow-hidden rounded-xl
+- absolute inset-y-0 flex w-6 -translate-x-1/2 items-center justify-center
+- absolute left-3
+- absolute left-3 size-4 fill-foreground-secondary
+- absolute opacity-0 transition-opacity duration-200 group-hover:opacity-100
+- absolute opacity-100 transition-opacity duration-200 group-hover:opacity-0
+- absolute right-14 bottom-1 z-10 rounded-full bg-background-tertiary px-2 py-1 text-xs
+- absolute right-6 bottom-2 z-10 rounded-full px-2 py-1 text-xs
+- absolute right-6 bottom-6 z-10 rounded-full px-2 py-1 text-xs
+- absolute right-6 bottom-full z-10 mb-1
+- absolute top-0 bottom-0 left-0 z-[2] flex
+- absolute top-0 bottom-0 left-3 z-5 w-px bg-border-primary
+- absolute top-0 left-0 h-full rounded-full bg-accent-pink transition-all duration-100
+- absolute top-1.5 right-1.5
+- absolute top-1/2 left-1/2 size-4 -translate-x-1/2 -translate-y-1/2
+- absolute top-2 right-2 z-100 p-1
+- absolute top-3 right-3 z-10
+- absolute top-4 right-4 z-20 text-white/70 hover:text-white
+- absolute top-5 left-5
+- absolute top-full right-0 left-0 mt-1
+- adding texture
+- agent:
+- animate-pulse text-xs text-foreground-primary lg:text-sm
+- animation:
+- applyContinuousNative requires a native-mode StudioDoc
+- arranging rhythms
+- aspect-square h-full
+- assign: sourceSignal must be a Signal
+- assign: targetSignal must be a Signal (from placeholder)
+- background-color: color-mix(in srgb, var(--color-accent-orange) 45%, transparent);
+- background-color: var(--track-header-bg, #141416);
+- background:
+- background:var(--color-background-tertiary);animation-delay:
+- backing vocal
+- backing vocals
+- backup vocal
+- backup vocals
+- bar-reveal bar-reveal-click relative
+- bar-reveal-expanded absolute inset-x-0 bottom-0
+- bar-reveal-pill flex justify-center px-1 pt-2 pb-4
+- bg-accent-blue text-white hover:bg-accent-blue/80
+- bg-background-primary max-w-[95vw]
+- bg-background-secondary text-foreground-primary
+- bg-background-secondary text-white
+- bg-background-tertiary text-foreground-inactive
+- bg-foreground-primary text-background-primary
+- bg-foreground-secondary opacity-50
+- bg-transparent p-0
+- bg-transparent p-0 font-medium text-accent-pink
+- bg-white/40 text-background-primary
+- bg-white/[0.04] text-[#f7f4ef]
+- blending harmonies
+- block h-3 w-3 rounded-full transition-colors
+- block h-full w-full
+- block-clip-focus flex-shrink-0
+- boom bap
+- border border-border-primary
+- border-border-primary hover:border-foreground-primary/20
+- border-border-secondary/40 bg-background-tertiary/50
+- border-r border-border-primary
+- border-radius:0.5rem;padding:0.25rem 0.5rem;
+- border-radius:62.4375rem;transition:background-color 0.12s ease,color 0.12s ease;
+- border-transparent bg-background-secondary
+- border-transparent bg-white/[0.04]
+- border-white/[0.04] bg-transparent hover:bg-white/[0.04]
+- border:none;background:transparent;color:
+- bottom:calc(100% + 0.5rem);right:0;transform:none;
+- box-shadow: 0 0 0 0.125rem var(--color-background-glass-thick);
+- building grooves
+- button, a, [role="button"], [data-context-menu-trigger]
+- button, a, input, label, [role="button"], [data-context-menu-trigger]
+- button, a, input, select, textarea, [role="button"], [role="menuitem"]
+- button, input, [role="button"]
+- calc(100dvh - 64px)
+- calc(1rem - var(--create-header-scroll-gap))
+- center center
+- chat_msg_time:
+- chirp-custom:
+- cleanState: fixed duplicate clip id:
+- cleanState: removed zero-duration clip:
+- cleanState: trimmed overlapping clip:
+- clip-interaction-button [--hxc-btn-py:0.25rem] [--hxc-btn-px:0.625rem]
+- clip-interaction-button [--hxc-btn-py:0.25rem] not-[.hxc-btn-square]:[--hxc-btn-px:0.5rem]
+- clip-interaction-button h-8 shrink-0 px-3 py-0 text-xs leading-none
+- clip-interaction-button h-[1.875rem] shrink-0 px-3 py-0 text-xs leading-none
+- clip-interaction-button shrink-0
+- clip-interaction-button shrink-0 p-2
+- col-span-full flex h-20 items-center justify-center
+- col-span-full h-px
+- collecting ideas
+- color-mix(in srgb, var(--color-background-secondary) 80%, transparent)
+- color-mix(in srgb, var(--color-white) 10%, transparent)
+- color-mix(in srgb, var(--color-white) 70%, transparent)
+- color-mix(in srgb, var(--color-white) 8%, transparent)
+- color-mix(in srgb, var(--organ-accent, #f9268c) 28%, transparent)
+- color:
+- color: #fff; background: var(--color-opacity-white-4);
+- color:var(--color-foreground-inactive);font-size:0.875rem;padding:0 1rem;
+- completed streaming clip
+- composing magic
+- cooking up fire
+- cowrite-static-text truncate text-base leading-5 md:text-sm
+- crafting beats
+- createPreviewScratch requires a native-mode StudioDoc
+- cubic-bezier(0.2, 1.1, 0.25, 1)
+- curating genres
+- cursor-pointer hover:bg-black/20
+- cursor-pointer text-sm text-white/50 transition-colors hover:text-white/80
+- cursor:
+- cursor: default;
+- data-[checked]:bg-accent-blue data-[checked]:ring-accent-blue
+- delete failed
+- dialing in tone
+- dispatchNative requires a native-mode StudioDoc
+- display:flex;align-items:center;gap:
+- display:flex;align-items:center;gap:0.25rem;width:fit-content;max-width:100%;height:
+- display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap;padding:0.375rem 0.25rem 0.5rem;
+- display:flex;align-items:center;gap:0.5rem;height:
+- display:flex;align-items:center;gap:0.625rem;padding:0.5rem;border-radius:0.75rem;cursor:
+- display:flex;align-items:center;gap:0.75rem;margin:1rem 1rem
+- display:flex;align-items:center;gap:0.75rem;padding:0.25rem 0;
+- display:flex;align-items:center;gap:1rem;height:2rem;opacity:
+- display:flex;align-items:center;gap:1rem;min-width:
+- display:flex;align-items:center;justify-content:center;cursor:
+- display:flex;align-items:center;justify-content:flex-end;gap:1rem;min-width:
+- display:flex;align-items:center;justify-content:space-between;padding:
+- display:flex;align-items:center;padding-bottom:
+- display:flex;align-items:center;width:100%;gap:0.5rem;padding:0 0.5rem;height:
+- display:flex;flex-direction:column;align-self:stretch;gap:0.5rem;padding:0.5rem 0.5rem 0;
+- display:flex;flex-direction:column;flex-shrink:0;gap:
+- display:flex;flex-direction:column;flex:
+- display:flex;flex-direction:column;flex:0 0 auto;
+- display:flex;flex-direction:column;flex:1 1 auto;min-height:0;
+- display:flex;flex-direction:column;gap:
+- display:flex;flex-direction:column;gap:0.25rem;padding:0 0.5rem;
+- display:flex;flex-direction:column;gap:0.375rem;padding:0.375rem 0;opacity:
+- display:flex;flex-direction:column;gap:0.5rem;padding:0.375rem 1rem 0.625rem;
+- display:flex;flex-direction:column;gap:0.875rem;padding:0.625rem 0.875rem 0.875rem;
+- display:flex;flex-direction:column;gap:1rem;padding:
+- display:flex;flex-direction:column;gap:1rem;padding:0 1rem;
+- display:flex;flex-direction:column;min-width:15.25rem;padding:0.25rem 0;user-select:none;
+- display:flex;flex-direction:column;width:
+- display:flex;flex-direction:column;width:100%;height:100%;flex:1 1 auto;min-height:0;
+- display:flex;flex-direction:row;align-items:center;justify-content:
+- display:flex;flex-direction:row;align-items:stretch;flex:1 1 0;min-height:0;
+- display:flex;flex-wrap:wrap;align-items:center;gap:0.5rem;padding:0 0.25rem;
+- display:flex;flex:1 1 auto;min-height:0;gap:1.5rem;
+- display:flex;flex:1;min-width:0;align-items:center;gap:
+- display:flex;justify-content:center;flex:0 0 auto;padding:0.5rem 0;
+- display:flex;justify-content:center;position:
+- display:flex;justify-content:flex-end;align-items:center;flex:1 1 auto;gap:0.5rem;
+- display:grid;grid-template-columns:
+- display:grid;grid-template-columns:1fr 1fr;gap:
+- display:grid;grid-template-columns:1fr 1fr;gap:1rem;align-items:start;
+- display:grid;grid-template-rows:
+- display:inline-block;will-change:transform,opacity;animation:
+- display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:
+- display:inline-flex;align-items:center;justify-content:center;gap:6px;width:
+- disposed during loadFromUrl
+- drag:
+- drop-shadow(0 6px 12px rgba(0,0,0,0.6)) drop-shadow(0 2px 4px rgba(0,0,0,0.4))
+- drum and bass
+- editor will live here.
+- electric piano
+- empty space over other-track content on an instrument-less audio track
+- error counting tracks
+- error requesting stream input
+- exploring sounds
+- failed (simulated)
+- file too small
+- finding the vibe
+- fixed inset-0 z-[1000] flex items-center justify-center bg-black/60
+- flex flex-1 flex-col gap-1
+- flex flex-1 items-center justify-center py-2
+- flex flex-col
+- flex flex-col gap-0.5
+- flex flex-col gap-1
+- flex flex-col gap-2
+- flex flex-col gap-2 bg-background-fog-thin px-4 pt-3 pb-4
+- flex flex-col gap-2 pb-2
+- flex flex-col gap-3 pb-3 select-none
+- flex flex-col gap-3 px-3 pb-3
+- flex flex-col gap-4
+- flex flex-col gap-px
+- flex flex-col items-center gap-5 px-4 pb-4
+- flex flex-col items-center justify-center gap-2 rounded-2xl bg-background-secondary p-5
+- flex flex-col pt-1
+- flex flex-col text-left
+- flex flex-row items-center gap-2
+- flex flex-wrap justify-center gap-3 overflow-y-auto px-2 py-2
+- flex gap-2
+- flex h-20 items-center justify-center
+- flex h-24 items-center justify-center
+- flex h-4 cursor-pointer touch-none items-center
+- flex h-4 w-4 flex-shrink-0 items-center justify-center
+- flex h-4 w-4 flex-shrink-0 items-center justify-center text-[#f7f4ef]
+- flex h-5 items-center justify-between
+- flex h-5 w-5 shrink-0 items-center justify-center
+- flex h-8 w-8 items-center justify-center rounded-lg transition-colors
+- flex h-[1.375rem] w-[1.375rem] shrink-0 items-center justify-center
+- flex h-auto items-center justify-between
+- flex h-full
+- flex h-full flex-col
+- flex h-full flex-col border-r border-border-primary bg-background-primary p-4
+- flex h-full min-h-32 w-full items-center justify-center
+- flex items-baseline justify-between gap-2
+- flex items-center
+- flex items-center gap-1
+- flex items-center gap-1 font-sans text-sm leading-4 text-foreground-primary
+- flex items-center gap-1 rounded px-1.5 py-0.5 text-xs transition-colors
+- flex items-center gap-1 rounded-lg bg-[#252529] p-2 text-xs text-[#f7f4ef]
+- flex items-center gap-1.5
+- flex items-center gap-2
+- flex items-center gap-2 border-t border-white/10 px-3 pt-3
+- flex items-center gap-2 px-3 py-1
+- flex items-center gap-3 rounded-[1.25rem] bg-background-fog-thin p-4
+- flex items-center gap-4
+- flex items-center justify-between gap-2
+- flex items-center justify-between gap-3 px-4 pt-4
+- flex items-center justify-between gap-4 border-t border-border-primary pt-4
+- flex items-center justify-center
+- flex items-center justify-center py-4
+- flex items-center justify-start
+- flex items-center justify-start gap-2
+- flex items-start gap-3
+- flex items-start gap-3 px-4 py-3
+- flex justify-end
+- flex justify-start
+- flex max-h-[75vh] min-h-[20rem] flex-col overflow-hidden rounded-[2rem]
+- flex max-h-[75vh] min-h-[24rem] flex-col overflow-hidden rounded-[2rem]
+- flex max-h-[75vh] min-h-[30rem] flex-col overflow-hidden rounded-[2rem]
+- flex max-h-[80vh] flex-col overflow-hidden rounded-[2rem]
+- flex max-h-[85vh] flex-col overflow-hidden rounded-2xl border border-border-primary
+- flex max-h-[min(32.5rem,70vh)] max-w-[calc(100vw-2rem)] flex-col overflow-hidden p-3
+- flex max-w-fit items-center gap-1 break-all
+- flex max-w-full min-w-0 items-center gap-2.5
+- flex min-h-0 flex-1 flex-col
+- flex min-h-0 flex-1 flex-col px-4
+- flex min-w-0 flex-1 flex-col
+- flex min-w-0 flex-1 flex-col justify-center
+- flex min-w-0 flex-1 items-center gap-2
+- flex min-w-0 flex-1 items-center gap-3 text-left
+- flex min-w-0 flex-wrap items-center gap-2.5
+- flex min-w-0 items-center gap-2
+- flex min-w-[3.75rem] flex-col overflow-hidden rounded-lg bg-[#252529]
+- flex shrink-0
+- flex shrink-0 items-center gap-2 pb-3
+- flex w-[12.5rem] flex-col overflow-hidden rounded-lg bg-[#252529]
+- flex w-full flex-col gap-2
+- flex w-full flex-col items-stretch justify-start gap-2 text-left
+- flex w-full flex-col overflow-hidden rounded-2xl bg-[#252529] py-1
+- flex w-full flex-row items-center gap-2
+- flex w-full flex-row items-center gap-2 rounded-[1.25rem] p-4
+- flex w-full flex-row items-center justify-between gap-2
+- flex w-full flex-row justify-between text-sm text-gray-400
+- flex w-full items-center gap-2
+- flex w-full items-center gap-4
+- flex w-full items-center justify-between
+- flex w-full items-center justify-between gap-3
+- flex-1 p-3
+- flex-1 px-2 type-medium
+- flex-1 rounded-full py-1.5 text-sm font-medium transition-colors
+- flex-1 text-sm text-foreground-secondary
+- flex-grow p-3 transition-all duration-200
+- flex-grow whitespace-nowrap
+- flex-grow:1;padding:
+- flex-grow:1;padding:0 1rem 1rem 1rem;position:relative;
+- flex-grow:1;padding:0 1rem;position:relative;
+- flex-shrink-0 cursor-pointer p-1 text-foreground-secondary hover:text-foreground-primary
+- flex-shrink:0;display:flex;align-items:center;gap:0.25rem;padding:1rem 3.5rem 0 1.5rem;
+- flex-shrink:0;padding:1rem 1.5rem 0.75rem;letter-spacing:0.02em;
+- flex: 0 0 100px; border-radius: 8px; overflow: hidden;
+- flex:0 0
+- flex:0 0 auto;display:flex;align-items:center;gap:0.5rem;
+- flex:0 0 auto;display:flex;align-items:center;overflow:hidden;width:
+- flex:0 0 auto;display:flex;flex-direction:column;gap:0.375rem;padding:0 0.5rem 0.5rem;
+- flex:0 0 auto;display:flex;flex-direction:column;padding-top:0.5rem;
+- flex:0 0 auto;display:flex;margin-left:auto;
+- flex:0 0 auto;width:
+- flex:1 1 0;min-width:0;height:1.625rem;display:flex;align-items:center;
+- flex:1 1 0;min-width:0;height:100%;padding:0;border-radius:0.25rem;
+- flex:1 1 auto;
+- flex:1 1 auto;min-height:0;display:flex;flex-direction:column;
+- flex:1 1 auto;min-height:0;display:flex;flex-direction:column;padding:
+- flex:1 1 auto;min-height:0;position:relative;
+- flex:1 1 auto;min-width:0;
+- flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+- flex:1 1 auto;width:
+- flex:1;min-width:0;display:flex;flex-direction:column;gap:
+- font-medium text-foreground-primary
+- font-mono text-xs leading-none
+- font-sans text-center text-xl font-bold
+- font-size:
+- font-size:calc(0.75rem *
+- font-size:calc(0.875rem *
+- fract(2 * t)
+- fromParent() is only available inside voice()
+- gen_start_time:
+- ghost drag turned off (Studio Settings)
+- got non-finite beats in seek
+- got non-finite position in stop
+- got non-finite selectionStartBeats in useStudioPlaybackController
+- grid [grid-template-columns:repeat(auto-fill,minmax(9.375rem,1fr))] gap-3
+- grid grid-cols-[0fr] -ml-(--hxc-btn-content-gap)
+- group flex items-center gap-3 rounded-xl border bg-background-tertiary p-3
+- group relative
+- group relative aspect-square overflow-hidden rounded-2xl border bg-background-tertiary p-3
+- group relative cursor-pointer
+- group relative h-1 flex-1 overflow-hidden rounded-full bg-background-glass-dense
+- group relative h-8 w-8
+- group relative size-10 shrink-0 overflow-hidden rounded-full bg-background-tertiary
+- group-hover/pill:ml-0 group-hover/pill:grid-cols-[1fr]
+- group-hover/pill:opacity-100 group-hover/pill:[--hxc-shine-play-state:running]
+- group/prompt relative flex flex-col gap-3
+- h-0 opacity-0
+- h-1 w-full rounded-full bg-foreground-inactive
+- h-10 px-4 pr-3 text-sm whitespace-nowrap
+- h-10 w-10 bg-background-tertiary
+- h-10 w-10 fill-foreground-primary
+- h-10 w-10 flex-shrink-0 rounded-md
+- h-10 w-10 flex-shrink-0 rounded-md object-cover
+- h-3 w-1/3 rounded
+- h-3 w-3 opacity-15
+- h-3 w-3 opacity-50
+- h-3 w-3 rounded-full bg-foreground-primary
+- h-3.5 w-3.5 shrink-0
+- h-4 opacity-100
+- h-4 w-2/3 rounded
+- h-4 w-4 cursor-pointer opacity-50 hover:opacity-100
+- h-4 w-4 flex-shrink-0 animate-spin text-foreground-secondary
+- h-4 w-4 flex-shrink-0 text-foreground-secondary
+- h-4 w-4 opacity-50
+- h-4 w-4 overflow-hidden
+- h-4 w-4 rounded-full
+- h-4 w-4 scale-125
+- h-4 w-4 shrink-0
+- h-4 w-4 text-[#6a6a72]
+- h-4 w-4 text-[#f7f4ef]
+- h-4 w-4 text-foreground-secondary
+- h-4 w-4 text-strawberry-500
+- h-4 w-4 text-white
+- h-4 w-4 text-white/50
+- h-4 w-full overflow-hidden rounded-full bg-background-fog-thick
+- h-5 w-5 -translate-y-px
+- h-5 w-5 scale-75
+- h-5 w-5 text-foreground-tertiary
+- h-5 w-5 text-white
+- h-6 w-1.5 rounded-full bg-accent-brand shadow-[0_0.25rem_0.75rem_rgb(0_0_0/0.4)]
+- h-8 shrink-0 px-3 text-xs font-medium whitespace-nowrap
+- h-8 shrink-0 px-4 text-xs
+- h-8 w-8 bg-background-glass-thin !p-0
+- h-[1.125rem] w-[1.125rem]
+- h-[1.875rem] px-3 text-xs leading-none
+- h-[11.625rem] w-full rounded-none
+- h-[2.5rem] text-[0.75rem]
+- h-[2.5rem] w-full
+- h-auto w-[37.5rem] max-w-full rounded-2xl bg-transparent whitespace-pre-wrap
+- h-auto w-full cursor-text resize-none leading-[1.5rem] outline-none
+- h-full bg-accent-pink transition-all ease-out
+- h-full items-start justify-start text-left
+- h-full items-stretch
+- h-full overflow-y-auto [&::-webkit-scrollbar]:hidden
+- h-full placeholder:text-background-fog-dense
+- h-full rounded-full bg-foreground-secondary
+- h-full w-full bg-background-primary object-cover
+- h-full w-full flex flex-col overflow-hidden
+- h-full w-full object-cover
+- h-full w-full object-cover opacity-60
+- h-full w-full object-cover p-1
+- has no duration.
+- height - 2
+- height / 2
+- height 0.2s ease-out
+- height 100ms cubic-bezier(0.4, 0, 0.2, 1)
+- height 380ms cubic-bezier(0.32, 0.72, 0, 1)
+- height:
+- height: 0.125rem; width: 3.9375rem; max-width: 100%; transform: translateY(-0.375rem);
+- height: 0.125rem; width: 3.9375rem; max-width: 100%; transform: translateY(0.375rem);
+- height: 1px; width: 100%;
+- height:1px;margin:0 0.5rem;background:var(--color-background-tertiary);
+- height:2.5rem;margin:0.25rem 0 0.5rem;
+- height:2.5rem;padding:0 1rem;
+- height:auto;flex:1 1 0;min-height:0;position:relative;overflow:hidden;
+- hip hop
+- hover-fade-in context-menu-button p-3
+- hover-only absolute inset-0 flex items-center justify-center
+- hover-only shrink-0 bg-background-glass-thin
+- hover-only track-menu-reveal
+- hover:z-20 hover:translate-y-[-0.125rem] hover:scale-105
+- hxc-shine-border opacity-0 transition-opacity duration-300 motion-reduce:hidden
+- i == 0 ? -20 : i == n-1 ? width : (i-1)/(n-3) * width
+- i == 0 ? 0 : i == n-1 ? width : (i-1)/(n-3) * width
+- impulse response
+- in HTMLIFrameElement.prototype?(0,r.s)(
+- in a&&
+- in a.clip&&
+- in n.data))throw Error(
+- in s&&i===s.external_key&&o(
+- in t&&
+- in t))throw Error(
+- in t)||!(
+- indicator dot
+- indicator target
+- inline h-3 w-3
+- inline-block h-2 w-[12.5rem] rounded-full
+- inline-block h-2 w-[6.25rem] rounded-full
+- inline-block text-center transition-[width] duration-200
+- inline-flex items-center gap-0
+- inline-flex px-2 py-1
+- inline-flex px-3 py-2
+- inline-flex rounded-xl
+- input, textarea
+- input, textarea, [contenteditable="true"]
+- input, textarea, [contenteditable]
+- internal: failed to build voice child facade
+- internal: no parent for child builder
+- items-center py-2.5
+- items-start py-4
+- j pop
+- layering melodies
+- leading-normal text-foreground-secondary
+- left 0.12s ease-out
+- left 200ms ease, top 200ms ease
+- left center
+- left: -1.25rem;
+- left: 0.125rem;
+- left: 0.25rem;
+- left: 0.8125rem;
+- line-clamp-1 max-w-full flex-1 break-all hover:underline
+- line-clamp-1 text-sm font-medium text-foreground-primary
+- line-clamp-1 text-xs whitespace-pre-line text-foreground-secondary
+- line-clamp-2 flex-1 text-sm font-medium text-foreground-primary
+- line-clamp-2 pr-6 text-xs font-medium text-foreground-primary
+- line-clamp-2 text-left text-sm whitespace-pre-line text-foreground-secondary
+- line-clamp-3 text-sm
+- line-clamp-[6] text-[0.6875rem] leading-snug whitespace-pre-line text-foreground-secondary
+- line-clamp-[9] text-[0.6875rem] leading-snug
+- line-height:1.2;color:
+- linear-gradient(135deg, #1f6f3c 0%, #0b2e1a 100%)
+- link[rel~="stylesheet"], style
+- live fade params
+- live window setters
+- lo fi
+- lyrics-container h-auto overflow-y-hidden
+- max(meterDb(tap.t0, 0), meterDb(tap.t0, 1))
+- max(meterVuDb(tap.t0, 0), meterVuDb(tap.t0, 1))
+- max-h-[60vh] w-80 [overscroll-behavior:contain]
+- max-h-[80vh] max-w-[80vw] rounded-2xl object-contain
+- max-height 300ms ease, opacity 250ms ease
+- max-height:calc(100vh - 1.5rem);
+- max-w-60 px-3 py-2 text-xs whitespace-normal
+- max-w-[26.25rem] min-w-0 overflow-hidden whitespace-nowrap
+- mb-0 h-full pb-0
+- mb-0 pb-0
+- mb-2 flex items-center justify-between
+- mb-3 flex flex-shrink-0 items-center gap-2
+- mb-3 flex flex-shrink-0 rounded-full bg-background-tertiary p-1
+- mb-3 text-center
+- mb-4 flex justify-center
+- midi:
+- midiOut: argument is not a Signal
+- min(3cqi, 4px)
+- min(80vh, 40rem)
+- min-h-0 flex-1 overflow-hidden
+- min-h-0 flex-1 overflow-y-auto px-3
+- min-h-[18.75rem] px-3
+- min-w-[2rem] font-mono text-[0.625rem] text-foreground-tertiary
+- min-width:0;cursor:pointer;padding:0 0.5rem;border:1px solid\n
+- min-width:0;max-width:
+- min-width:0;padding:0 0.125rem;text-align:left;
+- mixing vibes
+- ml-2 flex-1 bg-transparent py-2 outline-none placeholder:text-background-fog-dense
+- ml-2 text-xs text-foreground-tertiary
+- ml-auto flex shrink-0 items-center
+- ml-auto shrink-0 rounded-full px-4 py-2 text-[0.875rem] font-medium whitespace-nowrap
+- ml-auto size-6 min-h-0 p-0 text-foreground-inactive hover:text-foreground-secondary
+- modulatedTap() is only available inside voice()
+- monitor disabled
+- monitor enabled
+- moves ghost (playhead-relative motion)
+- mr-2 ml-4
+- mr-px text-xs hover:text-foreground-primary
+- ms ease;
+- mt-1 flex flex-row items-center gap-2
+- mt-3 flex flex-col gap-3
+- mt-4 flex w-full items-center justify-between
+- mx-3 my-3 max-h-[85vh] space-y-4 overflow-y-auto p-2 sm:mx-5 sm:p-4
+- mx-auto max-w-[45rem] px-6 pt-3 pb-4
+- mx-auto mt-2 w-full max-w-[36.5rem]
+- mx-auto w-full max-w-[36.5rem]
+- my-1 h-px bg-white/[0.06]
+- no playback controller
+- non-audio clip in trim set (no live MIDI setters)
+- noopener noreferrer
+- not-hover-only absolute inset-0 flex items-center justify-center
+- note() is only available inside voice()
+- note-owner-clip index
+- opacity 0.2s ease-out
+- opacity 0.3s ease
+- opacity 350ms ease-out
+- opacity-0 [transition:transform_280ms_cubic-bezier(0.22,1,0.36,1),opacity_140ms_linear]
+- opacity-0 transition-opacity duration-200 group-hover/pill:opacity-100
+- opacity:
+- outline-1 outline-offset-2 outline-accent-brand outline-dashed
+- overflow-hidden rounded-lg border-2 border-transparent bg-background-secondary
+- overflow-hidden whitespace-nowrap
+- owner-track index
+- p-0 text-xs
+- p-0 text-xs whitespace-nowrap
+- p-1 -my-1 text-sm w-64 rounded-lg bg-background-primary px-2
+- p-1 text-[0.6875rem] w-40 rounded bg-background-secondary text-foreground-primary
+- p-4 transition-all duration-300 ease-in-out
+- padding-right:
+- padding-right: 4.5rem;
+- padding:0 1rem 1rem 1rem;
+- padding:1rem 0;text-align:center;opacity:0.5;font-size:0.875rem;
+- param:
+- pl-3.5 hover:!text-foreground-primary
+- playbackStats unavailable in this browser
+- playing-animation absolute top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2
+- playing-pause absolute top-[50%] left-[50%] -translate-x-1/2 -translate-y-1/2
+- plugin:
+- pointer-events-auto absolute inset-y-0 h-full rounded-none bg-transparent p-0
+- pointer-events-none absolute inset-0 overflow-hidden
+- pointer-events-none absolute inset-0 size-full
+- pointer-events-none absolute inset-0 z-[2] flex items-center justify-center
+- pointer-events-none absolute inset-0 z-[3]
+- pointer-events-none absolute right-0 bottom-0 left-0 h-24
+- pointer-events-none absolute right-6 z-10
+- pointer-events-none opacity-60
+- pointer-events-none px-3 py-2 text-xs font-medium whitespace-nowrap tabular-nums
+- pointer-events-none relative z-10 flex items-center gap-1.5
+- pointer-events-none relative z-10 flex min-w-0 flex-1 flex-col
+- pointer-events-none relative z-10 mt-0.5 size-5 shrink-0 fill-foreground-secondary
+- position:absolute;border-radius:0.375rem;background:
+- position:absolute;inset:0;display:flex;gap:
+- position:absolute;inset:1px;border-radius:
+- position:absolute;left:
+- position:absolute;left:0.25rem;right:0.25rem;top:50%;transform:translateY(-50%);font-size:
+- position:absolute;left:0;top:0;height:100%;width:
+- position:absolute;top:
+- position:absolute;top:-1px;left:-1px;right:-1px;bottom:-1px;border-radius:
+- position:absolute;top:0;left:0;width:
+- position:absolute;top:0;left:0;width:100%;height:100%;pointer-events:
+- position:absolute;top:0;width:
+- position:absolute;top:50%;width:
+- position:absolute;width:
+- position:fixed;inset:0;z-index:
+- position:fixed;z-index:
+- position:fixed;z-index:10000;display:flex;flex-direction:column;width:
+- position:relative;flex:1;display:flex;flex-direction:row;gap:
+- position:relative;height:
+- position:relative;transition:
+- position:relative;width:
+- position:relative;width:100%;flex:1 1 auto;min-height:0;background:
+- position:relative;width:100%;height:
+- position:relative;width:100%;overflow:hidden;border-radius:
+- project creation failed
+- pt-0 font-sans font-normal text-2xl
+- pt-2 pb-4
+- px 0;border-radius:1.25rem;background-color:var(--color-background-glass-thin);
+- px 0;color:var(--color-foreground-primary);animation:
+- px-1 text-sm
+- px-1 text-sm text-foreground-primary
+- px-3 pb-3
+- px-3 pb-4
+- px-3 py-1
+- px-3 py-3 text-[0.875rem] text-foreground-secondary
+- px-4 pb-2
+- px-4 pb-4
+- px-5 text-sm
+- px;background:color-mix(in srgb,
+- px;border:
+- px;border:0 solid
+- px;bottom:
+- px;bottom:0;right:0;width:
+- px;flex-shrink:0;padding:0 0.5rem;pointer-events:auto;
+- px;font-size:0.875rem;cursor:
+- px;gap:
+- px;height:
+- px;height:3.5rem;background:
+- px;left:
+- px;min-height:
+- px;opacity:
+- px;overflow:hidden;display:flex;flex-direction:column;gap:0.75rem;padding:
+- px;overflow:hidden;gap:
+- px;padding-right:
+- px;padding:
+- px;right:
+- px;top:
+- px;transition:height 0.3s ease-in-out,opacity 0.3s ease-in-out;overflow:hidden;gap:
+- px;width:
+- py-0 pt-2 text-accent-error
+- py-0 text-accent-error
+- py-1.5 text-sm
+- py-2 pr-4 pl-2.5
+- py-8 text-center
+- rate limit
+- recording latency calibration error
+- references your personal audio asset “
+- relative flex flex-col
+- relative flex flex-col gap-4
+- relative flex flex-col items-center px-8 py-10
+- relative flex h-10 flex-1 items-center
+- relative flex items-center justify-center
+- relative flex items-center justify-center px-4 py-3
+- relative flex items-center justify-stretch gap-4
+- relative flex min-h-0 flex-col px-4 pb-2
+- relative flex min-h-0 min-w-0 flex-1 flex-col
+- relative flex w-fit flex-col rounded-full
+- relative flex w-full flex-col
+- relative h-10 w-10 shrink-0 overflow-hidden rounded-lg
+- relative h-14 w-full shrink-0 overflow-clip rounded-full
+- relative h-40 overflow-hidden rounded-t-lg
+- relative h-5 w-5
+- relative h-8 shrink-0
+- relative h-[4.1875rem] w-full
+- relative hover:z-[50]
+- relative inline-flex
+- relative max-w-[5rem] truncate
+- relative mb-0 pb-0
+- relative min-h-[3.75rem] min-w-[3.75rem] overflow-hidden rounded-lg
+- relative overflow-hidden rounded-t-[2rem]
+- relative w-full
+- relative w-full min-w-0
+- relative z-10
+- relative z-10 block
+- relative z-10 flex flex-col items-center gap-5 px-6 pt-10 pb-8 text-center
+- relative z-10 mt-4 w-full
+- relative z-10 text-sm font-medium
+- relative z-10 w-full
+- rem;flex-shrink:0;border-radius:50%;border:0.125rem solid
+- rem;height:
+- rename failed
+- return this
+- reverb-ir:
+- rgb(18, 18, 28)
+- rgb(33, 82, 148)
+- rgb(50, 139, 255)
+- rgba(0, 0, 0, 0)
+- rgba(0, 0, 0, 0.3)
+- rgba(0, 0, 0, 0.6)
+- rgba(255, 106, 0, 0.8)
+- rgba(255, 255, 255, 0.04)
+- rgba(255, 255, 255, 0.06)
+- rgba(255, 255, 255, 0.08)
+- rgba(255, 255, 255, 0.2)
+- rgba(255, 255, 255, 0.22)
+- rgba(255, 255, 255, 0.5)
+- rgba(255, 255, 255, 0.55)
+- rgba(255, 255, 255, 0.9)
+- rgba(255, 82, 82, 0.1)
+- rgba(255, 82, 82, 0.6)
+- rgba(4, 7, 13, 0.72)
+- rgba(62, 224, 255, 0.85)
+- right center
+- right: -0.625rem;
+- right: -1.25rem;
+- right: 0.125rem;
+- right: 0.25rem;
+- right: 0.5625rem;
+- right: 0.75rem;
+- right: 0.8125rem;
+- right: 0;
+- rk-lines-tick is-lit
+- rk-step-label is-active
+- rk-step-segment is-active
+- root.
+- rounded bg-white/[0.04] px-1.5 py-0.5 font-mono text-xs text-[#f7f4ef]
+- rounded-full bg-white/10 p-4 text-accent-error
+- rounded-full outline-none focus-visible:ring-2 focus-visible:ring-foreground-secondary
+- rounded-full p-4 font-mono text-2xl font-medium text-foreground-primary
+- rounded-l-full rounded-r-none
+- rounded-l-none rounded-r-full
+- s audio effects would land before the chain
+- s source.code to emit
+- scale-50 opacity-0 group-hover:scale-100 group-hover:opacity-100
+- scrollbar-hide flex items-center overflow-x-auto overflow-y-hidden
+- seedSessionLocalState requires a native-mode StudioDoc
+- self-start [letter-spacing:inherit] [font:inherit]
+- self-stretch p-3 transition-colors hover:bg-white/[0.04]
+- setting the mood
+- shaping dynamics
+- shrink-0 gap-1 text-foreground-tertiary
+- shrink-0 px-4 pt-2
+- shrink-0 rounded-xl text-xs
+- shrink-0 text-foreground-secondary hover:text-foreground-primary
+- shrink-0 type-xsmall font-medium uppercase
+- shrink-0 type-xsmall text-foreground-tertiary
+- size-4 shrink-0 text-foreground-primary
+- size-8 shrink-0 rounded-full
+- size-full object-cover
+- sound design
+- sound effect
+- sound effects
+- soundfont: (none)
+- space-y-0 pb-2
+- start_beats must be less than end_beats.
+- sticky bottom-0 bg-background-secondary py-4
+- studio-asset:
+- suno studio
+- t * width
+- text-[0.6875rem] text-foreground-tertiary
+- text-[0.875rem] text-foreground-primary
+- text-base leading-5 md:text-sm
+- text-center type-xlarge font-bold
+- text-foreground-danger text-xs lg:text-sm
+- text-foreground-secondary hover:text-foreground-primary
+- text-foreground-secondary opacity-70
+- text-lg font-medium
+- text-sm font-medium
+- text-sm font-medium text-foreground-primary
+- text-sm leading-5 break-words whitespace-pre-wrap
+- text-sm text-foreground-secondary
+- text-sm text-foreground-tertiary
+- text-sm text-foreground-tertiary hover:text-foreground-primary
+- text-xl font-semibold text-foreground-primary
+- text-xs [--hxc-btn-py:0.25rem] [--hxc-btn-px:0.75rem]
+- text-xs leading-[1.5rem]
+- text-xs lg:text-sm
+- text-xs text-pretty text-foreground-secondary
+- text-xs whitespace-nowrap
+- text-xs whitespace-nowrap text-[#6a6a72]
+- textarea, [contenteditable="true"]
+- the generation failed
+- the track
+- to right
+- top left
+- top: 50%; right: 0.75rem; transform: translateY(-50%);
+- transform 0.1s ease, opacity 0.14s ease
+- transform 0.2s ease-out
+- transform 0s
+- transition-[grid-template-columns,margin-left] duration-200
+- transition-[padding,color,background-color] duration-200
+- transition-all duration-200
+- transition: background-position 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+- translate(-100%, -100%)
+- translate(-1px, -1px)
+- translate(-1px, 1px)
+- translate(-2px, -2px)
+- translate(-2px, 2px)
+- translate(-50%,-50%) scale(1)
+- translate(-50%,-50%) scale(3.2)
+- translate(-5px, -5px)
+- translate(-5px, 5px)
+- translate(0, -100%)
+- translate(1px, -1px)
+- translate(1px, 1px)
+- translate(2px, -2px)
+- translate(2px, 2px)
+- translate(5px, -5px)
+- translate(5px, 5px)
+- translate(65.4 25.9)
+- trim-drag cancelled
+- trim-drag unmounted
+- truncate type-xsmall font-medium text-foreground-primary
+- tuning frequencies
+- tweaking samples
+- type-small m-0 pb-2 font-bold text-foreground-secondary
+- type-timecode font-normal
+- type-xsmall text-foreground-tertiary
+- type-xsmall text-foreground-tertiary tabular-nums
+- use strict
+- useCollectionContext must be used within a CollectionContextProvider
+- useOpenLyricistModal must be used within LyricistModalProvider
+- useTrackDisplay must be used within a TrackDisplayProvider
+- useViewport must be used within a ViewportProvider
+- var(--clip-chip-height, 1.25rem)
+- var(--clip-chip-padding-x, 0.5rem)
+- var(--clip-font-size, 12px)
+- var(--clip-glyph-size, 12px)
+- var(--clip-line-height, 16px)
+- var(--clip-step-size, 1rem)
+- var(--font-mono, monospace)
+- var(--organ-accent, #f9268c)
+- var(--organ-accent, var(--color-accent-primary))
+- voice callback failed
+- voice.fromParent: argument is not a Signal
+- voice.modulatedTap: argument is not a Signal
+- voice.modulatedTap: paramName must be a non-empty string
+- w-auto bg-transparent
+- w-full flex-1
+- w-full flex-grow-1 !bg-transparent py-2 pr-4 pl-2.5 hover:bg-background-secondary
+- w-full resize-none border-none bg-transparent text-base outline-none md:text-sm
+- w-full resize-none leading-[1.5rem] outline-none
+- w-full sm:w-[20rem] py-1
+- waiting for AudioContext…
+- warp-marker/note rewrite is structural (engine rebuild per frame)
+- while playing
+- while stopped
+- whitespace-pre-line text-foreground-secondary
+- width 0.2s ease-in-out, left 0.2s ease-in-out
+- width:
+- width: 0.125rem; height: 3.9375rem; max-height: 100%; transform: translateX(-0.375rem);
+- width: 0.125rem; height: 3.9375rem; max-height: 100%; transform: translateX(0.375rem);
+- width: 1px; height: 100%;
+- width:0.125rem;background-color:
+- width:0.5625rem;height:0.5625rem;border-radius:0.3125rem;background:
+- width:100%;aspect-ratio:1;border-radius:0.5rem;background:
+- width:100%;height:
+- width:100%;height:100%;--organ-accent:
+- width:100%;height:100%;border-radius:10px;overflow:hidden;position:relative;color:
+- width:15rem;padding:0.5rem 0.75rem;white-space:normal;
+- · hit
+- · live
+- · used on
+- ” — only wavetables can be ingested as standard assets today.
