@@ -9050,6 +9050,73 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
   );
 
+  app.post("/internal/studio/render-state", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const projectId = typeof body.project_id === "string" ? body.project_id : "";
+    if (!projectId) {
+      return reply.code(400).send({ error: "project_id is required." });
+    }
+    const downbeats = Array.isArray(body.downbeats)
+      ? (body.downbeats as unknown[])
+          .map((entry) =>
+            Array.isArray(entry) && entry.length >= 2
+              ? ([Number(entry[0]), Number(entry[1])] as [number, number])
+              : null
+          )
+          .filter((entry): entry is [number, number] => entry !== null)
+      : [];
+    const client = await pickStudioClient();
+    try {
+      const clip = await client.renderStudioState({
+        projectId,
+        state: body.state ?? {},
+        title: typeof body.title === "string" ? body.title : "Untitled Project",
+        lyrics: typeof body.lyrics === "string" ? body.lyrics : "",
+        startBeats: Number(body.start_beats) || 0,
+        endBeats: Number(body.end_beats) || 0,
+        downbeats,
+        exportMode:
+          typeof body.export_mode === "string" ? body.export_mode : undefined,
+      });
+      return reply.send(clip);
+    } catch (err) {
+      return reply
+        .code(502)
+        .send({ error: err instanceof Error ? err.message : "render-state failed" });
+    }
+  });
+
+  app.get("/internal/studio/clips/:clip_id", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { clip_id: clipId } = req.params as { clip_id: string };
+    const client = await pickStudioClient();
+    try {
+      return reply.send(await client.getStudioClip(clipId));
+    } catch (err) {
+      return reply
+        .code(502)
+        .send({ error: err instanceof Error ? err.message : "get clip failed" });
+    }
+  });
+
+  app.get("/internal/studio/clips/:clip_id/download", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { clip_id: clipId } = req.params as { clip_id: string };
+    const format =
+      typeof (req.query as { format?: string })?.format === "string"
+        ? String((req.query as { format?: string }).format)
+        : "mp3";
+    const client = await pickStudioClient();
+    try {
+      return reply.send(await client.getStudioClipDownload(clipId, format));
+    } catch (err) {
+      return reply.code(502).send({
+        error: err instanceof Error ? err.message : "clip download failed",
+      });
+    }
+  });
+
   app.get("/internal/studio/projects/:project_id", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { project_id: projectId } = req.params as { project_id: string };

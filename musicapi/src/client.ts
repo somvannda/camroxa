@@ -814,6 +814,63 @@ export class SunoClient {
     return (await res.json()) as Record<string, unknown>;
   }
 
+  /** Queue a render of a project (or a beat range) as a new clip. */
+  async renderStudioState(params: {
+    projectId: string;
+    state: unknown;
+    title: string;
+    lyrics?: string;
+    startBeats: number;
+    endBeats: number;
+    downbeats: Array<[number, number]>;
+    exportMode?: string;
+    renderEngine?: string;
+    encodeLatents?: boolean;
+  }): Promise<Record<string, unknown>> {
+    const res = await this.request(`/api/studio/render-state`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: params.title,
+        lyrics: params.lyrics ?? "",
+        state: params.state,
+        project_id: params.projectId,
+        studio_project_id: params.projectId,
+        export_mode: params.exportMode ?? "studio_export",
+        start_beats: params.startBeats,
+        end_beats: params.endBeats,
+        downbeats: params.downbeats,
+        web_client_pathname: "/studio",
+        render_engine: params.renderEngine,
+        encode_latents: params.encodeLatents,
+      }),
+    });
+    if (!res.ok) throw await sunoHttpError("renderStudioState", res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /** Read a clip (used to poll an export until its audio URL is ready). */
+  async getStudioClip(clipId: string): Promise<Record<string, unknown>> {
+    const res = await this.request(`/api/clip/${encodeURIComponent(clipId)}`, {
+      method: "GET",
+    });
+    if (!res.ok) throw await sunoHttpError("getStudioClip", res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /** Signed download for one clip; `status` is "ready" once the file exists. */
+  async getStudioClipDownload(
+    clipId: string,
+    format = "mp3"
+  ): Promise<Record<string, unknown>> {
+    const res = await this.request(
+      `/api/studio/clip/${encodeURIComponent(clipId)}/download?format=${encodeURIComponent(format)}`,
+      { method: "GET" }
+    );
+    if (!res.ok) throw await sunoHttpError("getStudioClipDownload", res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
   async updateProjectClips(
     projectId: string,
     clipIds: string[],

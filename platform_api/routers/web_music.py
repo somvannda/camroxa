@@ -547,6 +547,47 @@ class StudioClipIdRequest(BaseModel):
     variant: Literal["ok", "alt"] = "ok"
 
 
+class StudioExportRequest(BaseModel):
+    start_beats: float | None = Field(default=None, ge=0)
+    end_beats: float | None = Field(default=None, ge=0)
+
+
+@router.post("/studio/sessions/{project_id}/export")
+async def export_studio_session(
+    project_id: str,
+    body: StudioExportRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.render_studio_export(
+        UUID(ctx.user_id),
+        project_id,
+        start_beats=body.start_beats,
+        end_beats=body.end_beats,
+    )
+
+
+@router.get("/studio/clips/{clip_id}")
+async def get_studio_clip(
+    clip_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    del ctx
+    return await service.get_studio_clip(clip_id)
+
+
+@router.get("/studio/clips/{clip_id}/download")
+async def get_studio_clip_download(
+    clip_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+    format: str = Query("mp3"),
+) -> dict:
+    del ctx
+    return await service.get_studio_clip_download(clip_id, format=format)
+
+
 @router.post("/studio/clips/provider-id")
 async def resolve_studio_clip_id(
     body: StudioClipIdRequest,

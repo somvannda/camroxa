@@ -798,6 +798,59 @@ export async function resolveStudioClipId(
   return data.clip_id || null;
 }
 
+/** Queue a Suno export of the whole project (or a beat range). */
+export async function exportStudioSession(
+  projectId: string,
+  range?: { startBeats?: number; endBeats?: number }
+): Promise<{ clip_id: string; status: string; title: string }> {
+  return musicJson<{ clip_id: string; status: string; title: string }>(
+    `/api/v3/web-music/studio/sessions/${encodeURIComponent(projectId)}/export`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        start_beats: range?.startBeats ?? null,
+        end_beats: range?.endBeats ?? null,
+      }),
+    }
+  );
+}
+
+/** Read an exported clip; `audio_url` fills in once the render finishes. */
+export async function getStudioClip(
+  clipId: string
+): Promise<{ audio_url?: string; status?: string; metadata?: { type?: string } }> {
+  return musicJson<{
+    audio_url?: string;
+    status?: string;
+    metadata?: { type?: string };
+  }>(`/api/v3/web-music/studio/clips/${encodeURIComponent(clipId)}`);
+}
+
+/** Signed download URL for an exported clip; poll until `status` is ready. */
+export async function getStudioClipDownload(
+  clipId: string,
+  format: "mp3" | "wav" = "mp3"
+): Promise<{
+  ok?: boolean;
+  reason?: string;
+  message?: string;
+  status?: string;
+  download_url?: string;
+  detail?: string;
+}> {
+  return musicJson<{
+    ok?: boolean;
+    reason?: string;
+    message?: string;
+    status?: string;
+    download_url?: string;
+    detail?: string;
+  }>(
+    `/api/v3/web-music/studio/clips/${encodeURIComponent(clipId)}/download?format=${format}`
+  );
+}
+
 /** Add or remove clips in a Suno Studio project. */
 export async function updateStudioSessionClips(
   projectId: string,

@@ -10,7 +10,10 @@ import {
   StudioSaveConflictError,
   WebMusicApiError,
   createStudioSession,
+  exportStudioSession,
   fetchWebMusicLikedKeys,
+  getStudioClip,
+  getStudioClipDownload,
   getStudioSession,
   listWebMusicGenerations,
   resolveStudioClipId,
@@ -414,6 +417,8 @@ export function StudioShell() {
   const [hydrating, setHydrating] = useState(Boolean(projectParam));
   const [saving, setSaving] = useState(false);
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
+  const [exporting, setExporting] = useState(false);
+  const [exportStatus, setExportStatus] = useState("");
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1337,6 +1342,44 @@ export function StudioShell() {
     [readySongs, likedKeys]
   );
 
+  /** Queue a full-project export and open the audio once Suno finishes. */
+  async function exportProject() {
+    if (!projectId || exporting) return;
+    setExporting(true);
+    setError("");
+    setExportStatus("Preparing export…");
+    try {
+      const { clip_id: clipId } = await exportStudioSession(projectId);
+      if (!clipId) throw new Error("Suno did not return an export clip");
+      setExportStatus("Rendering…");
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+        const download = await getStudioClipDownload(clipId);
+        if (download.download_url) {
+          setExportStatus("");
+          window.open(download.download_url, "_blank", "noopener");
+          return;
+        }
+        if (download.ok === false) {
+          throw new Error(
+            download.message ||
+              "Suno did not allow this download for the connected account."
+          );
+        }
+        const clip = await getStudioClip(clipId);
+        if (clip.status && ["error", "failed", "cancelled"].includes(clip.status)) {
+          throw new Error("Suno could not render this export");
+        }
+      }
+      throw new Error("Export is still running. Try again in a minute.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Export failed");
+    } finally {
+      setExportStatus("");
+      setExporting(false);
+    }
+  }
+
   function addTrack(name = "Audio Track") {
     const uid = newUid();
     const track: Track = {
@@ -1519,8 +1562,14 @@ export function StudioShell() {
         <span style={{ flex: 1 }} />
         <span className="stv-bpm">{Math.round(bps * 60)} BPM</span>
         <span className="stv-sig">4/4</span>
-        <button type="button" className="s-btn s-btn-ghost" disabled={!tracks.length}>
-          <Icon name="fa-arrow-up-from-bracket" /> Export
+        <button
+          type="button"
+          className="s-btn s-btn-ghost"
+          disabled={!tracks.length || exporting}
+          onClick={() => void exportProject()}
+        >
+          <Icon name="fa-arrow-up-from-bracket" />
+          {exporting ? " Exporting…" : " Export"}
         </button>
         <button
           type="button"
@@ -2013,6 +2062,7 @@ export function StudioShell() {
             <span className="s-note">Reconciling…</span>
           ) : null}
           {busy ? <span className="s-note">Opening…</span> : null}
+          {exportStatus ? <span className="s-note">{exportStatus}</span> : null}
           {playbackIssue ? (
             <span
               className="s-note"

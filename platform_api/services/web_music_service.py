@@ -3752,6 +3752,74 @@ class WebMusicService:
             "GET", f"/internal/studio/projects/{project_id}/version/{version_id}"
         )
 
+    async def render_studio_export(
+        self,
+        user_id: UUID,
+        project_id: str,
+        *,
+        start_beats: float | None = None,
+        end_beats: float | None = None,
+    ) -> dict[str, Any]:
+        """Queue a Suno export of the project (or a beat range) as a new clip."""
+        await self._assert_studio_project_access(user_id, project_id)
+        project = await self._musicapi_studio_call(
+            "GET", f"/internal/studio/projects/{project_id}"
+        )
+        state = project.get("state") if isinstance(project.get("state"), dict) else {}
+        timing = state.get("timing") if isinstance(state.get("timing"), dict) else {}
+        bps = float(timing.get("bps") or 2) or 2.0
+        ends: list[float] = []
+        for track in state.get("tracks") or []:
+            if not isinstance(track, dict):
+                continue
+            for clip in track.get("clips") or []:
+                if isinstance(clip, dict):
+                    ends.append(float(clip.get("endBeats") or 0))
+        total_end = max([1.0, *ends])
+        start = max(0.0, float(start_beats if start_beats is not None else 0))
+        end = float(end_beats if end_beats is not None else total_end)
+        if end <= start:
+            end = max(start + 1.0, total_end if end_beats is None else start + 1.0)
+        # One [relative seconds, beat-in-bar] pair per beat, as the bundle sends.
+        downbeats = [
+            [round(beat / bps, 4), (beat % 4) + 1]
+            for beat in range(int(start), int(end))
+        ]
+        payload = await self._musicapi_studio_call(
+            "POST",
+            "/internal/studio/render-state",
+            {
+                "title": str(project.get("title") or "Untitled Project"),
+                "lyrics": "",
+                "state": state,
+                "project_id": project_id,
+                "studio_project_id": project_id,
+                "export_mode": "studio_export",
+                "start_beats": start,
+                "end_beats": end,
+                "downbeats": downbeats,
+            },
+        )
+        return {
+            "clip_id": str(payload.get("id") or ""),
+            "status": str(payload.get("status") or ""),
+            "title": str(payload.get("title") or ""),
+        }
+
+    async def get_studio_clip(self, clip_id: str) -> dict[str, Any]:
+        return await self._musicapi_studio_call(
+            "GET", f"/internal/studio/clips/{clip_id}"
+        )
+
+    async def get_studio_clip_download(
+        self, clip_id: str, *, format: str = "mp3"
+    ) -> dict[str, Any]:
+        safe_format = "wav" if str(format).lower() == "wav" else "mp3"
+        return await self._musicapi_studio_call(
+            "GET",
+            f"/internal/studio/clips/{clip_id}/download?format={safe_format}",
+        )
+
     async def get_studio_readiness(self) -> dict[str, Any]:
         from platform_api.config import get_settings
         from platform_api.services.streaming_config_service import (
