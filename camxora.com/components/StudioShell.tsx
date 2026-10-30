@@ -29,6 +29,11 @@ const DEFAULT_BPS = 2;
 /** The visible ruler: 24 bars of 4 beats. Positions are stored in beats. */
 const TIMELINE_BEATS = BARS * BEATS_PER_BAR;
 const COLORS = ["#7466F1", "#A259FF", "#2f7bf6", "#25d366", "#f59e0b"];
+/** On-screen keyboard → semitone offset from C, mirroring Suno's W/E/T/Y/U/O/P rows. */
+const KEY_MAP: Record<string, number> = {
+  a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11,
+  k: 12, o: 13, l: 14, p: 15,
+};
 
 type ClipRef = {
   uid: string;
@@ -445,6 +450,10 @@ export function StudioShell() {
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [addTrackMenuPos, setAddTrackMenuPos] = useState<{ x: number; y: number; up: boolean } | null>(null);
   const addTrackMenuOpen = Boolean(addTrackMenuPos);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
+  const [octave, setOctave] = useState(4);
+  const [velocity, setVelocity] = useState(2);
+  const [arpeggiator, setArpeggiator] = useState(false);
   const [libraryTab, setLibraryTab] = useState<"songs" | "liked">("songs");
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [playing, setPlaying] = useState(false);
@@ -1647,6 +1656,106 @@ export function StudioShell() {
     await placeSong(song, target.id);
   }
 
+  /** Simple triangle synth for the on-screen keyboard (Suno ships a wavetable). */
+  const synthCtxRef = useRef<AudioContext | null>(null);
+  const voicesRef = useRef<
+    Map<number, { osc: OscillatorNode; gain: GainNode; timer: number | null }>
+  >(new Map());
+
+  const synthContext = useCallback(() => {
+    if (synthCtxRef.current) return synthCtxRef.current;
+    const engine = engineRef.current ?? ensureEngine();
+    if (!engine) return null;
+    synthCtxRef.current = engine.ctx;
+    return engine.ctx;
+  }, [ensureEngine]);
+
+  const stopNote = useCallback((midi: number) => {
+    const voice = voicesRef.current.get(midi);
+    if (!voice) return;
+    voicesRef.current.delete(midi);
+    if (voice.timer !== null) window.clearInterval(voice.timer);
+    const ctx = synthCtxRef.current;
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    voice.gain.gain.cancelScheduledValues(now);
+    voice.gain.gain.setTargetAtTime(0, now, 0.02);
+    voice.osc.stop(now + 0.12);
+  }, []);
+
+  const startNote = useCallback(
+    (midi: number) => {
+      const ctx = synthContext();
+      if (!ctx) return;
+      if (voicesRef.current.has(midi)) return;
+      void ctx.resume().catch(() => undefined);
+      const master = engineRef.current?.master ?? ctx.destination;
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "triangle";
+      osc.frequency.value = 440 * Math.pow(2, (midi - 69) / 12);
+      const level = Math.max(0.02, Math.min(0.5, velocity / 10));
+      gain.gain.setValueAtTime(0, ctx.currentTime);
+      gain.gain.linearRampToValueAtTime(level, ctx.currentTime + 0.01);
+      osc.connect(gain);
+      gain.connect(master);
+      osc.start();
+      const voice = { osc, gain, timer: null as number | null };
+      // Arpeggiator retriggers the held note at the project tempo.
+      if (arpeggiator) {
+        const period = Math.max(80, 1000 / Math.max(0.5, bpsRef.current));
+        voice.timer = window.setInterval(() => {
+          if (!synthCtxRef.current) return;
+          const t = synthCtxRef.current.currentTime;
+          gain.gain.cancelScheduledValues(t);
+          gain.gain.setValueAtTime(0, t);
+          gain.gain.linearRampToValueAtTime(level, t + 0.01);
+          gain.gain.setTargetAtTime(0, t + period / 2000, 0.03);
+        }, period);
+      }
+      voicesRef.current.set(midi, voice);
+    },
+    [arpeggiator, synthContext, velocity]
+  );
+
+  useEffect(
+    () => () => {
+      voicesRef.current.forEach((voice) => {
+        if (voice.timer !== null) window.clearInterval(voice.timer);
+        try {
+          voice.osc.stop();
+        } catch {
+          /* already stopped */
+        }
+      });
+      voicesRef.current.clear();
+    },
+    []
+  );
+
+  // Computer keys play the on-screen keyboard while it is open.
+  useEffect(() => {
+    if (!keyboardOpen) return;
+    const down = (event: KeyboardEvent) => {
+      const target = document.activeElement;
+      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
+      const offset = KEY_MAP[event.key.toLowerCase()];
+      if (offset === undefined || event.repeat) return;
+      event.preventDefault();
+      startNote(12 * (octave + 1) + offset);
+    };
+    const up = (event: KeyboardEvent) => {
+      const offset = KEY_MAP[event.key.toLowerCase()];
+      if (offset === undefined) return;
+      stopNote(12 * (octave + 1) + offset);
+    };
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+    };
+  }, [keyboardOpen, octave, startNote, stopNote]);
   const timelineSeconds = TIMELINE_BEATS / bps;
   addTrackRef.current = () => addTrack("audio");
   /** The track the context bar is pointed at (Suno shows it as a chip). */
@@ -2426,6 +2535,87 @@ export function StudioShell() {
       </div>
 
       <footer className="stv-bottom">
+        {keyboardOpen ? (
+          <div className="stv-keyboard" role="group" aria-label="Keyboard">
+            <div className="stv-keyboard-head">
+              <b>Keyboard</b>
+              <button
+                type="button"
+                className="stv-icon-sm"
+                aria-label="Close keyboard"
+                onClick={() => setKeyboardOpen(false)}
+              >
+                <Icon name="fa-chevron-down" />
+              </button>
+            </div>
+            <div className="stv-keys">
+              <div className="stv-keys-row black">
+                {["w", "e", "t", "y", "u", "o", "p"].map((key) => {
+                  const midi = 12 * (octave + 1) + KEY_MAP[key];
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className="stv-key dark"
+                      aria-label={`Play ${key.toUpperCase()}`}
+                      onPointerDown={() => startNote(midi)}
+                      onPointerUp={() => stopNote(midi)}
+                      onPointerLeave={() => stopNote(midi)}
+                    >
+                      {key.toUpperCase()}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="stv-keys-row">
+                {["a", "s", "d", "f", "g", "h", "j", "k", "l"].map((key) => {
+                  const midi = 12 * (octave + 1) + KEY_MAP[key];
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      className="stv-key"
+                      aria-label={`Play ${key.toUpperCase()}`}
+                      onPointerDown={() => startNote(midi)}
+                      onPointerUp={() => stopNote(midi)}
+                      onPointerLeave={() => stopNote(midi)}
+                    >
+                      {key.toUpperCase()}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="stv-keyboard-controls">
+              <span className="stv-stepper">
+                <button type="button" aria-label="Octave down" onClick={() => setOctave((value) => Math.max(0, value - 1))}>
+                  −
+                </button>
+                <b>{octave}</b>
+                <button type="button" aria-label="Octave up" onClick={() => setOctave((value) => Math.min(8, value + 1))}>
+                  +
+                </button>
+              </span>
+              <span className="stv-stepper">
+                <button type="button" aria-label="Velocity down" onClick={() => setVelocity((value) => Math.max(1, value - 1))}>
+                  −
+                </button>
+                <b>{velocity}</b>
+                <button type="button" aria-label="Velocity up" onClick={() => setVelocity((value) => Math.min(5, value + 1))}>
+                  +
+                </button>
+              </span>
+              <button
+                type="button"
+                className={`stv-arp${arpeggiator ? " on" : ""}`}
+                aria-pressed={arpeggiator}
+                onClick={() => setArpeggiator((value) => !value)}
+              >
+                <span className="stv-arp-dot" /> Arpeggiator
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="stv-prompt">
           <span className="stv-beta">BETA</span>
           <button type="button" className="stv-icon" aria-label="Add">
@@ -2470,6 +2660,15 @@ export function StudioShell() {
           </button>
         </div>
         <div className="stv-tools">
+          <button
+            type="button"
+            className={`stv-icon-sm${keyboardOpen ? " on" : ""}`}
+            aria-label="Keyboard"
+            aria-pressed={keyboardOpen}
+            onClick={() => setKeyboardOpen((value) => !value)}
+          >
+            <Icon name="fa-keyboard" />
+          </button>
           <span className="s-note">Zoom</span>
           <input
             type="range"

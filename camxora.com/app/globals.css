@@ -4678,3 +4678,21 @@ html{color-scheme:dark}
 .stv-prompt{pointer-events:auto;position:absolute;left:50%;bottom:46px;transform:translateX(-50%);width:min(720px,calc(100% - 120px));background:var(--s-bg2);box-shadow:0 18px 40px rgba(0,0,0,.5)}
 .stv-tools{pointer-events:auto;position:absolute;right:16px;bottom:18px;background:transparent}
 .stv-beta{position:absolute;right:12px;top:-10px;padding:1px 6px;border-radius:999px;background:var(--s-accent);color:#fff;font-size:11px;letter-spacing:.04em}
+/* Floating keyboard (Suno: title bar, key rows, octave/velocity steppers, arpeggiator). */
+.stv-keyboard{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);width:520px;max-width:calc(100% - 80px);z-index:6;background:var(--s-bg2);border:1px solid var(--s-line);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.5);padding:10px 12px}
+.stv-keyboard-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:var(--s-text);font-size:12px}
+.stv-keys{display:flex;flex-direction:column;gap:4px}
+.stv-keys-row{display:flex;gap:4px}
+.stv-keys-row.black{margin-bottom:-10px;padding:0 12px}
+.stv-key{flex:1;height:44px;border-radius:6px;border:1px solid var(--s-line);background:var(--s-bg3);color:var(--s-text2);font-size:11px;font-family:inherit;cursor:pointer;display:grid;place-items:center;user-select:none}
+.stv-key:hover{background:var(--s-line);color:var(--s-text)}
+.stv-key:active{background:var(--s-accent);color:#fff}
+.stv-key.dark{height:30px;background:var(--s-bg);color:var(--s-text3)}
+.stv-keyboard-controls{display:flex;align-items:center;gap:10px;margin-top:10px;color:var(--s-text2);font-size:11px}
+.stv-stepper{display:inline-flex;align-items:center;gap:6px;padding:2px 6px;border-radius:999px;background:var(--s-bg3)}
+.stv-stepper button{border:0;background:transparent;color:var(--s-text2);cursor:pointer;font-size:12px;padding:0 2px}
+.stv-stepper b{color:var(--s-text);font-weight:600}
+.stv-arp{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--s-line);border-radius:999px;background:transparent;color:var(--s-text2);padding:4px 10px;font-size:11px;font-family:inherit;cursor:pointer}
+.stv-arp.on{border-color:var(--s-accent);color:var(--s-text)}
+.stv-arp-dot{width:8px;height:8px;border-radius:999px;background:var(--s-text3)}
+.stv-arp.on .stv-arp-dot{background:var(--s-accent)}
