@@ -1375,3 +1375,46 @@ selected track is identifiable in both the left bar **and** the arrangement.
 3. EQ shows one band, not a multi-band editor with shape selection.
 4. No per-plugin bypass dot (we have a power button in the header instead).
 5. Focus rings are on sliders only, not knobs.
+
+## 54. Magic Bar — captured in context (`/studio`, project reopened)
+
+`/studio` reopens the **last project** rather than showing a chooser, so the first
+screen after sign-in is the editor. The Magic Bar floats above the footer, centred,
+and is now fully visible.
+
+### Geometry (1104 px window)
+
+| Element | Position / size |
+|---|---|
+| container | x ≈ 355 → 1010 (655 px wide), y ≈ 815 → 905, rounded 14 px, dark translucent |
+| row 1 | `+` attach (28 px) · **clip chip** (`🎤 Long Vocal ×`) · spacer · duplicate icon · close × |
+| `BETA` badge | pinned to the container's top-right corner |
+| row 2 | placeholder text left · `v6 ▾` model chip · circular submit `↑` right |
+| clip chip | rounded pill, tinted with the **track colour** (pink for vocals), mic icon, name, `×` to detach |
+
+### Behaviour captured
+
+1. The chip binds the prompt to the **selected clip**, and its colour matches the
+   track family — the prompt is object-scoped, not global.
+2. The placeholder changes with context: `Add a warm reverb to this track`.
+3. Submit is a circular arrow, **dimmed until the prompt has content**.
+4. `+` attaches another object to the prompt.
+5. The model chip (`v6`) sits on the prompt row, not in a separate toolbar.
+6. The whole bar is a floating card — the timeline is visible behind it.
+
+### Why this matters for the clone
+
+This is the product's creation verb, and it is **object-scoped**: you select a clip or
+a spot, then speak about it. Our shell has no Magic Bar at all, and our old editor had
+a single-line `studio-ai-bar`. The reference is two rows with an attachment chip, a
+model chip and a circular submit.
+
+### Deltas
+
+| Element | Reference | Ours |
+|---|---|---|
+| Placement | floating, centred, above footer | none in the shell |
+| Attachment chip | clip with colour + detach | none |
+| Model chip | on the prompt row | dropdown elsewhere |
+| Submit | circular arrow, disabled when empty | none |
+| BETA badge | on the container | none |
