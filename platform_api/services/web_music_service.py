@@ -3488,10 +3488,10 @@ class WebMusicService:
             label="mashup",
         )
 
-    async def _musicapi_studio_call(
+    async def _musicapi_studio_request(
         self, method: str, path: str, payload: dict[str, Any] | None = None
-    ) -> dict[str, Any]:
-        """Call one of musicapi's /internal/studio routes."""
+    ) -> tuple[int, dict[str, Any]]:
+        """Call one of musicapi's /internal/studio routes and keep its status."""
         from platform_api.config import get_settings
 
         settings = get_settings()
@@ -3517,22 +3517,25 @@ class WebMusicService:
                 is_retryable=True,
                 details={"provider": "musicapi", "path": path},
             ) from exc
-        if response.status_code >= 400:
-            detail = "Studio request failed."
-            try:
-                detail = str((response.json() or {}).get("error") or detail)
-            except Exception:
-                pass
-            raise ExternalServiceError(
-                detail,
-                is_retryable=False,
-                details={"provider": "musicapi", "path": path},
-            )
         try:
             data = response.json()
         except Exception:
-            return {}
-        return data if isinstance(data, dict) else {}
+            data = {}
+        return response.status_code, data if isinstance(data, dict) else {}
+
+    async def _musicapi_studio_call(
+        self, method: str, path: str, payload: dict[str, Any] | None = None
+    ) -> dict[str, Any]:
+        """Call one of musicapi's /internal/studio routes."""
+        status, data = await self._musicapi_studio_request(method, path, payload)
+        if status >= 400:
+            detail = str(data.get("error") or "Studio request failed.")
+            raise ExternalServiceError(
+                detail,
+                is_retryable=False,
+                details={"provider": "musicapi", "path": path, "status": status},
+            )
+        return data
 
     async def create_studio_session(
         self, user_id: UUID, *, title: str = "Untitled Project"
@@ -3574,7 +3577,7 @@ class WebMusicService:
             clip_ids.append(
                 await self._studio_source_clip(user_id, task_id, variant=variant)
             )
-        return await self._musicapi_studio_call(
+        payload = await self._musicapi_studio_call(
             "POST",
             f"/internal/studio/projects/{project_id}/clips",
             {
@@ -3582,6 +3585,38 @@ class WebMusicService:
                 "update_type": "remove" if remove else "add",
             },
         )
+        return {**payload, "clip_ids": clip_ids}
+
+    async def resolve_studio_clips(
+        self, user_id: UUID, clip_ids: list[str]
+    ) -> dict[str, Any]:
+        """Map Suno provider clip ids back to the task/variant they came from."""
+        wanted = [clip for clip in clip_ids if clip][:200]
+        if not wanted:
+            return {"items": []}
+        rows = await self._pool.fetch(
+            """
+            SELECT id, audio_id_ok, audio_id_alt
+            FROM suno_tasks
+            WHERE user_id = $1
+              AND (audio_id_ok = ANY($2::text[]) OR audio_id_alt = ANY($2::text[]))
+            """,
+            user_id,
+            wanted,
+        )
+        items: list[dict[str, str]] = []
+        for row in rows:
+            for variant, column in (("ok", "audio_id_ok"), ("alt", "audio_id_alt")):
+                provider_clip_id = str(row[column] or "").strip()
+                if provider_clip_id and provider_clip_id in wanted:
+                    items.append(
+                        {
+                            "clip_id": provider_clip_id,
+                            "task_id": str(row["id"]),
+                            "variant": variant,
+                        }
+                    )
+        return {"items": items}
 
     async def rename_studio_session(
         self, user_id: UUID, project_id: str, *, name: str
@@ -3591,6 +3626,57 @@ class WebMusicService:
             "POST",
             f"/internal/studio/projects/{project_id}/metadata",
             {"name": str(name or "").strip()[:100]},
+        )
+
+    async def save_studio_session(
+        self,
+        user_id: UUID,
+        project_id: str,
+        *,
+        state: dict[str, Any],
+        title: str,
+        base_version_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Versioned autosave. 409 carries the newer version, 429 means throttled."""
+        del user_id
+        path = f"/internal/studio/projects/{project_id}/save"
+        status, payload = await self._musicapi_studio_request(
+            "POST",
+            path,
+            {
+                "state": state,
+                "title": str(title or "Untitled Project")[:120],
+                "base_version_id": base_version_id,
+            },
+        )
+        if status == 409:
+            raise ConflictError(
+                "Project has a newer version",
+                details={"latest_version_id": str(payload.get("latest_version_id") or "")},
+            )
+        if status == 429:
+            raise RateLimitedError("Too many Studio saves. Try again shortly.")
+        if status >= 400:
+            raise ExternalServiceError(
+                str(payload.get("error") or "Studio request failed."),
+                is_retryable=False,
+                details={"provider": "musicapi", "path": path, "status": status},
+            )
+        version_id = str(payload.get("version_id") or "")
+        if not version_id:
+            raise ExternalServiceError(
+                "Save returned no version.",
+                is_retryable=False,
+                details={"provider": "musicapi", "path": path},
+            )
+        return {"version_id": version_id}
+
+    async def get_studio_session_version(
+        self, user_id: UUID, project_id: str, version_id: str
+    ) -> dict[str, Any]:
+        del user_id
+        return await self._musicapi_studio_call(
+            "GET", f"/internal/studio/projects/{project_id}/version/{version_id}"
         )
 
     async def get_studio_readiness(self) -> dict[str, Any]:

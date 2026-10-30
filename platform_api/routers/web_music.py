@@ -501,6 +501,47 @@ async def rename_studio_session(
     )
 
 
+@router.post("/studio/sessions/{project_id}/save")
+async def save_studio_session(
+    project_id: str,
+    body: StudioSessionSaveRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.save_studio_session(
+        UUID(ctx.user_id),
+        project_id,
+        state=body.state,
+        title=body.title,
+        base_version_id=body.base_version_id,
+    )
+
+
+@router.get("/studio/sessions/{project_id}/versions/{version_id}")
+async def get_studio_session_version(
+    project_id: str,
+    version_id: str,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.get_studio_session_version(
+        UUID(ctx.user_id), project_id, version_id
+    )
+
+
+class StudioClipResolveRequest(BaseModel):
+    clip_ids: list[str] = Field(min_length=1, max_length=200)
+
+
+@router.post("/studio/clips/resolve")
+async def resolve_studio_clips(
+    body: StudioClipResolveRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.resolve_studio_clips(UUID(ctx.user_id), body.clip_ids)
+
+
 @router.get("/studio/projects")
 async def list_studio_projects(
     ctx: CurrentUserDep,
@@ -839,6 +880,14 @@ class StudioSessionClipsRequest(BaseModel):
 
 class StudioSessionRenameRequest(BaseModel):
     name: str = Field(min_length=1, max_length=100)
+
+
+class StudioSessionSaveRequest(BaseModel):
+    """One versioned save of Suno's editor `state` document."""
+
+    state: dict[str, object]
+    title: str = Field(default="Untitled Project", max_length=120)
+    base_version_id: str | None = Field(default=None, max_length=100)
 
 
 class StudioCoverRequest(BaseModel):
