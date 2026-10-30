@@ -32,7 +32,7 @@ from __future__ import annotations
 from alembic import op
 
 revision = "174"
-down_revision = "173"
+down_revision = "173_web_music_reports"
 branch_labels = None
 depends_on = None
 
