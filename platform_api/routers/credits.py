@@ -578,7 +578,7 @@ async def get_quota_status(
         daily_merges_remaining=None,
         daily_merges_limit=None,
         wallet_balance=units_to_credits(balance),
-        renewal_alert=None,
+        renewal_alert="none",
         channels=[],
     )
 
