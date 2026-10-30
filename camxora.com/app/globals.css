@@ -4664,3 +4664,7 @@ html{color-scheme:dark}
 .stv-grid{max-width:400%;transition:width .15s ease}
 
 .stv-clip.on{outline:2px solid var(--s-accent);outline-offset:2px}
+
+.stv-pan{width:20px;height:20px;flex:none;border-radius:999px;background:var(--s-bg3);border:1px solid var(--s-line);position:relative;cursor:ns-resize;padding:0}
+.stv-pan span{position:absolute;left:50%;top:3px;width:2px;height:6px;border-radius:1px;background:var(--s-text2);transform-origin:50% 7px}
+.stv-pan:hover{border-color:var(--s-line2)}

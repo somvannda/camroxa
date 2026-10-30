@@ -61,6 +61,8 @@ type Track = {
   muted: boolean;
   solo: boolean;
   volume: number;
+  /** Pan, -1..1 (Suno's `balance`). */
+  pan: number;
   /** Hide & Mute: lane hidden, track kept (persisted as `hidden`). */
   hidden?: boolean;
   /** Collapse controls (UI only). */
@@ -84,6 +86,7 @@ type MixerEngine = {
   ctx: AudioContext;
   master: GainNode;
   tracks: Map<string, GainNode>;
+  panners: Map<string, StereoPannerNode>;
   clips: Map<string, GainNode>;
   sources: Map<string, MediaElementAudioSourceNode>;
 };
@@ -346,7 +349,7 @@ function buildProjectState(input: {
       name: track.name,
       color: track.color,
       amplitude: track.volume / 100,
-      balance: typeof source.balance === "number" ? source.balance : 0,
+      balance: Math.max(-1, Math.min(1, track.pan ?? 0)),
       solo: track.solo,
       mute: track.muted,
       hidden: Boolean(track.hidden),
@@ -704,6 +707,7 @@ export function StudioShell() {
             clips,
             muted: Boolean(track.mute),
             solo: Boolean(track.solo),
+            pan: typeof track.balance === "number" ? Math.max(-1, Math.min(1, track.balance)) : 0,
             hidden: Boolean(track.hidden),
             volume:
               typeof track.amplitude === "number"
@@ -858,8 +862,11 @@ export function StudioShell() {
     if (existing) return existing;
     const gain = engine.ctx.createGain();
     gain.gain.value = 1;
-    gain.connect(engine.master);
+    const panner = engine.ctx.createStereoPanner();
+    gain.connect(panner);
+    panner.connect(engine.master);
     engine.tracks.set(trackId, gain);
+    engine.panners.set(trackId, panner);
     return gain;
   }, []);
 
@@ -873,11 +880,23 @@ export function StudioShell() {
         gain.disconnect();
         engine.tracks.delete(id);
       });
+      engine.panners.forEach((panner, id) => {
+        if (alive.has(id)) return;
+        panner.disconnect();
+        engine.panners.delete(id);
+      });
       const anySolo = liveTracks.some((track) => track.solo);
       liveTracks.forEach((track) => {
         const gain = trackGain(engine, track.id);
         const audible = !track.muted && (!anySolo || track.solo);
         gain.gain.setTargetAtTime(audible ? track.volume / 100 : 0, now, 0.015);
+        engine.panners
+          .get(track.id)
+          ?.pan.setTargetAtTime(
+            Math.max(-1, Math.min(1, track.pan ?? 0)),
+            now,
+            0.01
+          );
       });
     },
     [trackGain]
@@ -917,6 +936,7 @@ export function StudioShell() {
       master,
       tracks: new Map(),
       clips: new Map(),
+      panners: new Map(),
       sources: new Map(),
     };
     return engineRef.current;
@@ -1522,6 +1542,7 @@ export function StudioShell() {
       muted: false,
       solo: false,
       volume: 100,
+      pan: 0,
     };
     setTracks((current) => [...current, track]);
     setSelectedTrack(track.id);
@@ -1616,6 +1637,7 @@ export function StudioShell() {
         muted: false,
         solo: false,
         volume: 100,
+        pan: 0,
       };
       setTracks((current) => [...current, track]);
       setSelectedTrack(track.id);
@@ -1877,7 +1899,41 @@ export function StudioShell() {
                       updateTrack(track.id, { volume: Number(event.target.value) })
                     }
                   />
-                  <span className="stv-track-fx"><Icon name="fa-sliders" /></span>
+                  <button
+                    type="button"
+                    className="stv-pan"
+                    aria-label={`${track.name} pan`}
+                    aria-valuenow={Math.round((track.pan ?? 0) * 100)}
+                    title="Drag to pan (double-click to centre)"
+                    onClick={(event) => event.stopPropagation()}
+                    onDoubleClick={() => updateTrack(track.id, { pan: 0 })}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      const startY = event.clientY;
+                      const startPan = track.pan ?? 0;
+                      const move = (moveEvent: PointerEvent) => {
+                        const next = Math.max(
+                          -1,
+                          Math.min(1, startPan + (startY - moveEvent.clientY) / 80)
+                        );
+                        updateTrack(track.id, {
+                          pan: Number(next.toFixed(2)),
+                        });
+                      };
+                      const up = () => {
+                        window.removeEventListener("pointermove", move);
+                        window.removeEventListener("pointerup", up);
+                      };
+                      window.addEventListener("pointermove", move);
+                      window.addEventListener("pointerup", up);
+                    }}
+                  >
+                    <span
+                      style={{
+                        transform: `translateX(-50%) rotate(${(track.pan ?? 0) * 135}deg)`,
+                      }}
+                    />
+                  </button>
                 </div>
               ) : null}
             </div>
