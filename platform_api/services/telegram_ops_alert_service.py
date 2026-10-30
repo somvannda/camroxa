@@ -501,15 +501,13 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
             SELECT u.email,
                    u.display_name,
                    EXISTS(
-                     SELECT 1 FROM licenses l
-                     WHERE l.user_id = u.id AND l.status = 'active'
+                     SELECT 1 FROM credit_wallet_lots l
+                     WHERE l.user_id = u.id
+                       AND l.tag = 'pack'
+                       AND l.remaining_units > 0
+                       AND (l.expires_at IS NULL OR l.expires_at > NOW())
                    ) AS has_studio_license,
-                   EXISTS(
-                     SELECT 1 FROM web_subscriptions w
-                     WHERE w.user_id = $2
-                       AND w.status = 'active'
-                       AND w.current_period_end > NOW()
-                   ) AS has_web_sub,
+                   false AS has_web_sub,
                    EXISTS(
                      SELECT 1 FROM topup_purchases t
                      WHERE t.user_id = u.id
@@ -520,7 +518,6 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
             WHERE u.id = $1
             """,
             user_id if isinstance(user_id, UUID) else UUID(str(user_id)),
-            str(user_id),
         )
         if row is not None:
             snapshot["email"] = row["email"]

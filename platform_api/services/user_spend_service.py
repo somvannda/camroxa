@@ -161,7 +161,9 @@ class UserSpendService:
         users = self._rollup_users(cog_rows, pricing=pricing, model_costs=model_costs, gcv=gcv)
 
         user_ids = [u.user_id for u in users]
-        plans = await self._credit_repo.list_active_plans_for_users(user_ids)
+        # Plans are retired: no plan rows to attach. Everyone is reported as
+        # Free here; Pro is derived from live pack lots elsewhere.
+        plans: dict[UUID, dict[str, Any]] = {}
         await self._attach_plans_and_meters(
             users,
             plans=plans,

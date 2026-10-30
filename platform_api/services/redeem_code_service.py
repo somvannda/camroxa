@@ -106,10 +106,8 @@ async def get_redeem_code_row_by_id(pool: Any, redeem_code_id: UUID) -> Any | No
     """Fetch a redeem code row by identifier."""
     return await pool.fetchrow(
         """
-        SELECT rc.*,
-               p.name AS applicable_plan_name
+        SELECT rc.*
         FROM redeem_codes rc
-        LEFT JOIN plans p ON p.id = rc.applicable_plan_id
         WHERE rc.id = $1
         """,
         redeem_code_id,
@@ -120,10 +118,8 @@ async def get_redeem_code_row_by_code(pool: Any, code: str) -> Any | None:
     """Fetch a redeem code row by normalized code."""
     return await pool.fetchrow(
         """
-        SELECT rc.*,
-               p.name AS applicable_plan_name
+        SELECT rc.*
         FROM redeem_codes rc
-        LEFT JOIN plans p ON p.id = rc.applicable_plan_id
         WHERE rc.code = $1
         """,
         normalize_redeem_code(code),
@@ -134,20 +130,17 @@ async def list_redeem_codes(pool: Any) -> list[Any]:
     """List redeem codes for admin surfaces."""
     return await pool.fetch(
         """
-        SELECT rc.*,
-               p.name AS applicable_plan_name
+        SELECT rc.*
         FROM redeem_codes rc
-        LEFT JOIN plans p ON p.id = rc.applicable_plan_id
         ORDER BY rc.created_at DESC, rc.code ASC
         """
     )
 
 
 async def ensure_plan_exists(pool: Any, plan_id: UUID) -> None:
-    """Validate that an applicable plan exists."""
-    exists = await pool.fetchval("SELECT 1 FROM plans WHERE id = $1", plan_id)
-    if not exists:
-        raise NotFoundError("Referenced plan was not found.", details={"plan_id": str(plan_id)})
+    """Plans are retired; plan-scoped codes are ignored."""
+    del pool, plan_id
+    return None
 
 
 async def create_redeem_code(pool: Any, payload: dict[str, Any], *, created_by: UUID | None) -> Any:
@@ -339,7 +332,7 @@ async def preview_redeem_code(
         "discount_percent": row["discount_percent"],
         "credit_amount": row["credit_amount"],
         "applicable_plan_id": str(row["applicable_plan_id"]) if row["applicable_plan_id"] else None,
-        "applicable_plan_name": row["applicable_plan_name"],
+        "applicable_plan_name": None,
         "max_redemptions": row["max_redemptions"],
         "current_redemptions": int(row["current_redemptions"] or 0),
         "remaining_redemptions": (
@@ -412,9 +405,7 @@ async def redeem_credit_code(pool: Any, *, code: str, user_id: UUID) -> dict[str
             row = await conn.fetchrow(
                 """
                 SELECT rc.*,
-                       p.name AS applicable_plan_name
                 FROM redeem_codes rc
-                LEFT JOIN plans p ON p.id = rc.applicable_plan_id
                 WHERE rc.code = $1
                 FOR UPDATE OF rc
                 """,
@@ -547,7 +538,7 @@ async def redeem_credit_code(pool: Any, *, code: str, user_id: UUID) -> dict[str
         "applicable_plan_id": (
             str(row["applicable_plan_id"]) if row["applicable_plan_id"] is not None else None
         ),
-        "applicable_plan_name": row["applicable_plan_name"],
+        "applicable_plan_name": None,
         "max_redemptions": max_redemptions,
         "current_redemptions": current_redemptions,
         "remaining_redemptions": remaining_redemptions,
@@ -688,7 +679,6 @@ async def list_redeem_code_redemptions(
                u.display_name AS user_display_name,
                r.billing_payment_id,
                r.plan_id,
-               p.name AS plan_name,
                r.status,
                r.amount_cents,
                r.credit_amount,
@@ -697,7 +687,6 @@ async def list_redeem_code_redemptions(
         FROM redeem_code_redemptions r
         INNER JOIN redeem_codes rc ON rc.id = r.redeem_code_id
         INNER JOIN users u ON u.id = r.user_id
-        LEFT JOIN plans p ON p.id = r.plan_id
         {where_clause}
         ORDER BY r.created_at DESC
         LIMIT ${len(params) - 1}
@@ -727,7 +716,6 @@ async def list_user_redeem_code_redemptions(
                u.display_name AS user_display_name,
                r.billing_payment_id,
                r.plan_id,
-               p.name AS plan_name,
                r.status,
                r.amount_cents,
                r.credit_amount,
@@ -736,7 +724,6 @@ async def list_user_redeem_code_redemptions(
         FROM redeem_code_redemptions r
         INNER JOIN redeem_codes rc ON rc.id = r.redeem_code_id
         INNER JOIN users u ON u.id = r.user_id
-        LEFT JOIN plans p ON p.id = r.plan_id
         WHERE r.user_id = $1
         ORDER BY r.created_at DESC
         LIMIT $2

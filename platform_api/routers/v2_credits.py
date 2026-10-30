@@ -78,55 +78,28 @@ class CreditHistoryResponse(BaseModel):
 
 
 @router.get("/balance", response_model=CreditBalanceResponse)
-async def get_balance(
-    ctx: CurrentUserDep,
-    service: CreditServiceDep
-) -> CreditBalanceResponse:
-    """Get the current user's credit balance.
-    
-    Returns:
-    - total_credits: Total available credits (monthly + topup)
-    - monthly_credits: Credits from current subscription period
-    - monthly_credits_used: Credits already used this period
-    - topup_credits: Credits from top-up purchases
-    - breakdown: Detailed breakdown by source
-    """
-    import logging
-    _log = logging.getLogger("platform_api.routers.v2_credits.get_balance")
-    
-    try:
-        _log.info(f"Fetching credit balance for user: {ctx.user_id}")
-        
-        balance = await service.get_detailed_balance(ctx.user_id)
-        _log.info(f"Balance query result: {balance}")
+async def get_balance(ctx: CurrentUserDep) -> CreditBalanceResponse:
+    """Credits-only wallet balance (legacy v2 shape)."""
+    from uuid import UUID
 
-        _log.info(
-            "Returning balance: total=%s monthly=%s topup=%s daily=%s",
-            balance.total_available,
-            balance.monthly_remaining,
-            balance.topup_balance,
-            balance.daily_free_remaining,
-        )
-        return CreditBalanceResponse(
-            total_credits=balance.total_available,
-            monthly_credits=balance.monthly_remaining,
-            monthly_credits_used=balance.monthly_used,
-            topup_credits=balance.topup_balance,
-            daily_free_credits=balance.daily_free_remaining,
-            daily_free_limit=balance.daily_free_limit,
-            daily_free_used=balance.daily_free_used,
-            has_subscription=balance.has_subscription,
-            current_period_end=_iso(balance.current_period_end),
-            reset_at=_iso(balance.reset_at),
-            breakdown={
-                "monthly": balance.monthly_remaining,
-                "topup": balance.topup_balance,
-                "daily_free": balance.daily_free_remaining,
-            },
-        )
-    except Exception as e:
-        _log.error(f"Error fetching credit balance for user {ctx.user_id}: {type(e).__name__}: {e}", exc_info=True)
-        raise
+    from platform_api.dependencies import get_v3_billing_service
+
+    view = await get_v3_billing_service().wallet_view(UUID(ctx.user_id))
+    total = int(round(float(view.get("balance_credits") or 0)))
+    is_pro = bool(view.get("is_pro"))
+    return CreditBalanceResponse(
+        total_credits=total,
+        monthly_credits=0,
+        monthly_credits_used=0,
+        topup_credits=total,
+        daily_free_credits=0,
+        daily_free_limit=0,
+        daily_free_used=0,
+        has_subscription=is_pro,
+        current_period_end=view.get("pack_expires_at"),
+        reset_at=None,
+        breakdown={"monthly": 0, "topup": total, "daily_free": 0},
+    )
 
 
 @router.get("/history", response_model=CreditHistoryResponse)
