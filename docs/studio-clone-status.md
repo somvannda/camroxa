@@ -22,6 +22,17 @@ detail is in [studio-flows.md](studio-flows.md).
 | Metronome | toggles `state.metronome`, clicks per beat with downbeat accent | live |
 | Library dock | Songs, Liked tabs (drag/click to add) | live |
 | Ownership | `403` for another user's indexed project; audited | live + unit tests |
+| Pan | per-track knob → `StereoPannerNode`, persisted as `track.balance` | live |
+| Add track | Audio / MIDI / Upload menu (A/M/U), MIDI creates a real track and targets the prompt | live |
+| Track menu | Rename, Color, Collapse controls, Duplicate, Hide & Mute, Delete | live |
+| Layout | Main in the left panel, prompt floats over the timeline with a BETA pill, ruler at the bottom with mm:ss | live |
+| Keyboard | floating piano (9 white / 7 black), playable by pointer and computer keys, octave/velocity, arpeggiator | live |
+
+## Stopped at
+
+This branch was paused on 2026-10-30 while a fresh implementation started
+elsewhere. Final head: `aaebb518`. Everything below is what a rewrite should
+reuse first — the schema and contracts are the expensive part, not the UI.
 
 ## Blocked — needs a decision
 
