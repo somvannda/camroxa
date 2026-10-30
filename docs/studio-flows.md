@@ -77,7 +77,9 @@ never calls it. Removing a clip here must not delete the song from the library.
 
 Header: rewind, play, metronome, `00:00.000`, bar:beat, BPM, time signature — `H`.
 Camxora: play/pause + clock + bar:beat `C` (driven by one audio clock, Space
-toggles it); metronome no-op; BPM static 120.
+toggles it); metronome `C` (toggles `state.metronome.enabled`, clicks on every
+beat with a higher downbeat, level from `state.metronome.amplitude`); BPM from
+`timing.bps`.
 
 ## F9 — Prompt bar
 

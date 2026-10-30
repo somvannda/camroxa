@@ -264,6 +264,8 @@ function buildProjectState(input: {
   songs: Map<string, WebMusicGeneration>;
   placed: Map<string, PlacedClip>;
   bps: number;
+  metronome: boolean;
+  metronomeVolume: number;
 }): Record<string, unknown> | null {
   const baseTracks = Array.isArray(input.base.tracks)
     ? (input.base.tracks as unknown[])
@@ -340,7 +342,17 @@ function buildProjectState(input: {
   // Never write a document that would silently drop a track we could not match.
   if (baseAudio.some((track) => !claimed.has(String(track.id ?? "")))) return null;
 
-  return { ...input.base, amplitude: input.masterVolume / 100, tracks: out };
+  const baseMetronome = asRecord(input.base.metronome) ?? {};
+  return {
+    ...input.base,
+    amplitude: input.masterVolume / 100,
+    metronome: {
+      ...baseMetronome,
+      enabled: input.metronome,
+      amplitude: input.metronomeVolume,
+    },
+    tracks: out,
+  };
 }
 
 /**
@@ -397,6 +409,7 @@ export function StudioShell() {
   const [position, setPosition] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [masterVolume, setMasterVolume] = useState(100);
+  const [metronome, setMetronome] = useState(false);
   const [bps, setBps] = useState(DEFAULT_BPS);
   const [hydrating, setHydrating] = useState(Boolean(projectParam));
   const [saving, setSaving] = useState(false);
@@ -491,8 +504,12 @@ export function StudioShell() {
   }, [tracks, songsById, measured, bps]);
 
   /** Everything the imperative transport loop needs, kept current each render. */
-  const live = useRef({ tracks, placed, masterVolume, bps });
-  live.current = { tracks, placed, masterVolume, bps };
+  const live = useRef({ tracks, placed, masterVolume, bps, metronome });
+  live.current = { tracks, placed, masterVolume, bps, metronome };
+  /** Metronome click level, preserved from the project state (default 1). */
+  const metronomeVolumeRef = useRef(1);
+  /** Last beat that already produced a click. */
+  const lastClickBeatRef = useRef(-1);
 
   useEffect(() => {
     let active = true;
@@ -532,6 +549,14 @@ export function StudioShell() {
             ? Math.round(Math.min(1, Math.max(0, doc.amplitude)) * 100)
             : 100;
         setMasterVolume(nextMaster);
+        const metronomeState = asRecord(doc.metronome);
+        setMetronome(Boolean(metronomeState?.enabled));
+        if (typeof metronomeState?.amplitude === "number") {
+          metronomeVolumeRef.current = Math.min(
+            1,
+            Math.max(0, metronomeState.amplitude)
+          );
+        }
 
         const stateTracks = (Array.isArray(doc.tracks) ? doc.tracks : [])
           .map(asRecord)
@@ -632,6 +657,7 @@ export function StudioShell() {
           tracks: nextTracks.length ? nextTracks : tracks,
           masterVolume: nextMaster,
           projectName: title ?? "Untitled Project",
+          metronome: Boolean(metronomeState?.enabled),
         });
       })
       .catch(() => {
@@ -703,6 +729,24 @@ export function StudioShell() {
     },
     []
   );
+
+  /** Short click on the metronome bus; downbeats are higher pitched. */
+  const playClick = useCallback((engine: MixerEngine, downbeat: boolean) => {
+    const now = engine.ctx.currentTime;
+    const osc = engine.ctx.createOscillator();
+    const gain = engine.ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = downbeat ? 1600 : 1000;
+    gain.gain.setValueAtTime(
+      0.25 * metronomeVolumeRef.current,
+      now
+    );
+    gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.05);
+    osc.connect(gain);
+    gain.connect(engine.master);
+    osc.start(now);
+    osc.stop(now + 0.06);
+  }, []);
 
   /** Start/stop each placed clip so it matches the transport window. */
   const syncClips = useCallback(
@@ -850,12 +894,20 @@ export function StudioShell() {
     syncClips(transport.current.at, true, true);
 
     stopLoop();
+    lastClickBeatRef.current = -1;
     const step = () => {
       const running = engineRef.current;
       if (!running || !transport.current.playing) return;
       const seconds = currentPosition();
       updateView(seconds);
       syncClips(seconds, true, false);
+      const beat = Math.floor(seconds * live.current.bps);
+      if (live.current.metronome && beat > lastClickBeatRef.current) {
+        lastClickBeatRef.current = beat;
+        playClick(running, beat % BEATS_PER_BAR === 0);
+      } else if (!live.current.metronome && beat !== lastClickBeatRef.current) {
+        lastClickBeatRef.current = beat;
+      }
       if (seconds >= timelineSecondsRef.current) {
         pause();
         return;
@@ -869,6 +921,7 @@ export function StudioShell() {
     currentPosition,
     ensureEngine,
     pause,
+    playClick,
     stopLoop,
     syncClips,
     updateView,
@@ -1067,6 +1120,8 @@ export function StudioShell() {
       songs: songsById,
       placed: live.current.placed,
       bps: live.current.bps,
+      metronome: live.current.metronome,
+      metronomeVolume: metronomeVolumeRef.current,
     });
     if (!state) {
       setSaveStatus("error");
@@ -1077,6 +1132,7 @@ export function StudioShell() {
       tracks: live.current.tracks,
       masterVolume: live.current.masterVolume,
       projectName,
+      metronome: live.current.metronome,
     });
     setSaving(true);
     setSaveStatus("saving");
@@ -1130,11 +1186,16 @@ export function StudioShell() {
   // Autosave: 3 s after the last edit, only once a real state document exists.
   useEffect(() => {
     if (!projectId || hydrating || !baseStateRef.current) return;
-    const snapshot = JSON.stringify({ tracks, masterVolume, projectName });
+    const snapshot = JSON.stringify({
+      tracks,
+      masterVolume,
+      projectName,
+      metronome,
+    });
     if (snapshot === savedSnapshotRef.current) return;
     const timer = window.setTimeout(() => void saveNowRef.current(), 3000);
     return () => window.clearTimeout(timer);
-  }, [tracks, masterVolume, projectName, projectId, hydrating]);
+  }, [tracks, masterVolume, projectName, projectId, hydrating, metronome]);
 
   // Record settled edits so undo/redo can walk them back.
   useEffect(() => {
@@ -1411,7 +1472,16 @@ export function StudioShell() {
           >
             <Icon name={playing ? "fa-pause" : "fa-play"} />
           </button>
-          <button type="button" className="stv-icon" aria-label="Metronome">
+          <button
+            type="button"
+            className={`stv-icon${metronome ? " on" : ""}`}
+            aria-label="Metronome"
+            aria-pressed={metronome}
+            onClick={() => {
+              lastClickBeatRef.current = -1;
+              setMetronome((value) => !value);
+            }}
+          >
             <Icon name="fa-hourglass-half" />
           </button>
           <span className="stv-clock" ref={clockRef}>

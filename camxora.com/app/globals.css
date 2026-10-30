@@ -4454,6 +4454,7 @@ html{color-scheme:dark}
 .stv-icon{width:30px;height:30px;border:0;border-radius:8px;background:transparent;color:var(--s-text2);cursor:pointer;display:grid;place-items:center}
 .stv-icon:hover{background:var(--s-bg2);color:var(--s-text)}
 .stv-icon:disabled{opacity:.35;cursor:default;background:transparent;color:var(--s-text3)}
+.stv-icon.on{color:var(--s-accent);background:var(--s-bg2)}
 .stv-clock{font-variant-numeric:tabular-nums;font-size:12px;color:var(--s-text)}
 .stv-bars{font-variant-numeric:tabular-nums;font-size:12px;color:var(--s-text3)}
 .stv-bpm,.stv-sig{padding:3px 8px;border-radius:999px;background:var(--s-bg2);border:1px solid var(--s-line);color:var(--s-text2);font-size:11px}
