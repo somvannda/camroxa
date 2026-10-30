@@ -169,13 +169,13 @@ class V3BillingStore:
         return row_to_plan_dict(row) if row is not None else None
 
     async def resolve_charge_plan(self, user_id: UUID) -> dict[str, Any] | None:
-        plan = await self.get_plan_for_user(user_id)
-        if plan is not None:
-            return plan
-        web_plan = await self.get_plan_for_web_subscription(user_id)
-        if web_plan is not None and int(web_plan.get("price_cents") or 0) > 0:
-            return web_plan
-        return await self.get_active_free_plan()
+        """Plans are retired (credits-only billing).
+
+        Charging is priced from the ``pricing`` table only, so there is never a
+        plan to resolve. Kept for call-site compatibility.
+        """
+        del user_id
+        return None
 
     async def patch_plan(self, plan_id: UUID, fields: dict[str, Any]) -> dict[str, Any] | None:
         if not fields:

@@ -225,114 +225,11 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 // Subscription API
 // ============================================================================
 
-type PublicPlanRow = {
-  id: string;
-  name?: string;
-  daily_credits?: number;
-  monthly_credits?: number;
-  lyric_credits?: number;
-  music_credits?: number;
-  price_cents?: number;
-  billing_cycle_days?: number;
-  is_public?: boolean;
-  is_active?: boolean;
-  pricing_features?: string[];
-  pricing_credit_lines?: string[];
-  features?: string[];
-  credits_per_generate?: number;
-};
-
-function asPublicRows(payload: unknown): PublicPlanRow[] {
-  if (Array.isArray(payload)) return payload as PublicPlanRow[];
-  if (payload && typeof payload === 'object') {
-    const rec = payload as { plans?: unknown; data?: unknown };
-    if (Array.isArray(rec.plans)) return rec.plans as PublicPlanRow[];
-    if (Array.isArray(rec.data)) return rec.data as PublicPlanRow[];
-  }
-  return [];
-}
-
-function overlayPublicPlan(plan: SubscriptionPlan, pub?: PublicPlanRow): SubscriptionPlan {
-  if (!pub) {
-    return {
-      ...plan,
-      daily_credits: Number(plan.daily_credits || 0),
-      lyric_credits: Number(plan.lyric_credits || 0),
-      music_credits: Number(plan.music_credits || 0),
-      credits_per_generate: Number(plan.credits_per_generate || plan.music_credits || 10),
-    };
-  }
-  const bullets = normalizeFeatureLines(pub.pricing_features ?? pub.features ?? plan.features);
-  const creditLines = normalizeFeatureLines(pub.pricing_credit_lines ?? plan.pricing_credit_lines);
-  return {
-    ...plan,
-    daily_credits: Number(pub.daily_credits ?? plan.daily_credits ?? 0),
-    monthly_credits: Number(plan.monthly_credits || pub.monthly_credits || 0),
-    lyric_credits: Number(pub.lyric_credits ?? plan.lyric_credits ?? 0),
-    music_credits: Number(pub.music_credits ?? plan.music_credits ?? 0),
-    credits_per_generate: Number(
-      pub.credits_per_generate ?? plan.credits_per_generate ?? pub.music_credits ?? plan.music_credits ?? 10,
-    ),
-    features: bullets.length ? bullets : plan.features,
-    pricing_credit_lines: creditLines.length ? creditLines : plan.pricing_credit_lines,
-  };
-}
-
-async function fetchPublicPlanRows(): Promise<PublicPlanRow[]> {
-  const path = '/api/v3/plans/public';
-  try {
-    const rows = asPublicRows(await apiFetch<unknown>(path));
-    if (rows.length) return rows;
-  } catch {
-    /* try unauthenticated public catalog */
-  }
-  try {
-    const response = await fetch(path, { credentials: 'include' });
-    if (response.ok) {
-      const rows = asPublicRows(await response.json());
-      if (rows.length) return rows;
-    }
-  } catch {
-    /* no public catalog available */
-  }
-  return [];
-}
-
+// Plans are retired (credits-only billing). Pricing and the Free/Pro tier come
+// from the wallet + quota endpoints; there is no plan catalog to fetch. Kept as
+// a no-op so callers do not fire requests at removed endpoints.
 export async function fetchSubscriptionPlans(): Promise<{ plans: SubscriptionPlan[] }> {
-  let data: { plans: SubscriptionPlan[] } = { plans: [] };
-  try {
-    data = await apiFetch<{ plans: SubscriptionPlan[] }>(`${API_V3}/subscriptions/plans`);
-    if (!data || !Array.isArray(data.plans)) data = { plans: [] };
-  } catch {
-    data = { plans: [] };
-  }
-  const publicRows = await fetchPublicPlanRows();
-  const byId = new Map(publicRows.map((row) => [row.id, row]));
-  const byName = new Map(publicRows.map((row) => [(row.name || '').toLowerCase(), row]));
-  const merged = data.plans.map((plan) =>
-    overlayPublicPlan(plan, byId.get(plan.id) || byName.get(plan.name.toLowerCase())),
-  );
-  const known = new Set(merged.map((plan) => plan.id));
-  for (const row of publicRows) {
-    if (row.is_public === false || row.is_active === false) continue;
-    if (known.has(row.id)) continue;
-    merged.push({
-      id: row.id,
-      name: row.name || 'Plan',
-      price_cents: Number(row.price_cents || 0),
-      billing_cycle: Number(row.billing_cycle_days || 30) >= 365 ? 'yearly' : 'monthly',
-      monthly_credits: Number(row.monthly_credits || 0),
-      daily_credits: Number(row.daily_credits || 0),
-      lyric_credits: Number(row.lyric_credits || 0),
-      music_credits: Number(row.music_credits || 0),
-      features: normalizeFeatureLines(row.pricing_features ?? row.features),
-      pricing_credit_lines: normalizeFeatureLines(row.pricing_credit_lines),
-      display_order: 0,
-      is_public: true,
-    });
-    known.add(row.id);
-  }
-  return { plans: merged };
+  return { plans: [] };
 }
 
 export async function fetchMySubscription(): Promise<UserSubscription | null> {

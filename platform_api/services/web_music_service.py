@@ -1598,9 +1598,17 @@ class WebMusicService:
             return UUID(str(row["id"]))
         row = await self._pool.fetchrow(
             """
-            INSERT INTO web_music_workspaces (user_id, name, is_default)
-            VALUES ($1, 'My Workspace', true)
-            RETURNING id
+            WITH inserted AS (
+                INSERT INTO web_music_workspaces (user_id, name, is_default)
+                VALUES ($1, 'My Workspace', true)
+                ON CONFLICT (user_id) WHERE is_default DO NOTHING
+                RETURNING id
+            )
+            SELECT id FROM inserted
+            UNION ALL
+            SELECT id FROM web_music_workspaces
+            WHERE user_id = $1 AND is_default = true
+            LIMIT 1
             """,
             user_id,
         )

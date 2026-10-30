@@ -121,12 +121,13 @@ async def test_user_spend_flags_over_allowance_and_margin_risk() -> None:
 
     assert result.total == 2
     assert result.items[0].email == "heavy@example.com"
-    # 20 events × $0.06 = $1.20 COGS; plan revenue ~$5 for full month → not margin risk
-    # but song meter 12/10 is hot + soft overage → over allowance
+    # 20 events × $0.06 = $1.20 COGS. Plans are retired, so there is no plan
+    # meter to be "hot"; over-allowance still comes from soft-overage events.
     heavy = result.items[0]
     assert heavy.est_cogs_usd == pytest.approx(1.2)
     assert heavy.over_allowance is True
-    assert "song" in heavy.meters_hot
+    assert heavy.meters_hot == []
+    assert heavy.plan_name == "Free"
     assert heavy.soft_overage_events == 2
     assert heavy.by_cog[0].operation == "music"
 

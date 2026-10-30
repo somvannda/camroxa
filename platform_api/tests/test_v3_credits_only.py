@@ -86,6 +86,7 @@ class FakeStore:
         self.lots: list[dict] = []
         self.applied: set[str] = set()
         self.conversion_runs: list[dict] = []
+        self._pool = _EmptyPool()
 
     async def list_plans(self) -> list[dict]:
         return list(self.plans.values())
@@ -120,6 +121,9 @@ class FakeStore:
         if web_plan is not None and int(web_plan.get("price_cents") or 0) > 0:
             return web_plan
         return await self.get_active_free_plan()
+
+    async def live_pack_expiry(self, user_id: UUID):
+        return None
 
     async def patch_plan(self, plan_id: UUID, fields: dict) -> dict | None:
         plan = self.plans.get(str(plan_id))
@@ -198,6 +202,9 @@ class FakeTopup:
 class _EmptyPool:
     async def fetch(self, query: str, *args):
         return []
+
+    async def fetchval(self, query: str, *args):
+        return False
 
 
 class FakePlanRepo:

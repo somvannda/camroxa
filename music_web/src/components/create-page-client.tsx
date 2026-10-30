@@ -63,7 +63,7 @@ import {
   type WebMusicWorkspace,
 } from '@/lib/web-music-api';
 import { formatGeneratedTime, formatModelVersionTag } from '@/lib/clip-display';
-import { fetchCreditBalance, fetchSubscriptionPlans, type CreditBalance } from '@/lib/subscription-api';
+import { fetchCreditBalance, type CreditBalance } from '@/lib/subscription-api';
 import { formatDuration, type StreamTrack } from '@/lib/streaming-api';
 import { createStoreZip, type ZipEntry } from '@/lib/zip-store';
 
@@ -605,20 +605,17 @@ export default function CreatePageClient() {
 
   async function refreshList(workspaceId?: string | null) {
     const resolvedWorkspaceId = workspaceId ?? activeWorkspaceId ?? undefined;
-    const [nextQuota, list, workspaceList, nextBalance, nextPlans] = await Promise.all([
+    const [nextQuota, list, workspaceList, nextBalance] = await Promise.all([
       fetchWebMusicQuota(),
       listWebMusicGenerations(WORKSPACE_PAGE_SIZE, 0, resolvedWorkspaceId),
       listWebMusicWorkspaces().catch(() => ({ items: [] as WebMusicWorkspace[] })),
       fetchCreditBalance().catch(() => null),
-      fetchSubscriptionPlans().catch(() => ({ plans: [] })),
     ]);
     setQuota(nextQuota);
     setCreditBalance(nextBalance);
-    const priced = nextPlans.plans.find((plan) => Number(plan.lyric_credits || 0) > 0 || Number(plan.music_credits || 0) > 0)
-      || nextPlans.plans.find((plan) => /free/i.test(plan.name))
-      || nextPlans.plans[0];
-    setLyricCredits(Number((priced && priced.lyric_credits) || 0));
-    setMusicCredits(Number((priced && priced.music_credits) || 0));
+    // Plans are retired; the per-generation price comes from the quota payload.
+    setMusicCredits(Number(nextQuota.credits_per_song || 0));
+    setLyricCredits(0);
     setItems(list.items);
     setTotal(Number(list.total ?? list.items.length));
     setWorkspaces(workspaceList.items);

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
@@ -79,6 +80,12 @@ class FakeStore:
 
     async def resolve_charge_plan(self, user_id: UUID) -> dict | None:
         return self.plan
+
+    async def live_pack_expiry(self, user_id: UUID):
+        # A paid plan in this double stands in for a live pack lot.
+        if int((self.plan or {}).get("price_cents") or 0) > 0:
+            return datetime.now(timezone.utc)
+        return None
 
     async def get_active_free_plan(self) -> dict | None:
         return {

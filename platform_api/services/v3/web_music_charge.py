@@ -16,6 +16,7 @@ from uuid import UUID
 
 from platform_api.exceptions import InsufficientCreditsError, QuotaExceededError
 from platform_api.services.credit_units import units_to_credits
+from platform_api.services.free_monthly_grant import FREE_MONTHLY_CREDITS
 from platform_api.services.v3.generate_charge import map_v1_op_to_v3
 
 ChargePath = Literal["v3", "v2", "included"]
@@ -105,9 +106,8 @@ class WebMusicChargeBridge:
 
     async def quote_credits(self, user_id: UUID, operation: str) -> tuple[str, int, Any]:
         op = map_v1_op_to_v3(operation) or str(operation or "").strip().lower()
-        plan = await self._store.resolve_charge_plan(user_id)
-        plan_id = UUID(str(plan["id"])) if plan and plan.get("id") else None
-        quote = await self._billing.quote(op=op, user_id=user_id, plan_id=plan_id)
+        # Plans are retired: the price comes from the `pricing` table alone.
+        quote = await self._billing.quote(op=op, user_id=user_id, plan_id=None)
         amount = max(0, int(round(float(quote.amount_credits or 0))))
         return op, amount, quote
 
@@ -149,8 +149,7 @@ class WebMusicChargeBridge:
         """
         if allow_free_preview:
             return
-        plan = await self._store.resolve_charge_plan(user_id)
-        if not self._is_free_plan(plan):
+        if await self._is_pro(user_id):
             return
         if model_allows_free_grant(
             model,
@@ -165,31 +164,24 @@ class WebMusicChargeBridge:
             available=0,
         )
 
-    @staticmethod
-    def _is_free_plan(plan: dict[str, Any] | None) -> bool:
-        return (
-            plan is None
-            or str((plan or {}).get("name") or "").strip().lower() == "free"
-            or int((plan or {}).get("price_cents") or 0) == 0
-        )
+    async def _is_pro(self, user_id: UUID) -> bool:
+        """Pro <=> at least one live credit pack lot (see tier_service)."""
+        return bool(await self._store.live_pack_expiry(user_id))
 
     async def premium_unlocked(self, user_id: UUID) -> bool:
         """Whether a Free-plan user may use V6-Pro / V6-Wild.
 
-        True after a completed pack purchase in the current month, or while the
-        wallet holds more than the monthly grant (a pack bought earlier whose
-        credits are still live). Paid plans are always unlocked.
+        True while Pro (live pack lot), after a completed pack purchase in the
+        current month, or while the wallet holds more than the monthly grant (a
+        pack bought earlier whose credits are still live).
         """
-        plan = await self._store.resolve_charge_plan(user_id)
-        if not self._is_free_plan(plan):
+        if await self._is_pro(user_id):
             return True
         if await self._store.has_completed_topup_this_month(user_id):
             return True
         if self._credit_repo is not None:
-            free_limit = int((plan or {}).get("monthly_credits") or 0)
-            if free_limit > 0:
-                wallet_units = int(await self._credit_repo.get_balance(user_id))
-                return units_to_credits(wallet_units) > free_limit
+            wallet_units = int(await self._credit_repo.get_balance(user_id))
+            return units_to_credits(wallet_units) > FREE_MONTHLY_CREDITS
         return False
 
     async def refund(self, user_id: UUID, charge: WebMusicCharge) -> None:
