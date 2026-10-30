@@ -115,8 +115,9 @@ Camxora: library drawer with songs only.
 ## F15 — Shortcuts
 
 Space play/pause, undo/redo, delete — `H`.
-Camxora: Space (play/pause) and Delete (remove selected clip) `C`; undo/redo
-missing.
+Camxora: Space (play/pause), Delete (remove selected clip), Ctrl/Cmd+Z (undo),
+Ctrl/Cmd+Shift+Z or Ctrl+Y (redo) `C`; the header carries Undo/Redo buttons with
+the same history. Shortcuts are ignored while typing in an input.
 
 ## Next audit actions
 

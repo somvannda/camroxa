@@ -26,6 +26,9 @@ playhead, duplicate it, and move the playhead — all persisted through the same
   Delete. Delete removes the arrangement only; the song stays in the library.
 - **Playhead seek** — clicking the ruler or an empty lane moves the playhead, so
   split has a target (and the transport has a scrub point).
+- **Undo / redo** — a 60-step history over the arrangement and Main fader,
+  recorded 450 ms after an edit settles. Header buttons plus Ctrl/Cmd+Z and
+  Ctrl/Cmd+Shift+Z (or Ctrl+Y); ignored while typing.
 - Playback honours `readStartBeats`: a trimmed clip starts at its source offset.
 
 `camxora.com/app/globals.css`: clip handles, selected-clip outline, context menu
@@ -44,6 +47,10 @@ and backdrop, using existing `--s-*` tokens.
    - `48..96` read `0` (duplicate)
 7. Reload → the three clips hydrate back to the same positions and widths, and
    no autosave fires from loading.
+8. Undo/redo: adding a track enabled Undo, Undo dropped it back to one track and
+   enabled Redo, Redo restored it; deleting a clip dropped to two clips and Undo
+   restored the third. Autosave then persisted two tracks with the three clips.
+   Buttons start disabled at the hydrated baseline and toggle correctly.
 
 `npx tsc --noEmit` and `npm run check:ui` pass.
 

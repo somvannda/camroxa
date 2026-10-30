@@ -71,6 +71,8 @@ type MixerEngine = {
 
 type SaveStatus = "idle" | "saving" | "saved" | "error" | "conflict";
 
+type HistorySnapshot = { tracks: Track[]; masterVolume: number };
+
 function clock(seconds: number) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -397,6 +399,13 @@ export function StudioShell() {
   const windowRef = useRef<Set<string>>(new Set());
   /** Authoritative transport position: `at` while paused, `from` while playing. */
   const transport = useRef({ at: 0, from: 0, playing: false });
+  /** Undo/redo over the arrangement and main fader (60 steps). */
+  const history = useRef<{ stack: HistorySnapshot[]; index: number }>({
+    stack: [],
+    index: -1,
+  });
+  const applyingHistory = useRef(false);
+  const [historyTick, setHistoryTick] = useState(0);
   /** Last `state` document read from Suno; autosave merges into it. */
   const baseStateRef = useRef<Record<string, unknown> | null>(null);
   /** Latest saved version, sent as `base_version_id`. */
@@ -585,6 +594,16 @@ export function StudioShell() {
           });
         });
         if (nextTracks.length) setTracks(nextTracks);
+        history.current = {
+          stack: [
+            {
+              tracks: nextTracks.length ? nextTracks : tracks,
+              masterVolume: nextMaster,
+            },
+          ],
+          index: 0,
+        };
+        setHistoryTick((value) => value + 1);
         // Baseline exactly what we just loaded so hydration never autosaves.
         savedSnapshotRef.current = JSON.stringify({
           tracks: nextTracks.length ? nextTracks : tracks,
@@ -1033,10 +1052,72 @@ export function StudioShell() {
     return () => window.clearTimeout(timer);
   }, [tracks, masterVolume, projectName, projectId, hydrating]);
 
+  // Record settled edits so undo/redo can walk them back.
+  useEffect(() => {
+    if (hydrating) return;
+    if (applyingHistory.current) {
+      applyingHistory.current = false;
+      return;
+    }
+    const snapshot: HistorySnapshot = { tracks, masterVolume };
+    const timer = window.setTimeout(() => {
+      const state = history.current;
+      const current = state.stack[state.index];
+      if (current && JSON.stringify(current) === JSON.stringify(snapshot)) return;
+      state.stack = state.stack.slice(0, state.index + 1);
+      state.stack.push(snapshot);
+      if (state.stack.length > 60) state.stack.shift();
+      state.index = state.stack.length - 1;
+      setHistoryTick((value) => value + 1);
+    }, 450);
+    return () => window.clearTimeout(timer);
+  }, [tracks, masterVolume, hydrating]);
+
+  const canUndo = history.current.index > 0;
+  const canRedo =
+    history.current.index >= 0 &&
+    history.current.index < history.current.stack.length - 1;
+  void historyTick;
+
+  const applyHistory = useCallback((index: number) => {
+    const state = history.current;
+    const snapshot = state.stack[index];
+    if (!snapshot) return;
+    state.index = index;
+    applyingHistory.current = true;
+    setTracks(snapshot.tracks);
+    setMasterVolume(snapshot.masterVolume);
+    setHistoryTick((value) => value + 1);
+  }, []);
+
+  const undo = useCallback(() => {
+    if (history.current.index > 0) applyHistory(history.current.index - 1);
+  }, [applyHistory]);
+
+  const redo = useCallback(() => {
+    if (history.current.index < history.current.stack.length - 1) {
+      applyHistory(history.current.index + 1);
+    }
+  }, [applyHistory]);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
+      const target = document.activeElement;
+      const typing =
+        Boolean(target) && ["INPUT", "TEXTAREA"].includes(target!.tagName);
+      const meta = event.metaKey || event.ctrlKey;
+      if (meta && !typing && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (meta && !typing && event.key.toLowerCase() === "y") {
+        event.preventDefault();
+        redo();
+        return;
+      }
       if (event.code === "Space") {
-        const target = document.activeElement;
         if (target && ["INPUT", "TEXTAREA", "BUTTON"].includes(target.tagName)) {
           return;
         }
@@ -1047,8 +1128,7 @@ export function StudioShell() {
       }
       if (event.key !== "Delete" && event.key !== "Backspace") return;
       if (!selectedClip) return;
-      const target = document.activeElement;
-      if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
+      if (typing) return;
       event.preventDefault();
       // Removing from the timeline is a `state` change, not a library delete:
       // the song stays in the user's Suno library.
@@ -1056,7 +1136,7 @@ export function StudioShell() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedClip, tracks, projectId, pause, start, removeClip]);
+  }, [selectedClip, tracks, projectId, pause, start, removeClip, undo, redo]);
 
   const readySongs = useMemo(
     () => songs.filter((song) => String(song.status).toUpperCase() === "SUCCESS"),
@@ -1186,6 +1266,24 @@ export function StudioShell() {
         <span className="st-chrome-dots">···</span>
         <span style={{ flex: 1 }} />
         <div className="stv-transport">
+          <button
+            type="button"
+            className="stv-icon"
+            aria-label="Undo"
+            disabled={!canUndo}
+            onClick={undo}
+          >
+            <Icon name="fa-rotate-left" />
+          </button>
+          <button
+            type="button"
+            className="stv-icon"
+            aria-label="Redo"
+            disabled={!canRedo}
+            onClick={redo}
+          >
+            <Icon name="fa-rotate-right" />
+          </button>
           <button
             type="button"
             className="stv-icon"
