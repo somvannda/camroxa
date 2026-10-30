@@ -59,6 +59,10 @@ type Track = {
   muted: boolean;
   solo: boolean;
   volume: number;
+  /** Hide & Mute: lane hidden, track kept (persisted as `hidden`). */
+  hidden?: boolean;
+  /** Collapse controls (UI only). */
+  collapsed?: boolean;
 };
 
 type PlacedClip = ClipRef & {
@@ -338,6 +342,7 @@ function buildProjectState(input: {
       balance: typeof source.balance === "number" ? source.balance : 0,
       solo: track.solo,
       mute: track.muted,
+      hidden: Boolean(track.hidden),
       arm: false,
       clips: [...kept, ...ours],
     });
@@ -381,6 +386,14 @@ export function StudioShell() {
     x: number;
     y: number;
   } | null>(null);
+  const [trackMenu, setTrackMenu] = useState<{
+    trackId: string;
+    x: number;
+    y: number;
+  } | null>(null);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
+  const [renamingTrack, setRenamingTrack] = useState<string | null>(null);
+  const [trackDraft, setTrackDraft] = useState("");
   const clipMenuRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
     uid: string;
@@ -408,6 +421,7 @@ export function StudioShell() {
   const [projectName, setProjectName] = useState("Untitled Project");
   const [projectId, setProjectId] = useState<string | null>(projectParam);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [addTrackMenuOpen, setAddTrackMenuOpen] = useState(false);
   const [libraryTab, setLibraryTab] = useState<"songs" | "liked">("songs");
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [playing, setPlaying] = useState(false);
@@ -520,6 +534,8 @@ export function StudioShell() {
   const metronomeVolumeRef = useRef(1);
   /** Beats per bar for the metronome accent (state.timeSignatureChanges). */
   const beatsPerBarRef = useRef(BEATS_PER_BAR);
+  /** Latest addTrack, so the Add-new-track menu can use keyboard shortcuts. */
+  const addTrackRef = useRef<() => void>(() => {});
   /** Keeps the track panel and the timeline scrolled together. */
   const canvasScrollRef = useRef<HTMLDivElement | null>(null);
   const tracksScrollRef = useRef<HTMLElement | null>(null);
@@ -591,7 +607,7 @@ export function StudioShell() {
         const stateTracks = (Array.isArray(doc.tracks) ? doc.tracks : [])
           .map(asRecord)
           .filter((track): track is Record<string, unknown> => Boolean(track))
-          .filter((track) => track.type === "audio" && !track.hidden);
+          .filter((track) => track.type === "audio");
 
         const providerIds: string[] = [];
         stateTracks.forEach((track) => {
@@ -665,6 +681,7 @@ export function StudioShell() {
             clips,
             muted: Boolean(track.mute),
             solo: Boolean(track.solo),
+            hidden: Boolean(track.hidden),
             volume:
               typeof track.amplitude === "number"
                 ? Math.round(Math.min(1, Math.max(0, track.amplitude)) * 100)
@@ -1287,6 +1304,17 @@ export function StudioShell() {
         setClipMenu(null);
         return;
       }
+      if (event.key === "Escape" && addTrackMenuOpen) {
+        event.preventDefault();
+        setAddTrackMenuOpen(false);
+        return;
+      }
+      if (addTrackMenuOpen && !typing && !meta && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        addTrackRef.current();
+        setAddTrackMenuOpen(false);
+        return;
+      }
       if (meta && !typing && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();
@@ -1415,6 +1443,43 @@ export function StudioShell() {
     }
   }
 
+  function updateTrack(trackId: string, patch: Partial<Track>) {
+    setTracks((current) =>
+      current.map((track) => (track.id === trackId ? { ...track, ...patch } : track))
+    );
+  }
+
+  /** Track menu actions (Suno: Rename, Color, Collapse controls, Duplicate, Hide & Mute, Delete). */
+  function duplicateTrack(trackId: string) {
+    setTracks((current) => {
+      const index = current.findIndex((track) => track.id === trackId);
+      if (index < 0) return current;
+      const source = current[index];
+      const uid = newUid();
+      const copy: Track = {
+        ...source,
+        id: uid,
+        remoteId: uid,
+        name: `${source.name} copy`,
+        muted: false,
+        solo: false,
+        hidden: false,
+        collapsed: false,
+        knownProviderIds: [...(source.knownProviderIds ?? [])],
+        clips: source.clips.map((clip) => ({ ...clip, uid: newUid() })),
+      };
+      const next = [...current];
+      next.splice(index + 1, 0, copy);
+      return next;
+    });
+  }
+
+  function deleteTrack(trackId: string) {
+    setTracks((current) => current.filter((track) => track.id !== trackId));
+    setSelectedTrack((current) => (current === trackId ? null : current));
+    setTrackMenu(null);
+  }
+
   function addTrack(name = "Audio Track") {
     const uid = newUid();
     const track: Track = {
@@ -1529,6 +1594,7 @@ export function StudioShell() {
   }
 
   const timelineSeconds = TIMELINE_BEATS / bps;
+  addTrackRef.current = () => addTrack();
 
   // One status slot keeps the footer readable; errors win over progress.
   const statusText =
@@ -1682,13 +1748,53 @@ export function StudioShell() {
           {tracks.map((track, index) => (
             <div
               key={track.id}
-              className={`stv-track${selectedTrack === track.id ? " on" : ""}`}
+              className={`stv-track${selectedTrack === track.id ? " on" : ""}${track.hidden ? " hidden" : ""}`}
+              style={{ borderLeftColor: track.color }}
               onClick={() => setSelectedTrack(track.id)}
             >
               <div className="stv-track-top">
                 <span className="stv-track-num">{index + 1}</span>
-                <b>{track.name}</b>
+                {renamingTrack === track.id ? (
+                  <input
+                    className="stv-track-name-input"
+                    autoFocus
+                    maxLength={60}
+                    aria-label="Track name"
+                    value={trackDraft}
+                    onChange={(event) => setTrackDraft(event.target.value)}
+                    onClick={(event) => event.stopPropagation()}
+                    onBlur={() => {
+                      const name = trackDraft.trim();
+                      if (name) updateTrack(track.id, { name });
+                      setRenamingTrack(null);
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        event.currentTarget.blur();
+                      }
+                      if (event.key === "Escape") {
+                        event.preventDefault();
+                        setRenamingTrack(null);
+                      }
+                    }}
+                  />
+                ) : (
+                  <b>{track.name}</b>
+                )}
                 <span style={{ flex: 1 }} />
+                <button
+                  type="button"
+                  className={`stv-icon-sm${track.muted ? " on" : ""}`}
+                  aria-pressed={track.muted}
+                  aria-label={`Mute ${track.name}`}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    updateTrack(track.id, { muted: !track.muted });
+                  }}
+                >
+                  <Icon name={track.muted ? "fa-volume-xmark" : "fa-volume-high"} />
+                </button>
                 <button
                   type="button"
                   className={`stv-pill${track.solo ? " on" : ""}`}
@@ -1696,60 +1802,105 @@ export function StudioShell() {
                   aria-label={`Solo ${track.name}`}
                   onClick={(event) => {
                     event.stopPropagation();
-                    setTracks((current) =>
-                      current.map((item) =>
-                        item.id === track.id ? { ...item, solo: !item.solo } : item
-                      )
-                    );
+                    updateTrack(track.id, { solo: !track.solo });
                   }}
                 >
                   S
                 </button>
-                <button
-                  type="button"
-                  className={`stv-pill${track.muted ? " on" : ""}`}
-                  aria-pressed={track.muted}
-                  aria-label={`Mute ${track.name}`}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    setTracks((current) =>
-                      current.map((item) =>
-                        item.id === track.id ? { ...item, muted: !item.muted } : item
-                      )
-                    );
-                  }}
-                >
-                  M
-                </button>
                 <button type="button" className="stv-pill" aria-label="Record arm">
                   <Icon name="fa-circle" />
                 </button>
+                <button
+                  type="button"
+                  className="stv-icon-sm"
+                  aria-label={`${track.name} options`}
+                  aria-haspopup="menu"
+                  aria-expanded={trackMenu?.trackId === track.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    const rect = event.currentTarget.getBoundingClientRect();
+                    setColorPickerOpen(false);
+                    setTrackMenu({
+                      trackId: track.id,
+                      x: rect.right,
+                      y: rect.bottom + 4,
+                    });
+                  }}
+                >
+                  <Icon name="fa-chevron-down" />
+                </button>
               </div>
-              <div className="stv-fader">
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={track.volume}
-                  aria-label={`${track.name} volume`}
-                  aria-valuetext={`${track.volume}%`}
-                  onChange={(event) =>
-                    setTracks((current) =>
-                      current.map((item) =>
-                        item.id === track.id
-                          ? { ...item, volume: Number(event.target.value) }
-                          : item
-                      )
-                    )
-                  }
-                />
-                <span className="stv-track-fx"><Icon name="fa-sliders" /></span>
-              </div>
+              {!track.collapsed ? (
+                <div className="stv-fader">
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={track.volume}
+                    aria-label={`${track.name} volume`}
+                    aria-valuetext={`${track.volume}%`}
+                    onChange={(event) =>
+                      updateTrack(track.id, { volume: Number(event.target.value) })
+                    }
+                  />
+                  <span className="stv-track-fx"><Icon name="fa-sliders" /></span>
+                </div>
+              ) : null}
             </div>
           ))}
-          <button type="button" className="stv-add-track" onClick={() => addTrack()}>
-            <Icon name="fa-plus" /> Add new track
-          </button>
+          <div className="stv-add-wrap">
+            {addTrackMenuOpen ? (
+              <div className="stv-add-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    addTrack();
+                    setAddTrackMenuOpen(false);
+                  }}
+                >
+                  <span className="stv-add-icon audio">
+                    <Icon name="fa-wave-square" />
+                  </span>
+                  Audio
+                  <kbd>A</kbd>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled
+                  title="MIDI tracks need the piano roll and synth, which this editor does not have yet"
+                >
+                  <span className="stv-add-icon midi">
+                    <Icon name="fa-music" />
+                  </span>
+                  MIDI
+                  <kbd>M</kbd>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled
+                  title="Audio uploads are not supported in this editor yet"
+                >
+                  <span className="stv-add-icon upload">
+                    <Icon name="fa-arrow-up-from-bracket" />
+                  </span>
+                  Upload
+                  <kbd>U</kbd>
+                </button>
+              </div>
+            ) : null}
+            <button
+              type="button"
+              className="stv-add-track"
+              aria-haspopup="menu"
+              aria-expanded={addTrackMenuOpen}
+              onClick={() => setAddTrackMenuOpen((value) => !value)}
+            >
+              <Icon name="fa-plus" /> Add new track
+            </button>
+          </div>
         </aside>
 
         <main className="stv-canvas">
@@ -1779,11 +1930,17 @@ export function StudioShell() {
                   seek(Math.max(0, Math.min(1, ratio)) * timelineSeconds);
                 }}
               >
-                {Array.from({ length: BARS }).map((_, index) => (
-                  <span key={index} style={{ width: `${100 / BARS}%` }}>
-                    {index + 1}
-                  </span>
-                ))}
+                {Array.from({ length: BARS }).map((_, index) => {
+                  const seconds = (index * BEATS_PER_BAR) / bps;
+                  const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(
+                    Math.floor(seconds % 60)
+                  ).padStart(2, "0")}`;
+                  return (
+                    <span key={index} style={{ width: `${100 / BARS}%` }}>
+                      {label}
+                    </span>
+                  );
+                })}
               </div>
               <div
                 className="stv-grid"
@@ -2191,6 +2348,121 @@ export function StudioShell() {
           ) : null}
         </div>
       </footer>
+
+      {trackMenu
+        ? (() => {
+            const track = tracks.find((item) => item.id === trackMenu.trackId);
+            if (!track) return null;
+            return (
+              <div
+                className="stv-menu-backdrop"
+                onClick={() => {
+                  setTrackMenu(null);
+                  setColorPickerOpen(false);
+                }}
+              >
+                <div
+                  className="stv-menu stv-track-menu"
+                  role="menu"
+                  style={{
+                    left: Math.max(
+                      8,
+                      Math.min(trackMenu.x + 4, window.innerWidth - 236)
+                    ),
+                    top: trackMenu.y,
+                  }}
+                  onClick={(event) => event.stopPropagation()}
+                >
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setTrackDraft(track.name);
+                      setRenamingTrack(track.id);
+                      setTrackMenu(null);
+                    }}
+                  >
+                    <Icon name="fa-pen" /> Rename track
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    aria-expanded={colorPickerOpen}
+                    onClick={() => setColorPickerOpen((value) => !value)}
+                  >
+                    <span
+                      className="stv-color-dot"
+                      style={{ background: track.color }}
+                    />
+                    Color
+                    <Icon name="fa-chevron-right" />
+                  </button>
+                  {colorPickerOpen ? (
+                    <div className="stv-color-row" role="group" aria-label="Track colour">
+                      {COLORS.map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          className="stv-color-swatch"
+                          style={{ background: color }}
+                          aria-label={`Colour ${color}`}
+                          aria-pressed={track.color === color}
+                          onClick={() => {
+                            updateTrack(track.id, { color });
+                            setTrackMenu(null);
+                            setColorPickerOpen(false);
+                          }}
+                        />
+                      ))}
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      updateTrack(track.id, { collapsed: !track.collapsed });
+                      setTrackMenu(null);
+                    }}
+                  >
+                    <Icon name="fa-thumbtack" />
+                    {track.collapsed ? "Expand controls" : "Collapse controls"}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      duplicateTrack(track.id);
+                      setTrackMenu(null);
+                    }}
+                  >
+                    <Icon name="fa-clone" /> Duplicate
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      updateTrack(track.id, {
+                        hidden: !track.hidden,
+                        muted: track.hidden ? track.muted : true,
+                      });
+                      setTrackMenu(null);
+                    }}
+                  >
+                    <Icon name="fa-eye-slash" />
+                    {track.hidden ? "Show & Unmute" : "Hide & Mute Track"}
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => deleteTrack(track.id)}
+                  >
+                    <Icon name="fa-trash" /> Delete
+                  </button>
+                </div>
+              </div>
+            );
+          })()
+        : null}
 
       {clipMenu ? (
         <div
