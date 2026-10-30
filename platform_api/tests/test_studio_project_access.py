@@ -11,7 +11,12 @@ from uuid import uuid4
 
 import pytest
 
-from platform_api.exceptions import ForbiddenError
+from platform_api.exceptions import (
+    ConflictError,
+    ExternalServiceError,
+    ForbiddenError,
+    RateLimitedError,
+)
 from platform_api.services.web_music_service import WebMusicService
 
 
@@ -68,3 +73,58 @@ async def test_index_skips_known_project() -> None:
     pool.execute = AsyncMock()
     await _service(pool)._ensure_studio_project_index(uuid4(), "suno-project")
     pool.execute.assert_not_awaited()
+
+
+def _owned_service(owner) -> WebMusicService:
+    pool = AsyncMock()
+    pool.fetchrow = AsyncMock(return_value={"user_id": owner})
+    return _service(pool)
+
+
+@pytest.mark.asyncio
+async def test_save_conflict_carries_latest_version() -> None:
+    owner = uuid4()
+    service = _owned_service(owner)
+    service._musicapi_studio_request = AsyncMock(
+        return_value=(409, {"latest_version_id": "v2"})
+    )
+    with pytest.raises(ConflictError) as err:
+        await service.save_studio_session(
+            owner, "suno-project", state={}, title="Song", base_version_id="v1"
+        )
+    assert err.value.details == {"latest_version_id": "v2"}
+
+
+@pytest.mark.asyncio
+async def test_save_rate_limited() -> None:
+    owner = uuid4()
+    service = _owned_service(owner)
+    service._musicapi_studio_request = AsyncMock(return_value=(429, {}))
+    with pytest.raises(RateLimitedError):
+        await service.save_studio_session(
+            owner, "suno-project", state={}, title="Song", base_version_id=None
+        )
+
+
+@pytest.mark.asyncio
+async def test_save_returns_version_id() -> None:
+    owner = uuid4()
+    service = _owned_service(owner)
+    service._musicapi_studio_request = AsyncMock(
+        return_value=(200, {"version_id": "v9"})
+    )
+    result = await service.save_studio_session(
+        owner, "suno-project", state={"tracks": []}, title="Song", base_version_id=None
+    )
+    assert result == {"version_id": "v9"}
+
+
+@pytest.mark.asyncio
+async def test_save_without_version_is_an_error() -> None:
+    owner = uuid4()
+    service = _owned_service(owner)
+    service._musicapi_studio_request = AsyncMock(return_value=(200, {}))
+    with pytest.raises(ExternalServiceError):
+        await service.save_studio_session(
+            owner, "suno-project", state={}, title="Song", base_version_id=None
+        )
