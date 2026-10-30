@@ -354,12 +354,17 @@ export function StudioEditorShell() {
                       </button>
                     </span>
                   </div>
-                  <div className="se-track-level" aria-hidden="true">
-                    <span
-                      className="se-track-level-fill"
-                      style={{ width: `${track.volume}%`, background: track.color }}
-                    />
-                    <span className="se-track-level-handle" style={{ left: `${track.volume}%` }} />
+                  <div className="se-track-sliders">
+                    <div className="se-track-level" aria-hidden="true">
+                      <span
+                        className="se-track-level-fill"
+                        style={{ width: `${track.volume}%`, background: track.color }}
+                      />
+                      <span className="se-track-level-handle" style={{ left: `${track.volume}%` }} />
+                    </div>
+                    <div className="se-track-level pan" aria-hidden="true">
+                      <span className="se-track-level-handle" style={{ left: `${50 + track.pan / 2}%` }} />
+                    </div>
                   </div>
                 </div>
               );
@@ -462,6 +467,13 @@ export function StudioEditorShell() {
       ) : null}
 
       <footer className="se-foot">
+        <div className="se-foot-tools">
+          <button type="button" className="se-icon" disabled aria-label="Tools (not wired)"><Icon name="fa-sliders" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Draw (not wired)"><Icon name="fa-pen" /></button>
+          <button type="button" className="se-icon" disabled aria-label="List (not wired)"><Icon name="fa-bars" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Microphone (not wired)"><Icon name="fa-microphone" /></button>
+        </div>
+
         <div className="se-chain">
           {selectedTrack && chains[selectedTrack]?.length ? (
             chains[selectedTrack].map((entry) => (
@@ -470,13 +482,18 @@ export function StudioEditorShell() {
           ) : (
             <span className="se-foot-note">No effects on this track yet.</span>
           )}
-          <button type="button" className="se-chain-add" disabled title="Add effect is wired in the full editor">
+          <button type="button" className="se-chain-add" disabled aria-label="Add effect (use the dock above)">
             <Icon name="fa-plus" />
           </button>
         </div>
-        <Link className="se-foot-link" href={`/studio/editor?project=${projectId}`}>
-          Open full editor
-        </Link>
+
+        <div className="se-foot-right">
+          <button type="button" className="se-icon" disabled aria-label="Projects (not wired)"><Icon name="fa-folder" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Search (not wired)"><Icon name="fa-magnifying-glass" /></button>
+          <button type="button" className="se-icon" onClick={() => setLibraryOpen((open) => !open)} aria-label="Toggle library"><Icon name="fa-table-columns" /></button>
+          <button type="button" className={`se-icon${loop ? " on" : ""}`} onClick={() => setLoop((value) => !value)} aria-label="Loop" aria-pressed={loop}><Icon name="fa-repeat" /></button>
+          <Link className="se-foot-link" href={`/studio/editor/classic?project=${projectId}`}>Learn</Link>
+        </div>
       </footer>
 
       {error ? <div className="se-error" role="alert">{error}</div> : null}
