@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
@@ -206,6 +206,81 @@ export function StudioEditorShell() {
     if (playing && !loop && playhead >= duration) setPlaying(false);
   }, [playing, loop, playhead, duration]);
 
+  /** Minimal playback engine: decode each clip's audio and schedule it from the playhead. */
+  const audioRef = useRef<{ ctx: AudioContext; sources: AudioBufferSourceNode[] } | null>(null);
+
+  async function stopAudio() {
+    const engine = audioRef.current;
+    if (!engine) return;
+    engine.sources.forEach((source) => {
+      try {
+        source.stop();
+      } catch {
+        /* already stopped */
+      }
+    });
+    engine.sources = [];
+  }
+
+  async function startAudio(from: number) {
+    const context = audioRef.current?.ctx ?? new AudioContext();
+    audioRef.current = { ctx: context, sources: [] };
+    await context.resume();
+
+    const buffers = new Map<string, AudioBuffer>();
+    await Promise.all(
+      clips.map(async (clip) => {
+        const url = (clip as { audioUrl?: string | null }).audioUrl;
+        if (!url) return;
+        try {
+          const response = await fetch(url);
+          if (!response.ok) return;
+          const data = await response.arrayBuffer();
+          buffers.set(clip.id, await context.decodeAudioData(data));
+        } catch {
+          /* skip clips that cannot be decoded */
+        }
+      })
+    );
+
+    const now = context.currentTime;
+    const master = context.createGain();
+    master.gain.value = 0.85;
+    master.connect(context.destination);
+
+    for (const clip of clips) {
+      const buffer = buffers.get(clip.id);
+      if (!buffer) continue;
+      const start = clip.start ?? 0;
+      const duration = clip.duration ?? buffer.duration;
+      if (start + duration <= from) continue;
+      const track = tracks.find((item) => item.clipIds.includes(clip.id));
+      if (track?.muted) continue;
+
+      const when = now + Math.max(0, start - from);
+      const offset = Math.max(0, from - start);
+      const source = context.createBufferSource();
+      source.buffer = buffer;
+      const gain = context.createGain();
+      gain.gain.value = (track?.volume ?? 80) / 100;
+      source.connect(gain).connect(master);
+      source.start(when, offset, Math.max(0.05, duration - offset));
+      audioRef.current?.sources.push(source);
+    }
+  }
+
+  function togglePlayback() {
+    setPlaying((value) => {
+      if (value) {
+        void stopAudio();
+        return false;
+      }
+      if (!loop && playhead >= duration) setPlayhead(0);
+      void startAudio(!loop && playhead >= duration ? 0 : playhead);
+      return true;
+    });
+  }
+
   const secondsPerBar = 240 / bpm;
   const barCount = Math.max(1, Math.ceil((duration * bpm) / 240));
 
@@ -245,7 +320,7 @@ export function StudioEditorShell() {
         </div>
 
         <div className="se-head-center">
-          <button type="button" className="se-icon" onClick={() => { setPlaying(false); setPlayhead(0); }} aria-label="Back to start"><Icon name="fa-backward-step" /></button>
+          <button type="button" className="se-icon" onClick={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }} aria-label="Back to start"><Icon name="fa-backward-step" /></button>
           <button
             type="button"
             className={`se-icon${loop ? " on" : ""}`}
@@ -259,7 +334,7 @@ export function StudioEditorShell() {
           <button
             type="button"
             className="se-icon"
-            onClick={() => { setPlaying(false); setPlayhead(0); }}
+            onClick={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}
             aria-label="Stop"
           >
             <Icon name="fa-stop" />
@@ -267,7 +342,7 @@ export function StudioEditorShell() {
           <button
             type="button"
             className={`se-icon se-play${playing ? " on" : ""}`}
-            onClick={() => setPlaying((value) => !value)}
+            onClick={togglePlayback}
             aria-label={playing ? "Pause" : "Play"}
             title={playing ? "Pause" : "Play"}
           >
