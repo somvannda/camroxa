@@ -2023,6 +2023,21 @@ export function StudioShell() {
               <Icon name="fa-plus" /> Add new track
             </button>
           </div>
+          <div className="stv-master-panel">
+            <div className="stv-master-head">
+              <span className="stv-master-label">Main</span>
+              <Icon name="fa-volume-high" />
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={masterVolume}
+              aria-label="Master volume"
+              aria-valuetext={`${masterVolume}%`}
+              onChange={(event) => setMasterVolume(Number(event.target.value))}
+            />
+          </div>
         </aside>
 
         <main className="stv-canvas">
@@ -2411,20 +2426,8 @@ export function StudioShell() {
       </div>
 
       <footer className="stv-bottom">
-        <div className="stv-master">
-          <span className="stv-master-label">Main</span>
-          <input
-            type="range"
-            min={0}
-            max={100}
-            value={masterVolume}
-            aria-label="Master volume"
-            aria-valuetext={`${masterVolume}%`}
-            onChange={(event) => setMasterVolume(Number(event.target.value))}
-          />
-          <Icon name="fa-volume-high" />
-        </div>
         <div className="stv-prompt">
+          <span className="stv-beta">BETA</span>
           <button type="button" className="stv-icon" aria-label="Add">
             <Icon name="fa-plus" />
           </button>
