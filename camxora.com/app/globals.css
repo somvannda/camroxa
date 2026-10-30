@@ -4473,9 +4473,11 @@ html{color-scheme:dark}
 .stv-add-track{margin:10px 12px;padding:8px;border:1px dashed var(--s-line2);border-radius:8px;background:transparent;color:var(--s-text2);cursor:pointer;display:flex;align-items:center;gap:8px;justify-content:center}
 .stv-add-track:hover{border-color:var(--s-accent);color:var(--s-text)}
 .stv-canvas{flex:1;display:flex;flex-direction:column;min-width:0;background:var(--s-bg)}
-.stv-ruler{display:flex;height:26px;align-items:center;border-bottom:1px solid var(--s-line);color:var(--s-text3);font-size:11px}
+.stv-scroll{flex:1;min-width:0;min-height:0;overflow:auto;position:relative}
+.stv-zoom{display:flex;flex-direction:column;min-height:100%}
+.stv-ruler{display:flex;height:26px;flex:none;align-items:center;border-bottom:1px solid var(--s-line);color:var(--s-text3);font-size:11px;position:sticky;top:0;z-index:2;background:var(--s-bg)}
 .stv-ruler span{text-align:left;padding-left:6px;border-right:1px solid var(--s-line)}
-.stv-grid{position:relative;flex:1;overflow:auto}
+.stv-grid{position:relative;flex:1 1 auto;min-height:420px}
 .stv-grid>span{position:absolute;top:0;bottom:0;width:1px;background:var(--s-line)}
 .stv-lane{position:absolute;left:0;right:0;height:52px;border-bottom:1px solid var(--s-line)}
 .stv-clip{position:absolute;top:10px;height:32px;border-radius:6px;color:var(--s-bg);font-weight:600;font-size:11px;display:flex;align-items:center;padding:0 10px;overflow:hidden;white-space:nowrap;cursor:grab;user-select:none}

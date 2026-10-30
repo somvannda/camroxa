@@ -518,6 +518,9 @@ export function StudioShell() {
   const metronomeVolumeRef = useRef(1);
   /** Beats per bar for the metronome accent (state.timeSignatureChanges). */
   const beatsPerBarRef = useRef(BEATS_PER_BAR);
+  /** Keeps the track panel and the timeline scrolled together. */
+  const canvasScrollRef = useRef<HTMLDivElement | null>(null);
+  const tracksScrollRef = useRef<HTMLElement | null>(null);
   /** Last beat that already produced a click. */
   const lastClickBeatRef = useRef(-1);
 
@@ -1587,7 +1590,19 @@ export function StudioShell() {
       </header>
 
       <div className="stv-body">
-        <aside className="stv-tracks">
+        <aside
+          className="stv-tracks"
+          ref={tracksScrollRef}
+          onScroll={(event) => {
+            const top = event.currentTarget.scrollTop;
+            if (
+              canvasScrollRef.current &&
+              Math.abs(canvasScrollRef.current.scrollTop - top) > 0.5
+            ) {
+              canvasScrollRef.current.scrollTop = top;
+            }
+          }}
+        >
           <div className="stv-tracks-head" aria-hidden="true" />
           {tracks.map((track, index) => (
             <div
@@ -1664,21 +1679,38 @@ export function StudioShell() {
 
         <main className="stv-canvas">
           <div
-            className="stv-ruler"
-            onPointerDown={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              if (!rect.width) return;
-              const ratio = (event.clientX - rect.left) / rect.width;
-              seek(Math.max(0, Math.min(1, ratio)) * timelineSeconds);
+            className="stv-scroll"
+            ref={canvasScrollRef}
+            onScroll={(event) => {
+              const top = event.currentTarget.scrollTop;
+              if (
+                tracksScrollRef.current &&
+                Math.abs(tracksScrollRef.current.scrollTop - top) > 0.5
+              ) {
+                tracksScrollRef.current.scrollTop = top;
+              }
             }}
           >
-            {Array.from({ length: BARS }).map((_, index) => (
-              <span key={index} style={{ width: `${100 / BARS}%` }}>
-                {index + 1}
-              </span>
-            ))}
-          </div>
-          <div className="stv-grid" style={{ width: `${Math.round(zoom * 100)}%` }}>
+            <div
+              className="stv-zoom"
+              style={{ width: `${Math.round(zoom * 100)}%` }}
+            >
+              <div
+                className="stv-ruler"
+                onPointerDown={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  if (!rect.width) return;
+                  const ratio = (event.clientX - rect.left) / rect.width;
+                  seek(Math.max(0, Math.min(1, ratio)) * timelineSeconds);
+                }}
+              >
+                {Array.from({ length: BARS }).map((_, index) => (
+                  <span key={index} style={{ width: `${100 / BARS}%` }}>
+                    {index + 1}
+                  </span>
+                ))}
+              </div>
+              <div className="stv-grid">
             {Array.from({ length: BARS }).map((_, index) => (
               <span key={index} style={{ left: `${(index / BARS) * 100}%` }} />
             ))}
@@ -1940,6 +1972,8 @@ export function StudioShell() {
                 <p className="s-note">Use “Add new track” on the left, then Library.</p>
               </div>
             ) : null}
+              </div>
+            </div>
           </div>
         </main>
 
