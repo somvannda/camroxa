@@ -701,14 +701,93 @@ export async function getStudioSession(
   );
 }
 
+/** A save was rejected because someone else wrote a newer version (409). */
+export class StudioSaveConflictError extends WebMusicApiError {
+  readonly latestVersionId: string | null;
+
+  constructor(latestVersionId: string | null) {
+    super("Project has a newer version", 409, null, "CONFLICT");
+    this.name = "StudioSaveConflictError";
+    this.latestVersionId = latestVersionId;
+  }
+}
+
+/**
+ * One versioned save of the editor `state` (Suno's `save-project`).
+ * 409 carries the newer version; 429 means the project is being saved too often.
+ */
+export async function saveStudioSession(input: {
+  projectId: string;
+  state: Record<string, unknown>;
+  title: string;
+  baseVersionId: string | null;
+}): Promise<{ version_id: string }> {
+  const response = await musicAuthFetch(
+    `/api/v3/web-music/studio/sessions/${encodeURIComponent(input.projectId)}/save`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        state: input.state,
+        title: input.title,
+        base_version_id: input.baseVersionId,
+      }),
+    }
+  );
+  if (response.status === 409) {
+    const body = (await response.json().catch(() => null)) as {
+      error?: { details?: { latest_version_id?: string } };
+    } | null;
+    throw new StudioSaveConflictError(
+      body?.error?.details?.latest_version_id ?? null
+    );
+  }
+  if (!response.ok) await rejectResponse(response, "Could not save the project");
+  return (await response.json()) as { version_id: string };
+}
+
+/** Read one saved version (the arrangement document) of a Studio project. */
+export async function getStudioSessionVersion(
+  projectId: string,
+  versionId: string
+): Promise<Record<string, unknown>> {
+  return musicJson<Record<string, unknown>>(
+    `/api/v3/web-music/studio/sessions/${encodeURIComponent(projectId)}/versions/${encodeURIComponent(versionId)}`
+  );
+}
+
+/**
+ * Map Suno provider clip ids back to the task/variant that produced them, so a
+ * saved arrangement can be hydrated into songs we can stream.
+ */
+export async function resolveStudioClips(
+  clipIds: string[]
+): Promise<Array<{ clip_id: string; task_id: string; variant: "ok" | "alt" }>> {
+  if (!clipIds.length) return [];
+  const data = await musicJson<{
+    items?: Array<{ clip_id: string; task_id: string; variant: string }>;
+  }>("/api/v3/web-music/studio/clips/resolve", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ clip_ids: clipIds }),
+  });
+  return (data.items ?? [])
+    .filter((item) => item.clip_id && item.task_id)
+    .map((item) => ({
+      clip_id: item.clip_id,
+      task_id: item.task_id,
+      variant: item.variant === "alt" ? "alt" : "ok",
+    }));
+}
+
 /** Add or remove clips in a Suno Studio project. */
 export async function updateStudioSessionClips(
   projectId: string,
   taskIds: string[],
   variants: Array<"ok" | "alt">,
   remove = false
-): Promise<{ ok?: boolean; count?: number }> {
-  return musicJson<{ ok?: boolean; count?: number }>(
+): Promise<{ ok?: boolean; count?: number; clip_ids?: string[] }> {
+  return musicJson<{ ok?: boolean; count?: number; clip_ids?: string[] }>(
     `/api/v3/web-music/studio/sessions/${encodeURIComponent(projectId)}/clips`,
     {
       method: "POST",

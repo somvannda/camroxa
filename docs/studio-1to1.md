@@ -48,10 +48,10 @@ rather than shipping a guess.
 
 ## Current gaps (must not be faked)
 
-- `state` schema unknown → arrangement sync not implemented, so the timeline is
-  still browser-local.
-- Mixer gains (track volume, mute, solo, Main) are applied to local playback
-  only. Suno persists them inside `state`, so they are not written back and the
-  UI never claims they are saved.
-- Export needs `render-state`.
-- Hydration needs a real non-empty version to map from.
+- `state` is captured — see [studio-state-schema.md](studio-state-schema.md).
+  Hydration and autosave are implemented; the live round trip against a real
+  Suno project is still a merge gate.
+- Clips whose provider id cannot be mapped back to one of our songs are left
+  untouched on Suno: they are neither played nor rewritten.
+- Export still needs `render-state` wired in the UI (payload is captured).
+- Version restore (`project_revision/{id}/clone`) is not surfaced.

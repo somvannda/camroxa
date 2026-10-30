@@ -27,20 +27,28 @@ or release notes, `L` = live Studio session, `C` = Camxora already implemented.
 
 ## F4 — Project document / arrangement
 
-`GET /api/studio/project/{id}` → metadata only (`owner_user_id`, `title`,
-`created_at`, `updated_at`, `archived`) — `B`, `L`.
+`GET /api/studio/project/{id}` → `{state, title, latest_version_id, …}` — `B`, `L`.
 Arrangement lives in versions: `GET /api/studio/{project_id}/version/{version_id}`
 and `GET /api/studio/project_revision/{revision_id}` — `B`.
+The `state` schema is captured in [studio-state-schema.md](studio-state-schema.md):
+`timing` (bps, default 2 = 120 BPM), `tracks[]` (`amplitude`, `balance`, `solo`,
+`mute`, `clips[]`), audio clips with `startBeats`/`endBeats`/`readStartBeats`
+and `asset: {type:"clip", id}`.
 
-**Gap:** not hydrated; `state` schema unknown.
+Camxora: `C` — the project document hydrates the timeline (tracks, mixer values,
+clip positions in beats). Clips whose provider id cannot be mapped to one of our
+songs are left on Suno untouched.
 
 ## F5 — Save / autosave / versions
 
 `POST /api/studio/save-project {project_id, state, title, base_version_id}`
 → `{version_id}`; `409` + `latest_version_id`; `429` too many saves — `B`.
-No Save button in the UI; versions restorable via `project_revision/{id}/clone` — `H`, `B`.
+No Save button; versions restorable via `project_revision/{id}/clone` — `H`, `B`.
 
-**Gap:** not implemented (blocked on `state`).
+Camxora: `C` — autosave 3 s after the last change, only once a real `state`
+document has been read (never a synthesised one). `409` adopts
+`latest_version_id` and retries once; `429` waits `retry_after` and retries.
+Version restore (`project_revision/{id}/clone`) is not surfaced yet.
 
 ## F6 — Tracks
 
@@ -52,7 +60,8 @@ visual only.
 
 Drag from library onto a lane; drag along lane; trim; split; delete — `H`.
 Camxora: add (click/drag) `C`, move `C`, delete `C`; trim/split missing.
-Add/remove persist to the project via `/api/project/{id}/clips` — `B`, `C`.
+Add/remove persist to the project via `/api/project/{id}/clips` — `B`, `C` — and
+positions persist in the `state` document in beats — `B`, `C`.
 
 ## F8 — Transport
 
@@ -69,8 +78,9 @@ Camxora: visual only. **Do not ship until the endpoint is captured.**
 
 Master strip, per-track faders — `H`.
 Camxora: `C` — per-clip streams play through per-track gain nodes into a Main
-gain, so faders, S, M and Main change the mix in real time. Gains are local
-playback state; Suno stores them in the uncaptured `state` document.
+gain, so faders, S, M and Main change the mix in real time. The same values are
+written back as `track.amplitude` / `balance` / `solo` / `mute` and
+`state.amplitude` by autosave.
 
 ## F11 — Export
 

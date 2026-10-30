@@ -6,22 +6,42 @@ import { useSearchParams } from "next/navigation";
 import { Icon } from "@/components/Icon";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import {
+  StudioSaveConflictError,
+  WebMusicApiError,
   getStudioSession,
   listWebMusicGenerations,
+  resolveStudioClips,
+  saveStudioSession,
   studioSessionForClip,
   updateStudioSessionClips,
 } from "@/lib/web-music-api";
 
 const BARS = 24;
-/** Ruler bars have always run at 1.25 s in the project view (24 bars = 30 s). */
-const SECONDS_PER_BAR = 1.25;
-const TIMELINE_SECONDS = BARS * SECONDS_PER_BAR;
+const BEATS_PER_BAR = 4;
+/** Suno's default tempo is `timing.bps = 2` (120 BPM); see docs/studio-state-schema.md. */
+const DEFAULT_BPS = 2;
+/** The visible ruler: 24 bars of 4 beats. Positions are stored in beats. */
+const TIMELINE_BEATS = BARS * BEATS_PER_BAR;
 const COLORS = ["#7466F1", "#A259FF", "#2f7bf6", "#25d366", "#f59e0b"];
 
-type ClipRef = { uid: string; songId: string; variant: "ok" | "alt" };
+type ClipRef = {
+  uid: string;
+  songId: string;
+  variant: "ok" | "alt";
+  /** Suno's provider clip id — what `state` stores as `asset.id`. */
+  providerClipId?: string;
+  /** Timeline position, in beats. */
+  startBeats: number;
+  /** Timeline length, in beats. */
+  lengthBeats?: number;
+};
 
 type Track = {
   id: string;
+  /** Suno's track id once the track exists in the saved `state` document. */
+  remoteId?: string;
+  /** Provider clip ids this track had in the last document we read or wrote. */
+  knownProviderIds?: string[];
   name: string;
   color: string;
   clips: ClipRef[];
@@ -32,7 +52,7 @@ type Track = {
 
 type PlacedClip = ClipRef & {
   trackId: string;
-  /** Seconds from the start of the (browser-local) timeline. */
+  /** Seconds from the start of the timeline. */
   start: number;
   duration: number;
   src: string;
@@ -45,6 +65,8 @@ type MixerEngine = {
   sources: Map<string, MediaElementAudioSourceNode>;
 };
 
+type SaveStatus = "idle" | "saving" | "saved" | "error" | "conflict";
+
 function clock(seconds: number) {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -52,16 +74,159 @@ function clock(seconds: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
 }
 
-function newClipUid() {
+function newUid() {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
     return crypto.randomUUID();
   }
-  return `clip-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 }
 
 function chosenVariant(song?: WebMusicGeneration): "ok" | "alt" {
   const clip = song?.clips?.find((item) => item.ready) ?? song?.clips?.[0];
   return clip?.variant === "alt" ? "alt" : "ok";
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function readBps(state: Record<string, unknown> | null) {
+  const timing = asRecord(state?.timing);
+  const bps = timing?.bps;
+  return typeof bps === "number" && Number.isFinite(bps) && bps > 0 ? bps : DEFAULT_BPS;
+}
+
+/**
+ * Rebuild the arrangement clip Suno expects. Shape captured from the shipped
+ * editor bundle (`createStaticAudioArrangement`, see docs/studio-state-schema.md).
+ */
+function buildClip(
+  clip: ClipRef,
+  track: Track,
+  songs: Map<string, WebMusicGeneration>,
+  placed: Map<string, PlacedClip>,
+  bps: number
+): Record<string, unknown> | null {
+  if (!clip.providerClipId) return null;
+  const startBeats = Math.max(0, clip.startBeats);
+  const seconds = placed.get(clip.uid)?.duration;
+  const lengthBeats =
+    clip.lengthBeats ?? (seconds && seconds > 0 ? Math.round(seconds * bps) : 8);
+  return {
+    type: "audio",
+    id: clip.uid,
+    streaming: false,
+    name: songs.get(clip.songId)?.title || "Clip",
+    color: track.color,
+    transposition: 0,
+    formantCorrection: 0,
+    amplitude: 1,
+    startBeats,
+    endBeats: startBeats + Math.max(1, lengthBeats),
+    readStartBeats: 0,
+    fadeInBeats: 0,
+    fadeOutBeats: 0,
+    fadeInCurve: 1,
+    fadeOutCurve: 1,
+    mute: false,
+    reversed: false,
+    loop: { enabled: false, startBeats: 0, endBeats: 0 },
+    warp: { awaitingAnalysis: false, enabled: true, markers: {} },
+    asset: { type: "clip", id: clip.providerClipId },
+  };
+}
+
+/**
+ * Merge the local arrangement into the `state` document last read from Suno.
+ * Unknown fields (eq, instrument, signal chains, sections, routing, …) are kept
+ * from that document — we only own track mixer values and audio clips.
+ */
+function buildProjectState(input: {
+  base: Record<string, unknown>;
+  tracks: Track[];
+  masterVolume: number;
+  songs: Map<string, WebMusicGeneration>;
+  placed: Map<string, PlacedClip>;
+  bps: number;
+}): Record<string, unknown> | null {
+  const baseTracks = Array.isArray(input.base.tracks)
+    ? (input.base.tracks as unknown[])
+        .map(asRecord)
+        .filter((track): track is Record<string, unknown> => Boolean(track))
+    : [];
+  const baseAudio = baseTracks.filter((track) => track.type === "audio");
+  const template = baseAudio[0] ?? null;
+  const byId = new Map(baseTracks.map((track) => [String(track.id ?? ""), track]));
+  const claimed = new Set<string>();
+  const out: Record<string, unknown>[] = [];
+
+  for (const [index, track] of input.tracks.entries()) {
+    // Match by id first, then by position, then fall back to the template so a
+    // new lane still inherits Suno's unknown per-track fields.
+    let source = (track.remoteId && byId.get(track.remoteId)) || null;
+    if (!source) {
+      const candidate = baseAudio[index];
+      if (candidate && !claimed.has(String(candidate.id ?? ""))) source = candidate;
+    }
+    if (!source) source = template;
+    if (!source) return null;
+    const sourceId = String(source.id ?? "");
+    const sourceAlreadyClaimed = claimed.has(sourceId);
+    const reusesTemplate = sourceAlreadyClaimed && source === template;
+    claimed.add(sourceId);
+
+    const clips = Array.isArray(source.clips) ? (source.clips as unknown[]) : [];
+    const known = new Set(track.knownProviderIds ?? []);
+    const local = new Set(
+      track.clips
+        .map((clip) => clip.providerClipId)
+        .filter((id): id is string => Boolean(id))
+    );
+    // Keep clips we do not model (MIDI, uploads, video) and audio clips we never
+    // mapped to a song. Mapped clips are rebuilt from the local arrangement, so a
+    // clip the user deleted here disappears; an unknown one is left untouched.
+    const kept = reusesTemplate
+      ? []
+      : clips
+          .map(asRecord)
+          .filter((clip): clip is Record<string, unknown> => Boolean(clip))
+          .filter((clip) => {
+            if (clip.type !== "audio") return true;
+            const asset = asRecord(clip.asset);
+            if (asset?.type !== "clip" || typeof asset.id !== "string") return true;
+            return !known.has(asset.id) && !local.has(asset.id);
+          });
+    const ours = track.clips
+      .map((clip) =>
+        buildClip(clip, track, input.songs, input.placed, input.bps)
+      )
+      .filter((clip): clip is Record<string, unknown> => Boolean(clip));
+    out.push({
+      ...source,
+      id:
+        track.remoteId && byId.has(track.remoteId)
+          ? track.remoteId
+          : sourceAlreadyClaimed
+            ? newUid()
+            : sourceId || newUid(),
+      type: "audio",
+      name: track.name,
+      color: track.color,
+      amplitude: track.volume / 100,
+      balance: typeof source.balance === "number" ? source.balance : 0,
+      solo: track.solo,
+      mute: track.muted,
+      arm: false,
+      clips: [...kept, ...ours],
+    });
+  }
+
+  // Never write a document that would silently drop a track we could not match.
+  if (baseAudio.some((track) => !claimed.has(String(track.id ?? "")))) return null;
+
+  return { ...input.base, amplitude: input.masterVolume / 100, tracks: out };
 }
 
 /**
@@ -70,9 +235,8 @@ function chosenVariant(song?: WebMusicGeneration): "ok" | "alt" {
  *
  * Playback is a real mixer: one stream per placed clip, each routed through its
  * track's gain into the master strip, so volume / mute / solo / Main all change
- * what you hear. The arrangement itself is still browser-local — Suno's `state`
- * document has not been captured yet, so nothing here is written back as audio
- * positions.
+ * what you hear. Arrangement positions live in beats, matching Suno's `state`
+ * document, and are autosaved back through `save-project`.
  */
 export function StudioShell() {
   const params = useSearchParams();
@@ -82,11 +246,10 @@ export function StudioShell() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
-  const [offsets, setOffsets] = useState<Record<string, number>>({});
   const dragRef = useRef<{
     uid: string;
     startX: number;
-    startLeft: number;
+    startBeat: number;
     laneWidth: number;
   } | null>(null);
   const [projectName, setProjectName] = useState("Untitled Project");
@@ -96,6 +259,10 @@ export function StudioShell() {
   const [position, setPosition] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [masterVolume, setMasterVolume] = useState(80);
+  const [bps, setBps] = useState(DEFAULT_BPS);
+  const [hydrating, setHydrating] = useState(Boolean(projectParam));
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -113,6 +280,16 @@ export function StudioShell() {
   const windowRef = useRef<Set<string>>(new Set());
   /** Authoritative transport position: `at` while paused, `from` while playing. */
   const transport = useRef({ at: 0, from: 0, playing: false });
+  /** Last `state` document read from Suno; autosave merges into it. */
+  const baseStateRef = useRef<Record<string, unknown> | null>(null);
+  /** Latest saved version, sent as `base_version_id`. */
+  const versionRef = useRef<string | null>(null);
+  /** Snapshot of what the server already has, so idle renders do not save. */
+  const savedSnapshotRef = useRef("");
+  const bpsRef = useRef(bps);
+  bpsRef.current = bps;
+  const timelineSecondsRef = useRef(TIMELINE_BEATS / bps);
+  timelineSecondsRef.current = TIMELINE_BEATS / bps;
 
   const songsById = useMemo(
     () => new Map(songs.map((song) => [song.id, song])),
@@ -121,24 +298,25 @@ export function StudioShell() {
 
   const placed = useMemo(() => {
     const map = new Map<string, PlacedClip>();
+    const secondsPerBeat = 1 / bps;
     tracks.forEach((track) => {
-      track.clips.forEach((clip, clipIndex) => {
+      track.clips.forEach((clip) => {
         const song = songsById.get(clip.songId);
-        const startPct = offsets[clip.uid] ?? clipIndex * 18;
         const start = Math.min(
-          TIMELINE_SECONDS - 1,
-          (startPct / 100) * TIMELINE_SECONDS
+          Math.max(0, clip.startBeats) * secondsPerBeat,
+          Math.max(0, TIMELINE_BEATS / bps - 0.5)
         );
         const key = `${clip.songId}:${clip.variant}`;
         const declared = song?.clips?.find((item) => item.variant === clip.variant)
           ?.duration_seconds;
         const known = measured[key] ?? declared ?? null;
-        // Unknown length: let the stream run to the end of the timeline rather
-        // than cut audio we cannot measure yet.
-        const duration =
-          known && known > 0
-            ? Math.min(known, TIMELINE_SECONDS - start)
-            : TIMELINE_SECONDS - start;
+        const length =
+          clip.lengthBeats && clip.lengthBeats > 0
+            ? clip.lengthBeats * secondsPerBeat
+            : known && known > 0
+              ? known
+              : TIMELINE_BEATS / bps - start;
+        const duration = Math.min(length, TIMELINE_BEATS / bps - start);
         const declaredUrl = song?.clips?.find(
           (item) => item.variant === clip.variant
         )?.audio_url;
@@ -162,11 +340,11 @@ export function StudioShell() {
       });
     });
     return map;
-  }, [tracks, offsets, songsById, measured]);
+  }, [tracks, songsById, measured, bps]);
 
   /** Everything the imperative transport loop needs, kept current each render. */
-  const live = useRef({ tracks, placed, masterVolume });
-  live.current = { tracks, placed, masterVolume };
+  const live = useRef({ tracks, placed, masterVolume, bps });
+  live.current = { tracks, placed, masterVolume, bps };
 
   useEffect(() => {
     let active = true;
@@ -182,22 +360,132 @@ export function StudioShell() {
     };
   }, []);
 
+  // Hydrate the arrangement from Suno's project document.
   useEffect(() => {
     if (!projectParam) return;
     let active = true;
     setProjectId(projectParam);
+    setHydrating(true);
     getStudioSession(projectParam)
-      .then((session) => {
+      .then(async (session) => {
         if (!active) return;
-        const title = (session as { title?: string }).title;
+        const title = typeof session.title === "string" ? session.title : null;
         if (title) setProjectName(title);
+        const doc = asRecord(session.state);
+        if (!doc) return;
+        baseStateRef.current = doc;
+        versionRef.current =
+          typeof session.latest_version_id === "string"
+            ? session.latest_version_id
+            : null;
+        const nextBps = readBps(doc);
+        setBps(nextBps);
+        const nextMaster =
+          typeof doc.amplitude === "number"
+            ? Math.round(Math.min(1, Math.max(0, doc.amplitude)) * 100)
+            : 80;
+        setMasterVolume(nextMaster);
+
+        const stateTracks = (Array.isArray(doc.tracks) ? doc.tracks : [])
+          .map(asRecord)
+          .filter((track): track is Record<string, unknown> => Boolean(track))
+          .filter((track) => track.type === "audio" && !track.hidden);
+
+        const providerIds: string[] = [];
+        stateTracks.forEach((track) => {
+          (Array.isArray(track.clips) ? track.clips : [])
+            .map(asRecord)
+            .forEach((clip) => {
+              const asset = asRecord(clip?.asset);
+              if (asset?.type === "clip" && typeof asset.id === "string") {
+                providerIds.push(asset.id);
+              }
+            });
+        });
+        const resolved = providerIds.length
+          ? await resolveStudioClips(providerIds).catch(() => [])
+          : [];
+        if (!active) return;
+        const byClip = new Map(resolved.map((hit) => [hit.clip_id, hit]));
+
+        const nextTracks: Track[] = [];
+        stateTracks.forEach((track, index) => {
+          const remoteId = typeof track.id === "string" ? track.id : newUid();
+          const clips: ClipRef[] = [];
+          const trackClips = (Array.isArray(track.clips) ? track.clips : [])
+            .map(asRecord)
+            .filter((clip): clip is Record<string, unknown> => Boolean(clip));
+          const knownProviderIds = trackClips
+            .map((clip) => {
+              const asset = asRecord(clip.asset);
+              return asset?.type === "clip" && typeof asset.id === "string"
+                ? asset.id
+                : null;
+            })
+            .filter((id): id is string => Boolean(id));
+          trackClips.forEach((clip) => {
+            const asset = asRecord(clip.asset);
+            const assetId =
+              asset?.type === "clip" && typeof asset.id === "string"
+                ? asset.id
+                : null;
+            if (!assetId) return;
+            const hit = byClip.get(assetId);
+            // A clip we cannot map to one of our songs stays untouched on
+            // Suno; we simply cannot play or resave it.
+            if (!hit) return;
+            const startBeats = Number(clip.startBeats) || 0;
+            const endBeats = Number(clip.endBeats) || startBeats;
+            clips.push({
+              uid: typeof clip.id === "string" ? clip.id : newUid(),
+              songId: hit.task_id,
+              variant: hit.variant,
+              providerClipId: assetId,
+              startBeats,
+              lengthBeats: Math.max(1, endBeats - startBeats),
+            });
+          });
+          nextTracks.push({
+            id: remoteId,
+            remoteId,
+            knownProviderIds,
+            name:
+              typeof track.name === "string" && track.name
+                ? track.name
+                : `Track ${index + 1}`,
+            color:
+              typeof track.color === "string" && track.color
+                ? track.color
+                : COLORS[index % COLORS.length],
+            clips,
+            muted: Boolean(track.mute),
+            solo: Boolean(track.solo),
+            volume:
+              typeof track.amplitude === "number"
+                ? Math.round(Math.min(1, Math.max(0, track.amplitude)) * 100)
+                : 80,
+          });
+        });
+        if (nextTracks.length) setTracks(nextTracks);
+        // Baseline exactly what we just loaded so hydration never autosaves.
+        savedSnapshotRef.current = JSON.stringify({
+          tracks: nextTracks.length ? nextTracks : tracks,
+          masterVolume: nextMaster,
+          projectName: title ?? "Untitled Project",
+        });
       })
       .catch(() => {
         /* older project or a signed-out pool: keep the id we have */
+      })
+      .finally(() => {
+        if (active) setHydrating(false);
       });
     return () => {
       active = false;
     };
+    // `tracks`, `masterVolume` and `projectName` are read only for the snapshot
+    // baseline; hydrating again on their change would clobber local edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectParam]);
 
   const currentPosition = useCallback(() => {
@@ -209,11 +497,13 @@ export function StudioShell() {
   const updateView = useCallback((seconds: number) => {
     if (clockRef.current) clockRef.current.textContent = clock(seconds);
     if (barRef.current) {
-      const bar = Math.max(1, Math.floor(seconds / SECONDS_PER_BAR) + 1);
-      barRef.current.textContent = `${String(bar).padStart(3, "0")}.1.1`;
+      const beat = seconds * bpsRef.current;
+      const bar = Math.max(1, Math.floor(beat / BEATS_PER_BAR) + 1);
+      const beatInBar = Math.floor(beat % BEATS_PER_BAR) + 1;
+      barRef.current.textContent = `${String(bar).padStart(3, "0")}.${beatInBar}.1`;
     }
     if (playheadRef.current) {
-      playheadRef.current.style.left = `${(seconds / TIMELINE_SECONDS) * 100}%`;
+      playheadRef.current.style.left = `${(seconds / timelineSecondsRef.current) * 100}%`;
     }
   }, []);
 
@@ -266,11 +556,7 @@ export function StudioShell() {
   }, []);
 
   const applyGains = useCallback(
-    (
-      engine: MixerEngine,
-      liveTracks: Track[],
-      master: number
-    ) => {
+    (engine: MixerEngine, liveTracks: Track[], master: number) => {
       const now = engine.ctx.currentTime;
       engine.master.gain.setTargetAtTime(master / 100, now, 0.015);
       const alive = new Set(liveTracks.map((track) => track.id));
@@ -319,7 +605,10 @@ export function StudioShell() {
   }, []);
 
   const pause = useCallback(() => {
-    const at = Math.min(TIMELINE_SECONDS, Math.max(0, currentPosition()));
+    const at = Math.min(
+      timelineSecondsRef.current,
+      Math.max(0, currentPosition())
+    );
     transport.current.at = at;
     transport.current.playing = false;
     stopLoop();
@@ -342,7 +631,7 @@ export function StudioShell() {
     } catch {
       /* resume needs a user gesture; the click provides one */
     }
-    if (transport.current.at >= TIMELINE_SECONDS) transport.current.at = 0;
+    if (transport.current.at >= timelineSecondsRef.current) transport.current.at = 0;
     transport.current.playing = true;
     transport.current.from = engine.ctx.currentTime;
     setPlaying(true);
@@ -355,7 +644,7 @@ export function StudioShell() {
       const seconds = currentPosition();
       updateView(seconds);
       syncClips(seconds, true, false);
-      if (seconds >= TIMELINE_SECONDS) {
+      if (seconds >= timelineSecondsRef.current) {
         pause();
         return;
       }
@@ -384,7 +673,10 @@ export function StudioShell() {
 
   const seek = useCallback(
     (seconds: number) => {
-      const next = Math.min(TIMELINE_SECONDS, Math.max(0, seconds));
+      const next = Math.min(
+        timelineSecondsRef.current,
+        Math.max(0, seconds)
+      );
       transport.current.at = next;
       const engine = engineRef.current;
       if (engine) transport.current.from = engine.ctx.currentTime;
@@ -457,6 +749,86 @@ export function StudioShell() {
     [stopLoop]
   );
 
+  /** One versioned save, debounced by the effect below. */
+  const saveNow = useCallback(async () => {
+    const base = baseStateRef.current;
+    if (!projectId || !base) return;
+    const state = buildProjectState({
+      base,
+      tracks: live.current.tracks,
+      masterVolume: live.current.masterVolume,
+      songs: songsById,
+      placed: live.current.placed,
+      bps: live.current.bps,
+    });
+    if (!state) {
+      setSaveStatus("error");
+      setError("This project cannot be saved from the current arrangement.");
+      return;
+    }
+    const snapshot = JSON.stringify({
+      tracks: live.current.tracks,
+      masterVolume: live.current.masterVolume,
+      projectName,
+    });
+    setSaving(true);
+    setSaveStatus("saving");
+    try {
+      const { version_id } = await saveStudioSession({
+        projectId,
+        state,
+        title: projectName,
+        baseVersionId: versionRef.current,
+      });
+      versionRef.current = version_id;
+      baseStateRef.current = state;
+      savedSnapshotRef.current = snapshot;
+      setSaveStatus("saved");
+      setError("");
+    } catch (cause) {
+      if (cause instanceof StudioSaveConflictError) {
+        // Someone else saved first: adopt their version and try once more.
+        versionRef.current = cause.latestVersionId;
+        setSaveStatus("conflict");
+        try {
+          const { version_id } = await saveStudioSession({
+            projectId,
+            state,
+            title: projectName,
+            baseVersionId: versionRef.current,
+          });
+          versionRef.current = version_id;
+          baseStateRef.current = state;
+          savedSnapshotRef.current = snapshot;
+          setSaveStatus("saved");
+        } catch {
+          setSaveStatus("error");
+          setError("Someone else is editing this project. Reload to catch up.");
+        }
+      } else if (cause instanceof WebMusicApiError && cause.status === 429) {
+        setSaveStatus("error");
+        setError("Saving too often. Retrying shortly.");
+        window.setTimeout(() => void saveNowRef.current(), (cause.retryAfterSeconds ?? 5) * 1000);
+      } else {
+        setSaveStatus("error");
+        setError(cause instanceof Error ? cause.message : "Could not save the project");
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [projectId, projectName, songsById]);
+  const saveNowRef = useRef(saveNow);
+  saveNowRef.current = saveNow;
+
+  // Autosave: 3 s after the last edit, only once a real state document exists.
+  useEffect(() => {
+    if (!projectId || hydrating || !baseStateRef.current) return;
+    const snapshot = JSON.stringify({ tracks, masterVolume, projectName });
+    if (snapshot === savedSnapshotRef.current) return;
+    const timer = window.setTimeout(() => void saveNowRef.current(), 3000);
+    return () => window.clearTimeout(timer);
+  }, [tracks, masterVolume, projectName, projectId, hydrating]);
+
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.code === "Space") {
@@ -504,8 +876,10 @@ export function StudioShell() {
   );
 
   function addTrack(name = "Audio Track") {
+    const uid = newUid();
     const track: Track = {
-      id: `${Date.now()}-${tracks.length}`,
+      id: uid,
+      remoteId: uid,
       name,
       color: COLORS[tracks.length % COLORS.length],
       clips: [],
@@ -517,7 +891,7 @@ export function StudioShell() {
     setSelectedTrack(track.id);
   }
 
-  /** Append a clip to a lane and persist the clip on the Suno project. */
+  /** Append a clip to a lane at the playhead and persist it on Suno. */
   async function placeSong(song: WebMusicGeneration, trackId: string) {
     setBusy(true);
     setError("");
@@ -525,18 +899,60 @@ export function StudioShell() {
       const variant = chosenVariant(song);
       const session = await studioSessionForClip(song.id, variant);
       if (!projectId) setProjectId(session.project_id);
-      // Persist on Suno's surface: the clip joins the Studio project.
-      await updateStudioSessionClips(session.project_id, [song.id], [variant]).catch(
-        () => null
+      const result = await updateStudioSessionClips(
+        session.project_id,
+        [song.id],
+        [variant]
+      ).catch(() => null);
+      // A project created for this clip has never been read back: fetch its
+      // state so autosave has a real document to merge into.
+      if (!baseStateRef.current) {
+        await getStudioSession(session.project_id)
+          .then((doc) => {
+            const state = asRecord(doc.state);
+            if (!state) return;
+            baseStateRef.current = state;
+            versionRef.current =
+              typeof doc.latest_version_id === "string"
+                ? doc.latest_version_id
+                : null;
+            setBps(readBps(state));
+            if (typeof state.amplitude === "number") {
+              setMasterVolume(
+                Math.round(Math.min(1, Math.max(0, state.amplitude)) * 100)
+              );
+            }
+          })
+          .catch(() => null);
+      }
+      const duration =
+        song.clips?.find((item) => item.variant === variant)?.duration_seconds ??
+        null;
+      const startBeats = Math.min(
+        TIMELINE_BEATS - 1,
+        Math.max(0, Math.round(currentPosition() * bpsRef.current))
       );
       setTracks((current) =>
         current.map((track) =>
           track.id === trackId
             ? {
                 ...track,
+                knownProviderIds: result?.clip_ids?.[0]
+                  ? [...(track.knownProviderIds ?? []), result.clip_ids[0]]
+                  : track.knownProviderIds,
                 clips: [
                   ...track.clips,
-                  { uid: newClipUid(), songId: song.id, variant },
+                  {
+                    uid: newUid(),
+                    songId: song.id,
+                    variant,
+                    providerClipId: result?.clip_ids?.[0],
+                    startBeats,
+                    lengthBeats:
+                      duration && duration > 0
+                        ? Math.round(duration * bpsRef.current)
+                        : undefined,
+                  },
                 ],
               }
             : track
@@ -552,8 +968,10 @@ export function StudioShell() {
   async function addSongToTimeline(song: WebMusicGeneration) {
     const target = tracks.find((track) => track.id === selectedTrack) ?? tracks[0];
     if (!target) {
+      const uid = newUid();
       const track: Track = {
-        id: `${Date.now()}-0`,
+        id: uid,
+        remoteId: uid,
         name: "Audio Track",
         color: COLORS[0],
         clips: [],
@@ -568,6 +986,8 @@ export function StudioShell() {
     }
     await placeSong(song, target.id);
   }
+
+  const timelineSeconds = TIMELINE_BEATS / bps;
 
   return (
     <div className="stv">
@@ -607,7 +1027,7 @@ export function StudioShell() {
           </span>
         </div>
         <span style={{ flex: 1 }} />
-        <span className="stv-bpm">120 BPM</span>
+        <span className="stv-bpm">{Math.round(bps * 60)} BPM</span>
         <span className="stv-sig">4/4</span>
         <button type="button" className="s-btn s-btn-ghost" disabled={!tracks.length}>
           <Icon name="fa-arrow-up-from-bracket" /> Export
@@ -718,11 +1138,26 @@ export function StudioShell() {
                   const drag = dragRef.current;
                   if (!drag) return;
                   const delta =
-                    ((event.clientX - drag.startX) / Math.max(1, drag.laneWidth)) * 100;
-                  setOffsets((current) => ({
-                    ...current,
-                    [drag.uid]: Math.min(82, Math.max(0, drag.startLeft + delta)),
-                  }));
+                    ((event.clientX - drag.startX) / Math.max(1, drag.laneWidth)) *
+                    TIMELINE_BEATS;
+                  const next = Math.min(
+                    TIMELINE_BEATS - 1,
+                    Math.max(0, drag.startBeat + delta)
+                  );
+                  setTracks((current) =>
+                    current.map((item) =>
+                      item.id === track.id
+                        ? {
+                            ...item,
+                            clips: item.clips.map((clip) =>
+                              clip.uid === drag.uid
+                                ? { ...clip, startBeats: Math.round(next) }
+                                : clip
+                            ),
+                          }
+                        : item
+                    )
+                  );
                 }}
                 onPointerUp={() => {
                   endDrag();
@@ -737,14 +1172,14 @@ export function StudioShell() {
                   if (song) void placeSong(song, track.id);
                 }}
               >
-                {track.clips.map((clip, clipIndex) => {
+                {track.clips.map((clip) => {
                   const song = songsById.get(clip.songId);
-                  const startPct = offsets[clip.uid] ?? clipIndex * 18;
                   const place = placed.get(clip.uid);
+                  const startPct = (clip.startBeats / TIMELINE_BEATS) * 100;
                   const widthPct = place
                     ? Math.min(
                         100 - startPct,
-                        (place.duration / TIMELINE_SECONDS) * 100
+                        (place.duration / timelineSeconds) * 100
                       )
                     : 16;
                   return (
@@ -761,7 +1196,7 @@ export function StudioShell() {
                         dragRef.current = {
                           uid: clip.uid,
                           startX: event.clientX,
-                          startLeft: startPct,
+                          startBeat: clip.startBeats,
                           laneWidth: lane?.clientWidth || 1,
                         };
                       }}
@@ -780,7 +1215,7 @@ export function StudioShell() {
             <div
               className="stv-playhead"
               ref={playheadRef}
-              style={{ left: `${(position / TIMELINE_SECONDS) * 100}%` }}
+              style={{ left: `${(position / timelineSeconds) * 100}%` }}
             />
             {!tracks.length ? (
               <div className="stv-empty">
@@ -889,6 +1324,11 @@ export function StudioShell() {
             aria-label="Zoom"
             onChange={(event) => setZoom(Number(event.target.value))}
           />
+          {hydrating ? <span className="s-note">Loading…</span> : null}
+          {saving ? <span className="s-note">Saving…</span> : null}
+          {saveStatus === "conflict" ? (
+            <span className="s-note">Reconciling…</span>
+          ) : null}
           {busy ? <span className="s-note">Opening…</span> : null}
           {error ? <span className="s-error">{error}</span> : null}
         </div>
