@@ -1754,3 +1754,60 @@ The empty-project string is **instructional** — it teaches the interaction
 The track-creation gap is the behavioural one: on the reference the first row
 always exists, so track-targeted actions (plugins, arm, solo) are immediately
 available; ours starts with an empty panel.
+
+## 60. Responsive floor — Studio refuses narrow viewports `L`
+
+Captured by accident when the browser pane shrank to **319 × 468** CSS px (DPR 3)
+while a project was open. The editor does not reflow. It is **replaced** by a
+gate:
+
+```
+┌────────────────────────────┐
+│   [ photo: laptop running   │
+│     the Studio editor ]     │
+│                             │
+│        SUNO Studio          │
+│  Studio is desktop-only     │
+│  for now. Head to           │
+│  suno.com/studio on your    │
+│  computer to start creating.│
+│                             │
+│      ( Back to Create )     │
+└────────────────────────────┘
+```
+
+| Evidence | Value |
+|---|---|
+| Viewport | 319 × 468, DPR 3 |
+| `document.querySelectorAll('canvas').length` | **0** — the editor never mounts |
+| Message | 14 px, `#a3a3a3`, 253 px wide, centred |
+| Action | `Back to Create` (rendered after the message) |
+| Card | inset, large radius, dark surface over a photographic hero |
+
+### 60.1 The floor sits between 319 and 706 px
+
+| Width | Result | Source |
+|---|---|---|
+| 706 px | full editor, compressed | §46 |
+| 319 px | **hard gate**, no editor | this capture |
+
+So there is a minimum-width threshold somewhere in `(319, 706]`, and above it
+Studio still compresses rather than hiding panels (§46). Below it there is no
+responsive variant at all — no stacked panels, no mobile layout, no horizontal
+scroll.
+
+### 60.2 What this means for us
+
+1. **Do not build a mobile Studio.** The reference explicitly declines; a
+   responsive editor would be work the product has decided against.
+2. **Ship a gate with a minimum width** instead of letting panels collapse into
+   an unusable state. A CSS-only `@media (max-width: …)` gate is enough; the
+   editor chunk should not be needed to render it (`hasCanvas: 0` shows the
+   reference does not mount the renderer).
+3. Copy the honest framing — it names the constraint, gives the URL, and offers
+   one way out. It does not apologise or promise an app.
+
+**Correction to matrix row `R1`**, which recorded responsive capture as `BLOCK`
+(no viewport resize available): the viewport could not be *resized by us*, but
+the pane did resize, which is what produced this. R1 is now `PART` — the gate is
+captured, the 1280 / 1024 / 768 editor states are not.

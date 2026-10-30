@@ -108,7 +108,7 @@ Evidence codes: `M` measured geometry · `L` live observation · `B` bundle · `
 | Q4 | Offline | banner/behaviour | OPEN | — |
 | Q5 | Credits exhausted | blocking UI | OPEN | — |
 | **R** | **Responsive** | | | |
-| R1 | 1280 / 1024 / 768 | collapse rules, panel behaviour | BLOCK | no viewport resize |
+| R1 | 1280 / 1024 / 768 | collapse rules, panel behaviour | PART | L §60 (gate <320 captured; editor states open) |
 | **S** | **Accessibility** | | | |
 | S1 | aria labels | 38 controls | DONE | M §17 |
 | S2 | Canvas semantics | how timeline is exposed | OPEN | — |
@@ -130,9 +130,9 @@ Evidence codes: `M` measured geometry · `L` live observation · `B` bundle · `
 | Status | Count |
 |---|---|
 | DONE | 33 |
-| PART | 12 |
+| PART | 13 |
 | OPEN | 30 |
-| BLOCK | 3 |
+| BLOCK | 2 |
 
 ## Capture order for the remainder
 
