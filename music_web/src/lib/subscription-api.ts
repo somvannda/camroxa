@@ -63,6 +63,8 @@ export type CreditBalance = {
   daily_free_limit: number;
   daily_free_used: number;
   has_subscription: boolean;
+  is_pro?: boolean;
+  pack_expires_at?: string | null;
   current_period_end?: string | null;
   reset_at?: string | null;
   grant_remaining?: number;
@@ -78,6 +80,9 @@ export type V3WalletView = {
   balance_credits?: number;
   grant_remaining_credits?: number;
   reset_label?: string | null;
+  is_pro?: boolean;
+  tier?: 'pro' | 'free';
+  pack_expires_at?: string | null;
   plan?: {
     name?: string;
     price_cents?: number;
@@ -112,7 +117,10 @@ export function mergeV3CreditBalance(
   const total = asCredits(v3.balance_credits);
   const planMonthly = asCredits(v3.plan?.monthly_credits);
   const planDaily = asCredits(v3.plan?.daily_credits);
-  const hasPaidPlan = Boolean(v2?.has_subscription) || Number(v3.plan?.price_cents ?? 0) > 0;
+  const hasPaidPlan =
+    Boolean(v2?.has_subscription) ||
+    Boolean(v3.is_pro) ||
+    Number(v3.plan?.price_cents ?? 0) > 0;
   const dailyLimit = planDaily || asCredits(v2?.daily_free_limit);
   const monthlyPool = planMonthly || asCredits(v2?.monthly_credits);
 
@@ -131,6 +139,8 @@ export function mergeV3CreditBalance(
     daily_free_limit: dailyLimit,
     daily_free_used: Math.max(0, dailyLimit - dailyFree),
     has_subscription: hasPaidPlan,
+    is_pro: Boolean(v3.is_pro) || hasPaidPlan,
+    pack_expires_at: v3.pack_expires_at ?? null,
     reset_label: creditResetLabel({
       daily_credits: planDaily,
       monthly_credits: planMonthly,

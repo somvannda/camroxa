@@ -85,11 +85,12 @@ export default function SubscriptionSection() {
 
   const periodEnd =
     parseBillingDate(subscription?.current_period_end) ||
+    parseBillingDate(balance?.pack_expires_at) ||
     parseBillingDate(balance?.current_period_end);
   const planTitle = subscription?.plan_name
     ? formatPlanDisplayName(subscription.plan_name)
-    : balance?.has_subscription
-      ? 'Legacy plan'
+    : balance?.is_pro
+      ? 'Pro'
       : 'Free';
 
   return (
@@ -104,7 +105,7 @@ export default function SubscriptionSection() {
               <div>
                 <h2 className="font-display text-xl font-semibold text-white">Credits</h2>
                 <p className="text-xs text-slate-400">
-                  {isSubscribed ? `${planTitle} — no longer sold` : 'Pay as you go'}
+                  {isSubscribed ? planTitle : 'Pay as you go'}
                 </p>
               </div>
             </div>

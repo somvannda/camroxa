@@ -215,6 +215,20 @@ class V3BillingStore:
         )
         return [dict(row) for row in rows]
 
+    async def live_pack_expiry(self, user_id: UUID) -> datetime | None:
+        """Latest expiry among the user's live pack lots."""
+        return await self._pool.fetchval(
+            """
+            SELECT MAX(expires_at)
+            FROM credit_wallet_lots
+            WHERE user_id = $1
+              AND tag = 'pack'
+              AND remaining_units > 0
+              AND (expires_at IS NULL OR expires_at > NOW())
+            """,
+            user_id,
+        )
+
     async def grant_remaining_units(self, user_id: UUID) -> int:
         value = await self._pool.fetchval(
             """

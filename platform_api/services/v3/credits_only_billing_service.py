@@ -88,6 +88,10 @@ class CreditsOnlyBillingService:
         plan = None
         daily = 0
         monthly = 0
+        from platform_api.services.tier_service import is_pro
+
+        user_is_pro = await is_pro(self._store._pool, user_id)
+        pack_expires_at = await self._store.live_pack_expiry(user_id)
         return {
             "user_id": str(user_id),
             "balance_credits": units_to_credits(balance_units),
@@ -95,6 +99,11 @@ class CreditsOnlyBillingService:
             "grant_remaining_credits": units_to_credits(grant_units),
             "grant_remaining_units": grant_units,
             "plan": plan,
+            "is_pro": user_is_pro,
+            "tier": "pro" if user_is_pro else "free",
+            "pack_expires_at": (
+                pack_expires_at.isoformat() if pack_expires_at is not None else None
+            ),
             "reset_label": credit_reset_label(daily_credits=daily, monthly_credits=monthly),
             "lots": [
                 {
