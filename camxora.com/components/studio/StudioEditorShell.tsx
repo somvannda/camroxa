@@ -54,6 +54,7 @@ export function StudioEditorShell() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
+  const [selectedClip, setSelectedClip] = useState<string | null>(null);
   const [libraryOpen, setLibraryOpen] = useState(false);
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -331,11 +332,16 @@ export function StudioEditorShell() {
                         <button
                           type="button"
                           key={clip.id}
-                          className="se-clip"
+                          className={`se-clip${selectedClip === clip.id ? " selected" : ""}`}
                           style={{ left, width, background: track.color }}
-                          onClick={() => setSelectedTrack(track.id)}
+                          onClick={() => {
+                            setSelectedTrack(track.id);
+                            setSelectedClip(clip.id);
+                          }}
+                          aria-pressed={selectedClip === clip.id}
                         >
                           <span className="se-clip-head">{clip.title || "Clip"}</span>
+                          <span className="se-clip-body" aria-hidden="true" />
                         </button>
                       );
                     })}
