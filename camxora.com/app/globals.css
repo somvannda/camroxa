@@ -4483,6 +4483,16 @@ html{color-scheme:dark}
 .stv-pill{min-width:22px;height:20px;padding:0 6px;border-radius:6px;border:1px solid var(--s-line2);background:transparent;color:var(--s-text2);font-size:11px;cursor:pointer;display:grid;place-items:center}
 .stv-pill.on{background:var(--s-accent);border-color:var(--s-accent);color:#fff}
 .stv-fader{display:flex;align-items:center;gap:8px;margin-top:4px}
+/* Track controls follow Suno: bare icons, no pill chrome, slim fader. */
+.stv-track-top .stv-pill{min-width:18px;height:22px;padding:0 4px;border:0;background:transparent;color:var(--s-text2);font-size:12px;font-weight:600;border-radius:6px}
+.stv-track-top .stv-pill:hover{background:var(--s-bg3);color:var(--s-text)}
+.stv-track-top .stv-pill.on{background:transparent;color:var(--s-accent)}
+.stv-track-top .stv-icon-sm{width:22px;height:22px;border:0;background:transparent;color:var(--s-text2)}
+.stv-fader input[type="range"]{-webkit-appearance:none;appearance:none;height:16px;background:transparent;cursor:pointer}
+.stv-fader input[type="range"]::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:var(--s-bg3)}
+.stv-fader input[type="range"]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:10px;height:10px;margin-top:-3px;border-radius:999px;background:var(--s-text2);border:0}
+.stv-fader input[type="range"]:hover::-webkit-slider-thumb{background:var(--s-text)}
+.stv-track-fx{color:var(--s-text3);font-size:11px}
 .stv-fader input{flex:1}
 .stv-track-fx{color:var(--s-text3)}
 .stv-add-track{margin:10px 12px;padding:8px;border:1px dashed var(--s-line2);border-radius:8px;background:transparent;color:var(--s-text2);cursor:pointer;display:flex;align-items:center;gap:8px;justify-content:center}
