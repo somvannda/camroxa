@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
-import { getStudioProject, type StudioProject } from "@/lib/studio-api";
+import { getStudioProject, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 
@@ -233,7 +233,22 @@ export function StudioEditorShell() {
         </div>
 
         <div className="se-head-right">
-          <span className="se-pill">{bpm} BPM</span>
+          <input
+            className="se-pill se-bpm"
+            value={bpm}
+            inputMode="numeric"
+            aria-label="Tempo in BPM"
+            onChange={(event) => {
+              const next = Number(event.target.value.replace(/\D/g, ""));
+              if (Number.isFinite(next)) setBpm(Math.min(300, Math.max(20, next || 20)));
+            }}
+            onBlur={() => {
+              if (!projectId) return;
+              updateStudioProject(projectId, { bpm }).catch(() => {
+                setError("Could not save the tempo.");
+              });
+            }}
+          />
           <span className="se-pill">{project?.time_signature || "4/4"}</span>
           <button type="button" className="se-pill" disabled aria-label="Export (not wired)"><Icon name="fa-arrow-up-from-bracket" /> Export</button>
           <button
