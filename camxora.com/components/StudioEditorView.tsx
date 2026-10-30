@@ -68,6 +68,7 @@ import {
 } from "@/lib/studio-api";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { sanitizeChainMap } from "@/lib/studio-plugin-chain";
+import { migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 
 type AutomationPoint = {
   id: string;
@@ -174,6 +175,8 @@ type StoredSession = {
   lanes?: Clip[];
   /** Plugin chains keyed by track id. Part of the document, so versions cover them. */
   chains?: Record<string, PluginChainEntry[]>;
+  /** Track containers. Behaviour-neutral for now: rendering still uses `lanes`. */
+  tracks?: StudioTrack[];
 };
 
 type AudioMeta = {
@@ -1317,6 +1320,7 @@ export function StudioEditorView() {
   const [lanes, setLanes] = useState<Clip[]>([]);
   const [groups, setGroups] = useState<TrackGroup[]>(DEFAULT_GROUPS);
   const [chains, setChains] = useState<Record<string, PluginChainEntry[]>>({});
+  const [tracks, setTracks] = useState<StudioTrack[]>([]);
   const [audioMeta, setAudioMeta] = useState<Record<string, AudioMeta>>({});
   const [search, setSearch] = useState("");
   const [libraryFilter, setLibraryFilter] = useState<"all" | "instrumental" | "vocal" | "ready">("all");
@@ -1690,6 +1694,7 @@ export function StudioEditorView() {
         : []
     );
     setChains(sanitizeChainMap(saved.chains));
+    setTracks(sanitizeTracks(saved.tracks));
     setProjectId(nextProjectId);
     setCloudState(nextProjectId ? "saved" : "local");
   }
@@ -1854,7 +1859,7 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, groups, lanes, chains };
+      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, groups, lanes, chains, tracks: tracks.length ? tracks : migrateLanesToTracks(lanes) };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
@@ -1871,7 +1876,7 @@ export function StudioEditorView() {
       setCloudState("saving");
       setCloudError("");
       try {
-        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, groups, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, chains };
+        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, groups, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, chains, tracks: tracks.length ? tracks : migrateLanesToTracks(lanes) };
         if (sharedToken) {
           const saved = await updateStudioSharedProject(sharedToken, {
             title: sessionName,
