@@ -50,9 +50,9 @@ def test_suno_supports_music_and_lyric_text() -> None:
 
     suno_models = PROVIDER_SUB_MODELS["suno"]
     assert "lyrics" in suno_models[ServiceType.TEXT_GENERATION]
-    assert "V5" in suno_models[ServiceType.MUSIC_GENERATION]
+    assert "V6" in suno_models[ServiceType.MUSIC_GENERATION]
     assert SUB_MODEL_COST_TIERS["lyrics"] == "~0.4 credits (~$0.004)"
-    assert SUB_MODEL_COST_TIERS["V5"] == "~12 Suno credits (~$0.06)"
+    assert SUB_MODEL_COST_TIERS["V6"] == "~12 Suno credits (~$0.06)"
 
 
 def test_slai_gpt56_models_support_all_text_operations() -> None:

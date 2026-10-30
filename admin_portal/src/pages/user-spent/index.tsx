@@ -33,7 +33,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { usePlans } from '@/hooks/use-plans';
 import { useUsageFilters } from '@/hooks/use-usage';
 import { useUserSpend } from '@/hooks/use-user-spend';
 import { formatDollars } from '@/lib/credit-format';
@@ -222,7 +221,6 @@ export default function UserSpentPage() {
   );
   const { data, isLoading, isError, error, refetch, isFetching } = useUserSpend(params);
   const filtersQuery = useUsageFilters();
-  const plansQuery = usePlans();
 
   const applyFilters = () => {
     setPage(1);
@@ -350,25 +348,6 @@ export default function UserSpentPage() {
               value={draftFilters.dateRange}
               onChange={(dateRange) => setDraftFilters((f) => ({ ...f, dateRange }))}
             />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-slate-500">Plan</label>
-            <Select
-              value={draftFilters.planId}
-              onValueChange={(planId) => setDraftFilters((f) => ({ ...f, planId }))}
-            >
-              <SelectTrigger className="w-[160px] border-slate-700 bg-slate-900 text-slate-100">
-                <SelectValue placeholder="All plans" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All plans</SelectItem>
-                {(plansQuery.data ?? []).map((plan) => (
-                  <SelectItem key={plan.id} value={plan.id}>
-                    {plan.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
           <div className="space-y-1">
             <label className="text-xs text-slate-500">Alert</label>

@@ -393,14 +393,6 @@ class TestCheckCreditBalance:
 class TestRequireGenerationAccess:
     """Tests for the full generation authorization chain."""
 
-    async def test_all_checks_pass(self, mock_auth_service, mock_user_repo, mock_license_repo, mock_credit_repo) -> None:
-        ctx = await require_generation_access("Bearer valid-token")
-        assert ctx.user_id == "00000000-0000-0000-0000-000000000123"
-        assert ctx.role == "user"
-        mock_auth_service.validate_token.assert_awaited_once()
-        mock_user_repo.get_auth_state.assert_awaited_once()
-        mock_license_repo.has_active_license.assert_awaited_once()
-        mock_credit_repo.get_balance.assert_awaited_once()
 
     async def test_step1_invalid_token_raises_401(self, mock_auth_service) -> None:
         """Step 1: Token validity check fails first."""
@@ -418,15 +410,6 @@ class TestRequireGenerationAccess:
         # License should NOT be checked since suspension fails first
         mock_license_repo.has_active_license.assert_not_awaited()
 
-    async def test_step3_expired_license_raises_403_before_credit_check(
-        self, mock_license_repo, mock_credit_repo
-    ) -> None:
-        """Step 3: License check fails before credit check (Req 16.7 order)."""
-        mock_license_repo.has_active_license.return_value = False
-        with pytest.raises(LicenseExpiredError):
-            await require_generation_access("Bearer valid-token")
-        # Credit should NOT be checked since license fails first
-        mock_credit_repo.get_balance.assert_not_awaited()
 
     async def test_step4_insufficient_credits_raises_402(self, mock_credit_repo, mock_plan_repo, mock_usage_repo) -> None:
         """Step 4: Credit balance check fails last when quota is also unavailable."""
@@ -438,17 +421,6 @@ class TestRequireGenerationAccess:
             with pytest.raises(InsufficientCreditsError):
                 await require_generation_access("Bearer valid-token")
 
-    async def test_step4_quota_only_subscriber_passes_with_zero_wallet(
-        self, mock_credit_repo, mock_plan_repo, mock_usage_repo
-    ) -> None:
-        """Quota-only subscribers with remaining plan allowance pass step 4."""
-        mock_credit_repo.get_balance.return_value = 0
-        with patch(
-            "platform_api.services.quota_display_service.get_plan_quota_remaining",
-            new=AsyncMock(return_value=12),
-        ):
-            ctx = await require_generation_access("Bearer valid-token")
-            assert ctx.user_id == "00000000-0000-0000-0000-000000000123"
 
     async def test_authorization_order_is_strict(
         self, mock_auth_service, mock_user_repo, mock_license_repo, mock_credit_repo

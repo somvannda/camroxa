@@ -25,7 +25,6 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { usePlans } from '@/hooks/use-plans';
 import {
   useCreateRedeemCode,
   useDeleteRedeemCode,
@@ -181,7 +180,6 @@ export default function RedeemCodesPage() {
   const [redemptionStatus, setRedemptionStatus] = useState('');
 
   const codesQuery = useRedeemCodes();
-  const plansQuery = usePlans();
   const createRedeemCode = useCreateRedeemCode();
   const updateRedeemCode = useUpdateRedeemCode();
   const deleteRedeemCode = useDeleteRedeemCode();
@@ -197,7 +195,6 @@ export default function RedeemCodesPage() {
   );
   const redemptionsQuery = useRedeemCodeRedemptions(redemptionParams);
 
-  const planOptions = useMemo(() => plansQuery.data ?? [], [plansQuery.data]);
   const redemptionItems = redemptionsQuery.data?.items ?? [];
   const visibleCreditGrantCount = redemptionItems.filter((item) => item.reward_type === 'credit_grant').length;
   const visibleDiscountCount = redemptionItems.filter((item) => item.reward_type !== 'credit_grant').length;
@@ -623,33 +620,12 @@ export default function RedeemCodesPage() {
               </div>
             ) : null}
 
-            {form.reward_type !== 'credit_grant' ? (
-              <div className="grid gap-2">
-                <Label htmlFor="applicable_plan_id">Plan scope</Label>
-                <select
-                  id="applicable_plan_id"
-                  value={form.applicable_plan_id}
-                  onChange={(event) =>
-                    setForm((current) => ({ ...current, applicable_plan_id: event.target.value }))
-                  }
-                  className="flex h-10 rounded-md border border-slate-700 bg-slate-950 px-3 text-sm text-slate-100"
-                >
-                  <option value="">All paid plans</option>
-                  {planOptions.map((plan) => (
-                    <option key={plan.id} value={plan.id}>
-                      {plan.name}
-                    </option>
-                  ))}
-                </select>
+            <div className="grid gap-2">
+              <Label>Wallet delivery</Label>
+              <div className="flex h-10 items-center rounded-md border border-slate-800 bg-slate-950 px-3 text-sm text-slate-400">
+                Redeemable in signed-in user panel
               </div>
-            ) : (
-              <div className="grid gap-2">
-                <Label>Wallet delivery</Label>
-                <div className="flex h-10 items-center rounded-md border border-slate-800 bg-slate-950 px-3 text-sm text-slate-400">
-                  Redeemable in signed-in user panel
-                </div>
-              </div>
-            )}
+            </div>
 
             <div className="grid gap-2">
               <Label htmlFor="max_redemptions">Maximum redemptions</Label>

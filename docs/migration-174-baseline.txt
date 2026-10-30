@@ -1,0 +1,60 @@
+# Migration 174 — production baseline
+
+Captured read-only from `camxora_platform` on 2026-10-30 before any change.
+
+| Metric | Value |
+|---|---:|
+| Database size | 2,047 MB |
+| users | 237 |
+| credit_wallets | 237 |
+| credit_wallet_lots | 298 |
+| credit_transactions | 60,506 |
+| songs | 9,367 |
+| topup_purchases | 44 |
+| billing_payments | 25 |
+| licenses | 9 |
+| plans | 22 |
+| web_subscriptions | 31 |
+| plan_usage | 16 |
+| plan_offers | 0 |
+| user_period_quota_topups | 34 |
+| daily_quota_bank | **169,376** |
+| Wallet balance (units) | 510,252,492 |
+| Wallet balance (credits) | 51,025.25 |
+| Live lot units | 1,029,500,000 |
+| Live lot credits | 102,950.00 |
+
+## Drift
+
+Live lots claim **102,950 credits**; wallets hold **51,025.25**. Lots overstate the
+real balance by **2.0×**. This is the never-decremented-lot bug and the reason migration
+174 rebuilds every wallet from `credit_wallets.balance`.
+
+## Expected after migration
+
+| Metric | Expected |
+|---|---:|
+| users | 237 |
+| credit_wallets | 237 |
+| wallet balance (credits) | 51,025.25 − 692.00 (pich reset) + 49.00 (teangchun reset) = **50,382.25** |
+| live lot credits | 50,382.25 (must equal wallets) |
+| Pro users | 11 |
+| Free users | 226 |
+| plans / licenses / plan_usage / plan_offers / web_subscriptions | 0 rows |
+| billing_payments | 25 (unchanged) |
+
+## Snapshot
+
+DB is ~2 GB. Before applying:
+
+```bash
+sudo -u postgres pg_dump -Fc camxora_platform \
+  -f /opt/camxora/backups/camxora_platform_pre174_$(date +%Y%m%d_%H%M).dump
+```
+
+Verify on staging:
+
+```bash
+createdb camxora_staging
+pg_restore -d camxora_staging /opt/camxora/backups/<file>.dump
+```

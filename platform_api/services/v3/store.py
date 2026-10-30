@@ -435,7 +435,7 @@ class V3BillingStore:
         if user_id is None:
             rows = await self._pool.fetch(
                 """
-                SELECT id, user_id, remaining_units
+                SELECT id, user_id, remaining_units, tag, ref_id
                 FROM credit_wallet_lots
                 WHERE tag IN ('grant', 'daily_grant', 'pack', 'referral')
                   AND remaining_units > 0
@@ -446,7 +446,7 @@ class V3BillingStore:
         else:
             rows = await self._pool.fetch(
                 """
-                SELECT id, user_id, remaining_units
+                SELECT id, user_id, remaining_units, tag, ref_id
                 FROM credit_wallet_lots
                 WHERE user_id = $1
                   AND tag IN ('grant', 'daily_grant', 'pack', 'referral')

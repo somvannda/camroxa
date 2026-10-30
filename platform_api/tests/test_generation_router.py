@@ -538,7 +538,7 @@ class TestSubmitSuno:
         response = await client.post(
             "/api/v1/generation/suno",
             json={
-                "model": "V5",
+                "model": "V6",
                 "title": "Test Song",
                 "lyrics": "La la la",
                 "style": "pop",
@@ -573,7 +573,7 @@ class TestSubmitSuno:
         response = await client.post(
             "/api/v1/generation/suno",
             json={
-                "model": "V5_5",
+                "model": "V6_MINI",
                 "title": "Song",
                 "lyrics": "Lyrics",
                 "style": "pop",
@@ -586,7 +586,7 @@ class TestSubmitSuno:
         response = await client.post(
             "/api/v1/generation/suno",
             json={
-                "model": "V5",
+                "model": "V6",
                 "lyrics": "Some lyrics",
                 "style": "rock",
             },
@@ -600,7 +600,7 @@ class TestSubmitSuno:
         response = await client.post(
             "/api/v1/generation/suno",
             json={
-                "model": "V5",
+                "model": "V6",
                 "title": "Test Song",
                 "lyrics": "La la la",
                 "style": "pop",

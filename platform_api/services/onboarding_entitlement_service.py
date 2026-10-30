@@ -52,53 +52,18 @@ async def user_has_paid_for_onboarding(pool: Any, user_id: UUID) -> bool:
     if fulfilled is not None:
         return True
 
-    paid_license = await pool.fetchrow(
-        """
-        SELECT 1
-        FROM licenses l
-        JOIN plans p ON l.plan_id = p.id
-        WHERE l.user_id = $1
-          AND l.status = 'active'
-          AND (l.expires_at IS NULL OR l.expires_at > NOW())
-          AND LOWER(p.name) <> 'trial'
-          AND p.price_cents > 0
-        LIMIT 1
-        """,
-        user_id,
-    )
-    return paid_license is not None
+    from platform_api.services.tier_service import is_pro
+
+    return await is_pro(pool, user_id)
 
 
 async def get_onboarding_profile_target(pool: Any, user_id: UUID) -> int:
     """Profiles the user should finish before onboarding AI turns off.
 
-    Includes base plan allowance plus active and pending add-on slots so a paid
-    +2-channel purchase re-opens onboarding AI until those profiles exist.
+    Plans and add-ons are retired, so the target is the fixed base allowance.
     """
-    row = await pool.fetchrow(
-        """
-        SELECT
-            COALESCE(p.profile_allowance, 0)::int AS base_allowance,
-            COALESCE(l.profile_addon_slots, 0)::int AS addon_slots,
-            COALESCE(l.profile_addon_pending, 0)::int AS addon_pending
-        FROM licenses l
-        JOIN plans p ON p.id = l.plan_id
-        WHERE l.user_id = $1
-          AND l.status = 'active'
-          AND (l.expires_at IS NULL OR l.expires_at > NOW())
-        ORDER BY l.created_at DESC
-        LIMIT 1
-        """,
-        user_id,
-    )
-    if row is None:
-        return ONBOARDING_PROFILE_TARGET
-    target = (
-        int(row["base_allowance"] or 0)
-        + int(row["addon_slots"] or 0)
-        + int(row["addon_pending"] or 0)
-    )
-    return max(ONBOARDING_PROFILE_TARGET, target)
+    del pool, user_id
+    return ONBOARDING_PROFILE_TARGET
 
 
 async def user_in_onboarding(pool: Any, user_id: UUID) -> bool:

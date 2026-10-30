@@ -126,17 +126,9 @@ async def _refund_web_music_generation_on_failure(
 
     await _release_web_music_preview(pool, user_id=user_id, task_id=task_id)
 
-    pro = await pool.fetchrow(
-        """
-        SELECT 1
-        FROM licenses
-        WHERE user_id = $1
-          AND status = 'active'
-          AND (expires_at IS NULL OR expires_at > NOW())
-        LIMIT 1
-        """,
-        UUID(user_id),
-    )
+    from platform_api.services.tier_service import is_pro
+
+    pro = await is_pro(pool, UUID(user_id))
     if pro:
         return
 

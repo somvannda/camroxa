@@ -88,7 +88,7 @@ async def test_generate_rejects_blocklist_before_charging() -> None:
                 style="pop",
                 title="Night Song",
                 instrumental=False,
-                model="V5",
+                model="V6",
                 prompt="",
             )
     credit.consume_credits.assert_not_called()
@@ -104,6 +104,7 @@ async def test_generate_accepts_khmer_title_and_charges() -> None:
     )
     pool = AsyncMock()
     pool.fetchrow = AsyncMock(return_value=None)
+    pool.fetchval = AsyncMock(return_value=None)
     pool.execute = AsyncMock()
     service = WebMusicService(pool, generation, credit_service=credit)
     service._reserve_via_credits = AsyncMock(
@@ -131,7 +132,7 @@ async def test_generate_accepts_khmer_title_and_charges() -> None:
             style="Sad rock",
             title="ភ្លេងស្រណោះ",
             instrumental=False,
-            model="V5_5",
+            model="V6_MINI",
             prompt="",
         )
     service._reserve_via_credits.assert_awaited()

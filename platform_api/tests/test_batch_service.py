@@ -79,7 +79,7 @@ def profile_repo() -> AsyncMock:
 @pytest.fixture
 def ai_routing_service() -> AsyncMock:
     text_routing = SimpleNamespace(provider="deepseek", sub_model="chat")
-    music_routing = SimpleNamespace(provider="suno", sub_model="V5")
+    music_routing = SimpleNamespace(provider="suno", sub_model="V6")
     image_routing = SimpleNamespace(provider="fal", sub_model="flux")
 
     async def _resolve(operation: str) -> SimpleNamespace:
@@ -705,7 +705,7 @@ async def test_create_batch_includes_image_cost_when_auto_image_is_enabled(
             SimpleNamespace(provider="deepseek", sub_model="chat"),
             SimpleNamespace(provider="deepseek", sub_model="chat"),
             SimpleNamespace(provider="deepseek", sub_model="chat"),
-            SimpleNamespace(provider="suno", sub_model="V5"),
+            SimpleNamespace(provider="suno", sub_model="V6"),
             SimpleNamespace(provider="fal", sub_model="flux"),
         ]
     )
@@ -1972,7 +1972,7 @@ async def test_execute_batch_submits_suno_for_successful_drafts_when_enabled(
     ai_routing_service.resolve = AsyncMock(
         side_effect=lambda operation: SimpleNamespace(
             provider="suno" if operation == "music" else "deepseek",
-            sub_model="V5" if operation == "music" else "chat",
+            sub_model="V6" if operation == "music" else "chat",
         )
     )
     settings_service.get_merged_settings = AsyncMock(return_value={"sunoDefaultVersion": "v5"})
@@ -2006,13 +2006,13 @@ async def test_execute_batch_submits_suno_for_successful_drafts_when_enabled(
     assert len(music_calls) == 1
     deduct_args = music_calls[0].args
     assert deduct_args[3] == "suno"
-    assert music_calls[0].kwargs["sub_model"] == "V5"
+    assert music_calls[0].kwargs["sub_model"] == "V6"
     generation_service.submit_draft.assert_awaited_once()
     assert generation_service.submit_draft.await_args.kwargs.get("skip_pricing") is True
     generation_service.submit_suno.assert_awaited_once()
     assert generation_service.submit_suno.await_args.kwargs.get("skip_pricing") is True
     _, suno_request = generation_service.submit_suno.await_args.args[:2]
-    assert suno_request.model == "V5"
+    assert suno_request.model == "V6"
     assert suno_request.style == "Hidden EDM admin prompt"
     batch_repo.link_suno_task.assert_awaited_once_with(task_id, song_id, batch_id)
     batch_repo.update_suno_download_state.assert_awaited_once()

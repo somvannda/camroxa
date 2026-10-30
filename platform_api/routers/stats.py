@@ -241,71 +241,15 @@ async def get_dashboard_stats(ctx: AuthContext = Depends(get_current_user)) -> D
     videos_generated = studio_exports + manual_exports
     videos_uploaded = youtube_uploads
 
-    # --- License / quota (authoritative: usage_tracking) ---
-    from platform_api.dependencies import get_plan_repo, get_usage_tracking_repo
-    from platform_api.services.quota_display_service import get_monthly_quota_status
-
-    plan_repo = get_plan_repo()
-    usage_repo = get_usage_tracking_repo()
-    user_uuid = UUID(user_id)
-
-    songs_quota, songs_remaining = await get_monthly_quota_status(
-        user_id=user_uuid,
-        plan_repo=plan_repo,
-        usage_repo=usage_repo,
-        quota_field="songs",
-    )
-    images_quota, images_remaining = await get_monthly_quota_status(
-        user_id=user_uuid,
-        plan_repo=plan_repo,
-        usage_repo=usage_repo,
-        quota_field="images",
-    )
-    drafts_quota, drafts_remaining = await get_monthly_quota_status(
-        user_id=user_uuid,
-        plan_repo=plan_repo,
-        usage_repo=usage_repo,
-        quota_field="drafts",
-    )
-
-    if songs_quota is None:
-        license_row = await get_db_pool().fetchrow(
-            """SELECT l.id, p.monthly_song_limit AS monthly_song_quota
-               FROM licenses l
-               JOIN plans p ON l.plan_id = p.id
-               WHERE l.user_id = $1 AND l.status = 'active'
-               ORDER BY l.created_at DESC LIMIT 1""",
-            user_id,
-        )
-        if license_row and license_row["monthly_song_quota"]:
-            songs_quota = int(license_row["monthly_song_quota"])
-            songs_remaining = songs_quota
-
-    if images_quota is None:
-        license_row = await get_db_pool().fetchrow(
-            """SELECT l.id, p.monthly_image_limit AS monthly_image_quota
-               FROM licenses l
-               JOIN plans p ON l.plan_id = p.id
-               WHERE l.user_id = $1 AND l.status = 'active'
-               ORDER BY l.created_at DESC LIMIT 1""",
-            user_id,
-        )
-        if license_row and license_row["monthly_image_quota"] is not None:
-            images_quota = int(license_row["monthly_image_quota"])
-            images_remaining = images_quota
-
-    if drafts_quota is None:
-        license_row = await get_db_pool().fetchrow(
-            """SELECT l.id, p.monthly_draft_limit AS monthly_draft_quota
-               FROM licenses l
-               JOIN plans p ON l.plan_id = p.id
-               WHERE l.user_id = $1 AND l.status = 'active'
-               ORDER BY l.created_at DESC LIMIT 1""",
-            user_id,
-        )
-        if license_row and license_row["monthly_draft_quota"] is not None:
-            drafts_quota = int(license_row["monthly_draft_quota"])
-            drafts_remaining = drafts_quota
+    # --- Plans/quotas retired: credits-only tiers ---
+    # The dashboard no longer reports plan quota meters. Tier + wallet replace
+    # them; keeping the fields at None hides the meters in every client.
+    songs_quota = None
+    songs_remaining = None
+    images_quota = None
+    images_remaining = None
+    drafts_quota = None
+    drafts_remaining = None
 
     # --- Usage by day (last 7 days) ---
     song_rows = await get_db_pool().fetch(

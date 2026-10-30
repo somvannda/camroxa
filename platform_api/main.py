@@ -352,8 +352,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "Studio operation sweeper not started (non-fatal): %s", exc
             )
 
-        # --- Web music subscription period maintenance ---
+        # --- Web music subscription period maintenance (retired) ---
         try:
+            raise RuntimeError("web music subscriptions are retired")
             from platform_api.db.asyncpg_adapter import wrap_pool
             from platform_api.services.v2.subscription_service import SubscriptionService
 
@@ -383,8 +384,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Web music subscription maintenance not configured (non-fatal): %s", exc)
 
-        # --- Web music renewal reminder emails ---
+        # --- Web music renewal reminder emails (retired) ---
         try:
+            raise RuntimeError("plan renewals are retired")
             from platform_api.services.renewal_reminder_service import run_renewal_reminders
 
             async def _renewal_reminder_loop() -> None:
@@ -696,11 +698,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         image_jobs,
         image_sample_packs,
         key_pool,
-        licenses,
         media,
         music_downloads,
         music_history,
-        plans,
         progress,
         profiles,
         prompts,
@@ -735,7 +735,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         streaming_library,
     )
     from platform_api.routers import web_music, web_music_licenses
-    from platform_api.routers import v2_subscriptions, v2_credits, v2_topups, webhooks_cutluy
+    from platform_api.routers import v2_credits, v2_topups, webhooks_cutluy
     from platform_api.routers import v3_billing
     from platform_api.routers import invite_program
 
@@ -763,8 +763,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         auth.router,
         billing.router,
         users.router,
-        licenses.router,
-        plans.router,
         credits.router,
         profiles.router,
         profile_video_templates.router,
@@ -818,7 +816,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # On v3, mount these *before* the dual-mounted v1 credits router so
     # /credits/balance|history prefer the CutLuy ledger handlers.
     _cutluy_billing = (
-        v2_subscriptions.router,
         v2_credits.router,
         v2_topups.router,
     )

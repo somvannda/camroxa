@@ -53,7 +53,7 @@ async def test_paid_user_is_capped_at_20(mute_blocklist) -> None:
             style="pop",
             title="Hello Song",
             instrumental=False,
-            model="V5_5",
+            model="V6_MINI",
             prompt="",
         )
 
@@ -82,7 +82,7 @@ async def test_unsubscribed_user_is_capped_at_20(mute_blocklist) -> None:
             style="pop",
             title="Hello Song",
             instrumental=False,
-            model="V5_5",
+            model="V6_MINI",
             prompt="",
         )
 
@@ -109,7 +109,7 @@ async def test_generate_enqueues_instead_of_calling_suno(mute_blocklist) -> None
         style="pop",
         title="Hello Song",
         instrumental=False,
-        model="V5_5",
+        model="V6_MINI",
         prompt="",
     )
 
@@ -130,7 +130,7 @@ async def test_enqueue_paid_outranks_free(monkeypatch: pytest.MonkeyPatch) -> No
 
     kwargs = dict(
         reservation_id="res-1",
-        model="V5_5",
+        model="V6_MINI",
         title="Hello Song",
         lyrics="verse",
         style="pop",
@@ -163,7 +163,7 @@ async def test_fulfill_refunds_when_suno_rejects() -> None:
             "title": "Hello Song",
             "lyrics": "verse",
             "style": "pop",
-            "model": "V5_5",
+            "model": "V6_MINI",
             "instrumental": False,
             "external_task_id": None,
             "negative_tags": None,

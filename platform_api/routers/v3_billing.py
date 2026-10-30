@@ -85,58 +85,14 @@ async def v3_docs() -> HTMLResponse:
     return get_swagger_ui_html(openapi_url="/api/v3/openapi.json", title="Credits-only API v3")
 
 
-@router.get("/plans", summary="Admin list of the same plans v1 uses")
-async def list_plans(ctx: AdminDep, store: StoreDep) -> list[dict[str, Any]]:
-    return await store.list_plans()
 
 
-@router.get("/plans/public", summary="Active and public plans only")
-async def list_public_plans(store: StoreDep, billing: BillingDep) -> list[dict[str, Any]]:
-    op_credits = await billing.op_list_credits()
-    rate = await billing.music_credits_per_generate()
-    plans = await store.list_public_plans(credits_per_generate=rate)
-    return [billing.apply_list_prices(plan, op_credits, overlay_ops=True) for plan in plans]
 
 
-@router.get("/admin/plans", summary="List all plans including v3 grant / per-op fields")
-async def list_admin_plans(ctx: AdminDep, store: StoreDep) -> list[dict[str, Any]]:
-    return await store.list_plans()
 
 
-@router.get("/admin/plans/{plan_id}", summary="Get one plan including v3 grant fields")
-async def get_admin_plan(plan_id: UUID, ctx: AdminDep, store: StoreDep) -> dict[str, Any]:
-    plan = await store.get_plan(plan_id)
-    if plan is None:
-        raise NotFoundError("Plan not found.", details={"plan_id": str(plan_id)})
-    return plan
 
 
-@router.patch("/admin/plans/{plan_id}", summary="Set monthly credits / per-op / public on an existing plan")
-async def patch_admin_plan(
-    plan_id: UUID,
-    body: PlanPatchRequest,
-    ctx: AdminDep,
-    store: StoreDep,
-) -> dict[str, Any]:
-    fields = body.model_dump(exclude_unset=True)
-    unknown = set(fields) - PATCHABLE_PLAN_FIELDS
-    if unknown:
-        raise ValidationError("Unsupported plan fields.", details={"fields": sorted(unknown)})
-    current = await store.get_plan(plan_id)
-    if current is None:
-        raise NotFoundError("Plan not found.", details={"plan_id": str(plan_id)})
-    if "pricing_features" in fields:
-        fields["pricing_features"] = normalize_pricing_features(fields.get("pricing_features"))
-    if "pricing_credit_lines" in fields:
-        fields["pricing_credit_lines"] = normalize_pricing_features(fields.get("pricing_credit_lines"))
-    validate_credit_cadence(
-        monthly_credits=fields.get("monthly_credits", current.get("monthly_credits")),
-        daily_credits=fields.get("daily_credits", current.get("daily_credits")),
-    )
-    plan = await store.patch_plan(plan_id, fields)
-    if plan is None:
-        raise NotFoundError("Plan not found.", details={"plan_id": str(plan_id)})
-    return plan
 
 
 @router.get("/credits/pricing", summary="Read-through of Admin Credits page pricing")

@@ -7,11 +7,10 @@ from platform_api.http_paths import (
     canonical_api_path,
     strip_api_version_prefix,
 )
-from platform_api.routers import v2_credits, v2_subscriptions, v2_topups
+from platform_api.routers import v2_credits, v2_topups
 
 
 def test_v2_routers_use_resource_prefixes_not_nested_versions() -> None:
-    assert v2_subscriptions.router.prefix == "/subscriptions"
     assert v2_credits.router.prefix == "/credits"
     assert v2_topups.router.prefix == "/topups"
 
@@ -39,8 +38,6 @@ def test_create_app_dual_mounts_core_and_billing_under_v3() -> None:
         p.endswith("/auth/login") and p.startswith("/api/v1") for p in paths
     )
     assert any(p.startswith("/api/v3") and p.endswith("/auth/login") for p in paths)
-    assert any(p == "/api/v3/subscriptions/plans" or p.endswith("/subscriptions/plans") for p in paths)
-    assert any("/api/v2/subscriptions" in p or p.endswith("/subscriptions/plans") for p in paths)
     assert any(p.startswith("/api/v3") and "/webhooks/cutluy" in p for p in paths)
     assert any(p.startswith("/api/v1") and "/webhooks/cutluy" in p for p in paths)
     assert any(p.startswith("/api/v3") and p.endswith("/me/credits") for p in paths)

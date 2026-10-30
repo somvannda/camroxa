@@ -16,19 +16,18 @@ from platform_api.routers.web_music import WebMusicGenerateRequest
 from platform_api.services.pricing_keys import normalize_suno_pricing_sub_model
 
 V6_MODELS = ("V6", "V6_MINI", "V6_WILD")
-LEGACY_MODELS = ("V5", "V5_5")
 
 
 def test_default_model_is_v6() -> None:
     assert DEFAULT_SUNO_MUSIC_MODEL == "V6"
 
 
-@pytest.mark.parametrize("model", V6_MODELS + LEGACY_MODELS)
+@pytest.mark.parametrize("model", V6_MODELS)
 def test_model_pattern_accepts_supported_models(model: str) -> None:
     assert re.fullmatch(SUNO_MODEL_PATTERN, model)
 
 
-@pytest.mark.parametrize("model", ["V4", "V4_5", "v6", "V7", "", "V6MINI"])
+@pytest.mark.parametrize("model", ["V4", "V4_5", "v6", "V7", "", "V6MINI", "V5", "V5_5"])
 def test_model_pattern_rejects_unknown_models(model: str) -> None:
     assert re.fullmatch(SUNO_MODEL_PATTERN, model) is None
 
@@ -41,8 +40,8 @@ def test_model_pattern_rejects_unknown_models(model: str) -> None:
         ("v6 mini", "V6_MINI"),
         ("V6_MINI", "V6_MINI"),
         ("v6wild", "V6_WILD"),
-        ("v5", "V5"),
-        ("v5.5", "V5_5"),
+        ("v5", "V6"),
+        ("v5.5", "V6"),
         (None, "V6"),
         ("garbage", "V6"),
     ],
@@ -61,8 +60,6 @@ def test_resolve_suno_model_id(version: str | None, expected: str) -> None:
         ("v6 mini", "V6_MINI"),
         ("V6_WILD", "V6_WILD"),
         ("v6wild", "V6_WILD"),
-        ("V5_5", "V5_5"),
-        ("V5", "V5"),
     ],
 )
 def test_normalize_suno_pricing_sub_model_v6(raw: str, expected: str) -> None:

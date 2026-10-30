@@ -400,13 +400,12 @@ async def _set_session_for_user(
 
 
 async def _ensure_welcome_grant(user_id: str) -> None:
-    """Grant any due free-plan period/daily credits immediately."""
+    """Apply the monthly Free allowance (50 credits, reset)."""
     try:
-        from platform_api.dependencies import get_v3_grant_service
+        from platform_api.dependencies import get_db_pool
+        from platform_api.services.free_monthly_grant import ensure_free_monthly_grant
 
-        grants = get_v3_grant_service()
-        await grants.ensure_period_grant(user_id)
-        await grants.ensure_daily_grant(user_id)
+        await ensure_free_monthly_grant(get_db_pool(), user_id)
     except Exception:
         logging.getLogger("platform_api.routers.auth").warning(
             "Welcome credit grant failed for %s", user_id, exc_info=True

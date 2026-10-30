@@ -563,49 +563,16 @@ class WebMusicService:
         await self._release_preview(user_id, period_start, str(row["model"] or "").strip().upper())
 
     async def _has_pro(self, user_id: UUID) -> bool:
-        row = await self._pool.fetchrow(
-            """
-            SELECT 1
-            FROM licenses
-            WHERE user_id = $1
-              AND status = 'active'
-              AND (expires_at IS NULL OR expires_at > NOW())
-            LIMIT 1
-            """,
-            user_id,
-        )
-        return row is not None
+        from platform_api.services.tier_service import is_pro
+
+        return await is_pro(self._pool, user_id)
 
     async def _has_web_subscription(self, user_id: UUID) -> bool:
-        """Check if user has an active web music subscription."""
-        row = await self._pool.fetchrow(
-            """
-            SELECT 1
-            FROM web_subscriptions
-            WHERE user_id = $1
-              AND status = 'active'
-              AND (cancel_at_period_end = false OR current_period_end > NOW())
-            LIMIT 1
-            """,
-            user_id,
-        )
-        return row is not None
+        """Web subscriptions are retired; packs are the only entitlement."""
+        return False
 
     async def _has_paid_web_subscription(self, user_id: UUID) -> bool:
-        row = await self._pool.fetchrow(
-            """
-            SELECT 1
-            FROM web_subscriptions ws
-            INNER JOIN plans p ON p.id = ws.plan_id
-            WHERE ws.user_id = $1
-              AND ws.status = 'active'
-              AND ws.current_period_end > NOW()
-              AND COALESCE(p.price_cents, 0) > 0
-            LIMIT 1
-            """,
-            user_id,
-        )
-        return row is not None
+        return False
 
     @staticmethod
     def _legacy_pack_unlocked(balance: Any) -> bool:
@@ -1225,7 +1192,7 @@ class WebMusicService:
         normalized_model = str(model or DEFAULT_SUNO_MUSIC_MODEL).strip().upper()
         if normalized_model not in _VALID_MODELS:
             raise ValidationError(
-                "model must be one of V6, V6_MINI, V6_WILD, V5_5, V5.",
+                "model must be one of V6, V6_MINI, V6_WILD.",
                 details={"field": "model"},
             )
         mode_key = str(mode or "advanced").strip().lower()

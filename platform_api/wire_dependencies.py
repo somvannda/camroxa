@@ -447,49 +447,6 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[gen_get_prompt_svc] = real_gen_prompt_service
     app.dependency_overrides[gen_get_profile_svc] = real_gen_profile_service
 
-    # --- licenses.py ---
-    from platform_api.routers.licenses import (
-        _get_license_repo as lic_get_repo,
-        _get_plan_repo as lic_get_plan,
-        _get_credit_repo as lic_get_credit,
-    )
-
-    async def real_license_repo():
-        return get_license_repo()
-
-    async def real_lic_plan_repo():
-        return get_plan_repo()
-
-    app.dependency_overrides[lic_get_repo] = real_license_repo
-    app.dependency_overrides[lic_get_plan] = real_lic_plan_repo
-
-    async def real_lic_credit_repo():
-        return get_credit_repo()
-
-    app.dependency_overrides[lic_get_credit] = real_lic_credit_repo
-
-    # --- plans.py ---
-    from platform_api.routers.plans import _get_plan_repo as plans_get_repo
-
-    async def real_plans_repo():
-        return get_plan_repo()
-
-    app.dependency_overrides[plans_get_repo] = real_plans_repo
-
-    from platform_api.routers.web_music_plans_admin import (
-        _get_credit_repo as wm_plans_get_credit_repo,
-        _get_plan_repo as wm_plans_get_plan_repo,
-    )
-
-    async def real_wm_plans_repo():
-        return get_plan_repo()
-
-    async def real_wm_credit_repo():
-        return get_credit_repo()
-
-    app.dependency_overrides[wm_plans_get_plan_repo] = real_wm_plans_repo
-    app.dependency_overrides[wm_plans_get_credit_repo] = real_wm_credit_repo
-
     # --- profiles.py ---
     from platform_api.routers.profiles import (
         _get_profile_service as prof_get_svc,
@@ -642,15 +599,6 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[lic_svc] = real_content_license_service
 
-    # --- v2_subscriptions.py ---
-    from platform_api.routers.v2_subscriptions import _get_subscription_service as v2_sub_get_svc
-    from platform_api.dependencies import get_v2_subscription_service
-
-    async def real_v2_subscription_service():
-        return get_v2_subscription_service()
-
-    app.dependency_overrides[v2_sub_get_svc] = real_v2_subscription_service
-
     # --- v2_credits.py ---
     from platform_api.routers.v2_credits import _get_credit_service as v2_credit_get_svc
     from platform_api.dependencies import get_v2_credit_service
@@ -671,9 +619,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     # --- webhooks_cutluy.py ---
     from platform_api.routers.webhooks_cutluy import (
-        _get_subscription_service as webhook_sub_get_svc,
         _get_topup_service as webhook_topup_get_svc
     )
 
-    app.dependency_overrides[webhook_sub_get_svc] = real_v2_subscription_service
     app.dependency_overrides[webhook_topup_get_svc] = real_v2_topup_service

@@ -263,31 +263,22 @@ class TestGetPrice:
         repo.seed("openai", "title", cr(3), sub_model="")
         assert await service.get_price("openai", "title", "gpt-4o-mini") == cr(3)
 
-    @pytest.mark.asyncio
-    async def test_suno_v5_and_v5_5_use_separate_pricing_rows(
-        self, service: CreditPricingService, repo: FakeCreditPricingRepo
-    ) -> None:
-        repo.seed("suno", "music_generation", cr(14), cr(8), sub_model="V5")
-        repo.seed("suno", "music_generation", cr(16), cr(9), sub_model="V5_5")
-        assert await service.get_price("suno", "music_generation", "V5") == cr(14)
-        assert await service.get_price("suno", "music_generation", "V5_5") == cr(16)
-        assert await service.get_price("suno", "music_generation", "v5.5") == cr(16)
 
     @pytest.mark.asyncio
     async def test_suno_music_operation_aliases_music_generation_row(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("suno", "music_generation", cr(14), cr(8), sub_model="V5")
-        assert await service.get_price("suno", "music", "V5") == cr(14)
+        repo.seed("suno", "music_generation", cr(14), cr(8), sub_model="V6")
+        assert await service.get_price("suno", "music", "V6") == cr(14)
 
     @pytest.mark.asyncio
     async def test_suno_prefers_music_row_over_music_generation_alias(
         self, service: CreditPricingService, repo: FakeCreditPricingRepo
     ) -> None:
-        repo.seed("suno", "music_generation", cr(14), cr(8), sub_model="V5")
-        repo.seed("suno", "music", cr(20), cr(10), sub_model="V5")
-        assert await service.get_price("suno", "music", "V5") == cr(20)
-        assert await service.get_price("suno", "music_generation", "V5") == cr(20)
+        repo.seed("suno", "music_generation", cr(14), cr(8), sub_model="V6")
+        repo.seed("suno", "music", cr(20), cr(10), sub_model="V6")
+        assert await service.get_price("suno", "music", "V6") == cr(20)
+        assert await service.get_price("suno", "music_generation", "V6") == cr(20)
 
 
 # ---------------------------------------------------------------------------

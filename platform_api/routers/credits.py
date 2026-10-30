@@ -568,6 +568,28 @@ async def get_quota_status(
 
     user_id = UUID(ctx.user_id)
     balance = await credit_service.get_balance(ctx.user_id)
+
+    # Plans and quotas are retired: report credits only.
+    return QuotaStatusResponse(
+        songs_remaining=None,
+        songs_quota=None,
+        images_remaining=None,
+        images_quota=None,
+        drafts_remaining=None,
+        drafts_quota=None,
+        videos_remaining=None,
+        videos_quota=None,
+        merges_remaining=None,
+        merges_quota=None,
+        daily_videos_remaining=None,
+        daily_videos_limit=None,
+        daily_merges_remaining=None,
+        daily_merges_limit=None,
+        wallet_balance=units_to_credits(balance),
+        renewal_alert=None,
+        channels=[],
+    )
+
     plan_repo = get_plan_repo()
     usage_repo = get_usage_tracking_repo()
     profile_repo = get_profile_repo()
@@ -788,32 +810,6 @@ async def list_packs(
     return [_pack_to_response(row) for row in rows]
 
 
-@router.post(
-    "/purchase",
-    response_model=PurchaseResponse,
-    status_code=201,
-    responses={
-        401: {"description": "Unauthorized — invalid or missing token"},
-        404: {"description": "Credit pack not found"},
-        422: {"description": "Validation error"},
-    },
-    summary="Purchase a credit pack (User)",
-)
-async def purchase_pack(
-    request: PurchaseRequest,
-    ctx: UserDep,
-    credit_service: CreditServiceDep,
-    pack_repo: PackRepoDep,
-) -> PurchaseResponse:
-    """Disabled until CutLuy (or equivalent) verifies payment before minting credits."""
-    del request, ctx, credit_service, pack_repo
-    from platform_api.exceptions import ForbiddenError
-
-    raise ForbiddenError(
-        "Direct credit pack purchase is disabled. Start checkout at "
-        "POST /billing/credit-pack/payments and complete payment via CutLuy.",
-        details={"error_code": "CREDIT_PURCHASE_USE_BILLING_CHECKOUT"},
-    )
 
 
 # ---------------------------------------------------------------------------

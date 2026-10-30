@@ -85,9 +85,9 @@ class CreditsOnlyBillingService:
         balance_units = int(await self._credit_repo.get_balance(user_id))
         grant_units = await self._store.grant_remaining_units(user_id)
         lots = await self._store.list_lots(user_id)
-        plan = await self._store.resolve_charge_plan(user_id)
-        daily = int((plan or {}).get("daily_credits") or 0)
-        monthly = int((plan or {}).get("monthly_credits") or 0)
+        plan = None
+        daily = 0
+        monthly = 0
         return {
             "user_id": str(user_id),
             "balance_credits": units_to_credits(balance_units),
@@ -129,13 +129,8 @@ class CreditsOnlyBillingService:
                 included=True,
             )
 
+        # Plans are retired: pricing comes only from the pricing table.
         plan = None
-        if plan_id is not None:
-            plan = await self._store.get_plan(plan_id)
-            if plan is None:
-                raise NotFoundError("Plan not found.", details={"plan_id": str(plan_id)})
-        elif user_id is not None:
-            plan = await self._store.get_plan_for_user(user_id)
 
         music_provider = (
             await self._music_pricing_provider() if operation == "music" else None

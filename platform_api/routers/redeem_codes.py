@@ -247,29 +247,9 @@ async def preview_code(
     client_ip = request.client.host if request.client else "anonymous"
     await get_rate_limiter().check_for_endpoint(f"ip:{client_ip}", "redeem_preview")
 
+    # Plans are retired; plan-specific codes no longer resolve a plan.
+    plan_id = None
     plan_row = None
-    plan_id = body.plan_id
-    if plan_id is not None:
-        plan_row = await pool.fetchrow(
-            """
-            SELECT p.id,
-                   p.price_cents,
-                   (
-                       SELECT po.promo_price_cents
-                       FROM plan_offers po
-                       WHERE po.plan_id = p.id
-                         AND po.is_active = true
-                         AND po.current_redemptions < po.max_redemptions
-                       ORDER BY po.promo_price_cents ASC, po.created_at DESC
-                       LIMIT 1
-                   ) AS offer_price_cents
-            FROM plans p
-            WHERE p.id = $1
-            """,
-            plan_id,
-        )
-        if plan_row is None:
-            raise NotFoundError("Plan not found.", details={"plan_id": str(plan_id)})
     preview = await preview_redeem_code(
         pool,
         code=body.code,

@@ -56,21 +56,8 @@ export async function fetchCreditPacks(): Promise<CreditPack[]> {
 }
 
 export async function fetchFreePlan(): Promise<FreePlan | null> {
-  const response = await musicAuthFetch("/api/v3/plans/public", { method: "GET" });
-  if (!response.ok) return null;
-  const data = (await response.json()) as Array<{
-    name?: string;
-    price_cents?: number;
-    monthly_credits?: number;
-    credits_per_generate?: number;
-  }>;
-  const free = Array.isArray(data) ? data.find((plan) => Number(plan.price_cents ?? 0) <= 0) : null;
-  if (!free) return null;
-  return {
-    name: free.name || "Free",
-    monthly_credits: Number(free.monthly_credits ?? 0),
-    credits_per_generate: Number(free.credits_per_generate ?? 10),
-  };
+  // Plans are retired. Every account gets a one-time 50-credit signup grant.
+  return { name: "Free", monthly_credits: 50, credits_per_generate: 10 };
 }
 
 export function isAllowedCheckoutUrl(url: string | null | undefined): boolean {

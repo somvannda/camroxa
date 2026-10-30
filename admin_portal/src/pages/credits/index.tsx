@@ -140,8 +140,6 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
     { value: 'V6', label: 'V6' },
     { value: 'V6_MINI', label: 'V6 Mini' },
     { value: 'V6_WILD', label: 'V6 Wild' },
-    { value: 'V5', label: 'V5 (deprecated)' },
-    { value: 'V5_5', label: 'V5.5 (deprecated)' },
     { value: 'lyrics', label: 'lyrics (Suno lyric API)' },
   ],
   camxora_music_api: [

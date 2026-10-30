@@ -108,14 +108,10 @@ SUNO_TEXT_MODELS: dict[str, ModelSpec] = {
 }
 
 # Suno V6 series is current (V6 default, V6_MINI fast, V6_WILD experimental).
-# V5 / V5_5 are discontinued by the provider but stay registered so existing
-# tasks and pricing rows keep resolving.
 SUNO_MUSIC_MODELS: dict[str, ModelSpec] = {
     "V6": ModelSpec(api_id="V6", cost_tier="~12 Suno credits (~$0.06)"),
     "V6_MINI": ModelSpec(api_id="V6_MINI", cost_tier="~12 Suno credits (~$0.06)"),
     "V6_WILD": ModelSpec(api_id="V6_WILD", cost_tier="~12 Suno credits (~$0.06)"),
-    "V5": ModelSpec(api_id="V5", cost_tier="~12 Suno credits (~$0.06)"),
-    "V5_5": ModelSpec(api_id="V5_5", cost_tier="~12 Suno credits (~$0.06)"),
 }
 
 DEFAULT_SUNO_MUSIC_MODEL = "V6"
@@ -266,8 +262,6 @@ def resolve_suno_model_id(version: str | None) -> str:
         "v6": "V6",
         "v6mini": "V6_MINI",
         "v6wild": "V6_WILD",
-        "v5": "V5",
-        "v55": "V5_5",
     }.get(key, DEFAULT_SUNO_MUSIC_MODEL)
 
 

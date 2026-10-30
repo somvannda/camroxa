@@ -474,16 +474,7 @@ async def require_generation_access(
     # Steps 1-2: Token + suspension (via get_current_user)
     context = await get_current_user(authorization=authorization, request=request)
 
-    # Step 3: License check
-    if _license_repo is None:
-        raise RuntimeError(
-            "License repository not configured. Call configure_auth_dependencies() with license_repo."
-        )
-    has_license = await _license_repo.has_active_license(context.user_id)
-    if not has_license:
-        raise LicenseExpiredError()
-
-    # Step 4: Credit balance or subscription quota
+    # Plans and licenses are retired: credits are the only gate.
     if _credit_repo is None:
         raise RuntimeError(
             "Credit repository not configured. Call configure_auth_dependencies() with credit_repo."
@@ -491,19 +482,6 @@ async def require_generation_access(
     balance = await _credit_repo.get_balance(context.user_id)
     if balance >= 1:
         return context
-
-    if _plan_repo is not None and _usage_repo is not None:
-        from platform_api.services.quota_display_service import user_has_generation_capacity
-
-        has_capacity = await user_has_generation_capacity(
-            user_id=UUID(context.user_id),
-            credit_repo=_credit_repo,
-            plan_repo=_plan_repo,
-            usage_repo=_usage_repo,
-            min_credits=1,
-        )
-        if has_capacity:
-            return context
 
     raise InsufficientCreditsError(
         details={"balance": balance, "required": 1},

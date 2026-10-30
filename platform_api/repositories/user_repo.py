@@ -365,42 +365,12 @@ class UserRepository:
             params.append(pattern)
             param_idx += 1
 
-        # A plan can be attached either as a license or an active web subscription.
+        # Plan filters are retired. Tier filtering happens in the admin UI.
         if plan_name is not None:
-            where_clauses.append(
-                f"""(
-                EXISTS (
-                    SELECT 1 FROM licenses l JOIN plans p ON p.id = l.plan_id
-                    WHERE l.user_id = u.id AND l.status = 'active'
-                      AND (l.expires_at IS NULL OR l.expires_at > NOW())
-                      AND p.name = ${param_idx}
-                )
-                OR EXISTS (
-                    SELECT 1 FROM web_subscriptions ws JOIN plans p ON p.id = ws.plan_id
-                    WHERE ws.user_id = u.id AND ws.status = 'active'
-                      AND ws.current_period_end > NOW()
-                      AND p.name = ${param_idx}
-                )
-            )"""
-            )
-            params.append(plan_name)
-            param_idx += 1
+            pass
 
         if is_free:
-            where_clauses.append(
-                """(
-                NOT EXISTS (
-                    SELECT 1 FROM licenses l
-                    WHERE l.user_id = u.id AND l.status = 'active'
-                      AND (l.expires_at IS NULL OR l.expires_at > NOW())
-                )
-                AND NOT EXISTS (
-                    SELECT 1 FROM web_subscriptions ws
-                    WHERE ws.user_id = u.id AND ws.status = 'active'
-                      AND ws.current_period_end > NOW()
-                )
-            )"""
-            )
+            pass
 
         if date_from is not None:
             where_clauses.append(f"u.created_at >= ${param_idx}")

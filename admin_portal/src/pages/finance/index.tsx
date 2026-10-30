@@ -370,7 +370,7 @@ export default function FinancePage() {
             label="Billable events"
             value={summary?.billable_events ?? '—'}
             icon={Coins}
-            hint={`${summary?.refund_events ?? 0} refunds in range · see licenses for active subs`}
+            hint={`${summary?.refund_events ?? 0} refunds in range · see Pro users for active packs`}
           />
         </div>
 

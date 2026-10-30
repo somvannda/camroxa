@@ -81,6 +81,28 @@ ORDER BY day DESC
 LIMIT 3
 """
 
+_WALLET_LOT_MISMATCH_SQL = """
+SELECT u.email,
+       w.balance / 10000.0 AS wallet_credits,
+       COALESCE(SUM(l.remaining_units) FILTER (
+           WHERE l.remaining_units > 0
+             AND (l.expires_at IS NULL OR l.expires_at > NOW())
+       ), 0) / 10000.0 AS lot_credits
+FROM credit_wallets w
+JOIN users u ON u.id = w.user_id
+LEFT JOIN credit_wallet_lots l ON l.user_id = w.user_id
+GROUP BY u.id, u.email, w.balance
+HAVING w.balance <> COALESCE(SUM(l.remaining_units) FILTER (
+    WHERE l.remaining_units > 0
+      AND (l.expires_at IS NULL OR l.expires_at > NOW())
+), 0)
+ORDER BY ABS(w.balance - COALESCE(SUM(l.remaining_units) FILTER (
+    WHERE l.remaining_units > 0
+      AND (l.expires_at IS NULL OR l.expires_at > NOW())
+), 0)) DESC
+LIMIT $1
+"""
+
 
 def _esc(value: Any) -> str:
     return html.escape(str(value if value is not None else ""), quote=False)
@@ -94,10 +116,14 @@ async def collect_credit_invariants(pool: Any) -> dict[str, Any]:
             dict(r) for r in await conn.fetch(_MULTI_GRANT_DAY_SQL, _MAX_SAMPLES, _WINDOW_HOURS)
         ]
         daily_volume = [dict(r) for r in await conn.fetch(_DAILY_VOLUME_SQL, _WINDOW_HOURS)]
+        wallet_lot_mismatches = [
+            dict(r) for r in await conn.fetch(_WALLET_LOT_MISMATCH_SQL, _MAX_SAMPLES)
+        ]
     return {
         "multi_lot_users": multi_lot_users,
         "multi_grant_user_days": multi_grant_user_days,
         "daily_volume": daily_volume,
+        "wallet_lot_mismatches": wallet_lot_mismatches,
         "window_hours": _WINDOW_HOURS,
         "volume_threshold": _DAILY_VOLUME_ALERT_CREDITS,
     }
@@ -106,6 +132,8 @@ async def collect_credit_invariants(pool: Any) -> dict[str, Any]:
 def has_credit_violations(invariants: dict[str, Any]) -> bool:
     """True when a user has stacked lots / multiple grants, or volume spikes."""
     if invariants.get("multi_lot_users") or invariants.get("multi_grant_user_days"):
+        return True
+    if invariants.get("wallet_lot_mismatches"):
         return True
     threshold = float(invariants.get("volume_threshold") or 0)
     for row in invariants.get("daily_volume") or []:
@@ -139,6 +167,16 @@ def format_credit_invariants_message(invariants: dict[str, Any], env_label: str)
             )
         lines.append("")
     threshold = float(invariants.get("volume_threshold") or 0)
+    mismatches = invariants.get("wallet_lot_mismatches") or []
+    if mismatches:
+        lines.append(f"<b>wallet ≠ live lots</b> ({len(mismatches)})")
+        for row in mismatches:
+            lines.append(
+                f"• {_esc(row.get('email'))}: wallet "
+                f"{float(row.get('wallet_credits') or 0):,.2f} vs lots "
+                f"{float(row.get('lot_credits') or 0):,.2f} cr"
+            )
+        lines.append("")
     volume = [
         row
         for row in (invariants.get("daily_volume") or [])

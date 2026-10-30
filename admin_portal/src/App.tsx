@@ -48,8 +48,6 @@ const LoginPage = React.lazy(() => import('@/pages/login'));
 const DashboardPage = React.lazy(() => import('@/pages/dashboard'));
 const UsersPage = React.lazy(() => import('@/pages/users/index'));
 const UserDetailPage = React.lazy(() => import('@/pages/users/user-detail'));
-const LicensesPage = React.lazy(() => import('@/pages/licenses/index'));
-const PlansPage = React.lazy(() => import('@/pages/plans/index'));
 const RedeemCodesPage = React.lazy(() => import('@/pages/redeem-codes/index'));
 const MailPage = React.lazy(() => import('@/pages/mail/index'));
 const InvitationsPage = React.lazy(() => import('@/pages/invitations/index'));
@@ -112,9 +110,7 @@ function App() {
                     <Route path="/dashboard" element={<DashboardPage />} />
                     <Route path="/users" element={<UsersPage />} />
                     <Route path="/users/:id" element={<UserDetailPage />} />
-                    <Route path="/licenses" element={<LicensesPage />} />
                 <Route path="/mail" element={<MailPage />} />
-                    <Route path="/plans" element={<PlansPage />} />
                     <Route path="/redeem-codes" element={<RedeemCodesPage />} />
                     <Route path="/invitations" element={<InvitationsPage />} />
               <Route path="/invite-program" element={<InviteProgramPage />} />

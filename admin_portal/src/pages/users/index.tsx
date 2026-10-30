@@ -35,7 +35,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { usePlans } from '@/hooks/use-plans';
 import { useSetUserPassword, useUsers } from '@/hooks/use-users';
 import { toast } from '@/hooks/use-toast';
 import { formatVerificationDurationShort } from '@/lib/format-datetime';
@@ -125,7 +124,6 @@ export default function UsersPage() {
   const [draftFilters, setDraftFilters] = useState<FiltersState>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<FiltersState>(EMPTY_FILTERS);
   const setUserPassword = useSetUserPassword();
-  const plansQuery = usePlans();
 
   const params = useMemo(
     () => filtersToParams(appliedFilters, page),
@@ -520,27 +518,6 @@ export default function UsersPage() {
                   <SelectItem value="all">All</SelectItem>
                   <SelectItem value="verified">Verified</SelectItem>
                   <SelectItem value="pending">Pending</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-1">
-              <label className="text-xs text-slate-500">Plan</label>
-              <Select
-                value={draftFilters.plan}
-                onValueChange={(plan) => setDraftFilters((f) => ({ ...f, plan }))}
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="All plans" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All plans</SelectItem>
-                  <SelectItem value="free">Free (no plan)</SelectItem>
-                  {(plansQuery.data ?? []).map((plan) => (
-                    <SelectItem key={plan.id} value={plan.name}>
-                      {plan.name}
-                    </SelectItem>
-                  ))}
                 </SelectContent>
               </Select>
             </div>

@@ -10,7 +10,7 @@ Requirements: 6.1, 6.2, 6.3, 6.6, 6.7, 6.10, 6.11, 6.12, 6.13
 from __future__ import annotations
 
 import logging
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Awaitable, Callable, Protocol, TypeVar
 from uuid import UUID
 
@@ -426,95 +426,6 @@ class CreditService:
         except Exception as refund_exc:
             logger.error("Failed to refund %d credits to user %s: %s", amount, user_id, refund_exc)
 
-    async def purchase_pack(
-        self, user_id: str, pack_id: str, payment_ref: str
-    ) -> int:
-        """Purchase a credit pack and add credits to the user's wallet.
-
-        Validates that the pack exists and is active, then adds the pack's
-        song credits to the wallet. Records the transaction with payment ref.
-
-        Args:
-            user_id: The string UUID of the user.
-            pack_id: The string UUID of the credit pack to purchase.
-            payment_ref: Payment reference from payment processor.
-
-        Returns:
-            The new wallet balance after the purchase.
-
-        Raises:
-            NotFoundError: If the pack does not exist or is inactive.
-            InsufficientCreditsError: If the purchase would exceed the
-                maximum wallet balance (10,000,000 credits).
-            ValidationError: If pack_repo is not configured.
-        """
-        if self._pack_repo is None:
-            raise ValidationError(
-                "Credit pack repository is not configured.",
-                details={"pack_id": pack_id},
-            )
-
-        pack_uuid = UUID(pack_id)
-        user_uuid = UUID(user_id)
-
-        # Validate pack exists and is active
-        pack = await self._pack_repo.get_by_id(pack_uuid)
-        if pack is None:
-            raise NotFoundError(
-                f"Credit pack '{pack_id}' not found.",
-                details={"pack_id": pack_id},
-            )
-        if not pack.get("is_active", False):
-            raise NotFoundError(
-                f"Credit pack '{pack_id}' is no longer available.",
-                details={"pack_id": pack_id},
-            )
-
-        credits_to_add = pack["song_credits"]
-
-        # Check overflow before adding
-        current_balance = await self._credit_repo.get_balance(user_uuid)
-        if current_balance + credits_to_add > MAX_WALLET_BALANCE:
-            raise InsufficientCreditsError(
-                f"Purchasing this pack would exceed the maximum wallet balance "
-                f"of {MAX_WALLET_BALANCE:,}. Current balance: {current_balance:,}, "
-                f"pack credits: {credits_to_add:,}.",
-                details={
-                    "current_balance": current_balance,
-                    "pack_credits": credits_to_add,
-                    "max_balance": MAX_WALLET_BALANCE,
-                },
-            )
-
-        # Add credits to wallet and record transaction
-        new_balance = await self._credit_repo.add_credits(
-            user_id=user_uuid,
-            amount=credits_to_add,
-            reason="credit_pack_purchase",
-            ref_id=pack_id,
-            pack_id=pack_uuid,
-            payment_ref=payment_ref,
-        )
-
-        logger.info(
-            "User %s purchased pack %s (%d credits). New balance: %d",
-            user_id,
-            pack_id,
-            credits_to_add,
-            new_balance,
-        )
-        from platform_api.services.credit_audit_service import log_wallet_credit_event
-
-        await log_wallet_credit_event(
-            actor_id=user_id,
-            user_id=user_id,
-            action_type="credit.pack.purchase",
-            amount_units=credits_to_add,
-            reason="credit_pack_purchase",
-            payment_ref=payment_ref,
-            metadata={"pack_id": pack_id, "new_balance_units": new_balance},
-        )
-        return new_balance
 
     # ------------------------------------------------------------------
     # Quota Consumption Order (Requirement 6.12, 6.13)
@@ -697,6 +608,8 @@ class CreditService:
                 user_id=user_uuid,
                 amount=amount,
                 reason=f"admin_adjustment: {reason}",
+                create_lot=True,
+                lot_tag="admin",
             )
         else:
             # Negative adjustment — use atomic_deduct with the absolute value

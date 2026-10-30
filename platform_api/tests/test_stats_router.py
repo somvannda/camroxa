@@ -49,55 +49,6 @@ class FakeStatsPool:
         return []
 
 
-@pytest.mark.asyncio
-async def test_dashboard_stats_uses_monthly_song_limit_alias(monkeypatch: pytest.MonkeyPatch) -> None:
-    async def _quota_status(**kwargs):
-        if kwargs.get("quota_field") == "songs":
-            return 40, 31
-        if kwargs.get("quota_field") == "images":
-            return 60, 55
-        return None, None
-
-    monkeypatch.setattr(stats, "get_db_pool", lambda: FakeStatsPool())
-    monkeypatch.setattr(
-        "platform_api.dependencies.get_plan_repo",
-        lambda: object(),
-    )
-    monkeypatch.setattr(
-        "platform_api.dependencies.get_usage_tracking_repo",
-        lambda: object(),
-    )
-    monkeypatch.setattr(
-        "platform_api.services.quota_display_service.get_monthly_quota_status",
-        _quota_status,
-    )
-
-    result = await stats.get_dashboard_stats(
-        AuthContext(
-            user_id="00000000-0000-0000-0000-000000000001",
-            email="boss@example.com",
-            role="user",
-        )
-    )
-
-    assert result.credits_remaining == 1.0
-    assert result.credits_spent == 0.5
-    assert result.credits_total == 1.5
-    assert result.songs_generated == 8
-    assert result.images_generated == 3
-    assert result.studio_exports == 5
-    assert result.manual_exports == 3
-    assert result.youtube_uploads == 2
-    assert result.videos_generated == 8
-    assert result.videos_uploaded == 2
-    assert result.songs_quota == 40
-    assert result.songs_remaining == 31
-    assert result.images_quota == 60
-    assert result.images_remaining == 55
-    assert isinstance(result.usage_by_day, list)
-    assert len(result.usage_by_day) == 7
-    today = datetime.now(timezone.utc).date().isoformat()
-    assert result.usage_by_day[-1].date == today
 
 
 class FakePublicStatsPool:

@@ -20,10 +20,6 @@ def normalize_suno_pricing_sub_model(sub_model: str | None) -> str:
         return "V6_MINI"
     if key in {"V6_WILD", "V6WILD"}:
         return "V6_WILD"
-    if key in {"V5_5", "V55"}:
-        return "V5_5"
-    if key == "V5":
-        return "V5"
     return normalized
 
 

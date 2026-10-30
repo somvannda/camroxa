@@ -7,11 +7,10 @@ from platform_api.http_paths import (
     rewrite_legacy_nested_v2_path,
     strip_api_version_prefix,
 )
-from platform_api.routers import v2_credits, v2_subscriptions, v2_topups
+from platform_api.routers import v2_credits, v2_topups
 
 
 def test_v2_routers_use_resource_prefixes_not_nested_versions() -> None:
-    assert v2_subscriptions.router.prefix == "/subscriptions"
     assert v2_credits.router.prefix == "/credits"
     assert v2_topups.router.prefix == "/topups"
 

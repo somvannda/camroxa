@@ -1144,7 +1144,6 @@ async def get_user_spend(
     from_date: datetime | None = Query(default=None, description="Filter from date (ISO 8601)"),
     to_date: datetime | None = Query(default=None, description="Filter to date (ISO 8601)"),
     q: str | None = Query(default=None, description="Search email or user UUID"),
-    plan_id: str | None = Query(default=None, description="Filter by active plan UUID"),
     provider: str | None = Query(default=None, description="Filter by provider"),
     operation: str | None = Query(default=None, description="Filter by operation type"),
     alert: str = Query(
@@ -1160,14 +1159,12 @@ async def get_user_spend(
 ) -> UserSpendListResponse:
     """Roster of users with est. USD COGS, wallet spend, meters, and alerts."""
     del ctx
-    parsed_plan_id = UUID(plan_id) if plan_id else None
     result = await user_spend_service.list_user_spend(
         page=page,
         page_size=page_size,
         from_date=from_date,
         to_date=to_date,
         q=q,
-        plan_id=parsed_plan_id,
         provider=provider,
         operation=operation,
         alert=alert,
@@ -2105,14 +2102,18 @@ async def get_admin_overview(ctx: AdminDep) -> AdminOverviewResponse:
     ) or 0
     users_with_active_license = await pool.fetchval(
         """
-        SELECT COUNT(DISTINCT user_id)
-        FROM licenses
-        WHERE status = 'active' AND user_id IS NOT NULL
+        SELECT COUNT(DISTINCT w.user_id)
+        FROM credit_wallets w
+        WHERE EXISTS (
+            SELECT 1 FROM credit_wallet_lots l
+            WHERE l.user_id = w.user_id
+              AND l.tag = 'pack'
+              AND l.remaining_units > 0
+              AND (l.expires_at IS NULL OR l.expires_at > NOW())
+        )
         """
     ) or 0
-    active_licenses = await pool.fetchval(
-        "SELECT COUNT(*) FROM licenses WHERE status = 'active'"
-    ) or 0
+    active_licenses = users_with_active_license
     total_songs = await pool.fetchval("SELECT COUNT(*) FROM songs") or 0
     total_images = await pool.fetchval("SELECT COUNT(*) FROM image_jobs") or 0
 

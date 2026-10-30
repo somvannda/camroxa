@@ -126,6 +126,89 @@ class CreditRepository:
         async with acquire() as conn:
             yield conn
 
+    async def _consume_lots(self, conn: Any, user_id: UUID, amount: int) -> None:
+        """Decrement live lots FIFO (earliest expiry first).
+
+        The wallet is the authoritative balance; lots are the audit/expiry
+        ledger. If legacy drift means the lots cannot cover the debit, log and
+        continue rather than failing a charge the wallet already accepted.
+        """
+        remaining = int(amount)
+        rows = await conn.fetch(
+            """
+            SELECT id, remaining_units
+            FROM credit_wallet_lots
+            WHERE user_id = $1
+              AND remaining_units > 0
+              AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY expires_at ASC NULLS LAST, created_at ASC
+            FOR UPDATE
+            """,
+            user_id,
+        )
+        for row in rows:
+            if remaining <= 0:
+                break
+            take = min(remaining, int(row["remaining_units"]))
+            await conn.execute(
+                """
+                UPDATE credit_wallet_lots
+                SET remaining_units = remaining_units - $2
+                WHERE id = $1
+                """,
+                row["id"],
+                take,
+            )
+            remaining -= take
+        if remaining > 0:
+            logger.warning(
+                "Credit debit of %s exceeded live lots for user %s by %s units",
+                amount,
+                user_id,
+                remaining,
+            )
+
+    async def _restore_lots(self, conn: Any, user_id: UUID, amount: int) -> None:
+        """Return refunded credits to the most relevant live lot.
+
+        Prefer a live pack lot (keeps Pro status), then any live lot. If none
+        exists, create a non-expiring grant lot so the invariant holds.
+        """
+        row = await conn.fetchrow(
+            """
+            SELECT id
+            FROM credit_wallet_lots
+            WHERE user_id = $1
+              AND remaining_units > 0
+              AND (expires_at IS NULL OR expires_at > NOW())
+            ORDER BY (tag = 'pack') DESC, expires_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+            FOR UPDATE
+            """,
+            user_id,
+        )
+        if row is not None:
+            await conn.execute(
+                """
+                UPDATE credit_wallet_lots
+                SET remaining_units = remaining_units + $2
+                WHERE id = $1
+                """,
+                row["id"],
+                amount,
+            )
+            return
+        await conn.execute(
+            """
+            INSERT INTO credit_wallet_lots
+                (id, user_id, tag, amount_units, remaining_units, expires_at, period_start, created_at)
+            VALUES ($1, $2, 'grant', $3, $3, NULL, NULL, NOW())
+            """,
+            uuid4(),
+            user_id,
+            amount,
+        )
+
     async def atomic_deduct(
         self,
         user_id: UUID,
@@ -174,6 +257,8 @@ class CreditRepository:
                 if row is None:
                     return False
 
+                await self._consume_lots(conn, user_id, amount)
+
                 # Record the debit transaction
                 await conn.execute(
                     """
@@ -216,6 +301,9 @@ class CreditRepository:
         *,
         metadata: dict[str, Any] | None = None,
         idempotent: bool = True,
+        create_lot: bool = False,
+        lot_tag: str = "admin",
+        lot_expires_at: datetime | None = None,
     ) -> int:
         """Add credits to a user's wallet, enforcing the maximum balance.
 
@@ -330,6 +418,23 @@ class CreditRepository:
                     payment_ref,
                     json.dumps(metadata) if metadata else None,
                 )
+                if create_lot:
+                    # Keep the lot ledger in lockstep with the wallet so
+                    # balance == SUM(live lots) stays true for admin, referral
+                    # and signup credits too.
+                    await conn.execute(
+                        """
+                        INSERT INTO credit_wallet_lots
+                            (id, user_id, tag, amount_units, remaining_units,
+                             expires_at, period_start, created_at)
+                        VALUES ($1, $2, $3, $4, $4, $5, NULL, NOW())
+                        """,
+                        uuid4(),
+                        user_id,
+                        lot_tag,
+                        amount,
+                        lot_expires_at,
+                    )
                 credit_log.log_added(
                     user_id=user_id,
                     amount_units=amount,
@@ -416,6 +521,8 @@ class CreditRepository:
                     user_id,
                     new_balance,
                 )
+
+                await self._restore_lots(conn, user_id, amount)
 
                 # Record the refund transaction
                 await conn.execute(
@@ -538,6 +645,7 @@ class CreditRepository:
                     user_id,
                     new_balance,
                 )
+                await self._restore_lots(conn, user_id, amount)
                 await conn.execute(
                     """
                     INSERT INTO credit_transactions
@@ -988,24 +1096,7 @@ class CreditRepository:
                     "OR t.reason ILIKE ${idx} || ' via %')",
                     operation,
                 )
-        if plan_id is not None:
-            filters.append(
-                f"""EXISTS (
-                    SELECT 1 FROM licenses l
-                    WHERE l.user_id = t.user_id
-                      AND l.plan_id = ${arg_idx}
-                      AND l.status = 'active'
-                      AND (l.expires_at IS NULL OR l.expires_at > NOW())
-                    UNION ALL
-                    SELECT 1 FROM web_subscriptions ws
-                    WHERE ws.user_id = t.user_id
-                      AND ws.plan_id = ${arg_idx}
-                      AND ws.status = 'active'
-                      AND ws.current_period_end > NOW()
-                )"""
-            )
-            args.append(plan_id)
-            arg_idx += 1
+        # plan_id filtering is retired with plans; ignore the argument.
 
         where_sql = f"WHERE {' AND '.join(filters)}"
 

@@ -2003,6 +2003,10 @@ class UsageEnforcementService:
         additional_count: int = 1,
         wallet_bypass_credits: int | None = None,
     ) -> None:
+        # Plans and quotas are retired. Credits are the only gate now, so this
+        # enforcement path is a no-op. Kept as a seam for future credit limits.
+        return
+
         ctx = subscription_context or await self._resolve_subscription_context(user_id)
         plan = ctx.plan if ctx else None
         if plan is None:
@@ -2280,20 +2284,9 @@ class UsageEnforcementService:
     async def _resolve_subscription_context(
         self, user_id: UUID
     ) -> ActiveSubscriptionContext | None:
-        getter = getattr(self._plan_repo, "get_user_active_subscription_context", None)
-        if getter is not None:
-            ctx = await getter(user_id)
-            if ctx is not None:
-                return ctx
-
-        plan = await self._plan_repo.get_user_active_plan(user_id)
-        if plan is None:
-            return None
-        return ActiveSubscriptionContext(
-            plan=plan,
-            license_id=UUID(int=0),
-            activated_at=None,
-        )
+        # Plans are retired; there is no subscription context anymore.
+        del user_id
+        return None
 
     @staticmethod
     def _period_start(

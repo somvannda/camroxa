@@ -285,31 +285,6 @@ async def _fetch_avatar_url(pool, user_id: UUID) -> str | None:
     return canonical_api_path(f"media/users/{user_id}/avatar")
 
 
-async def _fetch_active_web_plan(pool, user_id: UUID) -> tuple[str | None, bool]:
-    """Return the active web subscription's plan name and whether it is paid."""
-    row = await _fetch_optional_row(
-        pool,
-        """
-        SELECT p.name AS plan_name,
-               COALESCE(p.price_cents, 0) AS price_cents
-        FROM web_subscriptions ws
-        JOIN plans p ON p.id = ws.plan_id
-        WHERE ws.user_id = $1
-          AND ws.status = 'active'
-          AND ws.current_period_end > NOW()
-        ORDER BY ws.current_period_end DESC
-        LIMIT 1
-        """,
-        user_id,
-    )
-    if not row:
-        return None, False
-    plan_name = str(row["plan_name"]) if row.get("plan_name") is not None else None
-    try:
-        is_paid = int(row.get("price_cents") or 0) > 0
-    except (TypeError, ValueError):
-        is_paid = False
-    return plan_name, is_paid
 
 
 def _save_user_avatar(*, user_id: UUID, data: bytes, content_type: str) -> str:
@@ -460,36 +435,11 @@ async def get_me(
     )
     credit_balance = int(balance_row["balance"] or 0) if balance_row else 0
 
-    license_row = await pool.fetchrow(
-        """
-        SELECT p.name AS plan_name,
-               p.profile_allowance,
-               COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
-               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending
-        FROM licenses l
-        JOIN plans p ON l.plan_id = p.id
-        WHERE l.user_id = $1 AND l.status = 'active'
-          AND (l.expires_at IS NULL OR l.expires_at > NOW())
-        LIMIT 1
-        """,
-        user_id,
-    )
-    plan_name = str(license_row["plan_name"]) if license_row and license_row["plan_name"] is not None else None
-    profile_allowance = int(license_row["profile_allowance"]) if license_row and license_row["profile_allowance"] is not None else None
-    profile_addon_slots = int(license_row["profile_addon_slots"] or 0) if license_row else 0
-    profile_addon_pending = int(license_row["profile_addon_pending"] or 0) if license_row else 0
-    effective_quota_channels = (
-        int(profile_allowance or 0) + profile_addon_slots if profile_allowance is not None else None
-    )
-    effective_profile_allowance = (
-        int(profile_allowance or 0) + profile_addon_slots + profile_addon_pending
-        if profile_allowance is not None
-        else None
-    )
-
-    web_plan_name, web_plan_paid = await _fetch_active_web_plan(pool, user_id)
-    if plan_name is None:
-        plan_name = web_plan_name
+    profile_allowance = None
+    profile_addon_slots = 0
+    profile_addon_pending = 0
+    effective_quota_channels = None
+    effective_profile_allowance = None
 
     profile_row = await pool.fetchrow(
         "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
@@ -497,12 +447,11 @@ async def get_me(
     )
     channel_profile_count = int(profile_row["cnt"] or 0) if profile_row else 0
 
-    from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
-
-    onboarding_paid = await user_has_paid_for_onboarding(pool, user_id) or web_plan_paid
     from platform_api.repositories.license_repo import LicenseRepository
 
     desktop_access = await LicenseRepository(pool=pool).has_paid_desktop_access(str(user_id))
+    plan_name = "Pro" if desktop_access else "Free"
+    onboarding_paid = desktop_access
     avatar_url = await _fetch_avatar_url(pool, user_id)
 
     return _user_to_response(
@@ -576,36 +525,11 @@ async def update_me(
     )
     credit_balance = int(balance_row["balance"] or 0) if balance_row else 0
 
-    license_row = await pool.fetchrow(
-        """
-        SELECT p.name AS plan_name,
-               p.profile_allowance,
-               COALESCE(l.profile_addon_slots, 0) AS profile_addon_slots,
-               COALESCE(l.profile_addon_pending, 0) AS profile_addon_pending
-        FROM licenses l
-        JOIN plans p ON l.plan_id = p.id
-        WHERE l.user_id = $1 AND l.status = 'active'
-          AND (l.expires_at IS NULL OR l.expires_at > NOW())
-        LIMIT 1
-        """,
-        user_id,
-    )
-    plan_name = str(license_row["plan_name"]) if license_row and license_row["plan_name"] is not None else None
-    profile_allowance = int(license_row["profile_allowance"]) if license_row and license_row["profile_allowance"] is not None else None
-    profile_addon_slots = int(license_row["profile_addon_slots"] or 0) if license_row else 0
-    profile_addon_pending = int(license_row["profile_addon_pending"] or 0) if license_row else 0
-    effective_quota_channels = (
-        int(profile_allowance or 0) + profile_addon_slots if profile_allowance is not None else None
-    )
-    effective_profile_allowance = (
-        int(profile_allowance or 0) + profile_addon_slots + profile_addon_pending
-        if profile_allowance is not None
-        else None
-    )
-
-    web_plan_name, web_plan_paid = await _fetch_active_web_plan(pool, user_id)
-    if plan_name is None:
-        plan_name = web_plan_name
+    profile_allowance = None
+    profile_addon_slots = 0
+    profile_addon_pending = 0
+    effective_quota_channels = None
+    effective_profile_allowance = None
 
     profile_row = await pool.fetchrow(
         "SELECT COUNT(*)::int AS cnt FROM channel_profiles WHERE user_id = $1",
@@ -613,12 +537,11 @@ async def update_me(
     )
     channel_profile_count = int(profile_row["cnt"] or 0) if profile_row else 0
 
-    from platform_api.services.onboarding_entitlement_service import user_has_paid_for_onboarding
-
-    onboarding_paid = await user_has_paid_for_onboarding(pool, user_id) or web_plan_paid
     from platform_api.repositories.license_repo import LicenseRepository
 
     desktop_access = await LicenseRepository(pool=pool).has_paid_desktop_access(str(user_id))
+    plan_name = "Pro" if desktop_access else "Free"
+    onboarding_paid = desktop_access
     avatar_url = await _fetch_avatar_url(pool, user_id)
     return _user_to_response(
         user,
@@ -733,38 +656,27 @@ async def list_users(
         )
         balances = {str(row["user_id"]): row["balance"] for row in balance_rows}
 
-        # License first, else active CutLuy web plan (same resolver as charge).
-        plan_rows = await pool.fetch(
+        # Tier is derived from live pack lots (plans are retired).
+        tier_rows = await pool.fetch(
             """
-            SELECT l.user_id, p.name as plan_name
-            FROM licenses l JOIN plans p ON l.plan_id = p.id
-            WHERE l.user_id = ANY($1) AND l.status = 'active'
-              AND (l.expires_at IS NULL OR l.expires_at > NOW())
+            SELECT w.user_id,
+                   EXISTS (
+                       SELECT 1 FROM credit_wallet_lots lot
+                       WHERE lot.user_id = w.user_id
+                         AND lot.tag = 'pack'
+                         AND lot.remaining_units > 0
+                         AND (lot.expires_at IS NULL OR lot.expires_at > NOW())
+                   ) AS is_pro
+            FROM credit_wallets w
+            WHERE w.user_id = ANY($1)
             """,
             user_ids,
         )
-        plans = {str(row["user_id"]): row["plan_name"] for row in plan_rows}
-
-        web_plan_rows = await _fetch_optional_rows(
-            pool,
-            """
-            SELECT DISTINCT ON (ws.user_id)
-                   ws.user_id,
-                   p.name AS plan_name
-            FROM web_subscriptions ws
-            LEFT JOIN plans p ON p.id = ws.plan_id
-            WHERE ws.user_id = ANY($1)
-              AND ws.status = 'active'
-              AND ws.current_period_end > NOW()
-            ORDER BY ws.user_id, ws.current_period_end DESC
-            """,
-            user_ids,
-        )
-        web_plans = {
-            str(row["user_id"]): row["plan_name"]
-            for row in web_plan_rows
-            if row.get("plan_name")
+        plans = {
+            str(row["user_id"]): ("Pro" if row["is_pro"] else "Free")
+            for row in tier_rows
         }
+        web_plans: dict[str, str] = {}
 
         spent_rows = await pool.fetch(
             """
@@ -936,24 +848,15 @@ async def get_user_full_details(
             }
         )
 
-    # Active license + plan info
-    license_row = await pool.fetchrow(
-        """
-        SELECT l.plan_id, l.status as license_status, l.activated_at, l.expires_at,
-               p.name as plan_name
-        FROM licenses l
-        JOIN plans p ON l.plan_id = p.id
-        WHERE l.user_id = $1 AND l.status = 'active'
-          AND (l.expires_at IS NULL OR l.expires_at > NOW())
-        LIMIT 1
-        """,
-        user_id,
-    )
-    plan_name = license_row["plan_name"] if license_row else None
-    plan_id = str(license_row["plan_id"]) if license_row else None
-    license_status = license_row["license_status"] if license_row else None
-    license_activated_at = license_row["activated_at"] if license_row else None
-    license_expires_at = license_row["expires_at"] if license_row else None
+    # Tier is derived from live pack lots (plans/licenses are retired).
+    from platform_api.services.tier_service import is_pro as _is_pro
+
+    user_is_pro = await _is_pro(pool, user_id)
+    plan_name = "Pro" if user_is_pro else "Free"
+    plan_id = None
+    license_status = "active" if user_is_pro else None
+    license_activated_at = None
+    license_expires_at = None
 
     product_row = await _fetch_optional_row(
         pool,
@@ -965,27 +868,6 @@ async def get_user_full_details(
         for item in ((product_row or {}).get("products") or [])
         if str(item).strip()
     ]
-
-    web_plan_row = await _fetch_optional_row(
-        pool,
-        """
-        SELECT DISTINCT ON (ws.user_id)
-               p.id AS plan_id,
-               p.name AS plan_name
-        FROM web_subscriptions ws
-        LEFT JOIN plans p ON p.id = ws.plan_id
-        WHERE ws.user_id = $1
-          AND ws.status = 'active'
-          AND ws.current_period_end > NOW()
-        ORDER BY ws.user_id, ws.current_period_end DESC
-        """,
-        user_id,
-    )
-    if plan_name is None and web_plan_row and web_plan_row.get("plan_name"):
-        plan_name = web_plan_row["plan_name"]
-        plan_id = str(web_plan_row["plan_id"]) if web_plan_row.get("plan_id") else None
-    if plan_name is None:
-        plan_name = "Free"
 
     music_credits_remaining: int | None = None
     music_credits_limit: int | None = None
@@ -1151,11 +1033,7 @@ async def get_user_full_details(
         user_id,
     )
 
-    from platform_api.dependencies import get_quota_topup_service
-    from platform_api.services.quota_topup_service import snapshot_to_dict
-
-    topup_service = get_quota_topup_service()
-    quota_snapshot = snapshot_to_dict(await topup_service.build_period_snapshot(user_id))
+    quota_snapshot = None
 
     freeze_info = {
         "generation_frozen": False,
@@ -1228,12 +1106,6 @@ async def _admin_quota_period_response(
     *,
     wallet_balance: float | None = None,
 ) -> AdminQuotaPeriodResponse:
-    from platform_api.dependencies import get_quota_topup_service
-    from platform_api.services.quota_topup_service import snapshot_to_dict
-
-    topup_service = get_quota_topup_service()
-    snapshot = await topup_service.build_period_snapshot(user_id)
-    payload = snapshot_to_dict(snapshot)
     if wallet_balance is None:
         pool = get_db_pool()
         balance_row = await pool.fetchrow(
@@ -1241,17 +1113,13 @@ async def _admin_quota_period_response(
         )
         credit_balance_units = int(balance_row["balance"] or 0) if balance_row else 0
         wallet_balance = units_to_credits(credit_balance_units)
-    kinds = {
-        kind: QuotaKindStatusResponse(**status)
-        for kind, status in (payload.get("kinds") or {}).items()
-    }
     return AdminQuotaPeriodResponse(
         user_id=str(user_id),
-        period_start=payload.get("period_start"),
-        period_end=payload.get("period_end"),
-        plan_name=payload.get("plan_name"),
+        period_start=None,
+        period_end=None,
+        plan_name=None,
         wallet_balance=float(wallet_balance or 0),
-        kinds=kinds,
+        kinds={},
     )
 
 

@@ -82,14 +82,15 @@ def test_cgpt_web_not_in_registry_seed() -> None:
 
 def test_suno_music_models_seed_with_music_operations() -> None:
     rows = build_seed_cost_rows()
-    v5 = [row for row in rows if row["ai_service"] == "suno" and row["sub_model"] == "V5"]
-    v55 = [row for row in rows if row["ai_service"] == "suno" and row["sub_model"] == "V5_5"]
-    assert {row["operation_type"] for row in v5} == {"music"}
-    assert {row["operation_type"] for row in v55} == {"music"}
-    assert all(row["cost_usd"] == 0.06 for row in v5 + v55)
-    assert all(
-        "Suno pack: 12 credits" in (row["notes"] or "") for row in v5 + v55
-    )
+    v6 = [
+        row
+        for row in rows
+        if row["ai_service"] == "suno"
+        and row["sub_model"] in {"V6", "V6_MINI", "V6_WILD"}
+    ]
+    assert {row["operation_type"] for row in v6} == {"music"}
+    assert all(row["cost_usd"] == 0.06 for row in v6)
+    assert all("Suno pack: 12 credits" in (row["notes"] or "") for row in v6)
 
 
 def test_suno_lyrics_model_only_seeds_lyric_operation() -> None:

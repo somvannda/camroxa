@@ -36,6 +36,20 @@ class PeriodGrantService:
         for lot in lots:
             remaining = int(lot["remaining_units"])
             owner = lot["user_id"]
+            if remaining > 0 and lot.get("ref_id") == "legacy_conversion_2026_10_30":
+                # Converted plan credits keep their value when Pro lapses:
+                # move the remainder into a non-expiring grant lot instead of
+                # clawing it back. The wallet balance does not move.
+                await self._store.insert_lot(
+                    user_id=owner,
+                    tag="grant",
+                    amount_units=remaining,
+                    expires_at=None,
+                    period_start=None,
+                )
+                await self._store.zero_lot_remaining(lot["id"])
+                touched += 1
+                continue
             if remaining > 0:
                 balance = int(await self._credit_repo.get_balance(owner))
                 clawback = min(remaining, max(0, balance))
@@ -90,12 +104,10 @@ class PeriodGrantService:
         return touched
 
     async def ensure_period_grant(self, user_id: UUID) -> dict[str, Any]:
+        # Plans are retired. The only credit sources are packs, admin lots and
+        # the one-time signup grant, so there is no period grant to mint.
         await self.expire_lapsed_lots(user_id)
-        plan = await self._store.resolve_charge_plan(user_id)
-        if plan is None:
-            return {"granted": False, "reason": "no_active_plan", "user_id": str(user_id)}
-
-        monthly = int(plan.get("monthly_credits") or 0)
+        return {"granted": False, "reason": "plans_retired", "user_id": str(user_id)}
         if monthly <= 0:
             return {
                 "granted": False,
@@ -309,17 +321,9 @@ class PeriodGrantService:
         }
 
     async def ensure_daily_grant(self, user_id: UUID) -> dict[str, Any]:
-        """Mint today's Free-plan daily credits into the shared wallet.
-
-        Paid license / CutLuy rows have daily_credits=0, so they no-op.
-        Daily lots expire at the next billing midnight and do not stack.
-        """
+        """Free daily grants are retired; no credits are minted here."""
         await self.expire_lapsed_lots(user_id)
-        plan = await self._store.resolve_charge_plan(user_id)
-        if plan is None:
-            return {"granted": False, "reason": "no_active_plan", "user_id": str(user_id)}
-
-        daily = int(plan.get("daily_credits") or 0)
+        return {"granted": False, "reason": "plans_retired", "user_id": str(user_id)}
         if daily <= 0:
             return {
                 "granted": False,

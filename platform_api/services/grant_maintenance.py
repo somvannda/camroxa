@@ -36,30 +36,29 @@ LIMIT $1
 
 
 async def run_grant_maintenance(pool: Any) -> dict[str, int]:
-    """Issue any due period/daily grant for active wallets. Idempotent."""
+    """Expire lapsed lots and apply the monthly Free allowance. Idempotent."""
     from platform_api.dependencies import get_v3_grant_service
+    from platform_api.services.free_monthly_grant import ensure_free_monthly_grant
 
     grants = get_v3_grant_service()
     async with pool.acquire() as conn:
         rows = await conn.fetch(_ELIGIBLE_SQL, _BATCH)
 
-    period_granted = daily_granted = failed = 0
+    free_granted = failed = 0
     for row in rows:
         user_id = row["id"]
         try:
-            period = await grants.ensure_period_grant(user_id)
-            if period.get("granted"):
-                period_granted += 1
-            daily = await grants.ensure_daily_grant(user_id)
-            if daily.get("granted"):
-                daily_granted += 1
+            # Expire lapsed pack/grant lots first.
+            await grants.ensure_period_grant(user_id)
+            result = await ensure_free_monthly_grant(pool, user_id)
+            if result.get("granted"):
+                free_granted += 1
         except Exception:
             failed += 1
             logger.debug("Grant maintenance failed for user %s", user_id, exc_info=True)
     return {
         "users": len(rows),
-        "period_granted": period_granted,
-        "daily_granted": daily_granted,
+        "free_granted": free_granted,
         "failed": failed,
     }
 

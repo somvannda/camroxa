@@ -13,7 +13,6 @@ from platform_api.exceptions import InsufficientCreditsError, QuotaExceededError
 from platform_api.main import create_app
 from platform_api.middleware.auth import AuthContext, get_current_user, require_admin
 from platform_api.models.domain import Plan
-from platform_api.routers.plans import _get_plan_repo
 from platform_api.services.credit_units import credits_to_units, units_to_credits
 from platform_api.services.v3.credits_only_billing_service import CreditsOnlyBillingService
 from platform_api.services.v3.quota_conversion_service import QuotaConversionService
@@ -458,26 +457,6 @@ async def test_admin_adjust_visible_on_v3_wallet(store: FakeStore, wallet: FakeW
     assert view["reset_label"] is None
 
 
-@pytest.mark.asyncio
-async def test_wallet_view_uses_free_plan_reset_label(store: FakeStore, wallet: FakeWallet) -> None:
-    store.user_plan.clear()
-    free = _v3_plan(
-        name="Free",
-        price_cents=0,
-        monthly_credits=50,
-        daily_credits=0,
-        is_public=True,
-        is_active=True,
-    )
-    store.plans[free["id"]] = free
-    billing = CreditsOnlyBillingService(
-        store=store, credit_repo=wallet, pricing_service=FakePricing()
-    )
-    view = await billing.wallet_view(USER_ID)
-    assert view["plan"]["name"] == "Free"
-    assert view["plan"]["monthly_credits"] == 50
-    assert view["plan"]["daily_credits"] == 0
-    assert view["reset_label"] == "Credit reset monthly"
 
 
 @pytest.mark.asyncio
@@ -542,106 +521,6 @@ async def test_conversion_apply_is_idempotent() -> None:
     assert wallet.balance == credits_to_units(2200)
 
 
-@pytest.mark.asyncio
-async def test_v3_routes_and_v1_public_shape_unchanged() -> None:
-    store = FakeStore()
-    wallet = FakeWallet(balance=credits_to_units(40))
-    pricing = FakePricing()
-    hidden = _v3_plan(is_public=False, is_active=True, name="Monthly · 2-channel")
-    public = _v3_plan(is_public=True, is_active=True, name="Starter", price_cents=1000, monthly_credits=1000)
-    store.plans[hidden["id"]] = hidden
-    store.plans[public["id"]] = public
-    store.user_plan[str(USER_ID)] = hidden["id"]
-    billing = CreditsOnlyBillingService(
-        store=store, credit_repo=wallet, pricing_service=pricing, enforcement=FakeEnforcement()
-    )
-
-    v1_hidden = _domain_plan()
-    v1_hidden.is_public = False
-    v1_public_plan = _domain_plan()
-    v1_public_plan.id = uuid4()
-    v1_public_plan.name = "Starter"
-    v1_public_plan.price_cents = 1000
-    v1_public_plan.is_public = True
-    v1_repo = FakePlanRepo(v1_public_plan)
-    v1_repo.plans[v1_hidden.id] = v1_hidden
-    v1_repo.plans[v1_public_plan.id] = v1_public_plan
-
-    async def _expire(_user_id):
-        return 0
-
-    async def _daily(_user_id):
-        return {"granted": False, "reason": "test_noop"}
-
-    async def _period(_user_id):
-        return {"granted": False, "reason": "test_noop"}
-
-    grants = SimpleNamespace(
-        expire_lapsed_lots=_expire,
-        ensure_daily_grant=_daily,
-        ensure_period_grant=_period,
-    )
-
-    app = create_app()
-    app.dependency_overrides[get_v3_store] = lambda: store
-    app.dependency_overrides[get_v3_billing_service] = lambda: billing
-    app.dependency_overrides[get_v3_grant_service] = lambda: grants
-    app.dependency_overrides[get_v3_conversion_service] = lambda: SimpleNamespace()
-    app.dependency_overrides[_get_plan_repo] = lambda: v1_repo
-    app.dependency_overrides[require_admin] = lambda: ADMIN
-    app.dependency_overrides[get_current_user] = lambda: USER
-
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as client:
-        v1_public = await client.get("/api/v1/plans/public")
-        assert v1_public.status_code == 200
-        v1_names = {row["name"] for row in v1_public.json()}
-        assert v1_names == {"Starter"}
-        v1_item = v1_public.json()[0]
-        assert "monthly_song_limit" in v1_item
-        assert "music_credits" not in v1_item
-        assert "pricing_features" in v1_item
-        assert "pricing_credit_lines" in v1_item
-
-        v3_public = await client.get("/api/v3/plans/public")
-        assert v3_public.status_code == 200
-        names = {row["name"] for row in v3_public.json()}
-        assert names == {"Starter"}
-
-        listed = await client.get("/api/v3/plans")
-        assert listed.status_code == 200
-        assert {row["name"] for row in listed.json()} == {"Monthly · 2-channel", "Starter"}
-
-        patched = await client.patch(
-            f"/api/v3/admin/plans/{hidden['id']}",
-            json={
-                "music_credits": 10,
-                "monthly_credits": 3000,
-                "pricing_features": ["Web Create", "Custom desktop perk"],
-                "pricing_credit_lines": ["credits per month", "Custom song hint"],
-            },
-        )
-        assert patched.status_code == 200
-        assert patched.json()["pricing_features"] == ["Web Create", "Custom desktop perk"]
-        assert patched.json()["pricing_credit_lines"] == ["credits per month", "Custom song hint"]
-        quote = await client.post("/api/v3/billing/quote", json={"op": "music"})
-        assert quote.status_code == 200
-        assert quote.json()["amount_credits"] == 7.5
-        assert quote.json()["source"] == "credit_pricing"
-
-        v3_item = v3_public.json()[0]
-        assert v3_item.get("credits_per_generate") == 7.5
-
-        wallet.balance = credits_to_units(50)
-        me = await client.get("/api/v3/me/credits")
-        assert me.status_code == 200
-        assert me.json()["balance_credits"] == 50
-
-        docs = await client.get("/api/v3/docs")
-        assert docs.status_code == 200
-        openapi = await client.get("/api/v3/openapi.json")
-        assert openapi.status_code == 200
-        assert all(path.startswith("/api/v3") for path in openapi.json()["paths"])
 
 
 @pytest.mark.asyncio

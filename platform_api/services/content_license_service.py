@@ -189,30 +189,9 @@ class ContentLicenseService:
         return row
 
     async def _active_paid(self, user_id: UUID) -> bool:
-        row = await self._pool.fetchrow(
-            """
-            SELECT 1
-            FROM web_subscriptions
-            WHERE user_id = $1
-              AND status = 'active'
-              AND (cancel_at_period_end = false OR current_period_end > NOW())
-            LIMIT 1
-            """,
-            user_id,
-        )
-        if row is not None:
-            return True
-        desktop = await self._pool.fetchrow(
-            """
-            SELECT 1 FROM licenses
-            WHERE user_id = $1
-              AND status = 'active'
-              AND (expires_at IS NULL OR expires_at > NOW())
-            LIMIT 1
-            """,
-            user_id,
-        )
-        return desktop is not None
+        from platform_api.services.tier_service import is_pro
+
+        return await is_pro(self._pool, user_id)
 
     async def assert_play_access(
         self,

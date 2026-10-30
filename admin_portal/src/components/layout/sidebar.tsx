@@ -3,8 +3,6 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
   Users,
-  KeyRound,
-  CreditCard,
   TicketPercent,
   Coins,
   Music,
@@ -68,8 +66,6 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'Accounts',
     items: [
       { label: 'Users', path: '/users', icon: Users },
-      { label: 'Subscriptions', path: '/licenses', icon: KeyRound },
-      { label: 'Plans', path: '/plans', icon: CreditCard },
       { label: 'Redeem Codes', path: '/redeem-codes', icon: TicketPercent },
   { label: 'Mail', path: '/mail', icon: Mail },
       { label: 'Invitations', path: '/invitations', icon: UserPlus },

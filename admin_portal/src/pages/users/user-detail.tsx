@@ -22,7 +22,7 @@ import { useFailAbsorb, useResetFailAbsorb } from '@/hooks/use-fail-absorb';
 import { useAdjustBalance } from '@/hooks/use-credits';
 import { useToast } from '@/hooks/use-toast';
 import { formatCredits } from '@/lib/credit-format';
-import type { User, QuotaPeriodSnapshot } from '@/types/models';
+import type { User } from '@/types/models';
 import { useV3UserWallet } from '@/hooks/use-v3-plans';
 
 import { Button } from '@/components/ui/button';
@@ -199,13 +199,6 @@ function formatVideoTemplateSummary(
   const label = templateName?.trim() || templateId;
   const savedAt = formatAdminDateTime(updatedAt);
   return savedAt === '—' ? label : `${label} — saved ${savedAt}`;
-}
-
-function formatQuotaPeriodLabel(snapshot: QuotaPeriodSnapshot | null | undefined): string {
-  if (!snapshot?.period_start || !snapshot?.period_end) {
-    return 'No active billing period';
-  }
-  return `Period ${snapshot.period_start} → ${snapshot.period_end} (top-ups reset at period end)`;
 }
 
 function ProfileMetaRow({
@@ -592,12 +585,12 @@ export default function UserDetailPage() {
         {/* Plan Card */}
         <Card className="border-slate-800 bg-slate-900/50">
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-medium text-slate-400">Plan</CardTitle>
+            <CardTitle className="text-sm font-medium text-slate-400">Tier</CardTitle>
             <Crown className="h-4 w-4 text-slate-500" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold text-slate-100">
-              {user.plan_name ?? <span className="text-slate-500 text-lg">No plan</span>}
+              {user.plan_name ?? <span className="text-slate-500 text-lg">Free</span>}
             </div>
             {user.license_status && (
               <p className="text-xs text-slate-500 mt-1">
@@ -642,70 +635,6 @@ export default function UserDetailPage() {
       </div>
 
       <UserGeneratedSongs userId={user.id} />
-
-      {/* Plan quota (this period) + per-user top-ups */}
-      <Card className="border-slate-800 bg-slate-900/50">
-        <CardHeader className="flex flex-row items-start justify-between gap-4">
-          <div>
-            <CardTitle className="text-slate-100">Plan quota (this period)</CardTitle>
-            <CardDescription className="text-slate-400">
-              {formatQuotaPeriodLabel(user.quota_period)}
-            </CardDescription>
-          </div>
-          <Button
-            type="button"
-            onClick={() => setQuotaTopupOpen(true)}
-            disabled={!user.quota_period?.period_start}
-          >
-            Increase quota
-          </Button>
-        </CardHeader>
-        <CardContent>
-          {!user.quota_period?.period_start ? (
-            <p className="text-sm text-slate-500">
-              No active subscription period. Assign a plan before increasing quota.
-            </p>
-          ) : (
-            <Table>
-              <TableHeader>
-                <TableRow className="border-slate-800">
-                  <TableHead className="text-slate-400">Quota</TableHead>
-                  <TableHead className="text-slate-400">Used</TableHead>
-                  <TableHead className="text-slate-400">Base</TableHead>
-                  <TableHead className="text-slate-400">Top-up</TableHead>
-                  <TableHead className="text-slate-400">Effective</TableHead>
-                  <TableHead className="text-slate-400">Remaining</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {QUOTA_KIND_ORDER.map((kind) => {
-                  const row = user.quota_period?.kinds?.[kind];
-                  return (
-                    <TableRow key={kind} className="border-slate-800">
-                      <TableCell className="text-slate-200">
-                        {QUOTA_KIND_LABELS[kind]}
-                      </TableCell>
-                      <TableCell className="text-slate-300">{row?.used ?? 0}</TableCell>
-                      <TableCell className="text-slate-300">
-                        {row?.base_limit == null ? 'Unlimited' : row.base_limit}
-                      </TableCell>
-                      <TableCell className="text-slate-300">
-                        {row?.topup_extra ? `+${row.topup_extra}` : '—'}
-                      </TableCell>
-                      <TableCell className="text-slate-100 font-medium">
-                        {row?.effective_limit == null ? 'Unlimited' : row.effective_limit}
-                      </TableCell>
-                      <TableCell className="text-slate-100">
-                        {row?.remaining == null ? '—' : row.remaining}
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
 
             {/* Wallet + period grant */}
       <Card className="border-slate-800 bg-slate-900/50">

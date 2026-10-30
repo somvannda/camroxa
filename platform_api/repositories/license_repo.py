@@ -497,34 +497,13 @@ class LicenseRepository:
     async def has_paid_desktop_access(self, user_id: str) -> bool:
         """True when the user may use the desktop studio.
 
-        Packs-only billing: a live credit pack qualifies while the wallet still
-        has credits. Pack lots expire 30 days after purchase (re-stamped on the
-        next purchase), so access ends with the credits.
-
-        Legacy paid licenses and paid web subscriptions still qualify so
-        grandfathered accounts are not locked out.
+        Credits-only model: a live credit pack is the only entitlement.
+        Plans, licenses and web subscriptions no longer grant access.
+        Pack lots expire 30 days after purchase, so access ends with the pack.
         """
         result = await self._pool.fetchval(
             """
-            SELECT EXISTS(
-                SELECT 1
-                FROM licenses l
-                JOIN plans p ON p.id = l.plan_id
-                WHERE l.user_id = $1
-                  AND l.status = 'active'
-                  AND (l.expires_at IS NULL OR l.expires_at > NOW())
-                  AND COALESCE(p.price_cents, 0) > 0
-            )
-            OR EXISTS(
-                SELECT 1
-                FROM web_subscriptions ws
-                JOIN plans p ON p.id = ws.plan_id
-                WHERE ws.user_id = $1
-                  AND ws.status = 'active'
-                  AND ws.current_period_end > NOW()
-                  AND COALESCE(p.price_cents, 0) > 0
-            )
-            OR (
+            SELECT (
                 COALESCE(
                     (SELECT balance FROM credit_wallets WHERE user_id = $1),
                     0

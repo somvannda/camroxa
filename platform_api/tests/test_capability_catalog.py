@@ -13,7 +13,7 @@ def test_catalog_includes_suno_for_lyrics() -> None:
     assert "music_generation" in suno["service_types"]
     assert "text_generation" in suno["service_types"]
     assert "lyrics" in suno["text_models"]
-    assert "V5" in suno["music_models"]
+    assert "V6" in suno["music_models"]
 
 
 def test_audit_flags_missing_pricing() -> None:
@@ -61,7 +61,7 @@ def test_audit_accepts_suno_for_music_without_sub_model() -> None:
             {
                 "ai_service": "suno",
                 "operation_type": "music",
-                "sub_model": "V5_5",
+                "sub_model": "V6_MINI",
                 "credits_per_operation": 15,
             }
         ],
