@@ -1109,3 +1109,77 @@ supportsSection → Create Section
 ```
 
 Never hardcode the list — the reference already varies it between two ordinary clips.
+
+## 48. "Add a track plugin" dialog `L`
+
+Modal, ~760 px wide, dark surface, rounded. Structure:
+
+```
+Add a track plugin                    [🔍 Search plugins]  [⋯] [×]
+MY PLUGINS
+  ┌ ─ ─ ─ ─ ─ ─ ─ ┐
+  │      ＋        │   Create new plugin
+  └ ─ ─ ─ ─ ─ ─ ─ ┘
+AUDIO EFFECTS
+  [card] [card] [card]
+  [card] [card] [card]
+```
+
+Card anatomy (grid, 3 per row): **mini preview graphic** (curve or knobs) with a small
+preset chip, then **name + ○ Learn**, then a two-line description.
+
+### Built-in audio effects (captured names + descriptions)
+
+| Plugin | Description (verbatim, truncated) |
+|---|---|
+| Compressor | "Classic dynamics compressor: threshold, ratio, and knee set how hard peaks are…" |
+| Convolution | "Places the signal in a sampled real space: load an impulse response, then shape it…" |
+| Delay | "Echo with feedback and mix, free-running in milliseconds or synced to the beat, wi…" |
+| Distortion | "A comprehensive distortion / waveshaper: drive into a pre-tilt tone stage, six…" |
+| EQ | "Multi-band parametric EQ: per-band frequency, gain, Q and filter type on an…" |
+| Gate | "Noise gate: silences the signal below the threshold, with floor, attack, hold, and…" |
+| Limiter | "Brickwall lookahead limiter: drives the signal into a fixed ceiling with lookahead…" |
+| Reverb | "Algorithmic reverb with time, mix, width, damping, predelay, and low/high cut…" |
+
+Preview parameters visible on the cards:
+
+- Compressor: Threshold · Ratio · Knee · Attack · Release
+- Distortion: Tilt · Bass · Freq · Drive, with modes **Hard · Fold · Align · Sine · Crush**
+- EQ: per-band chip (`Band 2`) + Freq
+- Gate: Threshold · Floor · Attack · Hold
+- Limiter: Lookahead · Pre Gain · Attack · Release
+- Reverb: Low Cut · High Cut · Decay · Damping · Predelay
+- Delay: Time · Feedback · Mix
+- Convolution: impulse-response slot (`IR: WEIRD VINTAGE CONVOLVER`) + Mix
+
+**"Create new plugin"** is the entry point to user-designed plugins (the marketing
+"plugins you can design yourself" pillar, related to N-14/N-15).
+
+## 49. Plugin editor panel `L`
+
+Docked panel (bottom), ~470 px wide:
+
+```
+● Delay            [Custom ▾]        [Update]  ×
+[Time] [Tempo]                                   ← mode tabs
+ ◯ Time    ◯ Feedback    ◯ Mix                    ← large knobs
+                             ◯ Low Cut            ← small knobs
+                             ◯ High Cut
+```
+
+Right side of the dock:
+
+```
+            [ + Add effect ]
+[ EQ ]      [ Compressor ]      [ Reverb ]        ← remaining chain slots
+```
+
+Rules extracted:
+
+1. **Preset selector + `Update`** — `Custom` means an unsaved tweak; `Update` writes it
+   back to the selected preset.
+2. **Mode tabs** (`Time` / `Tempo`) change the parameter semantics, not the plugin —
+   delay can run in milliseconds or beat-synced.
+3. **Two knob sizes**: primary parameters large, secondary (filters) small.
+4. **Chain is a horizontal rail** of effect cards with an `Add effect` slot at the end.
+5. The chain also appears as chips in the main footer (`Delay ＋`).
