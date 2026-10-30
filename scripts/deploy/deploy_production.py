@@ -72,7 +72,7 @@ def main() -> int:
         client.close()
     if code == 0:
         print("\nProduction deploy finished successfully.")
-        print("  API:    https://api.camxora.com/health\n  Site:   https://camxora.com\n  Portal: https://app.camxora.com\n  Admin:  https://admin.camxora.com\n  Music:  https://music.camxora.com")
+        print("  API:    https://api.camxora.com/health\n  Site:   https://camxora.com\n  Admin:  https://admin.camxora.com\n  Music:  https://music.camxora.com")
     else: print(f"\nProduction deploy failed with exit code {code}")
     return code
 if __name__ == "__main__": raise SystemExit(main())
