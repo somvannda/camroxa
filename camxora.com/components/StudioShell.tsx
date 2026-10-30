@@ -508,6 +508,8 @@ export function StudioShell() {
   live.current = { tracks, placed, masterVolume, bps, metronome };
   /** Metronome click level, preserved from the project state (default 1). */
   const metronomeVolumeRef = useRef(1);
+  /** Beats per bar for the metronome accent (state.timeSignatureChanges). */
+  const beatsPerBarRef = useRef(BEATS_PER_BAR);
   /** Last beat that already produced a click. */
   const lastClickBeatRef = useRef(-1);
 
@@ -557,6 +559,20 @@ export function StudioShell() {
             Math.max(0, metronomeState.amplitude)
           );
         }
+        // `timeSignatureChanges` is a list of `{ startBeats, subdivisionsPerBar,
+        // beatsPerSubdivision }`; the first entry anchors the bar length.
+        const signatures = Array.isArray(doc.timeSignatureChanges)
+          ? (doc.timeSignatureChanges as unknown[])
+              .map(asRecord)
+              .filter((item): item is Record<string, unknown> => Boolean(item))
+          : [];
+        const first = signatures[0];
+        const subdivisions = Number(first?.subdivisionsPerBar) || BEATS_PER_BAR;
+        const perSubdivision = Number(first?.beatsPerSubdivision) || 1;
+        beatsPerBarRef.current = Math.max(
+          1,
+          Math.round(subdivisions * perSubdivision)
+        );
 
         const stateTracks = (Array.isArray(doc.tracks) ? doc.tracks : [])
           .map(asRecord)
@@ -904,7 +920,7 @@ export function StudioShell() {
       const beat = Math.floor(seconds * live.current.bps);
       if (live.current.metronome && beat > lastClickBeatRef.current) {
         lastClickBeatRef.current = beat;
-        playClick(running, beat % BEATS_PER_BAR === 0);
+        playClick(running, beat % Math.max(1, beatsPerBarRef.current) === 0);
       } else if (!live.current.metronome && beat !== lastClickBeatRef.current) {
         lastClickBeatRef.current = beat;
       }

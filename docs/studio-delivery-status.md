@@ -1,5 +1,10 @@
 # Camxora Studio delivery status
 
+> **Superseded 2026-10-30.** This file describes the earlier
+> `feat/camxora-apex` implementation, not the current 1:1 clone work on
+> `feat/studio-shell`. See [studio-clone-status.md](studio-clone-status.md) and
+> [studio-1to1.md](studio-1to1.md) for what actually ships today.
+
 Last updated: 2026-10-27
 Branch: `feat/camxora-apex`
 

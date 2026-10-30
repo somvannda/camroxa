@@ -47,7 +47,8 @@ detail is in [studio-flows.md](studio-flows.md).
 
 - Packaged tracks are silent in the editor (see encrypted playback).
 - Trim/split/fades are not covered by tests beyond live checks.
-- `timeSignatureChanges` is ignored: the metronome accents every 4 beats.
+- The metronome accent follows the first `timeSignatureChanges` entry; mid-song
+  signature changes are ignored.
 - Projects created before migration `174` have no `suno_project_id` and are
   hidden from the resume card.
 - Migration `174` must be applied in sandbox/production.

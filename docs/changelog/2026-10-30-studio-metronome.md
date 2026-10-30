@@ -38,5 +38,7 @@ control can be real instead of decorative.
 
 - No UI for `metronome.amplitude` (Suno has a slider); the captured value is
   honoured for playback but not editable yet.
-- Time signatures other than 4/4 are not read from `timeSignatureChanges`, so the
-  accent falls every 4 beats.
+- The accent follows the first `timeSignatureChanges` entry
+  (`subdivisionsPerBar × beatsPerSubdivision`, default 4); mid-song signature
+  changes are not applied to the click, and the ruler still draws fixed 4-beat
+  bars.
