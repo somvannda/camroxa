@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { Icon } from "@/components/Icon";
+import { clipTrackKey } from "@/lib/clip-utils";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import {
   StudioSaveConflictError,
   WebMusicApiError,
   createStudioSession,
+  fetchWebMusicLikedKeys,
   getStudioSession,
   listWebMusicGenerations,
   resolveStudioClipId,
@@ -389,6 +391,8 @@ export function StudioShell() {
   const [projectName, setProjectName] = useState("Untitled Project");
   const [projectId, setProjectId] = useState<string | null>(projectParam);
   const [libraryOpen, setLibraryOpen] = useState(false);
+  const [libraryTab, setLibraryTab] = useState<"songs" | "liked">("songs");
+  const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [zoom, setZoom] = useState(1);
@@ -1218,9 +1222,33 @@ export function StudioShell() {
     return () => window.removeEventListener("keydown", onKey);
   }, [selectedClip, tracks, projectId, pause, start, removeClip, undo, redo]);
 
+  // Library dock data: liked flags for the Liked tab.
+  useEffect(() => {
+    if (!libraryOpen) return;
+    let active = true;
+    fetchWebMusicLikedKeys()
+      .then((keys) => {
+        if (active) setLikedKeys(keys);
+      })
+      .catch(() => null);
+    return () => {
+      active = false;
+    };
+  }, [libraryOpen]);
+
   const readySongs = useMemo(
     () => songs.filter((song) => String(song.status).toUpperCase() === "SUCCESS"),
     [songs]
+  );
+
+  const likedSongs = useMemo(
+    () =>
+      readySongs.filter((song) =>
+        (song.clips ?? []).some((clip) =>
+          likedKeys.includes(clipTrackKey(song.id, clip.variant))
+        )
+      ),
+    [readySongs, likedKeys]
   );
 
   function addTrack(name = "Audio Track") {
@@ -1777,9 +1805,28 @@ export function StudioShell() {
                 <Icon name="fa-xmark" />
               </button>
             </div>
+            <div className="stv-library-tabs" role="tablist">
+              {(
+                [
+                  ["songs", "Songs"],
+                  ["liked", "Liked"],
+                ] as const
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  role="tab"
+                  aria-selected={libraryTab === key}
+                  className={`stv-library-tab${libraryTab === key ? " on" : ""}`}
+                  onClick={() => setLibraryTab(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
             <div className="stv-library-list">
-              {readySongs.length ? (
-                readySongs.map((song) => (
+              {(libraryTab === "liked" ? likedSongs : readySongs).length ? (
+                (libraryTab === "liked" ? likedSongs : readySongs).map((song) => (
                   <button
                     key={song.id}
                     type="button"
@@ -1808,7 +1855,11 @@ export function StudioShell() {
                   </button>
                 ))
               ) : (
-                <p className="s-note">No finished songs yet.</p>
+                <p className="s-note">
+                  {libraryTab === "liked"
+                    ? "No liked songs yet."
+                    : "No finished songs yet."}
+                </p>
               )}
             </div>
           </aside>

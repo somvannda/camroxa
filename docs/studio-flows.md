@@ -117,7 +117,11 @@ Camxora: none.
 ## F14 — Studio library dock
 
 All songs / Liked / Stems / Uploads / Workspaces / Projects — `H`.
-Camxora: library drawer with songs only.
+Camxora: library drawer with **Songs** and **Liked** tabs `C` (liked uses the
+same `clipTrackKey` flags as the library). Stems, Uploads and Workspaces are not
+surfaced yet. A Projects tab was built and removed: the project list returns
+Camxora `studio_projects` ids, which are not Suno Studio project ids, so opening
+one hydrated an empty editor — it must wait until the project ids can be mapped.
 
 ## F15 — Shortcuts
 
