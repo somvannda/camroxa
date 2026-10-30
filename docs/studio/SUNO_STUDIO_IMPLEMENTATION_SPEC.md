@@ -1418,3 +1418,30 @@ model chip and a circular submit.
 | Model chip | on the prompt row | dropdown elsewhere |
 | Submit | circular arrow, disabled when empty | none |
 | BETA badge | on the container | none |
+
+## 55. Project menu — visual detail `L`
+
+Rendered as a floating card anchored under the project chip, ~220 px wide, 8 rows with
+icons and one accelerator:
+
+| Icon | Item | Accelerator |
+|---|---|---|
+| ＋ | New Project | |
+| ▤ | Open Project | |
+| ✎ | Rename | |
+| ⧉ | Duplicate Project | |
+| ◷ | Version History | |
+| ↗ | Share Project | |
+| ⇱ | Open a copy in v1 | |
+| ⚙ | Studio Settings | `ctrl shift ,` |
+| ✦ | Show Quick Start again | |
+
+Rows are 30 px tall, left-aligned icon + label, accelerator right-aligned in a muted
+colour. No dividers — unlike the clip menu, which does group.
+
+### Magic Bar placeholder varies
+
+With the same clip attached, the placeholder read `Add a warm reverb to this track` in
+one capture and `Ask me to generate a project…` in another. So the hint is
+**generated per session/context**, not a fixed string per selection. Treat it as
+model output, not static copy.
