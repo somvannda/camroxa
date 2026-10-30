@@ -4681,13 +4681,14 @@ html{color-scheme:dark}
 /* Floating keyboard (Suno: title bar, key rows, octave/velocity steppers, arpeggiator). */
 .stv-keyboard{position:absolute;left:50%;bottom:104px;transform:translateX(-50%);width:520px;max-width:calc(100% - 80px);z-index:6;background:var(--s-bg2);border:1px solid var(--s-line);border-radius:12px;box-shadow:0 18px 40px rgba(0,0,0,.5);padding:10px 12px}
 .stv-keyboard-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;color:var(--s-text);font-size:12px}
-.stv-keys{display:flex;flex-direction:column;gap:4px}
-.stv-keys-row{display:flex;gap:4px}
-.stv-keys-row.black{margin-bottom:-10px;padding:0 12px}
-.stv-key{flex:1;height:44px;border-radius:6px;border:1px solid var(--s-line);background:var(--s-bg3);color:var(--s-text2);font-size:11px;font-family:inherit;cursor:pointer;display:grid;place-items:center;user-select:none}
-.stv-key:hover{background:var(--s-line);color:var(--s-text)}
-.stv-key:active{background:var(--s-accent);color:#fff}
-.stv-key.dark{height:30px;background:var(--s-bg);color:var(--s-text3)}
+.stv-piano{position:relative;height:92px;user-select:none}
+.stv-piano-whites{display:flex;gap:2px;height:100%}
+.stv-pkey{position:relative;flex:1;height:100%;border:1px solid var(--s-line);border-radius:0 0 6px 6px;background:var(--s-bg3);color:var(--s-text2);font-size:11px;font-family:inherit;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;padding-bottom:6px}
+.stv-pkey:hover{background:var(--s-line);color:var(--s-text)}
+.stv-pkey:active{background:var(--s-accent);color:#fff}
+.stv-pkey.dark{position:absolute;top:0;height:58%;z-index:2;border-radius:0 0 4px 4px;background:var(--s-bg);color:var(--s-text3);box-shadow:0 2px 6px rgba(0,0,0,.5);font-size:11px;font-family:inherit;cursor:pointer;display:flex;align-items:flex-end;justify-content:center;padding-bottom:4px}
+.stv-pkey.dark:hover{background:var(--s-line);color:var(--s-text)}
+.stv-pkey.dark:active{background:var(--s-accent);color:#fff}
 .stv-keyboard-controls{display:flex;align-items:center;gap:10px;margin-top:10px;color:var(--s-text2);font-size:11px}
 .stv-stepper{display:inline-flex;align-items:center;gap:6px;padding:2px 6px;border-radius:999px;background:var(--s-bg3)}
 .stv-stepper button{border:0;background:transparent;color:var(--s-text2);cursor:pointer;font-size:12px;padding:0 2px}

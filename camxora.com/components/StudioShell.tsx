@@ -34,6 +34,17 @@ const KEY_MAP: Record<string, number> = {
   a: 0, w: 1, s: 2, e: 3, d: 4, f: 5, t: 6, g: 7, y: 8, h: 9, u: 10, j: 11,
   k: 12, o: 13, l: 14, p: 15,
 };
+/** Piano layout: white keys in order, black keys sit on the boundary after N whites. */
+const WHITE_KEYS = ["a", "s", "d", "f", "g", "h", "j", "k", "l"];
+const BLACK_KEYS: Array<{ key: string; after: number }> = [
+  { key: "w", after: 1 },
+  { key: "e", after: 2 },
+  { key: "t", after: 4 },
+  { key: "y", after: 5 },
+  { key: "u", after: 6 },
+  { key: "o", after: 8 },
+  { key: "p", after: 9 },
+];
 
 type ClipRef = {
   uid: string;
@@ -2548,43 +2559,51 @@ export function StudioShell() {
                 <Icon name="fa-chevron-down" />
               </button>
             </div>
-            <div className="stv-keys">
-              <div className="stv-keys-row black">
-                {["w", "e", "t", "y", "u", "o", "p"].map((key) => {
+            <div className="stv-piano">
+              <div className="stv-piano-whites">
+                {WHITE_KEYS.map((key) => {
                   const midi = 12 * (octave + 1) + KEY_MAP[key];
                   return (
                     <button
                       key={key}
                       type="button"
-                      className="stv-key dark"
+                      className="stv-pkey"
                       aria-label={`Play ${key.toUpperCase()}`}
                       onPointerDown={() => startNote(midi)}
                       onPointerUp={() => stopNote(midi)}
                       onPointerLeave={() => stopNote(midi)}
                     >
-                      {key.toUpperCase()}
+                      <span>{key.toUpperCase()}</span>
                     </button>
                   );
                 })}
               </div>
-              <div className="stv-keys-row">
-                {["a", "s", "d", "f", "g", "h", "j", "k", "l"].map((key) => {
-                  const midi = 12 * (octave + 1) + KEY_MAP[key];
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      className="stv-key"
-                      aria-label={`Play ${key.toUpperCase()}`}
-                      onPointerDown={() => startNote(midi)}
-                      onPointerUp={() => stopNote(midi)}
-                      onPointerLeave={() => stopNote(midi)}
-                    >
-                      {key.toUpperCase()}
-                    </button>
-                  );
-                })}
-              </div>
+              {BLACK_KEYS.map(({ key, after }) => {
+                const midi = 12 * (octave + 1) + KEY_MAP[key];
+                const whiteWidth = 100 / WHITE_KEYS.length;
+                const blackWidth = whiteWidth * 0.62;
+                const left = Math.min(
+                  100 - blackWidth,
+                  Math.max(0, after * whiteWidth - blackWidth / 2)
+                );
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    className="stv-pkey dark"
+                    aria-label={`Play ${key.toUpperCase()}`}
+                    style={{
+                      left: `${left}%`,
+                      width: `${blackWidth}%`,
+                    }}
+                    onPointerDown={() => startNote(midi)}
+                    onPointerUp={() => stopNote(midi)}
+                    onPointerLeave={() => stopNote(midi)}
+                  >
+                    <span>{key.toUpperCase()}</span>
+                  </button>
+                );
+              })}
             </div>
             <div className="stv-keyboard-controls">
               <span className="stv-stepper">
