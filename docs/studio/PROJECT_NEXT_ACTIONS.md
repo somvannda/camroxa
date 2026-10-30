@@ -103,3 +103,38 @@ time into `StudioEditorView` with a test each.
 - Never commit chunks, HTML, fonts or any reference asset. Derived facts only.
 - A row moves to `VERIFIED` only with a recorded run on current HEAD.
 - Keep `PROJECT_PROGRESS.md` updated in the same commit as the work.
+
+## Mount the plugin dock (next coding task)
+
+The dock is built and tested in isolation; it is **not** mounted in the editor yet.
+The remaining work is data plumbing, not UI:
+
+1. **Extend the track model.** `StudioEditorView` keeps `lanes: Clip[]` where each clip
+   carries a `trackId`. Add `chain?: PluginChainEntry[]` to the track record (or to
+   `StoredSession` as `chains: Record<trackId, PluginChainEntry[]>`). Prefer a map keyed
+   by track id: a track with no clips still needs its chain.
+
+2. **Normalise on load.** In `applySession`, run every stored chain through
+   `sanitizeChain()` (`lib/studio-plugin-chain.ts`) before it reaches state, so stale
+   documents cannot inject unknown plugins or parameters.
+
+3. **Persist on save.** Include `chains` in the `data` payload sent to
+   `updateStudioProject`. It is part of the document, so undo and versions cover it
+   automatically — no separate endpoint.
+
+4. **Mount the dock.** Render `<StudioPluginDock chain={chains[selectedTrackId] ?? []}
+   onChange={(next) => commitChains({...chains, [selectedTrackId]: next})} />` in the
+   track inspector region, next to `Plugins`. Reuse the existing `commitLanes`-style
+   history push so a plugin tweak is one undoable step.
+
+5. **Wire the audio.** Replace the fixed per-track FX chain with
+   `buildPluginChain(ctx, activeChain(chain))`; connect
+   `trackNode → pluginChain.input` and `pluginChain.output → panner → master`.
+   Call `chain.update(entryId, params)` on parameter changes instead of rebuilding.
+
+6. **Verify.** Typecheck, `check:ui`, then a manual run: add Delay + Compressor, play,
+   confirm the sound changes, tweak a knob and confirm `Custom` appears, press
+   `Update`, reload, confirm the chain and preset survive.
+
+Acceptance: the chain round-trips through save/load, undo restores a removed plugin,
+and a bypassed plugin is inaudible without leaving the graph disconnected.
