@@ -45,7 +45,8 @@ No Save button in the UI; versions restorable via `project_revision/{id}/clone` 
 ## F6 — Tracks
 
 Left panel: numbered track, name, volume, S, M, arm, "+ Add new track" — `H`.
-Camxora: `C` (volume/S/M visual only).
+Camxora: `C` — volume, S and M drive the track's gain node (audible), arm is
+visual only.
 
 ## F7 — Clips on the timeline
 
@@ -56,7 +57,8 @@ Add/remove persist to the project via `/api/project/{id}/clips` — `B`, `C`.
 ## F8 — Transport
 
 Header: rewind, play, metronome, `00:00.000`, bar:beat, BPM, time signature — `H`.
-Camxora: play/pause + clock + bar:beat `C`; metronome no-op; BPM static 120.
+Camxora: play/pause + clock + bar:beat `C` (driven by one audio clock, Space
+toggles it); metronome no-op; BPM static 120.
 
 ## F9 — Prompt bar
 
@@ -66,7 +68,9 @@ Camxora: visual only. **Do not ship until the endpoint is captured.**
 ## F10 — Mixer / master
 
 Master strip, per-track faders — `H`.
-Camxora: visual only.
+Camxora: `C` — per-clip streams play through per-track gain nodes into a Main
+gain, so faders, S, M and Main change the mix in real time. Gains are local
+playback state; Suno stores them in the uncaptured `state` document.
 
 ## F11 — Export
 
@@ -92,7 +96,8 @@ Camxora: library drawer with songs only.
 ## F15 — Shortcuts
 
 Space play/pause, undo/redo, delete — `H`.
-Camxora: Delete implemented; others missing.
+Camxora: Space (play/pause) and Delete (remove selected clip) `C`; undo/redo
+missing.
 
 ## Next audit actions
 

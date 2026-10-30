@@ -50,5 +50,8 @@ rather than shipping a guess.
 
 - `state` schema unknown → arrangement sync not implemented, so the timeline is
   still browser-local.
+- Mixer gains (track volume, mute, solo, Main) are applied to local playback
+  only. Suno persists them inside `state`, so they are not written back and the
+  UI never claims they are saved.
 - Export needs `render-state`.
 - Hydration needs a real non-empty version to map from.
