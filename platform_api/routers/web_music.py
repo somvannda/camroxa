@@ -588,6 +588,21 @@ async def get_studio_clip_download(
     return await service.get_studio_clip_download(clip_id, format=format)
 
 
+@router.post("/studio/sessions/{project_id}/multitrack")
+async def export_studio_multitrack(
+    project_id: str,
+    body: StudioExportRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.render_studio_multitrack(
+        UUID(ctx.user_id),
+        project_id,
+        start_beats=body.start_beats,
+        end_beats=body.end_beats,
+    )
+
+
 @router.post("/studio/clips/provider-id")
 async def resolve_studio_clip_id(
     body: StudioClipIdRequest,

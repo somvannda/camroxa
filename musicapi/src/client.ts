@@ -814,7 +814,7 @@ export class SunoClient {
     return (await res.json()) as Record<string, unknown>;
   }
 
-  /** Queue a render of a project (or a beat range) as a new clip. */
+  /** Queue a single-file export of the project (or a beat range). */
   async renderStudioState(params: {
     projectId: string;
     state: unknown;
@@ -846,6 +846,33 @@ export class SunoClient {
       }),
     });
     if (!res.ok) throw await sunoHttpError("renderStudioState", res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
+  /**
+   * Queue a multitrack (stems) export. Requires the clip to be unlocked; Suno
+   * answers `403 error_type: clip_not_unlocked` otherwise.
+   */
+  async renderStudioMultitrack(params: {
+    projectId: string;
+    state: unknown;
+    title: string;
+    startBeats: number;
+    endBeats: number;
+  }): Promise<Record<string, unknown>> {
+    const res = await this.request(`/api/studio/render-state-multitrack`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: params.projectId,
+        studio_project_id: params.projectId,
+        title: params.title,
+        state: params.state,
+        start_beats: params.startBeats,
+        end_beats: params.endBeats,
+      }),
+    });
+    if (!res.ok) throw await sunoHttpError("renderStudioMultitrack", res);
     return (await res.json()) as Record<string, unknown>;
   }
 

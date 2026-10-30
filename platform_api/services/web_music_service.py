@@ -3820,6 +3820,56 @@ class WebMusicService:
             f"/internal/studio/clips/{clip_id}/download?format={safe_format}",
         )
 
+    async def render_studio_multitrack(
+        self,
+        user_id: UUID,
+        project_id: str,
+        *,
+        start_beats: float | None = None,
+        end_beats: float | None = None,
+    ) -> dict[str, Any]:
+        """Queue a stems ZIP. Suno 403s until the clip is unlocked."""
+        await self._assert_studio_project_access(user_id, project_id)
+        project = await self._musicapi_studio_call(
+            "GET", f"/internal/studio/projects/{project_id}"
+        )
+        state = project.get("state") if isinstance(project.get("state"), dict) else {}
+        ends: list[float] = []
+        for track in state.get("tracks") or []:
+            if not isinstance(track, dict):
+                continue
+            for clip in track.get("clips") or []:
+                if isinstance(clip, dict):
+                    ends.append(float(clip.get("endBeats") or 0))
+        total_end = max([1.0, *ends])
+        start = max(0.0, float(start_beats if start_beats is not None else 0))
+        end = float(end_beats if end_beats is not None else total_end)
+        if end <= start:
+            end = start + 1.0
+        status, payload = await self._musicapi_studio_request(
+            "POST",
+            "/internal/studio/render-state-multitrack",
+            {
+                "project_id": project_id,
+                "title": str(project.get("title") or "Untitled Project"),
+                "state": state,
+                "start_beats": start,
+                "end_beats": end,
+            },
+        )
+        if status == 403:
+            raise ForbiddenError(
+                str(payload.get("error") or "This song has not been unlocked yet."),
+                details={"error_type": str(payload.get("error_type") or "")},
+            )
+        if status >= 400:
+            raise ExternalServiceError(
+                str(payload.get("error") or "Stem export failed."),
+                is_retryable=False,
+                details={"provider": "musicapi", "status": status},
+            )
+        return {"download_url": str(payload.get("download_url") or "")}
+
     async def get_studio_readiness(self) -> dict[str, Any]:
         from platform_api.config import get_settings
         from platform_api.services.streaming_config_service import (

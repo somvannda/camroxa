@@ -54,5 +54,10 @@ render but Suno refuses the download. The UI reports
 
 - Range export UI (the backend accepts `start_beats` / `end_beats`, but there is
   no selection UI yet).
-- Multitrack export (`render-state-multitrack`) is still unprobed.
+- Multitrack export (`render-state-multitrack`) is implemented at the API level
+  but not surfaced: the captured body needs `project_id`, `studio_project_id`,
+  `title`, `state`, `start_beats`, `end_beats`, and Suno answers
+  `403 {error_type: "clip_not_unlocked"}` — "This song hasn't been unlocked yet.
+  Unlock it to download stems." — for the free pool account. The menu that would
+  offer "Song / Stems" is not evidenced yet, so the button stays single-action.
 - No retry/backoff beyond the 6-minute poll window.

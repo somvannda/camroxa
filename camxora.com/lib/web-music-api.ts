@@ -816,6 +816,27 @@ export async function exportStudioSession(
   );
 }
 
+/**
+ * Queue a stems ZIP. Suno answers 403 `clip_not_unlocked` until the clip is
+ * unlocked, which the API surfaces as a normal error message.
+ */
+export async function exportStudioMultitrack(
+  projectId: string,
+  range?: { startBeats?: number; endBeats?: number }
+): Promise<{ download_url: string }> {
+  return musicJson<{ download_url: string }>(
+    `/api/v3/web-music/studio/sessions/${encodeURIComponent(projectId)}/multitrack`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        start_beats: range?.startBeats ?? null,
+        end_beats: range?.endBeats ?? null,
+      }),
+    }
+  );
+}
+
 /** Read an exported clip; `audio_url` fills in once the render finishes. */
 export async function getStudioClip(
   clipId: string

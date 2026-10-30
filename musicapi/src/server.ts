@@ -9117,6 +9117,32 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
   });
 
+  app.post("/internal/studio/render-state-multitrack", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const projectId = typeof body.project_id === "string" ? body.project_id : "";
+    if (!projectId) {
+      return reply.code(400).send({ error: "project_id is required." });
+    }
+    const client = await pickStudioClient();
+    try {
+      const payload = await client.renderStudioMultitrack({
+        projectId,
+        state: body.state ?? {},
+        title: typeof body.title === "string" ? body.title : "Untitled Project",
+        startBeats: Number(body.start_beats) || 0,
+        endBeats: Number(body.end_beats) || 0,
+      });
+      return reply.send(payload);
+    } catch (err) {
+      const status = (err as { status?: number }).status;
+      return reply.code(status === 403 ? 403 : 502).send({
+        error:
+          err instanceof Error ? err.message : "multitrack render failed",
+      });
+    }
+  });
+
   app.get("/internal/studio/projects/:project_id", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { project_id: projectId } = req.params as { project_id: string };
