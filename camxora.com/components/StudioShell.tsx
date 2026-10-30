@@ -280,6 +280,7 @@ function buildProjectState(input: {
   bps: number;
   metronome: boolean;
   metronomeVolume: number;
+  deletedTrackIds?: Set<string>;
 }): Record<string, unknown> | null {
   const baseTracks = Array.isArray(input.base.tracks)
     ? (input.base.tracks as unknown[])
@@ -354,8 +355,20 @@ function buildProjectState(input: {
     });
   }
 
-  // Never write a document that would silently drop a track we could not match.
-  if (baseAudio.some((track) => !claimed.has(String(track.id ?? "")))) return null;
+  // Never write a document that silently drops a track we could not match; an
+  // explicit delete is the only accepted reason for a base track to be absent.
+  const deleted = input.deletedTrackIds ?? new Set<string>();
+  const baseModeled = baseTracks.filter(
+    (track) => track.type === "audio" || track.type === "midi"
+  );
+  if (
+    baseModeled.some((track) => {
+      const id = String(track.id ?? "");
+      return !claimed.has(id) && !deleted.has(id);
+    })
+  ) {
+    return null;
+  }
 
   const baseMetronome = asRecord(input.base.metronome) ?? {};
   return {
@@ -467,6 +480,8 @@ export function StudioShell() {
     index: -1,
   });
   const applyingHistory = useRef(false);
+  /** Suno ids of tracks the user deleted, so the save guard allows them. */
+  const deletedTrackIdsRef = useRef<Set<string>>(new Set());
   const [historyTick, setHistoryTick] = useState(0);
   /** Last `state` document read from Suno; autosave merges into it. */
   const baseStateRef = useRef<Record<string, unknown> | null>(null);
@@ -1177,6 +1192,7 @@ export function StudioShell() {
       bps: live.current.bps,
       metronome: live.current.metronome,
       metronomeVolume: metronomeVolumeRef.current,
+      deletedTrackIds: deletedTrackIdsRef.current,
     });
     if (!state) {
       setSaveStatus("error");
@@ -1201,6 +1217,7 @@ export function StudioShell() {
       versionRef.current = version_id;
       baseStateRef.current = state;
       savedSnapshotRef.current = snapshot;
+      deletedTrackIdsRef.current.clear();
       setSaveStatus("saved");
       setError("");
     } catch (cause) {
@@ -1218,6 +1235,7 @@ export function StudioShell() {
           versionRef.current = version_id;
           baseStateRef.current = state;
           savedSnapshotRef.current = snapshot;
+      deletedTrackIdsRef.current.clear();
           setSaveStatus("saved");
         } catch {
           setSaveStatus("error");
@@ -1482,7 +1500,11 @@ export function StudioShell() {
   }
 
   function deleteTrack(trackId: string) {
-    setTracks((current) => current.filter((track) => track.id !== trackId));
+    setTracks((current) => {
+      const target = current.find((track) => track.id === trackId);
+      if (target?.remoteId) deletedTrackIdsRef.current.add(target.remoteId);
+      return current.filter((track) => track.id !== trackId);
+    });
     setSelectedTrack((current) => (current === trackId ? null : current));
     setTrackMenu(null);
   }
