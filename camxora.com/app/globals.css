@@ -4506,13 +4506,19 @@ html{color-scheme:dark}
 .se-tracks{width:260px;flex:none;display:flex;flex-direction:column;border-right:1px solid rgba(255,255,255,.08);background:#0a0d18;overflow-y:auto}
 .se-tracks-head{display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 10px;border-bottom:1px solid rgba(255,255,255,.06);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#8b90a6}
 .se-track-list{padding:6px 0}
-.se-track{position:relative;display:flex;flex-direction:column;justify-content:center;gap:6px;padding:8px 10px 8px 14px;border-bottom:1px solid rgba(255,255,255,.04);cursor:default}
+.se-track{position:relative;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:10px 10px 10px 14px;border-bottom:1px solid rgba(255,255,255,.04);cursor:default}
+.se-track-top{display:flex;align-items:center;gap:8px;min-width:0}
+.se-track-level{position:relative;height:22px;border-radius:5px;background:rgba(255,255,255,.05);overflow:hidden}
+.se-track-level-fill{position:absolute;left:0;top:0;bottom:0;opacity:.55}
+.se-track-level-handle{position:absolute;top:2px;bottom:2px;width:3px;margin-left:-1px;border-radius:2px;background:rgba(255,255,255,.85)}
 .se-track.selected{background:rgba(168,85,247,.09)}
 .se-track-color{position:absolute;left:0;top:0;bottom:0;width:3px}
 .se-track-index{font-size:11px;color:#6f748a;font-variant-numeric:tabular-nums}
 .se-track-name{border:0;background:transparent;padding:0;color:#f4f5fb;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .se-track-buttons{display:flex;gap:4px}
-.se-track-buttons button{width:22px;height:20px;border:1px solid rgba(255,255,255,.12);border-radius:4px;background:transparent;color:#8b90a6;font:inherit;font-size:11px;cursor:not-allowed}
+.se-track-buttons{display:flex;align-items:center;gap:3px;margin-left:auto}
+.se-track-buttons button{display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(255,255,255,.12);border-radius:4px;background:transparent;color:#8b90a6;font:inherit;font-size:11px;cursor:not-allowed}
+.se-track-buttons .icon,.se-track-buttons svg{width:11px;height:11px}
 .se-track-meter{height:6px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden}
 .se-track-meter span{display:block;height:100%;border-radius:3px;opacity:.85}
 .se-add-track{display:flex;align-items:center;gap:6px;width:100%;height:36px;padding:0 12px;border:0;border-top:1px solid rgba(255,255,255,.06);background:transparent;color:#8b90a6;font:inherit;font-size:12px;cursor:not-allowed}

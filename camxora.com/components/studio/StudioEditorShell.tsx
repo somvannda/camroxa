@@ -262,22 +262,33 @@ export function StudioEditorShell() {
                   style={{ height: ROW_HEIGHT, marginBottom: ROW_STEP - ROW_HEIGHT }}
                 >
                   <span className="se-track-color" style={{ background: track.color }} aria-hidden="true" />
-                  <span className="se-track-index">{index + 1}</span>
-                  <button
-                    type="button"
-                    className="se-track-name"
-                    onClick={() => setSelectedTrack(track.id)}
-                    aria-pressed={active}
-                  >
-                    {track.name}
-                  </button>
-                  <span className="se-track-buttons">
-                    <button type="button" disabled aria-label={`Mute ${track.name} (not wired)`}>M</button>
-                    <button type="button" disabled aria-label={`Solo ${track.name} (not wired)`}>S</button>
-                    <button type="button" disabled aria-label={`Arm ${track.name} (not wired)`}>A</button>
-                  </span>
-                  <div className="se-track-meter" aria-hidden="true">
-                    <span style={{ width: `${track.volume}%`, background: track.color }} />
+                  <div className="se-track-top">
+                    <span className="se-track-index">{index + 1}</span>
+                    <button
+                      type="button"
+                      className="se-track-name"
+                      onClick={() => setSelectedTrack(track.id)}
+                      aria-pressed={active}
+                    >
+                      {track.name}
+                    </button>
+                    <span className="se-track-buttons">
+                      <button type="button" disabled aria-label={`Mute ${track.name} (not wired)`}>
+                        <Icon name="fa-volume-high" />
+                      </button>
+                      <button type="button" disabled aria-label={`Solo ${track.name} (not wired)`}>S</button>
+                      <button type="button" disabled aria-label={`Arm ${track.name} (not wired)`}>A</button>
+                      <button type="button" disabled aria-label={`Options for ${track.name} (not wired)`}>
+                        <Icon name="fa-chevron-down" />
+                      </button>
+                    </span>
+                  </div>
+                  <div className="se-track-level" aria-hidden="true">
+                    <span
+                      className="se-track-level-fill"
+                      style={{ width: `${track.volume}%`, background: track.color }}
+                    />
+                    <span className="se-track-level-handle" style={{ left: `${track.volume}%` }} />
                   </div>
                 </div>
               );
