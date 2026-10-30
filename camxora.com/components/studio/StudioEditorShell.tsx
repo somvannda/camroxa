@@ -153,7 +153,7 @@ export function StudioEditorShell() {
     <div className="se-shell">
       <header className="se-head">
         <div className="se-head-left">
-          <span className="se-logo">SUNO</span>
+          <span className="se-logo">CAMXORA</span>
           <button type="button" className="se-chip" disabled title="Project menu is not wired in the shell yet">
             {project?.title || "Untitled project"}
             <Icon name="fa-chevron-down" />
