@@ -30,13 +30,11 @@ One screen = one screenshot + one spec section + one commit. Never two at once.
 ## Position
 
 - 65 screens in `docs/studio/reference/SCREEN_MANIFEST.md`
-- **28 DONE, 5 PART, 32 OPEN** (counted from the manifest rows, not the old tally)
-- **Next: S05 — new empty project.** It is **PART**, not DONE: §44 is the *loaded*
-  Drum & Bass demo, so the empty arrangement was never actually captured. Reaching
-  it needs `My Projects → New Project`, which needs a signed-in session.
-- Then S19 (track options menu), then S16 onward (arrangement)
-- S01/§57 and S02/§58 are capturable **signed out** — no credentials needed. Use
-  them to warm up before asking the owner to sign in.
+- **29 DONE, 4 PART, 32 OPEN** (counted from the manifest rows, not the old tally)
+- **S05 is now DONE §59** — new empty project captured: one `Audio Track` created
+  automatically, 120 BPM / 4/4, label cadence every 2 bars at default zoom.
+- **Next: S19 (track options menu)**, then S16 onward (arrangement)
+- The reference tab is signed in again as of this session — reuse it, don't close it.
 
 ## What is actually built (code)
 
@@ -58,6 +56,8 @@ generation inside the editor · B1–B5 backend handlers.
 |---|---|
 | `element.click()` doesn't open their menus | use `snapshot` → `find` → `click ref` |
 | refs expire after a nav or a new snapshot | do find → click → screenshot in one pass |
+| the Studio editor exposes **no** a11y refs (all canvas) | `snapshot`/`find` return an empty tree — read `innerText` via `evaluate`, locate the control by `aria-label`, then dispatch a full pointer sequence (pointerover → pointerdown → mousedown → pointerup → mouseup → click) |
+| a control's only handle is its `aria-label` | e.g. the onboarding `×` is `Skip to the empty project`; search by label, never by glyph |
 | PowerShell `Set-Content -Encoding utf8` writes a BOM | it broke PostCSS; write via the write tool or strip the BOM |
 | CSS font sizes below 11 px fail `check:ui` | 11/12/13/14/15/16/18/22/24/26/28/30/32 only |
 | raw hex outside the palette fails `check:ui` | use `var(--token)` |
