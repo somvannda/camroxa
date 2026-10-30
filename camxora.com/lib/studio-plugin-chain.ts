@@ -196,3 +196,15 @@ export function sanitizeChain(input: unknown): PluginChainEntry[] {
   }
   return out;
 }
+
+/** Sanitise a whole `trackId -> chain` map from a persisted document. */
+export function sanitizeChainMap(input: unknown): Record<string, PluginChainEntry[]> {
+  if (!input || typeof input !== "object") return {};
+  const out: Record<string, PluginChainEntry[]> = {};
+  for (const [trackId, value] of Object.entries(input as Record<string, unknown>)) {
+    if (typeof trackId !== "string" || !trackId) continue;
+    const chain = sanitizeChain(value);
+    if (chain.length) out[trackId] = chain;
+  }
+  return out;
+}

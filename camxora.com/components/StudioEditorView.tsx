@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -66,6 +66,8 @@ import {
   touchStudioPresence,
   type StudioPresence,
 } from "@/lib/studio-api";
+import type { PluginChainEntry } from "@/lib/studio-plugins";
+import { sanitizeChainMap } from "@/lib/studio-plugin-chain";
 
 type AutomationPoint = {
   id: string;
@@ -170,6 +172,8 @@ type StoredSession = {
   markers?: TimelineMarker[];
   groups?: TrackGroup[];
   lanes?: Clip[];
+  /** Plugin chains keyed by track id. Part of the document, so versions cover them. */
+  chains?: Record<string, PluginChainEntry[]>;
 };
 
 type AudioMeta = {
@@ -1312,6 +1316,7 @@ export function StudioEditorView() {
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
   const [lanes, setLanes] = useState<Clip[]>([]);
   const [groups, setGroups] = useState<TrackGroup[]>(DEFAULT_GROUPS);
+  const [chains, setChains] = useState<Record<string, PluginChainEntry[]>>({});
   const [audioMeta, setAudioMeta] = useState<Record<string, AudioMeta>>({});
   const [search, setSearch] = useState("");
   const [libraryFilter, setLibraryFilter] = useState<"all" | "instrumental" | "vocal" | "ready">("all");
@@ -1684,6 +1689,7 @@ export function StudioEditorView() {
             .sort((a, b) => a.time - b.time)
         : []
     );
+    setChains(sanitizeChainMap(saved.chains));
     setProjectId(nextProjectId);
     setCloudState(nextProjectId ? "saved" : "local");
   }
@@ -1848,7 +1854,7 @@ export function StudioEditorView() {
   useEffect(() => {
     if (!loaded || !user || !storageKey) return;
     const timer = window.setTimeout(() => {
-      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, groups, lanes };
+      const payload: StoredSession = { name: sessionName, bpm, timeSignature, gridDivision, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, loopStart, loopEnd, markers, groups, lanes, chains };
       window.localStorage.setItem(storageKey, JSON.stringify(payload));
       setSavedAt(new Date());
     }, 350);
@@ -1865,7 +1871,7 @@ export function StudioEditorView() {
       setCloudState("saving");
       setCloudError("");
       try {
-        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, groups, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh };
+        const data: StudioProjectData = { lanes, gridDivision, loopStart, loopEnd, markers, groups, zoom, master, masterCompressor, masterDrive, masterLow, masterMid, masterHigh, chains };
         if (sharedToken) {
           const saved = await updateStudioSharedProject(sharedToken, {
             title: sessionName,
@@ -3760,7 +3766,7 @@ export function StudioEditorView() {
       setMidiStatus("Web MIDI is not available in this browser.");
       return;
     }
-    setMidiStatus("Requesting MIDI access…");
+    setMidiStatus("Requesting MIDI accessâ€¦");
     try {
       const access = await navigator.requestMIDIAccess();
       midiAccessRef.current = access;
@@ -3782,7 +3788,7 @@ export function StudioEditorView() {
         setMidiStatus(
           names.length
             ? `MIDI: ${names.join(", ")}`
-            : "MIDI connected — no devices found."
+            : "MIDI connected â€” no devices found."
         );
       };
       attach();
@@ -4381,7 +4387,7 @@ export function StudioEditorView() {
     const name = personaName.trim() || `${selectedLane.title} persona`;
     setPersonasBusy(true);
     setPersonasError("");
-    setPersonasStatus("Creating persona…");
+    setPersonasStatus("Creating personaâ€¦");
     try {
       const created = await createStudioPersona({
         taskId: selectedLane.generationId,
@@ -4463,7 +4469,7 @@ export function StudioEditorView() {
     }
     setEditBusy(true);
     setEditError("");
-    setEditStatus(`Submitting ${label.toLowerCase()}…`);
+    setEditStatus(`Submitting ${label.toLowerCase()}â€¦`);
     try {
       let operation = await request();
       for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -4472,7 +4478,7 @@ export function StudioEditorView() {
         }
         await new Promise((resolve) => window.setTimeout(resolve, 3000));
         operation = await getStudioOperation(operation.id);
-        setEditStatus(`${label} in progress…`);
+        setEditStatus(`${label} in progressâ€¦`);
       }
       if (["error", "failed"].includes(operation.status.toLowerCase())) {
         throw new Error(operation.error_message || `${label} failed.`);
@@ -4499,14 +4505,14 @@ export function StudioEditorView() {
     }
     const lower = command.toLowerCase();
     if (lower.includes("stem")) {
-      setAiStatus("Separating stems…");
+      setAiStatus("Separating stemsâ€¦");
       void separateStems("stems");
       return;
     }
     if (lower.includes("extend")) {
       if (selectedLane.uploadId) {
         const uploadId = selectedLane.uploadId;
-        setAiStatus("Extending the uploaded clip…");
+        setAiStatus("Extending the uploaded clipâ€¦");
         void runStudioEdit(
           "Upload extend",
           () =>
@@ -4523,7 +4529,7 @@ export function StudioEditorView() {
         );
         return;
       }
-      setAiStatus("Extending the selected clip…");
+      setAiStatus("Extending the selected clipâ€¦");
       void runStudioEdit("Extend", () =>
         requestStudioExtend({
           taskId: selectedLane.generationId,
@@ -4537,7 +4543,7 @@ export function StudioEditorView() {
     if (lower.includes("cover")) {
       if (selectedLane.uploadId) {
         const uploadId = selectedLane.uploadId;
-        setAiStatus("Covering the uploaded clip…");
+        setAiStatus("Covering the uploaded clipâ€¦");
         void runStudioEdit(
           "Upload cover",
           () =>
@@ -4555,7 +4561,7 @@ export function StudioEditorView() {
         );
         return;
       }
-      setAiStatus("Creating a cover…");
+      setAiStatus("Creating a coverâ€¦");
       void runStudioEdit("Cover", () =>
         requestStudioCover({
           taskId: selectedLane.generationId,
@@ -4567,7 +4573,7 @@ export function StudioEditorView() {
       return;
     }
     if (lower.includes("vocal")) {
-      setAiStatus("Adding vocals…");
+      setAiStatus("Adding vocalsâ€¦");
       void runStudioEdit("Add vocals", () =>
         requestStudioAddVocals({
           taskId: selectedLane.generationId,
@@ -4579,7 +4585,7 @@ export function StudioEditorView() {
       return;
     }
     if (lower.includes("instrumental")) {
-      setAiStatus("Adding instrumental…");
+      setAiStatus("Adding instrumentalâ€¦");
       void runStudioEdit("Add instrumental", () =>
         requestStudioAddInstrumental({
           taskId: selectedLane.generationId,
@@ -4719,7 +4725,7 @@ export function StudioEditorView() {
       setSelected(next[0].id);
       setStemsStatus(
         clips.length > selectedClips.length
-          ? `Stems added — ${selectedClips.length} lanes, one take`
+          ? `Stems added â€” ${selectedClips.length} lanes, one take`
           : "Stems added to the timeline"
       );
     } catch (cause) {
@@ -4746,7 +4752,7 @@ export function StudioEditorView() {
   );
 
   if (authLoading) {
-    return <p className="fine" style={{ textAlign: "left" }}>Loading studio…</p>;
+    return <p className="fine" style={{ textAlign: "left" }}>Loading studioâ€¦</p>;
   }
 
   if (!user) {
@@ -4809,7 +4815,7 @@ export function StudioEditorView() {
                   type="button"
                   title={
                     typeof person.playhead_seconds === "number"
-                      ? `${person.display_name} at ${formatTime(person.playhead_seconds)} — click to follow`
+                      ? `${person.display_name} at ${formatTime(person.playhead_seconds)} â€” click to follow`
                       : person.display_name
                   }
                   aria-label={`Follow ${person.display_name}'s playhead`}
@@ -5179,7 +5185,7 @@ export function StudioEditorView() {
                     type="button"
                     className={`studio-lib-item${added ? " added" : ""}`}
                     onClick={() => addGeneration(item)}
-                    title={added ? "Already in session — click to select" : "Add to session"}
+                    title={added ? "Already in session â€” click to select" : "Add to session"}
                   >
                     <span className="studio-lib-cover">
                       {clip?.image_url ? <img src={clip.image_url} alt="" loading="lazy" /> : <Icon name="fa-music" />}
@@ -5234,7 +5240,7 @@ export function StudioEditorView() {
                     color: marker.color,
                     borderColor: `${marker.color}66`,
                   }}
-                  title={`${marker.label} — click to seek, double-click to rename, right-click to remove`}
+                  title={`${marker.label} â€” click to seek, double-click to rename, right-click to remove`}
                   onClick={(event) => {
                     event.stopPropagation();
                     seekTo(marker.time);
@@ -5490,7 +5496,7 @@ export function StudioEditorView() {
                           setMidiViewOctave((value) => Math.max(1, value - 1))
                         }
                       >
-                        −
+                        âˆ’
                       </button>
                       <span className="studio-midi-octave">Oct {midiViewOctave}</span>
                       <button
@@ -5555,7 +5561,7 @@ export function StudioEditorView() {
                         aria-label="Transpose MIDI down one octave"
                         onClick={() => transposeMidiNotes(-12)}
                       >
-                        −12
+                        âˆ’12
                       </button>
                       <button
                         type="button"
@@ -6115,7 +6121,7 @@ export function StudioEditorView() {
                       onClick={() => void loadLyrics(true)}
                       disabled={lyricsLoading}
                     >
-                      {lyricsLoading ? "Loading…" : "Refresh"}
+                      {lyricsLoading ? "Loadingâ€¦" : "Refresh"}
                     </button>
                   </div>
                   {lyricsError ? (
@@ -6171,11 +6177,11 @@ export function StudioEditorView() {
                 <div>
                   <button type="button" onClick={() => void separateStems("vocal")} disabled={stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}>
                     <Icon name="fa-user" /> Vocals + instrumental
-                    {studioPricing ? <em>· {studioPricing.stems_2} cr</em> : null}
+                    {studioPricing ? <em>Â· {studioPricing.stems_2} cr</em> : null}
                   </button>
                   <button type="button" onClick={() => void separateStems("stems")} disabled={stemsBusy || (selectedLane.variant !== "ok" && selectedLane.variant !== "alt")}>
                     <Icon name="fa-layer-group" /> Full stems
-                    {studioPricing ? <em>· {studioPricing.stems_12} cr</em> : null}
+                    {studioPricing ? <em>Â· {studioPricing.stems_12} cr</em> : null}
                   </button>
                 </div>
                 {stemsStatus ? <small>{stemsStatus}</small> : null}
@@ -6185,7 +6191,7 @@ export function StudioEditorView() {
                 <div className="studio-persona-head">
                   <span>Personas</span>
                   <button type="button" onClick={() => void refreshPersonas()} disabled={personasBusy}>
-                    {personasBusy ? "Loading…" : "Refresh"}
+                    {personasBusy ? "Loadingâ€¦" : "Refresh"}
                   </button>
                 </div>
                 <SelectField
@@ -6234,12 +6240,12 @@ export function StudioEditorView() {
               <div className="studio-edit-actions">
                 <span>
                   AI edits
-                  {studioPricing ? <em> · {studioPricing.edit} cr each</em> : null}
+                  {studioPricing ? <em> Â· {studioPricing.edit} cr each</em> : null}
                 </span>
                 <input
                   value={editPrompt}
                   onChange={(event) => setEditPrompt(event.target.value)}
-                  placeholder="Describe a cover or vocal change…"
+                  placeholder="Describe a cover or vocal changeâ€¦"
                   maxLength={500}
                 />
                 <div>
@@ -6394,7 +6400,7 @@ export function StudioEditorView() {
                 <textarea
                   value={replaceLyrics}
                   onChange={(event) => setReplaceLyrics(event.target.value)}
-                  placeholder="Replacement lyrics for the selected range…"
+                  placeholder="Replacement lyrics for the selected rangeâ€¦"
                   maxLength={5000}
                   rows={3}
                 />
@@ -6423,7 +6429,7 @@ export function StudioEditorView() {
                     (loop && loopEnd <= loopStart)
                   }
                 >
-                  <Icon name="fa-scissors" /> Replace {loop ? `${Math.round(loopStart)}–${Math.round(loopEnd)}s` : "full clip"}
+                  <Icon name="fa-scissors" /> Replace {loop ? `${Math.round(loopStart)}â€“${Math.round(loopEnd)}s` : "full clip"}
                 </button>
                 {editStatus ? <small>{editStatus}</small> : null}
                 {editError ? <small className="studio-stem-error">{editError}</small> : null}
@@ -6459,7 +6465,7 @@ export function StudioEditorView() {
         <input
           value={aiPrompt}
           onChange={(event) => setAiPrompt(event.target.value)}
-          placeholder="Select a clip and ask me to add or change a part…"
+          placeholder="Select a clip and ask me to add or change a partâ€¦"
           aria-label="Studio AI prompt"
         />
         <button type="submit" disabled={!aiPrompt.trim()} aria-label="Run Studio AI command">
@@ -6619,7 +6625,7 @@ export function StudioEditorView() {
             </div>
             {versionsError ? <small className="studio-stem-error">{versionsError}</small> : null}
             <div className="studio-versions-list">
-              {versionsBusy && !versions.length ? <p>Loading versions…</p> : null}
+              {versionsBusy && !versions.length ? <p>Loading versionsâ€¦</p> : null}
               {!versionsBusy && !versions.length ? <p>No versions saved yet.</p> : null}
               {versions.map((version) => (
                 <div className="studio-version-row" key={version.id}>
@@ -6662,7 +6668,7 @@ export function StudioEditorView() {
                 className="studio-project-search"
                 value={projectSearch}
                 onChange={(event) => setProjectSearch(event.target.value)}
-                placeholder="Search projects…"
+                placeholder="Search projectsâ€¦"
                 aria-label="Search projects"
               />
               <SelectField
@@ -6704,7 +6710,7 @@ export function StudioEditorView() {
               <label htmlFor="studio-show-archived">Show archived</label>
             </div>
             <div className="studio-versions-list">
-              {projectsBusy && !projectList.length ? <p>Loading projects…</p> : null}
+              {projectsBusy && !projectList.length ? <p>Loading projectsâ€¦</p> : null}
               {!projectsBusy && !projectList.length ? <p>No saved projects yet.</p> : null}
               {!projectsBusy && projectList.length && !filteredProjects.length ? (
                 <p>No projects match your search.</p>
@@ -6720,7 +6726,7 @@ export function StudioEditorView() {
                     </small>
                     {project.tags?.length ? (
                       <small className="studio-project-tags">
-                        {project.tags.join(" · ")}
+                        {project.tags.join(" Â· ")}
                       </small>
                     ) : null}
                     {project.archived ? (
@@ -6827,7 +6833,7 @@ export function StudioEditorView() {
               className="studio-mashup-prompt"
               value={mashupPrompt}
               onChange={(event) => setMashupPrompt(event.target.value)}
-              placeholder="Optional mashup direction…"
+              placeholder="Optional mashup directionâ€¦"
               rows={2}
             />
             {mashupError ? <small className="studio-stem-error">{mashupError}</small> : null}
@@ -6854,7 +6860,7 @@ export function StudioEditorView() {
             <div className="studio-mixer-head">
               <div>
                 <h2>Mixer</h2>
-                <p>{lanes.length} tracks · master output</p>
+                <p>{lanes.length} tracks Â· master output</p>
               </div>
               <button type="button" aria-label="Close mixer" onClick={() => setMixerOpen(false)}>
                 <Icon name="fa-xmark" />
@@ -7075,7 +7081,7 @@ export function StudioEditorView() {
               <div className="studio-share-list-head">
                 <span>Share links</span>
                 <button type="button" onClick={() => void loadShares()} disabled={sharesBusy}>
-                  {sharesBusy ? "Loading…" : "Refresh"}
+                  {sharesBusy ? "Loadingâ€¦" : "Refresh"}
                 </button>
               </div>
               {sharesError ? <small className="studio-stem-error">{sharesError}</small> : null}
@@ -7091,7 +7097,7 @@ export function StudioEditorView() {
                       <small>
                         {share.active ? "Active" : "Revoked or expired"}
                         {share.expires_at
-                          ? ` · expires ${new Date(share.expires_at).toLocaleDateString()}`
+                          ? ` Â· expires ${new Date(share.expires_at).toLocaleDateString()}`
                           : ""}
                       </small>
                     </div>
@@ -7123,7 +7129,7 @@ export function StudioEditorView() {
                 <span>Comments</span>
                 <em>{projectComments.length}</em>
               </div>
-              {commentsBusy ? <small>Loading comments…</small> : null}
+              {commentsBusy ? <small>Loading commentsâ€¦</small> : null}
               {commentsError ? <small className="studio-stem-error">{commentsError}</small> : null}
               {!commentsBusy && !projectComments.length ? (
                 <small>No comments yet. Share the link to collect feedback.</small>
