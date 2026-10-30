@@ -519,22 +519,14 @@ async def get_balance(
     credit_service: CreditServiceDep,
     credit_repo: CreditRepoDep,
 ) -> WalletBalanceResponse:
-    """Return the user's wallet balance, plan quota remaining, and recent 50 transactions."""
-    from platform_api.dependencies import get_plan_repo, get_usage_tracking_repo
-    from platform_api.services.quota_display_service import get_plan_quota_remaining
-
+    """Return the user's wallet balance and recent 50 transactions."""
     user_id = UUID(ctx.user_id)
     balance = await credit_service.get_balance(ctx.user_id)
 
     # Get recent 50 transactions (read-only — repo direct is fine)
     transactions, _ = await credit_repo.get_transactions(user_id, page=1, page_size=50)
-    plan_repo = get_plan_repo()
-    usage_repo = get_usage_tracking_repo()
-    plan_quota_remaining = await get_plan_quota_remaining(
-        user_id=user_id,
-        plan_repo=plan_repo,
-        usage_repo=usage_repo,
-    )
+    # Plans and quotas are retired; the field stays for API compatibility.
+    plan_quota_remaining = None
 
     return WalletBalanceResponse(
         balance=units_to_credits(balance),

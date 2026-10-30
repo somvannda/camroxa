@@ -691,8 +691,6 @@ class WebMusicService:
         daily_limit = 0
         daily_remaining = 0
         if not is_pro and not paid_web:
-            plan = await self._v3_store_service().get_active_free_plan()
-            daily_limit = int((plan or {}).get("daily_credits") or 0)
             daily_remaining = spendable
         return await self._with_queue_fields(
             user_id,

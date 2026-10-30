@@ -856,7 +856,9 @@ async def get_user_full_details(
     plan_id = None
     license_status = "active" if user_is_pro else None
     license_activated_at = None
-    license_expires_at = None
+    from platform_api.services.v3.store import V3BillingStore
+
+    license_expires_at = await V3BillingStore(pool=pool).live_pack_expiry(user_id)
 
     product_row = await _fetch_optional_row(
         pool,
