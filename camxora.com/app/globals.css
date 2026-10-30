@@ -4449,6 +4449,9 @@ html{color-scheme:dark}
 .sp-slot-head{display:flex;align-items:center;gap:6px;margin-bottom:8px}
 .sp-slot-head strong{font-size:12px;font-weight:650;color:var(--text);white-space:nowrap}
 .sp-dot{width:8px;height:8px;border-radius:50%;background:#a855f7;flex:none}
+.sp-bypass{width:12px;height:12px;flex:none;margin-left:auto;border-radius:50%;border:1px solid rgba(255,255,255,.25);background:rgba(168,85,247,.75);cursor:pointer}
+.sp-bypass.off{background:transparent;border-color:rgba(255,255,255,.2)}
+.sp-param input:focus-visible{outline:2px solid #52d17c;outline-offset:2px;border-radius:6px}
 .sp-preset{height:24px;padding:0 8px;border:1px solid var(--line);border-radius:5px;background:rgba(7,10,19,.6);color:var(--muted);font:inherit;font-size:11px;cursor:pointer}
 .sp-update{height:24px;padding:0 8px;border:0;border-radius:5px;background:linear-gradient(100deg,#7c3aed,#a855f7);color:#fff;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
 .sp-slot-tools{display:flex;align-items:center;gap:2px;margin-left:auto}

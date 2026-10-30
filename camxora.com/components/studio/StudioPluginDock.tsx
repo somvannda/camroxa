@@ -101,15 +101,15 @@ export function StudioPluginDock({ chain, onChange, trackName }: Props) {
                     Update
                   </button>
                 ) : null}
+                <button
+                  type="button"
+                  className={`sp-bypass${entry.bypassed ? " off" : ""}`}
+                  aria-label={`Bypass ${plugin.name}`}
+                  aria-pressed={entry.bypassed}
+                  title={entry.bypassed ? "Bypassed" : "Active"}
+                  onClick={() => onChange(toggleBypass(chain, entry.entryId))}
+                />
                 <span className="sp-slot-tools">
-                  <button
-                    type="button"
-                    aria-label={`Bypass ${plugin.name}`}
-                    aria-pressed={entry.bypassed}
-                    onClick={() => onChange(toggleBypass(chain, entry.entryId))}
-                  >
-                    <Icon name="fa-power-off" />
-                  </button>
                   <button
                     type="button"
                     aria-label={`Move ${plugin.name} left`}
