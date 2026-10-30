@@ -68,7 +68,8 @@ import {
 } from "@/lib/studio-api";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { sanitizeChainMap } from "@/lib/studio-plugin-chain";
-import { migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
+import { migrateLanesToTracks, sanitizeTracks, trackIdForClip, type StudioTrack } from "@/lib/studio-tracks";
+import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 
 type AutomationPoint = {
   id: string;
@@ -1325,6 +1326,10 @@ export function StudioEditorView() {
   const [search, setSearch] = useState("");
   const [libraryFilter, setLibraryFilter] = useState<"all" | "instrumental" | "vocal" | "ready">("all");
   const [selected, setSelected] = useState<string | null>(null);
+  const selectedTrackId = useMemo(
+    () => (selected ? trackIdForClip(tracks, selected) : tracks[0]?.id ?? null),
+    [selected, tracks]
+  );
   const [sessionName, setSessionName] = useState("Untitled session");
   const [bpm, setBpm] = useState(90);
   const [timeSignature, setTimeSignature] = useState("4/4");
@@ -6456,6 +6461,15 @@ export function StudioEditorView() {
           )}
         </aside>
       </div>
+
+      <StudioPluginDock
+        chain={selectedTrackId ? chains[selectedTrackId] ?? [] : []}
+        trackName={tracks.find((track) => track.id === selectedTrackId)?.name}
+        onChange={(next) => {
+          if (!selectedTrackId) return;
+          setChains((current) => ({ ...current, [selectedTrackId]: next }));
+        }}
+      />
 
       <form
         className="studio-ai-bar"
