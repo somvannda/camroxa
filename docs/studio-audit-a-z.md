@@ -1,172 +1,288 @@
-# Suno Studio — A to Z control audit
+# Suno Studio — complete A→Z audit (v2)
 
-Every button, link, menu, panel and behaviour in Suno Studio, with its evidence
-source and Camxora status.
+Second pass: every button, link, icon, menu, panel, shortcut, state and edge
+case. Nothing is implemented until its row has evidence.
 
-**Evidence:** `B` bundle contract captured · `H` help centre / release notes ·
-`L` live Studio · `?` not yet captured (do not implement).
+**Ev:** `B` bundle contract · `H` help centre/release notes · `L` live Studio ·
+`?` not captured yet (do not build).
 
-**Status:** `done` · `partial` · `missing` · `blocked`
+**Cam:** `done` · `part` · `miss` · `blk` (blocked on evidence) · `n/a`
 
 ---
 
-## A. Landing — `suno.com/studio`
+## A. Landing — `/studio`
 
-| # | Control | Suno behaviour | Ev | Camxora |
+### A1 Header
+| # | Element | Type | Suno behaviour | Ev | Cam |
+|---|---|---|---|---|---|
+| A1 | SUNO wordmark | link | home | H | done |
+| A2 | "No project loaded ⋯" | pill + menu | project switcher | H | part |
+| A3 | Undo arrow | icon button | undo loaded project | H | miss |
+| A4 | Redo arrow | icon button | redo | H | miss |
+| A5 | Export | button | disabled without project | H | done (disabled) |
+| A6 | Library | button + icon | right drawer | H | done |
+
+### A2 Resume column
+| # | Element | Behaviour | Ev | Cam |
 |---|---|---|---|---|
-| A1 | SUNO logo | link to home | H | done (app header) |
-| A2 | "No project loaded ⋯" pill | project switcher / recent list | H | partial (static pill) |
-| A3 | Undo / redo arrows | history for the loaded project | H | missing |
-| A4 | Export | disabled with no project | H | partial (disabled) |
-| A5 | Library toggle | opens the right drawer | H | done |
-| A6 | "New empty project" card | creates a project, opens editor | H | done |
-| A7 | Recent project card | opens that project | H | done (latest only) |
-| A8 | "See all projects ›" | projects list page | H | partial (opens latest) |
-| A9 | Song search | filters the song list | H | done |
-| A10 | Filters chip (count) | filter by model/date/liked | H | partial (kind filter) |
-| A11 | "New" dropdown | start from blank / upload / sample | H | partial (blank only) |
-| A12 | Day group headers | Today / Yesterday / date | H | done |
-| A13 | Song row — artwork, title, style | summary | H | done |
-| A14 | Song row — key + BPM | e.g. `C minor · 143 BPM` | H | missing (not in our data) |
-| A15 | Song row — likes | play count / like count | H | missing |
-| A16 | "Edit in Studio" | opens project for that clip | B L | done |
-| A17 | Project list source | `/api/project/me` returns workspaces, not Studio projects | B | blocked (`?` for real source) |
+| A7 | "New empty project" card | create + open | H | done |
+| A8 | Recent project cards | open project | H | part (latest only) |
+| A9 | Project thumbnail | artwork of latest version | H | miss |
+| A10 | Project meta line | name + `3d. 8h ago` | H | part (name/group) |
+| A11 | "See all projects ›" | projects list | H | part |
+| A12 | Empty state | no projects yet | H | done |
+
+### A3 Songs column
+| # | Element | Behaviour | Ev | Cam |
+|---|---|---|---|---|
+| A13 | Section title | "Or start from one of your songs" | H | done |
+| A14 | Search field | filter list | H | done |
+| A15 | Filters chip | count + filter menu (model/date/liked) | H | part |
+| A16 | New dropdown | blank project / from upload / from sample | H | part |
+| A17 | Day headers | Today / Yesterday / date | H | done |
+| A18 | Song artwork | thumbnail | H | done |
+| A19 | Song title | opens details? | ? | part |
+| A20 | Style summary | one line, truncated | H | done |
+| A21 | Key + BPM | `C minor · 143 BPM` | H | miss (no data) |
+| A22 | Like count / heart | social proof | H | miss |
+| A23 | "Edit in Studio" | opens project for clip | B L | done |
+| A24 | Row hover | highlight + actions | H | part |
+| A25 | List scrolling | virtualised? | ? | n/a |
+| A26 | Project list source | `/api/project/me` = workspaces | B | blk |
 
 ---
 
 ## B. Project view — header
 
-| # | Control | Suno behaviour | Ev | Camxora |
+| # | Element | Behaviour | Ev | Cam |
 |---|---|---|---|---|
-| B1 | Project title ··· | rename, versions, archive, delete, share | B H | partial (rename wrapped) |
-| B2 | Undo / redo | project history | H | missing |
-| B3 | Skip to start | playhead to bar 1 | H | done |
-| B4 | Rewind | nudge back | H | missing |
-| B5 | Play / pause | transport | H | done (real audio) |
-| B6 | Metronome | click track on/off | H | missing (no-op) |
-| B7 | Time `00:00.000` | absolute time | H | done |
-| B8 | Bar:beat `001.1.1` | musical position | H | done (derived) |
-| B9 | `120 BPM` | project tempo, editable | H | partial (static) |
-| B10 | `4/4` | time signature | H | partial (static) |
-| B11 | Export | full song / range / multitracks | B H | blocked (`render-state`) |
-| B12 | Library | opens drawer | H | done |
+| B1 | Project title | inline rename | B | part |
+| B2 | Title `⋯` | project menu (H1) | H | miss |
+| B3 | Undo | history | H | miss |
+| B4 | Redo | history | H | miss |
+| B5 | Skip to start | playhead → 0 | H | done |
+| B6 | Rewind | step back | H | miss |
+| B7 | Play / Pause | transport | H | done |
+| B8 | Metronome | click track | H | miss |
+| B9 | Time display | `00:00.000` | H | done |
+| B10 | Bar:beat | `001.1.1` | H | done |
+| B11 | BPM | `120 BPM`, editable | H | part |
+| B12 | Time signature | `4/4` | H | part |
+| B13 | Export | dialog (H3) | B H | blk |
+| B14 | Library | drawer toggle | H | done |
+| B15 | Credits indicator | remaining credits | ? | miss |
 
 ---
 
-## C. Track panel (left)
+## C. Track panel
 
-| # | Control | Suno behaviour | Ev | Camxora |
+| # | Element | Behaviour | Ev | Cam |
 |---|---|---|---|---|
-| C1 | Track number + name | rename by double-click | H | partial (number only) |
-| C2 | Volume | per-track gain | H | partial (visual) |
-| C3 | S (solo) | mutes others | H | partial (visual) |
-| C4 | M (mute) | silences track | H | partial (visual) |
-| C5 | Arm / record | record into track | H | missing (no-op) |
-| C6 | "＋ Add new track" | adds audio/MIDI track | H | done (audio only) |
-| C7 | Track context menu | duplicate, delete, colour | ? | missing |
-| C8 | Drag to reorder | reorder tracks | ? | missing |
+| C1 | Track number | index | H | done |
+| C2 | Track name | double-click rename | H | part |
+| C3 | Volume control | fader/knob | H | part |
+| C4 | S | solo | H | part |
+| C5 | M | mute | H | part |
+| C6 | Arm | record-enable | H | miss |
+| C7 | FX / sliders icon | insert effects | ? | miss |
+| C8 | `＋ Add new track` | audio/MIDI menu | H | part |
+| C9 | Track row select | highlights lane | H | done |
+| C10 | Track context menu | duplicate/delete/colour | ? | miss |
+| C11 | Reorder | drag track | ? | miss |
+| C12 | Collapse track | height toggle | ? | miss |
 
 ---
 
-## D. Timeline (centre)
+## D. Timeline
 
-| # | Control | Suno behaviour | Ev | Camxora |
+| # | Element | Behaviour | Ev | Cam |
 |---|---|---|---|---|
-| D1 | Bar ruler | numbered bars 1…n | H | done |
-| D2 | Playhead | follows transport | H | done |
-| D3 | Clip block | drag along lane | H | done |
-| D4 | Clip trim handles | shorten from either edge | H | missing |
-| D5 | Clip split | split at playhead | ? | missing |
-| D6 | Clip delete | Delete / context menu | H | done |
-| D7 | Clip context menu | duplicate, reverse, separate | ? | missing |
-| D8 | Drop from library | drag a song onto a lane | H | done |
-| D9 | Snap / zoom | grid snapping, zoom controls | H | partial (zoom slider) |
-| D10 | Waveform in clip | audio preview | H | missing |
-| D11 | Section labels | verse/chorus markers | ? | missing |
+| D1 | Bar ruler | numbers + ticks | H | done |
+| D2 | Grid lines | bar subdivisions | H | done |
+| D3 | Playhead | follows transport, draggable | H | part |
+| D4 | Clip block | shows title, colour | H | done |
+| D5 | Clip waveform | audio peaks | H | miss |
+| D6 | Clip drag | move along lane | H | done |
+| D7 | Clip trim | handles at edges | H | miss |
+| D8 | Clip split | at playhead | ? | miss |
+| D9 | Clip delete | Delete key | H | done |
+| D10 | Clip duplicate | ⌘D | ? | miss |
+| D11 | Clip context menu | split/duplicate/delete | ? | miss |
+| D12 | Drop from library | drag onto lane | H | done |
+| D13 | Drop position | starts where dropped | H | part (appends) |
+| D14 | Snap | grid snapping | H | miss |
+| D15 | Zoom | slider/buttons | H | part |
+| D16 | Section markers | verse/chorus | ? | miss |
+| D17 | Loop region | loop bracket | H | miss |
+| D18 | Selection box | multi-select clips | ? | miss |
 
 ---
 
-## E. Prompt bar (bottom centre)
+## E. Prompt bar
 
-| # | Control | Suno behaviour | Ev | Camxora |
+| # | Element | Behaviour | Ev | Cam |
 |---|---|---|---|---|
-| E1 | Prompt field | "Select a spot on the timeline and ask me to add a part" | H | blocked (`?` endpoint) |
-| E2 | `+` | attach reference / clip | ? | missing |
-| E3 | Model picker (`v6`) | choose generation model | H | partial (static) |
-| E4 | Send | generates into the timeline | ? | blocked |
-| E5 | Collapse / close | hides the bar | H | missing |
+| E1 | Prompt input | "Select a spot…" | H | miss |
+| E2 | `+` | attach reference | ? | miss |
+| E3 | Model selector | `v6` dropdown | H | part |
+| E4 | Send | generate into timeline | ? | blk |
+| E5 | Expand / collapse | full prompt editor | H | miss |
+| E6 | Close | hide bar | H | miss |
+| E7 | Placement hint | "Select a spot on the timeline" | H | miss |
 
 ---
 
-## F. Bottom bar / tools
+## F. Bottom toolbar
 
-| # | Control | Suno behaviour | Ev | Camxora |
+| # | Element | Behaviour | Ev | Cam |
 |---|---|---|---|---|
-| F1 | Master strip (`Main`) | master volume + meter | H | partial (volume only) |
-| F2 | Tool icons (select / pencil / waveform) | editing modes | ? | missing |
-| F3 | Folder / search / zoom icons | library, timeline search, zoom | H | missing |
-| F4 | "Learn" + "What's This?" | onboarding tour | H | missing |
-| F5 | Credit / plan notice | remaining credits | ? | missing |
+| F1 | Master `Main` | volume + meter | H | part |
+| F2 | Tool: select | pointer mode | ? | miss |
+| F3 | Tool: pencil | draw clips/notes | ? | miss |
+| F4 | Tool: waveform | audio edit mode | ? | miss |
+| F5 | Tool: more | additional modes | ? | miss |
+| F6 | Folder icon | open library/projects | H | miss |
+| F7 | Search icon | timeline search | H | miss |
+| F8 | Zoom icons | in/out | H | miss |
+| F9 | Learn | tour / help | H | miss |
+| F10 | "What's This?" card | onboarding, Dismiss / Turn off | H | miss |
 
 ---
 
 ## G. Library drawer
 
-| # | Control | Suno behaviour | Ev | Camxora |
+| # | Element | Behaviour | Ev | Cam |
 |---|---|---|---|---|
-| G1 | All songs | your library | H | done |
-| G2 | Liked | liked filter | H | missing |
-| G3 | Stems | stem library | H | missing |
-| G4 | Uploads | uploaded audio | H | missing |
-| G5 | Workspaces | workspace list | H | missing |
-| G6 | Projects | studio projects | H | missing |
-| G7 | Drawer search / sort | filter inside drawer | H | missing |
+| G1 | Tabs: All songs / Liked / Stems / Uploads / Workspaces / Projects | switch source | H | part (songs) |
+| G2 | Search | filter drawer | H | miss |
+| G3 | Sort | date/name | H | miss |
+| G4 | Row drag | drag into timeline | H | done |
+| G5 | Row click | add to selected track | H | done |
+| G6 | Empty state | per tab | H | part |
+| G7 | Close | hides drawer | H | done |
 
 ---
 
 ## H. Menus & dialogs
 
-| # | Control | Suno behaviour | Ev | Camxora |
+| # | Dialog | Contents | Ev | Cam |
 |---|---|---|---|---|
-| H1 | Project menu | rename, versions, duplicate, archive, delete | B H | partial (rename only) |
-| H2 | Version history | list versions, restore / clone | B H | missing |
-| H3 | Export dialog | full song / selected range / multitracks | B H | missing |
-| H4 | Share / collaborators | invite, links, presence | B H | missing |
-| H5 | Add-track menu | audio / MIDI / stems | H | missing |
-| H6 | Clip menu | split, delete, duplicate | ? | missing |
-| H7 | Onboarding card | "What's This?" | H | missing |
+| H1 | Project menu | rename, versions, duplicate, archive, delete, share | B H | part |
+| H2 | Version history | list, preview, restore, clone | B H | miss |
+| H3 | Export | full song / selected range / multitracks | B H | miss |
+| H4 | Share & collaborators | invite link, members, roles | B H | miss |
+| H5 | Add track | audio / MIDI / stems | H | miss |
+| H6 | Clip menu | split, duplicate, delete, reverse | ? | miss |
+| H7 | Delete project confirm | destructive confirm | H | miss |
+| H8 | Restore version confirm | destructive-ish | H | miss |
+| H9 | Onboarding | "What's This?" | H | miss |
+| H10 | Moderation error | `moderation_error_message` | B | miss |
 
 ---
 
-## I. Song menu → Edit actions (already audited)
+## I. Song menu → Edit (13 items)
 
 Extend · Crop · Remove Section · Reverse · Adjust Speed · Find a Collaborator ·
-Fade In · Fade Out · Replace Section · Get Stems / MIDI · Remaster · Open in
-Studio · Open in Editor — contracts in `docs/studio-1to1.md`; Camxora has all
-except Replace Section wiring and the section editor (`partial`).
+Fade In · Fade Out · Replace Section · Get Stems / MIDI ▸ · Remaster ·
+Open in Studio · Open in Editor — contracts in `docs/studio-1to1.md`; Cam: all
+`part` (Replace Section not wired, Crop/Remove/Fade/Speed use Suno endpoints with
+local fallback).
 
 ---
 
-## J. Behaviour & states
+## J. Keyboard & pointer
 
-| # | Behaviour | Suno | Ev | Camxora |
+| # | Shortcut | Action | Ev | Cam |
 |---|---|---|---|---|
-| J1 | Autosave | no Save button, versioned writes | B | blocked (`state`) |
-| J2 | Save conflict | `409` + `latest_version_id` | B | blocked |
-| J3 | Save throttle | `429 too many saves` | B | blocked |
-| J4 | Project != arrangement | `GET project` is metadata only | B L | done (documented) |
-| J5 | Empty project state | "Add new track" prompt | H | done |
-| J6 | Moderation error | `moderation_error_message` on render | B | missing |
-| J7 | Credits gate | refuses when balance is 0 | B L | done (surfaced) |
+| J1 | Space | play/pause | H | miss |
+| J2 | ⌘/Ctrl+Z | undo | H | miss |
+| J3 | ⌘/Ctrl+Shift+Z | redo | H | miss |
+| J4 | Delete/Backspace | delete clip | H | done |
+| J5 | ⌘/Ctrl+D | duplicate clip | ? | miss |
+| J6 | `S` / `M` | solo/mute focused track | ? | miss |
+| J7 | Arrow keys | nudge clip | ? | miss |
+| J8 | Drag threshold | move only after N px | ? | miss |
+| J9 | Double-click clip | open editor/rename | ? | miss |
+| J10 | Right-click | context menu | H | miss |
 
 ---
 
-## Open evidence gaps (must not be implemented until captured)
+## K. States & edge cases
 
-1. `state` document for `save-project` / version read.
-2. Prompt-bar request when Suno adds a part.
-3. `render-state` request/response (full + multitrack).
-4. Clip context menu actions and keyboard map.
-5. `/api/project/me` vs Studio project list.
-6. Track context menu, MIDI track creation.
-7. Toolbar icon set and modes.
+| # | State | Suno behaviour | Ev | Cam |
+|---|---|---|---|---|
+| K1 | Loading project | skeleton/spinner | H | part |
+| K2 | Empty project | "Add new track" | H | done |
+| K3 | Empty library tab | per-tab message | H | part |
+| K4 | Signed out | gate to sign-in | H | done |
+| K5 | Zero credits | generation refused with message | B L | done |
+| K6 | Save conflict (409) | reload latest version | B | blk |
+| K7 | Save throttle (429) | back off | B | blk |
+| K8 | Autosave indicator | subtle saved state | H | blk |
+| K9 | Unsaved changes on leave | warning | ? | miss |
+| K10 | Render moderation error | message on export | B | miss |
+| K11 | Network failure | retry/notice | ? | part |
+| K12 | Long project | virtualised timeline | ? | miss |
+
+---
+
+## L. UX details
+
+| # | Detail | Expectation | Ev | Cam |
+|---|---|---|---|---|
+| L1 | Hover states | buttons, rows, clips | H | part |
+| L2 | Focus ring | keyboard visible | H | part |
+| L3 | Cursor changes | grab/col-resize on clips | ? | miss |
+| L4 | Drag ghost | translucent clip while dragging | H | miss |
+| L5 | Snap feedback | guideline when snapping | ? | miss |
+| L6 | Toast feedback | save/add/delete | H | part |
+| L7 | Reduced motion | honour preference | H | miss |
+| L8 | Screen reader labels | icon buttons labelled | H | part (`aria-label` on controls) |
+| L9 | Contrast | text ≥ 4.5:1 | H | done (tokens) |
+| L10 | Touch targets | ≥ 44 px on touch | H | miss (desktop sizes) |
+
+---
+
+## M. Data model
+
+| # | Item | Source | Ev | Cam |
+|---|---|---|---|---|
+| M1 | Project | `/api/studio/project/{id}` (metadata) | B | done |
+| M2 | Arrangement | `/api/studio/{project_id}/version/{version_id}` | B | blk |
+| M3 | Save | `POST /api/studio/save-project` | B | blk |
+| M4 | Versions | `project_revision/{id}` + `/clone` | B | miss |
+| M5 | Clips in project | `/api/project/{id}/clips` | B | done |
+| M6 | Render | `POST /api/studio/render-state` | B | blk |
+| M7 | Multitrack | `POST /api/studio/render-state-multitrack` | B | blk |
+| M8 | Collaborators | `/api/project/{id}/collaborators`, `/invite` | B | miss |
+| M9 | Clip download | `/api/studio/clip/{id}/download` | B | miss |
+
+---
+
+## Coverage summary
+
+| Area | Total | done | part | miss | blk |
+|---|---|---|---|---|---|
+| A Landing (26) | 26 | 9 | 6 | 3 | 1 |
+| B Header (15) | 15 | 6 | 3 | 4 | 1 |
+| C Tracks (12) | 12 | 2 | 4 | 6 | 0 |
+| D Timeline (18) | 18 | 5 | 3 | 8 | 0 |
+| E Prompt (7) | 7 | 0 | 1 | 5 | 1 |
+| F Toolbar (10) | 10 | 0 | 1 | 9 | 0 |
+| G Library (7) | 7 | 3 | 1 | 2 | 0 |
+| H Dialogs (10) | 10 | 0 | 1 | 7 | 0 |
+| I Edit (13) | 13 | 0 | 13 | 0 | 0 |
+| J Shortcuts (10) | 10 | 1 | 0 | 9 | 0 |
+| K States (12) | 12 | 3 | 3 | 3 | 3 |
+| L UX (10) | 10 | 1 | 4 | 5 | 0 |
+| M Data (9) | 9 | 2 | 0 | 2 | 5 |
+
+## Evidence gaps (blocking)
+
+1. `state` for `save-project` + version read (M2/M3, K6–K8, B13/H3).
+2. Prompt-bar request (E4).
+3. `render-state` + multitrack payloads (M6/M7).
+4. Clip context menu, duplicate/split semantics (D8/D10/D11/H6).
+5. Studio project list source (A26).
+6. Track context menu / MIDI tracks (C8/C10/H5).
+7. Toolbar modes and icons (F2–F5).
