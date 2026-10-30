@@ -4522,6 +4522,13 @@ html{color-scheme:dark}
 .stv-model{font-size:11px;color:var(--s-text2)}
 .stv-tools{display:flex;align-items:center;gap:8px;color:var(--s-text2);flex-wrap:nowrap;flex:none}
 .stv-status{max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.stv-export{position:relative}
+.stv-export-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:70;min-width:200px;padding:6px;border:1px solid var(--s-line);border-radius:10px;background:var(--s-bg2);box-shadow:0 14px 34px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px}
+.stv-export-menu button{border:0;background:transparent;color:var(--s-text);text-align:left;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;gap:2px}
+.stv-export-menu button small{color:var(--s-text3);font-size:11px}
+.stv-export-menu button:hover:not(:disabled){background:var(--s-bg3)}
+.stv-export-menu button:disabled{color:var(--s-text3);cursor:default}
+.stv-export-menu button:disabled small{color:var(--s-text3);opacity:.7}
 .stv-tools input{width:100px}
 
 /* Collapsible sidebar */

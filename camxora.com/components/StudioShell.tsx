@@ -16,6 +16,7 @@ import {
   getStudioClipDownload,
   getStudioSession,
   listWebMusicGenerations,
+  exportStudioMultitrack,
   resolveStudioClipId,
   resolveStudioClips,
   saveStudioSession,
@@ -420,6 +421,7 @@ export function StudioShell() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("idle");
   const [exporting, setExporting] = useState(false);
   const [exportStatus, setExportStatus] = useState("");
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -1352,8 +1354,14 @@ export function StudioShell() {
   );
 
   /** Queue a full-project export and open the audio once Suno finishes. */
-  async function exportProject() {
+  /**
+   * Suno's Export menu (v1 help centre): Full Song saves the mix to the Suno
+   * Library, Multitracks downloads stems to the device. "Selected Time Range"
+   * needs a timeline selection, which this editor does not have yet.
+   */
+  async function exportFullSong() {
     if (!projectId || exporting) return;
+    setExportMenuOpen(false);
     setExporting(true);
     setError("");
     setExportStatus("Preparing export…");
@@ -1361,28 +1369,46 @@ export function StudioShell() {
       const { clip_id: clipId } = await exportStudioSession(projectId);
       if (!clipId) throw new Error("Suno did not return an export clip");
       setExportStatus("Rendering…");
-      for (let attempt = 0; attempt < 120; attempt += 1) {
+      for (let attempt = 0; attempt < 80; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 3000));
-        const download = await getStudioClipDownload(clipId);
-        if (download.download_url) {
-          setExportStatus("");
-          window.open(download.download_url, "_blank", "noopener");
+        const clip = await getStudioClip(clipId);
+        if (clip.status === "complete") {
+          setExportStatus("Saved to your Suno library");
+          window.setTimeout(() => setExportStatus(""), 4000);
           return;
         }
-        if (download.ok === false) {
-          throw new Error(
-            download.message ||
-              "Suno did not allow this download for the connected account."
-          );
-        }
-        const clip = await getStudioClip(clipId);
-        if (clip.status && ["error", "failed", "cancelled"].includes(clip.status)) {
+        if (
+          clip.status &&
+          ["error", "failed", "cancelled"].includes(clip.status)
+        ) {
           throw new Error("Suno could not render this export");
         }
       }
       throw new Error("Export is still running. Try again in a minute.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Export failed");
+    } finally {
+      setExportStatus((current) =>
+        current === "Rendering…" || current === "Preparing export…" ? "" : current
+      );
+      setExporting(false);
+    }
+  }
+
+  async function exportMultitracks() {
+    if (!projectId || exporting) return;
+    setExportMenuOpen(false);
+    setExporting(true);
+    setError("");
+    setExportStatus("Preparing stems…");
+    try {
+      const { download_url: downloadUrl } = await exportStudioMultitrack(projectId);
+      if (!downloadUrl) throw new Error("Suno did not return a stems archive");
+      window.open(downloadUrl, "_blank", "noopener");
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Could not export multitracks"
+      );
     } finally {
       setExportStatus("");
       setExporting(false);
@@ -1581,15 +1607,54 @@ export function StudioShell() {
         <span style={{ flex: 1 }} />
         <span className="stv-bpm">{Math.round(bps * 60)} BPM</span>
         <span className="stv-sig">4/4</span>
-        <button
-          type="button"
-          className="s-btn s-btn-ghost"
-          disabled={!tracks.length || exporting}
-          onClick={() => void exportProject()}
-        >
-          <Icon name="fa-arrow-up-from-bracket" />
-          {exporting ? " Exporting…" : " Export"}
-        </button>
+        <div className="stv-export">
+          <button
+            type="button"
+            className="s-btn s-btn-ghost"
+            disabled={!tracks.length || exporting}
+            aria-haspopup="menu"
+            aria-expanded={exportMenuOpen}
+            onClick={() => setExportMenuOpen((value) => !value)}
+          >
+            <Icon name="fa-arrow-up-from-bracket" />
+            {exporting ? " Exporting…" : " Export"}
+          </button>
+          {exportMenuOpen ? (
+            <>
+              <div
+                className="stv-menu-backdrop"
+                onClick={() => setExportMenuOpen(false)}
+              />
+              <div className="stv-export-menu" role="menu">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void exportFullSong()}
+                >
+                  Full song
+                  <small>Saved to your Suno library</small>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled
+                  title="Highlight a range on the timeline first — range selection is not implemented yet"
+                >
+                  Selected time range
+                  <small>Needs a timeline selection</small>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => void exportMultitracks()}
+                >
+                  Multitracks
+                  <small>Stems archive download</small>
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
         <button
           type="button"
           className="s-btn s-btn-ghost"

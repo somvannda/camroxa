@@ -3858,9 +3858,11 @@ class WebMusicService:
             },
         )
         if status == 403:
+            raw = str(payload.get("error") or "")
+            match = re.search(r'"detail"\s*:\s*"([^"]+)"', raw)
             raise ForbiddenError(
-                str(payload.get("error") or "This song has not been unlocked yet."),
-                details={"error_type": str(payload.get("error_type") or "")},
+                match.group(1) if match else (raw or "This song has not been unlocked yet."),
+                details={"error_type": str(payload.get("error_type") or "clip_not_unlocked")},
             )
         if status >= 400:
             raise ExternalServiceError(
