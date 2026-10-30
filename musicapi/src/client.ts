@@ -769,6 +769,51 @@ export class SunoClient {
     return (await res.json()) as Record<string, unknown>;
   }
 
+  /** Suno's versioned save. `state` is opaque to us until it is captured. */
+  async saveStudioProject(params: {
+    projectId: string;
+    state: unknown;
+    title: string;
+    baseVersionId?: string | null;
+  }): Promise<{ versionId: string }> {
+    const res = await this.request(`/api/studio/save-project`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        project_id: params.projectId,
+        state: params.state,
+        title: params.title,
+        base_version_id: params.baseVersionId ?? null,
+      }),
+    });
+    if (res.status === 409) {
+      const body = (await res.json().catch(() => ({}))) as {
+        latest_version_id?: string;
+      };
+      const error = new Error("Studio project has a newer version");
+      (error as Error & { latestVersionId?: string }).latestVersionId =
+        body?.latest_version_id;
+      throw error;
+    }
+    if (res.status === 429) throw new Error("Too many Studio saves");
+    if (!res.ok) throw await sunoHttpError("saveStudioProject", res);
+    const data = (await res.json()) as { version_id?: string };
+    if (!data?.version_id) throw new Error("save-project returned no version.");
+    return { versionId: data.version_id };
+  }
+
+  async getStudioVersion(
+    projectId: string,
+    versionId: string
+  ): Promise<Record<string, unknown>> {
+    const res = await this.request(
+      `/api/studio/${encodeURIComponent(projectId)}/version/${encodeURIComponent(versionId)}`,
+      { method: "GET" }
+    );
+    if (!res.ok) throw await sunoHttpError("getStudioVersion", res);
+    return (await res.json()) as Record<string, unknown>;
+  }
+
   async updateProjectClips(
     projectId: string,
     clipIds: string[],

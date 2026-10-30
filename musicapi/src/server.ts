@@ -9002,6 +9002,54 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     }
   });
 
+  app.post("/internal/studio/projects/:project_id/save", async (req, reply) => {
+    if (!requireInternalToken(req, reply)) return;
+    const { project_id: projectId } = req.params as { project_id: string };
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const title = typeof body.title === "string" ? body.title : "Untitled Project";
+    const baseVersionId =
+      typeof body.base_version_id === "string" ? body.base_version_id : null;
+    const client = await pickStudioClient();
+    try {
+      const { versionId } = await client.saveStudioProject({
+        projectId,
+        state: body.state ?? {},
+        title,
+        baseVersionId,
+      });
+      return reply.send({ version_id: versionId });
+    } catch (err) {
+      const latest = (err as { latestVersionId?: string })?.latestVersionId;
+      if (latest !== undefined) {
+        return reply
+          .code(409)
+          .send({ error: "Project has a newer version", latest_version_id: latest });
+      }
+      return reply
+        .code(502)
+        .send({ error: err instanceof Error ? err.message : "save project failed" });
+    }
+  });
+
+  app.get(
+    "/internal/studio/projects/:project_id/version/:version_id",
+    async (req, reply) => {
+      if (!requireInternalToken(req, reply)) return;
+      const { project_id: projectId, version_id: versionId } = req.params as {
+        project_id: string;
+        version_id: string;
+      };
+      const client = await pickStudioClient();
+      try {
+        return reply.send(await client.getStudioVersion(projectId, versionId));
+      } catch (err) {
+        return reply
+          .code(502)
+          .send({ error: err instanceof Error ? err.message : "get version failed" });
+      }
+    }
+  );
+
   app.get("/internal/studio/projects/:project_id", async (req, reply) => {
     if (!requireInternalToken(req, reply)) return;
     const { project_id: projectId } = req.params as { project_id: string };
