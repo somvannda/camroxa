@@ -13,7 +13,7 @@ Compacted state as of 2026-10-30. A new session should need only this file plus
 | Web | `localhost:3103` (this worktree) |
 | Platform API | `localhost:8100` (runs from canonical checkout) |
 | MusicAPI | `localhost:4003` (runs from canonical checkout) |
-| Reference tab | Suno Studio, **signed in**, demo project loaded — reuse, never close |
+| Reference tab | **not persisted** — browser tabs are per-session; re-open `suno.com` and sign in again |
 
 ## The working loop (proven, use it for every screen)
 
@@ -30,9 +30,13 @@ One screen = one screenshot + one spec section + one commit. Never two at once.
 ## Position
 
 - 65 screens in `docs/studio/reference/SCREEN_MANIFEST.md`
-- **25 documented** (S01–S04, plus most of S07–S15, S18, S26, S34–S41, S49, S52)
-- **Next: S05 — new empty project** (click `New Project` from the My Projects modal)
-- Then S16 onward (arrangement)
+- **28 DONE, 5 PART, 32 OPEN** (counted from the manifest rows, not the old tally)
+- **Next: S05 — new empty project.** It is **PART**, not DONE: §44 is the *loaded*
+  Drum & Bass demo, so the empty arrangement was never actually captured. Reaching
+  it needs `My Projects → New Project`, which needs a signed-in session.
+- Then S19 (track options menu), then S16 onward (arrangement)
+- S01/§57 and S02/§58 are capturable **signed out** — no credentials needed. Use
+  them to warm up before asking the owner to sign in.
 
 ## What is actually built (code)
 
@@ -58,6 +62,8 @@ generation inside the editor · B1–B5 backend handlers.
 | CSS font sizes below 11 px fail `check:ui` | 11/12/13/14/15/16/18/22/24/26/28/30/32 only |
 | raw hex outside the palette fails `check:ui` | use `var(--token)` |
 | canvas-rendered UI (rulers, waveforms, clips inside Suno) | only screenshots read it; DOM probes return nothing |
+| browser tabs do **not** survive into a new session | re-open `suno.com` and sign in; never plan around "the tab is still there" |
+| a `DONE` row can be wrong | verify the cited § section really shows that screen before trusting it |
 
 ## Gates before every commit
 

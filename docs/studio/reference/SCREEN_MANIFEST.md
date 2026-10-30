@@ -11,11 +11,11 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | # | Screen | Status |
 |---|---|---|
-| S01 | Signed-out marketing page `/studio-welcome` | PART — text captured |
-| S02 | Sign-in page / redirect | OPEN |
+| S01 | Signed-out marketing page `/studio-welcome` | DONE §57 |
+| S02 | Sign-in page / redirect | DONE §58 |
 | S03 | **Signed-in entry — reopens the last project** | DONE §54 |
 | S04 | Studio home / project chooser ("Browse Studio projects") | DONE §56 |
-| S05 | New empty project | DONE §44 (empty arrangement) |
+| S05 | New empty project | PART §10 — onboarding only; §44 is the *loaded* demo |
 | S06 | Onboarding dialog "How do you want to start?" | DONE §10 |
 | S07 | Project menu | DONE §18.1 |
 | S08 | Version History panel | DONE §25 |
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 24 |
+| DONE | 28 |
 | PART | 5 |
-| OPEN | 36 |
+| OPEN | 32 |
 | **Total** | **65** |
 
 ## Rules for working through this list
@@ -134,5 +134,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 ## Current position
 
-S01–S04 captured. **Next is S05 (new project)**, then S05 (new
-project), then the arrangement from S16 forward.
+S01–S04 captured and documented (§57, §58, §54, §56). S05 is **PART**: only the
+onboarding overlay was ever seen (§10) — §44 is the *loaded* Drum & Bass demo, so
+the empty arrangement itself has never been captured.
+
+**Next capture: S05** — needs a signed-in session to reach `My Projects → New
+Project`. Then S19 (track options menu), then S16 onward.
