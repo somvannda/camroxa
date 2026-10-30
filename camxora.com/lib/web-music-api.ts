@@ -780,6 +780,22 @@ export async function resolveStudioClips(
     }));
 }
 
+/** Task + variant -> Suno's provider clip id, which `state` stores as asset.id. */
+export async function resolveStudioClipId(
+  taskId: string,
+  variant: "ok" | "alt"
+): Promise<string | null> {
+  const data = await musicJson<{ clip_id?: string }>(
+    "/api/v3/web-music/studio/clips/provider-id",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ task_id: taskId, variant }),
+    }
+  );
+  return data.clip_id || null;
+}
+
 /** Add or remove clips in a Suno Studio project. */
 export async function updateStudioSessionClips(
   projectId: string,

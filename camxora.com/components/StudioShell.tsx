@@ -8,12 +8,12 @@ import type { WebMusicGeneration } from "@/lib/library-api";
 import {
   StudioSaveConflictError,
   WebMusicApiError,
+  createStudioSession,
   getStudioSession,
   listWebMusicGenerations,
+  resolveStudioClipId,
   resolveStudioClips,
   saveStudioSession,
-  studioSessionForClip,
-  updateStudioSessionClips,
 } from "@/lib/web-music-api";
 
 const BARS = 24;
@@ -944,18 +944,8 @@ export function StudioShell() {
       const target = document.activeElement;
       if (target && ["INPUT", "TEXTAREA"].includes(target.tagName)) return;
       event.preventDefault();
-      const owner = tracks.find((track) =>
-        track.clips.some((clip) => clip.uid === selectedClip)
-      );
-      const clip = owner?.clips.find((item) => item.uid === selectedClip);
-      if (clip && projectId) {
-        void updateStudioSessionClips(
-          projectId,
-          [clip.songId],
-          [clip.variant],
-          true
-        ).catch(() => null);
-      }
+      // Removing from the timeline is a `state` change, not a library delete:
+      // the song stays in the user's Suno library.
       setTracks((current) =>
         current.map((track) => ({
           ...track,
@@ -995,17 +985,16 @@ export function StudioShell() {
     setError("");
     try {
       const variant = chosenVariant(song);
-      const session = await studioSessionForClip(song.id, variant);
-      if (!projectId) setProjectId(session.project_id);
-      const result = await updateStudioSessionClips(
-        session.project_id,
-        [song.id],
-        [variant]
-      ).catch(() => null);
+      // The timeline lives in the project `state`, so adding a clip only needs
+      // the project id and the clip's provider id — Suno's project clip list is
+      // not involved (that endpoint is for project/workspace membership).
+      const targetProject =
+        projectId ?? (await createStudioSession(projectName)).id;
+      if (!projectId) setProjectId(targetProject);
       // A project created for this clip has never been read back: fetch its
       // state so autosave has a real document to merge into.
       if (!baseStateRef.current) {
-        await getStudioSession(session.project_id)
+        await getStudioSession(targetProject)
           .then((doc) => {
             const state = asRecord(doc.state) ?? createDefaultState();
             baseStateRef.current = state;
@@ -1022,6 +1011,9 @@ export function StudioShell() {
           })
           .catch(() => null);
       }
+      const providerClipId = await resolveStudioClipId(song.id, variant).catch(
+        () => null
+      );
       const duration =
         song.clips?.find((item) => item.variant === variant)?.duration_seconds ??
         null;
@@ -1034,8 +1026,8 @@ export function StudioShell() {
           track.id === trackId
             ? {
                 ...track,
-                knownProviderIds: result?.clip_ids?.[0]
-                  ? [...(track.knownProviderIds ?? []), result.clip_ids[0]]
+                knownProviderIds: providerClipId
+                  ? [...(track.knownProviderIds ?? []), providerClipId]
                   : track.knownProviderIds,
                 clips: [
                   ...track.clips,
@@ -1043,7 +1035,7 @@ export function StudioShell() {
                     uid: newUid(),
                     songId: song.id,
                     variant,
-                    providerClipId: result?.clip_ids?.[0],
+                    providerClipId: providerClipId ?? undefined,
                     startBeats,
                     lengthBeats:
                       duration && duration > 0

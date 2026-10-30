@@ -542,6 +542,22 @@ async def resolve_studio_clips(
     return await service.resolve_studio_clips(UUID(ctx.user_id), body.clip_ids)
 
 
+class StudioClipIdRequest(BaseModel):
+    task_id: UUID
+    variant: Literal["ok", "alt"] = "ok"
+
+
+@router.post("/studio/clips/provider-id")
+async def resolve_studio_clip_id(
+    body: StudioClipIdRequest,
+    ctx: CurrentUserDep,
+    service: WebMusicServiceDep,
+) -> dict:
+    return await service.resolve_studio_clip_id(
+        UUID(ctx.user_id), body.task_id, variant=body.variant
+    )
+
+
 @router.get("/studio/projects")
 async def list_studio_projects(
     ctx: CurrentUserDep,

@@ -60,8 +60,13 @@ visual only.
 
 Drag from library onto a lane; drag along lane; trim; split; delete — `H`.
 Camxora: add (click/drag) `C`, move `C`, delete `C`; trim/split missing.
-Add/remove persist to the project via `/api/project/{id}/clips` — `B`, `C` — and
-positions persist in the `state` document in beats — `B`, `C`.
+
+Clips live in the project `state`: an audio clip is
+`{ asset: { type: "clip", id: <provider clip id> }, startBeats, endBeats,
+readStartBeats, amplitude, mute, … }` and is persisted by `save-project` — `B`,
+`C`. `POST /api/project/{id}/clips` is **not** the timeline: verified live, it
+returns `404 Project not found` for a Studio project id, and Suno's Studio client
+never calls it. Removing a clip here must not delete the song from the library.
 
 ## F8 — Transport
 

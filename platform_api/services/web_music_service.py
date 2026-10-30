@@ -3587,6 +3587,13 @@ class WebMusicService:
         )
         return {**payload, "clip_ids": clip_ids}
 
+    async def resolve_studio_clip_id(
+        self, user_id: UUID, task_id: UUID, *, variant: str = "ok"
+    ) -> dict[str, Any]:
+        """Task + variant -> Suno's provider clip id (Studio `asset.id`)."""
+        clip_id = await self._studio_source_clip(user_id, task_id, variant=variant)
+        return {"clip_id": clip_id}
+
     async def resolve_studio_clips(
         self, user_id: UUID, clip_ids: list[str]
     ) -> dict[str, Any]:

@@ -27,7 +27,7 @@ rather than shipping a guess.
 | `GET /api/studio/{project_id}/version/{version_id}` | arrangement |
 | `GET /api/studio/project_revision/{revision_id}` | revision |
 | `POST /api/studio/project_revision/{revision_id}/clone` | `{title, major_version}` |
-| `POST /api/project/{project_id}/clips` | `{update_type:"add"\|"remove", metadata:{clip_ids}}` |
+| `POST /api/project/{project_id}/clips` | `{update_type:"add"\|"remove", metadata:{clip_ids}}` — project/workspace membership, **not** the Studio timeline (404 for a Studio project id) |
 | `POST /api/project/{project_id}/metadata` | `{name, description}` |
 | `POST /api/studio/render-state` | `{title, lyrics, state, project_id, export_mode, start_beats, end_beats, downbeats, render_engine, encode_latents}` |
 | `POST /api/edit/crop/{clip_id}/` | `{crop_start_s, crop_end_s, is_crop_remove, title}` |

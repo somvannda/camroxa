@@ -90,16 +90,39 @@ Key facts that shaped the implementation:
   - Through the platform proxy: save `200`, stale `base_version_id` → `409` with
     `error.details.latest_version_id`, version read `200` with
     `state.amplitude = 0.75` and `timing.bps = 2`, clip resolve `200`.
+- **Full UI round trip** against `dfd09f57-…` ("CAMXORA UI round trip") in the
+  running web app: open the empty project, add a track, add "Drive tonight",
+  wait for autosave, then reload.
+  - Saved state: one audio track (`amplitude 1`, `balance 0`, 7-key EQ,
+    `instrument {type:"song"}`, `height 86`) and one clip
+    (`asset {type:"clip", id: ff7778ac…}`, `startBeats 0`, `endBeats 96`,
+    `readStartBeats 0`, loop/warp present).
+  - After reload the clip hydrates back at the same position, the track fader
+    reads 100, and no autosave fires just from loading.
+
+### What live testing changed
+
+- `POST /api/project/{id}/clips` returns `404 Project not found` for a Studio
+  project id — it is project/workspace membership, not the timeline. The clip
+  add/remove calls were removed; the arrangement is written only through
+  `save-project`.
+- Adding a clip now resolves `task + variant → provider clip id` through a new
+  `POST /studio/clips/provider-id` proxy, which is what `asset.id` needs.
+- Opening `/studio/editor` without a project creates an empty project, and an
+  added clip joins that project rather than the clip's own project.
 
 ## Still open
 
-- **Mapped-clip round trip:** add a song to a Studio project, let autosave fire,
-  reload and confirm the clip hydrates at its beat position, then open the
-  project in Suno's own editor.
-- Interactive transport verification was blocked in this environment (the
-  desktop browser window was not visible, so synthetic clicks had no user
-  activation and Chrome throttled the rAF loop). Transport logic is unchanged
-  from milestone 2 apart from the beats conversion.
+- **Playback of packaged tracks:** the plain stream route returns
+  `422 encrypted_playback_required` when a clip has a ready encrypted package
+  (both variants of "Drive tonight" do). The web app has no encrypted player
+  yet, so Studio playback is silent for those tracks — a pre-existing product
+  gap, now recorded rather than hidden.
+- Interactive transport verification still needs a visible browser window: the
+  desktop window was off-screen in this environment, so real clicks had no user
+  activation and Chrome throttled the rAF loop. Playback/transport logic is
+  unchanged from milestone 2 apart from the beats conversion.
 - Export (`render-state`) and version restore remain.
-- The probe project `82abd622-653a-4f04-a947-68199e7e532d` ("CAMXORA platform
-  probe") is still on the account and should be deleted once no longer needed.
+- Probe projects `82abd622-…` ("CAMXORA platform probe"), `cd053766-…` and
+  `dfd09f57-…` ("CAMXORA UI round trip") are still on the account and should be
+  deleted once no longer needed.
