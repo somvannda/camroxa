@@ -130,3 +130,49 @@ Studio release.
 | Export a 3-minute stereo mix (browser) | < 15 s |
 
 No measurement exists yet; W5 and W4.4 add the harness.
+
+## 32. Finding: our editor has no track entity
+
+`StudioEditorView` models a "track" as a **clip**. `Clip` (line 94) carries `volume`,
+`pan`, `muted`, `solo`, the per-clip FX values (`low/mid/high/delay/reverb/chorus/
+compressor/drive`), and an optional `groupId` pointing at one of four visual groups
+A–D. There is no container that owns several clips.
+
+The reference is the opposite: a track is a container with identity, colour, two
+faders, plugins, automation and a take stack, and it holds many clips (the demo
+project has 17 tracks).
+
+### Why this blocks per-track plugins
+
+`chains` is keyed by track id. With no track entity the only available key is
+`clip.id`, which would give a track with eight clips **eight independent plugin
+chains** — audibly and visually wrong.
+
+### What it also affects
+
+| Feature | Consequence today |
+|---|---|
+| Mixer | per-clip faders masquerade as track faders; two clips on one track cannot share a mix |
+| Mute / solo | operates per clip, so muting a "track" leaves its other clips audible |
+| Take lanes | impossible: takes are a track-level stack |
+| Automation | stored per clip, not per track lane |
+| Track count | the 17-track reference project cannot be represented faithfully |
+
+### Required model change (before more editor features)
+
+```
+Project → tracks[] → { id, name, color, instrument, volume, pan, muted, solo,
+                       hidden, groupId, chain: PluginChainEntry[],
+                       automation: {volume[], pan[], cc[]},
+                       clips[] → { id, sourceId, start, duration, offset,
+                                   fades, edits[], takeId } }
+```
+
+A clip becomes a **reference into a track** rather than a track itself. That migration
+touches persistence, undo snapshots, playback scheduling and the mixer — which is why
+it must precede take lanes, per-track plugins and warp markers, not follow them.
+
+### Decision needed
+
+Cut a v1 that keeps clip-as-track (fast, but chains stay per clip), or do the track
+migration now and build the remaining features on a correct model.
