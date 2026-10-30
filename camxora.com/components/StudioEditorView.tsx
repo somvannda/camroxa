@@ -1307,6 +1307,7 @@ export function StudioEditorView() {
   const { user, loading: authLoading } = useAuth();
   const searchParams = useSearchParams();
   const shareParam = searchParams.get("share");
+  const projectParam = searchParams.get("project");
   const { playing: mainPlaying, togglePlay: toggleMainPlayer } = usePlayer();
   const [items, setItems] = useState<WebMusicGeneration[]>([]);
   const [lanes, setLanes] = useState<Clip[]>([]);
@@ -1734,6 +1735,53 @@ export function StudioEditorView() {
         .catch((cause) => {
           if (!active) return;
           setCloudError(cause instanceof Error ? cause.message : "Could not load shared project.");
+          setLoaded(true);
+        });
+      return () => {
+        active = false;
+      };
+    }
+    if (projectParam) {
+      getStudioProject(projectParam)
+        .then((project) => {
+          if (!active) return;
+          const data = (project.data || {}) as StudioProjectData;
+          applySession(
+            {
+              name: project.title,
+              bpm: project.bpm,
+              timeSignature: project.time_signature,
+              gridDivision: data.gridDivision as StoredSession["gridDivision"],
+              zoom: Number.isFinite(data.zoom) ? Number(data.zoom) : 1,
+              master: Number.isFinite(data.master) ? Number(data.master) : 80,
+              masterCompressor: Number.isFinite(data.masterCompressor) ? Number(data.masterCompressor) : 0,
+              masterDrive: Number.isFinite(data.masterDrive) ? Number(data.masterDrive) : 0,
+              masterLow: Number.isFinite(data.masterLow) ? Number(data.masterLow) : 0,
+              masterMid: Number.isFinite(data.masterMid) ? Number(data.masterMid) : 0,
+              masterHigh: Number.isFinite(data.masterHigh) ? Number(data.masterHigh) : 0,
+              loopStart: Number.isFinite(data.loopStart) ? Number(data.loopStart) : 0,
+              loopEnd: Number.isFinite(data.loopEnd) ? Number(data.loopEnd) : 60,
+              markers: data.markers as TimelineMarker[],
+              groups: normalizeGroups(data.groups),
+              lanes: normalizeLanes(data.lanes),
+            },
+            project.id
+          );
+          setSessionName(project.title);
+          setBpm(project.bpm);
+          setTimeSignature(project.time_signature);
+          setCloudState("saved");
+          setHistory([]);
+          setFuture([]);
+          setLoaded(true);
+        })
+        .catch((cause) => {
+          if (!active) return;
+          setCloudError(
+            cause instanceof Error
+              ? `Could not open this project: ${cause.message}`
+              : "Could not open this project."
+          );
           setLoaded(true);
         });
       return () => {
