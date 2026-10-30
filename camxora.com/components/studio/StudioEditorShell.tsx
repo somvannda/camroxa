@@ -100,7 +100,7 @@ export function StudioEditorShell() {
     return Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
   }, [project]);
 
-  const tracks = useMemo<StudioTrack[]>(() => {
+  const derivedTracks = useMemo<StudioTrack[]>(() => {
     const data = (project?.data || {}) as { tracks?: unknown };
     const stored = sanitizeTracks(data.tracks);
     if (stored.length) return stored;
@@ -117,6 +117,42 @@ export function StudioEditorShell() {
       }))
     );
   }, [project, clips]);
+
+  const [localTracks, setLocalTracks] = useState<StudioTrack[] | null>(null);
+  const tracks = localTracks ?? derivedTracks;
+
+  useEffect(() => {
+    setLocalTracks(null);
+  }, [projectId]);
+
+  /** Persist the track list into the project document. */
+  function commitTracks(next: StudioTrack[]) {
+    setLocalTracks(next);
+    if (!projectId) return;
+    const base = (project?.data || {}) as Record<string, unknown>;
+    updateStudioProject(projectId, { data: { ...base, tracks: next } }).catch(() => {
+      setError("Could not save the track list.");
+    });
+  }
+
+  function addTrack() {
+    const next: StudioTrack = {
+      id: `track-${Date.now().toString(36)}`,
+      name: `Track ${tracks.length + 1}`,
+      color: "#8b5cf6",
+      index: tracks.length,
+      volume: 80,
+      pan: 0,
+      muted: false,
+      solo: false,
+      hidden: false,
+      groupId: null,
+      chain: [],
+      clipIds: [],
+    };
+    commitTracks([...tracks, next]);
+    setSelectedTrack(next.id);
+  }
 
   const chains = useMemo<Record<string, PluginChainEntry[]>>(() => {
     const data = (project?.data || {}) as { chains?: unknown };
@@ -310,7 +346,7 @@ export function StudioEditorShell() {
               );
             })}
 
-            <button type="button" className="se-add-track" disabled title="Adding tracks is not wired in the shell yet">
+            <button type="button" className="se-add-track" onClick={addTrack}>
               <Icon name="fa-plus" /> Add new track
             </button>
           </div>
