@@ -8,6 +8,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
+import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 
 const ROW_HEIGHT = 85;
 const ROW_STEP = 86;
@@ -154,10 +155,28 @@ export function StudioEditorShell() {
     setSelectedTrack(next.id);
   }
 
-  const chains = useMemo<Record<string, PluginChainEntry[]>>(() => {
+  const derivedChains = useMemo<Record<string, PluginChainEntry[]>>(() => {
     const data = (project?.data || {}) as { chains?: unknown };
     return (data.chains as Record<string, PluginChainEntry[]>) || {};
   }, [project]);
+
+  const [localChains, setLocalChains] = useState<Record<string, PluginChainEntry[]> | null>(null);
+  const chains = localChains ?? derivedChains;
+
+  useEffect(() => {
+    setLocalChains(null);
+  }, [projectId]);
+
+  /** Persist one track's plugin chain into the project document. */
+  function commitChain(trackId: string, next: PluginChainEntry[]) {
+    const merged = { ...chains, [trackId]: next };
+    setLocalChains(merged);
+    if (!projectId) return;
+    const base = (project?.data || {}) as Record<string, unknown>;
+    updateStudioProject(projectId, { data: { ...base, chains: merged } }).catch(() => {
+      setError("Could not save the plugin chain.");
+    });
+  }
 
   const duration = useMemo(() => {
     const end = clips.reduce((max, clip) => Math.max(max, (clip.start ?? 0) + (clip.duration ?? 0)), 0);
@@ -433,6 +452,14 @@ export function StudioEditorShell() {
           </aside>
         ) : null}
       </div>
+
+      {selectedTrack ? (
+        <StudioPluginDock
+          chain={chains[selectedTrack] ?? []}
+          trackName={tracks.find((track) => track.id === selectedTrack)?.name}
+          onChange={(next) => commitChain(selectedTrack, next)}
+        />
+      ) : null}
 
       <footer className="se-foot">
         <div className="se-chain">

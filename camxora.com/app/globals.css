@@ -4438,7 +4438,7 @@ html{color-scheme:dark}
 /* ------------------------------------------------------------------ */
 /* Studio plugin chain dock                                            */
 /* ------------------------------------------------------------------ */
-.sp-dock{display:flex;flex-direction:column;border-top:1px solid var(--line);background:rgba(9,12,22,.96)}
+.sp-dock{display:flex;flex-direction:column;border-top:1px solid rgba(255,255,255,.08);background:#0a0d18;flex:none;max-height:300px}
 .sp-rail{display:flex;gap:8px;padding:8px;overflow-x:auto;scrollbar-width:thin}
 .sp-empty{display:flex;flex-direction:column;gap:8px;padding:14px 16px;color:var(--muted)}
 .sp-empty p{margin:0;font-size:12px}
