@@ -1445,3 +1445,54 @@ With the same clip attached, the placeholder read `Add a warm reverb to this tra
 one capture and `Ask me to generate a project…` in another. So the hint is
 **generated per session/context**, not a fixed string per selection. Treat it as
 model output, not static copy.
+
+## 56. S04 — "My Projects" chooser `L`
+
+Reached from Project menu → **Open Project**. A centred modal over the editor.
+
+```
+┌──────────────────────────────────────────────────────┐
+│ My Projects  ⟳                                   ×   │
+│ Projects   Recently Deleted                          │
+│ ─────────────                                        │
+│ [🔍 Search for Project]  [▽ Filters]  [≡ Newest First]│
+│ ┌───────────────┐ ┌───────────────┐                  │
+│ │      ＋       │ │  thumbnail    │                  │
+│ │  New Project  │ │  title / meta │                  │
+│ └───────────────┘ └───────────────┘                  │
+│ ┌───────────────┐ ┌───────────────┐                  │
+│ │  …            │ │  …            │                  │
+│ └───────────────┘ └───────────────┘                  │
+└──────────────────────────────────────────────────────┘
+```
+
+| Element | Detail |
+|---|---|
+| Title | `My Projects` + a **spinner while loading** |
+| Close | `×` top-right |
+| Tabs | `Projects` (active, underlined) · `Recently Deleted` |
+| Search | full-width pill, placeholder `Search for Project` |
+| Filters | funnel icon + `Filters` |
+| Sort | `Newest First` dropdown |
+| Grid | 2 columns, ~350 px cards |
+| New Project card | dashed/tinted, centred `＋` above the label |
+| Project card | thumbnail block, title line, meta line (skeleton while loading) |
+| Backdrop | dark scrim; the editor stays visible behind |
+
+### Behaviour notes
+
+1. Opening it **does not leave the editor** — it is a modal, not a route.
+2. Cards load asynchronously; the grid renders skeletons with a spinner in the title.
+3. `Recently Deleted` is a first-class tab — deletion is soft, with recovery.
+4. Sort defaults to `Newest First`, with filters available beside it.
+5. `New Project` is the first grid cell, not a separate button.
+
+### Delta against our Studio home
+
+| Reference | Ours |
+|---|---|
+| Modal over the editor | separate `/studio` page |
+| 2-column card grid with skeletons | grid of text cards |
+| `Recently Deleted` tab | archived toggle |
+| Filters + sort dropdowns | search + sort select |
+| `New Project` as first cell | header button |

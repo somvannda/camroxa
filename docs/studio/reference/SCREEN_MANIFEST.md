@@ -14,7 +14,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S01 | Signed-out marketing page `/studio-welcome` | PART — text captured |
 | S02 | Sign-in page / redirect | OPEN |
 | S03 | **Signed-in entry — reopens the last project** | DONE §54 |
-| S04 | Studio home / project chooser ("Browse Studio projects") | OPEN |
+| S04 | Studio home / project chooser ("Browse Studio projects") | DONE §56 |
 | S05 | New empty project | DONE §44 (empty arrangement) |
 | S06 | Onboarding dialog "How do you want to start?" | DONE §10 |
 | S07 | Project menu | DONE §18.1 |
@@ -134,5 +134,5 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 ## Current position
 
-S01–S03 captured. **Next is S04 (Studio home / project chooser)**, then S05 (new
+S01–S04 captured. **Next is S05 (new project)**, then S05 (new
 project), then the arrangement from S16 forward.
