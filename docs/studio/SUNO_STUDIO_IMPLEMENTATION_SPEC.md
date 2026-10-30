@@ -1496,3 +1496,156 @@ Reached from Project menu → **Open Project**. A centred modal over the editor.
 | `Recently Deleted` tab | archived toggle |
 | Filters + sort dropdowns | search + sort select |
 | `New Project` as first cell | header button |
+
+## 57. S01 — signed-out marketing page `/studio-welcome` `L` (1116 px)
+
+Captured live 2026-10-30 while signed out. This is the **only** public entry to
+Studio; there is no separate marketing route at `/studio`.
+
+### 57.1 Route behaviour
+
+| Request | Result |
+|---|---|
+| `/studio` while signed out | redirect → `/studio-welcome` |
+| `/studio-welcome` | renders unauthenticated, no gate |
+| `/studio` while signed in | opens the last project (§54) |
+| `Open Studio` / `Try it now` | plain `<a href="/studio">`, re-enters the redirect |
+| `Log in` | opens the sign-in modal in place (§58) |
+
+Note the dead end: signed out, `Open Studio` and `Try it now` both point at
+`/studio`, which bounces straight back to this page. The header CTA only means
+something once a session exists.
+
+### 57.2 Page order (measured at 1116 × 1245, document height 6852)
+
+| # | Section | Top | Height |
+|---|---|---|---|
+| 1 | Hero — `Studio 2.0: Be a control freak.` | 0 | 1369 |
+| 2 | Made in Suno Studio (10 track cards) | 1369 | 790 |
+| 3 | Play it how you mean it. | 2159 | 634 |
+| 4 | Plugins you can design yourself. | 2793 | 634 |
+| 5 | Say the word, build your sound. | 3427 | 634 |
+| 6 | Let your work flow (5 feature rows) | 4061 | 741 |
+| 7 | Dive deeper (tutorials) | 4802 | 647 |
+| 8 | Frequently asked questions (10 items) | 5449 | 1017 |
+| 9 | Final CTA — `Be a control freak. Try Studio now.` | 6466 | 386 |
+
+### 57.3 Header
+
+```
+[SUNO]   Products ⌄  Resources ⌄  Pricing  Careers        (Log in)  (Open Studio)
+```
+
+| Element | Metric |
+|---|---|
+| Band | ~76 px, transparent over black, not sticky in this capture |
+| Wordmark | `SUNO` wordmark, white, all caps, tight tracking |
+| Nav links | 16 px / 400, 36 px tall, items start at x=139 |
+| `Log in` | ghost pill 71 × 40, 15 px / 500, 1 px light border, transparent fill |
+| `Open Studio` | solid pill 130 × 40, 15 px / 500, `#fff` fill, `#000` text |
+
+### 57.4 Hero metrics
+
+| Element | Metric |
+|---|---|
+| H1 | **96 px / 104 px**, weight **300**, `Editorial New` (display serif), tracking **−2.88 px** (−0.03 em), `#f7f4ef`, centred, 2 lines (`Studio 2.0:` ⌙ `Be a control freak.`), box 615 × 208 |
+| Subtitle | 18 px / 28 px, `Neue Montreal Book` 400, `#a3a3a3`, max-width 520 |
+| CTA `Try it now` | 192 × 56 pill (radius 9999), `#fff` fill, `#000` text, 17 px / 500 |
+| Vertical rhythm | H1 bottom 336 → subtitle 360 → CTA 412 (24 px gaps) |
+| Hero media | full-bleed dark 3D render of the timeline (grid, orange clip, cursor) below the CTA, no border |
+
+### 57.5 Design tokens observed
+
+| Token | Value |
+|---|---|
+| Page background | `#000000` |
+| Primary text | `#f7f4ef` |
+| Muted text | `#a3a3a3` |
+| Solid action | `#ffffff` on `#000000` |
+| Display face | `Editorial New` (serif, 300) |
+| UI face | `Neue Montreal` / `Neue Montreal Book` (grotesk) |
+| Shape language | full pills for every button, 0 px radius on type blocks |
+
+Two families only: serif for headlines, grotesk for everything else. There is no
+third accent colour anywhere in the page — colour enters only through the hero
+render and the track-card artwork.
+
+### 57.6 Copy inventory (verbatim)
+
+- H1: `Studio 2.0:` / `Be a control freak.`
+- Sub: `Own every note, knob and detail in our powerful browser-based DAW.`
+- Hero CTA: `Try it now`
+- `Made in Suno Studio` — `Tracks produced start to finish in Studio, from the first idea to the final mix.`
+- `Play it how you mean it.` — MIDI controller, musical typing, arpeggiator, chord mode.
+- `Plugins you can design yourself.` — sidechain, convolution reverb, custom effects.
+- `Say the word, build your sound.` — describe a synth/plugin in words; batch-rename tracks via chat.
+- `Let your work flow` — five rows: `Start from anywhere` · `Edit anything and everything` · `Automate any parameter` · `Advanced stem separation` · `Take your work with you`.
+- Final CTA: `Be a control freak. Try Studio now.` + `Try it now`
+
+### 57.7 Delta against ours
+
+| Reference | Ours |
+|---|---|
+| Public page at a dedicated `/studio-welcome` | public variant rendered inside `/studio` (`(site)/studio/page.tsx` → `StudioMarketing`) |
+| Signed-out `/studio` **redirects** out | `/studio` renders the marketing view in place, no redirect |
+| Serif display + grotesk UI, two families | single UI family |
+| Track evidence social proof (real songs, plays, likes) | no social proof block |
+| 9 sections, 6852 px | shorter page |
+
+**Product decision this informs (open #4):** Suno keeps the marketing page *out*
+of `/studio` so that `/studio` can answer one question only — "which project?".
+If we adopt the redirect, `/studio` becomes signed-in-only and the marketing
+story moves to `/studio-welcome`, which is the shape the rest of the spec assumes.
+
+## 58. S02 — sign-in gate `L`
+
+There is **no standalone sign-in route**. Sign-in is a modal raised over the
+marketing page, and it is reached only from the header `Log in` button.
+
+### 58.1 Gate behaviour (verified)
+
+| Step | Observed |
+|---|---|
+| `GET /studio` signed out | server redirect → `/studio-welcome` |
+| `GET /studio-welcome` signed out | marketing page renders, no gate, no flash |
+| Click `Log in` | modal appears in place, URL unchanged |
+| Modal dismiss | `Close` returns to the page, no navigation |
+
+Redirect rather than an interstitial: the guard is a route rule, not a client
+check, so there is no "protected route flicker".
+
+### 58.2 Modal anatomy
+
+| Element | Detail |
+|---|---|
+| Title | `Welcome to Suno` |
+| Provider buttons | `Continue with Google` · `Continue with Apple` · `Continue with Phone` |
+| Divider | the word `or` between the two groups |
+| Secondary providers | `Discord` · `Facebook` · `Microsoft` |
+| Close | `Close` button, top-right |
+
+- No email + password fields. Identity is provider-first; phone replaces the
+  classic email form entirely.
+- The modal is a single step — no email-verification interstitial was shown
+  before the provider handoff.
+
+### 58.3 Error state (captured verbatim)
+
+```
+Welcome to Suno
+Log in failed. Please try again.
+```
+
+The failure banner sits inside the modal above the provider list and does not
+dismiss itself; the provider buttons stay enabled so the user retries in place.
+This is the **auth-failure** member of the error taxonomy in §16 and the concrete
+answer for matrix row `Q3` (error states) on the entry path.
+
+### 58.4 Delta against ours
+
+| Reference | Ours |
+|---|---|
+| Modal over the marketing page, URL unchanged | routes at `(auth)/login`, `(auth)/signup` |
+| Provider-only: Google / Apple / Phone | provider buttons plus email form |
+| One modal for sign-in and sign-up | separate login and signup pages |
+| Failure shown inline, retry in place | route-level error handling |
