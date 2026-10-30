@@ -652,27 +652,10 @@ class BatchService:
                 "merge_wallet_cost": merge_wallet_cost,
             }
 
-        if self._enforcement_service is not None:
-            plan_repo = self._enforcement_service._plan_repo
-            usage_repo = self._enforcement_service._usage_repo
-            _songs_quota, songs_remaining = await get_monthly_quota_status(
-                user_id=user_uuid,
-                plan_repo=plan_repo,
-                usage_repo=usage_repo,
-                quota_field="songs",
-            )
-            _images_quota, images_remaining = await get_monthly_quota_status(
-                user_id=user_uuid,
-                plan_repo=plan_repo,
-                usage_repo=usage_repo,
-                quota_field="images",
-            )
-            _drafts_quota, drafts_remaining = await get_monthly_quota_status(
-                user_id=user_uuid,
-                plan_repo=plan_repo,
-                usage_repo=usage_repo,
-                quota_field="drafts",
-            )
+        # Plans and quotas are retired; preflight is credits-only.
+        songs_remaining = None
+        images_remaining = None
+        drafts_remaining = None
 
         return {
             "can_generate": True,
