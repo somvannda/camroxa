@@ -2059,27 +2059,6 @@ export function StudioShell() {
               style={{ width: `${Math.round(zoom * 100)}%` }}
             >
               <div
-                className="stv-ruler"
-                onPointerDown={(event) => {
-                  const rect = event.currentTarget.getBoundingClientRect();
-                  if (!rect.width) return;
-                  const ratio = (event.clientX - rect.left) / rect.width;
-                  seek(Math.max(0, Math.min(1, ratio)) * timelineSeconds);
-                }}
-              >
-                {Array.from({ length: BARS }).map((_, index) => {
-                  const seconds = (index * BEATS_PER_BAR) / bps;
-                  const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(
-                    Math.floor(seconds % 60)
-                  ).padStart(2, "0")}`;
-                  return (
-                    <span key={index} style={{ width: `${100 / BARS}%` }}>
-                      {label}
-                    </span>
-                  );
-                })}
-              </div>
-              <div
                 className="stv-grid"
                 style={{
                   minHeight: Math.max(420, tracks.length * 58),
@@ -2346,6 +2325,27 @@ export function StudioShell() {
                 <p className="s-note">Use “Add new track” on the left, then Library.</p>
               </div>
             ) : null}
+              </div>
+              <div
+                className="stv-ruler"
+                onPointerDown={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  if (!rect.width) return;
+                  const ratio = (event.clientX - rect.left) / rect.width;
+                  seek(Math.max(0, Math.min(1, ratio)) * timelineSeconds);
+                }}
+              >
+                {Array.from({ length: BARS }).map((_, index) => {
+                  const seconds = (index * BEATS_PER_BAR) / bps;
+                  const label = `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(
+                    Math.floor(seconds % 60)
+                  ).padStart(2, "0")}`;
+                  return (
+                    <span key={index} style={{ width: `${100 / BARS}%` }}>
+                      {label}
+                    </span>
+                  );
+                })}
               </div>
             </div>
           </div>
