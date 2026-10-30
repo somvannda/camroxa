@@ -1183,3 +1183,41 @@ Rules extracted:
 3. **Two knob sizes**: primary parameters large, secondary (filters) small.
 4. **Chain is a horizontal rail** of effect cards with an `Add effect` slot at the end.
 5. The chain also appears as chips in the main footer (`Delay ＋`).
+
+## 50. Multi-plugin chain dock `L` — several effects open at once
+
+The chain is **not** a single-panel tab. Each plugin in the chain renders its own
+editor panel side by side in a horizontally scrollable dock:
+
+```
+[● Delay   Custom  ▾   Update  ⤢ ×] [● Compressor Default ▾ ⤢ ×] [● Convolution Default ▾ ⤢ ×] [● EQ Default ▾ ⤢ ×]
+   Time | Tempo                       curve + 6 knobs              IR slot + Mix/Pre/Width      band chips + Freq/Q/Gain
+───────────────────────────────────────────────────────────────────────────────────────────────
+        Delay   Compressor   Convolution   EQ   ＋            ← footer chain chips
+```
+
+Panel anatomy (every plugin): **colour dot · name · preset selector · popout (⤢) · close (×)`.
+`Update` appears only when the preset is dirty (`Custom`), otherwise the preset name
+(`Default`) is shown.
+
+### Parameter sets captured
+
+| Plugin | Controls |
+|---|---|
+| Delay | tabs `Time` / `Tempo`; Time · Feedback · Mix (large); Low Cut · High Cut (small) |
+| Compressor | threshold curve; Thresh · Ratio · Knee · Atk · Rel · Gain (six small knobs) |
+| Convolution | IR slot (`NO ASSET LOADED`); Mix · Pre · Width; time ruler 1 s / 2 s |
+| EQ | band chip (`Band 2`); band row; Freq · Q · Gain; draggable curve points |
+
+### Rules
+
+1. **Unlimited chain length** — four plugins open simultaneously in the screenshot;
+   the dock scrolls horizontally.
+2. **"Add effect" lives at the end of the chain rail** and in the footer (`＋`).
+3. **Popout (⤢)** on every plugin header — matches Settings → Window management
+   ("Docked, with a Pop out control on each surface's header").
+4. Chain order = signal order; the footer chips are the same ordered list.
+5. A track can therefore be modelled as: `instrument → plugins[] → automation → clips`.
+
+This supersedes the single-card reading in §42: that was one plugin in a chain, not the
+whole chain UI.
