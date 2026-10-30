@@ -69,9 +69,8 @@ production copy (`camxora_staging_174`). Every statement below has a code refere
 2. `store.expired_lots()` selects live lots with `expires_at <= now()` (grant, daily_grant,
    pack, referral).
 3. Default: deduct the remaining units from the wallet (`v3_grant_expire`), zero the lot.
-4. **Legacy conversion exception** (`ref_id='legacy_conversion_2026_10_30'`): move the
-   remainder into a new non-expiring `grant` lot, zero the pack lot, **do not deduct**.
-   The user keeps the credits and drops to **Free**.
+4. **No exception:** converted plan lots expire at their original plan date and are
+   clawed back exactly like a pack. Every credit lot has an expiry ≤30 days.
 5. Tier is derived, so no state transition is written: `is_pro` simply becomes false.
 
 ### 2.6 Admin and referral
@@ -114,7 +113,7 @@ production copy (`camxora_staging_174`). Every statement below has a code refere
 | Pack | `pack` | 30 days | **yes** | `wallet_sync` / `purchase_pack` |
 | Admin | `admin` | never | no | `add_credits(create_lot=True)` |
 | Referral | `referral` | 30 days | no | `insert_referral_lot_if_absent` |
-| Legacy conversion | `pack` → `grant` | original plan date | yes until expiry | migration 174 |
+| Legacy conversion | `pack` | original plan date (≤30d) | yes until expiry | migration 174 |
 
 ---
 

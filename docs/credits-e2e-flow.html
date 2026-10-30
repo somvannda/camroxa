@@ -199,10 +199,10 @@
         <p>New month: previous free lot removed, balance set back to 50. Never stacks.</p>
       </div>
       <div class="arrow">▼</div>
-      <div class="card pro">
+      <div class="card warn">
         <span class="tag">legacy</span>
         <b>Converted plan credits</b>
-        <p><code>legacy_conversion_2026_10_30</code> lots move their remainder to a non-expiring grant — credits kept, tier Free.</p>
+        <p><code>legacy_conversion_2026_10_30</code> lots expire at the original plan date and are clawed back. No exception.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card">
@@ -236,7 +236,7 @@
       <tr><td>Credit pack</td><td><code>pack</code></td><td>30 days</td><td class="good">Yes</td><td><code>sync_topup_pack</code></td></tr>
       <tr><td>Admin adjustment</td><td><code>admin</code></td><td>30 days</td><td class="bad">No</td><td><code>add_credits(create_lot=True)</code></td></tr>
       <tr><td>Referral</td><td><code>referral</code></td><td>30 days</td><td class="bad">No</td><td><code>insert_referral_lot_if_absent</code></td></tr>
-      <tr><td>Legacy conversion</td><td><code>pack</code> → <code>grant</code></td><td>Original plan date</td><td class="good">Yes, until expiry</td><td>Migration 174</td></tr>
+      <tr><td>Legacy conversion</td><td><code>pack</code></td><td>Original plan date (≤30d)</td><td class="good">Yes, until expiry</td><td>Migration 174</td></tr>
     </tbody>
   </table>
 
@@ -257,7 +257,7 @@
         <li>V6 / V6 Mini / V6 Wild at 10 credits</li>
         <li>Atomic debit + FIFO lot decrement</li>
         <li>Refund restores the consumed lot</li>
-        <li>Legacy expiry keeps credits</li>
+        <li>Every credit expires within 30 days</li>
         <li>Wallet/lot invariant alert</li>
       </ul>
     </div>

@@ -148,11 +148,12 @@ def upgrade() -> None:
             END AS tag,
             CASE
                 WHEN er.user_id IS NOT NULL THEN NULL
-                WHEN al.user_id IS NOT NULL THEN al.exp
-                WHEN pu.user_id IS NOT NULL THEN pu.exp
+                WHEN al.user_id IS NOT NULL OR pu.user_id IS NOT NULL
+                    THEN GREATEST(COALESCE(al.exp, pu.exp), COALESCE(pu.exp, al.exp))
                 ELSE NULL
             END AS expires_at,
-            (er.user_id IS NOT NULL) AS reset
+            (er.user_id IS NOT NULL) AS reset,
+            (al.user_id IS NOT NULL) AS legacy
         FROM credit_wallets w
         LEFT JOIN active_legacy al ON al.user_id = w.user_id
         LEFT JOIN expired_reset er ON er.user_id = w.user_id
@@ -183,7 +184,7 @@ def upgrade() -> None:
         INSERT INTO credit_wallet_lots
             (id, user_id, tag, amount_units, remaining_units, expires_at, period_start, created_at, ref_id)
         SELECT gen_random_uuid(), user_id, tag, balance, balance, expires_at, NULL, now(),
-               CASE WHEN tag = 'pack' THEN 'legacy_conversion_2026_10_30' ELSE NULL END
+               CASE WHEN tag = 'pack' AND legacy THEN 'legacy_conversion_2026_10_30' ELSE NULL END
         FROM _tier_rebuild
         WHERE balance > 0
         """

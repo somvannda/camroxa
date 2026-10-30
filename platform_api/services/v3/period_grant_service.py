@@ -36,20 +36,6 @@ class PeriodGrantService:
         for lot in lots:
             remaining = int(lot["remaining_units"])
             owner = lot["user_id"]
-            if remaining > 0 and lot.get("ref_id") == "legacy_conversion_2026_10_30":
-                # Converted plan credits keep their value when Pro lapses:
-                # move the remainder into a non-expiring grant lot instead of
-                # clawing it back. The wallet balance does not move.
-                await self._store.insert_lot(
-                    user_id=owner,
-                    tag="grant",
-                    amount_units=remaining,
-                    expires_at=None,
-                    period_start=None,
-                )
-                await self._store.zero_lot_remaining(lot["id"])
-                touched += 1
-                continue
             if remaining > 0:
                 balance = int(await self._credit_repo.get_balance(owner))
                 clawback = min(remaining, max(0, balance))
