@@ -1221,3 +1221,48 @@ Panel anatomy (every plugin): **colour dot · name · preset selector · popout 
 
 This supersedes the single-card reading in §42: that was one plugin in a chain, not the
 whole chain UI.
+
+## 51. Plugin system — decompiled facts `B`
+
+Identifiers recovered from the 134 authenticated chunks (1,074 plugin-related strings;
+the meaningful ones):
+
+### Chain operations
+`add_plugin` · `add_plugin_to_chain` · `chainPlugin` · `Clear Plugin Selection` ·
+`Clear Plugin Selection` bound to `ESC` (see §36)
+
+### Effects registry (ids)
+`compressor` · `convolution` · `convolution-reverb` · `chorus` · `reverb` · `delay` ·
+`distortion` · `gate` · `limiter` · `eq`
+
+These match the eight catalog cards captured in §48, plus `chorus`, which has no card
+in the visible grid — so the catalog is longer than one screen.
+
+### Authoring
+`authored-plugin` · `author_plugin` · `Creating Plugins` · `A custom plugin.` ·
+`Saved to My Plugins.` · `Saved to My Plugins as a new version.` ·
+`Could not resolve the plugin instance` · `missing required function` ·
+`blocked_broken_plugins`
+
+Implications:
+
+1. **User plugins are versioned artefacts** — saving produces a *new version*, not an
+   edit in place. Our model needs `plugin_versions(plugin_id, version, definition)`.
+2. **A plugin is code**, not a parameter preset: `missing required function` and
+   `Could not resolve the plugin instance` are runtime errors from executing authored
+   plugin bodies, and `blocked_broken_plugins` is a safety gate that can disable one.
+3. **Presets are exported in bulk** (`Bulk-export presets`, `bulk-preset-export-assets`)
+   — presets are portable assets, not rows on a plugin.
+
+### Library filters that exist but we never modelled
+`filterCovers` · `filterDislikedClips` · `filterDownloadedClips` · `filterExtensions` ·
+`filterFullSongs` · `filterLikedClips` · `filterPrivateClips` · `filterPublicClips` ·
+`filterRemasters` · `filterUploadedClips`
+
+That is ten clip filters — the library surface is far richer than the two tabs we have.
+
+### Consequence
+
+The plugin surface is a **sandboxed, versioned, user-programmable effect host**, not a
+fixed list of knobs. Implementing it faithfully is a security and isolation problem
+(sandbox + versioning + failure containment), not a UI task. Scope it deliberately.
