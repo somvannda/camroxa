@@ -15,7 +15,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S02 | Sign-in page / redirect | DONE §58 |
 | S03 | **Signed-in entry — reopens the last project** | DONE §54 |
 | S04 | Studio home / project chooser ("Browse Studio projects") | DONE §56 |
-| S05 | New empty project | PART §10 — onboarding only; §44 is the *loaded* demo |
+| S05 | New empty project | DONE §59 |
 | S06 | Onboarding dialog "How do you want to start?" | DONE §10 |
 | S07 | Project menu | DONE §18.1 |
 | S08 | Version History panel | DONE §25 |
@@ -118,8 +118,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 28 |
-| PART | 5 |
+| DONE | 29 |
+| PART | 4 |
 | OPEN | 32 |
 | **Total** | **65** |
 

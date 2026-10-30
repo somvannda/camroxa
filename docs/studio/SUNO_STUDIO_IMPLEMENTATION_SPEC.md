@@ -1649,3 +1649,108 @@ answer for matrix row `Q3` (error states) on the entry path.
 | Provider-only: Google / Apple / Phone | provider buttons plus email form |
 | One modal for sign-in and sign-up | separate login and signup pages |
 | Failure shown inline, retry in place | route-level error handling |
+
+## 59. S05 — new empty project `L` (1094 px)
+
+Captured live on a fresh sign-in. Three entry paths all land on this one screen:
+`New Project` in the My Projects modal (§56), the `Empty Project` card in the
+onboarding overlay (§10), or the post-signup redirect.
+
+### 59.1 Defaults on creation
+
+| Property | Value |
+|---|---|
+| Project name | `Untitled Project` (inline-editable, `⋯` menu beside it) |
+| Tempo | `120 BPM` |
+| Time signature | `4/4` |
+| Tracks | **exactly one**, named `Audio Track` |
+| Clips | none — no placeholder, no drop hint |
+| Playhead | `00:00.000` / `001.1.1`, at the left edge |
+| Transport | stopped |
+| Master | `Main` bus present, level bar at zero |
+
+The track is created for you. You never face a zero-track arrangement.
+
+### 59.2 Measured layout (1094 × 1245)
+
+| Region | Geometry |
+|---|---|
+| Header band | y 0–52; controls at y=8, 36 px tall |
+| Canvas | 1078 × 1141 at (8, 52) |
+| Track panel | 260 × 1141 at x=8, `rgba(20,20,22,0.85)` |
+| First track row | 85 px tall, top y=82 |
+| `Add new track` | 133 × 36 centred, 12 px / 500, white at **20 %** |
+| Panel hit target | the add button's enclosing `button` is 260 × **941** — it fills the whole empty panel below the last track |
+| `Main` row | 232 × 32 at (24, 1124) |
+| Prompt container | 648 × 99 at (353, 1048) |
+| Prompt text | 14 px / 500, `#c2c2c1`, at y=1116 |
+| `Learn` pill | bottom-right, 12 px / 600, dark text on a light pill |
+
+### 59.3 Header readouts
+
+All four are **10 px / 500 at white 50 %** — the smallest type in the editor:
+
+```
+00:00.000    001.1.1    120 BPM    4/4
+```
+
+`Export` is 16 px solid white; `Library` is 13 px at white 50 %. So the only
+full-contrast item in the right cluster is Export, which is the one action that
+leaves the editor.
+
+### 59.4 Rulers on an empty project
+
+| Ruler | Labels |
+|---|---|
+| Bars (top) | `1 · 3 · 5 · 7 · 9 · 11 · 13` — odd numbers, every **2** bars |
+| Time (bottom) | `00:00 · 00:30 · 01:00 · …` every 30 s |
+
+**Correction to §44.3.** The loaded demo was recorded as labelling every 8 bars
+(`1 · 9 · 17 · 25 …`). At default zoom on an empty project it is every 2 bars.
+Label cadence is therefore **zoom-dependent**, not a fixed project-wide step —
+pick the label interval from pixels-per-bar at render time.
+
+### 59.5 Prompt placeholder is the empty-project variant
+
+Captured verbatim:
+
+```
+Select a spot on the timeline and ask me to add a part
+```
+
+This is the evidence §26 lacked. The placeholder is context-sensitive:
+
+| Context | Placeholder |
+|---|---|
+| Empty project | `Select a spot on the timeline and ask me to add a part` |
+| Clip attached | `Add a warm reverb to this track` |
+| Session-dependent | `Ask me to generate a project…` |
+
+The empty-project string is **instructional** — it teaches the interaction
+(place the playhead, then ask) rather than describing the field.
+
+### 59.6 Behaviour notes
+
+1. `Add new track` is a full-panel target, not a small row — the entire empty
+   area under the last track adds a track when clicked.
+2. The onboarding overlay's dismiss control is `Skip to the empty project`
+   (`aria-label`, §10). Dismissing lands on exactly this state, so S06 → S05 is
+   a one-click transition.
+3. The `What's This?` card persists over the empty project on first run (§15).
+4. Nothing in the empty state suggests dragging audio in; upload lives in the
+   add-track menu and the onboarding card, not on the canvas.
+
+### 59.7 Delta against ours
+
+| Reference | Ours |
+|---|---|
+| One `Audio Track` created with the project | **zero** tracks — `derivedTracks` rebuilds from clips, so an empty project has no rows until one is added |
+| `Untitled Project` | `Untitled project` (capitalisation differs) |
+| 120 BPM / 4/4 | 120 BPM / 4/4 — matches |
+| Ruler label cadence scales with zoom | single fixed ruler |
+| Full-panel `Add new track` target | small add-track control |
+| `Select a spot on the timeline…` empty prompt | static placeholder |
+
+The track-creation gap is the behavioural one: on the reference the first row
+always exists, so track-targeted actions (plugins, arm, solo) are immediately
+available; ours starts with an empty panel.
