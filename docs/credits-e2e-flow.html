@@ -14,42 +14,58 @@
   body{margin:0;background:radial-gradient(1200px 600px at 20% -10%,#1a1140 0%,transparent 60%),var(--bg);
        color:var(--text);font-family:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;padding:28px}
   h1{font-size:22px;margin:0 0 4px;letter-spacing:.2px}
-  .sub{color:var(--muted);font-size:13px;margin-bottom:22px}
-  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:22px}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:20px}
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+  .kpi{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+  .kpi b{display:block;font-size:18px}
+  .kpi span{font-size:10.5px;color:var(--muted);text-transform:uppercase;letter-spacing:.1em}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-bottom:18px}
   .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
-  .grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;align-items:start}
+  .grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;align-items:start}
   .lane{background:linear-gradient(180deg,var(--panel),var(--panel2));border:1px solid var(--line);
-        border-radius:14px;padding:14px;min-height:420px}
-  .lane h2{font-size:12px;text-transform:uppercase;letter-spacing:.14em;color:var(--muted);margin:0 0 12px}
-  .card{background:#0a1124;border:1px solid var(--line);border-radius:10px;padding:10px 11px;margin-bottom:10px;position:relative}
-  .card b{display:block;font-size:13px;margin-bottom:3px}
-  .card p{margin:0;font-size:11.5px;line-height:1.45;color:var(--muted)}
-  .card .tag{position:absolute;top:8px;right:8px;font-size:9.5px;text-transform:uppercase;letter-spacing:.08em;
+        border-radius:14px;padding:12px;min-height:430px}
+  .lane h2{font-size:11px;text-transform:uppercase;letter-spacing:.13em;color:var(--muted);margin:0 0 10px}
+  .card{background:#0a1124;border:1px solid var(--line);border-radius:10px;padding:9px 10px;margin-bottom:9px;position:relative}
+  .card b{display:block;font-size:12.5px;margin-bottom:2px}
+  .card p{margin:0;font-size:11px;line-height:1.45;color:var(--muted)}
+  .card .tag{position:absolute;top:7px;right:7px;font-size:9px;text-transform:uppercase;letter-spacing:.08em;
              padding:2px 6px;border-radius:999px;border:1px solid var(--line);color:var(--muted)}
   .card.pro{border-color:#3b2a6b;box-shadow:0 0 0 1px #2a1d52 inset}
   .card.free{border-color:#1f3b4d}
   .card.warn{border-color:#4a2a2a}
-  .arrow{text-align:center;color:var(--violet);font-size:16px;line-height:1;margin:-2px 0 8px}
-  .state{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:22px}
-  .state .box{border:1px solid var(--line);border-radius:14px;padding:14px;background:var(--panel)}
-  .state h3{margin:0 0 6px;font-size:14px}
-  .state p{margin:0;color:var(--muted);font-size:12px;line-height:1.5}
-  .pill{display:inline-block;font-size:10px;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle}
+  .arrow{text-align:center;color:var(--violet);font-size:14px;line-height:1;margin:-1px 0 7px}
+  .state{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:20px}
+  .state .box{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--panel)}
+  .state h3{margin:0 0 5px;font-size:13.5px}
+  .state p{margin:0;color:var(--muted);font-size:11.5px;line-height:1.5}
+  .pill{display:inline-block;font-size:9.5px;padding:2px 8px;border-radius:999px;margin-left:6px;vertical-align:middle}
   .p-free{background:#0f2a3a;color:var(--sky);border:1px solid #1f4a63}
   .p-pro{background:#241640;color:#c4a5ff;border:1px solid #4a2f80}
   .p-out{background:#2a2310;color:var(--amber);border:1px solid #5a4a1a}
-  table{width:100%;border-collapse:collapse;margin-top:22px;font-size:12px}
-  th,td{border-bottom:1px solid var(--line);padding:9px 10px;text-align:left}
-  th{color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em;font-size:10.5px}
-  .invariant{margin-top:22px;border:1px dashed #3b2a6b;border-radius:14px;padding:14px;background:#0b0f22}
-  code{background:#0a1124;border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:11.5px;color:#c9d6ff}
-  .note{margin-top:18px;color:var(--muted);font-size:11.5px;line-height:1.6}
-  .bad{color:var(--rose)} .good{color:var(--green)}
+  table{width:100%;border-collapse:collapse;margin-top:20px;font-size:11.5px}
+  th,td{border-bottom:1px solid var(--line);padding:8px 9px;text-align:left}
+  th{color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.08em;font-size:10px}
+  .invariant{margin-top:20px;border:1px dashed #3b2a6b;border-radius:14px;padding:12px 14px;background:#0b0f22}
+  code{background:#0a1124;border:1px solid var(--line);border-radius:6px;padding:1px 5px;font-size:11px;color:#c9d6ff}
+  .note{margin-top:16px;color:var(--muted);font-size:11px;line-height:1.65}
+  .good{color:var(--green)} .bad{color:var(--rose)}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:18px}
+  .panel{border:1px solid var(--line);border-radius:14px;padding:12px 14px;background:var(--panel)}
+  .panel h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.1em;color:var(--muted)}
+  .panel li{font-size:11.5px;line-height:1.7;color:var(--muted)}
 </style>
 </head>
 <body>
   <h1>CAMXORA — Credits, end to end</h1>
-  <div class="sub">Signup → Free trial → Buy pack → Pro → Generate → Refund → Expire → Free. No plans, no quotas, no add-ons.</div>
+  <div class="sub">Free monthly allowance → pack purchase → Pro → generation → refund → expiry. No plans, no quotas, no add-ons.</div>
+
+  <div class="kpis">
+    <div class="kpi"><b>50</b><span>free credits / month</span></div>
+    <div class="kpi"><b>10</b><span>credits per V6 model</span></div>
+    <div class="kpi"><b>5</b><span>free generations</span></div>
+    <div class="kpi"><b>60s</b><span>Pro / Wild preview</span></div>
+    <div class="kpi"><b>30d</b><span>pack validity</span></div>
+  </div>
 
   <div class="legend">
     <span><i class="dot" style="background:var(--sky)"></i>Free</span>
@@ -60,39 +76,32 @@
   </div>
 
   <div class="grid">
-    <!-- 1 -->
     <div class="lane">
-      <h2>1 · Signup</h2>
+      <h2>1 · Signup / Free</h2>
       <div class="card free">
         <span class="tag">free</span>
         <b>Account created</b>
-        <p>Wallet starts at 0. No plan is assigned.</p>
+        <p>Email: grant after confirmation. Google: auto-confirmed, grant immediately.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card free">
         <span class="tag">monthly</span>
-        <b>50 free credits / 30 days</b>
-        <p>Reset, not stacked — the balance never exceeds 50. Granted on email confirmation or Google sign-in.</p>
+        <b>50 credits / month</b>
+        <p><code>free_monthly_grant</code>: reset, not stacked, max 50. Runs on login and in the daily maintenance sweep.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card free">
-        <span class="tag">free mix</span>
-        <b>5 × 10 credits</b>
-        <p>1 V6-Pro preview (60s) · 1 V6-Wild preview (60s) · 3 V6-Mini full tracks. All models cost 10 credits.</p>
+        <span class="tag">5 gens</span>
+        <b>1 Pro + 1 Wild + 3 Mini</b>
+        <p>10 credits each. Pro/Wild are 60s previews; Mini is full-length.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card">
         <b>Tier = Free</b>
-        <p>No live pack lot. Can browse, preview, and generate while the 50 trial credits last.</p>
-      </div>
-      <div class="arrow">▼</div>
-      <div class="card warn">
-        <b>Credits reach 0</b>
-        <p>Generation blocked at charge time. “Buy credits” is the only path forward.</p>
+        <p>No live pack. Web only. Preview caps reset on the same calendar month.</p>
       </div>
     </div>
 
-    <!-- 2 -->
     <div class="lane">
       <h2>2 · Buy a pack</h2>
       <div class="card">
@@ -102,103 +111,115 @@
       <div class="arrow">▼</div>
       <div class="card">
         <b>Checkout</b>
-        <p><code>POST /api/v3/topups/purchase</code> → CutLuy / Chmaba hosted page.</p>
+        <p><code>POST /api/v3/topups/purchase</code> → Chmaba / CutLuy hosted page.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card">
         <b>Webhook paid</b>
-        <p><code>handle_topup_webhook</code> verifies signature, then calls <code>sync_topup_pack</code>.</p>
+        <p><code>handle_topup_webhook</code> verifies signature, then <code>sync_topup_pack</code>.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card pro">
         <span class="tag">pack</span>
         <b>Mint pack lot</b>
-        <p>Wallet +credits, one <code>pack</code> lot, expiry = now + 30 days. Live lots are re-stamped to the same date.</p>
+        <p>Wallet + credits, one <code>pack</code> lot, 30-day expiry. Live lots are re-stamped to the same date.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card pro">
         <b>Tier = Pro</b>
-        <p><code>is_pro</code> = exists a live pack lot. Desktop + web unlocked.</p>
+        <p>Full tracks, no preview cap, desktop + web unlocked.</p>
       </div>
     </div>
 
-    <!-- 3 -->
     <div class="lane">
       <h2>3 · Generate</h2>
       <div class="card">
         <b>Request</b>
-        <p>Song / image / draft / export. Price comes only from the <code>pricing</code> table.</p>
+        <p>V6 / V6 Mini / V6 Wild. Price from the <code>credit_pricing</code> table only.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card">
         <b>Quote</b>
-        <p><code>quote(op)</code> → credits. No plan lookup.</p>
-      </div>
-      <div class="arrow">▼</div>
-      <div class="card">
-        <b>Balance gate</b>
-        <p>Requires <code>wallet ≥ cost</code>. Free with trial credits passes.</p>
+        <p>10 credits per model (100,000 units). No plan lookup.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card free">
         <span class="tag">free</span>
         <b>Preview cap</b>
-        <p>V6-Pro and V6-Wild: 1 each per month, 60 seconds. V6-Mini is always full-length.</p>
+        <p>V6-Pro and V6-Wild: 1 each per month, 60s. V6-Mini always full.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card">
         <span class="tag">ledger</span>
         <b>Atomic debit</b>
-        <p>One transaction: wallet −cost, lots decremented FIFO by expiry, <code>credit_transactions</code> row.</p>
+        <p>Wallet −10, lot decremented FIFO, <code>credit_transactions</code> row — one transaction.</p>
       </div>
       <div class="arrow">▼</div>
-      <div class="card warn">
-        <span class="tag">refund</span>
-        <b>Provider fails</b>
-        <p><code>refund_once</code> → wallet +cost and the credits return to a live lot. Never double-refund.</p>
+      <div class="card">
+        <b>Deliverable</b>
+        <p>Full track for Pro/Mini; 60s preview for Free Pro/Wild.</p>
       </div>
     </div>
 
-    <!-- 4 -->
     <div class="lane">
-      <h2>4 · Expiry</h2>
+      <h2>4 · Refund</h2>
+      <div class="card warn">
+        <span class="tag">fail</span>
+        <b>Provider fails</b>
+        <p>Generation errors, timeouts or upstream rejection.</p>
+      </div>
+      <div class="arrow">▼</div>
+      <div class="card">
+        <span class="tag">refund</span>
+        <b>refund_once</b>
+        <p>Wallet +10 and the credits return to a live lot. Keyed on <code>(user, reason, ref)</code> so retries cannot double-refund.</p>
+      </div>
+      <div class="arrow">▼</div>
+      <div class="card free">
+        <b>Preview slot released</b>
+        <p>A failed preview frees its monthly slot, not just its credits.</p>
+      </div>
+    </div>
+
+    <div class="lane">
+      <h2>5 · Expiry / Reset</h2>
       <div class="card">
         <b>Daily sweep</b>
-        <p><code>grant_maintenance</code> → <code>expire_lapsed_lots</code>.</p>
+        <p><code>grant_maintenance</code> → <code>expire_lapsed_lots</code> + <code>free_monthly_grant</code>.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card warn">
         <span class="tag">pack</span>
         <b>30 days pass</b>
-        <p>Pack credits lapse. Wallet is clawed back, lot zeroed.</p>
+        <p>Pack credits lapse: wallet clawed back, lot zeroed, tier → Free.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card free">
-        <b>Tier = Free</b>
-        <p>No live pack lot. Library and re-download still work; generation needs a top-up.</p>
+        <b>Free reset</b>
+        <p>New month: previous free lot removed, balance set back to 50. Never stacks.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card pro">
         <span class="tag">legacy</span>
         <b>Converted plan credits</b>
-        <p>Lots marked <code>legacy_conversion_2026_10_30</code> move their remainder to a non-expiring <code>grant</code> lot — credits kept, tier drops to Free.</p>
+        <p><code>legacy_conversion_2026_10_30</code> lots move their remainder to a non-expiring grant — credits kept, tier Free.</p>
       </div>
       <div class="arrow">▼</div>
       <div class="card">
         <b>Buy again</b>
-        <p>New pack lot → Pro again. Expiry is re-stamped on every purchase.</p>
+        <p>New pack → Pro again. Expiry re-stamped on every purchase.</p>
       </div>
     </div>
   </div>
 
   <div class="state">
     <div class="box">
-      <h3>Free <span class="pill p-free">0 or 50</span></h3>
-      <p>No live pack. 50 trial credits on signup. Can generate while credits last; no desktop after trial.</p>
+      <h3>Free <span class="pill p-free">50 / month</span></h3>
+      <p>No live pack. 50 credits reset each month; 1 Pro preview + 1 Wild preview + 3 Mini. Web only.</p>
     </div>
     <div class="box">
       <h3>Pro <span class="pill p-pro">live pack</span></h3>
-      <p>At least one unexpired pack lot with credits. Full product. 30-day expiry.</p>
+      <p>At least one unexpired pack lot. Full tracks, no preview cap, desktop + web. 30-day expiry.</p>
     </div>
     <div class="box">
       <h3>Exhausted <span class="pill p-out">0 credits</span></h3>
@@ -208,12 +229,12 @@
 
   <table>
     <thead>
-      <tr><th>Credit source</th><th>Tag</th><th>Expiry</th><th>Grants Pro?</th><th>Created by</th></tr>
+      <tr><th>Credit source</th><th>Tag</th><th>Expiry</th><th>Grants Pro?</th><th>Writer</th></tr>
     </thead>
     <tbody>
-      <tr><td>Free monthly</td><td><code>grant</code></td><td>Resets every 30 days</td><td class="bad">No</td><td><code>free_monthly_grant</code></td></tr>
-      <tr><td>Credit pack</td><td><code>pack</code></td><td>30 days</td><td class="good">Yes</td><td><code>wallet_sync</code> / <code>purchase_pack</code></td></tr>
-      <tr><td>Admin adjustment</td><td><code>admin</code></td><td>Never</td><td class="bad">No</td><td><code>add_credits(create_lot=True)</code></td></tr>
+      <tr><td>Free monthly</td><td><code>grant</code></td><td>Resets next month</td><td class="bad">No</td><td><code>free_monthly_grant</code></td></tr>
+      <tr><td>Credit pack</td><td><code>pack</code></td><td>30 days</td><td class="good">Yes</td><td><code>sync_topup_pack</code></td></tr>
+      <tr><td>Admin adjustment</td><td><code>admin</code></td><td>30 days</td><td class="bad">No</td><td><code>add_credits(create_lot=True)</code></td></tr>
       <tr><td>Referral</td><td><code>referral</code></td><td>30 days</td><td class="bad">No</td><td><code>insert_referral_lot_if_absent</code></td></tr>
       <tr><td>Legacy conversion</td><td><code>pack</code> → <code>grant</code></td><td>Original plan date</td><td class="good">Yes, until expiry</td><td>Migration 174</td></tr>
     </tbody>
@@ -226,14 +247,38 @@
     <div class="note">Checked nightly by <code>credit_invariants</code>; a mismatch raises a Telegram ops alert.</div>
   </div>
 
+  <div class="two">
+    <div class="panel">
+      <h3>Implemented</h3>
+      <ul>
+        <li>Free/Pro derived from live pack lots</li>
+        <li>Monthly 50-credit reset (<code>free_monthly_grant</code>)</li>
+        <li>1 Pro + 1 Wild preview per month, 60s</li>
+        <li>V6 / V6 Mini / V6 Wild at 10 credits</li>
+        <li>Atomic debit + FIFO lot decrement</li>
+        <li>Refund restores the consumed lot</li>
+        <li>Legacy expiry keeps credits</li>
+        <li>Wallet/lot invariant alert</li>
+      </ul>
+    </div>
+    <div class="panel">
+      <h3>Removed</h3>
+      <ul>
+        <li>Plans, licenses, subscriptions, quotas</li>
+        <li>Profile add-ons and allowance limits</li>
+        <li>V5 / V5.5 models and pricing</li>
+        <li>Legacy <code>/billing/credit-pack/payments</code></li>
+        <li>Disabled <code>/credits/purchase</code></li>
+        <li><code>user_portal</code> (app.camxora.com)</li>
+        <li>Plan quota meters and renewal emails</li>
+      </ul>
+    </div>
+  </div>
+
   <div class="note">
-    <b>Free tier (implemented):</b> 50 credits per 30 days, reset (max 50). 1 V6-Pro preview + 1 V6-Wild preview
-    (10 credits each, 60s) + 3 V6-Mini full tracks (30 credits) = 50. Preview caps live in
-    <code>web_music_preview_entitlements</code>; the monthly reset is <code>free_monthly_grant</code>;
-    migration 176 sets all V6 models to 10 credits. V5 / V5_5 are removed.
-    <br/><br/>
-    <b>Purchase path:</b> <code>/api/v3/topups/purchase</code> → Chmaba webhook → <code>sync_topup_pack</code>.
-    The legacy <code>/billing/credit-pack/payments</code> path and <code>user_portal</code> are removed.
+    <b>Branch:</b> <code>chore/credits-only-two-tier</code> · <b>Commit:</b> <code>7d54432c</code> · <b>Status:</b> committed, not pushed, not deployed.
+    <br/><b>Migrations:</b> 174 (archive/drop plans), 175 (V5 removal), 176 (V6 = 10 credits).
+    <br/><b>Verified:</b> 3,155 backend tests pass; staging dry-run shows 0 wallet/lot mismatches, 11 Pro, plan tables gone, payment history intact.
   </div>
 </body>
 </html>

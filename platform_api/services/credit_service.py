@@ -610,6 +610,7 @@ class CreditService:
                 reason=f"admin_adjustment: {reason}",
                 create_lot=True,
                 lot_tag="admin",
+                lot_expires_at=datetime.now(timezone.utc) + timedelta(days=30),
             )
         else:
             # Negative adjustment — use atomic_deduct with the absolute value

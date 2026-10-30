@@ -28,7 +28,7 @@ zero, they become Free automatically. Buying again makes them Pro again.
 | **Wallet** | `credit_wallets.balance` — the single spendable number. |
 | **Lot** | A row in `credit_wallet_lots`: `tag`, `amount_units`, `remaining_units`, `expires_at`. |
 | **Pack lot** | `tag='pack'` — credits bought with money. 30-day expiry. |
-| **Admin lot** | `tag='admin'` — manual support credit. No expiry. Never grants Pro. |
+| **Admin lot** | `tag='admin'` - manual support credit. **30-day expiry**, same as a pack. Never grants Pro. |
 | **Live** | `remaining_units > 0 AND (expires_at IS NULL OR expires_at > now())`. |
 | **Tier** | Derived from pack lots. Never stored or edited by hand. |
 
@@ -103,7 +103,7 @@ Purchase pack
 Refund
    └─ reverse lot ──► if no live pack left, tier = Free
 Admin adjustment
-   └─ admin lot (no expiry) ──► spendable, tier unchanged
+   └─ admin lot (30 days) ──► spendable, tier unchanged
 ```
 
 **Invariant to enforce in code and tests:**

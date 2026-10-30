@@ -76,7 +76,7 @@ production copy (`camxora_staging_174`). Every statement below has a code refere
 
 ### 2.6 Admin and referral
 
-- Admin adjustment → `add_credits(create_lot=True, lot_tag='admin')` → wallet + admin lot.
+- Admin adjustment → `add_credits(create_lot=True, lot_tag='admin', lot_expires_at=now+30d)` → wallet + admin lot (30-day expiry).
 - Referral → `insert_referral_lot_if_absent` (30-day `referral` lot).
 - Neither grants Pro.
 
