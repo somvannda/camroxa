@@ -70,26 +70,26 @@ export default function LegalPage() {
               or billing limits, or use accounts for fraud or abuse. We may suspend
               accounts for violations of these Terms or our Acceptable Use Policy.
             </p>
-            <h3>4. Subscriptions &amp; billing</h3>
+            <h3>4. Credit packs &amp; billing</h3>
             <p>
-              Camxora offers plans with generation allowances and access to the
-              studio. Prices, quotas, and features are shown on the Pricing page and
-              in your account portal at purchase time. Paid plans renew according to
-              the billing term you select unless cancelled. Payments may be processed
-              by third-party providers, including CutLuy / Bakong KHQR or ChmabaPay
-              where available.
+              Camxora is credits-only. There are no plans, subscriptions, quotas,
+              or renewals. You buy credit packs when you need them; each pack is
+              valid for 30 days from purchase. Free accounts receive a monthly
+              credit allowance that resets each month and does not accumulate.
             </p>
             <p>
-              Except where required by law or where a specific guarantee applies,
-              fees are non-refundable once a billing period starts. You may cancel
-              renewal from your account portal; access continues until the end of the
-              paid period unless earlier terminated for cause.
+              Prices and pack sizes are shown on the Pricing page at purchase time.
+              Payments may be processed by third-party providers, including CutLuy /
+              Bakong KHQR or ChmabaPay where available. Except where required by law,
+              purchased credits are non-refundable once used.
             </p>
             <h3>5. Credits system</h3>
             <ul>
-              <li>Credits and allowances are non-transferable between accounts.</li>
+              <li>Credits are non-transferable between accounts.</li>
               <li>Purchased wallet credits are generally non-refundable except where required by law.</li>
               <li>Credit packs are valid for 30 days from purchase unless a promotion states otherwise. Buying another pack resets the live balance’s 30-day clock.</li>
+              <li>Free monthly credits reset each month and do not accumulate; unused free credits expire.</li>
+              <li>All credits expire within 30 days.</li>
               <li>If a generation fails because of a Camxora or technical error and no usable output is produced, we restore the corresponding credits for that failed unit.</li>
               <li>Abuse of credit systems, automation fraud, or shared accounts to evade limits may result in suspension.</li>
             </ul>

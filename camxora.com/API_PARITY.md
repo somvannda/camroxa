@@ -64,7 +64,7 @@ The "+" menu is now backed end-to-end except for full Suno-native voice enrolmen
 
 Already proxied today: generation (`/generate`), studio projects, extends/covers/stems,
 personas, Studio audio/image uploads, video rendering, generations/streams/downloads,
-lyrics drafts, playlist style import, plans.
+lyrics drafts, playlist style import, credit packs.
 
 ## 5. Recommended next steps
 
