@@ -161,7 +161,7 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
     [[ -z "${REPO_BACKUP}" || ! -d "${REPO_BACKUP}" ]] && return 0
     log "Deploy failed (exit ${rc}); restoring previous frontend builds from ${REPO_BACKUP}..."
     local app artefact
-    for app in admin_portal website user_portal music_web; do
+    for app in admin_portal website music_web; do
       for artefact in .next dist; do
         if [[ -d "${REPO_BACKUP}/${app}/${artefact}" && ! -d "${REPO_DIR}/${app}/${artefact}" ]]; then
           if cp -a "${REPO_BACKUP}/${app}/${artefact}" "${REPO_DIR}/${app}/${artefact}"; then
@@ -275,21 +275,7 @@ sudo -u camxora -H bash -lc "
 NEXT_PUBLIC_PLATFORM_API_BASE_URL=https://api.camxora.com/api/v1
 NEXT_PUBLIC_CAMXORA_ENV=production
 NEXT_PUBLIC_SITE_URL=https://camxora.com
-NEXT_PUBLIC_USER_PORTAL_URL=https://app.camxora.com
-ENVEOF
-  npm run build
-"
-
-log "Building user portal..."
-sudo -u camxora -H bash -lc "
-  set -e
-  cd '${REPO_DIR}/user_portal'
-  npm ci --no-audit --no-fund
-  cat > .env.production <<ENVEOF
-NEXT_PUBLIC_PLATFORM_API_BASE_URL=https://api.camxora.com/api/v1
-NEXT_PUBLIC_CAMXORA_ENV=production
-NEXT_PUBLIC_WEBSITE_URL=https://camxora.com
-NEXT_PUBLIC_USER_PORTAL_URL=https://app.camxora.com
+NEXT_PUBLIC_USER_PORTAL_URL=https://camxora.com
 ENVEOF
   npm run build
 "
@@ -305,7 +291,7 @@ sudo -u camxora -H bash -lc "
   [ -x node_modules/.bin/next ] || { echo 'ERROR: next binary missing after dependency install in music_web'; exit 1; }
   cat > .env.production <<ENVEOF
 NEXT_PUBLIC_API_BASE_URL=https://api.camxora.com
-NEXT_PUBLIC_USER_PORTAL_URL=https://app.camxora.com
+NEXT_PUBLIC_USER_PORTAL_URL=https://camxora.com
 NEXT_PUBLIC_WEBSITE_URL=https://camxora.com
 NEXT_PUBLIC_CAMXORA_ENV=production
 NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
@@ -452,27 +438,6 @@ RestartSec=5
 WantedBy=multi-user.target
 UNIT
 
-tee /etc/systemd/system/camxora-portal.service >/dev/null <<UNIT
-[Unit]
-Description=CamXora User Portal
-After=network.target
-
-[Service]
-User=camxora
-Group=camxora
-WorkingDirectory=${REPO_DIR}/user_portal
-Environment=NODE_ENV=production
-Environment=PORT=${PORTAL_PORT}
-Environment=PLATFORM_API_INTERNAL_URL=http://127.0.0.1:${API_PORT}/api/v1
-Environment=TZ=Asia/Phnom_Penh
-ExecStart=/usr/bin/npm run start -- -p ${PORTAL_PORT} -H 127.0.0.1
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-
 tee /etc/systemd/system/camxora-music.service >/dev/null <<UNIT
 [Unit]
 Description=CamXora Music Streaming Web
@@ -497,9 +462,10 @@ systemctl enable camxora-api \
   camxora-worker-draft@{1..4} \
   camxora-worker-suno@{1..2} \
   camxora-worker-images@{1..2} \
-  camxora-website camxora-portal camxora-music
+  camxora-website camxora-music
 systemctl disable camxora-worker 2>/dev/null || true
-systemctl restart camxora-api camxora-website camxora-portal camxora-music
+systemctl disable --now camxora-portal 2>/dev/null || true
+systemctl restart camxora-api camxora-website camxora-music
 
 log "Configuring nginx HTTP bootstrap..."
 # The uploaded production config is HTTPS-only. Bootstrap HTTP before Certbot.
@@ -532,28 +498,6 @@ server {
     server_name camxora.com www.camxora.com;
     location / {
         proxy_pass http://127.0.0.1:3100;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }
-}
-server {
-    listen 80;
-    server_name app.camxora.com;
-    location /api/ {
-        proxy_pass http://127.0.0.1:8100;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-        proxy_connect_timeout 300s;
-        proxy_send_timeout 300s;
-        proxy_read_timeout 300s;
-    }
-    location / {
-        proxy_pass http://127.0.0.1:3101;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -603,7 +547,6 @@ else
     -d api.camxora.com \
     -d camxora.com \
     -d www.camxora.com \
-    -d app.camxora.com \
     -d admin.camxora.com \
     --non-interactive --agree-tos -m "${CERTBOT_EMAIL}" --redirect || {
       log "WARN: certbot failed ? check production DNS. HTTP remains available on port 80."
@@ -620,9 +563,9 @@ fi
 log "Health checks..."
 sleep 3
 curl -sf "http://127.0.0.1:${API_PORT}/health" | head -c 200 || log "WARN: API health check failed"
-systemctl is-active camxora-api camxora-website camxora-portal camxora-music nginx postgresql redis-server || true
+systemctl is-active camxora-api camxora-website camxora-music nginx postgresql redis-server || true
 
 log "Done."
 log "Secrets saved: ${SECRETS_FILE}"
-log "Next: register at https://app.camxora.com then run:"
+log "Next: register at https://camxora.com then run:"
 log "  sudo -u postgres psql camxora_platform -c \"UPDATE users SET role = 'admin' WHERE email = '${ADMIN_EMAIL}';\""
