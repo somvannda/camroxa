@@ -2637,46 +2637,66 @@ export function StudioShell() {
         ) : null}
         <div className="stv-prompt">
           <span className="stv-beta">BETA</span>
-          <button type="button" className="stv-icon" aria-label="Add">
-            <Icon name="fa-plus" />
-          </button>
-          {targetedTrack ? (
-            <span className="stv-prompt-target">
-              <span className="stv-add-icon">
-                <Icon
-                  name={targetedTrack.type === "midi" ? "fa-music" : "fa-wave-square"}
-                />
+          <div className="stv-prompt-top">
+            <button type="button" className="stv-icon" aria-label="Add">
+              <Icon name="fa-plus" />
+            </button>
+            {targetedTrack ? (
+              <span className="stv-prompt-target">
+                <span className="stv-add-icon">
+                  <Icon
+                    name={targetedTrack.type === "midi" ? "fa-music" : "fa-wave-square"}
+                  />
+                </span>
+                {targetedTrack.name}
+                <button
+                  type="button"
+                  aria-label="Clear track target"
+                  onClick={() => setSelectedTrack(null)}
+                >
+                  <Icon name="fa-xmark" />
+                </button>
               </span>
-              {targetedTrack.name}
-              <button
-                type="button"
-                aria-label="Clear track target"
-                onClick={() => setSelectedTrack(null)}
-              >
-                <Icon name="fa-xmark" />
-              </button>
-            </span>
-          ) : null}
-          <input
-            value={prompt}
-            onChange={(event) => setPrompt(event.target.value)}
-            placeholder={
-              targetedTrack?.type === "midi"
-                ? "Write a bassline on this track"
-                : "Select a spot on the timeline and ask me to add a part"
-            }
-            aria-label="Ask Studio to add a part"
-          />
-          <span className="stv-model">V6</span>
-          <button
-            type="button"
-            className="stv-icon"
-            aria-label="Send"
-            disabled={!prompt.trim()}
-            onClick={() => setPrompt("")}
-          >
-            <Icon name="fa-arrow-up" />
-          </button>
+            ) : null}
+            <span style={{ flex: 1 }} />
+            <button type="button" className="stv-icon-sm" aria-label="Prompt history">
+              <Icon name="fa-list" />
+            </button>
+            <button
+              type="button"
+              className="stv-icon-sm"
+              aria-label="Clear prompt"
+              onClick={() => {
+                setPrompt("");
+                setSelectedTrack(null);
+              }}
+            >
+              <Icon name="fa-xmark" />
+            </button>
+          </div>
+          <div className="stv-prompt-bottom">
+            <input
+              value={prompt}
+              onChange={(event) => setPrompt(event.target.value)}
+              placeholder={
+                targetedTrack?.type === "midi"
+                  ? "Write a bassline on this track"
+                  : "Select a spot on the timeline and ask me to add a part"
+              }
+              aria-label="Ask Studio to add a part"
+            />
+            <span className="stv-tab-hint">Tab</span>
+            <span className="stv-model">V6</span>
+            <button
+              type="button"
+              className="stv-send"
+              aria-label="Send"
+              disabled={!prompt.trim()}
+              onClick={() => setPrompt("")}
+            >
+              <Icon name="fa-arrow-up" />
+            </button>
+          </div>
         </div>
         <div className="stv-tools">
           <button
