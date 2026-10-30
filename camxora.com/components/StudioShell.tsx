@@ -36,6 +36,9 @@ type ClipRef = {
   lengthBeats?: number;
   /** Offset into the source clip, in beats (trimmed head). */
   readStartBeats?: number;
+  /** Fade lengths, in beats. */
+  fadeInBeats?: number;
+  fadeOutBeats?: number;
 };
 
 type Track = {
@@ -58,6 +61,9 @@ type PlacedClip = ClipRef & {
   start: number;
   /** Seconds into the source clip where playback begins. */
   readStart: number;
+  /** Fade lengths in seconds. */
+  fadeIn: number;
+  fadeOut: number;
   duration: number;
   src: string;
 };
@@ -66,6 +72,7 @@ type MixerEngine = {
   ctx: AudioContext;
   master: GainNode;
   tracks: Map<string, GainNode>;
+  clips: Map<string, GainNode>;
   sources: Map<string, MediaElementAudioSourceNode>;
 };
 
@@ -231,8 +238,8 @@ function buildClip(
     startBeats,
     endBeats: startBeats + Math.max(1, lengthBeats),
     readStartBeats: Math.max(0, clip.readStartBeats ?? 0),
-    fadeInBeats: 0,
-    fadeOutBeats: 0,
+    fadeInBeats: Math.min(Math.max(0, clip.fadeInBeats ?? 0), Math.max(1, lengthBeats)),
+    fadeOutBeats: Math.min(Math.max(0, clip.fadeOutBeats ?? 0), Math.max(1, lengthBeats)),
     fadeInCurve: 1,
     fadeOutCurve: 1,
     mute: false,
@@ -371,6 +378,14 @@ export function StudioShell() {
     readStartBeats: number;
     laneWidth: number;
   } | null>(null);
+  const fadeRef = useRef<{
+    uid: string;
+    edge: "in" | "out";
+    startX: number;
+    fadeBeats: number;
+    lengthBeats: number;
+    laneWidth: number;
+  } | null>(null);
   const [projectName, setProjectName] = useState("Untitled Project");
   const [projectId, setProjectId] = useState<string | null>(projectParam);
   const [libraryOpen, setLibraryOpen] = useState(false);
@@ -461,6 +476,8 @@ export function StudioShell() {
           trackId: track.id,
           start,
           readStart: Math.max(0, clip.readStartBeats ?? 0) * secondsPerBeat,
+          fadeIn: Math.max(0, clip.fadeInBeats ?? 0) * secondsPerBeat,
+          fadeOut: Math.max(0, clip.fadeOutBeats ?? 0) * secondsPerBeat,
           duration,
           src,
         });
@@ -570,6 +587,8 @@ export function StudioShell() {
               startBeats,
               lengthBeats: Math.max(1, endBeats - startBeats),
               readStartBeats: Number(clip.readStartBeats) || 0,
+              fadeInBeats: Number(clip.fadeInBeats) || 0,
+              fadeOutBeats: Number(clip.fadeOutBeats) || 0,
             });
           });
           nextTracks.push({
@@ -651,6 +670,36 @@ export function StudioShell() {
     }
   }, []);
 
+  /** Clip gain carries the fade curve; track and Main gains stay untouched. */
+  const scheduleClipGain = useCallback(
+    (engine: MixerEngine, uid: string, clip: PlacedClip, local: number) => {
+      const gain = engine.clips.get(uid);
+      if (!gain) return;
+      const now = engine.ctx.currentTime;
+      const fadeIn = Math.max(0, Math.min(clip.fadeIn, clip.duration));
+      const fadeOut = Math.max(0, Math.min(clip.fadeOut, clip.duration));
+      const remaining = Math.max(0, clip.duration - local);
+      gain.gain.cancelScheduledValues(now);
+      if (fadeIn > 0 && local < fadeIn) {
+        gain.gain.setValueAtTime(Math.min(1, local / fadeIn), now);
+        gain.gain.linearRampToValueAtTime(1, now + (fadeIn - local));
+      } else {
+        gain.gain.setValueAtTime(1, now);
+      }
+      if (fadeOut > 0) {
+        if (remaining <= fadeOut) {
+          gain.gain.setValueAtTime(Math.min(1, remaining / fadeOut), now);
+          gain.gain.linearRampToValueAtTime(0, now + remaining);
+        } else {
+          const fadeStart = now + (remaining - fadeOut);
+          gain.gain.setValueAtTime(1, fadeStart);
+          gain.gain.linearRampToValueAtTime(0, now + remaining);
+        }
+      }
+    },
+    []
+  );
+
   /** Start/stop each placed clip so it matches the transport window. */
   const syncClips = useCallback(
     (seconds: number, shouldPlay: boolean, force: boolean) => {
@@ -676,10 +725,14 @@ export function StudioShell() {
           /* metadata not ready yet: the next entry retries */
         }
         void el.play().catch(() => undefined);
+        const engine = engineRef.current;
+        if (engine && clip) {
+          scheduleClipGain(engine, uid, clip, seconds - clip.start);
+        }
       });
       windowRef.current = insideNow;
     },
-    []
+    [scheduleClipGain]
   );
 
   const trackGain = useCallback((engine: MixerEngine, trackId: string) => {
@@ -717,7 +770,11 @@ export function StudioShell() {
       if (engine.sources.has(uid)) return;
       try {
         const source = engine.ctx.createMediaElementSource(el);
-        source.connect(trackGain(engine, trackId));
+        const gain = engine.ctx.createGain();
+        gain.gain.value = 1;
+        source.connect(gain);
+        gain.connect(trackGain(engine, trackId));
+        engine.clips.set(uid, gain);
         engine.sources.set(uid, source);
       } catch {
         /* element already wired into another graph */
@@ -737,7 +794,13 @@ export function StudioShell() {
     const master = ctx.createGain();
     master.gain.value = live.current.masterVolume / 100;
     master.connect(ctx.destination);
-    engineRef.current = { ctx, master, tracks: new Map(), sources: new Map() };
+    engineRef.current = {
+      ctx,
+      master,
+      tracks: new Map(),
+      clips: new Map(),
+      sources: new Map(),
+    };
     return engineRef.current;
   }, []);
 
@@ -750,6 +813,14 @@ export function StudioShell() {
     transport.current.playing = false;
     stopLoop();
     elementsRef.current.forEach((el) => el.pause());
+    const engine = engineRef.current;
+    if (engine) {
+      const now = engine.ctx.currentTime;
+      engine.clips.forEach((gain) => {
+        gain.gain.cancelScheduledValues(now);
+        gain.gain.setValueAtTime(1, now);
+      });
+    }
     setPlaying(false);
     setPosition(at);
     updateView(at);
@@ -801,9 +872,10 @@ export function StudioShell() {
 
   /** A clip was dropped at a new spot: re-arm it if the transport is running. */
   const endDrag = useCallback(() => {
-    const dragging = dragRef.current ?? trimRef.current;
+    const dragging = dragRef.current ?? trimRef.current ?? fadeRef.current;
     dragRef.current = null;
     trimRef.current = null;
+    fadeRef.current = null;
     if (dragging && transport.current.playing) {
       syncClips(currentPosition(), true, true);
     }
@@ -871,9 +943,13 @@ export function StudioShell() {
           const end = clip.startBeats + length;
           if (beat <= clip.startBeats || beat >= end) return track;
           const readStart = Math.max(0, clip.readStartBeats ?? 0);
+          const fadeIn = Math.min(Math.max(1, clip.lengthBeats ?? 8), Math.max(0, clip.fadeInBeats ?? 0));
+          const fadeOut = Math.min(Math.max(1, clip.lengthBeats ?? 8), Math.max(0, clip.fadeOutBeats ?? 0));
           const left: ClipRef = {
             ...clip,
             lengthBeats: beat - clip.startBeats,
+            fadeInBeats: Math.min(fadeIn, beat - clip.startBeats),
+            fadeOutBeats: 0,
           };
           const right: ClipRef = {
             ...clip,
@@ -881,6 +957,8 @@ export function StudioShell() {
             startBeats: beat,
             lengthBeats: end - beat,
             readStartBeats: readStart + (beat - clip.startBeats),
+            fadeInBeats: 0,
+            fadeOutBeats: Math.min(fadeOut, end - beat),
           };
           return {
             ...track,
@@ -921,6 +999,8 @@ export function StudioShell() {
       el.pause();
       engineRef.current?.sources.get(uid)?.disconnect();
       engineRef.current?.sources.delete(uid);
+      engineRef.current?.clips.get(uid)?.disconnect();
+      engineRef.current?.clips.delete(uid);
       el.remove();
       elementsRef.current.delete(uid);
     });
@@ -1438,6 +1518,27 @@ export function StudioShell() {
                   seek(Math.max(0, Math.min(1, ratio)) * timelineSeconds);
                 }}
                 onPointerMove={(event) => {
+                  const fade = fadeRef.current;
+                  if (fade) {
+                    const delta =
+                      ((event.clientX - fade.startX) /
+                        Math.max(1, fade.laneWidth)) *
+                      TIMELINE_BEATS;
+                    const next = Math.min(
+                      fade.lengthBeats,
+                      Math.max(
+                        0,
+                        fade.fadeBeats + (fade.edge === "in" ? delta : -delta)
+                      )
+                    );
+                    updateClip(
+                      fade.uid,
+                      fade.edge === "in"
+                        ? { fadeInBeats: Math.round(next) }
+                        : { fadeOutBeats: Math.round(next) }
+                    );
+                    return;
+                  }
                   const trim = trimRef.current;
                   if (trim) {
                     const delta =
@@ -1508,6 +1609,15 @@ export function StudioShell() {
                         (place.duration / timelineSeconds) * 100
                       )
                     : 16;
+                  const lengthBeats = Math.max(1, clip.lengthBeats ?? 8);
+                  const fadeInPct = Math.min(
+                    100,
+                    ((clip.fadeInBeats ?? 0) / lengthBeats) * 100
+                  );
+                  const fadeOutPct = Math.min(
+                    100 - fadeInPct,
+                    ((clip.fadeOutBeats ?? 0) / lengthBeats) * 100
+                  );
                   return (
                     <span
                       key={clip.uid}
@@ -1562,6 +1672,60 @@ export function StudioShell() {
                       <span className="stv-clip-label">
                         {song?.title || "Clip"}
                       </span>
+                      {fadeInPct > 0 ? (
+                        <span
+                          className="stv-clip-fade in"
+                          style={{ width: `${fadeInPct}%` }}
+                        />
+                      ) : null}
+                      {fadeOutPct > 0 ? (
+                        <span
+                          className="stv-clip-fade out"
+                          style={{ width: `${fadeOutPct}%` }}
+                        />
+                      ) : null}
+                      {selectedClip === clip.uid ? (
+                        <>
+                          <span
+                            className="stv-clip-fade-handle in"
+                            aria-hidden="true"
+                            style={{ left: `${fadeInPct}%` }}
+                            title="Fade in"
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                              const lane = (event.currentTarget.parentElement
+                                ?.parentElement ?? null) as HTMLElement | null;
+                              fadeRef.current = {
+                                uid: clip.uid,
+                                edge: "in",
+                                startX: event.clientX,
+                                fadeBeats: clip.fadeInBeats ?? 0,
+                                lengthBeats,
+                                laneWidth: lane?.clientWidth || 1,
+                              };
+                            }}
+                          />
+                          <span
+                            className="stv-clip-fade-handle out"
+                            aria-hidden="true"
+                            style={{ right: `${fadeOutPct}%` }}
+                            title="Fade out"
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                              const lane = (event.currentTarget.parentElement
+                                ?.parentElement ?? null) as HTMLElement | null;
+                              fadeRef.current = {
+                                uid: clip.uid,
+                                edge: "out",
+                                startX: event.clientX,
+                                fadeBeats: clip.fadeOutBeats ?? 0,
+                                lengthBeats,
+                                laneWidth: lane?.clientWidth || 1,
+                              };
+                            }}
+                          />
+                        </>
+                      ) : null}
                       <span
                         className="stv-clip-handle end"
                         aria-hidden="true"

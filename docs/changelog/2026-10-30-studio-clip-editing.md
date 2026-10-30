@@ -29,6 +29,10 @@ playhead, duplicate it, and move the playhead — all persisted through the same
 - **Undo / redo** — a 60-step history over the arrangement and Main fader,
   recorded 450 ms after an edit settles. Header buttons plus Ctrl/Cmd+Z and
   Ctrl/Cmd+Shift+Z (or Ctrl+Y); ignored while typing.
+- **Fades** — selecting a clip reveals two top-corner handles; dragging them sets
+  `fadeInBeats` / `fadeOutBeats`, drawn as diagonal overlays. Splitting keeps the
+  left fade-in and the right fade-out. Audio is ramped on a per-clip gain node
+  (source → clip gain → track gain → Main), so the fade is audible, not cosmetic.
 - Playback honours `readStartBeats`: a trimmed clip starts at its source offset.
 
 `camxora.com/app/globals.css`: clip handles, selected-clip outline, context menu
@@ -51,6 +55,9 @@ and backdrop, using existing `--s-*` tokens.
    enabled Redo, Redo restored it; deleting a clip dropped to two clips and Undo
    restored the third. Autosave then persisted two tracks with the three clips.
    Buttons start disabled at the hydrated baseline and toggle correctly.
+9. Fade-in drag on the first clip (20 % of the lane) set a 39.58 % overlay on its
+   48-beat length; autosave wrote `fadeInBeats: 19` and `fadeInCurve: 1`, and a
+   reload restored the overlay and handle position without saving again.
 
 `npx tsc --noEmit` and `npm run check:ui` pass.
 

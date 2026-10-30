@@ -4483,6 +4483,12 @@ html{color-scheme:dark}
 .stv-clip-handle.start{left:0;border-radius:6px 0 0 6px}
 .stv-clip-handle.end{right:0;border-radius:0 6px 6px 0}
 .stv-clip-handle:hover{background:rgba(0,0,0,.4)}
+.stv-clip-fade{position:absolute;top:0;bottom:0;pointer-events:none}
+.stv-clip-fade.in{left:0;background:linear-gradient(to top right,transparent 49%,rgba(0,0,0,.35) 50%)}
+.stv-clip-fade.out{right:0;background:linear-gradient(to top left,transparent 49%,rgba(0,0,0,.35) 50%)}
+.stv-clip-fade-handle{position:absolute;top:-4px;width:9px;height:9px;margin:0;border-radius:2px;background:var(--s-text);opacity:.85;cursor:ew-resize}
+.stv-clip-fade-handle.in{margin-left:-4px}
+.stv-clip-fade-handle.out{margin-right:-4px}
 .stv-menu-backdrop{position:fixed;inset:0;z-index:60}
 .stv-menu{position:fixed;min-width:168px;padding:6px;border:1px solid var(--s-line);border-radius:10px;background:var(--s-bg2);box-shadow:0 14px 34px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px}
 .stv-menu button{border:0;background:transparent;color:var(--s-text);text-align:left;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:12px}
