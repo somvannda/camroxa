@@ -48,11 +48,15 @@ export function StudioLanding() {
         if (songResult.status === "fulfilled") setSongs(songResult.value.items);
         if (projectResult.status === "fulfilled") {
           setProjects(
-            (projectResult.value.items ?? []).map((project) => ({
-              id: project.id,
-              name: project.title || "Untitled Project",
-              updated_at: null,
-            }))
+            (projectResult.value.items ?? [])
+              // The editor opens Suno projects; local rows without a Suno id
+              // cannot be hydrated, so they are not offered as "resume".
+              .filter((project) => Boolean(project.suno_project_id))
+              .map((project) => ({
+                id: String(project.suno_project_id),
+                name: project.title || "Untitled Project",
+                updated_at: project.updated_at ?? null,
+              }))
           );
         }
       })

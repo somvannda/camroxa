@@ -1772,6 +1772,7 @@ class WebMusicService:
             """
             SELECT p.id, p.title, p.major_version, p.bpm, p.time_signature,
                    p.pinned, p.tags, p.archived, p.created_at, p.updated_at,
+                   p.suno_project_id,
                    COALESCE(c.comment_count, 0) AS comment_count,
                    c.last_comment_at
             FROM studio_projects p
@@ -1821,6 +1822,9 @@ class WebMusicService:
             "major_version": int(row["major_version"]),
             "bpm": int(row["bpm"]),
             "time_signature": str(row["time_signature"]),
+            "suno_project_id": (
+                str(row["suno_project_id"]) if row.get("suno_project_id") else None
+            ),
             "pinned": bool(row.get("pinned")),
             "archived": bool(row.get("archived")),
             "tags": list(row.get("tags") or []),
@@ -1850,11 +1854,19 @@ class WebMusicService:
         safe_title = str(title or "Untitled Project").strip()[:120] or "Untitled Project"
         safe_bpm = max(20, min(int(bpm), 300))
         payload = data if isinstance(data, dict) else {"tracks": [], "clips": []}
+        # The Suno project is the source of truth for the arrangement; keep its
+        # id so the landing list can open a real project instead of a local row.
+        suno_project_id: str | None = None
+        try:
+            created = await self.create_studio_session(user_id, title=safe_title)
+            suno_project_id = str(created.get("id") or "") or None
+        except ExternalServiceError:
+            suno_project_id = None
         row = await self._pool.fetchrow(
             """
             INSERT INTO studio_projects
-                (user_id, title, major_version, bpm, time_signature, data)
-            VALUES ($1, $2, $3, $4, $5, $6::jsonb)
+                (user_id, title, major_version, bpm, time_signature, data, suno_project_id)
+            VALUES ($1, $2, $3, $4, $5, $6::jsonb, $7)
             RETURNING *
             """,
             user_id,
@@ -1863,6 +1875,7 @@ class WebMusicService:
             safe_bpm,
             str(time_signature or "4/4"),
             json.dumps(payload),
+            suno_project_id,
         )
         return self._studio_project_payload(row)
 

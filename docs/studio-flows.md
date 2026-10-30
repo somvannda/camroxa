@@ -13,7 +13,7 @@ or release notes, `L` = live Studio session, `C` = Camxora already implemented.
 | Header | SUNO logo, "No project loaded ⋯", Export, Library | H | `C` (brand in app header, project pill, Export, Library) |
 | Resume column | "Pick up where you left off": New empty project + recent projects, "See all projects" | H | `C` (new card, latest project, link) |
 | Songs column | "Or start from one of your songs": search, Filters, New, grouped by day, per-row title/style/key/BPM/likes, "Edit in Studio" | H | `C` minus key/BPM/likes |
-| Project list source | `GET /api/project/me` returns workspaces, not Studio projects | B | ⚠️ uses our own project table |
+| Project list source | `GET /api/project/me` returns workspaces, not Studio projects | B | ⚠️ still our own project table, but each row now stores its Suno `suno_project_id` (migration 174), so resume cards open real Suno projects; rows without one are hidden |
 
 **Gap:** project list should come from Suno; key/BPM/likes columns missing.
 

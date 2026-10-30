@@ -97,6 +97,8 @@ export type WebMusicStudioProject = {
   major_version: number;
   bpm: number;
   time_signature: string;
+  /** Suno Studio project id; the local row is only an index of it. */
+  suno_project_id?: string | null;
   pinned?: boolean;
   archived?: boolean;
   tags?: string[];
