@@ -417,6 +417,8 @@ export function StudioShell() {
   const [prompt, setPrompt] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  /** A clip stream the browser could not play (e.g. encrypted playback). */
+  const [playbackIssue, setPlaybackIssue] = useState(false);
   /** Durations reported by the media elements, keyed `songId:variant`. */
   const [measured, setMeasured] = useState<Record<string, number>>({});
 
@@ -533,6 +535,7 @@ export function StudioShell() {
     let active = true;
     setProjectId(projectParam);
     setHydrating(true);
+    setPlaybackIssue(false);
     getStudioSession(projectParam)
       .then(async (session) => {
         if (!active) return;
@@ -1094,6 +1097,7 @@ export function StudioShell() {
               : { ...current, [key]: duration }
           );
         });
+        created.addEventListener("error", () => setPlaybackIssue(true));
         host.appendChild(created);
         elementsRef.current.set(uid, created);
         el = created;
@@ -1267,6 +1271,11 @@ export function StudioShell() {
       const typing =
         Boolean(target) && ["INPUT", "TEXTAREA"].includes(target!.tagName);
       const meta = event.metaKey || event.ctrlKey;
+      if (event.key === "Escape" && clipMenu) {
+        event.preventDefault();
+        setClipMenu(null);
+        return;
+      }
       if (meta && !typing && event.key.toLowerCase() === "z") {
         event.preventDefault();
         if (event.shiftKey) redo();
@@ -1297,7 +1306,7 @@ export function StudioShell() {
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedClip, tracks, projectId, pause, start, removeClip, undo, redo]);
+  }, [selectedClip, tracks, projectId, pause, start, removeClip, undo, redo, clipMenu]);
 
   // Library dock data: liked flags for the Liked tab.
   useEffect(() => {
@@ -2004,6 +2013,14 @@ export function StudioShell() {
             <span className="s-note">Reconciling…</span>
           ) : null}
           {busy ? <span className="s-note">Opening…</span> : null}
+          {playbackIssue ? (
+            <span
+              className="s-note"
+              title="Suno returns 422 encrypted_playback_required for clips with a packaged master."
+            >
+              Some clips can&apos;t play in the browser yet
+            </span>
+          ) : null}
           {error ? <span className="s-error">{error}</span> : null}
         </div>
       </footer>

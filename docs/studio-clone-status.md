@@ -45,7 +45,9 @@ detail is in [studio-flows.md](studio-flows.md).
 
 ## Known limitations
 
-- Packaged tracks are silent in the editor (see encrypted playback).
+- Packaged tracks are silent in the editor (see encrypted playback); the footer
+  now says "Some clips can't play in the browser yet" when a clip stream errors
+  instead of leaving the user wondering.
 - Trim/split/fades are not covered by tests beyond live checks.
 - The metronome accent follows the first `timeSignatureChanges` entry; mid-song
   signature changes are ignored.
