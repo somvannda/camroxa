@@ -440,7 +440,8 @@ export function StudioShell() {
   const [projectName, setProjectName] = useState("Untitled Project");
   const [projectId, setProjectId] = useState<string | null>(projectParam);
   const [libraryOpen, setLibraryOpen] = useState(false);
-  const [addTrackMenuOpen, setAddTrackMenuOpen] = useState(false);
+  const [addTrackMenuPos, setAddTrackMenuPos] = useState<{ x: number; y: number } | null>(null);
+  const addTrackMenuOpen = Boolean(addTrackMenuPos);
   const [libraryTab, setLibraryTab] = useState<"songs" | "liked">("songs");
   const [likedKeys, setLikedKeys] = useState<string[]>([]);
   const [playing, setPlaying] = useState(false);
@@ -1331,13 +1332,13 @@ export function StudioShell() {
       }
       if (event.key === "Escape" && addTrackMenuOpen) {
         event.preventDefault();
-        setAddTrackMenuOpen(false);
+        setAddTrackMenuPos(null);
         return;
       }
       if (addTrackMenuOpen && !typing && !meta && event.key.toLowerCase() === "a") {
         event.preventDefault();
         addTrackRef.current();
-        setAddTrackMenuOpen(false);
+        setAddTrackMenuPos(null);
         return;
       }
       if (meta && !typing && event.key.toLowerCase() === "z") {
@@ -1882,14 +1883,29 @@ export function StudioShell() {
             </div>
           ))}
           <div className="stv-add-wrap">
-            {addTrackMenuOpen ? (
-              <div className="stv-add-menu" role="menu">
+            {addTrackMenuPos ? (
+              <>
+                <div
+                  className="stv-menu-backdrop"
+                  onClick={() => setAddTrackMenuPos(null)}
+                />
+                <div
+                  className="stv-add-menu"
+                  role="menu"
+                  style={{
+                    left: Math.max(
+                      8,
+                      Math.min(addTrackMenuPos.x, window.innerWidth - 200)
+                    ),
+                    top: addTrackMenuPos.y,
+                  }}
+                >
                 <button
                   type="button"
                   role="menuitem"
                   onClick={() => {
                     addTrack("audio");
-                    setAddTrackMenuOpen(false);
+                    setAddTrackMenuPos(null);
                   }}
                 >
                   <span className="stv-add-icon audio">
@@ -1903,7 +1919,7 @@ export function StudioShell() {
                   role="menuitem"
                   onClick={() => {
                     addTrack("midi");
-                    setAddTrackMenuOpen(false);
+                    setAddTrackMenuPos(null);
                   }}
                 >
                   <span className="stv-add-icon midi">
@@ -1924,14 +1940,18 @@ export function StudioShell() {
                   Upload
                   <kbd>U</kbd>
                 </button>
-              </div>
+                </div>
+              </>
             ) : null}
             <button
               type="button"
               className="stv-add-track"
               aria-haspopup="menu"
               aria-expanded={addTrackMenuOpen}
-              onClick={() => setAddTrackMenuOpen((value) => !value)}
+              onClick={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              setAddTrackMenuPos((current) => (current ? null : { x: rect.left, y: rect.top - 8 }));
+            }}
             >
               <Icon name="fa-plus" /> Add new track
             </button>
