@@ -4474,6 +4474,9 @@ html{color-scheme:dark}
 .stv-color-row{display:flex;gap:6px;padding:4px 10px 8px}
 .stv-color-swatch{width:20px;height:20px;border-radius:999px;border:1px solid var(--s-line);cursor:pointer;padding:0}
 .stv-color-swatch[aria-pressed="true"]{outline:2px solid var(--s-text);outline-offset:2px}
+.stv-prompt-target{display:inline-flex;align-items:center;gap:6px;padding:3px 6px 3px 4px;border-radius:999px;background:var(--s-bg2);border:1px solid var(--s-line);color:var(--s-text);font-size:11px;white-space:nowrap}
+.stv-prompt-target button{border:0;background:transparent;color:var(--s-text2);cursor:pointer;display:grid;place-items:center;padding:2px}
+.stv-prompt-target button:hover{color:var(--s-text)}
 .stv-track.on{background:var(--s-bg2)}
 .stv-track-top{display:flex;align-items:center;gap:6px}
 .stv-track-num{color:var(--s-text3);width:14px}

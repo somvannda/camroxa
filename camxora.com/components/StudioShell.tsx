@@ -49,6 +49,8 @@ type ClipRef = {
 
 type Track = {
   id: string;
+  /** Suno's track type; only audio tracks can hold clips here so far. */
+  type: "audio" | "midi";
   /** Suno's track id once the track exists in the saved `state` document. */
   remoteId?: string;
   /** Provider clip ids this track had in the last document we read or wrote. */
@@ -139,14 +141,18 @@ function defaultEq() {
   };
 }
 
-/** Audio-track defaults, captured from the editor bundle's `46472`/`634615` modules. */
-function defaultTrackShape(id: string, color: string): Record<string, unknown> {
+/** Audio/MIDI-track defaults, captured from the editor bundle's `46472`/`634615` modules. */
+function defaultTrackShape(
+  id: string,
+  color: string,
+  type: "audio" | "midi" = "audio"
+): Record<string, unknown> {
   return {
-    type: "audio",
+    type,
     id,
     input: null,
     color,
-    name: "Audio Track",
+    name: type === "midi" ? "MIDI Track" : "Audio Track",
     clips: [],
     clipCreationIntents: [],
     height: 86,
@@ -155,7 +161,7 @@ function defaultTrackShape(id: string, color: string): Record<string, unknown> {
     arm: false,
     amplitude: 1,
     balance: 0,
-    instrument: { type: "song" },
+    ...(type === "audio" ? { instrument: { type: "song" } } : {}),
     soloTakeLaneId: null,
     takeLanesExpanded: false,
     hidden: false,
@@ -295,7 +301,7 @@ function buildProjectState(input: {
     }
     const synthetic = !source;
     if (!source) {
-      source = defaultTrackShape(track.remoteId ?? newUid(), track.color);
+      source = defaultTrackShape(track.remoteId ?? newUid(), track.color, track.type);
     }
     const sourceId = String(source.id ?? "");
     const sourceAlreadyClaimed = claimed.has(sourceId);
@@ -335,7 +341,7 @@ function buildProjectState(input: {
           : sourceAlreadyClaimed
             ? newUid()
             : sourceId || newUid(),
-      type: "audio",
+      type: track.type,
       name: track.name,
       color: track.color,
       amplitude: track.volume / 100,
@@ -607,7 +613,7 @@ export function StudioShell() {
         const stateTracks = (Array.isArray(doc.tracks) ? doc.tracks : [])
           .map(asRecord)
           .filter((track): track is Record<string, unknown> => Boolean(track))
-          .filter((track) => track.type === "audio");
+          .filter((track) => track.type === "audio" || track.type === "midi");
 
         const providerIds: string[] = [];
         stateTracks.forEach((track) => {
@@ -669,6 +675,7 @@ export function StudioShell() {
           nextTracks.push({
             id: remoteId,
             remoteId,
+            type: track.type === "midi" ? "midi" : "audio",
             knownProviderIds,
             name:
               typeof track.name === "string" && track.name
@@ -1480,12 +1487,13 @@ export function StudioShell() {
     setTrackMenu(null);
   }
 
-  function addTrack(name = "Audio Track") {
+  function addTrack(type: "audio" | "midi" = "audio") {
     const uid = newUid();
     const track: Track = {
       id: uid,
+      type,
       remoteId: uid,
-      name,
+      name: type === "midi" ? "MIDI Track" : "Audio Track",
       color: COLORS[tracks.length % COLORS.length],
       clips: [],
       muted: false,
@@ -1576,6 +1584,7 @@ export function StudioShell() {
     if (!target) {
       const uid = newUid();
       const track: Track = {
+        type: "audio",
         id: uid,
         remoteId: uid,
         name: "Audio Track",
@@ -1594,7 +1603,9 @@ export function StudioShell() {
   }
 
   const timelineSeconds = TIMELINE_BEATS / bps;
-  addTrackRef.current = () => addTrack();
+  addTrackRef.current = () => addTrack("audio");
+  /** The track the context bar is pointed at (Suno shows it as a chip). */
+  const targetedTrack = tracks.find((track) => track.id === selectedTrack) ?? null;
 
   // One status slot keeps the footer readable; errors win over progress.
   const statusText =
@@ -1855,7 +1866,7 @@ export function StudioShell() {
                   type="button"
                   role="menuitem"
                   onClick={() => {
-                    addTrack();
+                    addTrack("audio");
                     setAddTrackMenuOpen(false);
                   }}
                 >
@@ -1868,8 +1879,10 @@ export function StudioShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled
-                  title="MIDI tracks need the piano roll and synth, which this editor does not have yet"
+                  onClick={() => {
+                    addTrack("midi");
+                    setAddTrackMenuOpen(false);
+                  }}
                 >
                   <span className="stv-add-icon midi">
                     <Icon name="fa-music" />
@@ -2306,10 +2319,31 @@ export function StudioShell() {
           <button type="button" className="stv-icon" aria-label="Add">
             <Icon name="fa-plus" />
           </button>
+          {targetedTrack ? (
+            <span className="stv-prompt-target">
+              <span className="stv-add-icon">
+                <Icon
+                  name={targetedTrack.type === "midi" ? "fa-music" : "fa-wave-square"}
+                />
+              </span>
+              {targetedTrack.name}
+              <button
+                type="button"
+                aria-label="Clear track target"
+                onClick={() => setSelectedTrack(null)}
+              >
+                <Icon name="fa-xmark" />
+              </button>
+            </span>
+          ) : null}
           <input
             value={prompt}
             onChange={(event) => setPrompt(event.target.value)}
-            placeholder="Select a spot on the timeline and ask me to add a part"
+            placeholder={
+              targetedTrack?.type === "midi"
+                ? "Write a bassline on this track"
+                : "Select a spot on the timeline and ask me to add a part"
+            }
             aria-label="Ask Studio to add a part"
           />
           <span className="stv-model">V6</span>
