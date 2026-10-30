@@ -1266,3 +1266,58 @@ That is ten clip filters — the library surface is far richer than the two tabs
 The plugin surface is a **sandboxed, versioned, user-programmable effect host**, not a
 fixed list of knobs. Implementing it faithfully is a security and isolation problem
 (sandbox + versioning + failure containment), not a UI task. Scope it deliberately.
+
+## 52. Full editor with plugin dock open `L` (1272 px wide)
+
+Measured from a full-window capture at 1272 px.
+
+### Track rows (this is the final anatomy)
+
+```
+[#] [name]                          🔊  S  A  ⌄
+    [──────── volume ────────|──][── pan ──|──]
+```
+
+- Number at far left, aligned with the colour strip.
+- Name on the first line, left.
+- `🔊 S A ⌄` right-aligned on the same line.
+- **Two horizontal sliders** below: a wide volume slider and a narrower pan slider, each with a vertical handle. (Earlier notes said "one level bar" — it is two.)
+- The selected row gets a lighter fill across the **full row width** (track 5 in the capture).
+- A focused slider draws a **green outline** (track 2).
+- Row height 85 px, step 86 px; `Main` bus at the bottom with the same slider pair.
+
+### Plugin dock (open)
+
+Full-width dock above the footer, horizontally scrollable, ~370 px tall:
+
+| Slot | Header | Body |
+|---|---|---|
+| Delay | magenta dot · `Delay` · `Custom` ▾ · **Update** · × | tabs `Time`/`Tempo`; large knobs Time · Feedback · Mix; small knobs Low Cut · High Cut |
+| Compressor | magenta dot · `Compressor` · `Default` ▾ · × | transfer curve with −40/−16 axis; preset `None`; small knobs Thresh · Ratio · Knee · Atk · Rel · Gain; bypass dot |
+| Convolution | magenta dot · `Convolution` · `Default` ▾ · × | IR grid with `0s 1s 2s` ruler and `NO ASSET LOADED`; preset `None`; Mix knob |
+
+Card width ≈ 480 px for Delay/Compressor, ≈ 370 px for Convolution. Cards are
+separated by a 1 px divider, each with its own colour dot matching the plugin.
+
+### Footer
+
+`[⚙][✎][☰][🎤]` ······ `Delay  Compressor  Convolution  EQ  +` ······ `[▤][⌕][−][+][⟲]  Learn`
+
+Tool cluster left, chain chips centred, view/zoom/loop + Learn right.
+
+### Header (at 1272 px)
+
+`SUNO · [Drum & Bass Demo ⌄] · ↶ ↷` — then centred `|◀ ◀ ■ ▶ ▶| ⊕ 00:00.000 001.1.1` — then right `174 BPM · 4/4 · ↗Export · ▤Library`.
+
+Six transport glyphs before the readouts: back-to-start, rewind, stop, play, forward, plus.
+
+### Deltas against our shell
+
+| Element | Reference | Ours |
+|---|---|---|
+| Track sliders | two (volume + pan) | one level bar |
+| Selected row | full-width lighter fill | purple tint |
+| Focused slider | green outline | none |
+| Plugin dock | present in the editor | not mounted in the shell |
+| Footer | tools · chips · view controls · Learn | chips only |
+| Transport glyphs | six | five |
