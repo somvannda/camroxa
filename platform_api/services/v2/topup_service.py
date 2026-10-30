@@ -218,11 +218,8 @@ class TopupService:
         # subscription is no longer required to buy one (it used to gate this
         # checkout). When the buyer happens to be a grandfathered subscriber we
         # still link the purchase for reporting; otherwise the FK stays NULL.
-        subscription = await self._db.fetch_one("""
-            SELECT id
-            FROM web_subscriptions
-            WHERE user_id = $1 AND status = 'active'
-        """, user_id)
+        # Plans and subscriptions are retired: no subscription link is recorded.
+        subscription = None
 
         # Resolve the gateway before the row exists so a failed attempt is still
         # attributed to the provider that refused it.
