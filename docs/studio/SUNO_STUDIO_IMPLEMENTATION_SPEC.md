@@ -1321,3 +1321,57 @@ Six transport glyphs before the readouts: back-to-start, rewind, stop, play, for
 | Plugin dock | present in the editor | not mounted in the shell |
 | Footer | tools · chips · view controls · Learn | chips only |
 | Transport glyphs | six | five |
+
+## 53. Plugin dock — second capture (played state, EQ + Compressor)
+
+Captured from my own screenshot at 1104 px with playback running (`02:05.589`,
+bar `092.1.1`) on a selected drum track.
+
+### Newly discovered capabilities
+
+| Feature | Evidence |
+|---|---|
+| **Named presets** | header shows `Kick Comp` and `Band 5` — not just `Custom`/`Default` |
+| **Sidechain source picker** | Compressor panel shows `Drum Kit Main — Pre-fx` |
+| **EQ band shapes** | a row of five filter-shape icons + a band number chip |
+| **Per-plugin bypass dot** | small circle at each card's top-right |
+| **Focus ring on a knob** | the hovered/focused knob draws a green ring (`Freq`) |
+
+### Card anatomy (final)
+
+```
+● <name>            <preset ▾>                    ●(bypass) ×
+  [optional: sidechain / asset / band selector]
+  <graph or knobs>
+  Thresh  Ratio  Knee
+  Atk     Rel    Gain
+```
+
+### Compressor
+
+- Transfer curve with `−40` / `−16` axis labels.
+- Preset `Kick Comp`.
+- **Sidechain** selector reading `Drum Kit Main — Pre-fx`.
+- Six knobs: Thresh · Ratio · Knee · Atk · Rel · Gain.
+- Bypass dot top-right.
+
+### EQ
+
+- Preset `Band 5` plus a band chip.
+- **Five filter-shape icons** (bell, shelf, notch, high/low pass shapes).
+- Three knobs: Freq · Q · Gain.
+- A draggable curve with numbered nodes (band index inside the node).
+- Selecting a node (green node `5`) highlights its `Freq` knob with a green ring.
+
+### Track selection correlation
+
+Selecting track 13 dims the other lanes and outlines that track's clips, so the
+selected track is identifiable in both the left bar **and** the arrangement.
+
+### Deltas our dock still has
+
+1. No named presets — we only show `Custom`/`Default`.
+2. No sidechain picker on the compressor.
+3. EQ shows one band, not a multi-band editor with shape selection.
+4. No per-plugin bypass dot (we have a power button in the header instead).
+5. Focus rings are on sliders only, not knobs.
