@@ -342,42 +342,9 @@ class WebMusicService:
         self._open_charges: dict[str, Any] = {}
 
     async def usage_today(self, user_id: UUID, *, usage_date: date | None = None) -> dict[str, Any]:
-        """Return credit-based quota for the create UI."""
-        if await self._credits_only_v3_enabled():
-            return await self._usage_today_v3(user_id)
-
-        if self._credit_service is None:
-            is_pro = await self._has_pro(user_id)
-            return await self._with_queue_fields(
-                user_id, self._quota_payload(limit=0, used=0, is_pro=is_pro)
-            )
-
-        balance = await self._credit_service.get_detailed_balance(str(user_id))
-        songs_remaining = balance.total_available // WEB_MUSIC_CREDITS_PER_SONG
-        requires_upgrade = balance.total_available < WEB_MUSIC_CREDITS_PER_SONG
-        is_pro = balance.has_subscription or await self._has_pro(user_id)
-        # Free users may download their own generated tracks (MP3/WAV/LRC/SRT).
-        can_download = True
-
-        return await self._with_queue_fields(
-            user_id,
-            {
-                "limit": balance.daily_free_limit if not balance.has_subscription else balance.monthly_granted,
-                "used": balance.daily_free_used if not balance.has_subscription else balance.monthly_used,
-                "remaining": songs_remaining,
-                "is_pro": is_pro,
-                "requires_upgrade": requires_upgrade and not await self._has_pro(user_id),
-                "credits_remaining": balance.total_available,
-                "credits_per_song": WEB_MUSIC_CREDITS_PER_SONG,
-                "has_subscription": balance.has_subscription,
-                "can_download": can_download,
-                "daily_free_remaining": balance.daily_free_remaining,
-                "daily_free_limit": balance.daily_free_limit,
-                # Packs-only: the Free plan's monthly grant is single-song only, so
-                # batch generation stays locked until a pack is bought.
-                "premium_unlocked": self._legacy_pack_unlocked(balance),
-            },
-        )
+        """Return credit-based quota for the create UI (credits-only)."""
+        del usage_date
+        return await self._usage_today_v3(user_id)
 
     async def has_generation_credits(self, user_id: UUID) -> bool:
         """True when the user can pay for a generation from their own balance.
