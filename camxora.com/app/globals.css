@@ -4475,7 +4475,17 @@ html{color-scheme:dark}
 .stv-grid{position:relative;flex:1;overflow:auto}
 .stv-grid>span{position:absolute;top:0;bottom:0;width:1px;background:var(--s-line)}
 .stv-lane{position:absolute;left:0;right:0;height:52px;border-bottom:1px solid var(--s-line)}
-.stv-clip{position:absolute;top:10px;height:32px;border-radius:6px;color:var(--s-bg);font-weight:600;font-size:11px;display:flex;align-items:center;padding:0 10px;overflow:hidden;white-space:nowrap}
+.stv-clip{position:absolute;top:10px;height:32px;border-radius:6px;color:var(--s-bg);font-weight:600;font-size:11px;display:flex;align-items:center;padding:0 10px;overflow:hidden;white-space:nowrap;cursor:grab;user-select:none}
+.stv-clip.on{outline:2px solid var(--s-text);outline-offset:-2px}
+.stv-clip-label{overflow:hidden;text-overflow:ellipsis;pointer-events:none}
+.stv-clip-handle{position:absolute;top:0;bottom:0;width:6px;cursor:ew-resize;background:rgba(0,0,0,.22)}
+.stv-clip-handle.start{left:0;border-radius:6px 0 0 6px}
+.stv-clip-handle.end{right:0;border-radius:0 6px 6px 0}
+.stv-clip-handle:hover{background:rgba(0,0,0,.4)}
+.stv-menu-backdrop{position:fixed;inset:0;z-index:60}
+.stv-menu{position:fixed;min-width:168px;padding:6px;border:1px solid var(--s-line);border-radius:10px;background:var(--s-bg2);box-shadow:0 14px 34px rgba(0,0,0,.45);display:flex;flex-direction:column;gap:2px}
+.stv-menu button{border:0;background:transparent;color:var(--s-text);text-align:left;padding:7px 10px;border-radius:6px;cursor:pointer;font-size:12px}
+.stv-menu button:hover{background:var(--s-bg3)}
 .stv-playhead{position:absolute;top:0;bottom:0;width:2px;background:var(--s-accent)}
 .stv-empty{position:absolute;inset:0;display:flex;flex-direction:column;gap:6px;align-items:center;justify-content:center;color:var(--s-text3)}
 .stv-empty .icon{font-size:26px;opacity:.5}

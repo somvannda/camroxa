@@ -59,7 +59,11 @@ visual only.
 ## F7 — Clips on the timeline
 
 Drag from library onto a lane; drag along lane; trim; split; delete — `H`.
-Camxora: add (click/drag) `C`, move `C`, delete `C`; trim/split missing.
+Camxora: add (click/drag) `C`, move `C`, trim `C` (edge handles adjust
+`startBeats` / `endBeats` / `readStartBeats`), split `C` (context menu, at the
+playhead, two arrangements sharing one source), duplicate `C` (context menu,
+placed after the original), delete `C`. Context menu: Duplicate, Split at
+playhead, Delete. The ruler and empty lanes move the playhead `C`.
 
 Clips live in the project `state`: an audio clip is
 `{ asset: { type: "clip", id: <provider clip id> }, startBeats, endBeats,

@@ -34,6 +34,8 @@ type ClipRef = {
   startBeats: number;
   /** Timeline length, in beats. */
   lengthBeats?: number;
+  /** Offset into the source clip, in beats (trimmed head). */
+  readStartBeats?: number;
 };
 
 type Track = {
@@ -54,6 +56,8 @@ type PlacedClip = ClipRef & {
   trackId: string;
   /** Seconds from the start of the timeline. */
   start: number;
+  /** Seconds into the source clip where playback begins. */
+  readStart: number;
   duration: number;
   src: string;
 };
@@ -224,7 +228,7 @@ function buildClip(
     amplitude: 1,
     startBeats,
     endBeats: startBeats + Math.max(1, lengthBeats),
-    readStartBeats: 0,
+    readStartBeats: Math.max(0, clip.readStartBeats ?? 0),
     fadeInBeats: 0,
     fadeOutBeats: 0,
     fadeInCurve: 1,
@@ -345,10 +349,24 @@ export function StudioShell() {
   const [tracks, setTracks] = useState<Track[]>([]);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
+  const [clipMenu, setClipMenu] = useState<{
+    uid: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const dragRef = useRef<{
     uid: string;
     startX: number;
     startBeat: number;
+    laneWidth: number;
+  } | null>(null);
+  const trimRef = useRef<{
+    uid: string;
+    edge: "start" | "end";
+    startX: number;
+    startBeats: number;
+    lengthBeats: number;
+    readStartBeats: number;
     laneWidth: number;
   } | null>(null);
   const [projectName, setProjectName] = useState("Untitled Project");
@@ -433,6 +451,7 @@ export function StudioShell() {
           ...clip,
           trackId: track.id,
           start,
+          readStart: Math.max(0, clip.readStartBeats ?? 0) * secondsPerBeat,
           duration,
           src,
         });
@@ -541,6 +560,7 @@ export function StudioShell() {
               providerClipId: assetId,
               startBeats,
               lengthBeats: Math.max(1, endBeats - startBeats),
+              readStartBeats: Number(clip.readStartBeats) || 0,
             });
           });
           nextTracks.push({
@@ -632,7 +652,7 @@ export function StudioShell() {
         // would replay a clip that ended, or hammer a stream that failed.
         if (!force && windowRef.current.has(uid)) return;
         try {
-          el.currentTime = seconds - (clip?.start ?? 0);
+          el.currentTime = (clip?.readStart ?? 0) + (seconds - (clip?.start ?? 0));
         } catch {
           /* metadata not ready yet: the next entry retries */
         }
@@ -762,12 +782,98 @@ export function StudioShell() {
 
   /** A clip was dropped at a new spot: re-arm it if the transport is running. */
   const endDrag = useCallback(() => {
-    const dragging = dragRef.current;
+    const dragging = dragRef.current ?? trimRef.current;
     dragRef.current = null;
+    trimRef.current = null;
     if (dragging && transport.current.playing) {
       syncClips(currentPosition(), true, true);
     }
   }, [currentPosition, syncClips]);
+
+  const updateClip = useCallback((uid: string, patch: Partial<ClipRef>) => {
+    setTracks((current) =>
+      current.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) =>
+          clip.uid === uid ? { ...clip, ...patch } : clip
+        ),
+      }))
+    );
+  }, []);
+
+  const removeClip = useCallback((uid: string) => {
+    setTracks((current) =>
+      current.map((track) => ({
+        ...track,
+        clips: track.clips.filter((clip) => clip.uid !== uid),
+      }))
+    );
+    setSelectedClip((current) => (current === uid ? null : current));
+    setClipMenu((current) => (current?.uid === uid ? null : current));
+  }, []);
+
+  const clipLength = useCallback(
+    (clip: ClipRef) => Math.max(1, clip.lengthBeats ?? 8),
+    []
+  );
+
+  /** Copy a clip to the right of itself, keeping its trim. */
+  const duplicateClip = useCallback(
+    (uid: string) => {
+      setTracks((current) =>
+        current.map((track) => {
+          const clip = track.clips.find((item) => item.uid === uid);
+          if (!clip) return track;
+          const length = Math.max(1, clip.lengthBeats ?? 8);
+          const copy: ClipRef = {
+            ...clip,
+            uid: newUid(),
+            startBeats: Math.min(
+              TIMELINE_BEATS - 1,
+              clip.startBeats + length
+            ),
+          };
+          return { ...track, clips: [...track.clips, copy] };
+        })
+      );
+    },
+    []
+  );
+
+  /** Split a clip at the playhead into two arrangements sharing one source. */
+  const splitClip = useCallback(
+    (uid: string) => {
+      const beat = Math.round(currentPosition() * bpsRef.current);
+      setTracks((current) =>
+        current.map((track) => {
+          const clip = track.clips.find((item) => item.uid === uid);
+          if (!clip) return track;
+          const length = Math.max(1, clip.lengthBeats ?? 8);
+          const end = clip.startBeats + length;
+          if (beat <= clip.startBeats || beat >= end) return track;
+          const readStart = Math.max(0, clip.readStartBeats ?? 0);
+          const left: ClipRef = {
+            ...clip,
+            lengthBeats: beat - clip.startBeats,
+          };
+          const right: ClipRef = {
+            ...clip,
+            uid: newUid(),
+            startBeats: beat,
+            lengthBeats: end - beat,
+            readStartBeats: readStart + (beat - clip.startBeats),
+          };
+          return {
+            ...track,
+            clips: track.clips.flatMap((item) =>
+              item.uid === uid ? [left, right] : [item]
+            ),
+          };
+        })
+      );
+    },
+    [currentPosition]
+  );
 
   const seek = useCallback(
     (seconds: number) => {
@@ -946,17 +1052,11 @@ export function StudioShell() {
       event.preventDefault();
       // Removing from the timeline is a `state` change, not a library delete:
       // the song stays in the user's Suno library.
-      setTracks((current) =>
-        current.map((track) => ({
-          ...track,
-          clips: track.clips.filter((item) => item.uid !== selectedClip),
-        }))
-      );
-      setSelectedClip(null);
+      removeClip(selectedClip);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedClip, tracks, projectId, pause, start]);
+  }, [selectedClip, tracks, projectId, pause, start, removeClip]);
 
   const readySongs = useMemo(
     () => songs.filter((song) => String(song.status).toUpperCase() === "SUCCESS"),
@@ -1206,7 +1306,15 @@ export function StudioShell() {
         </aside>
 
         <main className="stv-canvas">
-          <div className="stv-ruler">
+          <div
+            className="stv-ruler"
+            onPointerDown={(event) => {
+              const rect = event.currentTarget.getBoundingClientRect();
+              if (!rect.width) return;
+              const ratio = (event.clientX - rect.left) / rect.width;
+              seek(Math.max(0, Math.min(1, ratio)) * timelineSeconds);
+            }}
+          >
             {Array.from({ length: BARS }).map((_, index) => (
               <span key={index} style={{ width: `${100 / BARS}%` }}>
                 {index + 1}
@@ -1223,7 +1331,51 @@ export function StudioShell() {
                 key={track.id}
                 style={{ top: index * 58 }}
                 onDragOver={(event) => event.preventDefault()}
+                onPointerDown={(event) => {
+                  // Empty-lane click seeks; clip pointer downs handle themselves.
+                  if (event.target !== event.currentTarget) return;
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  if (!rect.width) return;
+                  const ratio = (event.clientX - rect.left) / rect.width;
+                  seek(Math.max(0, Math.min(1, ratio)) * timelineSeconds);
+                }}
                 onPointerMove={(event) => {
+                  const trim = trimRef.current;
+                  if (trim) {
+                    const delta =
+                      ((event.clientX - trim.startX) /
+                        Math.max(1, trim.laneWidth)) *
+                      TIMELINE_BEATS;
+                    if (trim.edge === "start") {
+                      const minStart = Math.max(
+                        0,
+                        trim.startBeats - trim.readStartBeats
+                      );
+                      const maxStart = trim.startBeats + trim.lengthBeats - 1;
+                      const next = Math.min(
+                        maxStart,
+                        Math.max(minStart, trim.startBeats + delta)
+                      );
+                      const shift = next - trim.startBeats;
+                      updateClip(trim.uid, {
+                        startBeats: Math.round(next),
+                        lengthBeats: Math.round(trim.lengthBeats - shift),
+                        readStartBeats: Math.round(
+                          Math.max(0, trim.readStartBeats + shift)
+                        ),
+                      });
+                    } else {
+                      const next = Math.max(
+                        1,
+                        Math.min(
+                          TIMELINE_BEATS - trim.startBeats,
+                          trim.lengthBeats + delta
+                        )
+                      );
+                      updateClip(trim.uid, { lengthBeats: Math.round(next) });
+                    }
+                    return;
+                  }
                   const drag = dragRef.current;
                   if (!drag) return;
                   const delta =
@@ -1233,20 +1385,7 @@ export function StudioShell() {
                     TIMELINE_BEATS - 1,
                     Math.max(0, drag.startBeat + delta)
                   );
-                  setTracks((current) =>
-                    current.map((item) =>
-                      item.id === track.id
-                        ? {
-                            ...item,
-                            clips: item.clips.map((clip) =>
-                              clip.uid === drag.uid
-                                ? { ...clip, startBeats: Math.round(next) }
-                                : clip
-                            ),
-                          }
-                        : item
-                    )
-                  );
+                  updateClip(drag.uid, { startBeats: Math.round(next) });
                 }}
                 onPointerUp={() => {
                   endDrag();
@@ -1289,13 +1428,60 @@ export function StudioShell() {
                           laneWidth: lane?.clientWidth || 1,
                         };
                       }}
+                      onContextMenu={(event) => {
+                        event.preventDefault();
+                        setSelectedClip(clip.uid);
+                        setClipMenu({
+                          uid: clip.uid,
+                          x: event.clientX,
+                          y: event.clientY,
+                        });
+                      }}
                       style={{
                         left: `${startPct}%`,
                         width: `${Math.max(4, widthPct)}%`,
                         background: `linear-gradient(90deg, ${track.color}dd, ${track.color}77)`,
                       }}
                     >
-                      {song?.title || "Clip"}
+                      <span
+                        className="stv-clip-handle start"
+                        aria-hidden="true"
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          const lane = (event.currentTarget.parentElement
+                            ?.parentElement ?? null) as HTMLElement | null;
+                          trimRef.current = {
+                            uid: clip.uid,
+                            edge: "start",
+                            startX: event.clientX,
+                            startBeats: clip.startBeats,
+                            lengthBeats: Math.max(1, clip.lengthBeats ?? 8),
+                            readStartBeats: Math.max(0, clip.readStartBeats ?? 0),
+                            laneWidth: lane?.clientWidth || 1,
+                          };
+                        }}
+                      />
+                      <span className="stv-clip-label">
+                        {song?.title || "Clip"}
+                      </span>
+                      <span
+                        className="stv-clip-handle end"
+                        aria-hidden="true"
+                        onPointerDown={(event) => {
+                          event.stopPropagation();
+                          const lane = (event.currentTarget.parentElement
+                            ?.parentElement ?? null) as HTMLElement | null;
+                          trimRef.current = {
+                            uid: clip.uid,
+                            edge: "end",
+                            startX: event.clientX,
+                            startBeats: clip.startBeats,
+                            lengthBeats: Math.max(1, clip.lengthBeats ?? 8),
+                            readStartBeats: Math.max(0, clip.readStartBeats ?? 0),
+                            laneWidth: lane?.clientWidth || 1,
+                          };
+                        }}
+                      />
                     </span>
                   );
                 })}
@@ -1422,6 +1608,53 @@ export function StudioShell() {
           {error ? <span className="s-error">{error}</span> : null}
         </div>
       </footer>
+
+      {clipMenu ? (
+        <div
+          className="stv-menu-backdrop"
+          onClick={() => setClipMenu(null)}
+          onContextMenu={(event) => {
+            event.preventDefault();
+            setClipMenu(null);
+          }}
+        >
+          <div
+            className="stv-menu"
+            role="menu"
+            style={{ left: clipMenu.x, top: clipMenu.y }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => {
+                duplicateClip(clipMenu.uid);
+                setClipMenu(null);
+              }}
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              title="Move the playhead inside the clip first"
+              onClick={() => {
+                splitClip(clipMenu.uid);
+                setClipMenu(null);
+              }}
+            >
+              Split at playhead
+            </button>
+            <button
+              type="button"
+              role="menuitem"
+              onClick={() => removeClip(clipMenu.uid)}
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
