@@ -61,6 +61,12 @@ Key facts that shaped the implementation:
 - Clip positions live in `clip.startBeats`; dragging converts pixels to beats.
 - Hydration: `GET project` → `state.tracks[].clips[]` → `resolveStudioClips` →
   local tracks with `remoteId`, mixer values, `startBeats`/`lengthBeats`.
+  A project with no saved version has no `state` at all, so hydration falls back
+  to the captured default document; the first autosave creates version 1.
+- New lanes are built from the captured track defaults (EQ bands, `instrument`,
+  heights, colour) instead of borrowing another track, so an empty project can
+  be saved without inventing fields.
+- Main and new-track faders now start at Suno's default `1.0` (100 %).
 - Autosave 3 s after the last edit, **merging into the loaded state**:
   unknown fields (eq, instrument, signal chains, routing, non-audio clips) are
   preserved; only mixer values and audio clips are rewritten.
@@ -75,13 +81,25 @@ Key facts that shaped the implementation:
 - `npx tsc --noEmit` and `npm run check:ui` pass.
 - Browser smoke test: the view renders, hydration failure falls back to an empty
   project without crashing, no unexpected console errors.
+- **Live probe against a throwaway Suno project** (`82abd622-…`, created for
+  this test):
+  - `GET /api/studio/project/{id}` on a fresh project returns metadata only.
+  - Saving the captured default state returns `200 {version_id}`; after that the
+    same GET returns `state` + `latest_version_id`, and the version endpoint
+    round-trips the document.
+  - Through the platform proxy: save `200`, stale `base_version_id` → `409` with
+    `error.details.latest_version_id`, version read `200` with
+    `state.amplitude = 0.75` and `timing.bps = 2`, clip resolve `200`.
 
 ## Still open
 
-- **Live round trip is the merge gate:** create a project with a mapped clip,
-  save, reload, and confirm Suno's own editor still opens it.
+- **Mapped-clip round trip:** add a song to a Studio project, let autosave fire,
+  reload and confirm the clip hydrates at its beat position, then open the
+  project in Suno's own editor.
 - Interactive transport verification was blocked in this environment (the
   desktop browser window was not visible, so synthetic clicks had no user
   activation and Chrome throttled the rAF loop). Transport logic is unchanged
   from milestone 2 apart from the beats conversion.
 - Export (`render-state`) and version restore remain.
+- The probe project `82abd622-653a-4f04-a947-68199e7e532d` ("CAMXORA platform
+  probe") is still on the account and should be deleted once no longer needed.

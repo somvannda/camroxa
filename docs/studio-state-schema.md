@@ -148,8 +148,15 @@ The whole editor state is saved, UI selection included.
 
 ```http
 GET /api/studio/project/{project_id}
-→ { "state", "title", "latest_version_id", ... }
+→ { "state", "title", "latest_version_id", … }
 ```
+
+**Captured live 2026-10-30:** a project with **no saved version** returns metadata
+only (`owner_user_id, id, title, created_at, updated_at, archived`) — no
+`state`, no `latest_version_id`. After the first `save-project` the same call
+returns `state` and `latest_version_id`. Clients must therefore fall back to the
+empty project document (`960687` defaults) when `state` is absent, which is what
+the editor bundle does (`n.state || defaultState`).
 
 State is accepted when `"timing" in state && "tracks" in state`. The client then
 hydrates it, and in **edit** mode (`/studio?clip=…`) reduces it to a single
@@ -209,3 +216,10 @@ GET  /api/studio/clip/{clip_id}/download?format=…   (poll until ready)
 - Clip position/length must be persisted as beats, not percents.
 - `state.amplitude` is the Main fader — the value the mixer already drives
   locally.
+- A project without a saved version has no `state`: autosave starts from these
+  defaults, and the first save creates version 1.
+- Captured defaults used when synthesising: EQ (`634615`) — HP 60 Hz and LP
+  8800 Hz disabled, lowshelf 160 / peaking 450 / peaking 1200 / highshelf 3200
+  enabled at 0 dB, Q 0.707; `instrument: { "type": "song" }`; track heights
+  86 / 32 / 160; `timeSignatureChanges`
+  `[{ startBeats: 0, subdivisionsPerBar: 4, beatsPerSubdivision: 1 }]`.

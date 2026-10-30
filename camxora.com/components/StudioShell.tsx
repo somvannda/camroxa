@@ -98,6 +98,105 @@ function readBps(state: Record<string, unknown> | null) {
   return typeof bps === "number" && Number.isFinite(bps) && bps > 0 ? bps : DEFAULT_BPS;
 }
 
+/** Track EQ default, captured from the editor bundle's `634615` module. */
+function defaultEq() {
+  const band = (
+    type: string,
+    enabled: boolean,
+    frequency: number
+  ): Record<string, unknown> => ({ type, enabled, frequency, gain: 0, q: 0.707 });
+  return {
+    enabled: true,
+    band1: band("highpass", false, 60),
+    band2: band("lowshelf", true, 160),
+    band3: band("peaking", true, 450),
+    band4: band("peaking", true, 1200),
+    band5: band("highshelf", true, 3200),
+    band6: band("lowpass", false, 8800),
+  };
+}
+
+/** Audio-track defaults, captured from the editor bundle's `46472`/`634615` modules. */
+function defaultTrackShape(id: string, color: string): Record<string, unknown> {
+  return {
+    type: "audio",
+    id,
+    input: null,
+    color,
+    name: "Audio Track",
+    clips: [],
+    clipCreationIntents: [],
+    height: 86,
+    solo: false,
+    mute: false,
+    arm: false,
+    amplitude: 1,
+    balance: 0,
+    instrument: { type: "song" },
+    soloTakeLaneId: null,
+    takeLanesExpanded: false,
+    hidden: false,
+    takeLanes: [],
+    eq: defaultEq(),
+    signalChain: [],
+    routingMode: "linear",
+  };
+}
+
+/** Empty project document, captured from the editor bundle's `960687` module. */
+function createDefaultState(): Record<string, unknown> {
+  return {
+    amplitude: 1,
+    sections: {},
+    lyricsCorrectionsByClipId: {},
+    metronome: { enabled: false, amplitude: 1 },
+    midiNotePreviewEnabled: true,
+    timing: {
+      type: "manual",
+      bps: DEFAULT_BPS,
+      bpsAutomation: [],
+      firstBeatSeconds: 0,
+    },
+    timeSignatureChanges: [
+      { startBeats: 0, subdivisionsPerBar: 4, beatsPerSubdivision: 1 },
+    ],
+    tracks: [],
+    actors: {},
+    tab: {
+      selection: {
+        anchorBeats: 0,
+        focusBeats: 0,
+        trackIds: [],
+        focusedTrackId: null,
+        focusedTakeLaneId: null,
+        focusedArea: null,
+        arrangementAnchorBeats: null,
+        arrangementFocusBeats: null,
+        noteIds: [],
+        pluginIds: [],
+        warpMarkerSeconds: {},
+        automationPointIndices: [],
+        contextBeforeBeats: 32,
+        contextAfterBeats: 32,
+      },
+    },
+    loop: { enabled: false, startBeats: 0, endBeats: 0 },
+    songFadeInBeats: 0,
+    songFadeOutBeats: 0,
+    layout: {
+      editorPanelType: null,
+      midiAutomationLaneId: "none",
+      midiAutomationLaneHeight: 0,
+      arrangementEditorHeight: 0,
+    },
+    editorPointerModes: { audio: "select", midi: "select" },
+    masterSignalChain: [],
+    midiControllerSignalChain: [],
+    masterRoutingMode: "linear",
+    routing: {},
+  };
+}
+
 /**
  * Rebuild the arrangement clip Suno expects. Shape captured from the shipped
  * editor bundle (`createStaticAudioArrangement`, see docs/studio-state-schema.md).
@@ -157,25 +256,25 @@ function buildProjectState(input: {
         .filter((track): track is Record<string, unknown> => Boolean(track))
     : [];
   const baseAudio = baseTracks.filter((track) => track.type === "audio");
-  const template = baseAudio[0] ?? null;
   const byId = new Map(baseTracks.map((track) => [String(track.id ?? ""), track]));
   const claimed = new Set<string>();
   const out: Record<string, unknown>[] = [];
 
   for (const [index, track] of input.tracks.entries()) {
-    // Match by id first, then by position, then fall back to the template so a
-    // new lane still inherits Suno's unknown per-track fields.
+    // Match by id first, then by position. Anything else is a brand-new lane and
+    // gets the captured default track shape.
     let source = (track.remoteId && byId.get(track.remoteId)) || null;
     if (!source) {
       const candidate = baseAudio[index];
       if (candidate && !claimed.has(String(candidate.id ?? ""))) source = candidate;
     }
-    if (!source) source = template;
-    if (!source) return null;
+    const synthetic = !source;
+    if (!source) {
+      source = defaultTrackShape(track.remoteId ?? newUid(), track.color);
+    }
     const sourceId = String(source.id ?? "");
     const sourceAlreadyClaimed = claimed.has(sourceId);
-    const reusesTemplate = sourceAlreadyClaimed && source === template;
-    claimed.add(sourceId);
+    if (!synthetic) claimed.add(sourceId);
 
     const clips = Array.isArray(source.clips) ? (source.clips as unknown[]) : [];
     const known = new Set(track.knownProviderIds ?? []);
@@ -187,7 +286,7 @@ function buildProjectState(input: {
     // Keep clips we do not model (MIDI, uploads, video) and audio clips we never
     // mapped to a song. Mapped clips are rebuilt from the local arrangement, so a
     // clip the user deleted here disappears; an unknown one is left untouched.
-    const kept = reusesTemplate
+    const kept = synthetic
       ? []
       : clips
           .map(asRecord)
@@ -258,7 +357,7 @@ export function StudioShell() {
   const [playing, setPlaying] = useState(false);
   const [position, setPosition] = useState(0);
   const [zoom, setZoom] = useState(1);
-  const [masterVolume, setMasterVolume] = useState(80);
+  const [masterVolume, setMasterVolume] = useState(100);
   const [bps, setBps] = useState(DEFAULT_BPS);
   const [hydrating, setHydrating] = useState(Boolean(projectParam));
   const [saving, setSaving] = useState(false);
@@ -371,8 +470,7 @@ export function StudioShell() {
         if (!active) return;
         const title = typeof session.title === "string" ? session.title : null;
         if (title) setProjectName(title);
-        const doc = asRecord(session.state);
-        if (!doc) return;
+        const doc = asRecord(session.state) ?? createDefaultState();
         baseStateRef.current = doc;
         versionRef.current =
           typeof session.latest_version_id === "string"
@@ -383,7 +481,7 @@ export function StudioShell() {
         const nextMaster =
           typeof doc.amplitude === "number"
             ? Math.round(Math.min(1, Math.max(0, doc.amplitude)) * 100)
-            : 80;
+            : 100;
         setMasterVolume(nextMaster);
 
         const stateTracks = (Array.isArray(doc.tracks) ? doc.tracks : [])
@@ -463,7 +561,7 @@ export function StudioShell() {
             volume:
               typeof track.amplitude === "number"
                 ? Math.round(Math.min(1, Math.max(0, track.amplitude)) * 100)
-                : 80,
+                : 100,
           });
         });
         if (nextTracks.length) setTracks(nextTracks);
@@ -885,7 +983,7 @@ export function StudioShell() {
       clips: [],
       muted: false,
       solo: false,
-      volume: 80,
+      volume: 100,
     };
     setTracks((current) => [...current, track]);
     setSelectedTrack(track.id);
@@ -909,8 +1007,7 @@ export function StudioShell() {
       if (!baseStateRef.current) {
         await getStudioSession(session.project_id)
           .then((doc) => {
-            const state = asRecord(doc.state);
-            if (!state) return;
+            const state = asRecord(doc.state) ?? createDefaultState();
             baseStateRef.current = state;
             versionRef.current =
               typeof doc.latest_version_id === "string"
@@ -977,7 +1074,7 @@ export function StudioShell() {
         clips: [],
         muted: false,
         solo: false,
-        volume: 80,
+        volume: 100,
       };
       setTracks((current) => [...current, track]);
       setSelectedTrack(track.id);
