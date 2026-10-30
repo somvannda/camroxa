@@ -43,6 +43,19 @@ detail is in [studio-flows.md](studio-flows.md).
 - **Stems / Uploads / Workspaces tabs** — uploads have URLs but no same-origin
   playback path, and adding them needs `asset: {type:"upload"}` support.
 
+## Export status
+
+- **Song export** — full stack: `POST /studio/sessions/{id}/export` queues
+  `render-state`, the client polls `GET /studio/clips/{id}/download` and opens the
+  file. Verified live: render queues; download is refused for the free pool
+  account.
+- **Stems export** — full stack at the API level
+  (`POST /studio/sessions/{id}/multitrack`), not surfaced because the Song/Stems
+  menu is not evidenced. Suno answers `403 clip_not_unlocked` until the clip is
+  unlocked.
+- Both need a **paid, unlocked Suno account** in the pool; the UI shows Suno's
+  refusal message verbatim.
+
 ## Known limitations
 
 - Packaged tracks are silent in the editor (see encrypted playback); the footer

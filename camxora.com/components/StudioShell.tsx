@@ -380,6 +380,7 @@ export function StudioShell() {
     x: number;
     y: number;
   } | null>(null);
+  const clipMenuRef = useRef<HTMLDivElement | null>(null);
   const dragRef = useRef<{
     uid: string;
     startX: number;
@@ -1327,6 +1328,11 @@ export function StudioShell() {
     };
   }, [libraryOpen]);
 
+  useEffect(() => {
+    if (!clipMenu) return;
+    clipMenuRef.current?.querySelector<HTMLButtonElement>("button")?.focus();
+  }, [clipMenu]);
+
   const readySongs = useMemo(
     () => songs.filter((song) => String(song.status).toUpperCase() === "SUCCESS"),
     [songs]
@@ -2087,8 +2093,34 @@ export function StudioShell() {
           <div
             className="stv-menu"
             role="menu"
+            ref={clipMenuRef}
             style={{ left: clipMenu.x, top: clipMenu.y }}
             onClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (
+                !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)
+              ) {
+                return;
+              }
+              const items = Array.from(
+                clipMenuRef.current?.querySelectorAll<HTMLButtonElement>("button") ??
+                  []
+              );
+              if (!items.length) return;
+              event.preventDefault();
+              const current = items.indexOf(
+                document.activeElement as HTMLButtonElement
+              );
+              const next =
+                event.key === "Home"
+                  ? 0
+                  : event.key === "End"
+                    ? items.length - 1
+                    : event.key === "ArrowDown"
+                      ? (current + 1) % items.length
+                      : (current - 1 + items.length) % items.length;
+              items[next]?.focus();
+            }}
           >
             <button
               type="button"
