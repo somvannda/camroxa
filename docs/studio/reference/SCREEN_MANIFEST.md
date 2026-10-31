@@ -79,7 +79,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 |---|---|---|
 | S47 | Mixer strips | OPEN |
 | S48 | Master with limiter | OPEN |
-| S49 | Export menu | DONE §18.2 |
+| S49 | Export menu | DONE §18.2.1 |
 | S50 | Export dialog | OPEN |
 | S51 | Export progress + result | OPEN |
 
@@ -87,8 +87,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | # | Screen | Status |
 |---|---|---|
-| S52 | Library workspaces | DONE §19 |
-| S53 | Library — songs in a workspace | OPEN |
+| S52 | Library workspaces | DONE §19.1 |
+| S53 | Library — songs in a workspace | DONE §19.1 |
 | S54 | Clip permissions | OPEN |
 | S55 | Comments thread | OPEN |
 | S56 | Shared project page | OPEN |
@@ -110,7 +110,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 |---|---|---|
 | S63 | 1280 px | OPEN |
 | S64 | 1024 px | OPEN |
-| S65 | 768 px | DONE §46 (706 px) |
+| S65 | 768 px | DONE §46.1 — gate below 768, editor at ≥768 |
 
 ---
 
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 31 |
+| DONE | 32 |
 | PART | 4 |
-| OPEN | 30 |
+| OPEN | 29 |
 | **Total** | **65** |
 
 ## Rules for working through this list
@@ -135,8 +135,11 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 ## Current position
 
-S01–S14 captured and documented (§57, §58, §54, §56, §59, §10, §18.1, §25, §64,
-§24, §38, §36). S19, S20 and S57 also have images (§61, §18.3, §63).
+S01–S20, S26, S34/S35, S38–S41, S49, S52/S53, S57 and S65 are captured with an
+image and a spec section. Every `DONE` row is fully evidenced; the archive has 38
+files.
 
-**Next capture: S15** — `What's This?` hover card, needs a signed-in session.
-Then S16 (empty editor without the overlay), S17 (editor with clips), S18.
+**Next capture: S22/S23** — the ruler at several zoom levels, and the section
+markers that are already visible as blue flags on the bar ruler but have never been
+measured. Then S42/S43 (EQ and compressor at full size), then the OPEN rows in
+order.

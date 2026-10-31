@@ -7,11 +7,9 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-Backfill status is deliberately visible: **31 captures cover 27 of the 31 DONE
-rows.** The rest were documented from live DOM measurement and earlier sessions,
-before this archive existed — they have a spec section but no image. They are not
-being re-marked `PART` in bulk; each one is promoted to fully evidenced as it is
-re-shot.
+**38 captures across the archive, covering every `DONE` row.** Two are extras with
+no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`); the rest map
+one or more images to a screen.
 
 ## Captured
 
@@ -33,6 +31,11 @@ re-shot.
 | S39 | `screens/S39-plugin-catalog.jpeg` | Add-effect catalog from the footer `+` |
 | S40 | `screens/S40-plugin-dock-single.jpeg` | Plugin dock with one slot — `EQ` card + add rail with ghost tiles |
 | S41 | `screens/S41-plugin-dock-multiple.jpeg` | Plugin dock with two slots — `EQ` + `Distortion` side by side |
+| S49 | `screens/S49-export-menu.jpeg` | Export menu — `Full Song` / `Selected Time Range` / `Multitrack` |
+| S52 | `screens/S52-library-workspaces.jpeg` | Library home — 4 corpus tiles, workspaces with counts, studio projects with ages |
+| S53 | `screens/S53-library-songs.jpeg` | Songs in a workspace — date groups, `V6 COVER · key · BPM` tag strip |
+| S65 | `screens/S65-gate-767px.jpeg` | Desktop-only gate at **767 px** — the last width that gates |
+| S65 | `screens/S65-editor-768px.jpeg` | Same session at **768 px** — the first width that renders the editor |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S08 | `screens/S08-version-history.jpeg` | History panel populated — date navigator, expanded newest entry |
 | S08 | `screens/S08-version-history-loading.jpeg` | Same panel in its `Loading...` state |
@@ -51,13 +54,20 @@ re-shot.
 | — | `screens/EXTRA-project-load-error.jpeg` | Reload of a demo project — `No project loaded` + `Try again` / `Dismiss` (no manifest row) |
 | — | `screens/RESPONSIVE-gate-319px.jpeg` | §60 desktop-only gate at 319 px (no manifest row) |
 
-## Missing — DONE rows with no image yet (4)
+## Missing — DONE rows with no image yet (0)
+
+Every `DONE` row now has at least one file in `screens/`. The rows still lacking
+evidence are `PART` / `OPEN` and are listed in `SCREEN_MANIFEST.md`; capture them
+before promoting them.
 
 | Screen | Spec | Needs |
 |---|---|---|
-| S49 | §18.2 | Export menu |
-| S52 | §19 | library workspaces |
-| S65 | §46 | ~706 px narrow editor |
+| S22 | §— | ruler + zoom levels (labels only so far) |
+| S23 | §— | section markers on the ruler (flags seen, not measured) |
+| S42 | §53 | EQ expanded, bands and shapes |
+| S43 | §53 | compressor with sidechain |
+| S63 | — | 1280 px |
+| S64 | — | 1024 px |
 
 ## Capture rules
 

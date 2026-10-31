@@ -440,6 +440,22 @@ Multitrack
 Three export scopes. `Selected Time Range` implies a time-selection mode exists
 (corroborates ST-NEW-01). `Multitrack` implies stem/per-track export.
 
+#### 18.2.1 Measured (S49)
+
+Capture `screens/S49-export-menu.jpeg`.
+
+| Property | Value |
+|---|---|
+| Size | **186 × 120** at (1485, 50) — right-aligned under the `Export` button |
+| Surface | `#252529`, radius **10 px**, shadow `0 3px 5px rgba(0,0,0,0.3)` |
+| Rows | 3 × 40 px, full width |
+| Row layout | icon · label · (no accelerators) |
+| Separator | none, despite three genuinely different scopes |
+
+Icons are the only differentiator between the three scopes — album/stack for
+`Full Song`, a dotted range for `Selected Time Range`, lane bars for `Multitrack`.
+The menu closes into a **dialog** for options; it does not export on click.
+
 ### 18.3 Add track menu ✅
 
 ```
@@ -466,6 +482,51 @@ Plus panel tools: `Search`, `Liked only`, `Like`, `More`.
 Implication: our current "songs / liked tabs" model is wrong. The reference organises
 a user's material into **workspaces**, each with its own song count, and the DAW
 draws from the active workspace.
+
+### 19.1 The library has two levels (S52, S53)
+
+Captured at 1689 px, panel pinned right at **360 × 1261** (x 1321 → 1681), surface
+`#101012` — one step darker than the editor, so the panel reads as a separate column
+rather than a card.
+
+**Level 1 — workspaces** (`S52-library-workspaces.jpeg`):
+
+```
+[All Songs ▮][Liked ♥]        ← 2 × 2 tile grid, one colour each
+[Stems  ▮][Uploads ▮]
+
+Workspaces                       See all ›
+  + New workspace
+  ▨ My Workspace      946 songs
+  ▨ BDBT50             42 songs
+  ▨ BDBT-16-May        67 songs
+  ▨ BVBR19-May         20 songs
+
+Studio Projects                  See all ›
+  ▤ Drum & Bass Demo   4m ago
+  ▤ Untitled Project  14m ago
+  ▤ Untitled Project  1h, 41m ago
+  ▤ Untitled Project  1h, 28m ago
+```
+
+- The four tiles are **filters over the same corpus** (all / liked / stems / uploads),
+  each with its own accent colour — blue, purple, green, pink.
+- Workspace rows carry a **generated gradient thumbnail** and a song count.
+- Studio Projects rows carry a small **mini-timeline thumbnail** and a relative age.
+- Both sections end in `See all ›`; the list is truncated at four rows, not scrolled.
+
+**Level 2 — songs in a workspace** (`S53-library-songs.jpeg`): the same panel swaps
+to a reverse-chronological list grouped by date header (`Yesterday`, `Oct 24, 2026`,
+`Jul 23, 2026`) with a toolbar of `filter ▾ · New ▾ · upload · In Project · Stems`.
+Each row: 44 px artwork, title, one-line description, then a tag strip
+`V6 COVER · D minor · 128 BPM`.
+
+That tag strip is the load-bearing detail — **key and tempo are visible in the
+browser**, before anything is loaded into the DAW. A clone that shows only titles
+forces the user to open a project to find out what it is.
+
+Note `In Project` as a filter: the same list can be narrowed to material already
+used by the open project, which is how you avoid re-adding the same stem twice.
 
 ## 20. Instrument/plugin model `L`
 
@@ -1246,6 +1307,52 @@ Captured from a narrow window. This is the first real responsive evidence (C-08 
 
 Rule: below ~900 px the transport is **not** rendered, not merely shrunk. Any clone
 must implement that state explicitly rather than relying on flex-wrap.
+
+#### 46.1 The exact threshold is 768 px (S65) — this corrects the ~706 px note
+
+Probed by resizing the live page through a range of widths and testing for the gate
+copy:
+
+| Width | Renders |
+|---|---|
+| 740 | **gate** |
+| 750 | gate |
+| 760 | gate |
+| 766 | gate |
+| **767** | **gate** |
+| **768** | **editor** |
+| 770 | editor |
+| 780 | editor |
+| 800 | editor |
+
+So the boundary is exactly **768 px** — one CSS pixel either side flips it. The
+earlier "≈706 px" reading came from measuring a window's outer frame rather than the
+layout viewport; treat 768 as the number.
+
+**The gate** (`S65-gate-767px.jpeg`): a single centred card, 380 px wide, radius
+20 px, holding a laptop photograph (cropped to the top half), `SUNO Studio` at
+24 px / 600, the copy
+
+> Studio is desktop-only for now. Head to suno.com/studio on your computer to start
+> creating.
+
+and one `Back to Create` button (40 px tall, pill). No header, no navigation — the
+gate replaces the app rather than covering it.
+
+**At 768** (`S65-editor-768px.jpeg`) the editor does render, and it degrades in a
+specific order:
+
+| Region | At 768 px |
+|---|---|
+| Header | drops undo/redo; project chip truncates to `Drum & Bar`; time readout clips to `01:29.` while `174 BPM` survives |
+| Track gutter | holds 283 px — the same width as at 1689 px, so the canvas absorbs all the loss |
+| Footer | tools collapse to four icons, chain chips stay |
+| Dock | still two columns (plugin card + add rail), each narrower |
+| Library | opens **over** the canvas rather than shrinking it further |
+
+The order matters for the clone: **the gutter never shrinks, the canvas does.** A
+responsive implementation that squeezes the track header first would be wrong even
+though it looks tidier.
 
 ### Track row at narrow width (corrected anatomy)
 
