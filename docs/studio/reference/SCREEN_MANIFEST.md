@@ -69,8 +69,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S41 | Plugin dock, multiple slots | DONE §50 |
 | S42 | EQ expanded (bands, shapes) | PART — §53 |
 | S43 | Compressor with sidechain | PART — §53 |
-| S44 | Convolution with IR loaded | OPEN |
-| S45 | Create-new-plugin designer | OPEN |
+| S44 | Convolution with IR loaded | PART §78 — card without an IR |
+| S45 | Create-new-plugin designer | PART §79 — prompt entry only |
 | S46 | Preset browser / bulk export | OPEN |
 
 ## 5. Mix and export (S47–S51)
@@ -119,8 +119,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | Status | Count |
 |---|---|
 | DONE | 43 |
-| PART | 4 |
-| OPEN | 18 |
+| PART | 6 |
+| OPEN | 16 |
 | **Total** | **65** |
 
 ## Rules for working through this list

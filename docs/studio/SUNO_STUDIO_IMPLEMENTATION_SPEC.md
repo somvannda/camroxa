@@ -2955,6 +2955,50 @@ So the order that actually works is: **new empty project → generate a short lo
 export and regenerate there**. Do not attempt any of these on the demo, and do not
 read the generic toast as a transient error.
 
+## 78. S44 — Convolution card `PART` (no IR loaded)
+
+Capture `screens/S44-convolution-card.jpeg`, taken after adding `Convolution` from
+the catalog.
+
+| Element | Detail |
+|---|---|
+| Header | colour dot · `Convolution` · preset `Default ▾` · popout · `×` |
+| IR slot | large rounded rect with a **time ruler above it** (`0s` `1s` `2s` `3s`) |
+| Empty copy | `NO ASSET LOADED`, centred, uppercase, muted |
+| Preset row | `None ▾` under the slot |
+| Knobs | `Mix` · `Gain` · `Pre` · `Width`, 2 × 2 |
+| Bypass | small dot at the slot's top-right |
+
+The IR slot is **scaled in seconds, not samples** — the ruler is the contract: an
+impulse response is placed on a real time axis, so the user can reason about tail
+length before loading one. That is why the slot is the largest element in the card.
+
+Still PART: the card has never been seen with an impulse response loaded, so we do
+not know how the waveform, the trim handles or the stereo channels render once an IR
+is present.
+
+## 79. S45 — plugin designer `PART` (entry state only)
+
+Capture `screens/S45-plugin-designer-entry.jpeg`.
+
+`Create new plugin`, the dashed card at the top of the catalog (§48.1), is **not a
+form**. It closes the catalog and puts the Magic Bar into a dedicated design mode:
+
+- the whole bar takes a warm/orange tint,
+- the prompt is pre-filled with `Make me a new plugin. Here's what I have in mind:`,
+- the send button renders in its **active orange** state rather than the neutral
+  circle,
+- the current clip stays attached as a chip (`Vocal Cuts`).
+
+So plugin design is generative, and the designer itself is a **result** of that
+prompt — the same interaction grammar as a clip generation (§54.1), just a different
+output type. That is a notable product decision: there is no parameter grid to fill
+in before the first draft exists.
+
+Still PART: the designer surface that this prompt produces was never reached (it
+needs a successful generation, which the legacy demo project cannot run — §77).
+
+
 
 
 
