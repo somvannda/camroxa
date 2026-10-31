@@ -11,7 +11,8 @@ import time
 import webbrowser
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QPolygon
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -657,6 +658,7 @@ class SettingsView(QWidget):
         if self._cache is not None:
             self._cache.apply_settings_workspace(youtube_connections=self._youtube_connections)
         self._refresh_profile_youtube_card()
+        self._filter_profile_list()
         profile = self._selected_profile()
         if profile:
             self._refresh_profile_identity(
@@ -2232,16 +2234,54 @@ class SettingsView(QWidget):
     def _finish_profile_media_cache_worker(self) -> None:
         self._profile_media_cache_worker = None
 
+    def _profile_youtube_connected(self, profile_id: str) -> bool:
+        for account in self._publish_accounts:
+            if str(getattr(account, "profile_id", "") or "") == profile_id:
+                return True
+        connection = self._youtube_connection_for(profile_id)
+        return bool(
+            connection
+            and str(connection.status or "").lower() == "connected"
+        )
+
+    def _youtube_badge_icon(self) -> QIcon:
+        cached = getattr(self, "_cached_youtube_icon", None)
+        if cached is not None:
+            return cached
+        size = 18
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        try:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor("#FF0033"))
+            painter.drawRoundedRect(1, 3, 16, 12, 3, 3)
+            painter.setBrush(QColor("white"))
+            painter.drawPolygon(
+                QPolygon([QPoint(7, 6), QPoint(13, 9), QPoint(7, 12)])
+            )
+        finally:
+            painter.end()
+        icon = QIcon(pixmap)
+        self._cached_youtube_icon = icon
+        return icon
+
     def _filter_profile_list(self) -> None:
         """Filter the profile list without resetting the active draft."""
         term = self._profile_search.text().strip().lower()
         self._profile_list.blockSignals(True)
         self._profile_list.clear()
+        youtube_icon = self._youtube_badge_icon()
         for profile in self._profiles:
             if term and term not in get_profile_search_haystack(profile):
                 continue
             item = QListWidgetItem(profile.name)
-            item.setToolTip(profile.folder_name or profile.run_prefix or profile.output_resolution)
+            tooltip = profile.folder_name or profile.run_prefix or profile.output_resolution
+            if self._profile_youtube_connected(str(profile.id)):
+                item.setIcon(youtube_icon)
+                tooltip = f"YouTube connected · {tooltip}"
+            item.setToolTip(tooltip)
             item.setData(Qt.ItemDataRole.UserRole, profile.id)
             self._profile_list.addItem(item)
             if profile.id == self._selected_profile_key:
@@ -2855,6 +2895,7 @@ class SettingsView(QWidget):
         self._on_profile_field_changed()
         self._refresh_profile_identity(is_new=is_new, profile=profile)
         self._refresh_profile_youtube_card()
+        self._filter_profile_list()
         if not is_new:
             self._refresh_publish_accounts(str(profile.id) if profile else None)
         self._refresh_profile_limit_note()
@@ -3809,6 +3850,7 @@ class SettingsView(QWidget):
     def _on_publish_accounts_failed(self, message: str) -> None:
         self._publish_accounts = []
         self._refresh_profile_youtube_card()
+        self._filter_profile_list()
         if message:
             log_warn(f"Publish accounts unavailable: {message}", category="settings")
 
@@ -3819,6 +3861,7 @@ class SettingsView(QWidget):
         profile = self._selected_profile() if not is_new else None
         self._refresh_profile_identity(is_new=is_new, profile=profile)
         self._refresh_profile_youtube_card()
+        self._filter_profile_list()
 
     def _disconnect_publish_account(self, account_id: str | None = None) -> None:
         if not account_id:
