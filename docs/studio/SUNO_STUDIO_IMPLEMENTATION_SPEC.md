@@ -3126,6 +3126,39 @@ plugin headers do expose a preset *name* (`Custom`, `Default`) with an `Update`
 button when dirty (§50.1), but the browser that lists available presets has not been
 opened yet.
 
+## 84. S55 — comments `L`
+
+Capture `screens/S55-comments-thread.jpeg`, from the Clip Info rail.
+
+`Comments and notes` is a collapsible section at the bottom of the clip inspector:
+
+```
+⌄ Comments and notes
+  Tighten the low end before the drop
+  ┌──────────────────────────────┐
+  │ Write a comment            ⬆ │
+  └──────────────────────────────┘
+```
+
+| Property | Value |
+|---|---|
+| Header | `Comments and notes` + collapse chevron — a section, not a tab |
+| Entry | plain text on its own line, full width, no card |
+| Author / time | **none shown** — no avatar, no name, no relative timestamp |
+| Input | pill with placeholder `Write a comment` and a circular send `⬆` |
+| Submit | `Enter` posts and clears the field |
+
+This is the single most surprising simplification in the whole inspector. Everywhere
+else the reference is careful to show provenance (source song and date in §70, track
+colours on chips), but comments are **anonymous notes on a clip**. For a
+multi-collaborator product that is a deliberate scope decision: this is an annotation
+channel, not a discussion thread, and it never appears in the arrangement.
+
+Worth deciding explicitly in the clone rather than copying by default — if we want
+threads with authors we are adding a feature the reference does not have, and the
+schema will differ.
+
+
 
 
 

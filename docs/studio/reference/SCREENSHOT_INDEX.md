@@ -51,6 +51,7 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S45 | `screens/S45-plugin-designer-entry.jpeg` | `Create new plugin` entry — Magic Bar in design mode, `Make me a new plugin…`, active send |
 | S36 | `screens/S36-magicbar-conversation.jpeg` | Magic Bar docked bottom-left as a conversation — chip, truncated prompt, attach `+` |
 | S43 | `screens/S46-compressor-routing-list.jpeg` | Compressor sidechain — every track twice as `Pre-fx` / `Post-fader` |
+| S55 | `screens/S55-comments-thread.jpeg` | `Comments and notes` — plain entries, no author or timestamp, pill input |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S21 | `screens/S21-hidden-track.jpeg` | Hidden track: `1 hidden track` pill open — row, `Unmute all`, `Show All Hidden Tracks` |
 | S22 | `screens/S22-ruler-zoom-levels.jpeg` | Bar ruler — 8-bar labels, 4-bar grid, playhead handle, section triangle |
