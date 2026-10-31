@@ -3259,6 +3259,37 @@ Contrast with §77: the same prompt on the legacy demo project is refused outrig
 so this is also the clean proof that the earlier failures were the project, not the
 feature.
 
+## 87. S50 / S51 — export has no dialog `L`
+
+Tested on the Studio-native project from §86, after it had been saved to the library.
+
+**S50 (export dialog): does not exist.** Choosing `Full Song`, `Selected Time Range`
+or `Multitrack` starts the export immediately — there is no second step, no format
+picker, no filename field.
+
+| Scope | Behaviour |
+|---|---|
+| `Full Song` (first time, unsaved project) | saves the project to the library — toast `Song Saved!` + `Go to Song` |
+| `Full Song` (saved project) | download starts |
+| `Multitrack` | toast `Multitrack download started!`, download begins |
+| `Selected Time Range` | disabled until a time selection exists |
+
+**S51 (progress + result): a toast, nothing more.** Capture
+`screens/S51-export-result-toast.jpeg`:
+
+> `Multitrack download started!`  ×
+
+There is no progress bar, no queue, no per-track status and no completion message —
+the browser's own download UI is the progress indicator. For a DAW that renders
+server-side this is a deliberate simplification: the app hands the job off and stops
+talking about it.
+
+Both rows are therefore `DONE` as **captured negatives**: the screen we expected does
+not exist, and recording that is more useful than inventing one. Implementation note
+for the clone — if we add an export dialog we are adding scope the reference does not
+have; if we mirror it, `Export` is a three-item menu that fires and forgets.
+
+
 
 
 
