@@ -2023,3 +2023,64 @@ Anything the user sees before that is chrome-free emptiness.
 Consequence for us: a blank frame is the reference behaviour, so a spinner would
 be a deviation. If we want to improve on it, do it deliberately rather than
 assuming a loader was missed.
+
+## 64. Studio Settings — S09 / S10 / S11 `L` (1115 px)
+
+One dialog, three tabs. Screenshots: `S09-settings-performance.jpeg`,
+`S10-settings-window-management.jpeg`, `S11-settings-content.jpeg`.
+
+### 64.1 Frame
+
+| Property | Value |
+|---|---|
+| Dialog | 760 × 512, centred, over the editor (scrim behind) |
+| Title | `Studio Settings` — **24 px `Editorial New`** |
+| Tab rail | vertical, 160 × 36 per item, 13 px / 400 |
+| Active tab | `#f7f4ef` label on a subtle raised pill |
+| Inactive tab | `#c2c2c1` |
+| Setting card | 524 × 72, `rgba(255,255,255,0.04)`, radius **12** |
+| Close | circular `×`, top-right |
+
+The title is the notable detail: **the marketing serif (`Editorial New`) is reused
+in-product**, not just on `/studio-welcome`. The display face is a product token,
+not a landing-page decoration.
+
+### 64.2 S09 — Performance
+
+One card: `Ghost drag for arrangement moves`, toggle **on** (green).
+
+> On, a move holds DSP applies for the whole gesture: audio keeps playing the
+> pre-drag arrangement and one apply lands at drop. Off, move frames stream to
+> the engine live. Read at gesture start.
+
+This is a latency-vs-fidelity switch, and the copy says the value is **read once
+at gesture start** — so changing it mid-drag has no effect.
+
+### 64.3 S10 — Window management
+
+One card: `Keyboard & plugin windows`.
+
+> Docked, with a Pop out control on each surface's header. Popping one out is
+> remembered for next time.
+
+Right side carries a **three-way segmented control**: `Panels` · `Windows` ·
+`Show toggle` — each segment 88 × 26, active segment `rgba(255,255,255,0.15)`.
+
+Not a switch or a checkbox: three mutually exclusive placements. `Show toggle`
+means show the pop-out control itself.
+
+### 64.4 S11 — Content
+
+Two cards.
+
+| Setting | Default | Copy |
+|---|---|---|
+| `Auto-stretch added audio` | **on** | Audio added from the library or uploads is stretched to project tempo when it has a steady beat; clips without a steady beat, and stems uploaded together, keep original timing. Off: always keeps original timing and does not set project tempo. Generated clips unaffected. |
+| `Advanced content features` | **off** | Sound-design tools like the Wavetable Designer and Impulse Response Designer. Off, the menu items that open them are hidden. |
+
+**This settles open decision #3.** The Wavetable and IR Designers are not core
+surfaces — they sit behind a default-off preference that removes their menu
+entries. Implement the setting first; keep the designers optional.
+
+Note the asymmetry that matters for our defaults: auto-stretch is **on** by
+default (audio conforms to the project), advanced tools are **off** by default.

@@ -19,9 +19,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S06 | Onboarding dialog "How do you want to start?" | DONE §10 |
 | S07 | Project menu | DONE §18.1 |
 | S08 | Version History panel | DONE §25 |
-| S09 | Settings → Performance | DONE §22 |
-| S10 | Settings → Window management | DONE §39 |
-| S11 | Settings → Content | DONE §29 |
+| S09 | Settings → Performance | DONE §22, §64 |
+| S10 | Settings → Window management | DONE §39, §64 |
+| S11 | Settings → Content | DONE §29, §64 |
 | S12 | Share dialog | DONE §24 |
 | S13 | Learn menu | DONE §38 |
 | S14 | Keyboard shortcuts overlay | DONE §36 |

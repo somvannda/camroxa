@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-Backfill status is deliberately visible: **13 captures cover 10 of the 31 DONE
+Backfill status is deliberately visible: **16 captures cover 13 of the 31 DONE
 rows.** The rest were documented from live DOM measurement and earlier sessions,
 before this archive existed — they have a spec section but no image. They are not
 being re-marked `PART` in bulk; each one is promoted to fully evidenced as it is
@@ -27,18 +27,18 @@ re-shot.
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S08 | `screens/S08-version-history.jpeg` | History panel populated — date navigator, expanded newest entry |
 | S08 | `screens/S08-version-history-loading.jpeg` | Same panel in its `Loading...` state |
+| S09 | `screens/S09-settings-performance.jpeg` | Studio Settings → Performance, ghost-drag toggle on |
+| S10 | `screens/S10-settings-window-management.jpeg` | Studio Settings → Window management, 3-way segmented control |
+| S11 | `screens/S11-settings-content.jpeg` | Studio Settings → Content, auto-stretch on / advanced off |
 | S20 | `screens/S20-add-track-menu.jpeg` | `Add a track` — Audio / MIDI / Upload |
 | S57 | `screens/S57-project-loading-blank.jpeg` | Load state: blank frame, `canvas` 0, no text |
 | — | `screens/RESPONSIVE-gate-319px.jpeg` | §60 desktop-only gate at 319 px (no manifest row) |
 
-## Missing — DONE rows with no image yet (21)
+## Missing — DONE rows with no image yet (18)
 
 | Screen | Spec | Needs |
 |---|---|---|
 | S02 | §58 | sign-in modal shot (needs a signed-out session) |
-| S09 | §22 | Settings → Performance |
-| S10 | §39 | Settings → Window management |
-| S11 | §29 | Settings → Content |
 | S12 | §24 | Share dialog |
 | S13 | §38 | Learn menu |
 | S14 | §36 | Shortcuts overlay |
