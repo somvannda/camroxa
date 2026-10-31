@@ -65,21 +65,30 @@ plain `size` followed by a separate `shot` does nothing — use `resizeshot`.
 
 ## Position
 
-- 65 screens, **43 DONE / 4 PART / 18 OPEN** (counted from manifest rows).
-- **Every `DONE` row has at least one image** (53 files). Do not add a `DONE` row
-  without an index entry.
-- Last landed: S25 trim grips §69, S27 clip info §70, S28 colour submenu §71,
-  S29 take lanes (PART) §72, S31 MIDI editor §73, S32 CC lane (PART) §74,
-  S33 velocity lane §75, S63/S64 responsive §76.
-- **Still OPEN:** S30 warp markers · S36 Magic Bar conversation · S37 generation
-  result · S44 convolution with IR · S45 create-plugin designer · S46 preset
-  browser · S47 mixer strips · S48 master limiter · S50/S51 export dialog and
-  progress · S54–S56 sharing · S58–S62 states.
-- **Known blockers found this session:**
-  - `Export → Full Song / Multitrack` raises `Something went wrong. Please try
-    again.` and never opens a dialog, so S50/S51 cannot be captured as-is.
-  - No clip in `Drum & Bass Demo` has alternate takes (S29) and the `Modulation`
-    lane accepts no points (S32) — both need material generated in-session first.
+- 65 screens, **47 DONE / 5 PART / 13 OPEN** (counted from manifest rows), 60 images.
+- Last landed: S42 EQ card §85, S43 sidechain §83, S55 comments §84, S36 conversation
+  §80, S44 convolution (PART) §78, S45 designer entry (PART) §79, S62 offline (PART) §82.
+- **Every `DONE` row has an image.** Do not add a `DONE` row without an index entry.
+
+### Dead ends hit (do not re-spend time here)
+
+| Attempt | Result |
+|---|---|
+| `Export → Full Song` / `Multitrack` | 403 `not_available_in_studio`, non-retryable; UI shows a generic toast (§77) |
+| Generate a variation / new plugin | refuses: "the selected audio failed to render for generation" (§77) |
+| Library search with a nonsense query | home screen does not filter; no zero-results state (S58 unreachable this way) |
+| `Main` bus selected + Add effect | chain chips never switch to master, so no Limiter can be added (S48) |
+| Plugin preset chip (`Custom` / `Default`) | it is a dirty indicator with `Update`; the preset list does not open (S46) |
+| Share dialog → `Copy Link` | clipboard read hangs the tool call; the shared page was never opened (S54/S56) |
+| Double-click an audio clip | does not open a warp editor; only Clip Settings (§81) appears (S30) |
+| Offline emulation + forced request | no banner of any kind (§82) |
+
+### The one action that unblocks the most
+
+**Create a new empty project and generate one short loop.** That makes the clips
+Studio-native and unblocks **S29, S32, S37, S50, S51** in a single pass. Everything
+else still open needs forced states (S59, S60, S61), a second logged-out session
+(S56), or UI the demo does not expose (S30, S46, S47, S48, S54).
 
 ## Traps that cost time
 
