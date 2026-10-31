@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-**46 captures across the archive, covering every `DONE` row.** Three are extras with
+**48 captures across the archive, covering every `DONE` row.** Three are extras with
 no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`,
 `EXTRA-restoring-last-project`); the rest map one or more images to a screen.
 
@@ -40,6 +40,8 @@ no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`,
 | S25 | `screens/S25-clip-selected.jpeg` | Selected clip — light outline, saturated fill, row echo, clip-scoped Magic Bar chip |
 | S25 | `screens/S25-trim-grips-detail.jpeg` | 3× crop — trim grips at both ends, fade stub top-left, header band |
 | S27 | `screens/S27-clip-info-panel.jpeg` | Clip Info rail — source song title, `Remix`, green waveform, `Info`/`Stems`, styles + lyrics |
+| S28 | `screens/S28-clip-color-submenu.jpeg` | `Clip Color ▸` open — `Auto` row with check, 5 × 8 swatch grid, shades per hue |
+| S29 | `screens/S29-take-lanes-empty.jpeg` | Take-lanes strip, empty — `Create a clip to see alternate takes here` |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S21 | `screens/S21-hidden-track.jpeg` | Hidden track: `1 hidden track` pill open — row, `Unmute all`, `Show All Hidden Tracks` |
 | S22 | `screens/S22-ruler-zoom-levels.jpeg` | Bar ruler — 8-bar labels, 4-bar grid, playhead handle, section triangle |

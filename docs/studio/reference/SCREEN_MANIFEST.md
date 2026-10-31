@@ -43,8 +43,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S25 | **Clip selected with trim handles** | DONE §69 |
 | S26 | Clip context menu | DONE §47.1 |
 | S27 | Clip Info panel | DONE §70 |
-| S28 | Clip colour submenu | OPEN |
-| S29 | Take lanes expanded | OPEN |
+| S28 | Clip colour submenu | DONE §71 |
+| S29 | Take lanes expanded | PART §72 — empty state only |
 | S30 | Warp markers | OPEN |
 | S31 | MIDI clip editor | OPEN |
 | S32 | Automation lane — CC | OPEN |
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 38 |
-| PART | 2 |
-| OPEN | 25 |
+| DONE | 39 |
+| PART | 3 |
+| OPEN | 23 |
 | **Total** | **65** |
 
 ## Rules for working through this list

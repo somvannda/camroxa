@@ -2749,6 +2749,62 @@ lyrics) and exposes that as first-class metadata. `Stems` on the second tab is t
 same operation as `Get Stems` in the clip menu, surfaced again because the user
 arrives here from a different direction.
 
+## 71. S28 — clip colour submenu `L`
+
+Capture `screens/S28-clip-color-submenu.jpeg` — 460 × 520 at 2×, showing the parent
+row in its hover state with the submenu beside it.
+
+| Property | Value |
+|---|---|
+| Panel | **196 × 350** at (817, 618) — opens to the **right** of `Clip Color`, top-aligned |
+| Surface | same `#252529` as the parent menu, radius 10, same shadow |
+| Header row | 40 px: current-colour dot · `Auto` · a **check** at the right |
+| Grid | **5 × 8 = 40 swatches**, 36 × 36 circles, 4 px gaps |
+| Ordering | five shades of one hue per row — the row *is* the hue family |
+| Submenu arrow | `▸` on the parent row, and the parent row brightens while the child is open |
+
+Three behaviours worth copying:
+
+1. **`Auto` is the first row, not a swatch.** The default is "inherit the track
+   colour", and it is drawn with the same dot-plus-check grammar as the colours, so
+   "no explicit choice" reads as a choice.
+2. **The palette is shades, not a colour picker.** Five steps per hue means a clip
+   colour always stays in the same family as the track palette — no arbitrary hex,
+   which is exactly what keeps the arrangement legible at a glance.
+3. **The submenu is a child of the item, not of the menu.** It opens beside the row
+   you hovered and closes when you leave that row, so the rest of the clip menu stays
+   reachable with one small pointer move.
+
+## 72. S29 — take lanes `PART` (empty state only)
+
+Capture `screens/S29-take-lanes-empty.jpeg`.
+
+`Take lanes` in the footer opens a strip **below the canvas** rather than a panel in
+the right rail:
+
+| Property | Value |
+|---|---|
+| Placement | full-width band under the arrangement, above the footer |
+| Height | ≈ 90 px in the empty state (one line tall) |
+| Empty copy | `Create a clip to see alternate takes here`, centred, muted 13 px |
+| Close | `×` at the right end of the strip |
+
+The strip is **state-driven by the selected clip**, not by a toggle alone: with the
+strip open I selected six different clips in the demo (audio, MIDI, drum kit, string)
+and every one reported the same empty copy. So this project was never re-generated
+over itself — takes only exist where a clip was generated more than once.
+
+That is worth recording as a **gap, not a finding**: the empty state proves the
+feature and its placement, but we still have nothing on how takes render, stack, or
+get auditioned. To finish S29 we need a clip that has been regenerated at least once
+(use the Magic Bar to generate over an existing clip in the same region).
+
+Also captured by accident and worth noting: selecting a **MIDI** clip changes the
+Magic Bar placeholder to `Make a variation of this MIDI clip`, the third distinct
+placeholder family after track-scoped (§54.1) and audio-clip-scoped.
+
+
+
 
 
 
