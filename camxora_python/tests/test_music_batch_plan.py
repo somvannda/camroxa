@@ -6,6 +6,7 @@ from shared.lib.music_batch_plan import (
     create_planned_batches,
     existing_batch_slots,
     format_create_batches_summary,
+    format_failed_create_message,
     is_retryable_create_error,
     missing_create_requests,
 )
@@ -201,3 +202,85 @@ def test_create_planned_creates_by_default_even_when_slot_exists() -> None:
     assert result.created_count == 1
     assert result.skipped == 0
     assert result.skipped_requests == []
+
+
+def _rate_limited(retry_after: int | None = None) -> PlatformApiError:
+    return PlatformApiError(
+        429,
+        "Rate limit exceeded. Please retry later.",
+        {"detail": {"error_code": "RATE_LIMITED", "message": "Rate limit exceeded. Please retry later."}},
+        retry_after=retry_after,
+    )
+
+
+def test_rate_limit_pauses_the_sweep_and_resumes_after_cooldown() -> None:
+    """A 429 on the first slot must not spend the whole plan into a closed window."""
+    calls: list[str] = []
+    sleeps: list[float] = []
+    blocked_once = {"done": False}
+
+    def create(request: BatchCreateRequest) -> BatchCreateResponse:
+        calls.append(request.from_date)
+        if not blocked_once["done"]:
+            blocked_once["done"] = True
+            raise _rate_limited(retry_after=7)
+        return _ok_response(request.from_date)
+
+    result = create_planned_batches(
+        create,
+        [
+            _request("2026-11-01", "ok-a", "alt-a"),
+            _request("2026-11-02", "ok-a", "alt-a"),
+            _request("2026-11-03", "ok-a", "alt-a"),
+        ],
+        sleep=sleeps.append,
+    )
+    # Sweep 1 stops at the first 429; sweep 2 creates all three.
+    assert calls == ["2026-11-01", "2026-11-01", "2026-11-02", "2026-11-03"]
+    assert sleeps == [7.0]
+    assert result.created_count == 3
+    assert result.failed_count == 0
+    assert result.rate_limited == 0
+
+
+def test_long_retry_after_reports_one_line_instead_of_blocking() -> None:
+    """A cooldown longer than the worker budget is reported, not slept through."""
+    calls: list[str] = []
+    sleeps: list[float] = []
+
+    def create(request: BatchCreateRequest) -> BatchCreateResponse:
+        calls.append(request.from_date)
+        raise _rate_limited(retry_after=120)
+
+    days = [f"2026-11-0{day}" for day in range(1, 4)]
+    result = create_planned_batches(
+        create,
+        [_request(day, "ok-a", "alt-a") for day in days],
+        sleep=sleeps.append,
+    )
+    assert calls == ["2026-11-01"]  # remaining slots are never attempted
+    assert sleeps == []
+    assert result.created_count == 0
+    assert result.failed_count == 3
+    assert result.rate_limited == 3
+    assert result.retry_after == 120.0
+    message = format_failed_create_message(result)
+    assert message == "Rate limit exceeded. 3 of 3 batch runs not created. Try again in 120s."
+    assert "2026-11-01" not in message
+
+
+def test_rate_limit_message_falls_back_to_per_day_detail() -> None:
+    """Non-429 failures keep the per-day detail (validation, auth, 5xx)."""
+
+    def create(request: BatchCreateRequest) -> BatchCreateResponse:
+        raise PlatformApiError(422, "Choose a valid inclusive date range.")
+
+    result = create_planned_batches(
+        create,
+        [_request("2026-11-01", "ok-a", "alt-a")],
+        sleep=lambda _seconds: None,
+    )
+    assert result.rate_limited == 0
+    assert format_failed_create_message(result) == (
+        "Could not create 1 batch run: 2026-11-01 (Choose a valid inclusive date range.)"
+    )

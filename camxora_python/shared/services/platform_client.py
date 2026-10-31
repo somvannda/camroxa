@@ -17,10 +17,47 @@ Method = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
 class PlatformApiError(Exception):
     """Raised when the platform API returns a non-success response."""
 
-    def __init__(self, status: int, message: str, payload: Any = None) -> None:
+    def __init__(
+        self,
+        status: int,
+        message: str,
+        payload: Any = None,
+        *,
+        retry_after: int | None = None,
+    ) -> None:
         super().__init__(message)
         self.status = status
         self.payload = payload
+        self._retry_after = retry_after
+
+    @property
+    def retry_after(self) -> int | None:
+        """Seconds the server asked us to wait before retrying (429 Retry-After).
+
+        Read from the ``Retry-After`` response header, falling back to the JSON
+        body (``retry_after``) for gateways that drop the header.
+        """
+        if self._retry_after is not None:
+            return self._retry_after
+        payload = self.payload
+        containers: list[Any] = [payload]
+        if isinstance(payload, dict):
+            containers = [payload.get("detail"), payload.get("error"), payload]
+        for container in containers:
+            if not isinstance(container, dict):
+                continue
+            candidates = [container.get("retry_after")]
+            details = container.get("details")
+            if isinstance(details, dict):
+                candidates.append(details.get("retry_after"))
+            for candidate in candidates:
+                try:
+                    seconds = int(float(candidate))
+                except (TypeError, ValueError):
+                    continue
+                if seconds > 0:
+                    return seconds
+        return None
 
     @property
     def error_code(self) -> str | None:
@@ -278,7 +315,12 @@ class PlatformClient:
         if not response.is_success:
             payload = _read_json(response)
             message = _extract_error_message(payload, response.status_code)
-            err = PlatformApiError(response.status_code, message, payload)
+            err = PlatformApiError(
+                response.status_code,
+                message,
+                payload,
+                retry_after=_retry_after_header(response),
+            )
             _log_api_error(method, path, err)
             raise err
 
@@ -304,6 +346,18 @@ def _log_api_error(method: str, path: str, err: PlatformApiError) -> None:
         log_error(f"{method.upper()} {path} → {err.status}: {detail}", category="api")
     except Exception:
         return
+
+
+def _retry_after_header(response: httpx.Response) -> int | None:
+    """Parse the Retry-After header (delta-seconds form) into an integer."""
+    raw = response.headers.get("Retry-After")
+    if not raw:
+        return None
+    try:
+        seconds = int(float(str(raw).strip()))
+    except (TypeError, ValueError):
+        return None  # HTTP-date form — treat as unknown
+    return seconds if seconds > 0 else None
 
 
 def _read_json(response: httpx.Response) -> Any:
