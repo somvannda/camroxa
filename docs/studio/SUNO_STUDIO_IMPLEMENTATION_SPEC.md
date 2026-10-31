@@ -2998,6 +2998,91 @@ in before the first draft exists.
 Still PART: the designer surface that this prompt produces was never reached (it
 needs a successful generation, which the legacy demo project cannot run — §77).
 
+## 80. S36 — Magic Bar conversation `L`
+
+Capture `screens/S36-magicbar-conversation.jpeg`.
+
+`Open conversation` (the panel glyph in the Magic Bar's chip row) **undocks** the bar
+from the centre of the arrangement and parks it as a **narrow dock in the bottom-left
+corner**, ≈ 315 × 105 px:
+
+```
+┌──────────────────────────────┐
+│ 🎤 Vocal Cuts  ×        ⧉    │  ← chip + expand
+│ Make me a new plugin. Here's…│  ← prompt, one line
+│ +                     v6  ⬆  │
+└──────────────────────────────┘
+              BETA ─┘
+```
+
+The empty conversation area above it carries the invitation: *"Describe a section or
+ask for ideas to start a conversation with the Studio Agent."*
+
+| Property | Value |
+|---|---|
+| Dock | bottom-left, ≈ 315 wide, radius 16, same translucent surface as the bar |
+| Chip row | current object chip, `×` detach, expand icon to return it to the centre |
+| Prompt | single line, **truncated with an ellipsis** rather than wrapped |
+| Attach `+` | bottom-left, 28 px circle |
+| Send | orange circle, same active state as design mode (§79) |
+
+Two things this settles:
+
+1. **Conversation and generation are the same control.** There is no separate chat
+   window — "conversation" is the Magic Bar in its docked, multi-turn form. Same
+   chip, same model selector, same send button.
+2. **The dock never covers the timeline's centre.** It tucks into the corner and lets
+   the arrangement stay the primary surface, which is the opposite trade-off from the
+   plugin dock (§50.1) that spans the full width.
+
+## 81. Audio clip settings panel (context for S30)
+
+Reachable via `Clip editor` with an **audio** clip selected; it opens as a panel in
+the bottom-left, beside a zoomed waveform of the clip (bar ruler `101, 103, 105 …`,
+playhead with the usual handle + triangle).
+
+Controls, in order:
+
+```
+Volume ──────────────── +4.9 dB
+[ ⟳ Loop ]   [ ⇄ Reverse ]
+Pitch   −   0   +
+Auto Stretch ── On Beat | Transients | Start and End | Formant
+Speed  ½   ×2   (0%)
+Quantize   Triplets   1/2 · 1/4 · 1/8 · 1/16 · 1/32   [Quantize]
+[ ⓘ Clip info ]
+```
+
+| Element | Detail |
+|---|---|
+| Volume | full-width slider with a **numeric dB readout** at the right — the only place a dB value is printed as text |
+| Loop / Reverse | two equal buttons, toggle-style, icon + label |
+| Pitch | stepper (`−` value `+`) in **semitones**, not cents |
+| Auto Stretch | segmented: `On Beat · Transients · Start and End · Formant` |
+| Speed | two preset buttons `½` / `×2` with a percentage readout |
+| Quantize | grid chips `1/2 … 1/32` plus a `Triplets` toggle |
+| Footer | `Clip info` — the same destination as §70, offered again from inside the panel |
+
+This panel is why S30 stays open: warp markers live in the **waveform area beside**
+it, and while the ruler and playhead are visible, neither a warp marker nor the warp
+toggle itself has been captured yet.
+
+## 82. S62 — offline: no banner `L` (negative result)
+
+Tested by taking the page offline at the transport level (`Network.emulateNetworkConditions`,
+`offline: true`) and then forcing a network-dependent action (`Open library`), waiting
+four seconds.
+
+Observed: **nothing changes in the UI.** No banner, no toast, no disabled controls —
+the panel opened from cache and the arrangement kept rendering. Restoring the network
+also produced no visible transition.
+
+So the reference has **no offline affordance on this path**. Recorded as a negative
+result rather than a captured screen: if we add an offline state we are designing it,
+not copying it. Worth re-testing with a cold load while offline (before any cache
+exists) before concluding it is absent entirely.
+
+
 
 
 

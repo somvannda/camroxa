@@ -56,7 +56,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 |---|---|---|
 | S34 | Magic Bar idle | DONE §54.1 |
 | S35 | Magic Bar with clip attachment | DONE §54.1 |
-| S36 | Magic Bar conversation | OPEN |
+| S36 | Magic Bar conversation | DONE §80 |
 | S37 | Generation result on the timeline | OPEN |
 | S38 | Model picker | DONE §6 |
 
@@ -102,7 +102,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S59 | Save conflict / error banner | OPEN |
 | S60 | Policy / moderation refusal | OPEN |
 | S61 | Insufficient credits | OPEN |
-| S62 | Offline | OPEN |
+| S62 | Offline | PART §82 — no banner observed (negative result) |
 
 ## 8. Responsive (S63–S65)
 
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 43 |
-| PART | 6 |
-| OPEN | 16 |
+| DONE | 44 |
+| PART | 7 |
+| OPEN | 14 |
 | **Total** | **65** |
 
 ## Rules for working through this list
