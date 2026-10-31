@@ -65,12 +65,21 @@ plain `size` followed by a separate `shot` does nothing — use `resizeshot`.
 
 ## Position
 
-- 65 screens, **35 DONE / 2 PART / 28 OPEN** (counted from manifest rows).
-- **Every `DONE` row now has at least one image.** The archive went from 0 files to
-  42 this session; do not add a `DONE` row without an index entry.
-- Last landed: S21 hidden tracks §65, S22 ruler §66, S23 section markers §67.
-- **Next in order: S24/S25** (arrangement sections, marker/take-lane family), then
-  S42/S43 (EQ + compressor at full size), then the OPEN rows.
+- 65 screens, **43 DONE / 4 PART / 18 OPEN** (counted from manifest rows).
+- **Every `DONE` row has at least one image** (53 files). Do not add a `DONE` row
+  without an index entry.
+- Last landed: S25 trim grips §69, S27 clip info §70, S28 colour submenu §71,
+  S29 take lanes (PART) §72, S31 MIDI editor §73, S32 CC lane (PART) §74,
+  S33 velocity lane §75, S63/S64 responsive §76.
+- **Still OPEN:** S30 warp markers · S36 Magic Bar conversation · S37 generation
+  result · S44 convolution with IR · S45 create-plugin designer · S46 preset
+  browser · S47 mixer strips · S48 master limiter · S50/S51 export dialog and
+  progress · S54–S56 sharing · S58–S62 states.
+- **Known blockers found this session:**
+  - `Export → Full Song / Multitrack` raises `Something went wrong. Please try
+    again.` and never opens a dialog, so S50/S51 cannot be captured as-is.
+  - No clip in `Drum & Bass Demo` has alternate takes (S29) and the `Modulation`
+    lane accepts no points (S32) — both need material generated in-session first.
 
 ## Traps that cost time
 
