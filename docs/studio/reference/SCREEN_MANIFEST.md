@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 41 |
+| DONE | 43 |
 | PART | 4 |
-| OPEN | 20 |
+| OPEN | 18 |
 | **Total** | **65** |
 
 ## Rules for working through this list
