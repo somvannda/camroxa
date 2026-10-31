@@ -278,3 +278,28 @@ def test_webhook_secret_fails_closed_and_compares_constant_time() -> None:
         webhook_secret="",
     )
     assert unset.verify_webhook_secret("") is False
+
+
+@pytest.mark.asyncio
+async def test_hhmm_schedule_uses_batch_planned_date() -> None:
+    from datetime import date
+
+    class FakeDb:
+        async def fetchrow(self, _query, *_args):
+            return {"planned_from_date": date(2030, 1, 2)}
+
+    service = PublishService(
+        db=FakeDb(),
+        repo=FakeRepo(_job()),
+        client=FakeClient(),
+        billing=FakeBilling(),
+        enabled=True,
+        webhook_secret="secret",
+    )
+    scheduled = await service._resolve_scheduled_at("14:35", "batch-1")
+    assert scheduled is not None
+    assert scheduled.year == 2030
+    assert scheduled.month == 1
+    assert scheduled.day == 2
+    assert scheduled.hour == 14
+    assert scheduled.minute == 35

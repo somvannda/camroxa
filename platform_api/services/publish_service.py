@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import hmac
 import logging
+import re
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -356,8 +357,9 @@ class PublishService:
             if isinstance(profile.get("youtube_config"), dict)
             else {}
         )
-        scheduled_at = _parse_iso_datetime(publish_at)
+        scheduled_at = None
         if visibility == "scheduled":
+            scheduled_at = await self._resolve_scheduled_at(publish_at, batch_id)
             if scheduled_at is None:
                 raise ValidationError("publish_at is required when visibility is scheduled.")
             if scheduled_at <= _utcnow():
@@ -680,6 +682,46 @@ class PublishService:
                 error_message=error_message[:500],
                 status=status,
             )
+
+    async def _resolve_scheduled_at(
+        self, value: str | None, batch_id: str | None
+    ) -> datetime | None:
+        """Accept ISO timestamps or the desktop's ``HH:MM`` publication time."""
+        text = str(value or "").strip()
+        if not text:
+            return None
+        clock = re.match(r"^(\d{1,2}):(\d{2})$", text)
+        if not clock:
+            return _parse_iso_datetime(text)
+        hour = max(0, min(23, int(clock.group(1))))
+        minute = max(0, min(59, int(clock.group(2))))
+        base_date = _utcnow().date()
+        if batch_id:
+            row = await self._db.fetchrow(
+                """
+                SELECT planned_from_date
+                FROM batches
+                WHERE id = $1::uuid
+                """,
+                batch_id,
+            )
+            planned = row.get("planned_from_date") if row else None
+            if isinstance(planned, datetime):
+                base_date = planned.date()
+            elif isinstance(planned, date):
+                base_date = planned
+        candidate = datetime(
+            base_date.year,
+            base_date.month,
+            base_date.day,
+            hour,
+            minute,
+            tzinfo=timezone.utc,
+        )
+        now = _utcnow()
+        while candidate <= now:
+            candidate += timedelta(days=1)
+        return candidate
 
     async def _ensure_profile_owned(self, user_id: str, profile_id: str) -> dict[str, Any]:
         row = await self._db.fetchrow(
