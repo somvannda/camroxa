@@ -491,6 +491,29 @@ Facts:
    i.e. an autosave cadence of a few seconds, not one version per editing session.
 4. The panel opens from Project menu → `Version History` and is dismissable with `×`.
 
+### 25.1 Confirmed at 1094 px
+
+Screenshots: `reference/screens/S08-version-history.jpeg` and
+`S08-version-history-loading.jpeg`.
+
+| Property | Measured |
+|---|---|
+| Panel | 300 × 1193 at **(8, 44)** — sits below the header, above the footer |
+| Fill | `#101012` (page is `#101012`; panel reads as a separate pane by edge, not by tint) |
+| Active entry | **44 px** tall button, 267 wide at x=24, fill `#1c1c1f` |
+| Loading state | literal text `Loading...` under the divider, no skeleton |
+
+Two details §25 missed:
+
+1. **The date row is navigable** — `‹ 10/31/2026 ›` with chevrons on both sides,
+   so history is paged by day rather than being one flat list.
+2. **The newest entry is expanded, the rest collapsed** — the top row is a
+   highlighted 44 px button carrying a `⌄`; older rows are plain timestamp + dot
+   on a vertical rail. It is a disclosure list, not a flat table.
+
+The panel also **pushes the editor right** rather than overlaying it — the canvas
+narrows, the track panel and ruler reflow.
+
 ## 26. Loaded project facts `L`
 
 Demo project `Drum & Bass Demo`: **174 BPM**, `4/4`, tracks `Electric Keyboards`
