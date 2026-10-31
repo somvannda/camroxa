@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-**42 captures across the archive, covering every `DONE` row.** Three are extras with
+**43 captures across the archive, covering every `DONE` row.** Three are extras with
 no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`,
 `EXTRA-restoring-last-project`); the rest map one or more images to a screen.
 
@@ -36,6 +36,7 @@ no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`,
 | S53 | `screens/S53-library-songs.jpeg` | Songs in a workspace — date groups, `V6 COVER · key · BPM` tag strip |
 | S65 | `screens/S65-gate-767px.jpeg` | Desktop-only gate at **767 px** — the last width that gates |
 | S65 | `screens/S65-editor-768px.jpeg` | Same session at **768 px** — the first width that renders the editor |
+| S24 | `screens/S24-loop-region.jpeg` | Loop armed — pink transport button, full-height band, right-edge grip on the ruler |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S21 | `screens/S21-hidden-track.jpeg` | Hidden track: `1 hidden track` pill open — row, `Unmute all`, `Show All Hidden Tracks` |
 | S22 | `screens/S22-ruler-zoom-levels.jpeg` | Bar ruler — 8-bar labels, 4-bar grid, playhead handle, section triangle |

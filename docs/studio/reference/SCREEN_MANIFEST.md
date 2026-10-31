@@ -39,7 +39,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S21 | Hidden-track state | DONE §65 |
 | S22 | Ruler + zoom levels | DONE §66 |
 | S23 | Section markers on the ruler | DONE §67 |
-| S24 | Loop region | OPEN |
+| S24 | Loop region | DONE §68 |
 | S25 | **Clip selected with trim handles** | OPEN |
 | S26 | Clip context menu | DONE §47.1 |
 | S27 | Clip Info panel | OPEN |
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 35 |
+| DONE | 36 |
 | PART | 2 |
-| OPEN | 28 |
+| OPEN | 27 |
 | **Total** | **65** |
 
 ## Rules for working through this list

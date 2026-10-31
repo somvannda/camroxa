@@ -2640,3 +2640,41 @@ We currently draw markers as text chips in the ruler. The reference's version co
 less space and stays legible at every zoom because it carries no label — the name, if
 any, is not drawn on the ruler.
 
+## 68. S24 — loop region `L`
+
+Capture `screens/S24-loop-region.jpeg`, 1250 × 1298 at DPR 1, taken in the OpenCode
+browser pane.
+
+Pressing `Loop` in the transport does two things at once:
+
+1. the button turns **pink/red** (its only coloured state in the transport), and
+2. the arrangement gains a **tinted band** spanning the loop, with a drag handle at
+   its right edge sitting on the ruler line.
+
+| Element | Observed |
+|---|---|
+| Loop button | 32 × 32, circular, glyph is a rounded-rectangle loop arrow |
+| Active state | fill switches from neutral to the accent pink; the glyph stays the same shape |
+| Region band | full-height tint over every track lane, low alpha, same hue as the button |
+| Right handle | small square grip on the ruler line at the loop end, same pink |
+| Edges | the region's boundaries are drawn as thin vertical lines through the whole canvas |
+
+Dragging the right handle left from the song end to ≈ bar 55 shortened the region and
+the tint followed live — the loop is a **ruler-level object**, not a clip property.
+
+Notes that matter for the clone:
+
+- The band tints **all lanes**, which is what makes it readable as a time range rather
+  than a per-track selection. A per-row highlight would be ambiguous with clip
+  selection (§47.1), which is also an outline.
+- Loop state is persistent and orthogonal to playback: `Loop` stayed armed across
+  selections, track changes and dock changes in the same session.
+- No numeric readout of the loop length is shown anywhere — the region is read
+  graphically off the bar ruler.
+
+S25 (`clip selected with trim handles`) is still **OPEN**: a selected clip renders a
+light 1 px outline and a brightened interior (see §47.1), but the trim grips only
+appear under a real pointer hover, which the pane browser cannot synthesise — it
+needs a pass in the CDP-driven Chrome.
+
+
