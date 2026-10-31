@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-Backfill status is deliberately visible: **21 captures cover 17 of the 31 DONE
+Backfill status is deliberately visible: **25 captures cover 21 of the 31 DONE
 rows.** The rest were documented from live DOM measurement and earlier sessions,
 before this archive existed — they have a spec section but no image. They are not
 being re-marked `PART` in bulk; each one is promoted to fully evidenced as it is
@@ -25,6 +25,10 @@ re-shot.
 | S05 | `screens/S05-zero-tracks-after-remount.jpeg` | Same project after a remount — **zero** tracks (pre-autosave) |
 | S06 | `screens/S06-onboarding-overlay.jpeg` | `How do you want to start?` over the empty project |
 | S07 | `screens/S07-project-menu.jpeg` | Project menu — 9 items, Settings accelerator |
+| S15 | `screens/S15-whats-this-card.jpeg` | Hover card on `120 BPM` — light 256 px card, `Tempo` + body, anchored under the control |
+| S16 | `screens/S16-editor-empty-project.jpeg` | Empty project: one `Audio Track`, `Add new track`, `00:00.000`, Magic Bar with `Tab` hint |
+| S17 | `screens/S17-editor-loaded-project.jpeg` | Drum & Bass Demo at 174 BPM — 12 tracks, clips, FX strip, `Press play to hear the demo` |
+| S18 | `screens/S18-track-row-anatomy.jpeg` | Track row and clip band measured from the loaded demo |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S08 | `screens/S08-version-history.jpeg` | History panel populated — date navigator, expanded newest entry |
 | S08 | `screens/S08-version-history-loading.jpeg` | Same panel in its `Loading...` state |
@@ -39,14 +43,10 @@ re-shot.
 | S57 | `screens/S57-project-loading-blank.jpeg` | Load state: blank frame, `canvas` 0, no text |
 | — | `screens/RESPONSIVE-gate-319px.jpeg` | §60 desktop-only gate at 319 px (no manifest row) |
 
-## Missing — DONE rows with no image yet (14)
+## Missing — DONE rows with no image yet (10)
 
 | Screen | Spec | Needs |
 |---|---|---|
-| S15 | §7 | What's This? card |
-| S16 | §44 | empty editor, no overlay |
-| S17 | §44 | editor **with clips** |
-| S18 | §52 | track row anatomy |
 | S26 | §31, §47 | clip context menu |
 | S34 | §54 | Magic Bar idle |
 | S35 | §54 | Magic Bar with attachment |

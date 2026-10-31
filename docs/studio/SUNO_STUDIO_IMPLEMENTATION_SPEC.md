@@ -141,6 +141,41 @@ labels in the UI (pricing/limits live in `pricing`).
 The hover-help system is a real feature: every control has an explanatory tooltip,
 toggled globally by `Learn`.
 
+### 7.1 The hover card, measured (S15)
+
+Capture `screens/S15-whats-this-card.jpeg`, 1689 × 1277 px at DPR 1. Hovering
+`120 BPM` produced:
+
+```
++--------------------------------------+
+| Tempo                                |
+| Your song's tempo in beats per       |
+| minute. Click to set a BPM or follow |
+| a track's own timing.                |
++--------------------------------------+
+```
+
+| Property | Value |
+|---|---|
+| Size | **256 × 105** at (1279, 50) |
+| Surface | `#d2d0ce` — *light*, the only light surface in the dark editor |
+| Text | `#111111`, 12 px; body at `rgba(17,17,17,0.8)`, line-height 16.2 px (1.35) |
+| Title | 12 px / **700** — weight, not size, separates it from the body |
+| Radius | 16 px |
+| Shadow | `0 8px 24px rgba(0,0,0,0.35)` |
+| Padding | 16 px, fixed 256 px width (wraps at a stable measure) |
+| Anchor | below the hovered control, left edge shifted so the card stays inside the viewport |
+
+Two behaviours worth copying:
+
+- **Inverted contrast.** Every other floating surface is dark; the help card is
+  light. In a dark DAW that is the cheapest possible "this is meta, not content"
+  signal, and it survives over any track colour.
+- **The intro note is separate.** The `What's This?` card in the bottom-right
+  corner is only the *affordance* (§7, F-04). It collapses to a one-line toast
+  (`Click "Learn" to turn What's This? off.`) after `Dismiss`, while per-control
+  cards keep working — dismissing the note does not disable the feature.
+
 ## 8. Menus and dialogs
 
 ### 8.1 Project menu — `?` (trigger works, overlay not captured)
@@ -1118,6 +1153,37 @@ palette cycles by index; theirs is semantic.
 | "Palette cycles per track" | palette is **semantic per instrument family** |
 | "Export/Library at far right with BPM" | BPM and signature sit in a separate right cluster before Export/Library |
 
+### 44.10 Two matching captures: empty vs loaded (S16, S17)
+
+Both shot at **1689 × 1277** (DPR 1) from the same session, so they diff cleanly:
+
+| | `S16-editor-empty-project.jpeg` | `S17-editor-loaded-project.jpeg` |
+|---|---|---|
+| Project chip | `Untitled Project` | `Drum & Bass Demo` |
+| Undo / redo | both disabled | Undo disabled, redo disabled (fresh load) |
+| Time readouts | `00:00.000` / `001.1.1` | `00:00.000` / `001.1.1` |
+| Tempo | `120 BPM` `4/4` | **`174 BPM`** `4/4` |
+| Tracks | one `Audio Track`, no clips | 12+ named tracks, clips across the full width |
+| Ruler | bars every 8 from `1` | bars every 8 from `1` to **`137`** — the ruler rescales to song length |
+| Magic Bar | placeholder `Select a spot on the timeline and ask me to add a part` + `Tab` hint | same placeholder, plus a **`Soft Piano` attachment chip** |
+| Bottom FX strip | absent | `E.Q` · `Reverb` · `Stereo Utility` · `+` |
+| Overlays | none | tooltip `Press play to hear the demo` |
+
+Three details the empty state settles that the loaded state hides:
+
+- An empty project is **not** an empty canvas: it ships with one `Audio Track`
+  already created, `Add new track` centred under the track header, and the full
+  transport.
+- The Magic Bar is present from the first second and shows a **keyboard hint**
+  (`Tab`) beside the placeholder — it is a first-class input, not an afterthought.
+- `Add new track` is a text button under the gutter, not a `+` in the toolbar.
+
+And one detail the loaded state settles:
+
+- **Clip labels truncate, never shrink.** Short clips read `E...`, `V...`, `M...`,
+  `S...`, `B...`; long clips carry the full name. The type size is constant, so
+  the timeline keeps an even texture at any zoom.
+
 ## 45. Icon and text inventory — editor view `L`
 
 Measured on the loaded demo project:
@@ -1430,6 +1496,40 @@ Six transport glyphs before the readouts: back-to-start, rewind, stop, play, for
 | Plugin dock | present in the editor | not mounted in the shell |
 | Footer | tools · chips · view controls · Learn | chips only |
 | Transport glyphs | six | five |
+
+### 52.1 The row, confirmed at 1689 px (S18)
+
+Crop `screens/S18-track-row-anatomy.jpeg` — 900 × 250 CSS px at 2× from the loaded
+demo, so it is a pixel-accurate diagram of one row.
+
+```
+ 1   Electric Keyboards              🔊  Ⓢ  Ⓐ  ⌄      ┌ clip band starts at x=283
+ └─ colour strip (4 px, full height)
+     [═════ volume (172 px) ═════|═]  [━ pan (48 px) ━]|
+```
+
+| Element | Position (CSS px) | Note |
+|---|---|---|
+| Colour strip | x 0–4 | full row height, the track's own colour |
+| Track number | x ≈ 18 | muted, right-aligned to a fixed column |
+| Name | x ≈ 47 | 13 px, single line, no ellipsis in the gutter |
+| Speaker (mute) | x ≈ 162 | outline speaker, filled when muted |
+| `S` | x ≈ 192 | bare letter, no button chrome until hover |
+| `A` | x ≈ 222 | **round** chip — the only round control in the row |
+| `⌄` (track options) | x ≈ 243 | opens S19 |
+| Volume | x 24 → 196 | rounded track, vertical handle |
+| Pan | x 206 → 254 | half the width of volume, same handle |
+| Row height / step | 85 / 86 px | confirms §52 |
+| Gutter | 0 → 281 | 1 px divider, then the clip band from 283 |
+
+State cues visible in this one crop:
+
+- **Selected row** → full-width lighter fill (track 1).
+- **Focused slider** → 2 px green outline (track 2 `Soft Piano`, volume slider).
+- **Mute/solo** carry no fill at rest: they are glyphs, and state is shown by
+  inverting the glyph, not by painting a button.
+- The playhead's bar-ruler marker is a **filled blue triangle** whose tip sits on
+  the ruler line, with the vertical line drawn below it at 1 px.
 
 ## 53. Plugin dock — second capture (played state, EQ + Compressor)
 

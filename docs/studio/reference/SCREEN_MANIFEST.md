@@ -25,15 +25,15 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S12 | Share dialog | DONE §24 |
 | S13 | Learn menu | DONE §38 |
 | S14 | Keyboard shortcuts overlay | DONE §36 |
-| S15 | "What's This?" hover card | DONE §7 |
+| S15 | "What's This?" hover card | DONE §7.1 |
 
 ## 2. Arrangement (S16–S33)
 
 | # | Screen | Status |
 |---|---|---|
-| S16 | Editor, empty project | DONE §44 |
-| S17 | Editor, loaded project | DONE §44 |
-| S18 | Track row anatomy | DONE §52 |
+| S16 | Editor, empty project | DONE §44.10 |
+| S17 | Editor, loaded project | DONE §44.10 |
+| S18 | Track row anatomy | DONE §52.1 |
 | S19 | Track options menu | DONE §61 |
 | S20 | Add-track menu | DONE §18.3 |
 | S21 | Hidden-track state | OPEN |
