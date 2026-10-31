@@ -468,6 +468,43 @@ Semantics: the share link is **view + fork**, never live co-editing. Anyone open
 it gets their own editable copy; the owner's project is untouched. Our implementation
 must not imply real-time collaboration on a share link.
 
+### 24.1 Naming gate runs first (captured)
+
+Screenshots: `S12-share-naming-gate.jpeg`, `S12-share-dialog.jpeg`.
+
+Sharing an unnamed project does **not** open the share dialog. It opens a gate:
+
+```
+        Name project before sharing
+   Give your project a name before it's shared with others
+
+   [ Untitled Project                          ]
+
+          Skip              (  Save  )
+```
+
+| Detail | Value |
+|---|---|
+| Trigger | `Share Project` while the name is still the default |
+| Input | pre-filled with the current name (`Untitled Project`) |
+| Actions | `Skip` (ghost) · `Save` (light pill) |
+| `Skip` behaviour | proceeds to the share dialog **without** renaming |
+
+`Untitled Project` is treated as *unnamed*, not as a valid name.
+
+### 24.2 Dialog measurements
+
+| Property | Value |
+|---|---|
+| Dialog | 480 × 322, `#1c1c1f`, radius **24** |
+| Title | **28 px `PP Neue Montreal`**, weight 400 |
+| Buttons | `Done` and `Copy Link` both 204 × 56, radius 100 |
+| Emphasis | `Copy Link` is the light pill (`#f7f4ef`); `Done` is ghost |
+
+The serif is **not** used here — `Studio Settings` titles in `Editorial New` at
+24 px (§64.1), while ordinary modals title in the grotesk at 28 px. Two different
+title treatments, so don't unify them.
+
 ## 25. Version History panel `L`
 
 Not a modal — a **left side panel, 300 px wide, full height** (x 8, y 8, 1229 px tall).
