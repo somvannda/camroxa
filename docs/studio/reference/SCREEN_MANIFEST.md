@@ -46,9 +46,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S28 | Clip colour submenu | DONE §71 |
 | S29 | Take lanes expanded | PART §72 — empty state only |
 | S30 | Warp markers | OPEN |
-| S31 | MIDI clip editor | OPEN |
-| S32 | Automation lane — CC | OPEN |
-| S33 | Automation lane — velocity | OPEN |
+| S31 | MIDI clip editor | DONE §73 |
+| S32 | Automation lane — CC | PART §74 — empty lane only |
+| S33 | Automation lane — velocity | DONE §75 |
 
 ## 3. Magic Bar (S34–S38)
 
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 39 |
-| PART | 3 |
-| OPEN | 23 |
+| DONE | 41 |
+| PART | 4 |
+| OPEN | 20 |
 | **Total** | **65** |
 
 ## Rules for working through this list

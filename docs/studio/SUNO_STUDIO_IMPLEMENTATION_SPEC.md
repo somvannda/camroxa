@@ -2803,6 +2803,81 @@ Also captured by accident and worth noting: selecting a **MIDI** clip changes th
 Magic Bar placeholder to `Make a variation of this MIDI clip`, the third distinct
 placeholder family after track-scoped (§54.1) and audio-clip-scoped.
 
+## 73. S31 — MIDI clip editor `L`
+
+Capture `screens/S31-midi-clip-editor.jpeg` — the editor band under the arrangement
+with a MIDI clip (`Bass Line`) selected.
+
+`Clip editor` in the footer swaps the area under the canvas for a piano roll:
+
+```
+[Q] │  13  │ 14 │ 15 │ 16 → 24 …          ← bar ruler of the clip
+[🎹]│  ▮▮▮▮ ▮▮▮▮  ▮▮▮▮                     ← note lane, bars = notes
+    ├ Velocity | Pitch Bend | Modulation
+    │  ● ● ● ● ● ● ● ● ● ● ● ●             ← lane
+[⟳ Loop Off] [Quantize 1/2] [Key C Maj] [Scale Off] [View All]      ⌄
+```
+
+| Property | Value |
+|---|---|
+| Band | full width, ≈ 230 px tall, replaces the plugin dock |
+| Left gutter | piano keyboard strip ≈ 34 px, one row per semitone, black keys darker |
+| Ruler | bars **relative to the clip** (starts at 13 here, not 1) |
+| Notes | rounded bars in the track colour, width = duration, vertical position = pitch |
+| Lane tabs | `Velocity` · `Pitch Bend` · `Modulation`, active tab underlined |
+| Toolbar | `Loop Off` · `Quantize 1/2` · `Key C Maj` · `Scale Off` · `View All`, one row, left-aligned |
+| Collapse | chevron at the far right of the tab row |
+
+Two decisions worth copying:
+
+- **The clip editor reuses the dock slot.** It is not a modal and not a new window —
+  it takes the same band the plugins use, so the arrangement keeps its full height and
+  the user never loses the timeline. `Window management` (§64) is what governs how
+  these surfaces stack.
+- **Quantize, key and scale are per-editor controls, not global settings.** They sit in
+  the editor's own toolbar because they apply to this clip; the project tempo and
+  signature stay in the header.
+
+## 74. S32 — automation lane, CC `PART` (empty state only)
+
+Capture `screens/S32-modulation-lane-empty.jpeg`.
+
+`Modulation` is a CC lane under the note lane. Tabs: `Velocity` (default) ·
+`Pitch Bend` · `Modulation`.
+
+In this project the lane was **empty**: clicking three times inside it produced no
+points, and the scale/grid drew with no curve. So we know the lane's placement and
+chrome but not its point rendering — S32 stays `PART` until a project with CC data
+(or a successful draw) is available.
+
+What the empty state does establish:
+
+- the lane is the **same width as the note lane**, i.e. it shares the clip's x-axis
+  and never scrolls independently;
+- its baseline is drawn as a horizontal line at the bottom of the lane, not at 0 —
+  so the lane is read as "value over time", the same grammar as the velocity lane
+  (§75);
+- the tab row is the only way to switch lanes; there is no dropdown.
+
+## 75. S33 — velocity lane `L`
+
+Capture `screens/S33-velocity-lane.jpeg`.
+
+The default lane draws one lollipop per note:
+
+| Property | Value |
+|---|---|
+| Mark | vertical stem from the baseline + a **filled dot** at the value |
+| Colour | lane accent (blue), same for every note |
+| Spacing | one per note, aligned exactly under its note in the lane above |
+| Values | all notes in this clip sit at the same height — the demo bass is flat-velocity |
+| Interaction | drag the dot vertically (value) or horizontally (moves the note), per §36 |
+
+Because the stems share a baseline and the dots share a height, a flat-velocity clip
+reads as a **comb**. That is the whole point of the lollipop form: any deviation is
+visible as a single dot out of line, which a filled bar chart would hide.
+
+
 
 
 
