@@ -2908,6 +2908,54 @@ Combined with §46.1 (gate at ≤767, editor at ≥768) the full ladder is:
  <768  desktop-only gate
 ```
 
+## 77. Why the demo project cannot export or generate `L`
+
+Retrying both blocked screens produced one root cause, not two. `Drum & Bass Demo`
+is a **legacy project**: its source songs exist in the old (V1) pipeline and are not
+materialised in Studio, so every operation that needs the audio fails.
+
+**Export** (`Export → Full Song` / `Multitrack`) never reaches a dialog. The request
+is rejected outright:
+
+```
+POST https://suno.com/a/api/studio/render-state   → 403
+{
+  "status_code": 403,
+  "detail": "This song isn't available in Studio.",
+  "detail_fallback": "This song isn't available in Studio.",
+  "error_type": "not_available_in_studio",
+  "retryable": false
+}
+```
+
+The UI collapses that into a generic toast — `Error / Something went wrong. Please
+try again.` — with **no mention of the cause**, even though the response carries a
+specific, non-retryable `not_available_in_studio` type. That is a real UX defect
+worth not copying: an unrecoverable, per-song condition is presented as a transient
+failure, so the user retries forever instead of being told which song is at fault.
+
+**Generation** fails the same way, but this time the client *does* explain itself.
+Selecting a clip and asking for a variation puts a chat message in the Magic Bar:
+
+> I couldn't start the vocal variation because the selected audio failed to render
+> for generation. Try again, or choose a shorter section.
+
+Evidence: `screens/EXTRA-generation-refused-legacy.jpeg`.
+
+### What this means for the two open screens
+
+| Screen | Status | What it needs |
+|---|---|---|
+| S50 export dialog | **blocked** | any project whose clips are Studio-native (generate first, then export) |
+| S51 export progress/result | **blocked** | same |
+| S29 take lanes | **blocked** | a clip regenerated over itself, which requires a Studio-native clip |
+| S32 CC lane | **blocked** | same, plus drawing a point in the lane |
+
+So the order that actually works is: **new empty project → generate a short loop →
+export and regenerate there**. Do not attempt any of these on the demo, and do not
+read the generic toast as a transient error.
+
+
 
 
 

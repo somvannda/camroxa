@@ -46,6 +46,7 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S33 | `screens/S33-velocity-lane.jpeg` | Velocity lane — one lollipop per note, flat-velocity comb |
 | S63 | `screens/S63-1280px.jpeg` | 1280 px — full header, gutter still 283, canvas 997 |
 | S64 | `screens/S64-1024px.jpeg` | 1024 px — undo/redo shift, BPM + signature merge, gutter unchanged |
+| — | `screens/EXTRA-generation-refused-legacy.jpeg` | Magic Bar refusal — `the selected audio failed to render for generation` (no manifest row) |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S21 | `screens/S21-hidden-track.jpeg` | Hidden track: `1 hidden track` pill open — row, `Unmute all`, `Show All Hidden Tracks` |
 | S22 | `screens/S22-ruler-zoom-levels.jpeg` | Bar ruler — 8-bar labels, 4-bar grid, playhead handle, section triangle |
