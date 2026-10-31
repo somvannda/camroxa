@@ -1497,6 +1497,30 @@ Reached from Project menu → **Open Project**. A centred modal over the editor.
 | Filters + sort dropdowns | search + sort select |
 | `New Project` as first cell | header button |
 
+### 56.1 Corrections from the 1094 px capture
+
+Captured with ten projects present — five from this session, older ones tagged
+`Legacy`. Screenshot: `reference/screens/S04-my-projects-modal.jpeg`.
+
+| §56 claim | Actual |
+|---|---|
+| `New Project` card is "dashed/tinted" | **solid** `#1c1c1f`, 350 × 242, no dashed border, no visible stroke |
+| Meta line unspecified | the meta line is a **date**: `Oct 31, 2026`, `Oct 25, 2026` |
+| No legacy concept mentioned | older projects carry a **`Legacy`** tag (43 × 18) above the title |
+| "thumbnail block" | thumbnails are real **mini-timeline renders** — clips drawn at true colours and positions; loading cards show a spinner instead |
+
+Measured at this width: modal body 730 × 718 at (182, 264); grid cells 350 × 242;
+2 columns; the grid scrolls (a partial third row is visible).
+
+The `Legacy` tag matters for migration: it marks projects created before the
+current Studio generation, which is the same population §59's `Open a copy in v1`
+targets.
+
+### 56.2 Still uncaptured
+
+`Recently Deleted` tab contents, the `Filters` dropdown options, and the
+`Newest First` sort alternatives.
+
 ## 57. S01 — signed-out marketing page `/studio-welcome` `L` (1116 px)
 
 Captured live 2026-10-30 while signed out. This is the **only** public entry to
