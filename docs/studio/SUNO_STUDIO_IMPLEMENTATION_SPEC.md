@@ -1812,7 +1812,7 @@ scroll.
 the pane did resize, which is what produced this. R1 is now `PART` — the gate is
 captured, the 1280 / 1024 / 768 editor states are not.
 
-## 61. S19 — track options menu `M` (DOM-measured, visual NOT captured)
+## 61. S19 — track options menu `L`
 
 **Trigger: right-click the track NAME.** Not the row, and not the level bar —
 those give different results (§61.3). There is no options button on the row.
@@ -1826,22 +1826,23 @@ those give different results (§61.3). There is no options button on the row.
 | Radius | 10 px |
 | Items | **6 × 40 px**, no dividers |
 | Item text | 14 px / 500, `#f7f4ef` |
-| Text inset | 16 px from the menu edge |
+| Icon column | starts 16 px from the menu edge |
+| Label inset | 40 px — all six labels align on one column |
 | Anchor | opens at the pointer, over the track panel |
 
 ### 61.2 Items (verbatim, in order)
 
-| # | Item | Note |
-|---|---|---|
-| 1 | `Rename track` | |
-| 2 | `Color` | text inset 24 px further — a colour **swatch** sits left of the label |
-| 3 | `Collapse controls` | |
-| 4 | `Duplicate` | |
-| 5 | `Hide & Mute Track` | hide and mute are one command, not two |
-| 6 | `Delete` | |
+| # | Icon | Item | Note |
+|---|---|---|---|
+| 1 | pencil | `Rename track` | |
+| 2 | colour dot + `▸` | `Color` | the dot shows the track's **current** colour; the only row with a **submenu** |
+| 3 | collapse glyph | `Collapse controls` | |
+| 4 | two overlapping squares | `Duplicate` | |
+| 5 | eye with slash | `Hide & Mute Track` | hide and mute are one command, not two |
+| 6 | trash | `Delete` | plain text — **not** red |
 
-No accelerator hints, no separators, and `Delete` carries no distinct colour —
-so the destructive item is **not** visually differentiated in this menu.
+Every row carries an icon; none carries an accelerator hint. `Delete` has no
+danger colour, so the destructive action is indistinguishable from the rest.
 
 ### 61.3 Three different right-click targets, three different results
 
@@ -1874,14 +1875,17 @@ The final control is **record/arm**, not options. Clicking it raises
 suno.com through your browser settings.` — so there is no options affordance at
 all; the menu is right-click-only.
 
-### 61.5 Evidence limitation
+### 61.5 Evidence
 
-The desktop window was not visible when the menu was open, so **no screenshot
-exists** for this screen. Everything above is DOM-measured (rects, computed
-styles, verbatim `innerText`). Unverified: icon artwork per row, hover highlight,
-and whether `Color` opens a submenu.
+Screenshot: `reference/screens/S19-track-options-menu.jpeg`. Everything else is
+DOM-measured (rects, computed styles, verbatim `innerText`).
 
-Hence **PART**, not `DONE` — the section exists, the visual does not.
+Visible in the capture: the menu opens over the track panel at the pointer, the
+track row behind it shows its colour strip and the armed `A` state, and the
+`What's This?` card is still docked bottom-right.
+
+Still unverified: the `Color` submenu contents (the `▸` was not opened), and
+hover/active styling per row.
 
 ### 61.6 Bonus: four placeholder variants observed
 

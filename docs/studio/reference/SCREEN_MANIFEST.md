@@ -34,7 +34,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S16 | Editor, empty project | DONE §44 |
 | S17 | Editor, loaded project | DONE §44 |
 | S18 | Track row anatomy | DONE §52 |
-| S19 | Track options menu | PART §61 — DOM-measured, visual not captured |
+| S19 | Track options menu | DONE §61 |
 | S20 | Add-track menu | DONE §18.3 |
 | S21 | Hidden-track state | OPEN |
 | S22 | Ruler + zoom levels | PART — labels only |
@@ -118,8 +118,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 29 |
-| PART | 5 |
+| DONE | 30 |
+| PART | 4 |
 | OPEN | 31 |
 | **Total** | **65** |
 
@@ -127,7 +127,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 1. **In order.** S01 → S65. No jumping to whatever looks interesting.
 2. **One screen per commit**: screenshot → spec section → implement → diff.
-3. A screen marked DONE must have a spec section number next to it, or it isn't done.
+3. A screen marked DONE must have a spec section number next to it **and** an
+   entry in `SCREENSHOT_INDEX.md`, or it isn't done.
 4. `PART` means the section exists but is missing a visual — treat it as OPEN for
    implementation purposes until the missing state is captured.
 5. Never implement from an OPEN row.
