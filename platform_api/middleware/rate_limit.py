@@ -39,6 +39,13 @@ DEFAULT_RATE_WINDOW_SECONDS = 60
 SUNO_RATE_LIMIT = 20
 SUNO_RATE_WINDOW_SECONDS = 10
 
+# Batch-run provisioning. The desktop posts one batch per planned day × channel
+# pair, so a two-week plan is 15 POSTs before any retry. Keep it in its own
+# bucket: it only writes rows and enqueues a job (no LLM call), and sharing the
+# "llm" bucket with draft/rewrite traffic made legitimate plans 429.
+BATCH_CREATE_RATE_LIMIT = 120
+BATCH_CREATE_RATE_WINDOW_SECONDS = 60
+
 WEB_MUSIC_GENERATE_RATE_LIMIT = 40
 WEB_MUSIC_GENERATE_RATE_WINDOW_SECONDS = 60
 
@@ -231,6 +238,11 @@ async def get_rate_limit_config(
             max_requests=SUNO_RATE_LIMIT,
             window_seconds=SUNO_RATE_WINDOW_SECONDS,
         )
+    elif endpoint_type == "batch":
+        config = RateLimitConfig(
+            max_requests=BATCH_CREATE_RATE_LIMIT,
+            window_seconds=BATCH_CREATE_RATE_WINDOW_SECONDS,
+        )
     elif endpoint_type == "web_music_generate":
         config = RateLimitConfig(
             max_requests=WEB_MUSIC_GENERATE_RATE_LIMIT,
@@ -288,7 +300,8 @@ def resolve_endpoint_type(path: str) -> str:
     Maps request paths to rate limit endpoint types:
       - /generation/suno, /batches/.../retry-suno → "suno"
       - /generation/image, channel-setup logo/covers → "image"
-      - /generation/draft, POST /batches, retry-draft, channel-setup LLM → "llm"
+      - POST /batches (batch-run provisioning) → "batch"
+      - /generation/draft, retry-draft, channel-setup LLM → "llm"
       - Everything else → "default"
 
     Args:
@@ -317,13 +330,15 @@ def resolve_endpoint_type(path: str) -> str:
 
     if (
         normalized.startswith("generation/draft")
-        or normalized == "batches"
         or normalized.endswith("retry-draft")
         or normalized.endswith("rewrite-title")
         or normalized.endswith("rewrite-album")
         or normalized.startswith("channel-setup/generate-")
     ):
         return "llm"
+
+    if normalized == "batches":
+        return "batch"
 
     if normalized.endswith("subscriptions/purchase") or normalized.endswith(
         "topups/purchase"
