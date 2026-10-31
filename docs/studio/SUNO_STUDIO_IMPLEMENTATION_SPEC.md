@@ -2677,4 +2677,78 @@ light 1 px outline and a brightened interior (see §47.1), but the trim grips on
 appear under a real pointer hover, which the pane browser cannot synthesise — it
 needs a pass in the CDP-driven Chrome.
 
+## 69. S25 — clip selected, with trim grips `L`
+
+Two captures: `screens/S25-clip-selected.jpeg` (full frame) and
+`screens/S25-trim-grips-detail.jpeg` (3× crop of the selected clip).
+
+Selecting a clip changes four things at once, and they are all visible in one frame:
+
+| What | State when selected |
+|---|---|
+| Clip body | fill saturates; the waveform stays, the surround darkens |
+| Outline | 1.5–2 px **light** border, inset from the clip bounds, all four sides |
+| Trim grips | a narrow vertical bar flush against **each** end, same light tone as the outline |
+| Header band | clip name at 13 px, top-left, unchanged by selection |
+| Fade handle | a diagonal stub anchored to the **top-left** corner, drawn over the clip |
+| Track row | the whole row takes a lighter fill — selection is echoed in the gutter |
+| Magic Bar | chip switches to the clip (`Vocal Cuts`, swatch in the track colour) and the placeholder becomes clip-specific: `Sing a verse that calls back to the intro` |
+
+Measured from the 3× crop: the clip is ≈ 170 × 59 px, the grips are ≈ 4 × 40 px
+sitting ~3 px inside each end, and the outline sits ~1 px outside the body.
+
+Notes:
+
+- **Trim and fade are separate handles in different corners** — vertical grips on
+  the ends, diagonal on the top-left. That is the whole reason the fade control does
+  not need a menu entry of its own; `SHIFT F` (§36) is just the keyboard shortcut for
+  the handle.
+- The selection outline is **light on purpose**. Every track colour is a saturated
+  fill, so a coloured outline would disappear on some tracks; white survives all of
+  them. Compare §47.1, where the *right-click* selection is drawn in orange because
+  it has to survive the clip menu on top of it.
+- Hovering the clip header raises the help card shown in the frame — `Clip header`:
+  "Drag to move the clip, double-click to open its editor, or right-click for more
+  options — split, rename, recolor, and more." The three verbs are the entire clip
+  interaction model.
+
+## 70. S27 — clip info panel `L`
+
+Capture `screens/S27-clip-info-panel.jpeg`, 1920 × 1277 — the panel needs ≈ 1550 px of
+window or it opens past the right edge.
+
+`Clip Info` in the clip menu (§47.1) swaps the right rail from the library to a
+**song inspector** for the selected clip:
+
+```
+‹ Vocal Cuts                    ← back to the arrangement
+[art]  13-Audio 0001 2024-07-08 121202_7 (Lead Vocal)
+       4:29 · Aug 5, 2026
+       Remix            ♡  ⊘  ⋯
+[▶]  ▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮▮  ← waveform, green
+──────────────────────────────────
+        Info      |     Stems
+Styles     [no styles]
+Lyrics     No Lyrics
+Comments and notes      ⌄
+       [ Write a comment        ↗ ]
+```
+
+| Element | Detail |
+|---|---|
+| Rail width | ≈ 370 px, same column as the library (§19.1) — one rail, two panels |
+| Title | the **source song** name, not the clip name — `… (Lead Vocal)` names the stem |
+| Meta | duration `4:29` · date `Aug 5, 2026` |
+| Primary action | `Remix` with a refresh glyph, above the artwork-adjacent icon row |
+| Tabs | `Info` / `Stems` — the same split the library uses for songs vs parts |
+| Sections | `Styles`, `Lyrics`, `Comments and notes`, each a flat card, not a table |
+
+What this settles for the clone: a clip is not a dumb audio blob with a name — it
+remembers the **generation it came from** (source song, date, duration, styles,
+lyrics) and exposes that as first-class metadata. `Stems` on the second tab is the
+same operation as `Get Stems` in the clip menu, surfaced again because the user
+arrives here from a different direction.
+
+
+
 

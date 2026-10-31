@@ -40,7 +40,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S22 | Ruler + zoom levels | DONE §66 |
 | S23 | Section markers on the ruler | DONE §67 |
 | S24 | Loop region | DONE §68 |
-| S25 | **Clip selected with trim handles** | OPEN |
+| S25 | **Clip selected with trim handles** | DONE §69 |
 | S26 | Clip context menu | DONE §47.1 |
 | S27 | Clip Info panel | OPEN |
 | S28 | Clip colour submenu | OPEN |

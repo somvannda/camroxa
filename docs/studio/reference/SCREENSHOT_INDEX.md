@@ -37,6 +37,9 @@ no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`,
 | S65 | `screens/S65-gate-767px.jpeg` | Desktop-only gate at **767 px** — the last width that gates |
 | S65 | `screens/S65-editor-768px.jpeg` | Same session at **768 px** — the first width that renders the editor |
 | S24 | `screens/S24-loop-region.jpeg` | Loop armed — pink transport button, full-height band, right-edge grip on the ruler |
+| S25 | `screens/S25-clip-selected.jpeg` | Selected clip — light outline, saturated fill, row echo, clip-scoped Magic Bar chip |
+| S25 | `screens/S25-trim-grips-detail.jpeg` | 3× crop — trim grips at both ends, fade stub top-left, header band |
+| S27 | `screens/S27-clip-info-panel.jpeg` | Clip Info rail — source song title, `Remix`, green waveform, `Info`/`Stems`, styles + lyrics |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S21 | `screens/S21-hidden-track.jpeg` | Hidden track: `1 hidden track` pill open — row, `Unmute all`, `Show All Hidden Tracks` |
 | S22 | `screens/S22-ruler-zoom-levels.jpeg` | Bar ruler — 8-bar labels, 4-bar grid, playhead handle, section triangle |
