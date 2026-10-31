@@ -538,11 +538,11 @@ class PublishRepository:
             FROM youtube_upload_jobs
             WHERE provider = 'postforme'
               AND status IN ('queued', 'processing')
-              AND updated_at <= NOW() - ($1 || ' seconds')::interval
+              AND updated_at <= NOW() - make_interval(secs => $1::int)
             ORDER BY updated_at ASC
             LIMIT 100
             """,
-            str(max(60, int(older_than_seconds))),
+            max(60, int(older_than_seconds)),
         )
         return [_row_to_job(row) for row in rows]
 
