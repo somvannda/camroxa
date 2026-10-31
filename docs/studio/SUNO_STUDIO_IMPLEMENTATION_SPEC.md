@@ -832,6 +832,32 @@ Velocity lane: `←/→` move notes · `↑/↓` velocity.
 ### Library panel
 `↓` audition next · `↑` audition previous · `→` replay selected.
 
+### 36.1 Visual spec — the overlay itself (S14)
+
+Capture `screens/S14-keyboard-shortcuts.jpeg`, 1115 × 1245 px at DPR 1, so image
+pixels are CSS pixels.
+
+| Element | Observed |
+|---|---|
+| Panel | ≈ 748 × 874, centred, radius ≈ 16 px, opaque near-black; the arrangement behind stays at **full contrast** — no scrim |
+| Header | `Keyboard Shortcuts` 20 px / 600 left; search pill ≈ 206 × 36 with a magnifier and placeholder `Search shortcuts`; 36 px circular close at the right |
+| Body | two equal columns, ≈ 28 px gutter, ~33 px row rhythm |
+| Section headers | uppercase, ≈ 11 px, letter-spaced, muted — `GENERAL`, `TRACKS`, `EFFECTS CHAIN`, `CLIP EDITOR · AUDIO`, `CLIP EDITOR · MIDI` |
+| Row | action label 13 px left; keycaps right-aligned |
+| Keycap | each key its own chip: ≈ 11 px uppercase, radius ≈ 4 px, one step lighter than the panel, no border |
+| Combos | modifiers are **separate chips** — `CTRL SHIFT Z` is three chips, not one |
+| Alternatives | rendered as a second chip group after a gap: `BACKSPACE` `DEL`, `CTRL SHIFT Z` `CTRL Y`, `CTRL SHIFT ,` `CTRL SHIFT <` `CTRL ,` |
+| Scroll | content overflows the panel (`Swap Bottom Panels` is clipped at the bottom edge); the list scrolls inside the panel with no visible scrollbar track |
+| Trigger state | the `Learn` pill stays in its inverted/active state while the overlay is open |
+
+Two implementation rules fall out of the capture:
+
+1. **Keycap = one chip per physical key.** This is what makes `CTRL SHIFT ,` and
+   `CTRL ,` legible as different gestures at a glance.
+2. **Search filters the same list in place.** The field sits in the header rather
+   than above the columns, so the panel never reflows when the query narrows the
+   result set.
+
 ## 37. What the shortcut map proves
 
 | Finding | Implication |
@@ -855,6 +881,29 @@ What's This?   On
 ```
 
 `What's This?` is a **toggle** here, matching §7.
+
+### 38.1 Visual spec — the popover (S13)
+
+Capture `screens/S13-learn-menu.jpeg`, 1115 × 1245 px at DPR 1.
+
+| Element | Observed |
+|---|---|
+| Trigger | `Learn` pill, bottom-right of the editor: ≈ 92 × 40, fully rounded, lightbulb glyph + label |
+| Trigger active state | pill **inverts** — light fill, dark label — for as long as the menu is open |
+| Popover | ≈ 228 px wide, right edge flush with the pill's right edge, ≈ 8 px above it, radius ≈ 12 px, one step lighter than the canvas, no border, no scrim |
+| Rows | four, ≈ 44 px tall: `Keyboard Shortcuts`, `YouTube Tutorials`, `Learning Center`, `What's This?` |
+| Row anatomy | 20 px leading icon · 13 px label · right-aligned meta |
+| Meta column | `shift ?` (plain text) · external-link arrow · `On` (toggle state) · nothing |
+| Separators | none — no dividers, no chevrons |
+
+Icons are distinct per row rather than a generic bullet: list glyph (shortcuts),
+play-in-square (tutorials), info circle (learning center), lightbulb (what's
+this?). The external-link arrow on `YouTube Tutorials` is the only cue that the
+item leaves the app, and it is the only row with no keyboard meta — the arrow
+occupies that slot instead.
+
+The menu is a **popover, not a dialog**: it does not trap focus, does not dim the
+editor, and closes on outside click. Nothing about it blocks the transport.
 
 ## 39. Settings → Window management `L`
 
@@ -1733,6 +1782,37 @@ answer for matrix row `Q3` (error states) on the entry path.
 | Provider-only: Google / Apple / Phone | provider buttons plus email form |
 | One modal for sign-in and sign-up | separate login and signup pages |
 | Failure shown inline, retry in place | route-level error handling |
+
+### 58.5 Visual metrics (measured, `S02-sign-in-modal.jpeg`)
+
+Screenshot `screens/S02-sign-in-modal.jpeg` — 1250 × 1245 px at DPR 1.12, i.e. a
+1115 px viewport. Values below are CSS px read from the live dialog.
+
+| Property | Value |
+|---|---|
+| Dialog box | **400 × 366** at (425, 440) — horizontally centred, vertically centred |
+| Dialog surface | `#1c1c1f`, radius **32 px**, no border, no shadow |
+| Dialog padding | outer `0`; content inset comes from the child stack |
+| Overflow | `auto`, `max-height: 1120.5px` (viewport-bound, not content-bound) |
+| Scrim | fixed, full viewport, `z-index: 1000`, dims the page behind |
+| Title | `Welcome to Suno` — 24 px / 500, `#fcfbf9`, tracking −0.6 px, centred |
+| Close | 40 × 40 circle, radius 9999 px, 15 px / 500, `aria-label="Close"` |
+
+Buttons, all 12 px radius, all `#252529`:
+
+| Group | Size | Type | Note |
+|---|---|---|---|
+| Google / Apple / Phone | 350 × 48 each | 15 px / 500 | full-width stack, brand glyph left-aligned inside |
+| Discord / Facebook / Microsoft | 111 × 48 each | 13 px / 500 | three-up row, equal width, same height as the primary stack |
+| `or` divider | — | 12 px, `#a3a3a3` | hairline rule either side, sits between the two groups |
+
+Two details worth copying exactly:
+
+- The secondary row is **the same 48 px height** as the primary row. It reads as
+  smaller only because the type drops from 15 → 13 px. Do not shrink the target.
+- Every button is `#252529` on a `#1c1c1f` dialog — a 9-value lift, not a
+  border. There is no 1 px outline anywhere in the modal; separation is tone
+  only.
 
 ## 59. S05 — new empty project `L` (1094 px)
 

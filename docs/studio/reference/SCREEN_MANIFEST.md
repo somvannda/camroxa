@@ -135,9 +135,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 ## Current position
 
-S01–S04 captured and documented (§57, §58, §54, §56). S05 is **PART**: only the
-onboarding overlay was ever seen (§10) — §44 is the *loaded* Drum & Bass demo, so
-the empty arrangement itself has never been captured.
+S01–S14 captured and documented (§57, §58, §54, §56, §59, §10, §18.1, §25, §64,
+§24, §38, §36). S19, S20 and S57 also have images (§61, §18.3, §63).
 
-**Next capture: S05** — needs a signed-in session to reach `My Projects → New
-Project`. Then S19 (track options menu), then S16 onward.
+**Next capture: S15** — `What's This?` hover card, needs a signed-in session.
+Then S16 (empty editor without the overlay), S17 (editor with clips), S18.
