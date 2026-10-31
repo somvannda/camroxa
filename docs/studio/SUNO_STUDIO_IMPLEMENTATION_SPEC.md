@@ -3082,6 +3082,51 @@ result rather than a captured screen: if we add an offline state we are designin
 not copying it. Worth re-testing with a cold load while offline (before any cache
 exists) before concluding it is absent entirely.
 
+## 83. S43 — compressor sidechain `L`
+
+Capture `screens/S46-compressor-routing-list.jpeg` — the `Compressor` card with its
+selector open.
+
+The selector under the card header is not a preset list in the ordinary sense. Its
+options are **every track in the project, twice**:
+
+```
+Bass Line     — Pre-fx
+Bass Line     — Post-fader
+Bass Answer   — Pre-fx
+Bass Answer   — Post-fader
+Long Vocal    — Pre-fx
+Long Vocal    — Post-fader
+Brass Section — Post-fader
+…
+```
+
+| Property | Value |
+|---|---|
+| Control | a `<select>`-style row, ~200 × 44, label `None` with a caret at the right |
+| Options | `None`, then `«track» — Pre-fx` / `«track» — Post-fader` for each track |
+| Order | track order in the arrangement, pre-fx before post-fader for each |
+| Rendering | the list is a **native browser dropdown** — it draws outside the app's theming (system font, system scroll indicator) |
+
+That settles the sidechain model: **the sidechain input is another track, and the tap
+point is explicit** (`Pre-fx` before its inserts, `Post-fader` after its volume).
+`None` is the dry, un-keyed compressor.
+
+Two implementation notes for the clone:
+
+1. Because the option text carries the **tap point**, one dropdown replaces what is
+   normally a track picker plus a second "pre/post" switch. Fewer controls, same
+   expressiveness.
+2. The list scales with project size rather than with a curated preset library — if a
+   project has 20 tracks, that dropdown is 41 items. A clone with many tracks will
+   want grouping or search here.
+
+S46 (`preset browser`) remains **OPEN**: what we found is sidechain routing. The
+plugin headers do expose a preset *name* (`Custom`, `Default`) with an `Update`
+button when dirty (§50.1), but the browser that lists available presets has not been
+opened yet.
+
+
 
 
 
