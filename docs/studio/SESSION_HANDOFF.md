@@ -1,72 +1,95 @@
 # SESSION HANDOFF — read this first, nothing else
 
-Compacted state as of 2026-10-30. A new session should need only this file plus
-`SCREEN_MANIFEST.md`.
+Latest state as of 2026-10-31 (late). A new session should need only this file plus
+`reference/SCREEN_MANIFEST.md` and `reference/SCREENSHOT_INDEX.md`.
 
 ## Where things are
 
 | | |
 |---|---|
 | Worktree | `C:\Users\Kong Somvannda\.local\share\opencode\worktree\d16337\studio-rebuild` |
-| Branch | `feat/studio-rebuild` — clean, pushed |
+| Branch | `feat/studio-rebuild` — clean, pushed, head `16cad8d4` |
 | PR | https://github.com/somvannda/camroxa/pull/new/feat/studio-rebuild |
 | Web | `localhost:3103` (this worktree) |
 | Platform API | `localhost:8100` (runs from canonical checkout) |
 | MusicAPI | `localhost:4003` (runs from canonical checkout) |
-| Reference tab | **not persisted** — browser tabs are per-session; re-open `suno.com` and sign in again |
+| Screenshot archive | `docs/studio/reference/screens/` — 42 files |
 
-## The working loop (proven, use it for every screen)
+## Capturing the reference (the current, working method)
+
+The OpenCode browser pane is a **separate Chromium** and it is signed out of Suno; its
+Google sign-in cannot be completed without the account password. The reference is
+captured from a **Chrome instance started with a debugging port on a clone of the real
+profile** instead:
 
 ```
-1. snapshot the reference tab while the screen is open
-2. find "<label>" → click that ref        (synthetic .click() does NOT work)
-3. screenshot
-4. write the spec section in SUNO_STUDIO_IMPLEMENTATION_SPEC.md
-5. commit; tick the row in SCREEN_MANIFEST.md
+# one-time (Chrome must be closed first: --remote-debugging-port is ignored on the
+# default profile since Chrome 136, and the cookie DB is locked while it runs)
+Get-Process chrome | Stop-Process -Force
+# copy "Local State" + Profile 2 (Cookies, Local Storage, Preferences) into
+#   %TEMP%\opencode\chrome-dbg\Default\
+chrome.exe --user-data-dir=%TEMP%\opencode\chrome-dbg --remote-debugging-port=9222 https://suno.com/studio
 ```
 
-One screen = one screenshot + one spec section + one commit. Never two at once.
+That clone carries the signed-in Suno session. Drive it with the CDP helper:
+
+```
+cd %TEMP%\opencode
+node cdp.mjs list
+node cdp.mjs eval "<js>"          # or:  node cdp.mjs evalf query.js
+node cdp.mjs shot  out.jpeg [--full]
+node cdp.mjs shotclip out.jpeg <x> <y> <w> <h>     # 2x crop, best evidence for detail
+node cdp.mjs click <x> <y> [right]
+node cdp.mjs hover <x> <y>        # multi-step move + dwell, needed for hover cards
+node cdp.mjs press <x> <y> / release <x> <y>
+node cdp.mjs key <key> [ctrl|shift|alt|meta]
+node cdp.mjs resizeshot out.jpeg <w> <h>           # viewport + shot in ONE session
+node probe.mjs                                     # width sweep for breakpoints
+```
+
+`Emulation.setDeviceMetricsOverride` is **cleared when the WebSocket closes**, so a
+plain `size` followed by a separate `shot` does nothing — use `resizeshot`.
+
+### Working loop for a screen
+
+```
+1. get it on screen (DOM-first: find by aria-label, call .click() from evaluate)
+2. shotclip for the detail you are documenting, shot for context
+3. write the spec sub-section with real numbers (measure via evaluate, not by eye)
+4. tick the manifest row, add a row to SCREENSHOT_INDEX.md with the write tool
+5. gates, commit, push
+```
+
+`evaluate` `.click()` **does** open their menus. Raw CDP mouse clicks open menus on
+`mousePressed` and close them on release, which is why `press`/`release` exist.
 
 ## Position
 
-- 65 screens in `docs/studio/reference/SCREEN_MANIFEST.md`
-- **29 DONE, 5 PART, 31 OPEN** (counted from the manifest rows, not the old tally)
-- **S05 DONE §59** — new empty project: one `Audio Track` created automatically,
-  120 BPM / 4/4, bar labels every 2 bars at default zoom.
-- **S19 PART §61** — track options menu, DOM-measured but no screenshot. The menu
-  is opened by right-clicking the **track name** only; there is no options button.
-- **Next: S16 (arrangement)** — the editor with content. S19 needs a re-shot with
-  the window visible to become DONE.
-- The reference tab is signed in again as of this session — reuse it, don't close it.
-
-## What is actually built (code)
-
-`/studio` project home · `/studio/editor` reference-layout shell · `/studio/editor/classic`
-(old editor) · deep link `?project=` · transport that plays (clips with `audioUrl`) ·
-dual rulers · clips with header band + selection outline · two sliders per track row ·
-semantic track colours · plugin dock (9 effects, presets, modes, bypass, popout) ·
-editable tempo and add-track, both persisted.
-
-## What is NOT built
-
-Magic Bar (geometry in §54) · trim/drag/split · take lanes · warp markers · EQ bands ·
-compressor sidechain · mixer · export dialog · waveforms · plugin audio processing ·
-generation inside the editor · B1–B5 backend handlers.
+- 65 screens, **35 DONE / 2 PART / 28 OPEN** (counted from manifest rows).
+- **Every `DONE` row now has at least one image.** The archive went from 0 files to
+  42 this session; do not add a `DONE` row without an index entry.
+- Last landed: S21 hidden tracks §65, S22 ruler §66, S23 section markers §67.
+- **Next in order: S24/S25** (arrangement sections, marker/take-lane family), then
+  S42/S43 (EQ + compressor at full size), then the OPEN rows.
 
 ## Traps that cost time
 
 | Trap | Avoid |
 |---|---|
-| `element.click()` doesn't open their menus | use `snapshot` → `find` → `click ref` |
-| refs expire after a nav or a new snapshot | do find → click → screenshot in one pass |
-| the Studio editor exposes **no** a11y refs (all canvas) | `snapshot`/`find` return an empty tree — read `innerText` via `evaluate`, locate the control by `aria-label`, then dispatch a full pointer sequence (pointerover → pointerdown → mousedown → pointerup → mouseup → click) |
-| a control's only handle is its `aria-label` | e.g. the onboarding `×` is `Skip to the empty project`; search by label, never by glyph |
-| PowerShell `Set-Content -Encoding utf8` writes a BOM | it broke PostCSS; write via the write tool or strip the BOM |
+| Chrome 136+ ignores `--remote-debugging-port` on the default profile | run a cloned `--user-data-dir` (above) |
+| the cookie DB is locked while Chrome runs | close Chrome before copying the profile |
+| `Emulation.setDeviceMetricsOverride` dies with the WS | `resizeshot`, not `size` + `shot` |
+| PowerShell cannot nest quotes inside `node cdp.mjs eval "..."` | write the JS to a file and use `evalf` |
+| the Studio editor is canvas — `snapshot`/`find` return nothing | `evaluate` + `aria-label`, or raw CDP clicks |
+| the project menu opens on **mousePressed** | `press` then screenshot, or call `.click()` from JS |
+| right-click target matters | track **name** → track menu; a clip → clip menu; row body → nothing |
+| synthetic `Zoom in` clicks can leave the canvas painting no fills/ruler text | reload; treat as capture-environment risk, re-verify before writing it up |
+| the demo project can stall on `Restoring your last project…` | wait ~10 s, then `Try again` / reload; captured as an extra |
+| screenshots need a visible window | `Get-Process chrome` first; a minimised window fails |
+| PowerShell `Set-Content -Encoding utf8` writes a BOM and mangles `—`/`§` | write docs with the write/edit tools |
 | CSS font sizes below 11 px fail `check:ui` | 11/12/13/14/15/16/18/22/24/26/28/30/32 only |
 | raw hex outside the palette fails `check:ui` | use `var(--token)` |
-| canvas-rendered UI (rulers, waveforms, clips inside Suno) | only screenshots read it; DOM probes return nothing |
-| browser tabs do **not** survive into a new session | re-open `suno.com` and sign in; never plan around "the tab is still there" |
-| a `DONE` row can be wrong | verify the cited § section really shows that screen before trusting it |
+| a `DONE` row can be wrong | verify the cited § section really shows that screen |
 
 ## Gates before every commit
 
@@ -74,17 +97,28 @@ generation inside the editor · B1–B5 backend handlers.
 cd camxora.com && npm run typecheck && npm run check:ui
 ```
 
+## Corrections this session made to older notes
+
+| Older claim | Measured |
+|---|---|
+| responsive gate at ~706 px | exactly **768 px** — gate at ≤767, editor at ≥768 |
+| `What's This?` card is the dark corner note | the corner note is the affordance; the real card is a **light** 256 px tooltip anchored under the control |
+| clip menu has dividers (§47) | the complete variant has **no** dividers; grouping comes from order |
+| track row has one level bar | two sliders (volume 172 px, pan 48 px) plus a colour strip |
+
 ## Open product decisions (unanswered)
 
 1. Canvas renderer or DOM clips for the arrangement.
 2. Adopt the full clip model `edits[] + takes[] + fx[]` now or later.
-3. Wavetable / IR Designer in scope or cut.
+3. Wavetable / IR Designer in scope or cut — **settled by the reference**: behind a
+   default-off `Advanced content features` toggle (§64).
 4. Do we keep `/studio` as a page, given the reference has no landing page at all
    (it reopens the last project; everything else is the My Projects modal)?
 
 ## Docs worth reading (in order)
 
 1. `reference/SCREEN_MANIFEST.md` — the contract
-2. `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §44–§56 — measured layouts
-3. `SUNO_STUDIO_UX_UI_FLOW.md` — how it behaves
-4. `PROJECT_DECISIONS.md` — why things are the way they are
+2. `reference/SCREENSHOT_INDEX.md` — which image proves which row
+3. `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §44–§67 — measured layouts
+4. `SUNO_STUDIO_UX_UI_FLOW.md` — how it behaves
+5. `PROJECT_DECISIONS.md` — why things are the way they are
