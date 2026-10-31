@@ -146,6 +146,7 @@ class MusicView(QWidget):
         self._pending_title_rewrite_row: HistoryRow | None = None
         self._profiles: list[ProfileResponse] = []
         self._youtube_connections: list[YouTubeConnectionResponse] = []
+        self._publish_accounts: list[object] = []
         self._history = MusicHistoryListResponse()
         self._settings_raw: dict = {}
         self._music_settings = MusicSettingsState()
@@ -765,6 +766,7 @@ class MusicView(QWidget):
         self._error_banner.hide()
         self._profiles = list(payload.profiles)
         self._youtube_connections = self._normalize_youtube_connections(list(payload.youtube_connections))
+        self._publish_accounts = list(getattr(payload, "publish_accounts", []) or [])
         if self._cache is not None:
             self._cache.apply_settings_workspace(youtube_connections=self._youtube_connections)
         self._history = payload.history
@@ -954,10 +956,16 @@ class MusicView(QWidget):
             self._youtube_connections = self._normalize_youtube_connections(connections)
 
     def _build_readiness_report(self):
+        publish_profile_ids = {
+            str(getattr(account, "profile_id", "") or "").strip()
+            for account in self._publish_accounts
+            if str(getattr(account, "profile_id", "") or "").strip()
+        }
         return build_music_readiness_report(
             profiles=self._selected_profiles(),
             settings=self._settings_raw,
             youtube_connections=self._youtube_connections,
+            publish_account_profile_ids=publish_profile_ids,
         )
 
     def _on_song_fields_changed(self) -> None:

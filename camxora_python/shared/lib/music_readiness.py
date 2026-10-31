@@ -101,11 +101,13 @@ def evaluate_music_readiness(
     selected_profiles: list[ProfileResponse],
     settings: dict[str, Any],
     youtube_connections: list[YouTubeConnectionResponse],
+    publish_account_profile_ids: set[str] | None = None,
     bg_sample_count: int = 0,
     th_sample_count: int = 0,
 ) -> MusicReadinessReport:
     """Build checklist items for the Music page."""
     draft = build_system_settings_draft(settings)
+    publish_profiles = set(publish_account_profile_ids or set())
     items: list[ReadinessItem] = []
 
     for profile in selected_profiles:
@@ -124,7 +126,9 @@ def evaluate_music_readiness(
 
     for profile in selected_profiles:
         name = profile.name or "Channel"
-        connected = _youtube_connected(profile.id, youtube_connections)
+        connected = _youtube_connected(profile.id, youtube_connections) or (
+            str(profile.id) in publish_profiles
+        )
         items.append(
             ReadinessItem(
                 id=f"youtube:{profile.id}:connected",
@@ -133,7 +137,7 @@ def evaluate_music_readiness(
                 complete=connected,
                 required_for_generate=False,
                 required_for_upload=True,
-                hint="Settings → YouTube → Connect Channel.",
+                hint="Settings → YouTube → Connect Channel or Connect with Post for Me.",
             )
         )
         pub_ready = connected and _publication_ready_for_upload(profile)
@@ -229,6 +233,7 @@ def build_music_readiness_report(
     profiles: list[ProfileResponse],
     settings: dict[str, Any],
     youtube_connections: list[YouTubeConnectionResponse],
+    publish_account_profile_ids: set[str] | None = None,
 ) -> MusicReadinessReport:
     """Evaluate readiness for the given channel profiles and workspace settings."""
     draft = build_system_settings_draft(settings)
@@ -238,6 +243,7 @@ def build_music_readiness_report(
         selected_profiles=profiles,
         settings=settings,
         youtube_connections=youtube_connections,
+        publish_account_profile_ids=publish_account_profile_ids,
         bg_sample_count=bg_count,
         th_sample_count=th_count,
     )

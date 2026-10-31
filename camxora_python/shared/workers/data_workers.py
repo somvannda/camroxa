@@ -1035,6 +1035,7 @@ class MusicWorkspacePayload:
     operation_costs: object
     language_options: list
     youtube_connections: list
+    publish_accounts: list = field(default_factory=list)
     suno_blocklist: object | None = None
 
 
@@ -1053,7 +1054,7 @@ class MusicWorkspaceWorker(QThread):
         previous_timeout = self._api._client._default_timeout
         self._api._client._default_timeout = self.WORKSPACE_TIMEOUT
         try:
-            with ThreadPoolExecutor(max_workers=8) as pool:
+            with ThreadPoolExecutor(max_workers=9) as pool:
                 future_profiles = pool.submit(self._api.list_profiles)
                 future_settings = pool.submit(self._api.get_settings)
                 future_descriptions = pool.submit(self._api.list_prompt_description_names)
@@ -1063,6 +1064,7 @@ class MusicWorkspaceWorker(QThread):
                 future_costs = pool.submit(self._fetch_operation_costs)
                 future_languages = pool.submit(self._fetch_language_options)
                 future_youtube = pool.submit(self._api.list_youtube_connections)
+                future_publish = pool.submit(self._fetch_publish_accounts)
                 future_blocklist = pool.submit(self._fetch_suno_blocklist)
                 profiles = future_profiles.result()
                 settings = future_settings.result()
@@ -1073,6 +1075,7 @@ class MusicWorkspaceWorker(QThread):
                 operation_costs = future_costs.result()
                 language_options = future_languages.result()
                 youtube_connections = future_youtube.result()
+                publish_accounts = future_publish.result()
                 suno_blocklist = future_blocklist.result()
             self.succeeded.emit(
                 MusicWorkspacePayload(
@@ -1085,6 +1088,7 @@ class MusicWorkspaceWorker(QThread):
                     operation_costs=operation_costs,
                     language_options=language_options,
                     youtube_connections=youtube_connections,
+                    publish_accounts=publish_accounts,
                     suno_blocklist=suno_blocklist,
                 )
             )
@@ -1102,6 +1106,12 @@ class MusicWorkspaceWorker(QThread):
             return self._api.get_operation_costs()
         except Exception:
             return OperationCostsResponse(items=[])
+
+    def _fetch_publish_accounts(self):
+        try:
+            return self._api.list_publish_accounts()
+        except Exception:
+            return []
 
     def _fetch_language_options(self):
         from shared.lib.music_settings import DEFAULT_LANGUAGE_OPTIONS, language_options_from_response

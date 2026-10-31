@@ -91,6 +91,28 @@ def test_evaluate_music_readiness_upload_requires_publication() -> None:
     assert not report.upload_ready
 
 
+def test_postforme_account_satisfies_youtube_connection() -> None:
+    profile = _profile(profile_id="p1", name="Primary", video_template_id="tpl-1")
+    profile.youtube_config = {
+        "visibility": "unlisted",
+        "made_for_kids": False,
+        "ai_use": True,
+        "category": "10",
+        "title_template": "{title}",
+        "description_template": "{description}",
+    }
+    report = evaluate_music_readiness(
+        selected_profiles=[profile],
+        settings={},
+        youtube_connections=[],
+        publish_account_profile_ids={"p1"},
+    )
+    connection_item = next(
+        item for item in report.items if item.id == "youtube:p1:connected"
+    )
+    assert connection_item.complete is True
+
+
 def test_missing_setup_items_still_notify(tmp_path, monkeypatch) -> None:
     """Bell notifications must surface incomplete generate prerequisites."""
     from shared.models.notification_item import notification_item_from_setup
