@@ -36,9 +36,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S18 | Track row anatomy | DONE §52.1 |
 | S19 | Track options menu | DONE §61 |
 | S20 | Add-track menu | DONE §18.3 |
-| S21 | Hidden-track state | OPEN |
-| S22 | Ruler + zoom levels | PART — labels only |
-| S23 | Section markers on the ruler | PART — flags visible |
+| S21 | Hidden-track state | DONE §65 |
+| S22 | Ruler + zoom levels | DONE §66 |
+| S23 | Section markers on the ruler | DONE §67 |
 | S24 | Loop region | OPEN |
 | S25 | **Clip selected with trim handles** | OPEN |
 | S26 | Clip context menu | DONE §47.1 |
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 32 |
-| PART | 4 |
-| OPEN | 29 |
+| DONE | 35 |
+| PART | 2 |
+| OPEN | 28 |
 | **Total** | **65** |
 
 ## Rules for working through this list
@@ -135,11 +135,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 ## Current position
 
-S01–S20, S26, S34/S35, S38–S41, S49, S52/S53, S57 and S65 are captured with an
-image and a spec section. Every `DONE` row is fully evidenced; the archive has 38
-files.
+S01–S23, S26, S34/S35, S38–S41, S49, S52/S53, S57 and S65 are captured with an
+image and a spec section — 42 files. Every `DONE` row is fully evidenced.
 
-**Next capture: S22/S23** — the ruler at several zoom levels, and the section
-markers that are already visible as blue flags on the bar ruler but have never been
-measured. Then S42/S43 (EQ and compressor at full size), then the OPEN rows in
-order.
+**Next: S24/S25** (arrangement sections and the marker/take-lane family), then
+S42/S43 (EQ and compressor at full size), then the remaining OPEN rows in order.

@@ -2548,3 +2548,95 @@ entries. Implement the setting first; keep the designers optional.
 
 Note the asymmetry that matters for our defaults: auto-stretch is **on** by
 default (audio conforms to the project), advanced tools are **off** by default.
+
+## 65. S21 — hidden tracks `L`
+
+Capture `screens/S21-hidden-track.jpeg`.
+
+Hiding is **per track** and reversible from two places. Right-clicking a track name
+opens the track menu:
+
+```
+Rename track
+Color            ▸
+Collapse controls
+Duplicate
+Hide & Mute Track
+Delete
+```
+
+`Hide & Mute Track` does exactly what it says: the row leaves the arrangement **and**
+is muted. On the demo that turned `Electric Keyboards` into a gap and renumbered the
+remaining rows (`Soft Piano` became `1`).
+
+### 65.1 The hidden-tracks affordance
+
+| Element | Observed |
+|---|---|
+| Trigger | a pill at the right end of the `Add new track` row: `aria-label="1 hidden track"`, 53 × 28, showing just the **count** |
+| Popover | opens **upward-left** from the pill, ≈ 220 px wide, radius 12 |
+| Header | `Hidden tracks` + `×` |
+| Row | colour swatch · track name · two icon buttons (reveal, unmute) |
+| Bulk | `Unmute all` with a speaker glyph |
+| Footer action | `Show All Hidden Tracks` with `shift alt H` |
+
+Three things to copy:
+
+1. **The count is the label.** There is no "Hidden tracks" text button eating space in
+   the gutter — a single number appears only when the count is non-zero.
+2. **Hide ≠ mute, but they are paired by default.** The menu entry is `Hide & Mute
+   Track`; the popover then offers reveal and unmute separately, so the user can put
+   the row back while it stays muted.
+3. **The restore is discoverable without the menu.** The pill lives next to
+   `Add new track`, i.e. exactly where a user looks after a row disappears.
+
+## 66. S22 — the bar ruler `L`
+
+Capture `screens/S22-ruler-zoom-levels.jpeg`.
+
+```
+┌ 1 ────── 9 ────── 17 ────── 25 ────── 33 ────── 41 ────── 49 ────── 57 ▲ 65 …┐
+                                        ▲ section marker   ● playhead
+```
+
+| Property | Value |
+|---|---|
+| Ruler height | ≈ 20 px, above the clip band, full canvas width |
+| Labels | bar number **every 8 bars** (`1, 9, 17, 25, …`) in a small muted chip |
+| Ticks | one short tick at the midpoint of each 8-bar span (bar +4), full-height 1 px gridlines follow it down the canvas |
+| Grid | every 4 bars, 1 px, rgba white ≈ 0.06 — barely visible, which is the point |
+| Playhead | 10 px circular handle **plus** a downward triangle, and a 1 px vertical line through the whole canvas |
+| Section marker | triangle only, no handle |
+| Scrollbar | a thin horizontal track sits **below** the canvas, one step lighter |
+
+Two densities were observed on the same timeline: ≈ 157 px per 8 bars (labels
+`1…73` across the canvas) and ≈ 84 px per 8 bars (`1…137`). So zoom does change the
+label density while keeping the 8-bar label rule constant.
+
+**Zoom controls** live in the bottom-right cluster as `Zoom out` · `Fit to content` ·
+`Zoom in`. Caveat for the next session: in this Chrome session, repeated synthetic
+clicks on `Zoom in` sometimes left the timeline canvas painting **no fills and no
+ruler text** until a reload. Treat that as a capture-environment risk to re-verify,
+not as a product bug — it never reproduced on the first click.
+
+## 67. S23 — section markers `L`
+
+Capture `screens/S23-section-markers.jpeg`.
+
+A section marker is a **blue triangle sitting on the ruler line**, distinguished from
+the playhead by the absence of the round grab handle:
+
+| | Playhead | Section marker |
+|---|---|---|
+| Handle | 10 px grey circle | none |
+| Shape | triangle + vertical line | triangle only |
+| Line through canvas | yes, 1 px | only at the marker's own column |
+
+Between two markers the ruler shows a **subtle lighter band**, so a section reads as a
+region rather than a point. That is the whole value of the element: the playhead is a
+position, a section is an interval.
+
+We currently draw markers as text chips in the ruler. The reference's version costs
+less space and stays legible at every zoom because it carries no label — the name, if
+any, is not drawn on the ruler.
+

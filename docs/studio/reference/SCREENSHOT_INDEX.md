@@ -7,9 +7,9 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-**38 captures across the archive, covering every `DONE` row.** Two are extras with
-no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`); the rest map
-one or more images to a screen.
+**42 captures across the archive, covering every `DONE` row.** Three are extras with
+no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`,
+`EXTRA-restoring-last-project`); the rest map one or more images to a screen.
 
 ## Captured
 
@@ -37,6 +37,9 @@ one or more images to a screen.
 | S65 | `screens/S65-gate-767px.jpeg` | Desktop-only gate at **767 px** — the last width that gates |
 | S65 | `screens/S65-editor-768px.jpeg` | Same session at **768 px** — the first width that renders the editor |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
+| S21 | `screens/S21-hidden-track.jpeg` | Hidden track: `1 hidden track` pill open — row, `Unmute all`, `Show All Hidden Tracks` |
+| S22 | `screens/S22-ruler-zoom-levels.jpeg` | Bar ruler — 8-bar labels, 4-bar grid, playhead handle, section triangle |
+| S23 | `screens/S23-section-markers.jpeg` | Section marker on the ruler next to the playhead — no handle, lighter band between |
 | S08 | `screens/S08-version-history.jpeg` | History panel populated — date navigator, expanded newest entry |
 | S08 | `screens/S08-version-history-loading.jpeg` | Same panel in its `Loading...` state |
 | S09 | `screens/S09-settings-performance.jpeg` | Studio Settings → Performance, ghost-drag toggle on |
@@ -52,6 +55,7 @@ one or more images to a screen.
 | S35 | `screens/S35-magicbar-attachment.jpeg` | Magic Bar with a `Drum Kit Main` chip — track-coloured thumb, `×`, drum-specific placeholder |
 | S57 | `screens/S57-project-loading-blank.jpeg` | Load state: blank frame, `canvas` 0, no text |
 | — | `screens/EXTRA-project-load-error.jpeg` | Reload of a demo project — `No project loaded` + `Try again` / `Dismiss` (no manifest row) |
+| — | `screens/EXTRA-restoring-last-project.jpeg` | `Restoring your last project…` — the state between reload and load (no manifest row) |
 | — | `screens/RESPONSIVE-gate-319px.jpeg` | §60 desktop-only gate at 319 px (no manifest row) |
 
 ## Missing — DONE rows with no image yet (0)
@@ -62,8 +66,6 @@ before promoting them.
 
 | Screen | Spec | Needs |
 |---|---|---|
-| S22 | §— | ruler + zoom levels (labels only so far) |
-| S23 | §— | section markers on the ruler (flags seen, not measured) |
 | S42 | §53 | EQ expanded, bands and shapes |
 | S43 | §53 | compressor with sidechain |
 | S63 | — | 1280 px |
