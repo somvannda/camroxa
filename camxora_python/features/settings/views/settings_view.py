@@ -59,8 +59,6 @@ from shared.lib.settings_workspace import (
     get_profile_initials,
     get_profile_search_haystack,
     slugify_profile_folder_name,
-    get_youtube_connect_button_label,
-    get_youtube_connect_hint,
     get_youtube_status_label,
     publication_draft_equal,
     profile_payload_equal,
@@ -994,74 +992,113 @@ class SettingsView(QWidget):
         return self._profile_editor_panel
 
     def _build_youtube_tab(self) -> QWidget:
-        left = SettingsPanel(
-            "Channel Connection",
-            subtitle="Attach a YouTube channel to the selected profile and use it for publication settings.",
+        panel = SettingsPanel(
+            "YouTube Channels",
+            subtitle=(
+                "Connect a YouTube channel to the selected profile. "
+                "Post for Me powers uploads and costs 5 credits per upload."
+            ),
             fill_available_height=True,
         )
         self._youtube_connection_stat = mini_stat("Connection status", "Not connected")
-        left.add_widget(self._youtube_connection_stat)
+        panel.add_widget(self._youtube_connection_stat)
         self._youtube_profile = QComboBox()
         self._youtube_profile.currentIndexChanged.connect(self._on_youtube_profile_changed)
-        left.add_widget(form_row("Profile", self._youtube_profile))
-        self._youtube_channel_display = note_box("No YouTube channel is connected yet.")
-        left.add_widget(form_row("Channel", self._youtube_channel_display))
+        panel.add_widget(form_row("Profile", self._youtube_profile))
+
+        panel.add_widget(note_box("Connected channels"))
+        self._connected_channels_host = QWidget()
+        self._connected_channels_layout = QVBoxLayout(self._connected_channels_host)
+        self._connected_channels_layout.setContentsMargins(0, 0, 0, 0)
+        self._connected_channels_layout.setSpacing(8)
+        panel.add_widget(self._connected_channels_host)
+
+        # Legacy direct-Google channel picker (only shown when a connection is
+        # awaiting channel selection).
         self._youtube_channel_row_host = QWidget()
         self._youtube_channel_row_layout = QVBoxLayout(self._youtube_channel_row_host)
         self._youtube_channel_row_layout.setContentsMargins(0, 0, 0, 0)
-        left.add_widget(self._youtube_channel_row_host)
+        panel.add_widget(self._youtube_channel_row_host)
+
         btn_row = QHBoxLayout()
         self._youtube_connect_btn = QPushButton("Connect Channel")
         self._youtube_connect_btn.clicked.connect(self._start_publish_connection)
-        self._youtube_resync_btn = QPushButton("Resync Channel Data")
-        self._youtube_resync_btn.clicked.connect(self._resync_youtube)
-        self._youtube_disconnect_btn = QPushButton("Disconnect")
-        self._youtube_disconnect_btn.clicked.connect(self._disconnect_youtube)
-        btn_row.addWidget(self._youtube_connect_btn)
-        btn_row.addWidget(self._youtube_resync_btn)
-        btn_row.addWidget(self._youtube_disconnect_btn)
-        btn_row.addStretch()
-        left.add_layout(btn_row)
-
-        self._publish_status = note_box("Post for Me: not connected.")
-        left.add_widget(form_row("Publishing provider", self._publish_status))
-        publish_row = QHBoxLayout()
         self._publish_refresh_btn = QPushButton("Refresh Status")
         self._publish_refresh_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._publish_refresh_btn.clicked.connect(self._refresh_publish_accounts)
-        publish_row.addWidget(self._publish_refresh_btn)
-        publish_row.addStretch()
-        left.add_layout(publish_row)
+        btn_row.addWidget(self._youtube_connect_btn)
+        btn_row.addWidget(self._publish_refresh_btn)
+        btn_row.addStretch()
+        panel.add_layout(btn_row)
+
         self._publish_account_note = note_box(
-            "YouTube uploads use Post for Me and cost 5 credits per upload."
+            "Each YouTube upload costs 5 credits. Publication defaults are per profile."
         )
-        left.add_widget(self._publish_account_note)
-        self._youtube_connect_hint = note_box(
-            "Connecting uses Post for Me. Once connected, publication defaults apply per profile."
-        )
-        left.add_widget(self._youtube_connect_hint)
-        left.add_stretch()
+        panel.add_widget(self._publish_account_note)
+        panel.add_stretch()
+        return panel
 
-        right = SettingsPanel(
-            "Channel Access",
-            subtitle="Review the current YouTube connection state for the selected profile.",
-            fill_available_height=True,
-        )
-        stats_row = QHBoxLayout()
-        self._youtube_profile_stat = mini_stat("Selected profile", "No profile")
-        self._youtube_channels_stat = mini_stat("Returned channels", "0")
-        self._youtube_session_stat = mini_stat("Session", "Idle")
-        stats_row.addWidget(self._youtube_profile_stat)
-        stats_row.addWidget(self._youtube_channels_stat)
-        stats_row.addWidget(self._youtube_session_stat)
-        right.add_layout(stats_row)
-        self._youtube_state_note = note_box("Select a profile first to review its YouTube connection state.")
-        right.add_widget(self._youtube_state_note)
-        self._youtube_connected_note = note_box("No YouTube channel is connected yet.")
-        right.add_widget(self._youtube_connected_note)
-        right.add_stretch()
+    def _render_connected_channels(self) -> None:
+        while self._connected_channels_layout.count():
+            item = self._connected_channels_layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.deleteLater()
 
-        return make_two_column_fill_tab(left, right, left_stretch=0, right_stretch=1)
+        profile_id = str(self._youtube_profile.currentData() or "")
+        accounts = [
+            account
+            for account in self._publish_accounts
+            if str(getattr(account, "profile_id", "") or "") == profile_id
+        ]
+        connection = self._youtube_connection_for(profile_id) if profile_id else None
+        direct_connected = bool(
+            connection
+            and str(connection.status or "").lower() == "connected"
+            and connection.channel_title
+        )
+
+        if accounts:
+            for account in accounts:
+                name = (
+                    getattr(account, "display_name", None)
+                    or getattr(account, "username", None)
+                    or "YouTube channel"
+                )
+                account_id = str(getattr(account, "id", "") or "")
+                self._add_connected_channel_row(
+                    provider="Post for Me",
+                    name=str(name),
+                    account_id=account_id,
+                )
+        if direct_connected and connection is not None:
+            self._add_connected_channel_row(
+                provider="Google OAuth",
+                name=str(connection.channel_title or "YouTube channel"),
+                account_id="",
+            )
+        if not accounts and not direct_connected:
+            self._connected_channels_layout.addWidget(
+                note_box("No YouTube channel is connected for this profile.")
+            )
+
+    def _add_connected_channel_row(
+        self, *, provider: str, name: str, account_id: str
+    ) -> None:
+        row_host = QWidget()
+        row = QHBoxLayout(row_host)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(note_box(f"{provider} · {name} — Connected"), stretch=1)
+        disconnect = QPushButton("Disconnect")
+        disconnect.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        if provider == "Post for Me":
+            disconnect.clicked.connect(
+                lambda *_, aid=account_id: self._disconnect_publish_account(aid)
+            )
+        else:
+            disconnect.clicked.connect(self._disconnect_direct_youtube)
+        row.addWidget(disconnect)
+        self._connected_channels_layout.addWidget(row_host)
 
     def _build_publication_tab(self) -> QWidget:
         panel = SettingsPanel(
@@ -2864,48 +2901,10 @@ class SettingsView(QWidget):
             self._youtube_profile.blockSignals(False)
 
             profile_id = self._youtube_profile.currentData()
-            profile = self._profile_by_id(profile_id)
             connection = self._youtube_connection_for(profile_id)
             status = connection.status if connection else "not_connected"
             status_label = get_youtube_status_label(status)
             self._update_mini_stat_value(self._youtube_connection_stat, status_label)
-            self._update_mini_stat_value(self._youtube_profile_stat, profile.name if profile else "No profile")
-            channel_count = len(connection.channels) if connection else 0
-            if connection and connection.channel_id and channel_count == 0:
-                channel_count = 1
-            self._update_mini_stat_value(self._youtube_channels_stat, str(channel_count))
-            session_label = {
-                "pending_browser": "In progress",
-                "awaiting_channel_selection": "Needs selection",
-                "connected": "Ready",
-            }.get(status, "Idle")
-            self._update_mini_stat_value(self._youtube_session_stat, session_label)
-
-            if connection and connection.channel_title:
-                channel_text = connection.channel_title
-                if connection.channel_id:
-                    channel_text = f"{channel_text} ({connection.channel_id})"
-            elif profile:
-                channel_text = (
-                    connection.message if connection and connection.message else "No YouTube channel is connected yet."
-                )
-            else:
-                channel_text = "Select a profile to continue."
-            self._youtube_channel_display.setText(channel_text)
-            self._youtube_state_note.setText(
-                connection.message
-                if profile and connection and connection.message
-                else (
-                    "Select a profile first to review its YouTube connection state."
-                    if not profile
-                    else "No YouTube channel is connected yet."
-                )
-            )
-            self._youtube_connected_note.setText(
-                channel_text if connection and connection.channel_title else "No YouTube channel is connected yet."
-            )
-            self._youtube_connect_btn.setText(get_youtube_connect_button_label(status))
-            self._youtube_connect_hint.setText(get_youtube_connect_hint(status))
 
             while self._youtube_channel_row_layout.count():
                 item = self._youtube_channel_row_layout.takeAt(0)
@@ -2926,13 +2925,15 @@ class SettingsView(QWidget):
                 host.setLayout(choose_row)
                 self._youtube_channel_row_layout.addWidget(form_row("Choose channel", host))
 
+            self._youtube_connect_btn.setText(
+                "Reconnect Channel" if self._publish_accounts else "Connect Channel"
+            )
             self._youtube_connect_btn.setEnabled(bool(profile_id))
-            self._youtube_disconnect_btn.setEnabled(bool(profile_id and status != "not_connected"))
-            self._youtube_resync_btn.setEnabled(bool(profile_id and status == "connected"))
             if hasattr(self, "_youtube_select_btn"):
                 self._youtube_select_btn.setEnabled(
                     bool(connection and connection.status == "awaiting_channel_selection" and connection.session_id)
                 )
+            self._render_connected_channels()
             if profile_id:
                 self._refresh_publish_accounts()
         finally:
@@ -3699,8 +3700,8 @@ class SettingsView(QWidget):
         auth_url = getattr(payload, "auth_url", None)
         if auth_url:
             webbrowser.open(str(auth_url))
-        self._publish_status.setText(
-            "Post for Me: browser sign-in started. Return here and press Refresh Status."
+        self._publish_account_note.setText(
+            "Browser sign-in started. Return here and press Refresh Status."
         )
         self._status_message = "YouTube connect started."
         QTimer.singleShot(8000, self._refresh_publish_accounts)
@@ -3720,13 +3721,13 @@ class SettingsView(QWidget):
 
     def _on_publish_accounts_failed(self, message: str) -> None:
         self._publish_accounts = []
-        self._publish_status.setText("Post for Me: unavailable for this account.")
+        self._publish_account_note.setText("Post for Me is unavailable for this account.")
         profile_id = self._youtube_profile.currentData()
         if profile_id and not self._youtube_connection_for(str(profile_id)):
             self._update_mini_stat_value(self._youtube_connection_stat, "Not connected")
             self._youtube_connect_btn.setText("Connect Channel")
             self._youtube_connect_btn.setEnabled(True)
-            self._youtube_disconnect_btn.setEnabled(False)
+        self._render_connected_channels()
         if message:
             log_warn(f"Publish accounts unavailable: {message}", category="settings")
 
@@ -3735,45 +3736,32 @@ class SettingsView(QWidget):
         self._publish_accounts = items
         profile_id = self._youtube_profile.currentData()
         if not items:
-            self._publish_status.setText(
-                "Post for Me: not connected (5 credits per YouTube upload)."
-            )
             self._publish_account_note.setText(
-                "Connect a channel with Post for Me to enable automatic YouTube uploads."
+                "Each YouTube upload costs 5 credits. Connect a channel to enable automatic uploads."
             )
-            if profile_id:
-                connection = self._youtube_connection_for(str(profile_id))
-                if connection is None or connection.status == "not_connected":
-                    self._update_mini_stat_value(self._youtube_connection_stat, "Not connected")
-                    self._youtube_channel_display.setText("No YouTube channel is connected yet.")
-                    self._youtube_connected_note.setText("No YouTube channel is connected yet.")
-                    self._youtube_connect_btn.setText("Connect Channel")
-                    self._youtube_connect_btn.setEnabled(True)
-                    self._youtube_disconnect_btn.setEnabled(False)
-                    self._youtube_resync_btn.setEnabled(False)
+            connection = self._youtube_connection_for(str(profile_id)) if profile_id else None
+            if connection is None or connection.status == "not_connected":
+                self._update_mini_stat_value(self._youtube_connection_stat, "Not connected")
+                self._youtube_connect_btn.setText("Connect Channel")
+            else:
+                self._update_mini_stat_value(self._youtube_connection_stat, "Connected")
+                self._youtube_connect_btn.setText("Reconnect Channel")
+            self._youtube_connect_btn.setEnabled(bool(profile_id))
+            self._render_connected_channels()
             return
-        account = items[0]
-        name = (
-            getattr(account, "display_name", None)
-            or getattr(account, "username", None)
-            or "YouTube channel"
-        )
-        self._publish_status.setText(f"Post for Me: {name} connected.")
         self._publish_account_note.setText(
-            "Publishing uses Post for Me. Each upload costs 5 credits."
+            "Connected through Post for Me. Each upload costs 5 credits."
         )
         self._update_mini_stat_value(self._youtube_connection_stat, "Connected")
-        self._youtube_channel_display.setText(name)
-        self._youtube_connected_note.setText(f"Connected via Post for Me: {name}")
         self._youtube_connect_btn.setText("Reconnect Channel")
         self._youtube_connect_btn.setEnabled(bool(profile_id))
-        self._youtube_disconnect_btn.setEnabled(True)
-        self._youtube_resync_btn.setEnabled(False)
+        self._render_connected_channels()
 
-    def _disconnect_publish_account(self) -> None:
-        if not self._publish_accounts:
-            return
-        account_id = str(getattr(self._publish_accounts[0], "id", "") or "").strip()
+    def _disconnect_publish_account(self, account_id: str | None = None) -> None:
+        if not account_id:
+            if not self._publish_accounts:
+                return
+            account_id = str(getattr(self._publish_accounts[0], "id", "") or "").strip()
         if not account_id:
             return
         worker = PublishDisconnectWorker(self._api, account_id, parent=self)
@@ -3790,6 +3778,9 @@ class SettingsView(QWidget):
         if self._publish_accounts:
             self._disconnect_publish_account()
             return
+        self._disconnect_direct_youtube()
+
+    def _disconnect_direct_youtube(self) -> None:
         profile_id = self._youtube_profile.currentData()
         if not profile_id:
             return
