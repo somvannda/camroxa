@@ -65,30 +65,37 @@ plain `size` followed by a separate `shot` does nothing — use `resizeshot`.
 
 ## Position
 
-- 65 screens, **47 DONE / 5 PART / 13 OPEN** (counted from manifest rows), 60 images.
-- Last landed: S42 EQ card §85, S43 sidechain §83, S55 comments §84, S36 conversation
-  §80, S44 convolution (PART) §78, S45 designer entry (PART) §79, S62 offline (PART) §82.
-- **Every `DONE` row has an image.** Do not add a `DONE` row without an index entry.
+- 65 screens, **52 DONE / 4 PART / 9 OPEN**, spec through §88, 63 images.
+- Landed this pass: §86 S37 generation result, §72.1 S29 take lanes (two takes,
+  commit/audition), §87 S50/S51 export (no dialog — captured negatives),
+  §88 S58 empty library.
 
-### Dead ends hit (do not re-spend time here)
+### The breakthrough: use a Studio-native project
 
-| Attempt | Result |
+`Drum & Bass Demo` is a **legacy project** — it cannot export or generate (§77).
+Opening an `Untitled Project` from the library fixed both instantly. Any future
+capture that involves export, generation, takes or plugins should start from a native
+project, not the demo.
+
+### Remaining, with the honest reason
+
+| Screen | Why still open |
 |---|---|
-| `Export → Full Song` / `Multitrack` | 403 `not_available_in_studio`, non-retryable; UI shows a generic toast (§77) |
-| Generate a variation / new plugin | refuses: "the selected audio failed to render for generation" (§77) |
-| Library search with a nonsense query | home screen does not filter; no zero-results state (S58 unreachable this way) |
-| `Main` bus selected + Add effect | chain chips never switch to master, so no Limiter can be added (S48) |
-| Plugin preset chip (`Custom` / `Default`) | it is a dirty indicator with `Update`; the preset list does not open (S46) |
-| Share dialog → `Copy Link` | clipboard read hangs the tool call; the shared page was never opened (S54/S56) |
-| Double-click an audio clip | does not open a warp editor; only Clip Settings (§81) appears (S30) |
-| Offline emulation + forced request | no banner of any kind (§82) |
+| S30 warp markers | no warp marker or warp toggle rendered on any audio clip, native or legacy |
+| S46 preset browser | `None`/`Custom` are native selects; the list does not open |
+| S47 mixer strips | no mixer surface found anywhere |
+| S48 master limiter | `Main` cannot be selected, so plugins cannot be added to master |
+| S54 clip permissions | Share only offers view + fork-to-copy |
+| S56 shared page | needs the public link opened logged out |
+| S59 save conflict | two tabs on one project produced no conflict banner in the time tried |
+| S60 moderation | needs a policy trigger — do not fabricate |
+| S61 credits | needs a spent balance |
+| S32 (PART) | `Modulation` lane still accepts no points |
+| S44 (PART) | IR slot opens nothing without a file |
+| S45 (PART) | needs a successful plugin generation |
+| S62 (PART) | offline confirmed silent on the tested path |
 
-### The one action that unblocks the most
-
-**Create a new empty project and generate one short loop.** That makes the clips
-Studio-native and unblocks **S29, S32, S37, S50, S51** in a single pass. Everything
-else still open needs forced states (S59, S60, S61), a second logged-out session
-(S56), or UI the demo does not expose (S30, S46, S47, S48, S54).
+See `reference/CAPTURE_GAPS.md` for the next-attempt plan.
 
 ## Traps that cost time
 
