@@ -1659,6 +1659,42 @@ model chip and a circular submit.
 | Submit | circular arrow, disabled when empty | none |
 | BETA badge | on the container | none |
 
+### 54.1 Idle vs attached, measured at 1689 px (S34, S35)
+
+Two captures from the same session, `S34-magicbar-idle.jpeg` and
+`S35-magicbar-attachment.jpeg`:
+
+| Property | Value |
+|---|---|
+| Container | **648 × 99** at (651, 1080) — centred on the arrangement, above the footer |
+| Surface | `rgba(20,20,22,0.85)` — translucent, the clip colours read through it |
+| Radius | **20 px** (the largest radius in the app outside the settings dialog) |
+| Border | `1px solid rgba(255,255,255,0.1)` — the only place a hairline border is used instead of a tone step |
+| `BETA` badge | pink pill straddling the **top-right border line**, half outside the card |
+| Attach `+` | 32 px circle, left, inside the padding |
+| Right icons | `Open conversation` (32 px) and `Collapse` (32 px) on the chip row |
+| Model chip | `v6 ▾`, 53 × 32, sits on the **prompt row**, right of the text |
+| Submit | 32 px circle, `↑`, dimmed while the prompt is empty |
+
+Attachment chip anatomy (S35):
+
+- 30 px rounded thumbnail whose fill is the **track colour** — so the chip carries
+  the same hue as the clips it refers to (yellow for `Drum Kit Main`).
+- Track name at 13 px, then a 14 px `×` that detaches it.
+- The chip replaces the leading text position; the placeholder stays visible after it.
+
+Placeholder is **generated from the current selection**, and that is the single
+most important thing to copy:
+
+| Selection state | Placeholder |
+|---|---|
+| Nothing selected, empty project | `Select a spot on the timeline and ask me to add a part` |
+| Track/clip selected | `Add a warm reverb to this track` |
+| Drum track attached | `Generate an 8-bar drum loop and drop it here` |
+
+Copy the rule, not the strings: the prompt is seeded with a *plausible next action
+for the selected object*, so the bar teaches the interaction by example.
+
 ## 55. Project menu — visual detail `L`
 
 Rendered as a floating card anchored under the project chip, ~220 px wide, 8 rows with

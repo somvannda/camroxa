@@ -54,8 +54,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | # | Screen | Status |
 |---|---|---|
-| S34 | Magic Bar idle | DONE §54 |
-| S35 | Magic Bar with clip attachment | DONE §54 |
+| S34 | Magic Bar idle | DONE §54.1 |
+| S35 | Magic Bar with clip attachment | DONE §54.1 |
 | S36 | Magic Bar conversation | OPEN |
 | S37 | Generation result on the timeline | OPEN |
 | S38 | Model picker | DONE §6 |
