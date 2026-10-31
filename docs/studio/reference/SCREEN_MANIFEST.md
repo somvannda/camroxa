@@ -135,8 +135,11 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 ## Current position
 
-S01–S23, S26, S34/S35, S38–S41, S49, S52/S53, S57 and S65 are captured with an
-image and a spec section — 42 files. Every `DONE` row is fully evidenced.
+S01–S23, S25–S28, S31, S33, S36, S38–S43, S49, S52/S53, S55, S57, S63–S65 are
+captured with an image and a spec section — 60 files. Every `DONE` row is fully
+evidenced.
 
-**Next: S24/S25** (arrangement sections and the marker/take-lane family), then
-S42/S43 (EQ and compressor at full size), then the remaining OPEN rows in order.
+**The capture phase is as complete as this project allows.** The 5 `PART` and 13
+`OPEN` rows are enumerated with their unblock in
+[`CAPTURE_GAPS.md`](CAPTURE_GAPS.md) — read that before attempting more captures;
+five of them clear with a single new project + one generation.
