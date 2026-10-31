@@ -121,6 +121,9 @@ from shared.workers.data_workers import (
     SaveProfileWorker,
     SettingsWorkspacePayload,
     SettingsWorkspaceWorker,
+    PublishAccountsWorker,
+    PublishConnectionWorker,
+    PublishDisconnectWorker,
     YouTubeActionWorker,
     YouTubeConnectionsWorker,
     YouTubePlaylistsWorker,
@@ -190,6 +193,9 @@ class SettingsView(QWidget):
         self._patch_worker: PatchSettingsWorker | None = None
         self._youtube_worker: YouTubeActionWorker | None = None
         self._youtube_connections_worker: YouTubeConnectionsWorker | None = None
+        self._publish_accounts_worker: PublishAccountsWorker | None = None
+        self._publish_connection_worker: PublishConnectionWorker | None = None
+        self._publish_accounts: list[object] = []
         self._youtube_poll_timer = QTimer(self)
         self._youtube_poll_timer.setInterval(3000)
         self._youtube_poll_timer.timeout.connect(self._poll_youtube_connections)
@@ -1016,6 +1022,27 @@ class SettingsView(QWidget):
         btn_row.addWidget(self._youtube_disconnect_btn)
         btn_row.addStretch()
         left.add_layout(btn_row)
+
+        self._publish_status = note_box("Post for Me: not connected.")
+        left.add_widget(form_row("Publishing provider", self._publish_status))
+        publish_row = QHBoxLayout()
+        self._publish_connect_btn = QPushButton("Connect with Post for Me")
+        self._publish_connect_btn.clicked.connect(self._start_publish_connection)
+        self._publish_refresh_btn = QPushButton("Refresh")
+        self._publish_refresh_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._publish_refresh_btn.clicked.connect(self._refresh_publish_accounts)
+        self._publish_disconnect_btn = QPushButton("Disconnect")
+        self._publish_disconnect_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._publish_disconnect_btn.clicked.connect(self._disconnect_publish_account)
+        publish_row.addWidget(self._publish_connect_btn)
+        publish_row.addWidget(self._publish_refresh_btn)
+        publish_row.addWidget(self._publish_disconnect_btn)
+        publish_row.addStretch()
+        left.add_layout(publish_row)
+        self._publish_account_note = note_box(
+            "YouTube uploads use Post for Me and cost 5 credits per upload."
+        )
+        left.add_widget(self._publish_account_note)
         self._youtube_connect_hint = note_box(
             "Connect once here, then keep publication defaults per profile in the Publication tab."
         )
@@ -2913,6 +2940,11 @@ class SettingsView(QWidget):
                 self._youtube_select_btn.setEnabled(
                     bool(connection and connection.status == "awaiting_channel_selection" and connection.session_id)
                 )
+            self._publish_connect_btn.setEnabled(bool(profile_id))
+            if not self._publish_accounts:
+                self._publish_disconnect_btn.setEnabled(False)
+            if profile_id:
+                self._refresh_publish_accounts()
         finally:
             self._binding_youtube_tab = False
 
@@ -3659,6 +3691,86 @@ class SettingsView(QWidget):
         log_info(f"Saved {label}.", category="settings")
         self._bind_preferences_tab()
         self._bind_suno_tab()
+
+    def _start_publish_connection(self) -> None:
+        profile_id = self._youtube_profile.currentData()
+        if not profile_id:
+            return
+        worker = PublishConnectionWorker(
+            self._api, str(profile_id), "youtube", parent=self
+        )
+        worker.succeeded.connect(self._on_publish_connection_started)
+        worker.failed.connect(self._show_error)
+        worker.finished.connect(lambda: setattr(self, "_publish_connection_worker", None))
+        self._publish_connection_worker = worker
+        worker.start()
+
+    def _on_publish_connection_started(self, payload: object) -> None:
+        auth_url = getattr(payload, "auth_url", None)
+        if auth_url:
+            webbrowser.open(str(auth_url))
+        self._publish_status.setText(
+            "Post for Me: browser sign-in started. Return here and press Refresh."
+        )
+        self._status_message = "Post for Me browser sign-in started."
+        QTimer.singleShot(8000, self._refresh_publish_accounts)
+
+    def _refresh_publish_accounts(self) -> None:
+        if self._publish_accounts_worker is not None and self._publish_accounts_worker.isRunning():
+            return
+        profile_id = self._youtube_profile.currentData()
+        if not profile_id:
+            return
+        worker = PublishAccountsWorker(self._api, str(profile_id), parent=self)
+        worker.succeeded.connect(self._on_publish_accounts_loaded)
+        worker.failed.connect(self._on_publish_accounts_failed)
+        worker.finished.connect(lambda: setattr(self, "_publish_accounts_worker", None))
+        self._publish_accounts_worker = worker
+        worker.start()
+
+    def _on_publish_accounts_failed(self, message: str) -> None:
+        self._publish_accounts = []
+        self._publish_disconnect_btn.setEnabled(False)
+        self._publish_status.setText("Post for Me: unavailable for this account.")
+        if message:
+            log_warn(f"Publish accounts unavailable: {message}", category="settings")
+
+    def _on_publish_accounts_loaded(self, accounts: object) -> None:
+        items = list(accounts or []) if isinstance(accounts, (list, tuple)) else []
+        self._publish_accounts = items
+        if not items:
+            self._publish_status.setText(
+                "Post for Me: not connected (5 credits per YouTube upload)."
+            )
+            self._publish_account_note.setText(
+                "Connect a channel with Post for Me to enable automatic YouTube uploads."
+            )
+            self._publish_disconnect_btn.setEnabled(False)
+            return
+        account = items[0]
+        name = (
+            getattr(account, "display_name", None)
+            or getattr(account, "username", None)
+            or "YouTube channel"
+        )
+        self._publish_status.setText(f"Post for Me: {name} connected.")
+        self._publish_account_note.setText(
+            "Publishing uses Post for Me. Each upload costs 5 credits."
+        )
+        self._publish_disconnect_btn.setEnabled(True)
+
+    def _disconnect_publish_account(self) -> None:
+        if not self._publish_accounts:
+            return
+        account_id = str(getattr(self._publish_accounts[0], "id", "") or "").strip()
+        if not account_id:
+            return
+        worker = PublishDisconnectWorker(self._api, account_id, parent=self)
+        worker.succeeded.connect(
+            lambda *_: (self._show_save_success("Publishing account disconnected."), self._refresh_publish_accounts())
+        )
+        worker.failed.connect(self._show_error)
+        worker.start()
 
     def _start_youtube_connection(self) -> None:
         profile_id = self._youtube_profile.currentData()
