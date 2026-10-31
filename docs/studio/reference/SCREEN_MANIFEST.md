@@ -41,7 +41,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S23 | Section markers on the ruler | PART — flags visible |
 | S24 | Loop region | OPEN |
 | S25 | **Clip selected with trim handles** | OPEN |
-| S26 | Clip context menu | DONE §31, §47 |
+| S26 | Clip context menu | DONE §47.1 |
 | S27 | Clip Info panel | OPEN |
 | S28 | Clip colour submenu | OPEN |
 | S29 | Take lanes expanded | OPEN |

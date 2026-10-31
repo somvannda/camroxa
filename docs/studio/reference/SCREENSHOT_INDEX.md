@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-Backfill status is deliberately visible: **25 captures cover 21 of the 31 DONE
+Backfill status is deliberately visible: **26 captures cover 22 of the 31 DONE
 rows.** The rest were documented from live DOM measurement and earlier sessions,
 before this archive existed — they have a spec section but no image. They are not
 being re-marked `PART` in bulk; each one is promoted to fully evidenced as it is
@@ -40,14 +40,14 @@ re-shot.
 | S13 | `screens/S13-learn-menu.jpeg` | Learn popover — 4 rows, `shift ?` meta, `What's This?` on |
 | S14 | `screens/S14-keyboard-shortcuts.jpeg` | Shortcuts overlay — 2 columns, per-key chips, `GENERAL` … `CLIP EDITOR · MIDI` |
 | S20 | `screens/S20-add-track-menu.jpeg` | `Add a track` — Audio / MIDI / Upload |
+| S26 | `screens/S26-clip-context-menu.jpeg` | Clip menu, complete variant — 13 items, accelerators, `Clip Color ▸` |
 | S57 | `screens/S57-project-loading-blank.jpeg` | Load state: blank frame, `canvas` 0, no text |
 | — | `screens/RESPONSIVE-gate-319px.jpeg` | §60 desktop-only gate at 319 px (no manifest row) |
 
-## Missing — DONE rows with no image yet (10)
+## Missing — DONE rows with no image yet (9)
 
 | Screen | Spec | Needs |
 |---|---|---|
-| S26 | §31, §47 | clip context menu |
 | S34 | §54 | Magic Bar idle |
 | S35 | §54 | Magic Bar with attachment |
 | S38 | §6 | model picker |

@@ -1285,6 +1285,37 @@ supportsSection → Create Section
 
 Never hardcode the list — the reference already varies it between two ordinary clips.
 
+### 47.1 Variant C, measured (S26)
+
+Capture `screens/S26-clip-context-menu.jpeg`, right-clicked on a clip in
+`Drum & Bass Demo`. This is the **complete** menu — 13 items, nothing below the
+fold:
+
+| Property | Value |
+|---|---|
+| Size | **171 × 525** at (708, 114) — anchored at the click point, opening down-right |
+| Surface | `#252529`, radius **10 px**, border `0`, shadow `0 3px 5px rgba(0,0,0,0.3)` |
+| Padding | `0` on the panel; each row carries its own 40 px height |
+| Row | 13 × 40 px = 520, + 5 px panel inset |
+| Row layout | 16 px icon · 15 px label · right-aligned accelerator in a muted tone |
+| Dividers | **none** — grouping is implied by order, not by rules |
+
+Against variant B (§47) this capture has `Delete` **and** `Heal Edits` but **no**
+`Create Section`. So `Create Section` is the one item gated on something this clip
+lacks (it is an audio stem, not a section-capable arrangement block), while
+`Heal Edits` appears here because this clip *does* carry an edit chain. That is
+the third independent confirmation that the list is derived from clip state.
+
+Right-click does three things besides opening the menu, and all three are visible
+in this single frame:
+
+1. **Selects the clip** — orange 1 px outline drawn inside the clip bounds.
+2. **Re-targets the Magic Bar** — the attachment chip flips to `Electric Keyboa…`
+   and the placeholder becomes `Add a warm reverb to this track`.
+3. **Re-points the footer FX strip** at that track's chain — `Compressor · EQ ·
+   EQ · Reverb · +` (duplicate `EQ` entries are real: a clip can carry two EQ
+   instances).
+
 ## 48. "Add a track plugin" dialog `L`
 
 Modal, ~760 px wide, dark surface, rounded. Structure:
