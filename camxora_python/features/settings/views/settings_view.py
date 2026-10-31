@@ -1012,7 +1012,7 @@ class SettingsView(QWidget):
         left.add_widget(self._youtube_channel_row_host)
         btn_row = QHBoxLayout()
         self._youtube_connect_btn = QPushButton("Connect Channel")
-        self._youtube_connect_btn.clicked.connect(self._start_youtube_connection)
+        self._youtube_connect_btn.clicked.connect(self._start_publish_connection)
         self._youtube_resync_btn = QPushButton("Resync Channel Data")
         self._youtube_resync_btn.clicked.connect(self._resync_youtube)
         self._youtube_disconnect_btn = QPushButton("Disconnect")
@@ -1026,17 +1026,10 @@ class SettingsView(QWidget):
         self._publish_status = note_box("Post for Me: not connected.")
         left.add_widget(form_row("Publishing provider", self._publish_status))
         publish_row = QHBoxLayout()
-        self._publish_connect_btn = QPushButton("Connect with Post for Me")
-        self._publish_connect_btn.clicked.connect(self._start_publish_connection)
-        self._publish_refresh_btn = QPushButton("Refresh")
+        self._publish_refresh_btn = QPushButton("Refresh Status")
         self._publish_refresh_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._publish_refresh_btn.clicked.connect(self._refresh_publish_accounts)
-        self._publish_disconnect_btn = QPushButton("Disconnect")
-        self._publish_disconnect_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
-        self._publish_disconnect_btn.clicked.connect(self._disconnect_publish_account)
-        publish_row.addWidget(self._publish_connect_btn)
         publish_row.addWidget(self._publish_refresh_btn)
-        publish_row.addWidget(self._publish_disconnect_btn)
         publish_row.addStretch()
         left.add_layout(publish_row)
         self._publish_account_note = note_box(
@@ -1044,7 +1037,7 @@ class SettingsView(QWidget):
         )
         left.add_widget(self._publish_account_note)
         self._youtube_connect_hint = note_box(
-            "Connect once here, then keep publication defaults per profile in the Publication tab."
+            "Connecting uses Post for Me. Once connected, publication defaults apply per profile."
         )
         left.add_widget(self._youtube_connect_hint)
         left.add_stretch()
@@ -2940,9 +2933,6 @@ class SettingsView(QWidget):
                 self._youtube_select_btn.setEnabled(
                     bool(connection and connection.status == "awaiting_channel_selection" and connection.session_id)
                 )
-            self._publish_connect_btn.setEnabled(bool(profile_id))
-            if not self._publish_accounts:
-                self._publish_disconnect_btn.setEnabled(False)
             if profile_id:
                 self._refresh_publish_accounts()
         finally:
@@ -3710,9 +3700,9 @@ class SettingsView(QWidget):
         if auth_url:
             webbrowser.open(str(auth_url))
         self._publish_status.setText(
-            "Post for Me: browser sign-in started. Return here and press Refresh."
+            "Post for Me: browser sign-in started. Return here and press Refresh Status."
         )
-        self._status_message = "Post for Me browser sign-in started."
+        self._status_message = "YouTube connect started."
         QTimer.singleShot(8000, self._refresh_publish_accounts)
 
     def _refresh_publish_accounts(self) -> None:
@@ -3730,14 +3720,20 @@ class SettingsView(QWidget):
 
     def _on_publish_accounts_failed(self, message: str) -> None:
         self._publish_accounts = []
-        self._publish_disconnect_btn.setEnabled(False)
         self._publish_status.setText("Post for Me: unavailable for this account.")
+        profile_id = self._youtube_profile.currentData()
+        if profile_id and not self._youtube_connection_for(str(profile_id)):
+            self._update_mini_stat_value(self._youtube_connection_stat, "Not connected")
+            self._youtube_connect_btn.setText("Connect Channel")
+            self._youtube_connect_btn.setEnabled(True)
+            self._youtube_disconnect_btn.setEnabled(False)
         if message:
             log_warn(f"Publish accounts unavailable: {message}", category="settings")
 
     def _on_publish_accounts_loaded(self, accounts: object) -> None:
         items = list(accounts or []) if isinstance(accounts, (list, tuple)) else []
         self._publish_accounts = items
+        profile_id = self._youtube_profile.currentData()
         if not items:
             self._publish_status.setText(
                 "Post for Me: not connected (5 credits per YouTube upload)."
@@ -3745,7 +3741,16 @@ class SettingsView(QWidget):
             self._publish_account_note.setText(
                 "Connect a channel with Post for Me to enable automatic YouTube uploads."
             )
-            self._publish_disconnect_btn.setEnabled(False)
+            if profile_id:
+                connection = self._youtube_connection_for(str(profile_id))
+                if connection is None or connection.status == "not_connected":
+                    self._update_mini_stat_value(self._youtube_connection_stat, "Not connected")
+                    self._youtube_channel_display.setText("No YouTube channel is connected yet.")
+                    self._youtube_connected_note.setText("No YouTube channel is connected yet.")
+                    self._youtube_connect_btn.setText("Connect Channel")
+                    self._youtube_connect_btn.setEnabled(True)
+                    self._youtube_disconnect_btn.setEnabled(False)
+                    self._youtube_resync_btn.setEnabled(False)
             return
         account = items[0]
         name = (
@@ -3757,7 +3762,13 @@ class SettingsView(QWidget):
         self._publish_account_note.setText(
             "Publishing uses Post for Me. Each upload costs 5 credits."
         )
-        self._publish_disconnect_btn.setEnabled(True)
+        self._update_mini_stat_value(self._youtube_connection_stat, "Connected")
+        self._youtube_channel_display.setText(name)
+        self._youtube_connected_note.setText(f"Connected via Post for Me: {name}")
+        self._youtube_connect_btn.setText("Reconnect Channel")
+        self._youtube_connect_btn.setEnabled(bool(profile_id))
+        self._youtube_disconnect_btn.setEnabled(True)
+        self._youtube_resync_btn.setEnabled(False)
 
     def _disconnect_publish_account(self) -> None:
         if not self._publish_accounts:
@@ -3766,33 +3777,19 @@ class SettingsView(QWidget):
         if not account_id:
             return
         worker = PublishDisconnectWorker(self._api, account_id, parent=self)
-        worker.succeeded.connect(
-            lambda *_: (self._show_save_success("Publishing account disconnected."), self._refresh_publish_accounts())
-        )
+        worker.succeeded.connect(self._on_publish_disconnected)
         worker.failed.connect(self._show_error)
         worker.start()
 
-    def _start_youtube_connection(self) -> None:
-        profile_id = self._youtube_profile.currentData()
-        if not profile_id:
-            return
-        worker = YouTubeActionWorker(self._api, "start", profile_id=profile_id, parent=self)
-        worker.succeeded.connect(self._on_youtube_started)
-        worker.failed.connect(self._show_error)
-        worker.start()
-        self._youtube_worker = worker
-
-    def _on_youtube_started(self, payload: object) -> None:
-        auth_url = getattr(payload, "auth_url", None)
-        if auth_url:
-            webbrowser.open(str(auth_url))
-        profile_id = self._youtube_profile.currentData()
-        self._youtube_poll_profile_id = str(profile_id) if profile_id else None
-        self._status_message = "YouTube browser sign-in started."
+    def _on_publish_disconnected(self, *_args: object) -> None:
+        self._show_save_success("YouTube channel disconnected.")
+        self._refresh_publish_accounts()
         self.refresh_data(force=True)
-        self._sync_youtube_poll_timer()
 
     def _disconnect_youtube(self) -> None:
+        if self._publish_accounts:
+            self._disconnect_publish_account()
+            return
         profile_id = self._youtube_profile.currentData()
         if not profile_id:
             return
