@@ -129,6 +129,33 @@ Captured verbatim from the live model picker:
 Our implementation must map model ids through `musicapi`, never hardcode vendor
 labels in the UI (pricing/limits live in `pricing`).
 
+### 6.1 The picker, measured (S38)
+
+Capture `screens/S38-model-picker.jpeg`, opened from the `v6 ▾` chip in the Magic
+Bar.
+
+| Property | Value |
+|---|---|
+| Panel | **246 × 305**, right edge aligned to the chip, opening **upward** from it (bottom at y = 1121, chip top at 1134) |
+| Anchor | the `v6 ▾` chip itself — 53 × 32, no chevron caret, the panel just sits above it |
+| Rows | four stacked cards, **73 / 73 / 56 / 73 px**, full panel width |
+| Selected row | rose-tinted 1 px border + filled pink check circle at the right edge |
+| Section header | `ALL MODELS`, uppercase, muted, between the custom-model card and the list |
+| Badges | `Beta` pill on `Create Custom Model`; `Pro` pill inline after `v6` and `v6-wild` |
+
+Card order is deliberate: **the paid upgrade sits first, above the free options**,
+separated by the section header so it never reads as one of the model choices.
+The selected model is the only row with a filled control; the others show only a
+label and description — no radio rings, no hover chrome baked in.
+
+Each description is a single clause ending in a period, which is what keeps the
+cards at a stable height (56 px for the one-liner, 73 px for two lines):
+
+- `Powerful. Versatile. Refined. Our best model yet.`
+- `Best for experimental ideas.`
+- `A free, more efficient version of premium v6 models.`
+- `Create a model based on your uploads (100 Credits)`
+
 ## 7. Footer / transport `M`
 
 | # | Element | Behaviour |
@@ -1361,6 +1388,28 @@ Preview parameters visible on the cards:
 **"Create new plugin"** is the entry point to user-designed plugins (the marketing
 "plugins you can design yourself" pillar, related to N-14/N-15).
 
+### 48.1 Measured at 1689 px (S39)
+
+Capture `screens/S39-plugin-catalog.jpeg`.
+
+| Property | Value |
+|---|---|
+| Panel | **760 × 958** at (465, 160) — vertically centred, radius **32 px** |
+| Header | `Add a track plugin` left; `Search plugins` field + `⋯` + `×` right |
+| Search | 160 px wide input inside a 207 px pill, **right-aligned in the header**, not spanning |
+| Grid | 3 columns × 224 px + 16 px gaps; card **224 × 200** |
+| Create card | 224 × 164 **dashed** outline — visibly "empty slot", not a normal card |
+| Card content | 96 px live preview → name + `ⓘ Learn` → 2-line clamped description |
+| Badges | yellow `NEW` (Delay) / `Improved` chips pinned top-left of the preview |
+
+The preview is a **real render of the plugin's own controls** at reduced scale
+(curve, knobs, band chips) — not an illustration. That is why cards from the same
+family read as a set without any shared artwork.
+
+The 958 px height against a 1277 px viewport means the grid **scrolls inside the
+panel** rather than growing the dialog; the thin scrollbar track is visible on the
+right edge and the ninth card is clipped by it.
+
 ## 49. Plugin editor panel `L`
 
 Docked panel (bottom), ~470 px wide:
@@ -1427,6 +1476,30 @@ Panel anatomy (every plugin): **colour dot · name · preset selector · popout 
 
 This supersedes the single-card reading in §42: that was one plugin in a chain, not the
 whole chain UI.
+
+### 50.1 Measured: one slot vs two (S40, S41)
+
+| Property | Value |
+|---|---|
+| Dock band | **1673 × 224** at (8, 999) — full width minus 8 px margins, above the footer strip |
+| Slot card | **448 × 160**, header row on top, controls below |
+| Slot gap | ≈ 23 px |
+| Empty rail | the remaining width becomes a second panel with a centred `+ Add effect` (123 × 40) and three **ghost tiles** (`Compressor` · `Reverb` · `Delay`) rendered at ~30 % opacity |
+
+`S41` shows two slots (`EQ` + `Distortion`); `S40` shows the single-slot case. The
+difference is the whole lesson:
+
+- The dock does **not** centre a lone plugin, and it does not stretch it. The first
+  card keeps its 448 px width and the rest of the band becomes the add-affordance.
+- The ghost tiles in the empty rail are a **preview of the next three plugins in
+  catalog order**, so the empty half of the dock still teaches what can go there.
+- Removing the last plugin (the `×` on a header) leaves the add rail alone — the
+  dock never collapses, so the layout does not jump when you clear a chain.
+
+Each slot header repeats the same four parts: colour dot · name · preset selector
+(`Custom ▾`) · `×`. `EQ` additionally shows a live transfer curve with draggable
+points, `Distortion` a drive curve plus mode chips (`Soft · Hard · Fold · Asym ·
+Sine · Crush`).
 
 ## 51. Plugin system — decompiled facts `B`
 

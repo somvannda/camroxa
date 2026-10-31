@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-Backfill status is deliberately visible: **28 captures cover 24 of the 31 DONE
+Backfill status is deliberately visible: **31 captures cover 27 of the 31 DONE
 rows.** The rest were documented from live DOM measurement and earlier sessions,
 before this archive existed — they have a spec section but no image. They are not
 being re-marked `PART` in bulk; each one is promoted to fully evidenced as it is
@@ -29,6 +29,10 @@ re-shot.
 | S16 | `screens/S16-editor-empty-project.jpeg` | Empty project: one `Audio Track`, `Add new track`, `00:00.000`, Magic Bar with `Tab` hint |
 | S17 | `screens/S17-editor-loaded-project.jpeg` | Drum & Bass Demo at 174 BPM — 12 tracks, clips, FX strip, `Press play to hear the demo` |
 | S18 | `screens/S18-track-row-anatomy.jpeg` | Track row and clip band measured from the loaded demo |
+| S38 | `screens/S38-model-picker.jpeg` | Model picker — 4 cards, `Pro`/`Beta` pills, selected check, opens upward from `v6` |
+| S39 | `screens/S39-plugin-catalog.jpeg` | Add-effect catalog from the footer `+` |
+| S40 | `screens/S40-plugin-dock-single.jpeg` | Plugin dock with one slot — `EQ` card + add rail with ghost tiles |
+| S41 | `screens/S41-plugin-dock-multiple.jpeg` | Plugin dock with two slots — `EQ` + `Distortion` side by side |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S08 | `screens/S08-version-history.jpeg` | History panel populated — date navigator, expanded newest entry |
 | S08 | `screens/S08-version-history-loading.jpeg` | Same panel in its `Loading...` state |
@@ -47,14 +51,10 @@ re-shot.
 | — | `screens/EXTRA-project-load-error.jpeg` | Reload of a demo project — `No project loaded` + `Try again` / `Dismiss` (no manifest row) |
 | — | `screens/RESPONSIVE-gate-319px.jpeg` | §60 desktop-only gate at 319 px (no manifest row) |
 
-## Missing — DONE rows with no image yet (7)
+## Missing — DONE rows with no image yet (4)
 
 | Screen | Spec | Needs |
 |---|---|---|
-| S38 | §6 | model picker |
-| S39 | §48 | add-plugin catalog |
-| S40 | §50 | plugin dock, one slot |
-| S41 | §50 | plugin dock, several slots |
 | S49 | §18.2 | Export menu |
 | S52 | §19 | library workspaces |
 | S65 | §46 | ~706 px narrow editor |
