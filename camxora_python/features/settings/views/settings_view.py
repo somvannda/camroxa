@@ -11,7 +11,7 @@ import time
 import webbrowser
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, Qt, QTimer
+from PySide6.QtCore import QPoint, QSize, Qt, QTimer
 from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QPolygon
 from PySide6.QtWidgets import (
     QButtonGroup,
@@ -2276,14 +2276,27 @@ class SettingsView(QWidget):
         for profile in self._profiles:
             if term and term not in get_profile_search_haystack(profile):
                 continue
-            item = QListWidgetItem(profile.name)
+            item = QListWidgetItem("")
             tooltip = profile.folder_name or profile.run_prefix or profile.output_resolution
-            if self._profile_youtube_connected(str(profile.id)):
-                item.setIcon(youtube_icon)
+            connected = self._profile_youtube_connected(str(profile.id))
+            if connected:
                 tooltip = f"YouTube connected · {tooltip}"
             item.setToolTip(tooltip)
             item.setData(Qt.ItemDataRole.UserRole, profile.id)
+            item.setSizeHint(QSize(0, 32))
             self._profile_list.addItem(item)
+            row = QWidget()
+            row.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+            row_layout = QHBoxLayout(row)
+            row_layout.setContentsMargins(8, 0, 10, 0)
+            row_layout.setSpacing(6)
+            row_layout.addWidget(QLabel(profile.name), stretch=1)
+            if connected:
+                badge = QLabel()
+                badge.setPixmap(youtube_icon.pixmap(16, 16))
+                badge.setToolTip("YouTube connected")
+                row_layout.addWidget(badge, alignment=Qt.AlignmentFlag.AlignRight)
+            self._profile_list.setItemWidget(item, row)
             if profile.id == self._selected_profile_key:
                 self._profile_list.setCurrentItem(item)
         self._profile_list.blockSignals(False)
@@ -3837,10 +3850,11 @@ class SettingsView(QWidget):
     def _refresh_publish_accounts(self, profile_id: str | None = None) -> None:
         if self._publish_accounts_worker is not None and self._publish_accounts_worker.isRunning():
             return
-        profile_id = profile_id or self._selected_profile_id()
-        if not profile_id:
+        if not self._profiles:
             return
-        worker = PublishAccountsWorker(self._api, str(profile_id), parent=self)
+        # Fetch every account so the profile list can badge all connected
+        # profiles, not only the selected one.
+        worker = PublishAccountsWorker(self._api, None, parent=self)
         worker.succeeded.connect(self._on_publish_accounts_loaded)
         worker.failed.connect(self._on_publish_accounts_failed)
         worker.finished.connect(lambda: setattr(self, "_publish_accounts_worker", None))
