@@ -84,6 +84,7 @@ const OPERATION_TYPES = [
   { value: 'video', label: 'Studio export (local, per track)' },
   { value: 'video_manual', label: 'Manual export (local, per track)' },
   { value: 'video_merge', label: 'Auto merge video (local)' },
+  { value: 'upload', label: 'YouTube upload (Post for Me)' },
 ] as const;
 
 // --- Validation Schemas ---
@@ -381,6 +382,9 @@ function PricingSection() {
       : [];
     if (!services.includes('local')) {
       services.push('local');
+    }
+    if (!services.includes('postforme')) {
+      services.push('postforme');
     }
     return services.sort();
   }, [serviceAvailability]);
