@@ -3158,6 +3158,35 @@ Worth deciding explicitly in the clone rather than copying by default — if we 
 threads with authors we are adding a feature the reference does not have, and the
 schema will differ.
 
+## 85. S42 — EQ card, bands and shapes `L`
+
+Capture `screens/S42-eq-card.jpeg`, taken after adding `EQ` from the catalog.
+
+| Element | Detail |
+|---|---|
+| Header | preset `Default` centred, `×` at the right (colour dot is present but reads as decoration at this size) |
+| Band selector | `Band 2 ▾` pill, ~300 px wide — one band at a time, not a list of bands |
+| Band enable | a **toggle** at the right of the selector, pink when on |
+| Shape row | six icon buttons, one per filter shape, the active one filled pink |
+| Knobs | `Freq` · `Q` · `Gain`, three across, the first two showing pink arcs |
+
+The six shapes are the classic set, in a fixed order: shelf-low, bell, shelf-high,
+low-cut, high-cut, notch. The row is **icon-only with no tooltips in the default
+state** — the active shape is identified by fill, so the user reads their filter type
+from position rather than from a label.
+
+Two decisions worth copying:
+
+1. **One band visible at a time.** The selector is a dropdown, so the card stays
+   compact and the curve above it does the overview work. A clone that renders every
+   band as its own row will be much taller than the dock allows.
+2. **Shape is a segmented row, not a dropdown.** Six is small enough to show all at
+   once, and the active state doubles as a legend once you know the order.
+
+The transfer curve itself is documented in §53 (it sits above the selector and its
+points are draggable); this section covers the band controls beneath it.
+
+
 
 
 

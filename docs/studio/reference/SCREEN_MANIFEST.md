@@ -67,7 +67,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S39 | Add-plugin catalog | DONE §48 |
 | S40 | Plugin dock, single slot | DONE §50 |
 | S41 | Plugin dock, multiple slots | DONE §50 |
-| S42 | EQ expanded (bands, shapes) | PART — §53 |
+| S42 | EQ expanded (bands, shapes) | DONE §85 |
 | S43 | Compressor with sidechain | DONE §83 |
 | S44 | Convolution with IR loaded | PART §78 — card without an IR |
 | S45 | Create-new-plugin designer | PART §79 — prompt entry only |
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 45 |
-| PART | 6 |
-| OPEN | 14 |
+| DONE | 47 |
+| PART | 5 |
+| OPEN | 13 |
 | **Total** | **65** |
 
 ## Rules for working through this list
