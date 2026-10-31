@@ -16,6 +16,8 @@ import pytest
 from fastapi import HTTPException
 
 from platform_api.middleware.rate_limit import (
+    BATCH_CREATE_RATE_LIMIT,
+    BATCH_CREATE_RATE_WINDOW_SECONDS,
     CONFIG_CACHE_PREFIX,
     CONFIG_CACHE_TTL,
     DEFAULT_RATE_LIMIT,
@@ -182,8 +184,19 @@ class TestResolveEndpointType:
     def test_case_insensitive(self) -> None:
         assert resolve_endpoint_type("/API/V1/Generation/Suno") == "suno"
 
-    def test_batch_create_is_llm(self) -> None:
-        assert resolve_endpoint_type("/api/v1/batches") == "llm"
+    def test_batch_create_is_its_own_type(self) -> None:
+        """Provisioning POST /batches must not share the LLM bucket.
+
+        The desktop sends one POST per planned day × channel pair, so a
+        two-week plan is 15 requests before retries. Bucketing it with
+        /generation/draft (60/min) rejected whole plans with 429.
+        """
+        assert resolve_endpoint_type("/api/v1/batches") == "batch"
+        assert resolve_endpoint_type("/batches") == "batch"
+
+    def test_batch_subpaths_are_not_batch_create(self) -> None:
+        """Only the collection POST is provisioning; reads/deletes stay default."""
+        assert resolve_endpoint_type("/api/v1/batches/b1") == "default"
 
     def test_batch_retry_draft_is_llm(self) -> None:
         assert (
@@ -380,6 +393,15 @@ class TestGetRateLimitConfig:
         )
         assert config.max_requests == SUNO_RATE_LIMIT
         assert config.window_seconds == SUNO_RATE_WINDOW_SECONDS
+
+    async def test_returns_batch_create_defaults(self, fake_redis: FakeRedis) -> None:
+        """Batch provisioning gets a bucket sized for a multi-day plan."""
+        config = await get_rate_limit_config(
+            fake_redis, "batch", None  # type: ignore[arg-type]
+        )
+        assert config.max_requests == BATCH_CREATE_RATE_LIMIT
+        assert config.window_seconds == BATCH_CREATE_RATE_WINDOW_SECONDS
+        assert config.max_requests > DEFAULT_RATE_LIMIT
 
     async def test_uses_cached_config(self, fake_redis: FakeRedis) -> None:
         """Config cached in Redis is used without hitting the DB."""
