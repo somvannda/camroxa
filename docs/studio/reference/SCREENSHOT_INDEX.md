@@ -46,6 +46,7 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S37 | `screens/S37-generation-result.jpeg` | Generation result — new `Drums` track, 8-bar clip, take controls, streaming waveform |
 | S29b | `screens/S29-take-lanes-detail.jpeg` | 2× crop — lane numbers, active/inactive opacity, thumbs per take |
 | S51 | `screens/S51-export-result-toast.jpeg` | Export result — `Multitrack download started!`, no progress UI |
+| S58 | `screens/S58-empty-library.jpeg` | Library list, zero results — `No songs found.` + `Reset all filters` |
 | S33 | `screens/S33-velocity-lane.jpeg` | Velocity lane — one lollipop per note, flat-velocity comb |
 | S63 | `screens/S63-1280px.jpeg` | 1280 px — full header, gutter still 283, canvas 997 |
 | S64 | `screens/S64-1024px.jpeg` | 1024 px — undo/redo shift, BPM + signature merge, gutter unchanged |

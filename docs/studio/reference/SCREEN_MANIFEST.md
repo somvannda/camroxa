@@ -98,7 +98,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | # | Screen | Status |
 |---|---|---|
 | S57 | Project loading | DONE §63 |
-| S58 | Empty library | OPEN |
+| S58 | Empty library | DONE §88 |
 | S59 | Save conflict / error banner | OPEN |
 | S60 | Policy / moderation refusal | OPEN |
 | S61 | Insufficient credits | OPEN |
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 49 |
+| DONE | 52 |
 | PART | 4 |
-| OPEN | 12 |
+| OPEN | 9 |
 | **Total** | **65** |
 
 ## Rules for working through this list

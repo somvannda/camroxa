@@ -3289,6 +3289,36 @@ not exist, and recording that is more useful than inventing one. Implementation 
 for the clone — if we add an export dialog we are adding scope the reference does not
 have; if we mirror it, `Export` is a three-item menu that fires and forgets.
 
+## 88. S58 — empty library `L`
+
+Capture `screens/S58-empty-library.jpeg`, from the library's **song list** (not the
+home screen).
+
+```
+              No songs found.
+
+        [ Reset all filters ]
+```
+
+| Property | Value |
+|---|---|
+| Placement | centred in the list column, vertically slightly above middle |
+| Copy | `No songs found.` — a complete sentence with a full stop, muted, 13 px |
+| Action | a single `Reset all filters` pill below it |
+| Header | the search field keeps the query (`zzzqqqxx`) and stays editable |
+| Toolbar | `filter ▾ · New ▾ · ♡ · In Project · Stems` all remain active |
+
+Two things worth copying:
+
+1. **The empty state is a recovery, not a report.** It does not say "0 results"; it
+   offers the one action that undoes the situation, and that action clears *all*
+   filters rather than just the text query — because the query may not be the reason
+   the list is empty.
+2. **The home screen has no empty state at all** (verified separately: nonsense in
+   the home search changes nothing). The empty state belongs to the list, which is
+   the only place a query can actually produce zero rows.
+
+
 
 
 
