@@ -44,7 +44,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S26 | Clip context menu | DONE §47.1 |
 | S27 | Clip Info panel | DONE §70 |
 | S28 | Clip colour submenu | DONE §71 |
-| S29 | Take lanes expanded | PART §72 — empty state only |
+| S29 | Take lanes expanded | DONE §72.1 |
 | S30 | Warp markers | OPEN |
 | S31 | MIDI clip editor | DONE §73 |
 | S32 | Automation lane — CC | PART §74 — empty lane only |
@@ -57,7 +57,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S34 | Magic Bar idle | DONE §54.1 |
 | S35 | Magic Bar with clip attachment | DONE §54.1 |
 | S36 | Magic Bar conversation | DONE §80 |
-| S37 | Generation result on the timeline | OPEN |
+| S37 | Generation result on the timeline | DONE §86 |
 | S38 | Model picker | DONE §6 |
 
 ## 4. Plugins (S39–S46)
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 47 |
-| PART | 5 |
-| OPEN | 13 |
+| DONE | 49 |
+| PART | 4 |
+| OPEN | 12 |
 | **Total** | **65** |
 
 ## Rules for working through this list

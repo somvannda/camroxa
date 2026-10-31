@@ -2803,6 +2803,43 @@ Also captured by accident and worth noting: selecting a **MIDI** clip changes th
 Magic Bar placeholder to `Make a variation of this MIDI clip`, the third distinct
 placeholder family after track-scoped (§54.1) and audio-clip-scoped.
 
+### 72.1 The real thing: two takes (S29, resolved)
+
+Captures `screens/S29-take-lanes.jpeg` and `screens/S29-take-lanes-detail.jpeg`,
+from a **Studio-native** project after generating an 8-bar drum loop (§86). The
+generation produced **two takes**, so the strip was finally populated:
+
+```
+[2]  Drums ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓     (dimmed — the inactive take)
+[1]  Drums ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓  ×  (bright, green tick at the left edge)
+```
+
+| Property | Value |
+|---|---|
+| Lane height | ≈ 55 px per take, stacked **newest on top** (2 above 1) |
+| Number | plain integer at the left, same gutter column as tracks |
+| Clip | drawn exactly like a track clip — name + waveform in the track colour |
+| Active take | full saturation, 1 px light outline, and a **green tick** in the gutter |
+| Inactive take | ≈ 45 % opacity, no outline |
+| Per-take actions | thumbs up / thumbs down at the right edge of the lane |
+| Remove | `×` in the gutter of the active lane |
+
+The conversation panel is the take controller, and it is explicit about state:
+
+| State | Buttons shown |
+|---|---|
+| Take 1 previewing | `Commit Take 1` (filled) · `Audition Take 2` (outline) |
+| Take 2 previewing | `Audition Take 1` (outline) · `Commit Take 2` (filled) |
+
+`Audition` swaps which take streams into the track **without committing**; `Commit`
+bakes the choice. Both buttons persist after the audio finishes, so the decision is
+never forced on the user mid-generation.
+
+A floating pill on the clip duplicates the essentials without the chat panel —
+play · close · previous take · next take — which is what you use once the panel is
+collapsed.
+
+
 ## 73. S31 — MIDI clip editor `L`
 
 Capture `screens/S31-midi-clip-editor.jpeg` — the editor band under the arrangement
@@ -3185,6 +3222,43 @@ Two decisions worth copying:
 
 The transfer curve itself is documented in §53 (it sits above the selector and its
 points are draggable); this section covers the band controls beneath it.
+
+## 86. S37 — generation result on the timeline `L`
+
+Capture `screens/S37-generation-result.jpeg`, taken seconds after sending
+`Generate an 8-bar drum loop` in a **new empty project**.
+
+What arrives is more than a clip:
+
+| Surface | What appears |
+|---|---|
+| Track | a new `Drums` track appended below the existing ones, in the instrument family colour (orange) |
+| Clip | an **8-bar** clip snapped to bar 1, named after the track, waveform rendering progressively |
+| Conversation | the prompt echoed as a message, then `Created Drums.`, then a paragraph describing what is being generated |
+| Take controls | `Commit Take 1` / `Audition Take 2` (§72.1) |
+| Floating pill | play · close · previous take · next take, over the clip |
+| Magic Bar | collapses back to a dock with the new track as the chip |
+
+The description text is not decorative — it is the **generation spec played back**:
+*"Generating 2 driving contemporary drum groove, punchy kick and snare, crisp
+hi-hats, tight rhythmic feel Drums takes; the audio is still streaming in — the first
+take is previewing on its track as it renders."*
+
+Three product decisions visible in one frame:
+
+1. **The clip exists before the audio does.** The take is placed, named and playable
+   while still streaming, so the timeline is never blocked by a render.
+2. **Generation always produces takes, even when asked for one thing.** "An 8-bar
+   drum loop" returned two variants — the unit of generation is a *take set*, which
+   is why take lanes (§72.1) are core rather than an advanced feature.
+3. **The result is a track, not a clip dropped on an existing one.** A prompt with no
+   selection created `Drums` wholesale; the object model therefore has to support
+   create-track-and-clip as one atomic action.
+
+Contrast with §77: the same prompt on the legacy demo project is refused outright,
+so this is also the clean proof that the earlier failures were the project, not the
+feature.
+
 
 
 

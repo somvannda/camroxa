@@ -40,9 +40,11 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S25 | `screens/S25-trim-grips-detail.jpeg` | 3× crop — trim grips at both ends, fade stub top-left, header band |
 | S27 | `screens/S27-clip-info-panel.jpeg` | Clip Info rail — source song title, `Remix`, green waveform, `Info`/`Stems`, styles + lyrics |
 | S28 | `screens/S28-clip-color-submenu.jpeg` | `Clip Color ▸` open — `Auto` row with check, 5 × 8 swatch grid, shades per hue |
-| S29 | `screens/S29-take-lanes-empty.jpeg` | Take-lanes strip, empty — `Create a clip to see alternate takes here` |
+| S29 | `screens/S29-take-lanes.jpeg` | Take lanes, populated — two `Drums` takes stacked, active one ticked |
 | S31 | `screens/S31-midi-clip-editor.jpeg` | MIDI clip editor — piano roll, clip-relative bars, Velocity/Pitch Bend/Modulation, quantize toolbar |
 | S32 | `screens/S32-modulation-lane-empty.jpeg` | Modulation CC lane, empty — shared x-axis with the note lane |
+| S37 | `screens/S37-generation-result.jpeg` | Generation result — new `Drums` track, 8-bar clip, take controls, streaming waveform |
+| S29b | `screens/S29-take-lanes-detail.jpeg` | 2× crop — lane numbers, active/inactive opacity, thumbs per take |
 | S33 | `screens/S33-velocity-lane.jpeg` | Velocity lane — one lollipop per note, flat-velocity comb |
 | S63 | `screens/S63-1280px.jpeg` | 1280 px — full header, gutter still 283, canvas 997 |
 | S64 | `screens/S64-1024px.jpeg` | 1024 px — undo/redo shift, BPM + signature merge, gutter unchanged |
