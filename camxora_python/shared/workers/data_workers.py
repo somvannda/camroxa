@@ -2852,6 +2852,13 @@ class PublishUploadWorker(QThread):
         try:
             request = self._request or self._build_auto_request()
             self._request = request
+            self.status_changed.emit("Checking publishing credits…")
+            quote = self._api.get_publish_quote()
+            if not quote.available:
+                raise RuntimeError(
+                    f"Not enough credits: this upload costs {quote.credits_per_upload:g} "
+                    f"and your balance is {quote.balance:g}."
+                )
             self.status_changed.emit("Creating upload job…")
             job = self._api.create_publish_job(request)
             if not job.upload_url:
