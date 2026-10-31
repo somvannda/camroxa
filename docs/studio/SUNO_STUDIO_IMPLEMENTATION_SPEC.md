@@ -1898,3 +1898,81 @@ hover/active styling per row.
 
 This strengthens §26: the hint is generated per context and per session, and it
 is never a fixed string.
+
+## 62. S03 — signed-in entry `L`
+
+`GET /studio` while signed in **reopens the last project in place**. There is no
+project chooser, no landing page and no redirect — the URL stays `/studio`.
+
+### 62.1 Entry sequence
+
+| Step | What happens |
+|---|---|
+| 1 | Blank dark frame, `canvas` count **0**, `innerText` empty (§57) |
+| 2 | Renderer mounts, one `canvas`, chrome appears |
+| 3 | Last project restored by name — `Untitled Project` survives a reload |
+| 4 | Track state restored too: colour strip, solo/arm state, level |
+| 5 | Onboarding overlay **re-appears** on a fresh load, over the restored project |
+
+Step 5 is the surprise: restoring an existing project does **not** suppress
+`How do you want to start?`. The overlay is tied to the load, not to whether the
+project is empty.
+
+### 62.2 Control names exposed by tooltips
+
+The What's This? system gives every header control a name, readable even though
+the canvas exposes no accessibility tree:
+
+| Control | Tooltip |
+|---|---|
+| Bar/section icon | `Metronome` |
+| Time readout | `Time` |
+| Bar.beat readout | `Beats` |
+| Tempo field | `Tempo` |
+| Signature field | `Time Signature` |
+| `S` | `Solo track` |
+| `A` (armed) | `Disarm track` |
+
+This is the cheapest way to enumerate the header: enable What's This?, then read
+`innerText`.
+
+### 62.3 Track attachment chip
+
+When the prompt is aimed at a track, a **pill** appears inside it:
+
+```
+[+]  ( ● Audio Track ✕ )                    [▤] [✕]
+     Build a gritty delay and put it on this track      v6 ▾  (↑)
+```
+
+The pill carries the track colour dot and the track name, with `✕` to detach.
+The placeholder switches to a task phrasing (`Build a gritty delay and put it on
+this track`) — a fifth variant of the §26 set.
+
+### 62.4 Correction to §59's track persistence
+
+§59 recorded one `Audio Track` on creation, and a later remount showed **zero**
+(`S05-zero-tracks-after-remount.jpeg`). After this reload the track came back.
+
+So the zero-track frame was **not** a persistence rule — it was a frame captured
+before autosave committed the new track. The track does persist; the initial
+creation just isn't durable until the next save tick.
+
+## 63. S57 — project loading `L`
+
+Captured on a cold load of `/studio` (signed in), immediately after navigation.
+
+| Signal | Value |
+|---|---|
+| Frame | **uniform dark, no skeleton, no spinner, no logo** |
+| `canvas` elements | 0 |
+| `innerText` | empty string |
+| Duration | until the renderer mounts (§62.1 step 2) |
+
+There is **no loading UI at all**. The editor does not paint a skeleton, a
+progress bar or a wordmark — the window is simply blank until the canvas mounts.
+Anything the user sees before that is chrome-free emptiness.
+
+Consequence for us: a blank frame is the reference behaviour, so a spinner would
+be a deviation. If we want to improve on it, do it deliberately rather than
+assuming a loader was missed.

@@ -13,7 +13,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 |---|---|---|
 | S01 | Signed-out marketing page `/studio-welcome` | DONE §57 |
 | S02 | Sign-in page / redirect | DONE §58 |
-| S03 | **Signed-in entry — reopens the last project** | DONE §54 |
+| S03 | **Signed-in entry — reopens the last project** | DONE §62 |
 | S04 | Studio home / project chooser ("Browse Studio projects") | DONE §56 |
 | S05 | New empty project | DONE §59 |
 | S06 | Onboarding dialog "How do you want to start?" | DONE §10 |
@@ -97,7 +97,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | # | Screen | Status |
 |---|---|---|
-| S57 | Project loading | OPEN |
+| S57 | Project loading | DONE §63 |
 | S58 | Empty library | OPEN |
 | S59 | Save conflict / error banner | OPEN |
 | S60 | Policy / moderation refusal | OPEN |
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 30 |
+| DONE | 31 |
 | PART | 4 |
-| OPEN | 31 |
+| OPEN | 30 |
 | **Total** | **65** |
 
 ## Rules for working through this list

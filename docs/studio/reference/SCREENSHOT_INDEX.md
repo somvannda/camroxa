@@ -7,29 +7,30 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-Backfill status is deliberately visible: **7 captures exist for 30 DONE rows.**
-The 23 remaining `DONE` rows were documented from live DOM measurement and
-earlier sessions, before this archive existed — they have a spec section but no
-image. They are not being re-marked `PART` in bulk; each one gets promoted to
-fully evidenced as it is re-shot.
+Backfill status is deliberately visible: **9 captures exist against 31 DONE rows.**
+The remaining `DONE` rows were documented from live DOM measurement and earlier
+sessions, before this archive existed — they have a spec section but no image.
+They are not being re-marked `PART` in bulk; each one gets promoted to fully
+evidenced as it is re-shot.
 
 ## Captured
 
 | Screen | File | What it shows |
 |---|---|---|
 | S01 | `screens/S01-marketing-signed-out.jpeg` | `/studio-welcome` hero, nav, CTA — signed out |
+| S03 | `screens/S03-signed-in-entry-reopened.jpeg` | `/studio` reopening the last project + onboarding overlay |
 | S05 | `screens/S05-empty-project.jpeg` | New project, one `Audio Track`, overlay dismissed |
 | S05 | `screens/S05-zero-tracks-after-remount.jpeg` | Same project after the editor remounted — **zero** tracks |
 | S06 | `screens/S06-onboarding-overlay.jpeg` | `How do you want to start?` over the empty project |
 | S19 | `screens/S19-track-options-menu.jpeg` | Track options menu, 6 items with icons |
 | S20 | `screens/S20-add-track-menu.jpeg` | `Add a track` — Audio / MIDI / Upload |
+| S57 | `screens/S57-project-loading-blank.jpeg` | Load state: blank frame, `canvas` 0, no text |
 | — | `screens/RESPONSIVE-gate-319px.jpeg` | §60 desktop-only gate at 319 px (no manifest row) |
 
 ## Missing — every other `DONE` row
 
 | Screen | Spec | Needs |
 |---|---|---|
-| S03 | §54 | screenshot |
 | S04 | §56 | screenshot |
 | S07 | §18.1 | screenshot |
 | S08 | §25 | screenshot |
