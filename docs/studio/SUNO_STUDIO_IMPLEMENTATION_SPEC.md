@@ -2877,6 +2877,38 @@ Because the stems share a baseline and the dots share a height, a flat-velocity 
 reads as a **comb**. That is the whole point of the lollipop form: any deviation is
 visible as a single dot out of line, which a filled bar chart would hide.
 
+## 76. S63 / S64 — 1280 px and 1024 px `L`
+
+Captures `screens/S63-1280px.jpeg` (1280 × 900) and `screens/S64-1024px.jpeg`
+(1024 × 900), same project, same clip editor open, so only width differs.
+
+| Region | 1689 px | 1280 px | 1024 px |
+|---|---|---|---|
+| Project chip | full name | full name | full name, `…` closer to the text |
+| Transport | 6 glyphs + undo/redo | 6 glyphs + undo/redo | 6 glyphs, undo/redo pushed left of them |
+| Time readouts | `00:57.316` `042.3.1` | same | same, tighter gap |
+| BPM + signature | two chips | two chips | one merged run `174 BPM 4/4` |
+| Export / Library | icon + label each | icon + label each | **icon + label**, but the pair loses padding |
+| Track gutter | 283 px | 283 px | **283 px — unchanged** |
+| Canvas | 1406 px | 997 px | 741 px |
+| Footer tools | 4 icons | 3 icons | 3 icons |
+| Chain chips | centred | centred | centred, `+` separated |
+
+The rule that survives every width: **the gutter is fixed and the canvas absorbs the
+loss.** Between 1689 and 1024 the track column does not change by a single pixel, and
+nothing in the header wraps — elements drop or compress in a fixed order instead
+(undo/redo first, then chip padding, then the BPM/signature split).
+
+Combined with §46.1 (gate at ≤767, editor at ≥768) the full ladder is:
+
+```
+≥768  editor renders; canvas shrinks, gutter fixed
+ 1280  everything present, transport centred
+ 1024  undo/redo shift, BPM+signature merge
+ <768  desktop-only gate
+```
+
+
 
 
 

@@ -108,8 +108,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | # | Width | Status |
 |---|---|---|
-| S63 | 1280 px | OPEN |
-| S64 | 1024 px | OPEN |
+| S63 | 1280 px | DONE §76 |
+| S64 | 1024 px | DONE §76 |
 | S65 | 768 px | DONE §46.1 — gate below 768, editor at ≥768 |
 
 ---
