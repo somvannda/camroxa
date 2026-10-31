@@ -11,8 +11,8 @@ import time
 import webbrowser
 from pathlib import Path
 
-from PySide6.QtCore import QPoint, QSize, Qt, QTimer
-from PySide6.QtGui import QColor, QIcon, QPainter, QPixmap, QPolygon
+from PySide6.QtCore import QSize, Qt, QTimer
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
     QButtonGroup,
     QCheckBox,
@@ -40,6 +40,7 @@ from features.create.widgets.icons import apply_button_icon
 from features.create.widgets.studio_panel import StudioPanel, fill_studio_canvas, paint_studio_card
 from features.settings.settings_styles import build_settings_page_qss
 from features.settings.widgets.error_banner import LOAD_ERROR, SettingsErrorBanner
+from shared.icons.lucide_icons import lucide_pixmap
 from shared.lib.ui_font import ensure_inter_loaded, studio_font
 from shared.lib.app_paths import get_profile_media_cache_dir
 from shared.lib.music_settings import build_music_prompt_defaults_patch, read_string_setting
@@ -2248,22 +2249,7 @@ class SettingsView(QWidget):
         cached = getattr(self, "_cached_youtube_icon", None)
         if cached is not None:
             return cached
-        size = 18
-        pixmap = QPixmap(size, size)
-        pixmap.fill(Qt.GlobalColor.transparent)
-        painter = QPainter(pixmap)
-        try:
-            painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
-            painter.setPen(Qt.PenStyle.NoPen)
-            painter.setBrush(QColor("#FF0033"))
-            painter.drawRoundedRect(1, 3, 16, 12, 3, 3)
-            painter.setBrush(QColor("white"))
-            painter.drawPolygon(
-                QPolygon([QPoint(7, 6), QPoint(13, 9), QPoint(7, 12)])
-            )
-        finally:
-            painter.end()
-        icon = QIcon(pixmap)
+        icon = QIcon(lucide_pixmap("youtube", size=16, color="#FF0033"))
         self._cached_youtube_icon = icon
         return icon
 
