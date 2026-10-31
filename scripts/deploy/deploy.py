@@ -42,7 +42,7 @@ _INSECURE_HOST_KEY = os.environ.get("DEPLOY_INSECURE_IGNORE_HOST_KEY", "").strip
     "on",
 }
 VENV_DIR = Path(__file__).resolve().parent / ".venv"
-DEPLOY_DIRS = ("platform_api", "admin_portal", "website", "music_web", "shared")
+DEPLOY_DIRS = ("platform_api", "admin_portal", "website", "music_web", "user_portal", "shared")
 # Single files the systemd timers execute by absolute path. They live outside
 # DEPLOY_DIRS, so without this the healthcheck units start with status 127
 # ("No such file or directory") after every tarball deploy.
@@ -503,6 +503,10 @@ def upload_and_run(client, secrets: dict[str, str]) -> int:
         "DB_PASSWORD",
         "PLATFORM_JWT_SECRET",
         "PLATFORM_ENCRYPTION_MASTER_KEY",
+        "PLATFORM_POSTFORME_API_KEY",
+        "PLATFORM_POSTFORME_API_BASE_URL",
+        "PLATFORM_POSTFORME_WEBHOOK_SECRET",
+        "PLATFORM_POSTFORME_ENABLED",
         "PLATFORM_SUNO_CALLBACK_HMAC_SECRET",
         "EDGE_VERIFY_SECRET",
         "PLATFORM_CUTLUY_SECRET_KEY",
