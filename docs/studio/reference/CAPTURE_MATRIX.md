@@ -26,7 +26,7 @@ Evidence codes: `M` measured geometry · `L` live observation · `B` bundle · `
 | **D** | **Track panel** | | | |
 | D1 | Row anatomy | colour, name, M/S/A, extend, meter | DONE | M §3 |
 | D2 | Row metrics | 85 px row, 86 px step | DONE | M §28 |
-| D3 | Track options menu | full item list | OPEN | right-click returns clip menu |
+| D3 | Track options menu | full item list | DONE | M §61 |
 | D4 | Add-track menu | Audio/MIDI/Upload + accelerators | DONE | L §18.3 |
 | D5 | Track types | audio, MIDI, instrument, bus? | PART | L |
 | D6 | 17-track real project | structure evidence | DONE | L §41 |
@@ -129,9 +129,9 @@ Evidence codes: `M` measured geometry · `L` live observation · `B` bundle · `
 
 | Status | Count |
 |---|---|
-| DONE | 33 |
+| DONE | 34 |
 | PART | 13 |
-| OPEN | 30 |
+| OPEN | 29 |
 | BLOCK | 2 |
 
 ## Capture order for the remainder

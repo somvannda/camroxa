@@ -30,10 +30,13 @@ One screen = one screenshot + one spec section + one commit. Never two at once.
 ## Position
 
 - 65 screens in `docs/studio/reference/SCREEN_MANIFEST.md`
-- **29 DONE, 4 PART, 32 OPEN** (counted from the manifest rows, not the old tally)
-- **S05 is now DONE §59** — new empty project captured: one `Audio Track` created
-  automatically, 120 BPM / 4/4, label cadence every 2 bars at default zoom.
-- **Next: S19 (track options menu)**, then S16 onward (arrangement)
+- **29 DONE, 5 PART, 31 OPEN** (counted from the manifest rows, not the old tally)
+- **S05 DONE §59** — new empty project: one `Audio Track` created automatically,
+  120 BPM / 4/4, bar labels every 2 bars at default zoom.
+- **S19 PART §61** — track options menu, DOM-measured but no screenshot. The menu
+  is opened by right-clicking the **track name** only; there is no options button.
+- **Next: S16 (arrangement)** — the editor with content. S19 needs a re-shot with
+  the window visible to become DONE.
 - The reference tab is signed in again as of this session — reuse it, don't close it.
 
 ## What is actually built (code)

@@ -34,7 +34,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S16 | Editor, empty project | DONE §44 |
 | S17 | Editor, loaded project | DONE §44 |
 | S18 | Track row anatomy | DONE §52 |
-| S19 | Track options menu | OPEN |
+| S19 | Track options menu | PART §61 — DOM-measured, visual not captured |
 | S20 | Add-track menu | DONE §18.3 |
 | S21 | Hidden-track state | OPEN |
 | S22 | Ruler + zoom levels | PART — labels only |
@@ -119,8 +119,8 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | Status | Count |
 |---|---|
 | DONE | 29 |
-| PART | 4 |
-| OPEN | 32 |
+| PART | 5 |
+| OPEN | 31 |
 | **Total** | **65** |
 
 ## Rules for working through this list

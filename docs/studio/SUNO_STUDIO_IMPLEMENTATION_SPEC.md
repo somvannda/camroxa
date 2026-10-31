@@ -1811,3 +1811,86 @@ scroll.
 (no viewport resize available): the viewport could not be *resized by us*, but
 the pane did resize, which is what produced this. R1 is now `PART` — the gate is
 captured, the 1280 / 1024 / 768 editor states are not.
+
+## 61. S19 — track options menu `M` (DOM-measured, visual NOT captured)
+
+**Trigger: right-click the track NAME.** Not the row, and not the level bar —
+those give different results (§61.3). There is no options button on the row.
+
+### 61.1 Geometry
+
+| Property | Value |
+|---|---|
+| Container | 166 × 240 at (98, 114) |
+| Fill | `#252529` |
+| Radius | 10 px |
+| Items | **6 × 40 px**, no dividers |
+| Item text | 14 px / 500, `#f7f4ef` |
+| Text inset | 16 px from the menu edge |
+| Anchor | opens at the pointer, over the track panel |
+
+### 61.2 Items (verbatim, in order)
+
+| # | Item | Note |
+|---|---|---|
+| 1 | `Rename track` | |
+| 2 | `Color` | text inset 24 px further — a colour **swatch** sits left of the label |
+| 3 | `Collapse controls` | |
+| 4 | `Duplicate` | |
+| 5 | `Hide & Mute Track` | hide and mute are one command, not two |
+| 6 | `Delete` | |
+
+No accelerator hints, no separators, and `Delete` carries no distinct colour —
+so the destructive item is **not** visually differentiated in this menu.
+
+### 61.3 Three different right-click targets, three different results
+
+| Target | Result |
+|---|---|
+| Track **name** | this menu — 6 items (§61.2) |
+| Track **level bar** | `Automate` · `MIDI Learn` — a parameter menu |
+| Track **row body** | nothing (previous sessions saw a *clip* menu here) |
+
+That last row explains matrix note `D3` ("right-click returns clip menu") — the
+clip menu was being reached because the pointer was not on the name.
+
+### 61.4 Correction to §44.4 — there is no chevron or options button
+
+§44.4 read the trailing glyphs as `[⌄] [◉]` = "row extend / options". The row's
+actual control set, measured:
+
+| Control | Size | `aria-label` / text |
+|---|---|---|
+| Colour strip | 10 × 85 | `Change track color` |
+| Collapse | 16 × 32 | `Collapse Track` (renders the track **number**) |
+| Name | — | track name |
+| Mute | 28 × 32 | — |
+| Solo | 28 × 32 | `S` |
+| Arm | 28 × 32 | `A` |
+| **Record** | 16 × 32 | — |
+
+The final control is **record/arm**, not options. Clicking it raises
+`Error accessing audio inputs. You may need to grant microphone permission to
+suno.com through your browser settings.` — so there is no options affordance at
+all; the menu is right-click-only.
+
+### 61.5 Evidence limitation
+
+The desktop window was not visible when the menu was open, so **no screenshot
+exists** for this screen. Everything above is DOM-measured (rects, computed
+styles, verbatim `innerText`). Unverified: icon artwork per row, hover highlight,
+and whether `Color` opens a submenu.
+
+Hence **PART**, not `DONE` — the section exists, the visual does not.
+
+### 61.6 Bonus: four placeholder variants observed
+
+| Placeholder | Context |
+|---|---|
+| `Select a spot on the timeline and ask me to add a part` | new project, no track |
+| `Generate an 8-bar drum loop and drop it here` | audio track created |
+| `Ask me to generate or add something here` | after arming a track |
+| `Add a warm reverb to this track` | clip attached (§54) |
+
+This strengthens §26: the hint is generated per context and per session, and it
+is never a fixed string.
