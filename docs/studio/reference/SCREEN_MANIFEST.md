@@ -42,7 +42,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S24 | Loop region | DONE §68 |
 | S25 | **Clip selected with trim handles** | DONE §69 |
 | S26 | Clip context menu | DONE §47.1 |
-| S27 | Clip Info panel | OPEN |
+| S27 | Clip Info panel | DONE §70 |
 | S28 | Clip colour submenu | OPEN |
 | S29 | Take lanes expanded | OPEN |
 | S30 | Warp markers | OPEN |
@@ -118,9 +118,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 
 | Status | Count |
 |---|---|
-| DONE | 36 |
+| DONE | 38 |
 | PART | 2 |
-| OPEN | 27 |
+| OPEN | 25 |
 | **Total** | **65** |
 
 ## Rules for working through this list

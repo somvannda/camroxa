@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-**43 captures across the archive, covering every `DONE` row.** Three are extras with
+**46 captures across the archive, covering every `DONE` row.** Three are extras with
 no manifest row (`RESPONSIVE-gate-319px`, `EXTRA-project-load-error`,
 `EXTRA-restoring-last-project`); the rest map one or more images to a screen.
 
