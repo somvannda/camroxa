@@ -1,10 +1,21 @@
 # Post for Me (postforme.dev) Publishing Integration — Plan
 
-**Status:** Proposed — no production code written yet
+**Status:** Phase 1 backend implemented on this branch; desktop integration in progress
 **Date:** 2026-10-31
 **Branch:** `feat/postforme-publishing`
 **Worktree:** `G:\Developments\Projects\Camxora-worktrees\postforme-publishing`
 **Base:** `origin/main` @ `fccf6b05`
+
+### Implementation status
+
+- [x] Migration 178: job provider columns, account/result/webhook tables, 5-credit price row
+- [x] Post for Me client with retries, accounts, media, posts, results, webhooks
+- [x] `/publish` API (connect, accounts, quote, jobs, retry, cancel, webhook)
+- [x] v3 `publish` op + `/credits/operation-costs` + admin pricing dropdown
+- [x] Backend tests (24 focused tests; full suite 3172 passed)
+- [ ] Desktop upload worker wiring (models/client/worker added, UI in progress)
+- [ ] Sandbox end-to-end run against the live Post for Me project
+- [ ] Webhook registration + production secret provisioning
 
 ---
 
