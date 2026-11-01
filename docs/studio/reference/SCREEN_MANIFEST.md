@@ -89,9 +89,9 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 |---|---|---|
 | S52 | Library workspaces | DONE §19.1 |
 | S53 | Library — songs in a workspace | DONE §19.1 |
-| S54 | Clip permissions | OPEN |
+| S54 | Clip permissions | DONE §89 — project-level view+copy only (negative) |
 | S55 | Comments thread | DONE §84 — flat notes, no authors |
-| S56 | Shared project page | OPEN |
+| S56 | Shared project page | DONE §89 — no public page; link redirects (negative) |
 
 ## 7. States (S57–S62)
 

@@ -3318,6 +3318,47 @@ Two things worth copying:
    the home search changes nothing). The empty state belongs to the list, which is
    the only place a query can actually produce zero rows.
 
+## 89. S54 / S56 — sharing is project-level only `L`
+
+Two captures: `screens/S54-share-permission-copy.jpeg` (the share dialog) and
+`screens/S56-shared-link-logged-out.jpeg` (the link opened in a cookie-less context).
+
+**S54 (clip permissions): there are none.** Nothing in the clip menu (§47.1) or the
+clip inspector (§70) references permissions, and the share dialog states the model
+outright:
+
+> Share "Drum & Bass Demo"
+> **Anyone with the link can view this project and create their own editable copy.**
+> Your original project will remain unchanged — others can't edit or affect your version.
+
+So the permission model is exactly two states, both project-scoped:
+
+| State | Meaning |
+|---|---|
+| Anyone with the link | can **view** |
+| …and create their own **editable copy** | a fork; the original is untouched |
+
+There is no per-clip share, no per-collaborator role, and no edit access at all —
+"shared" always means "forkable snapshot", never "co-editing".
+
+**S56 (shared project page): the page does not exist publicly.** The copy link is not
+a song URL — it is the Studio itself carrying a version id:
+
+```
+https://suno.com/studio?project_version_id=506fc4c4-f191-4737-8fb7-ff3f2b8a258a
+```
+
+Opening that URL in an **isolated browser context with no cookies** redirects to
+`/studio-welcome`, i.e. the marketing page — not a read-only project view, not a
+"song" page. A logged-out visitor therefore sees nothing at all.
+
+Implication for the clone, and it is a significant one: **the reference has no
+public artefact for a Studio project.** Sharing is an invitation to open the editor,
+and the fork mechanism is the only thing protecting the original. If we build a
+shared read-only page, we are adding a feature — and we gain something the reference
+lacks: a link a recipient can actually look at without an account.
+
+
 
 
 
