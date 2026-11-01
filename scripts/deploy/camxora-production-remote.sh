@@ -471,6 +471,8 @@ systemctl enable camxora-api \
 systemctl disable camxora-worker 2>/dev/null || true
 systemctl disable --now camxora-portal 2>/dev/null || true
 systemctl restart camxora-api camxora-website camxora-music
+# Restart stage workers so new job types (sync_publish_results) load.
+systemctl restart camxora-worker-draft@{1..4} camxora-worker-suno@{1..2} camxora-worker-images@{1..2} 2>/dev/null || true
 
 log "Configuring nginx HTTP bootstrap..."
 # The uploaded production config is HTTPS-only. Bootstrap HTTP before Certbot.
