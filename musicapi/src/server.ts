@@ -718,7 +718,13 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     const url = req.raw.url ?? "";
     if (url.startsWith("/api/v1/")) {
       if (reply.statusCode === 202) reply.code(200);
-      else if (reply.statusCode === 402) reply.code(429);
+      else if (reply.statusCode === 402) {
+        // Keep sunoapi.org's 429, but tag it so callers never mistake a
+        // billing stop for throttling (that misread parked the platform key
+        // pool for an hour on 2026-11-01).
+        reply.code(429);
+        reply.header("x-credit-exhausted", "1");
+      }
     }
     return payload;
   });
@@ -5958,16 +5964,44 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
     // 1. Suno accounts whose live credit balance is at or below the threshold.
     const health = await pool.listHealth().catch(() => [] as Awaited<ReturnType<AccountPool["listHealth"]>>);
     const low = health.filter((h) => h.credits <= thresholds.low_credits_threshold);
-    summary.low_credits = low.length;
-    if (low.length > 0) {
+
+    // 1b. Admin-owned API-key pools. These fund whole downstream surfaces: when
+    // the reseller pool reached 0 on 2026-11-01, every platform_api generation
+    // failed for an hour. Warn while there is still headroom to top up.
+    const dryPools = await query<{ email: string; credits: string }>(
+      `SELECT u.email AS email, COALESCE(sum(k.credits), 0)::text AS credits
+         FROM api_keys k
+         JOIN users u ON u.id = k.user_id
+        WHERE k.is_active = true AND u.role = 'admin'
+        GROUP BY u.email
+       HAVING COALESCE(sum(k.credits), 0) <= $1`,
+      [thresholds.low_credits_threshold],
+    ).catch(() => [] as Array<{ email: string; credits: string }>);
+
+    summary.low_credits = low.length + dryPools.length;
+    if (low.length > 0 || dryPools.length > 0) {
+      const parts: string[] = [];
+      if (low.length > 0) {
+        parts.push(
+          `${low.length} Suno account(s) at or below ${thresholds.low_credits_threshold} credits: ${low
+            .map((h) => `${h.id} (${h.credits})`)
+            .join(", ")}.`,
+        );
+      }
+      for (const row of dryPools) {
+        parts.push(`API key pool ${row.email} is at ${row.credits} credits; downstream generation stops at 0.`);
+      }
+      const critical =
+        low.some((h) => h.credits <= 0) || dryPools.some((row) => Number(row.credits) <= 0);
       alerts.push({
         id: "low_credits",
         type: "low_credits",
-        severity: low.some((h) => h.credits <= 0) ? "critical" : "warning",
-        message: `${low.length} Suno account(s) at or below ${thresholds.low_credits_threshold} credits: ${low
-          .map((h) => `${h.id} (${h.credits})`)
-          .join(", ")}.`,
-        details: { accounts: low.map((h) => ({ id: h.id, credits: h.credits })) },
+        severity: critical ? "critical" : "warning",
+        message: parts.join(" "),
+        details: {
+          accounts: low.map((h) => ({ id: h.id, credits: h.credits })),
+          api_key_pools: dryPools.map((row) => ({ email: row.email, credits: Number(row.credits) })),
+        },
       });
     }
 
