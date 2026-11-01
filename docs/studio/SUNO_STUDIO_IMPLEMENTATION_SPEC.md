@@ -3358,6 +3358,45 @@ and the fork mechanism is the only thing protecting the original. If we build a
 shared read-only page, we are adding a feature — and we gain something the reference
 lacks: a link a recipient can actually look at without an account.
 
+## 90. S46 — preset menu `L`
+
+Capture `screens/S46-preset-menu.jpeg`, from a plugin card header (Convolution).
+
+The preset control is **not a plain selector**. The header shows a stepper —
+`‹ Default ›` — with chevrons on both sides, and clicking the name drops a menu:
+
+```
+‹ Default ›
+  ┌────────────────────┐
+  │ Clear all settings │
+  │ Save preset…       │
+  ├────────────────────┤
+  │ Default            │  ← current, highlighted
+  └────────────────────┘
+```
+
+| Element | Detail |
+|---|---|
+| Stepper | `‹` / `›` cycle to the previous / next preset **without opening a list** |
+| Menu — clear | `Clear all settings` (destructive, top, no confirmation) |
+| Menu — save | `Save preset…`, which would create a user preset |
+| Menu — list | below a separator, the available presets with the current one highlighted |
+| Dirty state | when settings differ from the preset, the name becomes `Custom` and an `Update` button appears (see §50.1) |
+
+That gives a three-part preset model, and it is worth copying wholesale:
+
+1. **jump** with the arrows (`‹ ›`),
+2. **browse** with the list,
+3. **save** with `Save preset…`, `Update` once saved and edited.
+
+The chevrons are what make this feel like a hardware plugin — you audition presets
+without ever opening a menu, which is the common case.
+
+Still not evidenced: the `bulk export` half of this manifest row. Nothing in the
+library or the plugin menu offers it; if it exists it is likely gated behind a saved
+preset library that this account does not have.
+
+
 
 
 

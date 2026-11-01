@@ -71,7 +71,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S43 | Compressor with sidechain | DONE §83 |
 | S44 | Convolution with IR loaded | PART §78 — card without an IR |
 | S45 | Create-new-plugin designer | PART §79 — prompt entry only |
-| S46 | Preset browser / bulk export | OPEN |
+| S46 | Preset browser / bulk export | DONE §90 — preset stepper + menu; bulk export not found |
 
 ## 5. Mix and export (S47–S51)
 
