@@ -291,6 +291,57 @@ def _effective_suno_base_url(configured: str | None) -> str:
     return os.environ.get("PLATFORM_SUNO_API_BASE_URL", "").strip().rstrip("/")
 
 
+async def _keys_outside_cooldown(pool: Any, rows: list[Any], provider: str) -> list[Any]:
+    """Drop keys still inside their rate-limit cooldown; revive the expired ones.
+
+    The submit path reads keys straight from the database, so a key the pool
+    parked as ``rate_limited`` stayed unusable until something else happened to
+    run the pool's recovery — one 429 from a billing stop therefore looked like
+    "No active Suno API key configured." until an operator reset the pool.
+    Honour the Redis cooldown TTL here and flip expired keys back to active so a
+    60 s rate limit is a 60 s rate limit.
+    """
+    if not rows:
+        return rows
+    parked = [row for row in rows if str(row["status"]) == "rate_limited"]
+    if not parked:
+        return list(rows)
+
+    try:
+        from platform_api.dependencies import get_redis
+
+        redis = get_redis()
+    except Exception:  # pragma: no cover - Redis unavailable
+        redis = None
+
+    still_cooling: set[Any] = set()
+    for row in parked:
+        if redis is None:
+            break
+        try:
+            if await redis.exists(f"key_pool:{provider}:cooldown:{row['id']}"):
+                still_cooling.add(row["id"])
+        except Exception:  # pragma: no cover - Redis hiccup
+            break
+
+    expired = [row["id"] for row in parked if row["id"] not in still_cooling]
+    if expired:
+        try:
+            await pool.execute(
+                "UPDATE api_key_entries SET status = 'active', rate_limited_at = NULL, "
+                "updated_at = now() WHERE id = ANY($1::uuid[])",
+                expired,
+            )
+        except Exception:  # pragma: no cover - best effort
+            pass
+
+    return [
+        row
+        for row in rows
+        if str(row["status"]) == "active" or row["id"] not in still_cooling
+    ]
+
+
 async def active_suno_key_values(pool: Any, provider: str | None = None) -> list[str]:
     """Decrypt every active key for a Suno-compatible provider, best-effort.
 
@@ -315,9 +366,9 @@ async def active_suno_key_values(pool: Any, provider: str | None = None) -> list
     if configured:
         rows = await pool.fetch(
             """
-            SELECT encrypted_key_value
+            SELECT id, status, encrypted_key_value
             FROM api_key_entries
-            WHERE provider = $1 AND status = 'active' AND base_url = $2
+            WHERE provider = $1 AND status IN ('active', 'rate_limited') AND base_url = $2
             ORDER BY priority DESC, created_at ASC
             """,
             target,
@@ -326,13 +377,14 @@ async def active_suno_key_values(pool: Any, provider: str | None = None) -> list
     else:
         rows = await pool.fetch(
             """
-            SELECT encrypted_key_value
+            SELECT id, status, encrypted_key_value
             FROM api_key_entries
-            WHERE provider = $1 AND status = 'active'
+            WHERE provider = $1 AND status IN ('active', 'rate_limited')
             ORDER BY priority DESC, created_at ASC
             """,
             target,
         )
+    rows = await _keys_outside_cooldown(pool, rows, target)
     if not rows:
         return []
     master_key = os.environ.get("PLATFORM_ENCRYPTION_MASTER_KEY", "").strip()

@@ -1054,3 +1054,96 @@ async def test_recover_suno_task_download_urls_skips_musicapi_for_legacy_hex_ids
         assert mapping == {}
     finally:
         set_active_suno_base_url("")
+
+@pytest.mark.asyncio
+async def test_active_suno_key_values_revives_expired_cooldown(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A parked key whose cooldown expired must come back, not stay dead.
+
+    The submit path reads keys straight from the DB. Before this, one 429 left
+    every key ``rate_limited`` forever ("No active Suno API key configured.")
+    even though the pool cooldown had long expired.
+    """
+    from uuid import uuid4
+
+    from platform_api.services import suno_audio_resolver as resolver
+    from platform_api.services.key_encryption import KeyEncryption
+
+    key_id = uuid4()
+    blob = KeyEncryption(master_key="unit-test-master-key").encrypt("sk-revived")
+    executed: list[object] = []
+
+    class FakePool:
+        async def fetchval(self, query: str, *args: object) -> str:
+            return "https://musicapi.camxora.com"
+
+        async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": key_id,
+                    "status": "rate_limited",
+                    "encrypted_key_value": blob,
+                }
+            ]
+
+        async def execute(self, query: str, *args: object) -> None:
+            executed.append(args)
+
+    class FakeRedis:
+        async def exists(self, name: str) -> int:
+            return 0
+
+    monkeypatch.setenv("PLATFORM_ENCRYPTION_MASTER_KEY", "unit-test-master-key")
+    monkeypatch.setattr(
+        "platform_api.dependencies.get_redis", lambda: FakeRedis(), raising=False
+    )
+
+    keys = await resolver.active_suno_key_values(FakePool(), provider="suno")
+
+    assert keys == ["sk-revived"]
+    assert executed, "expired keys should be flipped back to active"
+
+
+@pytest.mark.asyncio
+async def test_active_suno_key_values_skips_keys_still_cooling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A key still inside its Redis cooldown stays out of the pool."""
+    from uuid import uuid4
+
+    from platform_api.services import suno_audio_resolver as resolver
+    from platform_api.services.key_encryption import KeyEncryption
+
+    blob = KeyEncryption(master_key="unit-test-master-key").encrypt("sk-cooling")
+    executed: list[object] = []
+
+    class FakePool:
+        async def fetchval(self, query: str, *args: object) -> str:
+            return "https://musicapi.camxora.com"
+
+        async def fetch(self, query: str, *args: object) -> list[dict[str, object]]:
+            return [
+                {
+                    "id": uuid4(),
+                    "status": "rate_limited",
+                    "encrypted_key_value": blob,
+                }
+            ]
+
+        async def execute(self, query: str, *args: object) -> None:
+            executed.append(args)
+
+    class FakeRedis:
+        async def exists(self, name: str) -> int:
+            return 1
+
+    monkeypatch.setenv("PLATFORM_ENCRYPTION_MASTER_KEY", "unit-test-master-key")
+    monkeypatch.setattr(
+        "platform_api.dependencies.get_redis", lambda: FakeRedis(), raising=False
+    )
+
+    keys = await resolver.active_suno_key_values(FakePool(), provider="suno")
+
+    assert keys == []
+    assert executed == []

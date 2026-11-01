@@ -30,6 +30,56 @@ from platform_api.services.key_encryption import KeyEncryption
 
 logger = logging.getLogger(__name__)
 
+# musicapi remaps its 402 "Insufficient credits." to 429 on the public
+# /api/v1 surface, so a 429 body can be a billing stop rather than throttling.
+# Marking those keys rate_limited parks the whole pool and retrying cannot
+# help — the account has no credits. Fail fast with the real reason instead.
+_BILLING_EXHAUSTED_MARKERS = (
+    "insufficient credits",
+    "insufficient_credit",
+    "insufficient balance",
+    "credit_exhausted",
+    "credits_exhausted",
+    "out of credits",
+)
+
+
+def is_billing_exhausted_response(response_body: str | None) -> bool:
+    """True when a 429 body means 'out of credits' instead of 'slow down'."""
+    text = str(response_body or "").lower()
+    if not text:
+        return False
+    return any(marker in text for marker in _BILLING_EXHAUSTED_MARKERS)
+
+
+def _alert_provider_out_of_credits(provider: str, response_body: str | None) -> None:
+    """Best-effort ops ping when a provider's upstream account is empty."""
+
+    async def _send() -> None:
+        try:
+            from platform_api.services.telegram_ops_alert_service import (
+                get_telegram_ops_service,
+            )
+
+            service = get_telegram_ops_service()
+            if service is None:
+                return
+            summary = (response_body or "Insufficient credits.")[:200]
+            await service.send_html(
+                f"⚠️ <b>{provider}</b> is out of credits.\n"
+                f"<code>{summary}</code>\n"
+                "Generation fails until the upstream account is topped up."
+            )
+        except Exception:
+            logger.debug("Credit-exhaustion ops alert failed", exc_info=True)
+
+    try:
+        import asyncio
+
+        asyncio.get_running_loop().create_task(_send())
+    except RuntimeError:
+        logger.warning("No running loop for credit-exhaustion alert (%s)", provider)
+
 
 def _effective_suno_base_url(configured: str | None) -> str:
     """The host the Suno client will actually use for this request.
@@ -593,6 +643,30 @@ class KeyPoolService:
             except (httpx.HTTPStatusError, ExternalServiceError) as exc:
                 last_exception = exc
                 status_code, response_body = self._failover_status(exc)
+
+                if status_code == 429 and is_billing_exhausted_response(response_body):
+                    # Billing stop dressed as a rate limit: do not park the key
+                    # (all keys share the account credits) and do not burn the
+                    # remaining attempts — surface the real cause immediately.
+                    await self._repo.increment_counters(selected.id, success=False)
+                    logger.error(
+                        "Provider '%s' is out of credits (429 billing body: %s). "
+                        "Not marking keys; failing fast.",
+                        provider,
+                        (response_body or "")[:160],
+                    )
+                    _alert_provider_out_of_credits(provider, response_body)
+                    raise ExternalServiceError(
+                        f"Provider '{provider}' is out of credits. "
+                        "Top up the upstream account to resume generation.",
+                        is_retryable=False,
+                        details={
+                            "provider": provider,
+                            "status_code": status_code,
+                            "reason": "provider_credits_exhausted",
+                            "response_summary": (response_body or "")[:200],
+                        },
+                    ) from exc
 
                 if status_code == 429:
                     # Rate limited — mark key and retry
