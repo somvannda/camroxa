@@ -55,6 +55,7 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S47 | `screens/S47-no-mixer-tool-cluster.jpeg` | Footer tool cluster — four tools, no mixer |
 | S30 | `screens/S30-stretch-modes.jpeg` | Stretch section — `On Beat` / `Transients` / `Start and End`, Formant toggle |
 | S45 | `screens/S45-plugin-designer-result.jpeg` | Designer output — `Warm Tape`, `Audio effect · Drag onto a track` |
+| S62 | `screens/S62-offline-cold-load.jpeg` | Cold load while offline → `ERR_INTERNET_DISCONNECTED`, no app shell |
 | S33 | `screens/S33-velocity-lane.jpeg` | Velocity lane — one lollipop per note, flat-velocity comb |
 | S63 | `screens/S63-1280px.jpeg` | 1280 px — full header, gutter still 283, canvas 997 |
 | S64 | `screens/S64-1024px.jpeg` | 1024 px — undo/redo shift, BPM + signature merge, gutter unchanged |

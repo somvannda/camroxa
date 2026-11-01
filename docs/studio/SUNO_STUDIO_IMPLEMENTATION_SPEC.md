@@ -3540,6 +3540,30 @@ Three decisions worth copying exactly:
    `Create new plugin` slot from §48.1 now has a sibling. Designed plugins and
    built-ins are peers, which is what makes the "design your own" pillar real.
 
+## 96. S62 — offline, settled `L` (negative, twice)
+
+Two tests, and together they close the question that §82 left open.
+
+| Test | Setup | Result |
+|---|---|---|
+| **Warm cache** (§82) | live session, then `Network.emulateNetworkConditions offline`, then a network action (`Open library`) | nothing happens — no banner, no toast, panel served from cache |
+| **Cold load** (this one) | a fresh cookie-less context, offline **before** the first navigation | the browser's own error page: `ERR_INTERNET_DISCONNECTED`, "Press space to play", with the standard hanging-network copy |
+
+Capture: `screens/S62-offline-cold-load.jpeg`.
+
+So the app ships **no offline affordance** in either direction:
+
+- With a warm cache it silently keeps working, which hides the failure.
+- With a cold load there is no service-worker shell to fall back to, so the user gets
+  Chrome's dinosaur page and the app never runs.
+
+The distinction matters for implementation: the honest requirement is not "copy the
+offline screen" (there isn't one) but **decide whether we want one**. A DAW that
+depends on server-side rendering (as this one does for export and generation) cannot
+be meaningfully offline, so the defensible choice is an explicit "you're offline,
+your project is safe" state — which is new scope, not parity.
+
+
 
 
 

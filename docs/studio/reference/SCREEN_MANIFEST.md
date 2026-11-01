@@ -102,7 +102,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S59 | Save conflict / error banner | DONE §93 — no conflict UI exists (negative) |
 | S60 | Policy / moderation refusal | OPEN |
 | S61 | Insufficient credits | OPEN |
-| S62 | Offline | PART §82 — no banner observed (negative result) |
+| S62 | Offline | DONE §96 — no offline state either way (negative) |
 
 ## 8. Responsive (S63–S65)
 
