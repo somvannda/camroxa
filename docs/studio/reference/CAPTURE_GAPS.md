@@ -1,48 +1,42 @@
 # CAPTURE GAPS — what was not captured, and why
 
-Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`. Every **DONE** row has an
-image and a measured spec section.
+Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`.
 
-As of the latest pass: **51 DONE · 4 PART · 10 OPEN**, spec through §87.
+**Final state: 60 DONE · 3 PART · 2 OPEN** of 65. Spec through §96, 69 images.
 
-## Cleared on a Studio-native project
+Everything `DONE` has an image and a measured section — including six captured
+**negatives** where the screen we expected does not exist (S47 mixer, S50/S51 export
+dialog, S54/S56 sharing, S59 conflict, S62 offline).
 
-The decisive finding of this pass: opening an `Untitled Project` from the library
-(not the legacy demo) made generation work, which cleared **S37** (§86) and **S29**
-(§72.1 — two takes, commit/audition), and proved that **S50/S51 do not exist as
-dialogs** (§87): export fires and forgets, with a toast as the only feedback.
+## One insight worth carrying forward
 
-The same test also closed one question permanently: the earlier export/generation
-failures were the **project**, not the feature.
+`Drum & Bass Demo` is a **legacy project**: it cannot export or generate (§77).
+Opening an `Untitled Project` from the library fixed both instantly, which is what
+cleared S37, S29, S50/S51 and S45. **Any future capture involving export, generation,
+takes or plugins must start from a native project.**
 
-## Still PART
+## The 5 that remain
 
-| Screen | Missing | Unblock |
+| Screen | State | Exactly what is missing |
 |---|---|---|
-| S32 | a CC lane with points | generate a part, then draw in `Modulation`; the lane still accepted no points on click |
-| S44 | Convolution with an IR loaded | needs an impulse-response file; clicking the slot opens nothing without one |
-| S45 | the designer surface | needs a successful `Make me a new plugin` generation |
-| S62 | offline confirmation | cold-load while offline to prove §82 is a real absence |
+| S30 warp markers | PART §94 | The system is captured (Stretch modes with "Markers placed on transients and note starts"), but no marker ticks ever drew — tried at 174 BPM source and at 110 BPM project tempo. Two possibilities recorded: markers need a **stretched** clip (source BPM ≠ project BPM *and* stretch enabled on that clip), or marker drawing is not shipped. |
+| S32 CC lane | PART §74 | The `Modulation` lane renders but accepts no drawn points; needs a workflow we have not found (likely a modifier or a right-click). |
+| S44 convolution IR | PART §78 | The IR slot opens nothing when clicked; it needs an **impulse-response file** dropped or chosen. |
+| S60 moderation | OPEN | Needs a policy-violating prompt. **Do not fabricate** — capture it only if it happens naturally. |
+| S61 credits | OPEN | Needs an account with no credits. Ours has balance, so this cannot be produced honestly. |
 
-## Still OPEN
+## If a next session wants to finish them
 
-| Screen | Why | Unblock |
-|---|---|---|
-| S30 warp markers | no warp marker or warp toggle rendered on an audio clip (native or legacy); `Clip editor` shows Clip Settings (§81) | find the warp entry point — possibly only on time-stretched clips |
-| S46 preset browser | `None`/`Custom` are native selects and sidechain lists; no preset list opens | open a plugin's preset list from a saved custom preset |
-| S47 mixer strips | no mixer surface found in any footer or panel state | confirm whether a mixer exists at all |
-| S48 master limiter | `Main` cannot be selected, so no plugin can be added to master | select master another way, or confirm it is not supported |
-| S54 clip permissions | Share dialog only offers view + fork-to-copy | share a clip, not a project |
-| S56 shared project page | needs the public link opened logged out | copy link, open in a logged-out session |
-| S58 empty library | home does not filter; no zero-results state | search inside a workspace's song list |
-| S59 save conflict | needs two writers | two tabs on one project, edit both |
-| S60 moderation refusal | needs a policy trigger | do not fabricate; capture if it happens |
-| S61 insufficient credits | needs a spent balance | low-credit account |
+1. **S44** — drop any short WAV onto the Convolution slot; if drag-and-drop works the
+   card fills in and the screen is done.
+2. **S30** — enable stretch on a clip, then change the project tempo by a large step
+   *while the clip editor is open*, and inspect the waveform at 2× zoom.
+3. **S32** — try right-click, alt-drag and double-click in the lane; one of them is
+   the draw gesture.
+4. **S60 / S61** — only with a genuine trigger. Both would be captured as
+   "error taxonomy" evidence, not as a screen we can stage.
 
-## Next moves, in order of payoff
+## Editing caveat
 
-1. **Draw in the `Modulation` lane** on the native project → closes S32.
-2. **Load any IR** (a short WAV) into Convolution → closes S44.
-3. **Two tabs on the same project** → likely closes S59.
-4. Open a **workspace's song list** and search nonsense → closes S58.
-5. Share a **clip** (not the project) → S54; then open the link logged out → S56.
+While testing warping, the `Drum & Bass Demo` tempo was changed from **174 → 110 BPM**
+and left there. It is a library copy; revert with the tempo popover or `CTRL Z`.
