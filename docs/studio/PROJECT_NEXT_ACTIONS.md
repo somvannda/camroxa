@@ -1,140 +1,71 @@
 # PROJECT NEXT ACTIONS
 
-Resume here. `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §14 is the authoritative capture
-backlog; this file is the execution order.
+Resume here. **Execution order only** — the authoritative plans live elsewhere:
 
-## 1. Finish the capture backlog — use the pointer, not `.click()` (2 h)
+| Question | File |
+|---|---|
+| What is missing in the product? | `SUNO_STUDIO_GAP_ANALYSIS.md` (G1–G20) |
+| In what order, with exit tests? | `IMPLEMENTATION_ROADMAP.md` (W1–W6) |
+| What does the reference actually do? | `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` (§1–§96) |
+| Which screens are still uncaptured? | `reference/CAPTURE_GAPS.md` |
+| Evidence per screen | `reference/SCREENSHOT_INDEX.md` |
 
-Programmatic clicks open Radix overlays unreliably (see `reference/CAPTURE_LOG.md`).
-Use the real pointer path:
+## Phase 0 — Capture: **complete**
 
-```
-snapshot tab → find "Project menu" ref → click ref → snapshot → record
-```
+65 screens: **60 DONE, 3 PART, 2 OPEN-by-design**, 69 images, spec through §96.
 
-Capture in this order (C-01…C-05): project menu, export dialog, track options menu,
-clip context menu (add a clip first), library panel tabs + empty states.
-Record each into §8 of the spec and tick it in the capture log.
+The three `PART` (S30 warp markers, S32 CC lane, S44 convolution IR) and the two
+`OPEN` (S60 moderation, S61 credits) are parked in `reference/CAPTURE_GAPS.md`. They
+are **opportunistic**, not blocking: fill them when the trigger happens naturally.
+Do not spend another session on interactive archaeology for them.
 
-## 2. Capture responsive layouts (45 min)
+## Phase 1 — W1 Studio entry (start here)
 
-Repeat the geometry probe at **1280**, **1024**, **768**. Record which panels
-collapse/overlay. Update §1 and add the breakpoint rules.
+The single largest structural gap: `/studio` is marketing, the chooser is an in-editor
+dialog, and there is no `?project=` deep link.
 
-## 3. Capture the keyboard map (45 min)
+| Order | Task | Exit test |
+|---|---|---|
+| **1** | **W1.1** `StudioHome` at `/studio` (authenticated): recent projects, resume card, new project, search/sort, archived toggle | renders with 0, 1 and 20 projects; empty state has a real CTA |
+| 2 | W1.5 signed-out `/studio` keeps the marketing page with a sign-in CTA | signed-out render shows no broken controls |
+| 3 | W1.2 create project → editor route with the id, autosaving | new project opens and persists |
+| 4 | W1.3 card actions: open, rename, fork, archive, delete (confirm) | each action survives reload |
+| 5 | W1.4 "Start from a song" seeds a project with that clip | clip appears on a track |
 
-For each candidate (`Space`, `A`, `M`, `U`, `S`, `D`, `L`, `R`, `Delete`,
-`Cmd/Ctrl+Z`, `Shift+Cmd/Ctrl+Z`, arrows, `Home`, `End`, `?`): focus the timeline,
-dispatch the key, observe the state delta, record. Resolve C-07.
+**Reference contract for phase 1:** §56 (My Projects chooser), §62 (signed-in entry
+reopens the last project), §19.1 (library workspaces + project cards with ages),
+§57 (loading), §58 (auth gate). This is the best-evidenced area we have — build it
+without re-opening the reference.
 
-## 4. Fix the deep-link blocker (30 min)
+## Phase 2 — W2 trustworthy persistence
 
-`StudioEditorView` reads only `?share=`. `StudioHome` navigates with `?project=`.
-Add `projectParam` with a terminal error state for 403/404.
+Deliberate divergence, and say so in the code: the reference has **no** conflict UI
+(§93) and **no** offline state (§96). We are adding both.
 
-## 5. Reconcile the 81 studio endpoints with musicapi (2 h)
+| Order | Task | Exit test |
+|---|---|---|
+| 6 | W2.1 autosave status (saved / saving / error / offline) + retry | kill the API mid-edit → status shows error, retry recovers |
+| 7 | W2.4 unsaved-changes guard on navigation | leaving with pending writes prompts |
+| 8 | W2.2 conflict handling on 409 (reload vs overwrite) | simulated 409 shows a resolution dialog |
+| 9 | W2.3 local draft recovery offline | reload offline restores the draft with a banner |
 
-For each: covered / partial / missing in `musicapi`. Emit
-`reference/musicapi-coverage.md`. Port gaps per D-008.
+## Phase 3 — W3 editor completeness
 
-## 6. Commit and run gates
+Work the `GAP` column of `SUNO_STUDIO_FEATURE_MATRIX.md` top-down. Highest-value
+first, all evidenced: multi-select and marquee (G6), drag threshold (G8), snap
+guideline (G7), clip focus on delete (G9), library stems/projects tabs (G12),
+generation history (G16), first-run onboarding (G18).
 
-```bash
-cd camxora.com && npm run typecheck && npm run check:ui
-```
+## Phase 4 — W4 advanced audio, then W5 tests, then W6 verification
 
-Two commits: (a) `docs(studio): implementation spec + reference captures + toolkit`,
-(b) `feat(studio): studio home + deep link`.
+Unchanged from the roadmap: mastering chain (W4.1), stems with pricing (W4.2),
+export matrix (W4.3), loudness readout (W4.4), then the test suite (W5.1–W5.5) and
+the coverage re-walk (W6).
 
 ## Rules
 
-- Never implement from a `?` row. Capture first, then build.
-- Re-fetch the bundle before trusting `reference/`; record chunk count and date.
-- Never commit chunks, HTML, fonts or reference assets. Derived facts only.
-- `VERIFIED` requires a recorded run on current HEAD.
-
-## 2. Diff our editor against the measurements (1 h)
-
-Compare `StudioEditorView` region geometry with `reference/live-studio-layout.md`:
-
-- header height, transport centring, right-aligned session settings
-- track panel width (ours vs. 260 px)
-- control heights (32 px standard, 28 px compact)
-- prompt bar position and width
-
-Write the delta into `SUNO_STUDIO_GAP_ANALYSIS.md` as measured items (replace
-"unmeasured" notes with numbers).
-
-## 3. Reconcile the endpoint inventory with musicapi (1–2 h)
-
-For each of the **81 studio-related** reference endpoints:
-
-1. Does `musicapi` expose it? (`/v1/*` public or `/internal/studio/*`)
-2. Is the field shape compatible (names from `endpoint-inventory.json`)?
-3. If missing, is it required for a workflow in `SUNO_STUDIO_WORKFLOW_DOCUMENTATION.md`?
-
-Output: `reference/musicapi-coverage.md` with `covered / partial / missing`.
-
-## 4. Fix the deep-link blocker (30 min)
-
-`StudioEditorView` reads only `?share=`. `StudioHome` navigates with `?project=`.
-Add `projectParam` handling in the load effect, with a terminal error state for
-403/404. Without this, the new home is broken.
-
-## 5. Commit and run gates
-
-```bash
-cd camxora.com && npm run typecheck && npm run check:ui
-```
-
-Then commit in two logical changes: (a) `docs(studio): programme docs + reference
-extraction`, (b) `feat(studio): studio home + reference toolkit`.
-
-## 6. Decide on merging `feat/studio-shell`
-
-Per D-008 it is the reference implementation again. Do **not** merge the branch
-wholesale. Instead: list the contracts/behaviours it proves, and port them one at a
-time into `StudioEditorView` with a test each.
-
-## Rules for the next session
-
-- Re-fetch the bundle before trusting `reference/` — Suno ships often; note the
-  chunk hashes you used.
-- Never commit chunks, HTML, fonts or any reference asset. Derived facts only.
-- A row moves to `VERIFIED` only with a recorded run on current HEAD.
-- Keep `PROJECT_PROGRESS.md` updated in the same commit as the work.
-
-## Mount the plugin dock (next coding task)
-
-The dock is built and tested in isolation; it is **not** mounted in the editor yet.
-The remaining work is data plumbing, not UI:
-
-1. **Extend the track model.** `StudioEditorView` keeps `lanes: Clip[]` where each clip
-   carries a `trackId`. Add `chain?: PluginChainEntry[]` to the track record (or to
-   `StoredSession` as `chains: Record<trackId, PluginChainEntry[]>`). Prefer a map keyed
-   by track id: a track with no clips still needs its chain.
-
-2. **Normalise on load.** In `applySession`, run every stored chain through
-   `sanitizeChain()` (`lib/studio-plugin-chain.ts`) before it reaches state, so stale
-   documents cannot inject unknown plugins or parameters.
-
-3. **Persist on save.** Include `chains` in the `data` payload sent to
-   `updateStudioProject`. It is part of the document, so undo and versions cover it
-   automatically — no separate endpoint.
-
-4. **Mount the dock.** Render `<StudioPluginDock chain={chains[selectedTrackId] ?? []}
-   onChange={(next) => commitChains({...chains, [selectedTrackId]: next})} />` in the
-   track inspector region, next to `Plugins`. Reuse the existing `commitLanes`-style
-   history push so a plugin tweak is one undoable step.
-
-5. **Wire the audio.** Replace the fixed per-track FX chain with
-   `buildPluginChain(ctx, activeChain(chain))`; connect
-   `trackNode → pluginChain.input` and `pluginChain.output → panner → master`.
-   Call `chain.update(entryId, params)` on parameter changes instead of rebuilding.
-
-6. **Verify.** Typecheck, `check:ui`, then a manual run: add Delay + Compressor, play,
-   confirm the sound changes, tweak a knob and confirm `Custom` appears, press
-   `Update`, reload, confirm the chain and preset survive.
-
-Acceptance: the chain round-trips through save/load, undo restores a removed plugin,
-and a bypassed plugin is inaudible without leaving the graph disconnected.
+1. One task per branch, one commit per logical change, gates before every commit:
+   `cd camxora.com && npm run typecheck && npm run check:ui`.
+2. If a task turns out to need a spec section that does not exist, capture it first —
+   one screenshot, one section, one commit.
+3. Keep this file as the *order*; never let it drift into a second plan.

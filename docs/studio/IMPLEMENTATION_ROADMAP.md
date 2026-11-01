@@ -8,7 +8,7 @@ this file, fix one of them in the same commit.
 
 ```
 M0 Repository & environment audit ............. DONE (2026-10-30)
-M1 Reference platform discovery .............. PARTIAL — live access blocked (B-001)
+M1 Reference platform discovery .............. DONE — 69 screenshots, spec §1–§96
 M2 Feature inventory & documentation ......... DONE (this directory)
 M3 Architecture & UX design .................. DONE (D-001..D-006)
 M4 Application foundation .................... DONE (shell, routing, theme, state)
