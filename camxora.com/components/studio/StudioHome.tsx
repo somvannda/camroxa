@@ -13,6 +13,7 @@ import {
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
+import { StudioStartFromSong } from "@/components/studio/StudioStartFromSong";
 import {
   createStudioProject,
   deleteStudioProject,
@@ -472,6 +473,8 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
             )}
           </>
         )}
+
+        <StudioStartFromSong />
       </div>
 
       {renameTarget ? (

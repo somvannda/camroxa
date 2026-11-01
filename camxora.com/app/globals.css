@@ -4565,3 +4565,5 @@ html{color-scheme:dark}
 .se-gate p{margin:0;color:#8b90a6;font-size:13px}
 .se-shell.is-loading{background:#101012}
 @media (max-width:900px){.se-tracks{width:200px}.se-head{grid-template-columns:1fr auto;height:auto;padding:8px 10px}.se-head-center{grid-column:1 / -1;order:3;justify-content:center}.se-head-right{justify-content:flex-end}}
+
+.studio-start-songs{margin-top:44px;display:flex;flex-direction:column;gap:16px}
