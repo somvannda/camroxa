@@ -3450,6 +3450,60 @@ For the clone the decision is therefore explicit, not implied: if we ship a mixe
 are adding a surface, and the only thing to be faithful about is that it must read
 from the same `volume / pan / plugins` model the rows already expose.
 
+## 93. S59 — no save-conflict UI `L` (negative)
+
+Test: the same project opened in **two tabs**, an edit made in each (mute a track in
+one, mute a different track in the other), then a reload.
+
+| Observation | Result |
+|---|---|
+| Conflict banner during editing | **none** in either tab |
+| Toast or inline warning | none |
+| After reloading tab 1 | project loads the latest state, no prompt |
+| Lost work | not visible — writes merged per field rather than replacing the document |
+
+So the reference has **no conflict surface at all**. Concurrent edits are
+field-merged and the last writer wins silently; there is no "reload / keep mine"
+dialog to capture.
+
+This is worth stating plainly for our implementation: if we add optimistic-concurrency
+UI we are adding something the reference does not have — and given a DAW where two
+people can plausibly open the same project, that may well be the right call. The
+reference's answer is "don't worry about it".
+
+## 94. S30 — warp markers `PART` (stretch modes captured, markers not drawn)
+
+Capture `screens/S30-stretch-modes.jpeg`.
+
+The warp system is present as a **Stretch section** inside Clip Settings (§81), and
+its options are described by their own tooltips:
+
+| Option | Tooltip |
+|---|---|
+| `On Beat` | "Minimal markers to account for tempo changes, placed on musical beats." |
+| `Transients` | "Markers placed on transients and note starts." |
+| `Start and End` | "Minimal markers that maintain average BPM and first-beat-offset of the full song." |
+| `Formant` (toggle) | "How strongly the clip's vocal character is preserved while it's stretched and pitched." |
+
+That wording is decisive about the model: stretching is expressed as **markers placed
+on the clip**, and the three options differ only in *which* markers are auto-generated.
+It also matches the shortcut map (§36): `CTRL A` select all warp markers, `SHIFT Q`
+quantize warp markers.
+
+What is **not** captured: the markers themselves. With the clip editor open on an
+audio clip at 2× zoom, `Transients` selected and the clip fitting the editor, the
+waveform drew **no marker ticks** — only the waveform, the grid and the playhead.
+
+Two possible explanations, and we should not guess between them:
+
+1. markers only render once the clip's tempo differs from the project tempo (this
+   clip is already at 174 BPM and needs no warping), or
+2. marker drawing is not shipped in this build.
+
+To finish S30: take a clip whose source BPM differs from the project, enable
+`Transients`, and inspect the waveform again.
+
+
 
 
 

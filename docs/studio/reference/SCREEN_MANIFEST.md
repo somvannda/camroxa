@@ -45,7 +45,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S27 | Clip Info panel | DONE §70 |
 | S28 | Clip colour submenu | DONE §71 |
 | S29 | Take lanes expanded | DONE §72.1 |
-| S30 | Warp markers | OPEN |
+| S30 | Warp markers | PART §94 — stretch modes captured, markers not drawn |
 | S31 | MIDI clip editor | DONE §73 |
 | S32 | Automation lane — CC | PART §74 — empty lane only |
 | S33 | Automation lane — velocity | DONE §75 |
@@ -99,7 +99,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 |---|---|---|
 | S57 | Project loading | DONE §63 |
 | S58 | Empty library | DONE §88 |
-| S59 | Save conflict / error banner | OPEN |
+| S59 | Save conflict / error banner | DONE §93 — no conflict UI exists (negative) |
 | S60 | Policy / moderation refusal | OPEN |
 | S61 | Insufficient credits | OPEN |
 | S62 | Offline | PART §82 — no banner observed (negative result) |
