@@ -3503,6 +3503,44 @@ Two possible explanations, and we should not guess between them:
 To finish S30: take a clip whose source BPM differs from the project, enable
 `Transients`, and inspect the waveform again.
 
+## 95. S45 — the plugin designer `L`
+
+Capture `screens/S45-plugin-designer-result.jpeg`, after `Create new plugin` (§79) and
+sending: *"A warm tape saturation plugin with gentle drive and a low cut"*.
+
+The designer runs as a **conversation**, not a form, and it answers in three beats:
+
+1. **It restates the spec** and states a constraint before doing anything:
+   > I can build a warm tape-saturation audio effect with gentle drive and an
+   > adjustable low cut. The selected Vocal Cuts track can host effects, but the new
+   > plugin will be saved to your library rather than automatically inserted. Build it?
+   >
+   > `Build it` · `Change something…`
+2. **It reports completion with the controls it chose**:
+   > **Warm Tape** is ready with gentle tape-style saturation and adjustable Drive and
+   > Low Cut controls. Add it to a track to use it.
+3. **It yields a draggable card**, not an inserted plugin:
+   > ⠿ **Warm Tape** — *Audio effect · Drag onto a track*
+
+| Detail | Value |
+|---|---|
+| Card | full width of the conversation, ≈ 180 px tall, drag handle glyph on the left |
+| Title | the generated name (`Warm Tape`) |
+| Subtitle | `Audio effect · Drag onto a track` — the *kind* and the *verb* |
+| Confirmation | explicit `Build it` / `Change something…` before spending anything |
+| Destination | the user's plugin library, **never auto-inserted** |
+
+Three decisions worth copying exactly:
+
+1. **Ask before generating, and say where it will go.** The refusal-to-auto-insert is
+   stated up front, which is why the result card tells you to drag it.
+2. **Name the plugin from the description.** "Warm Tape" is a summary of the prompt,
+   so the library stays browsable without opening anything.
+3. **The output is a first-class object in `MY PLUGINS`** — the same dashed
+   `Create new plugin` slot from §48.1 now has a sibling. Designed plugins and
+   built-ins are peers, which is what makes the "design your own" pillar real.
+
+
 
 
 
