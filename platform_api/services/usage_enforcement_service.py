@@ -809,26 +809,31 @@ class UsageEnforcementService:
                 additional_count=merge_ops,
             )
 
-        extras = await self.period_quota_topup_extras(user_id, period_start)
-        if plan is not None and await subscription_covers_batch(
-            plan=plan,
-            user_id=user_id,
-            song_count=song_count,
-            usage_repo=self._usage_repo,
-            period_start=period_start,
-            image_jobs=image_jobs,
-            draft_ops=estimated_drafts,
-            video_ops=video_ops,
-            merge_ops=merge_ops,
-            addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0,
-            topup_extras=extras,
-        ):
-            credit_log.log_subscription_quota(
+        # Plan-era quota top-ups were dropped by the credits-only migration (174).
+        # There is no subscription context anymore, so extras only apply when a
+        # plan is actually present — and fetching them unconditionally 500s on
+        # the missing user_period_quota_topups table.
+        if plan is not None:
+            extras = await self.period_quota_topup_extras(user_id, period_start)
+            if await subscription_covers_batch(
+                plan=plan,
                 user_id=user_id,
-                operation_type="batch_generation",
-                ai_service="batch",
-            )
-            return
+                song_count=song_count,
+                usage_repo=self._usage_repo,
+                period_start=period_start,
+                image_jobs=image_jobs,
+                draft_ops=estimated_drafts,
+                video_ops=video_ops,
+                merge_ops=merge_ops,
+                addon_slots=int(getattr(ctx, "profile_addon_slots", 0) or 0) if ctx else 0,
+                topup_extras=extras,
+            ):
+                credit_log.log_subscription_quota(
+                    user_id=user_id,
+                    operation_type="batch_generation",
+                    ai_service="batch",
+                )
+                return
 
         current_balance = await self._credit_repo.get_balance(user_id)
         if current_balance < total_wallet_cost:
