@@ -7,6 +7,7 @@ import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
+import { dragToStart, isDrag } from "@/lib/studio-snap";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
@@ -56,6 +57,11 @@ export function StudioEditorShell() {
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const retryRef = useRef<(() => void) | null>(null);
+  /** Active clip drag: origin + latest pointer delta, in px. */
+  const [drag, setDrag] = useState<{ clipId: string; originStart: number; deltaPx: number } | null>(
+    null
+  );
+  const dragRef = useRef<{ clipId: string; startX: number; originStart: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
@@ -234,6 +240,23 @@ export function StudioEditorShell() {
     );
   }
 
+  /** Persist a clip's new start position (drag result). */
+  function commitClipStart(clipId: string, start: number) {
+    if (!projectId) return;
+    const data = (project?.data || {}) as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    const next = lanes.map((clip) => (clip.id === clipId ? { ...clip, start } : clip));
+    // Optimistic: `clips` derives from project.data, so the clip lands immediately
+    // and the write only reports success through the save chip.
+    setProject((current) =>
+      current ? { ...current, data: { ...(current.data || {}), lanes: next } } : current
+    );
+    persist(
+      () => updateStudioProject(projectId, { data: { ...data, lanes: next } }),
+      "Could not move the clip."
+    );
+  }
+
   const duration = useMemo(() => {
     const end = clips.reduce((max, clip) => Math.max(max, (clip.start ?? 0) + (clip.duration ?? 0)), 0);
     return Math.max(240, Math.ceil(end));
@@ -339,6 +362,46 @@ export function StudioEditorShell() {
 
   const secondsPerBar = 240 / bpm;
   const barCount = Math.max(1, Math.ceil((duration * bpm) / 240));
+
+  /** Track pointer movement for clip dragging (G7/G8). */
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      const session = dragRef.current;
+      if (!session) return;
+      const deltaPx = event.clientX - session.startX;
+      if (!isDrag(deltaPx) && drag === null) return;
+      setDrag({ clipId: session.clipId, originStart: session.originStart, deltaPx });
+    };
+    const up = () => {
+      const session = dragRef.current;
+      dragRef.current = null;
+      if (!session) return;
+      setDrag((current) => {
+        if (current && Math.abs(current.deltaPx) > 0) {
+          const nextStart = dragToStart(
+            current.originStart,
+            current.deltaPx,
+            BAR_PX,
+            secondsPerBar,
+            4
+          );
+          if (Math.abs(nextStart - current.originStart) > 0.0001) {
+            commitClipStart(current.clipId, nextStart);
+          }
+        }
+        return null;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+  }, [drag, secondsPerBar]);
+
 
   if (authLoading) return <div className="se-shell is-loading" aria-busy="true" />;
 
@@ -534,17 +597,29 @@ export function StudioEditorShell() {
                   {clips
                     .filter((clip) => track.clipIds.includes(clip.id))
                     .map((clip) => {
-                      const left = ((clip.start ?? 0) / secondsPerBar) * BAR_PX;
+                      const isDragging = drag?.clipId === clip.id;
+                      const left = isDragging
+                        ? (dragToStart(clip.start ?? 0, drag.deltaPx, BAR_PX, secondsPerBar, 4) /
+                            secondsPerBar) *
+                          BAR_PX
+                        : ((clip.start ?? 0) / secondsPerBar) * BAR_PX;
                       const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * BAR_PX);
                       return (
                         <button
                           type="button"
                           key={clip.id}
-                          className={`se-clip${selectedClip === clip.id ? " selected" : ""}`}
+                          className={`se-clip${selectedClip === clip.id ? " selected" : ""}${
+                            isDragging ? " dragging" : ""
+                          }`}
                           style={{ left, width, background: track.color }}
-                          onClick={() => {
+                          onPointerDown={(event) => {
                             setSelectedTrack(track.id);
                             setSelectedClip(clip.id);
+                            dragRef.current = {
+                              clipId: clip.id,
+                              startX: event.clientX,
+                              originStart: clip.start ?? 0,
+                            };
                           }}
                           aria-pressed={selectedClip === clip.id}
                         >
@@ -557,6 +632,19 @@ export function StudioEditorShell() {
               ))}
 
               <div className="se-playhead" style={{ left: (playhead / secondsPerBar) * BAR_PX }} aria-hidden="true" />
+
+              {drag ? (
+                <div
+                  className="se-snap-line"
+                  aria-hidden="true"
+                  style={{
+                    left:
+                      (dragToStart(drag.originStart, drag.deltaPx, BAR_PX, secondsPerBar, 4) /
+                        secondsPerBar) *
+                      BAR_PX,
+                  }}
+                />
+              ) : null}
             </div>
 
             {!tracks.length ? (
