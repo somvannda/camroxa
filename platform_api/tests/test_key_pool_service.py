@@ -1782,3 +1782,43 @@ async def test_add_key_tags_base_url(
     )
     entry = fake_repo._entries[key_id]
     assert entry.base_url == "https://musicapi.camxora.com"
+
+
+async def test_429_with_insufficient_credits_fails_fast_without_parking_keys(
+    service: KeyPoolService, fake_repo: FakeKeyPoolRepository, encryption: KeyEncryption
+) -> None:
+    """musicapi maps 402 -> 429; that body must not be treated as throttling.
+
+    Parking every key on a billing stop took music generation down for an hour
+    ("No active Suno API key configured.") while all three keys shared one
+    exhausted account. Fail fast with the real reason and leave the pool alone.
+    """
+    from platform_api.exceptions import ExternalServiceError
+
+    key_a = _make_entry(encryption, label="key-A", priority=10, key_value="value-A")
+    key_b = _make_entry(encryption, label="key-B", priority=20, key_value="value-B")
+    fake_repo._entries[key_a.id] = key_a
+    fake_repo._entries[key_b.id] = key_b
+
+    calls: list[str] = []
+
+    async def execute_fn(key: str) -> dict[str, str]:
+        calls.append(key)
+        raise _make_http_status_error(429, '{"error":"Insufficient credits."}')
+
+    with pytest.raises(ExternalServiceError) as excinfo:
+        await service.execute_with_failover("suno", execute_fn)
+
+    assert excinfo.value.details.get("reason") == "provider_credits_exhausted"
+    assert calls == ["value-A"], "must not burn the remaining keys"
+    assert fake_repo._entries[key_a.id].status == KeyStatus.ACTIVE
+    assert fake_repo._entries[key_b.id].status == KeyStatus.ACTIVE
+
+
+def test_billing_marker_only_matches_credit_bodies() -> None:
+    from platform_api.services.key_pool_service import is_billing_exhausted_response
+
+    assert is_billing_exhausted_response('{"error":"Insufficient credits."}')
+    assert is_billing_exhausted_response("Insufficient Credits")
+    assert not is_billing_exhausted_response('{"error":"rate limit exceeded"}')
+    assert not is_billing_exhausted_response("")
