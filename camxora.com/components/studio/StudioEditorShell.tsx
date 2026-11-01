@@ -165,6 +165,21 @@ export function StudioEditorShell() {
     };
   }, []);
 
+  /**
+   * Unsaved-changes guard (roadmap W2.4): leaving with a write in flight, a failed
+   * write, or an offline queue would silently lose the change. The reference has no
+   * such guard; this is a deliberate divergence like W2.1.
+   */
+  useEffect(() => {
+    if (saveStatus === "saved") return;
+    const guard = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = "";
+    };
+    window.addEventListener("beforeunload", guard);
+    return () => window.removeEventListener("beforeunload", guard);
+  }, [saveStatus]);
+
   /** Persist the track list into the project document. */
   function commitTracks(next: StudioTrack[]) {
     setLocalTracks(next);
