@@ -78,7 +78,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | # | Screen | Status |
 |---|---|---|
 | S47 | Mixer strips | OPEN |
-| S48 | Master with limiter | OPEN |
+| S48 | Master with limiter | DONE §91 |
 | S49 | Export menu | DONE §18.2.1 |
 | S50 | Export dialog | DONE §87 — no dialog exists (negative) |
 | S51 | Export progress + result | DONE §87 — toast only (negative) |

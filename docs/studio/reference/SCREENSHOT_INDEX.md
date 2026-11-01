@@ -50,6 +50,8 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S54 | `screens/S54-share-permission-copy.jpeg` | Share dialog — view + create your own editable copy; no per-clip permissions |
 | S56 | `screens/S56-shared-link-logged-out.jpeg` | The share link opened with no cookies → redirected to `/studio-welcome` |
 | S46 | `screens/S46-preset-menu.jpeg` | Preset stepper `‹ Default ›` with `Clear all settings` / `Save preset…` / list |
+| S48 | `screens/S48-master-limiter.jpeg` | Master chain — `Main` selected, dock shows a single Limiter |
+| S48b | `screens/S48-master-limiter-detail.jpeg` | 2× crop — orange master accent, Lookahead/Pre Gain/Attack/Release/Link |
 | S33 | `screens/S33-velocity-lane.jpeg` | Velocity lane — one lollipop per note, flat-velocity comb |
 | S63 | `screens/S63-1280px.jpeg` | 1280 px — full header, gutter still 283, canvas 997 |
 | S64 | `screens/S64-1024px.jpeg` | 1024 px — undo/redo shift, BPM + signature merge, gutter unchanged |

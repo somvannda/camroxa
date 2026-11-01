@@ -3396,6 +3396,37 @@ Still not evidenced: the `bulk export` half of this manifest row. Nothing in the
 library or the plugin menu offers it; if it exists it is likely gated behind a saved
 preset library that this account does not have.
 
+## 91. S48 — master chain with a limiter `L`
+
+Captures `screens/S48-master-limiter.jpeg` and `screens/S48-master-limiter-detail.jpeg`.
+
+**The master is a selectable target, and it takes a plugin chain like a track.** The
+earlier negative reading was wrong: clicking the `Main` row does nothing visible on
+its own (the dock closes), but `Add effect` afterwards adds to **master**, not to the
+last-selected track. Proof: with `Main` active the dock shows a single `Limiter`,
+and selecting `Soft Piano` swaps the same dock to `EQ · Reverb · Stereo Utility`.
+
+| Element | Detail |
+|---|---|
+| Target | `Main` row at the bottom of the gutter, below every track |
+| Chain | rendered in the **same dock** as tracks — one rail, one plugin card per slot |
+| Chips | footer row reduces to `Limiter +` while master is selected |
+| Card header | orange dot · `Limiter` · preset `Default` (stepper `‹ ›`) · `×` |
+| Knobs | `Lookahead` (orange arc, the only non-zero default) · `Pre Gain` · `Attack` · `Release` · `Link` |
+| Empty rail | `+ Add effect` with ghost tiles `EQ` · `Compressor` · `Reverb` |
+
+Two reasons this matters for the clone:
+
+1. **No separate mixer surface is needed to put a limiter on master.** Adding one to
+   `Main` is the same gesture as adding one to a track, so the feature costs nothing
+   beyond making master a valid chain target. S47 (mixer strips) remains open, but
+   this suggests a mixer, if it exists, is a *view* over these chains rather than the
+   only way to reach them.
+2. **The accent colour encodes the target.** Track plugins carry the track's colour
+   dot; the master limiter's dot and arcs are orange — master is visually outside the
+   track palette, so a plugin card always tells you what it is attached to.
+
+
 
 
 
