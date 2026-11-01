@@ -3426,6 +3426,30 @@ Two reasons this matters for the clone:
    dot; the master limiter's dot and arcs are orange — master is visually outside the
    track palette, so a plugin card always tells you what it is attached to.
 
+## 92. S47 — there is no mixer `L` (negative)
+
+Capture `screens/S47-no-mixer-tool-cluster.jpeg` and the full `aria-label` inventory
+taken from the live editor.
+
+The Studio has **no mixer surface**. The evidence is exhaustive rather than
+incidental:
+
+| Check | Result |
+|---|---|
+| Footer tool cluster | exactly four: `Plugins` · `Automation` · `Clip editor` · `Take lanes` |
+| Every `aria-label` in the DOM | no `mixer`, no `console`, no `fader` — the only match for "mix" is `Remix` |
+| Track panel header | `Collapse tracks` and `Collapse track controls` only |
+| `Main` selected | shows a plugin chain (§91), not a strip view |
+
+So per-track mixing is the row itself (§52.1): one volume slider, one pan slider, `S`
+and `A`. Master mixing is the `Main` row plus its plugin chain (§91). A "mixer" in
+this product would be a **second layout of data that already has a home**, and the
+reference chose not to build it.
+
+For the clone the decision is therefore explicit, not implied: if we ship a mixer we
+are adding a surface, and the only thing to be faithful about is that it must read
+from the same `volume / pan / plugins` model the rows already expose.
+
 
 
 
