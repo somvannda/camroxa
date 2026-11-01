@@ -4567,3 +4567,6 @@ html{color-scheme:dark}
 @media (max-width:900px){.se-tracks{width:200px}.se-head{grid-template-columns:1fr auto;height:auto;padding:8px 10px}.se-head-center{grid-column:1 / -1;order:3;justify-content:center}.se-head-right{justify-content:flex-end}}
 
 .studio-start-songs{margin-top:44px;display:flex;flex-direction:column;gap:16px}
+
+.se-save{opacity:.65}
+.se-save.on{opacity:1}

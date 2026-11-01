@@ -9,6 +9,7 @@ import { getStudioProject, updateStudioProject, type StudioProject } from "@/lib
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
+import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 
 const ROW_HEIGHT = 85;
 const ROW_STEP = 86;
@@ -53,6 +54,8 @@ export function StudioEditorShell() {
   const { user, loading: authLoading } = useAuth();
   const [project, setProject] = useState<StudioProject | null>(null);
   const [error, setError] = useState("");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
+  const retryRef = useRef<(() => void) | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
@@ -126,14 +129,51 @@ export function StudioEditorShell() {
     setLocalTracks(null);
   }, [projectId]);
 
+  /**
+   * Every write goes through here so the header can tell the truth about saving
+   * (roadmap W2.1). Keeps the last attempt so the error state can offer a retry.
+   */
+  function persist(run: () => Promise<unknown>, failure: string) {
+    retryRef.current = () => persist(run, failure);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setSaveStatus("offline");
+      return;
+    }
+    setSaveStatus("saving");
+    void run()
+      .then(() => {
+        setSaveStatus("saved");
+        setError("");
+      })
+      .catch(() => {
+        setSaveStatus("error");
+        setError(failure);
+      });
+  }
+
+  useEffect(() => {
+    const goOnline = () => setSaveStatus((current) => (current === "offline" ? "saved" : current));
+    const goOffline = () => setSaveStatus("offline");
+    window.addEventListener("online", goOnline);
+    window.addEventListener("offline", goOffline);
+    if (typeof navigator !== "undefined" && navigator.onLine === false) {
+      setSaveStatus("offline");
+    }
+    return () => {
+      window.removeEventListener("online", goOnline);
+      window.removeEventListener("offline", goOffline);
+    };
+  }, []);
+
   /** Persist the track list into the project document. */
   function commitTracks(next: StudioTrack[]) {
     setLocalTracks(next);
     if (!projectId) return;
     const base = (project?.data || {}) as Record<string, unknown>;
-    updateStudioProject(projectId, { data: { ...base, tracks: next } }).catch(() => {
-      setError("Could not save the track list.");
-    });
+    persist(
+      () => updateStudioProject(projectId, { data: { ...base, tracks: next } }),
+      "Could not save the track list."
+    );
   }
 
   function addTrack() {
@@ -173,9 +213,10 @@ export function StudioEditorShell() {
     setLocalChains(merged);
     if (!projectId) return;
     const base = (project?.data || {}) as Record<string, unknown>;
-    updateStudioProject(projectId, { data: { ...base, chains: merged } }).catch(() => {
-      setError("Could not save the plugin chain.");
-    });
+    persist(
+      () => updateStudioProject(projectId, { data: { ...base, chains: merged } }),
+      "Could not save the plugin chain."
+    );
   }
 
   const duration = useMemo(() => {
@@ -374,12 +415,14 @@ export function StudioEditorShell() {
             }}
             onBlur={() => {
               if (!projectId) return;
-              updateStudioProject(projectId, { bpm }).catch(() => {
-                setError("Could not save the tempo.");
-              });
+              persist(
+                () => updateStudioProject(projectId, { bpm }),
+                "Could not save the tempo."
+              );
             }}
           />
           <span className="se-pill">{project?.time_signature || "4/4"}</span>
+          <StudioSaveStatus status={saveStatus} onRetry={() => retryRef.current?.()} />
           <button type="button" className="se-pill" disabled aria-label="Export (not wired)"><Icon name="fa-arrow-up-from-bracket" /> Export</button>
           <button
             type="button"
