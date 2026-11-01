@@ -900,6 +900,19 @@ class PlatformApi:
         )
         return StartPublishConnectionResponse.model_validate(data)
 
+    def sync_publish_accounts(
+        self, profile_id: str, platform: str = "youtube"
+    ) -> list[PublishAccount]:
+        data = self._client.request(
+            "/publish/accounts/sync",
+            method="POST",
+            auth=True,
+            body={"profile_id": profile_id, "platform": platform},
+        )
+        if isinstance(data, dict):
+            return PublishAccountsResponse.model_validate(data).accounts
+        return []
+
     def latest_publish_connection(self, profile_id: str) -> PublishConnectSession | None:
         data = self._client.request(
             "/publish/accounts/latest-session",

@@ -20,7 +20,10 @@ from shared.lib.video_runtime_inspection import (
     build_video_run_inspection_map,
 )
 from shared.models.platform import DashboardOverview, ProgressFilters, ProgressListResponse
-from shared.models.publishing import CreatePublishJobRequest
+from shared.models.publishing import (
+    CreatePublishJobRequest,
+    StartPublishConnectionResponse,
+)
 from shared.services.platform_api import PlatformApi
 from shared.services.platform_client import PlatformApiError
 from shared.services.video_workspace_service import get_video_workspace_service
@@ -2746,6 +2749,16 @@ class PublishConnectionWorker(QThread):
 
     def run(self) -> None:
         try:
+            linked = self._api.sync_publish_accounts(self._profile_id, self._platform)
+            if linked:
+                self.succeeded.emit(
+                    StartPublishConnectionResponse(
+                        session_id="",
+                        auth_url="",
+                        status="connected",
+                    )
+                )
+                return
             self.succeeded.emit(
                 self._api.start_publish_connection(self._profile_id, self._platform)
             )

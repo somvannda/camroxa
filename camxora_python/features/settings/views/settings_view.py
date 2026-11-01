@@ -3827,11 +3827,15 @@ class SettingsView(QWidget):
         auth_url = getattr(payload, "auth_url", None)
         if auth_url:
             webbrowser.open(str(auth_url))
-        self._profile_youtube_note.setText(
-            "YouTube: browser sign-in started. Return here and press Refresh."
-        )
-        self._status_message = "YouTube connect started."
-        QTimer.singleShot(8000, self._refresh_publish_accounts)
+            self._profile_youtube_note.setText(
+                "YouTube: browser sign-in started. Return here and press Refresh."
+            )
+            self._status_message = "YouTube connect started."
+            QTimer.singleShot(8000, self._refresh_publish_accounts)
+            return
+        self._show_save_success("YouTube channel is already connected.")
+        self._refresh_publish_accounts()
+        self.refresh_data(force=True)
 
     def _refresh_publish_accounts(self, profile_id: str | None = None) -> None:
         if self._publish_accounts_worker is not None and self._publish_accounts_worker.isRunning():

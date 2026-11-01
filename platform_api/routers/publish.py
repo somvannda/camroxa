@@ -64,6 +64,11 @@ class StartPublishConnectionRequest(BaseModel):
     platform: str = "youtube"
 
 
+class SyncPublishConnectionRequest(BaseModel):
+    profile_id: UUID
+    platform: str = "youtube"
+
+
 class StartPublishConnectionResponse(BaseModel):
     session_id: str
     auth_url: str
@@ -223,6 +228,26 @@ async def start_publish_connection(
         session_id=result.session_id,
         auth_url=result.auth_url,
         status=result.status,
+    )
+
+
+@router.post(
+    "/accounts/sync",
+    response_model=PublishAccountsResponse,
+    status_code=200,
+)
+async def sync_publish_connection(
+    request: SyncPublishConnectionRequest,
+    ctx: CurrentUserDep,
+    service: PublishServiceDep,
+) -> PublishAccountsResponse:
+    accounts = await service.sync_accounts(
+        user_id=ctx.user_id,
+        profile_id=str(request.profile_id),
+        platform=request.platform,
+    )
+    return PublishAccountsResponse(
+        accounts=[_account_response(account) for account in accounts]
     )
 
 

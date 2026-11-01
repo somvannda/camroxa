@@ -289,6 +289,45 @@ class PublishService:
     ) -> PublishConnectSessionRecord | None:
         return await self._repo.latest_connect_session(user_id, profile_id)
 
+    async def sync_accounts(
+        self, *, user_id: str, profile_id: str, platform: str = PUBLISH_PLATFORM
+    ) -> list[PublishAccountRecord]:
+        """Link accounts already connected in Post for Me to this profile.
+
+        This makes Connect idempotent: if the provider already has the account,
+        we do not start a duplicate OAuth flow.
+        """
+        self.require_enabled()
+        normalized_platform = str(platform or "").strip().lower() or PUBLISH_PLATFORM
+        if normalized_platform not in SUPPORTED_PLATFORMS:
+            raise ValidationError(
+                f"Unsupported publishing platform: {normalized_platform}",
+                details={"platform": normalized_platform},
+            )
+        await self._ensure_profile_owned(user_id, profile_id)
+        external_id = _external_id(user_id, profile_id)
+        accounts = await self._client.list_accounts(
+            external_id=external_id, platform=normalized_platform
+        )
+        linked: list[PublishAccountRecord] = []
+        for account in accounts:
+            if str(account.get("platform") or "").strip().lower() != normalized_platform:
+                continue
+            linked.append(
+                await self._repo.upsert_account(
+                    user_id=user_id,
+                    profile_id=profile_id,
+                    platform=normalized_platform,
+                    postforme_account_id=str(account.get("id") or ""),
+                    external_id=str(account.get("external_id") or external_id),
+                    username=account.get("username"),
+                    display_name=_display_name(account),
+                    avatar_url=account.get("profile_photo_url"),
+                    metadata=_account_metadata(account),
+                )
+            )
+        return linked
+
     # --- Quote --------------------------------------------------------------
 
     async def quote(self, user_id: str) -> dict[str, Any]:
