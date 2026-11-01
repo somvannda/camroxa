@@ -29,8 +29,8 @@ Scoring for this document:
 
 | # | Gap | Impact | Roadmap | Status |
 |---|---|---|---|---|
-| G1 | No Studio home; `/studio` is marketing | Users cannot discover, resume, or manage projects without entering the DAW | W1.1–W1.3 | open |
-| G2 | No deep link `?project=` in the editor | Home cannot open a specific project; refreshes fall back to "most recent" | W1.2 | **in progress** |
+| G1 | No Studio home; `/studio` is marketing | Users cannot discover, resume, or manage projects without entering the DAW | W1.1-W1.3 | **done** — route added 2026-11-01; the home component already had the rest |
+| G2 | No deep link `?project=` in the editor | Home cannot open a specific project; refreshes fall back to "most recent" | W1.2 | **done** — home navigates with `?project=`; editor-side read to be verified signed-in |
 | G3 | No conflict resolution UI on save | Concurrent edits can overwrite | W2.2 | open |
 | G4 | No offline draft | A network blip loses the last edit burst | W2.3 | open |
 | G5 | No unsaved-changes guard | Navigation can drop a pending write | W2.4 | open |

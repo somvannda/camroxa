@@ -38,6 +38,16 @@ one, or start from a song. This is the single largest structural gap.
 | W1.4 | "Start from a song" list from the library, opens a project seeded with that clip | W1.1, library-api | clip appears on a track in the editor |
 | W1.5 | Unauthenticated `/studio` → marketing page kept, with a sign-in CTA (no dead ends) | W1.1 | signed-out render shows no broken controls |
 
+**Status (2026-11-01):** W1.1, W1.2, W1.3 and W1.5 are **implemented** — the
+`StudioHome` component already had project list, search/sort, archived toggle, resume
+card, rename/duplicate/pin/archive/delete dialogs and the `?project=` navigation; what
+was missing was the **route**. `app/studio/page.tsx` now exists, so `/studio` serves
+the home (signed in) or the marketing page (signed out). Verified signed-out: 200 +
+marketing copy. Signed-in render still needs one manual check.
+
+**W1.4 is the only open task in W1** — the library "start from a song" section has not
+been built; `createStudioProject` accepts a `data` payload, so seeding is possible.
+
 ### W2 — Trustworthy persistence
 
 | # | Task | Depends on | Exit test |
