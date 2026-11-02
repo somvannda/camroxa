@@ -176,10 +176,13 @@ class AuthService:
                 if user is None:
                     raise AuthenticationError("User no longer exists.")
                 return await self._issue_token_pair(user)
-            await self._revoke_after_reuse(stored.get("user_id"))
+            logger.warning(
+                "Stale refresh token reused for user %s; rejecting only this session.",
+                stored.get("user_id"),
+            )
             raise AuthenticationError(
-                "Refresh token reuse detected. All sessions have been revoked. Please sign in again.",
-                details={"error_code": "REFRESH_TOKEN_REUSE"},
+                "This session has already been refreshed. Please sign in again.",
+                details={"error_code": "REFRESH_TOKEN_ROTATED"},
             )
 
         expires_at = stored.get("expires_at")
@@ -206,10 +209,13 @@ class AuthService:
                 if user is None:
                     raise AuthenticationError("User no longer exists.")
                 return await self._issue_token_pair(user)
-            await self._revoke_after_reuse((latest or stored).get("user_id"))
+            logger.warning(
+                "Stale refresh token reused for user %s; rejecting only this session.",
+                (latest or stored).get("user_id"),
+            )
             raise AuthenticationError(
-                "Refresh token reuse detected. All sessions have been revoked. Please sign in again.",
-                details={"error_code": "REFRESH_TOKEN_REUSE"},
+                "This session has already been refreshed. Please sign in again.",
+                details={"error_code": "REFRESH_TOKEN_ROTATED"},
             )
 
         # Look up user to build new token pair
@@ -218,22 +224,6 @@ class AuthService:
             raise AuthenticationError("User no longer exists.")
 
         return await self._issue_token_pair(user)
-
-    async def _revoke_after_reuse(self, user_id: object) -> None:
-        if user_id is None:
-            return
-        try:
-            await self.revoke_tokens(str(user_id))
-            logger.warning(
-                "Refresh token reuse detected for user %s — all sessions revoked.",
-                user_id,
-            )
-        except Exception as exc:
-            logger.error(
-                "Failed to revoke sessions after refresh reuse for %s: %s",
-                user_id,
-                exc,
-            )
 
     async def validate_token(self, token: str) -> TokenPayload:
         """Validate an access token and return its decoded payload.

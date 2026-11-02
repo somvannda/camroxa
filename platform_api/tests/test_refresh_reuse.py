@@ -51,7 +51,7 @@ async def test_recent_revoke_is_treated_as_concurrent_refresh() -> None:
 
 
 @pytest.mark.asyncio
-async def test_refresh_reuse_revokes_all_sessions() -> None:
+async def test_stale_refresh_token_rejects_only_that_session() -> None:
     user_id = uuid4()
     user_repo = AsyncMock()
     refresh_repo = AsyncMock()
@@ -83,6 +83,6 @@ async def test_refresh_reuse_revokes_all_sessions() -> None:
     with pytest.raises(AuthenticationError) as exc:
         await service.refresh_token("stolen-refresh-token")
 
-    assert exc.value.details["error_code"] == "REFRESH_TOKEN_REUSE"
-    refresh_repo.revoke_all_for_user.assert_awaited_once()
-    user_repo.increment_token_version.assert_awaited_once()
+    assert exc.value.details["error_code"] == "REFRESH_TOKEN_ROTATED"
+    refresh_repo.revoke_all_for_user.assert_not_awaited()
+    user_repo.increment_token_version.assert_not_awaited()
