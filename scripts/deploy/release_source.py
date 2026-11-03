@@ -200,7 +200,14 @@ def _archive_bytes(path: Path) -> bytes:
 
 def _skipped(name: str) -> bool:
     name = name.replace("\\", "/")
-    if any(part in SKIP_NAMES for part in Path(name).parts):
+    parts = Path(name).parts
+    if any(part in SKIP_NAMES for part in parts):
+        return True
+    # Generated packaging metadata is tracked in git (despite *.egg-info/ in
+    # .gitignore), and `pip install -e .` rewrites it right after extraction.
+    # Shipping it would make every post-deploy verification fail on hashes that
+    # the deploy itself changed.
+    if any(part.endswith(".egg-info") for part in parts):
         return True
     return name.endswith((".pyc", ".pyo", ".log"))
 
@@ -307,7 +314,11 @@ def build_archive_from_worktree(
             else:
                 for dirpath, dirnames, filenames in os.walk(src):
                     # Prune before descending so skipped trees are never walked.
-                    dirnames[:] = sorted(d for d in dirnames if d not in SKIP_NAMES)
+                    dirnames[:] = sorted(
+                        d
+                        for d in dirnames
+                        if d not in SKIP_NAMES and not d.endswith(".egg-info")
+                    )
                     candidates.extend(
                         Path(dirpath) / filename for filename in sorted(filenames)
                     )

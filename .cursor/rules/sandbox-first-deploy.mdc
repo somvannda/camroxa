@@ -3,11 +3,11 @@ description: Local + sandbox first; never touch production unless explicitly ask
 alwaysApply: true
 ---
 
-# Local and sandbox first — production only on request
+# Local and sandbox first â€” production only on request
 
 Default environment for all server-side work is **local**, then **sandbox**. **Production is off-limits** unless the user explicitly asks to deploy or change production.
 
-## Secrets (separate files — do not mix)
+## Secrets (separate files â€” do not mix)
 
 | Env | File | Loader |
 |-----|------|--------|
@@ -30,18 +30,18 @@ Canonical hosts: sandbox `46.250.235.83`, production `82.197.71.248`. Resolvers 
 
 ## Production gate (strict)
 
-Only run production deploy/sync/migrate/nginx/restart/hotfix scripts when the user clearly asks, e.g. “deploy to production”, “prod deploy”.
+Only run production deploy/sync/migrate/nginx/restart/hotfix scripts when the user clearly asks, e.g. â€œdeploy to productionâ€, â€œprod deployâ€.
 
-Never treat “deploy”, “ship it”, or “update sandbox” as production permission. If unsure, ask.
+Never treat â€œdeployâ€, â€œship itâ€, or â€œupdate sandboxâ€ as production permission. If unsure, ask.
 
-When the working tree has unrelated local changes, use **file-scoped** production hotfixes (allowlisted paths only) — never a full `platform_api` / admin tree sync from a mixed workspace. Prefer shipping from merged `main` when possible.
+When the working tree has unrelated local changes, use **file-scoped** production hotfixes (allowlisted paths only) â€” never a full `platform_api` / admin tree sync from a mixed workspace. Prefer shipping from merged `main` when possible.
 
 ## Production deploy procedure (verified source)
 
 Production **only** ships a commit that is merged to `origin/main`. The scripts
 package that commit with `git archive` (never the working tree), write
 `.deploy-manifest.json` (sha256 per file), and the server verifies every file
-before it builds or restarts anything. If verification fails the deploy stops —
+before it builds or restarts anything. If verification fails the deploy stops â€”
 it does not silently ship half-old code.
 
 ```bash
@@ -60,7 +60,7 @@ python scripts/deploy/sync_music_web_production.py
 python scripts/deploy/check_deploy_guards.py production
 
 # 5. Confirm what is live
-ssh root@82.197.71.248 cat /opt/camxora/repo/.deployed.json
+ssh root@82.197.71.248 cat /opt/camxora/.deployed.json
 
 # 6. Confirm the live bytes still match that commit (drift / server-side edits)
 python scripts/deploy/check_deploy_guards.py production --verify-live
@@ -71,7 +71,7 @@ Rules:
 - **Never** deploy from a feature worktree, a dirty tree, or a tag on an
   unmerged branch. An unmerged tag no longer satisfies the production gate.
 - **Never** edit files on the VPS. A server-only change is deleted by the next
-  deploy — that is exactly how fixes appeared to "revert".
+  deploy â€” that is exactly how fixes appeared to "revert".
 - **Never** add a deploy script that writes source into `/opt/camxora/repo`
   directly. CI (`check_deploy_hygiene.py`) fails such a PR; new scripts must use
   `build_source_bundle()` + `enforce_deploy_gate()`.

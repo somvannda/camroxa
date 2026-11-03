@@ -81,6 +81,23 @@ Deploy scripts are not the only way old code can reach production: ~99 legacy
   and `deploy_musicapi_production.py` requires `HEAD == origin/main` because its
   remote pipeline still stages the working tree.
 
+## Follow-up (same day, from the first live deploy)
+
+The first real deploy exposed two gaps, fixed here:
+
+- **`*.egg-info` broke verification.** The five `platform_api/platform_api.egg-info/*`
+  files are tracked in git (even though `.gitignore` says `*.egg-info/`), so they
+  were in the manifest — and `pip install -e .` regenerates them right after the
+  extract, so `--verify-live` reported `DEPLOY_VERIFY_FAILED` on hashes the
+  deploy itself changed. Generated packaging metadata is now excluded from the
+  archive and manifest.
+- **The lock and marker lived inside the swapped checkout.** A full deploy moves
+  `repo/` to `repo.bak.*` before extracting, which moved `.deploy.lock` and
+  `.deployed.json` with it: the lock stopped refusing concurrent deploys for the
+  duration of the run, and `--verify-live` reported `no-manifest` mid-deploy.
+  Both now live beside the checkout (`/opt/camxora/.deploy.lock`,
+  `/opt/camxora/.deployed.json`).
+
 ## Not changed
 
 Production still runs `2fca5548` (`feat/postforme-publishing`, 2026-11-02) until
