@@ -98,6 +98,8 @@ export function StudioEditorShell() {
     hit: string[];
   } | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  /** Visible horizontal window of the timeline, for clip culling (G19). */
+  const [view, setView] = useState({ left: 0, width: 0 });
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
@@ -1008,7 +1010,16 @@ export function StudioEditorShell() {
           </div>
         </aside>
 
-        <div className="se-timeline">
+        <div
+          className="se-timeline"
+          onScroll={(event) => {
+            const el = event.currentTarget;
+            setView({ left: el.scrollLeft, width: el.clientWidth });
+          }}
+          ref={(el) => {
+            if (el && view.width === 0) setView({ left: el.scrollLeft, width: el.clientWidth });
+          }}
+        >
           <div className="se-ruler-bars" aria-hidden="true">
             <div className="se-ruler-inner" style={{ width: barCount * BAR_PX }}>
               {Array.from({ length: barCount }).map((_, bar) => (
@@ -1046,6 +1057,15 @@ export function StudioEditorShell() {
                 <div key={track.id} className="se-lane" style={{ height: ROW_STEP }}>
                   {clips
                     .filter((clip) => track.clipIds.includes(clip.id))
+                    .filter((clip) => {
+                      // Cull clips outside the visible window plus one screen of
+                      // slack, so scrolling never shows an empty gap (G19).
+                      if (view.width === 0) return true;
+                      const left = ((clip.start ?? 0) / secondsPerBar) * BAR_PX;
+                      const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * BAR_PX);
+                      const slack = view.width;
+                      return left + width >= view.left - slack && left <= view.left + view.width + slack;
+                    })
                     .map((clip) => {
                       const isDragging = drag?.ids.includes(clip.id) ?? false;
                       const isSelected = selectedClip === clip.id || selectedIds.includes(clip.id);
