@@ -165,6 +165,53 @@ async def _current_revisions(conn: asyncpg.Connection) -> set[str]:
     return {str(row["version_num"]) for row in rows if row["version_num"]}
 
 
+# A revision can be recorded in ``alembic_version`` while its DDL is missing:
+# production reached ``178`` with ``credit_transactions.reason`` still
+# ``varchar(100)`` after a migration that rebuilds tables from ``*_archive``
+# snapshots overlapped a second runner. These are the schema facts the
+# application depends on, asserted after every upgrade so the mismatch is loud
+# instead of silent.
+_SCHEMA_ASSERTIONS: tuple[tuple[str, str, str], ...] = (
+    (
+        "credit_transactions.reason",
+        """
+        SELECT data_type
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'credit_transactions'
+          AND column_name = 'reason'
+        """,
+        "text",
+    ),
+)
+
+
+async def verify_schema_assertions(conn: asyncpg.Connection) -> list[str]:
+    """Return ``label: actual`` for every assertion that does not hold.
+
+    Never raises: a schema mismatch must not fail startup and turn a degraded
+    column into an outage. It logs at CRITICAL so the deploy is visibly wrong.
+    """
+    failures: list[str] = []
+    for label, query, expected in _SCHEMA_ASSERTIONS:
+        try:
+            actual = await conn.fetchval(query)
+        except Exception:  # noqa: BLE001 - a missing table is itself a finding
+            logger.exception("Schema assertion could not run: %s", label)
+            failures.append(f"{label}: <query failed>")
+            continue
+        if actual != expected:
+            failures.append(f"{label}: {actual!r} (expected {expected!r})")
+    if failures:
+        logger.critical(
+            "Schema assertions failed after migrations: %s — alembic_version is "
+            "ahead of the actual schema; re-run the last migration before trusting "
+            "this deploy.",
+            "; ".join(failures),
+        )
+    return failures
+
+
 async def run_pending_migrations() -> None:
     """Apply any pending Alembic revisions to the configured database.
 
@@ -198,6 +245,7 @@ async def run_pending_migrations() -> None:
             timeout=_MIGRATION_TIMEOUT_SECONDS,
         )
         logger.info("Database migrations up to date.")
+        await verify_schema_assertions(lock_conn)
     except TimeoutError as exc:
         timed_out = True
         raise RuntimeError(
