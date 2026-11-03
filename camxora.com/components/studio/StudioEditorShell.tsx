@@ -10,6 +10,7 @@ import { listStudioProjects } from "@/lib/studio-api";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
+import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
@@ -714,7 +715,17 @@ export function StudioEditorShell() {
     const now = context.currentTime;
     const master = context.createGain();
     master.gain.value = 0.85;
-    master.connect(context.destination);
+
+    // Master chain (W4.1): the bus is a real node graph, not a hard-coded gain.
+    const masterChain = ((): MasterChainEntry[] => {
+      const data = (project?.data || {}) as { masterChain?: unknown };
+      const raw = Array.isArray(data.masterChain) ? (data.masterChain as MasterChainEntry[]) : [];
+      // A default limiter matches the reference, which ships master with one (§91).
+      return raw.length > 0 ? raw : [{ type: "limiter", amount: 0.5 }];
+    })();
+    const bus = buildMasterBus(context, masterChain);
+    master.connect(bus.input);
+    bus.output.connect(context.destination);
 
     for (const clip of clips) {
       const buffer = buffers.get(clip.id);
