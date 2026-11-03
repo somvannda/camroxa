@@ -24,9 +24,11 @@ The fix stops new cases. This document reverses the existing ones.
 | pengchun.pc@gmail.com | 2 | 20 |
 | **Total** | **18** | **180** |
 
-Not in scope: `keochanleakna@gmail.com` (40 credits, retries of never-terminal
-pending tasks). That needs the stale-pending sweeper; refunding it here would
-double-count once the sweeper exists.
+Not in scope: `keochanleakna@gmail.com` (4 charges / 40 credits). Every desktop
+music debit was written with `ref_id = NULL`, so those charges cannot be tied to
+a song from the data. `deduct_for_operation` now forwards `ref_id=song_id`; older
+rows stay unlinked. Refund these only after a support check, not from this
+backfill.
 
 ## Step 1 - dry run (safe, read-only)
 

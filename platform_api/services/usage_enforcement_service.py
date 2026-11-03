@@ -1562,12 +1562,13 @@ class UsageEnforcementService:
         ai_service: str,
         *,
         sub_model: str | None = None,
+        ref_id: str | None = None,
     ) -> int:
         """Deduct credits and increment usage for the provider that actually served the request."""
         if await self._v3_op_if_enabled(operation_type) is not None:
             await self.enforce_fail_absorb_budget(user_id)
             return await self._charge_via_v3(
-                user_id, operation_type, model=sub_model
+                user_id, operation_type, ref_id=ref_id, model=sub_model
             )
 
         pricing_entry = await lookup_pricing_entry(

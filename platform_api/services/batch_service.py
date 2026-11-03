@@ -5234,6 +5234,7 @@ class BatchService:
                     "music",
                     music_provider,
                     sub_model=music_sub_model,
+                    ref_id=str(song.id),
                 )
                 billing_applied = True
                 alt_profile_id = getattr(batch, "alt_profile_id", None)
