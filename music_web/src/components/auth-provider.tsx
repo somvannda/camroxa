@@ -53,6 +53,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     void refresh();
   }, [refresh]);
 
+  // Credit purchases land asynchronously (CutLuy webhook -> wallet). Refresh the
+  // session view as soon as checkout reports fulfilment so the plan/credit
+  // chrome on every page agrees with the wallet.
+  useEffect(() => {
+    const onCreditsUpdated = () => {
+      void refresh();
+    };
+    window.addEventListener('camxora:credits-updated', onCreditsUpdated);
+    return () => window.removeEventListener('camxora:credits-updated', onCreditsUpdated);
+  }, [refresh]);
+
   const value = useMemo<AuthState>(
     () => ({
       user,
