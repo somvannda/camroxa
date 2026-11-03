@@ -66,6 +66,8 @@ DEPLOY_DIRS = ("platform_api", "admin_portal", "website", "music_web", "shared")
 DEPLOY_FILES = (
     "scripts/deploy/platform-healthcheck.sh",
     "scripts/deploy/musicapi-healthcheck.sh",
+    "scripts/deploy/ops-alert.sh",
+    "scripts/deploy/musicapi-backup.sh",
 )
 # Kept for callers that imported these names from deploy.py.
 __all__ = [

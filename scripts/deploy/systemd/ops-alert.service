@@ -1,0 +1,12 @@
+[Unit]
+Description=CamXora ops alert (apps, database, backup, host)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Runs as root: the OOM check reads the kernel journal and the service checks
+# query systemd. The script itself only reads state and posts to Telegram.
+ExecStart=/opt/camxora/repo/scripts/deploy/ops-alert.sh
+Nice=5
+TimeoutStartSec=240
