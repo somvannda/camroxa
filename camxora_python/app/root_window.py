@@ -32,7 +32,7 @@ from shared.services.setup_readiness_service import refresh_setup_readiness
 from shared.services.software_update_service import SoftwareUpdateOffer, SoftwareUpdateService
 from shared.widgets.software_update_gate import SoftwareUpdateGateOverlay
 from shared.widgets.window_title_bar import WindowTitleBar
-from shared.workers.bootstrap_worker import AuthWorker, BootstrapWorker
+from shared.workers.bootstrap_worker import AuthWorker, BootstrapWorker, GoogleAuthWorker
 from shared.workers.shell_warmup_worker import ShellWarmupWorker
 from shared.workers.software_update_check_worker import SoftwareUpdateCheckWorker
 
@@ -51,7 +51,7 @@ class RootWindow(QMainWindow):
     def __init__(self, session: SessionService | None = None) -> None:
         super().__init__()
         self._session = session or SessionService()
-        self._worker: BootstrapWorker | AuthWorker | ShellWarmupWorker | None = None
+        self._worker: BootstrapWorker | AuthWorker | GoogleAuthWorker | ShellWarmupWorker | None = None
         self._push_runtime: PushNotificationRuntime | None = None
         self._centered_on_launch = False
 
@@ -111,6 +111,7 @@ class RootWindow(QMainWindow):
     def _connect_signals(self) -> None:
         self._auth.login_requested.connect(self._on_login_requested)
         self._auth.register_requested.connect(self._on_register_requested)
+        self._auth.google_signin_requested.connect(self._on_google_signin_requested)
         self._auth.switch_account_requested.connect(self._on_switch_account_requested)
         self._onboarding_welcome.continue_clicked.connect(
             lambda: self._run_mandatory_update_check(on_clear=self._show_login)
@@ -457,6 +458,23 @@ class RootWindow(QMainWindow):
                 display_name=display_name,
             )
         )
+
+    def _on_google_signin_requested(self) -> None:
+        self._run_mandatory_update_check(on_clear=self._run_google_auth_worker)
+
+    def _run_google_auth_worker(self) -> None:
+        self._session.set_api_base_url(self._auth.get_api_base_url())
+        self._auth.set_busy(True)
+        self._auth.set_loading_status("Signing in with Google", "Opening your browser.")
+        worker = GoogleAuthWorker(self._session, parent=self)
+        worker.progress.connect(
+            lambda label, detail, _value: self._auth.set_loading_status(label, detail)
+        )
+        worker.succeeded.connect(self._on_auth_succeeded)
+        worker.failed.connect(self._on_auth_failed)
+        worker.finished.connect(lambda: self._auth.set_busy(False))
+        self._worker = worker
+        worker.start()
 
     def _run_auth_worker(
         self,

@@ -43,6 +43,10 @@ def test_login_card_matches_studio_chrome(qapp: QApplication) -> None:
     view = AuthView(storage=_MemoryStorage())
     assert view.objectName() == "auth_page"
     assert view.findChild(QPushButton, "login_primary_button") is not None
+    google = view.findChild(QPushButton, "auth_google_button")
+    assert google is not None and google.text() == "Continue with Google"
+    # The only third-party sign-in is the labelled Google button; no icon-only
+    # social row.
     social = [btn.text() for btn in view.findChildren(QPushButton) if btn.text() in {"G", "MS", "Apple"}]
     assert social == []
     assert view._login_email.objectName() == "auth_input"
@@ -51,6 +55,16 @@ def test_login_card_matches_studio_chrome(qapp: QApplication) -> None:
     welcome = view.findChild(QLabel, "auth_welcome")
     assert brand is not None and brand.font().pixelSize() == 15
     assert welcome is not None and welcome.font().pixelSize() == 28
+
+
+def test_google_button_emits_signin_request(qapp: QApplication) -> None:
+    view = AuthView(storage=_MemoryStorage())
+    captured: list[bool] = []
+    view.google_signin_requested.connect(lambda: captured.append(True))
+
+    view._google_btn.click()
+
+    assert captured == [True]
 
 
 def test_remembered_email_prefills(qapp: QApplication) -> None:

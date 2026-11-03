@@ -319,6 +319,26 @@ class SessionService:
         self.set_tokens(AuthTokens.from_token_response(tokens))
         return self.run_bootstrap()
 
+    def google_authorization_url(self, *, desktop_port: int) -> str:
+        """Start Google sign-in: the URL the user's browser must open.
+
+        The same Google client and redirect URI as music.camxora.com are used, so
+        no native-app redirect has to be registered; the port travels in the
+        signed state and the website hands the browser over to this app.
+        """
+        payload = self._api.google_auth_url(desktop_port)
+        url = str(payload.get("url") or "").strip()
+        if not url:
+            raise RuntimeError("Google sign-in is unavailable right now. Please try again.")
+        return url
+
+    def complete_google_login(self, code: str, state: str) -> BootstrapResult:
+        self.workspace_cache.clear()
+        self._current_user = None
+        tokens = self._api.google_callback(code, state)
+        self.set_tokens(AuthTokens.from_token_response(tokens))
+        return self.run_bootstrap()
+
     def register(self, email: str, password: str, display_name: str) -> None:
         self._api.register(email, password, display_name)
         tokens = self._api.login(email, password)

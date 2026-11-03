@@ -197,6 +197,34 @@ QPushButton#login_primary_button:disabled {
     color: #A7B4CC;
 }
 
+QPushButton#auth_google_button {
+    background-color: transparent;
+    color: #E2E8F0;
+    font-size: 14px;
+    font-weight: 500;
+    border: 1px solid #2A3B5C;
+    border-radius: 6px;
+    min-height: 46px;
+    max-height: 46px;
+    padding: 0 16px;
+}
+
+QPushButton#auth_google_button:hover {
+    background-color: rgba(109, 61, 245, 0.14);
+    border-color: #6D3DF5;
+    color: #FFFFFF;
+}
+
+QPushButton#auth_google_button:pressed {
+    background-color: rgba(109, 61, 245, 0.24);
+}
+
+QPushButton#auth_google_button:disabled {
+    background-color: transparent;
+    border-color: #24375A;
+    color: #65748F;
+}
+
 QLabel#auth_error {
     color: #FCA5A5;
     font-size: 12px;

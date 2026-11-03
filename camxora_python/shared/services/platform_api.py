@@ -126,6 +126,29 @@ class PlatformApi:
         )
         return TokenResponse.model_validate(data)
 
+    def google_auth_url(self, desktop_port: int) -> dict[str, Any]:
+        """Consent URL for the desktop hand-off.
+
+        The API keeps the same registered https redirect the website uses and
+        signs ``desktop_port`` into the state; the callback page forwards the
+        browser to the app's loopback listener.
+        """
+        data = self._client.request(
+            "/auth/google/url",
+            params={"desktop_port": int(desktop_port)},
+            timeout=20.0,
+        )
+        return data if isinstance(data, dict) else {}
+
+    def google_callback(self, code: str, state: str) -> TokenResponse:
+        """Exchange the loopback ``code`` for a desktop session."""
+        data = self._client.request(
+            "/auth/google/callback",
+            method="POST",
+            body={"code": code, "state": state},
+        )
+        return TokenResponse.model_validate(data)
+
     def logout(self) -> dict[str, Any]:
         result = self._client.request("/auth/logout", method="POST", auth=True)
         return result or {"message": "ok"}

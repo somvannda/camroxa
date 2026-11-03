@@ -10,12 +10,14 @@ import { STORAGE_NEXT, STORAGE_REF, STORAGE_STATE } from '@/components/google-si
 import { useAuth } from '@/components/auth-provider';
 import { completeGoogleCallback, fetchMusicUser } from '@/lib/auth-api';
 import { DEFAULT_POST_AUTH_PATH, safeNextPath } from '@/lib/auth-redirect';
+import { desktopHandoffPort, desktopHandoffUrl } from '@/lib/oauth-state';
 
 function GoogleCallbackInner() {
   const router = useRouter();
   const params = useSearchParams();
   const { refresh } = useAuth();
   const [error, setError] = useState<string | null>(null);
+  const [handingOff, setHandingOff] = useState(false);
   const started = useRef(false);
 
   useEffect(() => {
@@ -26,6 +28,19 @@ function GoogleCallbackInner() {
       const code = params.get('code');
       const state = params.get('state');
       const oauthError = params.get('error');
+
+      // A desktop sign-in waits on a loopback listener. The desktop studio uses
+      // the same Google client and the same https callback as this site, so the
+      // browser is only a relay here: the app owns the session and exchanges the
+      // code server-side.
+      const desktopPort = desktopHandoffPort(state);
+      if (desktopPort) {
+        setHandingOff(true);
+        window.location.replace(
+          desktopHandoffUrl(desktopPort, { code, state, error: oauthError }),
+        );
+        return;
+      }
 
       if (oauthError) {
         setError(
@@ -76,7 +91,9 @@ function GoogleCallbackInner() {
     return (
       <div className="flex min-h-[40vh] flex-col items-center justify-center gap-4 text-slate-300">
         <LoaderCircle className="h-7 w-7 animate-spin text-purple-400" />
-        <p className="text-sm">Signing you in with Google…</p>
+        <p className="text-sm">
+          {handingOff ? 'Returning to the CAMXORA studio…' : 'Signing you in with Google…'}
+        </p>
       </div>
     );
   }
