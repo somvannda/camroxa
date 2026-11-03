@@ -19,7 +19,7 @@ State as of 2026-11-03. A new session should need only this file plus
 | Half | State |
 |---|---|
 | **Capture** (65 screens → screenshot + spec) | **60 DONE / 3 PART / 2 OPEN**, spec §1–§96. Remaining five are documented in `reference/CAPTURE_GAPS.md` and are not blocking. |
-| **Build** (close gaps against that spec) | W1 ✅, W2 ✅ (all four), W3 mostly ✅ — see the roadmap for the live list. |
+| **Build** (close gaps against that spec) | W1 ✅, W2 ✅ (all four), W3 ✅ (9 done, G12 partial), W4 ✅ 1/3/4 — only the stems-dependent items remain. |
 
 ## Running the app (the part that costs time)
 
@@ -78,8 +78,34 @@ future "parity" work should not delete them.
 
 ## Next moves, in order
 
-1. **W4.1** mastering chain audible (EQ/comp/drive on master + per track).
-2. **W4.3** export matrix (mix, range, stems, per-track WAV, project JSON).
-3. **G12 remainder** — workspaces/stems/uploads tabs need a stems-listing API first.
-4. **G13/G14** — test runner (none installed) and an axe pass on the Studio routes.
-5. Capture the five gaps opportunistically; do not spend a session on them.
+Everything that does **not** depend on a missing backend endpoint is done. What is left:
+
+1. **W4.2 stems** and the stems half of **W4.3** — both need the stems job API plus a
+   `pricing` lookup; neither can be exercised without them.
+2. **W4.3 range export** — needs a time-selection model first (the editor has a playhead
+   and a loop flag, no range).
+3. **G11 mastering presets / export normalisation** — design work on top of W4.1.
+4. **G12 remainder** — workspaces/stems/uploads tabs need a stems-listing endpoint.
+5. **G13/G14/G15** — test runner (none installed), axe pass, splitting the 6.9k-line
+   shell.
+6. The five capture gaps, opportunistically — see `reference/CAPTURE_GAPS.md`.
+
+## Modules added this session (each with a dev handle for measurement)
+
+| Module | Purpose | Handle (dev only) |
+|---|---|---|
+| `lib/studio-snap.ts` | snap-to-grid, drag threshold, pure | — |
+| `lib/studio-draft.ts` | offline draft storage, storage-injected | — |
+| `lib/studio-seed.ts` | build a project from a song | — |
+| `lib/studio-master-bus.ts` | real EQ/comp/limiter/drive node graph | `window.__buildMasterBus` |
+| `lib/studio-export.ts` | 16-bit WAV encoder + offline mixdown | `window.__studioExport` |
+| `lib/studio-meter.ts` | peak / RMS / 4x inter-sample estimate | `window.__studioMeter` |
+
+The handles exist so audio behaviour can be measured with an `OfflineAudioContext`
+instead of by ear — that is how W4.1, W4.3 and W4.4 were verified.
+
+## Capture position
+
+65 screens: **60 DONE / 3 PART / 2 OPEN**, 78 images, spec §1–§96. The five remaining
+are in `reference/CAPTURE_GAPS.md`; three need a Studio-native clip in a specific
+state, two need a forced account state. None block the build.
