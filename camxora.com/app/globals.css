@@ -4597,3 +4597,6 @@ html{color-scheme:dark}
 .se-onboard-tile{display:flex;flex-direction:column;gap:6px;padding:16px;border-radius:12px;border:1px solid hsl(var(--border));background:hsl(var(--card));text-decoration:none;color:inherit;text-align:left}
 .se-onboard-tile span{opacity:.7}
 .se-onboard-foot{display:flex;justify-content:flex-end}
+
+.se-export-menu{position:absolute;top:44px;right:16px;display:flex;flex-direction:column;min-width:180px;padding:6px;border-radius:10px;background:hsl(var(--card));border:1px solid hsl(var(--border));z-index:50}
+.se-export-menu button{text-align:left;padding:8px 10px;border-radius:8px}

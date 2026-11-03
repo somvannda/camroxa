@@ -11,6 +11,7 @@ import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
+import { renderMix, type ExportClip, type ExportTrack } from "@/lib/studio-export";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
@@ -101,6 +102,8 @@ export function StudioEditorShell() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   /** Visible horizontal window of the timeline, for clip culling (G19). */
   const [view, setView] = useState({ left: 0, width: 0 });
+  const [exporting, setExporting] = useState(false);
+  const [exportOpen, setExportOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
@@ -751,6 +754,90 @@ export function StudioEditorShell() {
     }
   }
 
+  /** Decode every clip's audio once, for export (W4.3). */
+  async function decodeClips(): Promise<Map<string, AudioBuffer>> {
+    const context = new AudioContext();
+    const map = new Map<string, AudioBuffer>();
+    try {
+      await Promise.all(
+        clips.map(async (clip) => {
+          const url = (clip as { audioUrl?: string | null }).audioUrl;
+          if (!url) return;
+          try {
+            const response = await fetch(url);
+            if (!response.ok) return;
+            map.set(clip.id, await context.decodeAudioData(await response.arrayBuffer()));
+          } catch {
+            /* skip undecodable clips */
+          }
+        })
+      );
+    } finally {
+      void context.close();
+    }
+    return map;
+  }
+
+  function download(bytes: BlobPart | Uint8Array, filename: string, type: string) {
+    const part = bytes instanceof Uint8Array ? new Blob([bytes as unknown as ArrayBufferView<ArrayBuffer>]) : bytes;
+    const url = URL.createObjectURL(new Blob([part], { type }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+  }
+
+  /**
+   * Export matrix (W4.3): full mix, one file per track, or the project document.
+   * Deliberately the same shape as the reference — pick a scope, get a file, no dialog
+   * (§87) — but rendered locally so nothing is queued server-side.
+   */
+  async function runExport(scope: "mix" | "tracks" | "json") {
+    if (!project) return;
+    setExportOpen(false);
+    if (scope === "json") {
+      download(JSON.stringify(project, null, 2), `${project.title || "project"}.json`, "application/json");
+      return;
+    }
+    setExporting(true);
+    try {
+      const buffers = await decodeClips();
+      const exportClips: ExportClip[] = clips.map((clip) => ({
+        id: clip.id,
+        start: clip.start,
+        duration: clip.duration,
+        audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
+      }));
+      const exportTracks: ExportTrack[] = tracks.map((track) => ({
+        id: track.id,
+        name: track.name,
+        volume: track.volume,
+        muted: track.muted,
+        clipIds: track.clipIds,
+      }));
+      const chain = ((project.data || {}) as { masterChain?: MasterChainEntry[] }).masterChain;
+
+      if (scope === "mix") {
+        const wav = await renderMix(buffers, exportClips, exportTracks, { chain });
+        download(wav, `${project.title || "mix"}.wav`, "audio/wav");
+      } else {
+        for (const track of exportTracks) {
+          const wav = await renderMix(buffers, exportClips, exportTracks, {
+            chain,
+            clipIds: new Set(track.clipIds),
+          });
+          const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
+          download(wav, `${project.title || "project"} — ${label}.wav`, "audio/wav");
+        }
+      }
+    } catch {
+      setError("Export failed. Check that the clips still have audio.");
+    } finally {
+      setExporting(false);
+    }
+  }
+
   function togglePlayback() {
     setPlaying((value) => {
       if (value) {
@@ -950,7 +1037,29 @@ export function StudioEditorShell() {
           >
             {playbackRate}×
           </button>
-          <button type="button" className="se-pill" disabled aria-label="Export (not wired)"><Icon name="fa-arrow-up-from-bracket" /> Export</button>
+          <button
+            type="button"
+            className={`se-pill${exportOpen ? " on" : ""}`}
+            aria-label="Export menu"
+            aria-expanded={exportOpen}
+            onClick={() => setExportOpen((open) => !open)}
+            disabled={exporting}
+          >
+            <Icon name="fa-arrow-up-from-bracket" /> {exporting ? "Exporting…" : "Export"}
+          </button>
+          {exportOpen ? (
+            <div className="se-export-menu" role="menu" aria-label="Export options">
+              <button type="button" role="menuitem" onClick={() => void runExport("mix")}>
+                Full mix (WAV)
+              </button>
+              <button type="button" role="menuitem" onClick={() => void runExport("tracks")}>
+                One file per track
+              </button>
+              <button type="button" role="menuitem" onClick={() => void runExport("json")}>
+                Project (JSON)
+              </button>
+            </div>
+          ) : null}
           <button
             type="button"
             className={`se-pill${libraryOpen ? " on" : ""}`}

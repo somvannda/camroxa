@@ -1,0 +1,138 @@
+/**
+ * Export (roadmap W4.3).
+ *
+ * The reference's export is a three-item menu that fires and forgets: no dialog, no
+ * progress, and an unnamed project is saved first (spec §87). We keep the same
+ * shape — pick a scope, get a file — but render locally so there is no round trip.
+ *
+ * Everything here is context-injected and free of React, so it can be exercised
+ * directly with an OfflineAudioContext (see the dev handle below).
+ */
+
+import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
+
+export type ExportClip = {
+  id: string;
+  start?: number;
+  duration?: number;
+  audioUrl?: string | null;
+};
+
+export type ExportTrack = {
+  id: string;
+  name?: string;
+  volume?: number;
+  muted?: boolean;
+  clipIds: string[];
+};
+
+/** 16-bit PCM WAV from a set of rendered channels. */
+export function encodeWav(channels: Float32Array[], sampleRate: number): Uint8Array {
+  const channelCount = Math.max(1, channels.length);
+  const frames = channels[0]?.length ?? 0;
+  const bytesPerFrame = channelCount * 2;
+  const dataSize = frames * bytesPerFrame;
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeString = (offset: number, value: string) => {
+    for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i));
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true); // PCM chunk size
+  view.setUint16(20, 1, true); // format = PCM
+  view.setUint16(22, channelCount, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * bytesPerFrame, true);
+  view.setUint16(32, bytesPerFrame, true);
+  view.setUint16(34, 16, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let frame = 0; frame < frames; frame++) {
+    for (let channel = 0; channel < channelCount; channel++) {
+      const sample = Math.max(-1, Math.min(1, channels[channel][frame] ?? 0));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7fff, true);
+      offset += 2;
+    }
+  }
+  return new Uint8Array(buffer);
+}
+
+export type RenderOptions = {
+  sampleRate?: number;
+  /** Which clips to include; omit for the whole project. */
+  clipIds?: Set<string>;
+  /** Restrict to a time window (seconds). */
+  from?: number;
+  to?: number;
+  chain?: MasterChainEntry[];
+};
+
+/**
+ * Render a mix to WAV bytes. `buffers` are decoded per clip id, so callers can render
+ * the full mix and single tracks from the same decode pass.
+ */
+export async function renderMix(
+  bufferMap: Map<string, AudioBuffer>,
+  clips: ExportClip[],
+  tracks: ExportTrack[],
+  options: RenderOptions = {}
+): Promise<Uint8Array> {
+  const sampleRate = options.sampleRate ?? 44100;
+  const from = Math.max(0, options.from ?? 0);
+  const lastEnd = clips.reduce(
+    (max, clip) => Math.max(max, (clip.start ?? 0) + (clip.duration ?? 0)),
+    0
+  );
+  const to = Math.max(from + 0.1, options.to ?? lastEnd);
+  const seconds = to - from;
+
+  const context = new OfflineAudioContext(2, Math.ceil(seconds * sampleRate), sampleRate);
+  const master = context.createGain();
+  master.gain.value = 0.85;
+  const bus = buildMasterBus(context, options.chain ?? []);
+  master.connect(bus.input);
+  bus.output.connect(context.destination);
+
+  for (const clip of clips) {
+    if (options.clipIds && !options.clipIds.has(clip.id)) continue;
+    const buffer = bufferMap.get(clip.id);
+    if (!buffer) continue;
+    const start = clip.start ?? 0;
+    const duration = clip.duration ?? buffer.duration;
+    if (start + duration <= from || start >= to) continue;
+    const track = tracks.find((item) => item.clipIds.includes(clip.id));
+    if (track?.muted) continue;
+
+    const when = Math.max(0, start - from);
+    const offset = Math.max(0, from - start);
+    const playable = Math.min(duration - offset, to - Math.max(start, from));
+    if (playable <= 0) continue;
+
+    const source = context.createBufferSource();
+    source.buffer = buffer;
+    const gain = context.createGain();
+    gain.gain.value = (track?.volume ?? 80) / 100;
+    source.connect(gain).connect(master);
+    const node = source as AudioBufferSourceNode & { start: (w: number, o?: number, d?: number) => void };
+    node.start(when, offset, playable);
+  }
+
+  const rendered = await context.startRendering();
+  const channels = Array.from({ length: rendered.numberOfChannels }, (_, index) =>
+    rendered.getChannelData(index)
+  );
+  return encodeWav(channels, sampleRate);
+}
+
+// Dev-only handle so the exporter can be measured without wiring a download.
+if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+  (window as unknown as { __studioExport?: { renderMix: typeof renderMix; encodeWav: typeof encodeWav } })
+    .__studioExport = { renderMix, encodeWav };
+}
