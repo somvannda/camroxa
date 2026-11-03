@@ -284,6 +284,11 @@ hotfix, a partial write, or a deploy that skipped the manifest) — deploy merge
 writes source without `build_source_bundle()`/`enforce_deploy_gate()`, so the
 hole cannot be reopened.
 
+`deploy_production.py` runs the same check **before** uploading and prints a
+warning when the live checkout drifted, recording `previous_live_status` in
+`.deployed.json`. That is the "my change vanished" case surfaced *before* the
+deploy replaces the in-place hotfix, instead of after.
+
 ### Adding a new deploy script
 
 It must package a commit and enforce the gate:

@@ -132,7 +132,28 @@ def main() -> int:
 
     client = ssh_connect(host, user, Path(custom_key) if custom_key else ensure_deploy_key(), password)
     lock = acquire_remote_lock(client)
+    live_status = "not-checked"
+    live_detail = ""
     try:
+        # Surface the case that used to be invisible: production was hotfixed in
+        # place after the last deploy, and this deploy is about to replace it.
+        from check_deploy_guards import live_source_status
+
+        live_status, live_detail = live_source_status(client, "/opt/camxora/repo")
+        if live_status == "drift":
+            print(
+                "\nWARNING: the live checkout has drifted from its deployed manifest — "
+                "production was edited in place (a server-side hotfix). This deploy "
+                "replaces it with the source commit; if that change is not on main, "
+                "merge it first or it will be lost.\n"
+                + live_detail
+            )
+        elif live_status == "no-manifest":
+            print(
+                "\nWARNING: production has no .deploy-manifest.json (deployed before "
+                "verified-source deploys); this deploy starts tracking it."
+            )
+
         code = upload_and_run(client, secrets, bundle)
         if code == 0:
             post_deploy_record(
@@ -146,6 +167,7 @@ def main() -> int:
                     "source_mode": bundle.mode,
                     "source_files": bundle.files,
                     "manifest": ".deploy-manifest.json",
+                    "previous_live_status": live_status,
                 },
             )
     finally:

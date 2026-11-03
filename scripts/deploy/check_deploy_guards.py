@@ -79,12 +79,10 @@ def main() -> int:
     return 0
 
 
-def verify_live_source(client, remote_repo: str) -> None:
-    """Re-hash the live checkout against the deployed manifest.
+def live_source_status(client, remote_repo: str) -> tuple[str, str]:
+    """Return (status, detail) for the live checkout vs its deployed manifest.
 
-    Detects a server-side hotfix, a partial write, or a deploy that skipped the
-    manifest step — the drift that used to go unnoticed until a later deploy
-    "reverted" the change.
+    status: ``ok`` | ``drift`` | ``no-manifest``.
     """
     from deploy import upload_verifier
 
@@ -93,14 +91,9 @@ def verify_live_source(client, remote_repo: str) -> None:
         with sftp.file(f"{remote_repo}/.deployed.json", "r") as handle:
             marker = handle.read().decode("utf-8", "replace")
     except OSError:
-        raise SystemExit(
-            f"Refusing: {remote_repo}/.deployed.json is missing — the live source "
-            "was not deployed through the verified pipeline."
-        )
+        return "no-manifest", "no .deployed.json (not deployed through the verified pipeline)"
     finally:
         sftp.close()
-    print("[deploy-guard] live marker:")
-    print(marker.strip())
 
     upload_verifier(client)
     _, stdout, _stderr = client.exec_command(
@@ -109,8 +102,25 @@ def verify_live_source(client, remote_repo: str) -> None:
     )
     output = stdout.read().decode("utf-8", "replace")
     code = stdout.channel.recv_exit_status()
-    print(output.strip())
-    if code != 0:
+    return ("ok" if code == 0 else "drift"), f"{marker.strip()}\n{output.strip()}"
+
+
+def verify_live_source(client, remote_repo: str) -> None:
+    """Fail unless the live checkout still matches the deployed manifest.
+
+    Detects a server-side hotfix, a partial write, or a deploy that skipped the
+    manifest step — the drift that used to go unnoticed until a later deploy
+    "reverted" the change.
+    """
+    status, detail = live_source_status(client, remote_repo)
+    print("[deploy-guard] live marker / verification:")
+    print(detail)
+    if status == "no-manifest":
+        raise SystemExit(
+            f"Refusing: {remote_repo}/.deployed.json is missing — the live source "
+            "was not deployed through the verified pipeline."
+        )
+    if status == "drift":
         raise SystemExit(
             "Refusing: the live checkout does not match the deployed manifest — "
             "someone edited production in place. Deploy merged main to restore it."
