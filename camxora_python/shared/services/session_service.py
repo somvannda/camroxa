@@ -330,6 +330,16 @@ class SessionService:
         url = str(payload.get("url") or "").strip()
         if not url:
             raise RuntimeError("Google sign-in is unavailable right now. Please try again.")
+        # An older platform_api ignores `desktop_port` and would send the browser
+        # to finish the sign-in on the website, leaving this window waiting for a
+        # hand-off that never comes. Fail fast with an actionable message.
+        from shared.services.google_desktop_oauth import desktop_port_from_state
+
+        if desktop_port_from_state(str(payload.get("state") or "")) != int(desktop_port):
+            raise RuntimeError(
+                "Google sign-in needs a newer CAMXORA server. Ask support to update "
+                "the platform API, or sign in with your email and password."
+            )
         return url
 
     def complete_google_login(self, code: str, state: str) -> BootstrapResult:

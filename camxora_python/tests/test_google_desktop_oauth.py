@@ -11,9 +11,16 @@ from shared.services.google_desktop_oauth import (
     DEFAULT_LOOPBACK_PORT,
     GoogleLoopbackServer,
     GoogleSignInError,
+    desktop_port_from_state,
     loopback_port_from_env,
 )
-from shared.services.session_service import BootstrapDestination, BootstrapResult
+from shared.services.platform_api import PlatformApi
+from shared.services.secure_storage import SecureStorage
+from shared.services.session_service import (
+    BootstrapDestination,
+    BootstrapResult,
+    SessionService,
+)
 from shared.workers.bootstrap_worker import GoogleAuthWorker
 
 
@@ -173,3 +180,88 @@ def test_google_auth_worker_reports_api_failure(qapp: QApplication) -> None:
     worker.run()
 
     assert "unavailable" in str(captured.get("error", "")).lower()
+
+
+# ---------------------------------------------------------------------------
+# Old-server guard: a platform_api that ignores `desktop_port` must fail fast
+# instead of leaving the window waiting for a hand-off that never arrives.
+# ---------------------------------------------------------------------------
+
+
+def _state_with(desktop_port: int | None) -> str:
+    import base64
+    import json
+
+    payload: dict[str, object] = {"type": "google_oauth_state"}
+    if desktop_port is not None:
+        payload["desktop_port"] = desktop_port
+    body = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
+    return f"header.{body}.signature"
+
+
+def test_desktop_port_from_state() -> None:
+    assert desktop_port_from_state(_state_with(41580)) == 41580
+    assert desktop_port_from_state(_state_with(None)) is None
+    assert desktop_port_from_state(_state_with(0)) is None
+    assert desktop_port_from_state(_state_with(70000)) is None
+    assert desktop_port_from_state("") is None
+    assert desktop_port_from_state("garbage") is None
+    assert desktop_port_from_state("a.%%%.c") is None
+
+
+class _NoopClient:
+    def set_session_handlers(self, **_kwargs) -> None:
+        return
+
+
+class _MemoryStorage(SecureStorage):
+    def __init__(self) -> None:
+        self._data: dict[str, str] = {}
+        self._api_base_url = "https://api.camxora.com/api/v3"
+
+    def get(self, key: str) -> str | None:
+        return self._data.get(key)
+
+    def set(self, key: str, value: str) -> None:
+        self._data[key] = value
+
+    def remove(self, key: str) -> None:
+        self._data.pop(key, None)
+
+    def get_api_base_url(self) -> str:
+        return self._api_base_url
+
+    def set_api_base_url(self, url: str) -> None:
+        self._api_base_url = url
+
+
+class _StubApi(PlatformApi):
+    def __init__(self, state: str) -> None:
+        self._client = _NoopClient()
+        self._state = state
+        self.requested_port: int | None = None
+
+    def google_auth_url(self, desktop_port: int) -> dict[str, object]:
+        self.requested_port = desktop_port
+        return {"url": "https://accounts.google.com/o/oauth2/v2/auth?x=1", "state": self._state}
+
+
+def _service(state: str) -> tuple[SessionService, _StubApi]:
+    api = _StubApi(state)
+    return SessionService(storage=_MemoryStorage(), api=api), api
+
+
+def test_google_authorization_url_accepts_matching_state() -> None:
+    service, api = _service(_state_with(41580))
+
+    url = service.google_authorization_url(desktop_port=41580)
+
+    assert url.startswith("https://accounts.google.com/")
+    assert api.requested_port == 41580
+
+
+def test_google_authorization_url_rejects_old_server() -> None:
+    service, _api = _service(_state_with(None))
+
+    with pytest.raises(RuntimeError, match="newer CAMXORA server"):
+        service.google_authorization_url(desktop_port=41580)

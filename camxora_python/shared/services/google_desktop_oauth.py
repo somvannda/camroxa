@@ -21,6 +21,8 @@ a clear message instead of racing for the hand-off. Operations can change it wit
 
 from __future__ import annotations
 
+import base64
+import json
 import os
 import threading
 from dataclasses import dataclass
@@ -83,6 +85,30 @@ class _LoopbackHTTPServer(ThreadingHTTPServer):
 class GoogleLoopbackResult:
     code: str
     state: str
+
+
+def desktop_port_from_state(state: str | None) -> int | None:
+    """Read the signed state's ``desktop_port`` claim (no signature check).
+
+    Only used to detect a server that predates the desktop hand-off: the API still
+    verifies the signature when the code is exchanged.
+    """
+    raw = (state or "").strip()
+    parts = raw.split(".")
+    if len(parts) < 2:
+        return None
+    segment = parts[1]
+    try:
+        padding = "=" * ((4 - (len(segment) % 4)) % 4)
+        decoded = base64.urlsafe_b64decode(segment + padding)
+        payload = json.loads(decoded)
+    except Exception:
+        return None
+    try:
+        port = int(payload.get("desktop_port"))
+    except (AttributeError, TypeError, ValueError):
+        return None
+    return port if 1 <= port <= 65535 else None
 
 
 def loopback_port_from_env() -> int:

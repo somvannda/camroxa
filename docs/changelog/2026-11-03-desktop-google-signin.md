@@ -33,6 +33,9 @@ useless without the client secret and the signed state.
   with `X-Camxora-Client: desktop`).
 - Cancelled consent, a busy port, a closed browser and a timeout each produce a specific message
   instead of a generic failure.
+- If the deployed platform API predates this release it silently ignores `desktop_port`; the app
+  detects that from the returned state and fails immediately with "Google sign-in needs a newer
+  CAMXORA server…" rather than waiting out the 300 s hand-off timeout.
 
 ## Technical impact
 
@@ -82,9 +85,9 @@ useless without the client secret and the signed state.
   still → 422, unconfigured Google → 503.
 - `music_web/src/lib/oauth-state.test.ts` — 6 tests: port decoding (valid/invalid/malformed),
   hand-off URL construction and cancellation relay, always 127.0.0.1.
-- `camxora_python/tests/test_google_desktop_oauth.py` — 9 tests: code+state capture, cancelled
+- `camxora_python/tests/test_google_desktop_oauth.py` — 12 tests: code+state capture, cancelled
   consent, unknown path, timeout, busy port, env port override, worker success / missing browser /
-  API failure.
+  API failure, state port decoding and the old-server guard.
 - `camxora_python/tests/test_auth_login_ui.py` — asserts the Google button exists and emits
   `google_signin_requested`.
 - `python -m pytest platform_api/tests -k "auth or google"` — 113 passed.
