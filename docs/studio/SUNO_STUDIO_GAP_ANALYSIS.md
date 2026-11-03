@@ -40,7 +40,7 @@ Scoring for this document:
 | G9 | No clip focus management on delete | Keyboard users lose their place | W3 | **done** — delete keeps focus on the nearest clip |
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | open |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | open |
-| G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | open (needs API for stems listing) |
+| G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs + Projects tabs wired; workspaces/stems/uploads still missing |
 | G13 | No Studio test suite | Regressions found by hand | W5 | open |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | open |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | open |
