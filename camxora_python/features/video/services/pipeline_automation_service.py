@@ -56,6 +56,7 @@ class PipelineAutomationService(QObject):
         self._export_worker: VideoPipelineExportWorker | None = None
         self._merge_worker: VideoPipelineMergeWorker | None = None
         self._merge_context: dict[str, Any] = {}
+        self._publish_worker: Any = None
         self._busy = False
         self._video_charge: dict[str, Any] = {}
         self._merge_charge: dict[str, Any] = {}
@@ -819,7 +820,56 @@ class PipelineAutomationService(QObject):
             role=str(context.get("role") or "OK"),
             run_dir=str(context.get("run_dir") or ""),
         )
+        self._maybe_auto_publish(merged_output, context)
         self._schedule_progress_local_sync()
+
+    def _maybe_auto_publish(self, merged_output: str, context: dict[str, Any]) -> None:
+        if not bool(self._settings.get("autoUploadYouTube")):
+            return
+        if is_app_quitting():
+            return
+        profile_id = str(context.get("profile_id") or "").strip()
+        if not profile_id:
+            return
+        try:
+            from shared.workers.data_workers import PublishUploadWorker
+
+            worker = PublishUploadWorker(
+                self._api,
+                auto_context={
+                    "profile_id": profile_id,
+                    "batch_id": str(context.get("batch_id") or "").strip(),
+                    "role": str(context.get("role") or "OK").strip().upper() or "OK",
+                    "run_dir": str(context.get("run_dir") or "").strip(),
+                    "merged_path": merged_output,
+                },
+                parent=self,
+            )
+            worker.status_changed.connect(lambda text: emit_shell_status(str(text), tone="neutral"))
+            worker.succeeded.connect(self._on_publish_succeeded)
+            worker.failed.connect(self._on_publish_failed)
+            worker.finished.connect(lambda: setattr(self, "_publish_worker", None))
+            self._publish_worker = worker
+            worker.start()
+        except Exception as exc:
+            from shared.services.app_logger import log_warn
+
+            log_warn(f"Auto-upload could not start: {exc}", category="export")
+
+    def _on_publish_succeeded(self, job: object) -> None:
+        status = str(getattr(job, "status", "") or "processing")
+        message = f"YouTube upload queued ({status})."
+        emit_shell_status(message, tone="neutral")
+        from shared.services.app_logger import log_info
+
+        log_info(message, category="export")
+
+    def _on_publish_failed(self, message: str) -> None:
+        text = str(message or "YouTube upload failed.").strip()
+        emit_shell_status(text, tone="warning")
+        from shared.services.app_logger import log_warn
+
+        log_warn(text, category="export")
 
     def _on_merge_failed(self, message: str) -> None:
         if self._is_user_initiated_stop(message):

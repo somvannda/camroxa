@@ -27,6 +27,18 @@ from shared.models.auth import (
     UserMeResponse,
     WebMusicSubscriptionPlan,
 )
+from shared.models.publishing import (
+    CreatePublishJobRequest,
+    CreatePublishJobResponse,
+    PublishAccount,
+    PublishAccountsResponse,
+    PublishConnectSession,
+    PublishJob,
+    PublishJobsResponse,
+    PublishQuote,
+    RetryPublishJobResponse,
+    StartPublishConnectionResponse,
+)
 from shared.models.platform import (
     AlbumRewriteResponse,
     BatchCreateRequest,
@@ -890,6 +902,117 @@ class PlatformApi:
     def list_youtube_playlists(self, profile_id: str) -> YouTubePlaylistsResponse:
         data = self._client.request(f"/youtube/profiles/{profile_id}/playlists", auth=True)
         return YouTubePlaylistsResponse.model_validate(data)
+
+    # --- Post for Me publishing -------------------------------------------
+
+    def list_publish_accounts(self, profile_id: str | None = None) -> list[PublishAccount]:
+        params = {"profile_id": profile_id} if profile_id else None
+        data = self._client.request("/publish/accounts", auth=True, params=params)
+        if isinstance(data, dict):
+            return PublishAccountsResponse.model_validate(data).accounts
+        return []
+
+    def start_publish_connection(
+        self, profile_id: str, platform: str = "youtube"
+    ) -> StartPublishConnectionResponse:
+        data = self._client.request(
+            "/publish/accounts/connect",
+            method="POST",
+            auth=True,
+            body={"profile_id": profile_id, "platform": platform},
+        )
+        return StartPublishConnectionResponse.model_validate(data)
+
+    def sync_publish_accounts(
+        self, profile_id: str, platform: str = "youtube"
+    ) -> list[PublishAccount]:
+        data = self._client.request(
+            "/publish/accounts/sync",
+            method="POST",
+            auth=True,
+            body={"profile_id": profile_id, "platform": platform},
+        )
+        if isinstance(data, dict):
+            return PublishAccountsResponse.model_validate(data).accounts
+        return []
+
+    def latest_publish_connection(self, profile_id: str) -> PublishConnectSession | None:
+        data = self._client.request(
+            "/publish/accounts/latest-session",
+            auth=True,
+            params={"profile_id": profile_id},
+        )
+        if not data:
+            return None
+        return PublishConnectSession.model_validate(data)
+
+    def disconnect_publish_account(self, account_id: str) -> dict[str, Any]:
+        result = self._client.request(
+            f"/publish/accounts/{account_id}",
+            method="DELETE",
+            auth=True,
+        )
+        return result or {"message": "Publishing account disconnected."}
+
+    def get_publish_quote(self) -> PublishQuote:
+        data = self._client.request("/publish/quote", auth=True)
+        return PublishQuote.model_validate(data)
+
+    def create_publish_job(
+        self, payload: CreatePublishJobRequest
+    ) -> CreatePublishJobResponse:
+        data = self._client.request(
+            "/publish/jobs",
+            method="POST",
+            auth=True,
+            body=payload.model_dump(exclude_none=True),
+        )
+        return CreatePublishJobResponse.model_validate(data)
+
+    def complete_publish_job(self, job_uid: str, checksum: str | None = None) -> PublishJob:
+        body = {"checksum": checksum} if checksum else {}
+        data = self._client.request(
+            f"/publish/jobs/{job_uid}/complete",
+            method="POST",
+            auth=True,
+            body=body,
+        )
+        return PublishJob.model_validate(data)
+
+    def get_publish_job(self, job_uid: str) -> PublishJob:
+        data = self._client.request(f"/publish/jobs/{job_uid}", auth=True)
+        return PublishJob.model_validate(data)
+
+    def list_publish_jobs(
+        self, batch_id: str | None = None, status: str | None = None
+    ) -> list[PublishJob]:
+        params: dict[str, Any] = {}
+        if batch_id:
+            params["batch_id"] = batch_id
+        if status:
+            params["status"] = status
+        data = self._client.request(
+            "/publish/jobs", auth=True, params=params or None
+        )
+        if isinstance(data, dict):
+            return PublishJobsResponse.model_validate(data).jobs
+        return []
+
+    def retry_publish_job(self, job_uid: str) -> RetryPublishJobResponse:
+        data = self._client.request(
+            f"/publish/jobs/{job_uid}/retry",
+            method="POST",
+            auth=True,
+        )
+        return RetryPublishJobResponse.model_validate(data)
+
+    def cancel_publish_job(self, job_uid: str) -> PublishJob:
+        data = self._client.request(
+            f"/publish/jobs/{job_uid}/cancel",
+            method="POST",
+            auth=True,
+        )
+        return PublishJob.model_validate(data)
 
     def get_content_pool_stats(self) -> ContentPoolStatsResponse:
         data = self._client.request("/content-pools/stats", auth=True)

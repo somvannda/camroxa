@@ -27,6 +27,7 @@ from platform_api.services.job_types import (
     JOB_RUN_IMAGE_JOBS,
     JOB_RUN_YOUTUBE_UPLOADS,
     JOB_SUNO_SUBMIT,
+    JOB_SYNC_PUBLISH_RESULTS,
     JOB_WEB_MUSIC_GENERATE,
     PRI_SUNO_SUBMIT,
     resolve_worker_job_types,
@@ -308,6 +309,18 @@ async def _handle_run_youtube_uploads(job: Any, payload: dict[str, Any]) -> None
     )
 
 
+async def _handle_sync_publish_results(job: Any, payload: dict[str, Any]) -> None:
+    from platform_api.dependencies import get_publish_repo, get_publish_service
+
+    post_id = str(payload.get("post_id") or "").strip()
+    if not post_id:
+        raise ValueError("sync_publish_results missing post_id")
+    await get_publish_service().sync_post_results(post_id)
+    event_id = str(payload.get("event_id") or "").strip()
+    if event_id:
+        await get_publish_repo().mark_webhook_processed(event_id)
+
+
 async def _handle_job(job: Any) -> None:
     payload = job.payload or {}
 
@@ -337,6 +350,10 @@ async def _handle_job(job: Any) -> None:
 
     if job.job_type == JOB_RUN_YOUTUBE_UPLOADS:
         await _handle_run_youtube_uploads(job, payload)
+        return
+
+    if job.job_type == JOB_SYNC_PUBLISH_RESULTS:
+        await _handle_sync_publish_results(job, payload)
         return
 
     raise ValueError(f"Unsupported job_type: {job.job_type}")

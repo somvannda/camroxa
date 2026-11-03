@@ -905,7 +905,15 @@ async def list_progress_rows(
             for target_group in target_groups:
                 if status == "success":
                     target_group["success"] += 1
-                elif status in {"pending", "running", "processing"}:
+                elif status in {
+                    "pending",
+                    "pending_upload",
+                    "pending_payment",
+                    "uploading",
+                    "running",
+                    "queued",
+                    "processing",
+                }:
                     target_group["pending"] += 1
                 else:
                     target_group["failed"] += 1

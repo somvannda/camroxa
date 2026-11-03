@@ -48,15 +48,17 @@ class RefreshTokenRepository:
             return None
         return dict(row)
 
-    async def revoke(self, token_hash: str) -> None:
-        """Mark a single refresh token as revoked."""
-        await self._pool.execute(
+    async def revoke(self, token_hash: str) -> bool:
+        """Atomically revoke a single refresh token. Returns True if claimed."""
+        row = await self._pool.fetchrow(
             """
             UPDATE refresh_tokens SET revoked_at = NOW()
             WHERE token_hash = $1 AND revoked_at IS NULL
+            RETURNING token_hash
             """,
             token_hash,
         )
+        return row is not None
 
     async def revoke_all_for_user(self, user_id: UUID) -> None:
         """Mark ALL refresh tokens for a user as revoked."""

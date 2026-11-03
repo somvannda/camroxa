@@ -62,7 +62,7 @@ class RefreshTokenRepository(Protocol):
         """
         ...
 
-    async def revoke(self, token_hash: str) -> None:
+    async def revoke(self, token_hash: str) -> bool:
         """Mark a single refresh token as revoked (set revoked_at)."""
         ...
 
@@ -76,6 +76,21 @@ class RefreshTokenRepository(Protocol):
 # ---------------------------------------------------------------------------
 
 _BCRYPT_ROUNDS = 12
+
+# Concurrent refresh requests can arrive on different API workers with the
+# same refresh token (desktop retry, multiple tabs, network replay). A token
+# revoked within this window is treated as a benign race, not credential
+# theft, so one duplicate refresh cannot log the whole account out.
+REFRESH_REUSE_GRACE_SECONDS = 15
+
+
+def _revoked_within_grace(revoked_at: object) -> bool:
+    if not isinstance(revoked_at, datetime):
+        return False
+    value = revoked_at
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - value).total_seconds() <= REFRESH_REUSE_GRACE_SECONDS
 
 
 # ---------------------------------------------------------------------------
@@ -152,24 +167,22 @@ class AuthService:
             raise AuthenticationError("Refresh token not found.")
 
         if stored.get("revoked_at") is not None:
-            # Phase 3 / H8: reuse of a rotated refresh token → revoke all sessions.
-            reuse_user_id = stored.get("user_id")
-            if reuse_user_id is not None:
-                try:
-                    await self.revoke_tokens(str(reuse_user_id))
-                    logger.warning(
-                        "Refresh token reuse detected for user %s — all sessions revoked.",
-                        reuse_user_id,
-                    )
-                except Exception as exc:
-                    logger.error(
-                        "Failed to revoke sessions after refresh reuse for %s: %s",
-                        reuse_user_id,
-                        exc,
-                    )
+            if _revoked_within_grace(stored.get("revoked_at")):
+                logger.info(
+                    "Concurrent refresh for user %s within grace window; issuing a new pair.",
+                    stored.get("user_id"),
+                )
+                user = await self._user_repo.get_by_email(payload.email)
+                if user is None:
+                    raise AuthenticationError("User no longer exists.")
+                return await self._issue_token_pair(user)
+            logger.warning(
+                "Stale refresh token reused for user %s; rejecting only this session.",
+                stored.get("user_id"),
+            )
             raise AuthenticationError(
-                "Refresh token reuse detected. All sessions have been revoked. Please sign in again.",
-                details={"error_code": "REFRESH_TOKEN_REUSE"},
+                "This session has already been refreshed. Please sign in again.",
+                details={"error_code": "REFRESH_TOKEN_ROTATED"},
             )
 
         expires_at = stored.get("expires_at")
@@ -182,8 +195,28 @@ class AuthService:
                 if now > expires_at:
                     raise AuthenticationError("Refresh token has expired.")
 
-        # Revoke the old refresh token (rotation)
-        await self._refresh_token_repo.revoke(token_hash)
+        # Atomically claim the token. Without this, two API workers can both
+        # rotate the same refresh token and one will falsely flag theft.
+        claimed = await self._refresh_token_repo.revoke(token_hash)
+        if not claimed:
+            latest = await self._refresh_token_repo.get_by_hash(token_hash)
+            if latest is not None and _revoked_within_grace(latest.get("revoked_at")):
+                logger.info(
+                    "Concurrent refresh for user %s within grace window; issuing a new pair.",
+                    latest.get("user_id"),
+                )
+                user = await self._user_repo.get_by_email(payload.email)
+                if user is None:
+                    raise AuthenticationError("User no longer exists.")
+                return await self._issue_token_pair(user)
+            logger.warning(
+                "Stale refresh token reused for user %s; rejecting only this session.",
+                (latest or stored).get("user_id"),
+            )
+            raise AuthenticationError(
+                "This session has already been refreshed. Please sign in again.",
+                details={"error_code": "REFRESH_TOKEN_ROTATED"},
+            )
 
         # Look up user to build new token pair
         user = await self._user_repo.get_by_email(payload.email)

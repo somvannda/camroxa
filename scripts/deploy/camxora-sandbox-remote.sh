@@ -124,6 +124,22 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
     log "Restoring musicapi checkout from ${REPO_BACKUP}..."
     mv "${REPO_BACKUP}/musicapi" "${REPO_DIR}/musicapi"
   fi
+  # The user portal is deployed from a separate checkout that is not always
+  # present in the platform tarball. Reuse the last successful build instead
+  # of rebuilding it during platform-only deploys.
+  if [[ ! -f "${REPO_DIR}/user_portal/.next/BUILD_ID" ]]; then
+    for candidate in $(ls -dt "${DEPLOY_ROOT}"/repo.bak.* 2>/dev/null); do
+      if [[ -f "${candidate}/user_portal/.next/BUILD_ID" ]]; then
+        log "Restoring user portal build from ${candidate}..."
+        mkdir -p "${REPO_DIR}/user_portal"
+        cp -a "${candidate}/user_portal/.next" "${REPO_DIR}/user_portal/.next"
+        if [[ -d "${candidate}/user_portal/node_modules" && ! -d "${REPO_DIR}/user_portal/node_modules" ]]; then
+          cp -a "${candidate}/user_portal/node_modules" "${REPO_DIR}/user_portal/node_modules"
+        fi
+        break
+      fi
+    done
+  fi
   chown -R camxora:camxora "${REPO_DIR}"
 
   # A deploy must land exactly the commit it was built from. The archive ships
@@ -189,6 +205,11 @@ PLATFORM_CHMABA_API_KEY=${PLATFORM_CHMABA_API_KEY:-}
 PLATFORM_CHMABA_STORE_ID=${PLATFORM_CHMABA_STORE_ID:-}
 PLATFORM_CHMABA_WEBHOOK_SECRET=${PLATFORM_CHMABA_WEBHOOK_SECRET:-}
 PLATFORM_ENCRYPTION_MASTER_KEY=${PLATFORM_ENCRYPTION_MASTER_KEY}
+# Post for Me social publishing (YouTube uploads).
+PLATFORM_POSTFORME_API_KEY=${PLATFORM_POSTFORME_API_KEY:-}
+PLATFORM_POSTFORME_API_BASE_URL=${PLATFORM_POSTFORME_API_BASE_URL:-https://api.postforme.dev/v1}
+PLATFORM_POSTFORME_WEBHOOK_SECRET=${PLATFORM_POSTFORME_WEBHOOK_SECRET:-}
+PLATFORM_POSTFORME_ENABLED=${PLATFORM_POSTFORME_ENABLED:-false}
 PLATFORM_SLAI_API_BASE_URL=https://api.slai.shop
 # Transactional email (Resend SMTP relay).
 PLATFORM_SMTP_HOST=${PLATFORM_SMTP_HOST:-}
@@ -241,18 +262,22 @@ ENVEOF
 "
 
 log "Building user portal..."
-sudo -u camxora -H bash -lc "
-  set -e
-  cd '${REPO_DIR}/user_portal'
-  npm ci --no-audit --no-fund
-  cat > .env.production <<ENVEOF
+if [[ -f "${REPO_DIR}/user_portal/.next/BUILD_ID" ]]; then
+  log "Reusing existing user portal build (platform-only deploy)."
+else
+  sudo -u camxora -H bash -lc "
+    set -e
+    cd '${REPO_DIR}/user_portal'
+    npm ci --no-audit --no-fund
+    cat > .env.production <<ENVEOF
 NEXT_PUBLIC_PLATFORM_API_BASE_URL=https://api.sandbox.camxora.com/api/v1
 NEXT_PUBLIC_CAMXORA_ENV=sandbox
 NEXT_PUBLIC_WEBSITE_URL=https://sandbox.camxora.com
 NEXT_PUBLIC_USER_PORTAL_URL=https://app.sandbox.camxora.com
 ENVEOF
-  npm run build
-"
+    npm run build
+  "
+fi
 
 log "Building music web (public streaming)..."
 sudo -u camxora -H bash -lc "

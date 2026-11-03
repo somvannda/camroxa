@@ -6,6 +6,8 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+from urllib import error as urllib_error
+from urllib import request as urllib_request
 
 from PySide6.QtCore import QThread, Signal
 
@@ -18,6 +20,10 @@ from shared.lib.video_runtime_inspection import (
     build_video_run_inspection_map,
 )
 from shared.models.platform import DashboardOverview, ProgressFilters, ProgressListResponse
+from shared.models.publishing import (
+    CreatePublishJobRequest,
+    StartPublishConnectionResponse,
+)
 from shared.services.platform_api import PlatformApi
 from shared.services.platform_client import PlatformApiError
 from shared.services.video_workspace_service import get_video_workspace_service
@@ -1032,6 +1038,7 @@ class MusicWorkspacePayload:
     operation_costs: object
     language_options: list
     youtube_connections: list
+    publish_accounts: list = field(default_factory=list)
     suno_blocklist: object | None = None
 
 
@@ -1050,7 +1057,7 @@ class MusicWorkspaceWorker(QThread):
         previous_timeout = self._api._client._default_timeout
         self._api._client._default_timeout = self.WORKSPACE_TIMEOUT
         try:
-            with ThreadPoolExecutor(max_workers=8) as pool:
+            with ThreadPoolExecutor(max_workers=9) as pool:
                 future_profiles = pool.submit(self._api.list_profiles)
                 future_settings = pool.submit(self._api.get_settings)
                 future_descriptions = pool.submit(self._api.list_prompt_description_names)
@@ -1060,6 +1067,7 @@ class MusicWorkspaceWorker(QThread):
                 future_costs = pool.submit(self._fetch_operation_costs)
                 future_languages = pool.submit(self._fetch_language_options)
                 future_youtube = pool.submit(self._api.list_youtube_connections)
+                future_publish = pool.submit(self._fetch_publish_accounts)
                 future_blocklist = pool.submit(self._fetch_suno_blocklist)
                 profiles = future_profiles.result()
                 settings = future_settings.result()
@@ -1070,6 +1078,7 @@ class MusicWorkspaceWorker(QThread):
                 operation_costs = future_costs.result()
                 language_options = future_languages.result()
                 youtube_connections = future_youtube.result()
+                publish_accounts = future_publish.result()
                 suno_blocklist = future_blocklist.result()
             self.succeeded.emit(
                 MusicWorkspacePayload(
@@ -1082,6 +1091,7 @@ class MusicWorkspaceWorker(QThread):
                     operation_costs=operation_costs,
                     language_options=language_options,
                     youtube_connections=youtube_connections,
+                    publish_accounts=publish_accounts,
                     suno_blocklist=suno_blocklist,
                 )
             )
@@ -1099,6 +1109,12 @@ class MusicWorkspaceWorker(QThread):
             return self._api.get_operation_costs()
         except Exception:
             return OperationCostsResponse(items=[])
+
+    def _fetch_publish_accounts(self):
+        try:
+            return self._api.list_publish_accounts()
+        except Exception:
+            return []
 
     def _fetch_language_options(self):
         from shared.lib.music_settings import DEFAULT_LANGUAGE_OPTIONS, language_options_from_response
@@ -2697,6 +2713,265 @@ class YouTubeConnectionsWorker(QThread):
             self.failed.emit(str(exc))
         except Exception as exc:
             self.failed.emit(str(exc) or "Failed to load YouTube connections.")
+
+
+class PublishAccountsWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, profile_id: str | None = None, parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._profile_id = profile_id
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._api.list_publish_accounts(self._profile_id))
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to load publishing accounts.")
+
+
+class PublishConnectionWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, profile_id: str, platform: str = "youtube", parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._profile_id = profile_id
+        self._platform = platform
+
+    def run(self) -> None:
+        try:
+            linked = self._api.sync_publish_accounts(self._profile_id, self._platform)
+            if linked:
+                self.succeeded.emit(
+                    StartPublishConnectionResponse(
+                        session_id="",
+                        auth_url="",
+                        status="connected",
+                    )
+                )
+                return
+            self.succeeded.emit(
+                self._api.start_publish_connection(self._profile_id, self._platform)
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to start the publishing connection.")
+
+
+class PublishDisconnectWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(self, api: PlatformApi, account_id: str, parent=None) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._account_id = account_id
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(self._api.disconnect_publish_account(self._account_id))
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to disconnect the publishing account.")
+
+
+class PublishJobsWorker(QThread):
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        batch_id: str | None = None,
+        status: str | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._batch_id = batch_id
+        self._status = status
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(
+                self._api.list_publish_jobs(self._batch_id, self._status)
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to load publishing jobs.")
+
+
+class _ProgressReader:
+    """File wrapper that reports bytes sent to urllib while streaming a PUT."""
+
+    def __init__(self, path: str, on_progress) -> None:
+        self._path = Path(path)
+        self._fh = self._path.open("rb")
+        self._total = max(1, self._path.stat().st_size)
+        self._sent = 0
+        self._on_progress = on_progress
+
+    def read(self, size: int = -1) -> bytes:
+        chunk = self._fh.read(size if size and size > 0 else 1024 * 1024)
+        if chunk:
+            self._sent += len(chunk)
+            self._on_progress(self._sent, self._total)
+        return chunk
+
+    def __len__(self) -> int:
+        return self._total
+
+    def close(self) -> None:
+        try:
+            self._fh.close()
+        except Exception:
+            pass
+
+
+class PublishUploadWorker(QThread):
+    """Create a publish job, upload the media, then charge + create the post."""
+
+    progress = Signal(int, int)
+    status_changed = Signal(str)
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        request_payload: CreatePublishJobRequest | None = None,
+        *,
+        auto_context: dict[str, object] | None = None,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._request = request_payload
+        self._auto_context = dict(auto_context or {})
+
+    def run(self) -> None:
+        try:
+            request = self._request or self._build_auto_request()
+            self._request = request
+            self.status_changed.emit("Checking publishing credits…")
+            quote = self._api.get_publish_quote()
+            if not quote.available:
+                raise RuntimeError(
+                    f"Not enough credits: this upload costs {quote.credits_per_upload:g} "
+                    f"and your balance is {quote.balance:g}."
+                )
+            self.status_changed.emit("Creating upload job…")
+            job = self._api.create_publish_job(request)
+            if not job.upload_url:
+                raise RuntimeError("The publishing service did not return an upload URL.")
+            self._put(job.upload_url, request.file_path or "", "video/mp4")
+            if job.thumbnail_upload_url and request.thumbnail_path:
+                self.status_changed.emit("Uploading thumbnail…")
+                self._put(
+                    job.thumbnail_upload_url,
+                    request.thumbnail_path,
+                    _image_mime(request.thumbnail_path),
+                )
+            self.status_changed.emit("Finalizing upload…")
+            result = self._api.complete_publish_job(job.job_uid, request.file_checksum)
+            self.succeeded.emit(result)
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Publishing failed.")
+
+    def _build_auto_request(self) -> CreatePublishJobRequest:
+        profile_id = str(self._auto_context.get("profile_id") or "").strip()
+        merged_path = str(self._auto_context.get("merged_path") or "").strip()
+        if not profile_id:
+            raise RuntimeError("Auto-publish is missing the channel profile.")
+        if not merged_path:
+            raise RuntimeError("Auto-publish is missing the merged video path.")
+        profiles = self._api.list_profiles()
+        profile = next((item for item in profiles if str(item.id) == profile_id), None)
+        if profile is None:
+            raise RuntimeError("The channel profile for this upload was not found.")
+        config = dict(getattr(profile, "youtube_config", None) or {})
+        run_dir = str(self._auto_context.get("run_dir") or "").strip()
+        fallback_title = Path(run_dir).name or Path(merged_path).stem or str(profile.name or "CAMXORA")
+        title_template = str(config.get("title_template") or "{title}").strip() or "{title}"
+        description_template = str(config.get("description_template") or "").strip()
+        title = _render_template(title_template, fallback_title)[:100].strip() or fallback_title[:100]
+        description = _render_template(description_template, fallback_title).strip()
+        tags = config.get("tags")
+        if isinstance(tags, str):
+            tags_list = [part.strip() for part in tags.split(",") if part.strip()]
+        elif isinstance(tags, list):
+            tags_list = [str(part).strip() for part in tags if str(part).strip()]
+        else:
+            tags_list = []
+        visibility = str(config.get("visibility") or "private").strip().lower()
+        return CreatePublishJobRequest(
+            profile_id=profile_id,
+            batch_id=str(self._auto_context.get("batch_id") or "").strip() or None,
+            role=str(self._auto_context.get("role") or "OK").strip().upper() or "OK",
+            title=title,
+            description=description or None,
+            tags=tags_list,
+            privacy_status=visibility,
+            publish_at=str(config.get("publish_at") or "").strip() or None,
+            made_for_kids=bool(config.get("made_for_kids") or False),
+            contains_synthetic_media=bool(config.get("ai_use") or False),
+            file_name=Path(merged_path).name,
+            file_size_bytes=Path(merged_path).stat().st_size if Path(merged_path).is_file() else None,
+            file_path=merged_path,
+        )
+
+    def _put(self, upload_url: str, path: str, content_type: str) -> None:
+        target = str(path or "").strip()
+        if not target:
+            raise RuntimeError("Missing local file for upload.")
+        if not Path(target).is_file():
+            raise RuntimeError(f"Upload file not found: {target}")
+        size = Path(target).stat().st_size
+        reader = _ProgressReader(target, self.progress.emit)
+        request = urllib_request.Request(
+            upload_url,
+            data=reader,
+            method="PUT",
+            headers={
+                "Content-Type": content_type,
+                "Content-Length": str(size),
+            },
+        )
+        try:
+            with urllib_request.urlopen(request, timeout=900) as response:
+                status = int(getattr(response, "status", 200) or 200)
+                if status >= 300:
+                    raise RuntimeError(f"Upload failed with HTTP {status}.")
+        except urllib_error.HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")[:500]
+            raise RuntimeError(f"Upload failed with HTTP {exc.code}: {body}") from exc
+        except urllib_error.URLError as exc:
+            raise RuntimeError(f"Upload failed: {exc.reason}") from exc
+        finally:
+            reader.close()
+
+
+def _image_mime(path: str) -> str:
+    return "image/png" if Path(path).suffix.lower() == ".png" else "image/jpeg"
+
+
+def _render_template(template: str, value: str) -> str:
+    text = str(template or "").strip()
+    if not text:
+        return value
+    for token in ("{title}", "{album}", "{name}"):
+        text = text.replace(token, value)
+    return text
 
 
 class ImageSamplePacksWorker(QThread):

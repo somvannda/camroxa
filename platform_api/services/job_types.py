@@ -12,6 +12,7 @@ JOB_RETRY_SONG_DRAFT = "retry_song_draft"
 JOB_RETRY_SONG_SUNO = "retry_song_suno"
 JOB_RUN_IMAGE_JOBS = "run_image_jobs"
 JOB_RUN_YOUTUBE_UPLOADS = "run_youtube_uploads"
+JOB_SYNC_PUBLISH_RESULTS = "sync_publish_results"
 
 WORKER_JOB_TYPES = frozenset(
     {
@@ -23,6 +24,7 @@ WORKER_JOB_TYPES = frozenset(
         JOB_RETRY_SONG_SUNO,
         JOB_RUN_IMAGE_JOBS,
         JOB_RUN_YOUTUBE_UPLOADS,
+        JOB_SYNC_PUBLISH_RESULTS,
     }
 )
 
@@ -35,6 +37,7 @@ PRI_WEB_MUSIC_PAID = 16
 PRI_WEB_MUSIC_FREE = 8
 PRI_RUN_IMAGE_JOBS = 12
 PRI_YOUTUBE_UPLOADS = 6
+PRI_PUBLISH_SYNC = 7
 
 # Packs-only billing: credits are the only gate on Web Create, so an unsubscribed
 # (pack/Free-plan) user can already queue a 5/10/20-song batch. The per-user cap
@@ -51,7 +54,9 @@ def draft_priority_for_index(batch_index: int) -> int:
 # Stage shards for systemd multi-worker deploy (CAMXORA_WORKER_JOB_TYPES).
 STAGE_DRAFT_TYPES = frozenset({JOB_EXECUTE_BATCH, JOB_DRAFT, JOB_RETRY_SONG_DRAFT})
 STAGE_SUNO_TYPES = frozenset({JOB_SUNO_SUBMIT, JOB_RETRY_SONG_SUNO, JOB_WEB_MUSIC_GENERATE})
-STAGE_IMAGES_TYPES = frozenset({JOB_RUN_IMAGE_JOBS, JOB_RUN_YOUTUBE_UPLOADS})
+STAGE_IMAGES_TYPES = frozenset(
+    {JOB_RUN_IMAGE_JOBS, JOB_RUN_YOUTUBE_UPLOADS, JOB_SYNC_PUBLISH_RESULTS}
+)
 
 STAGE_PRESETS: dict[str, frozenset[str]] = {
     "draft": STAGE_DRAFT_TYPES,

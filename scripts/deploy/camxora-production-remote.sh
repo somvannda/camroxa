@@ -241,6 +241,11 @@ PLATFORM_CHMABA_API_KEY=${PLATFORM_CHMABA_API_KEY:-}
 PLATFORM_CHMABA_STORE_ID=${PLATFORM_CHMABA_STORE_ID:-}
 PLATFORM_CHMABA_WEBHOOK_SECRET=${PLATFORM_CHMABA_WEBHOOK_SECRET:-}
 PLATFORM_ENCRYPTION_MASTER_KEY=${PLATFORM_ENCRYPTION_MASTER_KEY}
+# Post for Me social publishing (YouTube uploads).
+PLATFORM_POSTFORME_API_KEY=${PLATFORM_POSTFORME_API_KEY:-}
+PLATFORM_POSTFORME_API_BASE_URL=${PLATFORM_POSTFORME_API_BASE_URL:-https://api.postforme.dev/v1}
+PLATFORM_POSTFORME_WEBHOOK_SECRET=${PLATFORM_POSTFORME_WEBHOOK_SECRET:-}
+PLATFORM_POSTFORME_ENABLED=${PLATFORM_POSTFORME_ENABLED:-false}
 PLATFORM_SLAI_API_BASE_URL=https://api.slai.shop
 PLATFORM_TELEGRAM_BOT_TOKEN=${PLATFORM_TELEGRAM_BOT_TOKEN:-${TELEGRAM_BOT_TOKEN:-}}
 PLATFORM_TELEGRAM_CHAT_ID=${PLATFORM_TELEGRAM_CHAT_ID:-${TELEGRAM_CHAT_ID:-}}
@@ -489,6 +494,8 @@ systemctl enable camxora-api \
 systemctl disable camxora-worker 2>/dev/null || true
 systemctl disable --now camxora-portal 2>/dev/null || true
 systemctl restart camxora-api camxora-website camxora-music
+# Restart stage workers so new job types (sync_publish_results) load.
+systemctl restart camxora-worker-draft@{1..4} camxora-worker-suno@{1..2} camxora-worker-images@{1..2} 2>/dev/null || true
 
 log "Configuring nginx HTTP bootstrap..."
 # The uploaded production config is HTTPS-only. Bootstrap HTTP before Certbot.

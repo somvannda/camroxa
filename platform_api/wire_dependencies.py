@@ -248,6 +248,26 @@ def wire_all_dependencies(app: FastAPI) -> None:
 
     app.dependency_overrides[youtube_get_service] = real_youtube_connection_service
 
+    # --- publish.py ---
+    from platform_api.routers.publish import (
+        _get_job_queue_repo as publish_get_job_queue,
+        _get_publish_repo as publish_get_repo,
+        _get_publish_service as publish_get_service,
+    )
+
+    async def real_publish_service():
+        from platform_api.dependencies import get_publish_service
+
+        return get_publish_service()
+
+    async def real_publish_repo():
+        from platform_api.dependencies import get_publish_repo
+
+        return get_publish_repo()
+
+    app.dependency_overrides[publish_get_service] = real_publish_service
+    app.dependency_overrides[publish_get_repo] = real_publish_repo
+
     # --- batch.py ---
     from platform_api.routers.batch import (
         _get_batch_service as batch_get_svc,
@@ -263,6 +283,7 @@ def wire_all_dependencies(app: FastAPI) -> None:
     app.dependency_overrides[batch_get_svc] = real_batch_service
     app.dependency_overrides[batch_get_job_queue] = real_job_queue_repo
     app.dependency_overrides[youtube_get_job_queue] = real_job_queue_repo
+    app.dependency_overrides[publish_get_job_queue] = real_job_queue_repo
 
     # --- image_jobs.py ---
     from platform_api.routers.image_jobs import (

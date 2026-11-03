@@ -196,6 +196,18 @@ class Settings(BaseSettings):
     desktop_release_public_base_url: str = ""
     desktop_release_max_upload_mb: int = 500
 
+    # --- Post for Me (social publishing: YouTube first) ---
+    # Project-level API key. Server-side only; never ship it in the desktop app.
+    # See docs/postforme-publishing-integration-plan.md.
+    postforme_api_key: str = ""
+    postforme_api_base_url: str = "https://api.postforme.dev/v1"
+    # Returned by POST /v1/webhooks and compared against the
+    # `Post-For-Me-Webhook-Secret` header.
+    postforme_webhook_secret: str = ""
+    postforme_timeout_seconds: int = 30
+    # Feature flag: keep false until the sandbox end-to-end flow passes.
+    postforme_enabled: bool = False
+
     # --- Billing / CutLuy ---
     cutluy_api_base_url: str = "https://cutluy.com"
     cutluy_secret_key: str = ""

@@ -777,6 +777,27 @@ async def get_operation_costs(
                     message=str(exc),
                 )
             )
+    # Post for Me upload (5 credits by default, admin-editable).
+    try:
+        credits_units = await pricing_service.get_price("postforme", "upload", "")
+        items.append(
+            OperationCostResponse(
+                operation_type="publish",
+                provider="postforme",
+                sub_model="",
+                credits_per_operation=units_to_credits(credits_units),
+                available=True,
+            )
+        )
+    except Exception as exc:
+        items.append(
+            OperationCostResponse(
+                operation_type="publish",
+                provider="postforme",
+                available=False,
+                message=str(exc),
+            )
+        )
     return OperationCostsResponse(items=items)
 
 
@@ -1129,11 +1150,15 @@ async def seed_model_costs(
     pricing_result = await pricing_service.seed_local_platform_pricing(
         overwrite=overwrite
     )
+    publish_result = await pricing_service.seed_publish_pricing(overwrite=overwrite)
     return {
         **cost_result,
         "local_pricing_created_count": pricing_result["created_count"],
         "local_pricing_updated_count": pricing_result["updated_count"],
         "local_pricing_skipped_count": pricing_result["skipped_existing_count"],
+        "publish_pricing_created_count": publish_result["created_count"],
+        "publish_pricing_updated_count": publish_result["updated_count"],
+        "publish_pricing_skipped_count": publish_result["skipped_existing_count"],
     }
 
 

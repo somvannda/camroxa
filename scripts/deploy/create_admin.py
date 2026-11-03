@@ -57,7 +57,7 @@ async def main() -> None:
             existing = await conn.fetchval("SELECT id FROM users WHERE email = $1", email)
             if existing:
                 await conn.execute(
-                    "UPDATE users SET role = 'admin', status = 'active', updated_at = NOW() WHERE email = $1",
+                    "UPDATE users SET role = 'admin', status = 'active', email_confirmed = TRUE, updated_at = NOW() WHERE email = $1",
                     email,
                 )
                 print(f"PROMOTED {email}")
@@ -67,8 +67,8 @@ async def main() -> None:
             async with conn.transaction():
                 await conn.execute(
                     """
-                    INSERT INTO users (id, email, password_hash, display_name, role, status, created_at, updated_at)
-                    VALUES ($1, $2, $3, $4, 'admin', 'active', NOW(), NOW())
+                    INSERT INTO users (id, email, password_hash, display_name, role, status, email_confirmed, created_at, updated_at)
+                    VALUES ($1, $2, $3, $4, 'admin', 'active', TRUE, NOW(), NOW())
                     """,
                     user_id,
                     email,

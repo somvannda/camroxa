@@ -38,7 +38,8 @@ async def main() -> None:
         updated = await conn.execute(
             """
             UPDATE users
-            SET password_hash = $1, role = 'admin', status = 'active', updated_at = NOW()
+            SET password_hash = $1, role = 'admin', status = 'active',
+                email_confirmed = TRUE, updated_at = NOW()
             WHERE email = $2
             """,
             password_hash,

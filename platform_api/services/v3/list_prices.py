@@ -30,6 +30,7 @@ OP_SCAN_ALIASES: dict[str, tuple[str, ...]] = {
     "studio_edit": ("studio_edit",),
     "studio_stems_2": ("studio_stems_2",),
     "studio_stems_12": ("studio_stems_12",),
+    "publish": ("upload", "publish"),
 }
 
 

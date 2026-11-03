@@ -16,7 +16,12 @@ PLAN_OP_COLUMNS: dict[str, str] = {
 # Studio operations are priced directly from `credit_pricing`; they do not
 # map to a plan column.
 STUDIO_OPS = ("studio_edit", "studio_stems_2", "studio_stems_12")
-SUPPORTED_OPS = (*PLAN_OP_COLUMNS.keys(), *STUDIO_OPS)
+
+# Paid platform actions that also price directly from `credit_pricing`.
+# `publish` is the Post for Me upload (5 credits by default).
+DIRECT_PRICED_OPS = (*STUDIO_OPS, "publish")
+
+SUPPORTED_OPS = (*PLAN_OP_COLUMNS.keys(), *DIRECT_PRICED_OPS)
 
 # Credits page (credit_pricing) fallbacks. First hit wins.
 # Entries are (ai_service, operation_type, sub_model); None means the
@@ -33,6 +38,7 @@ PRICING_FALLBACKS: dict[str, tuple[tuple[str, str, str | None], ...]] = {
     "studio_edit": (("suno", "studio_edit", None),),
     "studio_stems_2": (("suno", "studio_stems_2", None),),
     "studio_stems_12": (("suno", "studio_stems_12", None),),
+    "publish": (("postforme", "upload", None),),
 }
 
 PATCHABLE_PLAN_FIELDS = frozenset(

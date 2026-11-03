@@ -741,6 +741,60 @@ class CreditPricingService:
             "skipped_existing_count": skipped,
         }
 
+    async def seed_publish_pricing(
+        self, *, overwrite: bool = False
+    ) -> dict[str, int]:
+        """Insert missing credit_pricing rows for Post for Me publishing."""
+        from platform_api.services.publish_pricing import (
+            build_postforme_pricing_seed_rows,
+        )
+
+        existing_keys = {
+            pricing_lookup_key(
+                str(row["ai_service"]),
+                str(row["operation_type"]),
+                str(row.get("sub_model") or ""),
+            )
+            for row in await self._pricing_repo.get_all()
+        }
+
+        created = 0
+        skipped = 0
+        updated = 0
+        for row in build_postforme_pricing_seed_rows():
+            key = pricing_lookup_key(
+                row["ai_service"], row["operation_type"], row["sub_model"]
+            )
+            if key in existing_keys and not overwrite:
+                skipped += 1
+                continue
+            if key in existing_keys:
+                result = await self._pricing_repo.update(
+                    row["ai_service"],
+                    row["operation_type"],
+                    int(row["credits_per_operation"]),
+                    int(row["external_cost_cents"]),
+                    sub_model=row["sub_model"],
+                )
+                if result is not None:
+                    updated += 1
+                continue
+            await self._pricing_repo.create(
+                row["ai_service"],
+                row["operation_type"],
+                int(row["credits_per_operation"]),
+                int(row["external_cost_cents"]),
+                sub_model=row["sub_model"],
+                needs_review=bool(row.get("needs_review", False)),
+            )
+            created += 1
+            existing_keys.add(key)
+        return {
+            "created_count": created,
+            "updated_count": updated,
+            "skipped_existing_count": skipped,
+        }
+
     async def sync_from_routing_config(
         self,
         *,
