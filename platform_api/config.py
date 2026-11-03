@@ -93,6 +93,9 @@ class Settings(BaseSettings):
     # {code,msg,data} envelope). Do not point this at a third-party reseller.
     # Overridable per environment via PLATFORM_SUNO_API_BASE_URL.
     suno_api_base_url: str = "https://musicapi.camxora.com"
+    # Per-user music cap, in credits per calendar day, across web and desktop.
+    # Protects the shared Suno account pool from one user draining it. 0 disables.
+    music_daily_credit_cap: int = 500
     # Service-to-service bearer for musicapi /internal/studio/* routes.
     studio_internal_token: str = ""
     suno_callback_base_url: str = ""

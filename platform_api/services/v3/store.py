@@ -82,6 +82,26 @@ class V3BillingStore:
     def __init__(self, pool: Any) -> None:
         self._pool = pool
 
+    async def music_credits_spent_today(self, user_id: UUID) -> int:
+        """Units of ``v3_music`` debit this user has accrued since midnight.
+
+        Backs the per-user daily music cap. Refunds are credits, so they are not
+        subtracted here: the cap guards gross drain on the shared Suno pool, and
+        a failed song is refunded to the wallet without reopening the cap.
+        """
+        value = await self._pool.fetchval(
+            """
+            SELECT coalesce(sum(amount), 0)
+            FROM credit_transactions
+            WHERE user_id = $1
+              AND reason = 'v3_music'
+              AND direction = 'debit'
+              AND created_at >= date_trunc('day', now())
+            """,
+            user_id,
+        )
+        return int(value or 0)
+
     async def list_plans(self) -> list[dict[str, Any]]:
         rows = await self._pool.fetch(
             f"""
