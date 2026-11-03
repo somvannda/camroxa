@@ -46,7 +46,7 @@ Scoring for this document:
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | open |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
 | G17 | No playback speed control | Cannot audition at half speed | W3 | open (PLY-020) |
-| G18 | No first-run onboarding in the DAW | New users face a dense UI | W3 | open |
+| G18 | No first-run onboarding in the DAW | New users face a dense UI | W3 | **done** - empty projects open a start overlay, remembered per project |
 | G19 | Long-project rendering not virtualised | Perf cliff | W3 | open |
 | G20 | No touch-target sizing | Unusable on tablets | W3 | open |
 
