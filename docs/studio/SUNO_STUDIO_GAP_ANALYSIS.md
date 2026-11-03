@@ -34,9 +34,9 @@ Scoring for this document:
 | G3 | No conflict resolution UI on save | Concurrent edits can overwrite | W2.2 | open |
 | G4 | No offline draft | A network blip loses the last edit burst | W2.3 | open |
 | G5 | No unsaved-changes guard | Navigation can drop a pending write | W2.4 | open |
-| G6 | No marquee multi-select / multi-drag / copy-paste | Slower bulk arrangement work | W3 | open |
-| G7 | No snap guideline while dragging | Users cannot tell where a clip will land | W3 | open |
-| G8 | No drag threshold | 2 px pointer jitter repositions a clip | W3 | open |
+| G6 | No marquee multi-select / multi-drag / copy-paste | Slower bulk arrangement work | W3 | **partial** — marquee + multi-drag done 2026-11-03; copy-paste open |
+| G7 | No snap guideline while dragging | Users cannot tell where a clip will land | W3 | **done** — clip renders at the snapped position with a guideline |
+| G8 | No drag threshold | 2 px pointer jitter repositions a clip | W3 | **done** — 3 px before a press becomes a drag |
 | G9 | No clip focus management on delete | Keyboard users lose their place | W3 | open |
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | open |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | open |
