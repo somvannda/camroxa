@@ -98,8 +98,18 @@ false picture:
 
 ## Follow-ups
 
-- Backups are on the same VPS and unencrypted. Add an off-host copy to a private
-  Backblaze B2 bucket/prefix and encrypt at rest. This needs a bucket-scoped key;
-  the existing B2 key only has access to the public media bucket.
+- **Off-host copy is blocked on one credential.** Both backups currently sit on
+  the same VPS. The existing B2 key is restricted to the public media bucket
+  (`productions-camxora-song`), so it cannot create a private bucket, write to
+  one, or mint a key. To finish this in the B2 dashboard:
+  1. Create a **private** bucket, e.g. `camxora-db-backups`.
+  2. Create an application key scoped to it with `listFiles`, `writeFiles`,
+     `readFiles`, `deleteFiles`.
+  3. Put the values in `/opt/camxora/.backup-b2.env` (root 600) as
+     `B2_BACKUP_BUCKET`, `B2_BACKUP_BUCKET_ID`, `B2_BACKUP_KEY_ID`,
+     `B2_BACKUP_APP_KEY`.
+  Then a small uploader timer can push the nightly dumps and prune remote copies
+  older than the retention window. Keep a copy of the key outside the VPS too —
+  if the host dies, the on-host env file dies with it.
 - The old `repo-20260922-134107.tgz` (12.6 GB) in `/opt/camxora/backups` can be
   pruned to recover disk once it is confirmed unnecessary.
