@@ -52,11 +52,18 @@ def _decode(token: str) -> dict | None:
 # ---------------------------------------------------------------------------
 
 
-def sign_oauth_state(redirect_uri: str) -> str:
-    return _encode(
-        {"type": OAUTH_STATE_TYPE, "redirect_uri": redirect_uri},
-        timedelta(minutes=OAUTH_STATE_TTL_MINUTES),
-    )
+def sign_oauth_state(redirect_uri: str, *, desktop_port: int | None = None) -> str:
+    """Sign the OAuth state.
+
+    ``desktop_port`` marks a native-client hand-off: Google still redirects to the
+    registered https callback, then that page forwards the code to the loopback
+    listener on the user's machine. The port travels inside the signed state so a
+    tampered state is rejected when the desktop exchanges the code.
+    """
+    payload: dict = {"type": OAUTH_STATE_TYPE, "redirect_uri": redirect_uri}
+    if desktop_port is not None:
+        payload["desktop_port"] = int(desktop_port)
+    return _encode(payload, timedelta(minutes=OAUTH_STATE_TTL_MINUTES))
 
 
 def verify_oauth_state(state: str) -> str | None:
@@ -65,6 +72,18 @@ def verify_oauth_state(state: str) -> str | None:
         return None
     redirect_uri = str(payload.get("redirect_uri") or "").strip()
     return redirect_uri or None
+
+
+def oauth_state_desktop_port(state: str) -> int | None:
+    """Loopback port for a desktop hand-off, or None for a browser sign-in."""
+    payload = _decode(state)
+    if not payload or payload.get("type") != OAUTH_STATE_TYPE:
+        return None
+    try:
+        port = int(payload.get("desktop_port"))
+    except (TypeError, ValueError):
+        return None
+    return port if 1 <= port <= 65535 else None
 
 
 # ---------------------------------------------------------------------------
