@@ -6,9 +6,8 @@ Do not run unless the user explicitly asked for a production deploy.
 
 from __future__ import annotations
 
+import os
 import sys
-import tarfile
-import tempfile
 import time
 from pathlib import Path
 
@@ -16,15 +15,26 @@ sys.path.insert(0, str(Path(__file__).resolve().parent / ".venv" / "Lib" / "site
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from deploy import (  # noqa: E402
-    build_source_tarball,
+    build_source_bundle,
     ensure_deploy_key,
     load_production_secrets,
     resolve_production_ssh,
     ssh_connect,
-    tar_filter,
+    upload_verifier,
 )
+from deploy_guards import enforce_deploy_gate  # noqa: E402
+from release_source import DEFAULT_SOURCE_REF, SOURCE_MODE_ENV  # noqa: E402
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
+VERIFY_SCOPE = r"""
+cp -f "$REPO/.deploy-manifest.json" "$REPO/.deploy-manifest.prev.json" 2>/dev/null || true
+tar -xzf /tmp/camxora-src.tar.gz -C $REPO .deploy-manifest.json
+python3 /tmp/camxora-verify-manifest.py \
+  --repo $REPO \
+  --manifest $REPO/.deploy-manifest.json \
+  --scope %s \
+  --prev-manifest $REPO/.deploy-manifest.prev.json
+rm -f $REPO/.deploy-manifest.prev.json
+"""
 
 
 def _run(client, cmd: str, *, label: str) -> int:
@@ -65,23 +75,18 @@ def main() -> int:
     )
 
     try:
-        archive = build_source_tarball()
+        bundle = build_source_bundle(DEFAULT_SOURCE_REF)
+        mode = os.environ.get(SOURCE_MODE_ENV, "commit").strip().lower()
+        enforce_deploy_gate(
+            commit=bundle.commit,
+            require_merged=True,
+            require_clean=(mode == "worktree"),
+        )
         sftp = client.open_sftp()
         with sftp.file("/tmp/camxora-src.tar.gz", "wb") as remote_file:
-            remote_file.write(archive.read_bytes())
-
-        tmp = Path(tempfile.mkdtemp(prefix="camxora-admin-prod-"))
-        admin_archive = tmp / "admin.tar.gz"
-        with tarfile.open(admin_archive, "w:gz") as tar:
-            tar.add(
-                REPO_ROOT / "admin_portal",
-                arcname="admin_portal",
-                filter=tar_filter,
-                recursive=True,
-            )
-        with sftp.file("/tmp/camxora-admin.tar.gz", "wb") as remote_file:
-            remote_file.write(admin_archive.read_bytes())
+            remote_file.write(bundle.path.read_bytes())
         sftp.close()
+        upload_verifier(client)
 
         # 1) Sync platform_api source first so alembic sees new migrations.
         code = _run(
@@ -89,6 +94,9 @@ def main() -> int:
             r"""
 set -e
 REPO=/opt/camxora/repo
+"""
+            + VERIFY_SCOPE % "platform_api"
+            + r"""
 tar -xzf /tmp/camxora-src.tar.gz -C $REPO platform_api
 chown -R camxora:camxora $REPO/platform_api
 echo API_SOURCE_SYNCED
@@ -126,6 +134,9 @@ set -e
 REPO=/opt/camxora/repo
 API_URL=https://api.camxora.com
 
+"""
+            + VERIFY_SCOPE % "music_web"
+            + r"""
 tar -xzf /tmp/camxora-src.tar.gz -C $REPO music_web
 chown -R camxora:camxora $REPO/music_web
 
@@ -173,7 +184,10 @@ echo MUSIC_WEB_REBUILD_DONE
             r"""
 set -e
 REPO=/opt/camxora/repo
-tar -xzf /tmp/camxora-admin.tar.gz -C $REPO
+"""
+            + VERIFY_SCOPE % "admin_portal"
+            + r"""
+tar -xzf /tmp/camxora-src.tar.gz -C $REPO admin_portal
 chown -R camxora:camxora $REPO/admin_portal
 sudo -u camxora bash -lc 'cd /opt/camxora/repo/admin_portal && (npm ci || npm install --no-audit --no-fund) && npm run build'
 systemctl restart camxora-admin || true

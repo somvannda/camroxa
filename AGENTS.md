@@ -11,6 +11,10 @@
 - One task → one git branch (prefer worktrees when parallel agents share this repo).
 - Commit / push / merge / production deploy only when the user explicitly asks.
 - Do not ship unrelated dirty work: path-scope commits and file-scoped production hotfixes when the tree is mixed.
+- **Production ships one commit of `origin/main`, never a working tree.** The deploy scripts package the commit with `git archive` and a `.deploy-manifest.json` sha256 manifest; the server verifies it and aborts before any build/restart on mismatch, then prunes files the previous deploy shipped that the new one does not. Scripts that do not go through `build_source_bundle()` must not be used for production.
+- Never hotfix production by editing files on the VPS. Make the fix, merge it to `main`, then deploy — otherwise the next deploy removes it (this is how fixes kept "reverting").
+- If a deploy reports `DEPLOY_VERIFY_FAILED` / an invariants failure, stop and investigate; do not retry with `CAMXORA_ALLOW_UNMERGED_DEPLOY=1`.
+- Full rules + commands: `.cursor/rules/sandbox-first-deploy.mdc` § "Production deploy procedure" and `docs/DEPLOYMENT_OPERATIONS.md` § "Verified source deploys".
 - Full rules: `.cursor/rules/branch-isolation-and-ship-gates.mdc` and `.cursor/rules/sandbox-first-deploy.mdc`.
 
 ## Session & Git Workflow (mandatory)

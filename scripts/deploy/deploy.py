@@ -10,7 +10,6 @@ Legacy .deploy/secrets.env is still read as a fallback for sandbox until migrate
 
 from __future__ import annotations
 
-import io
 import os
 import stat
 import subprocess
@@ -20,6 +19,24 @@ import tempfile
 import time
 from pathlib import Path
 from typing import Literal
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from release_source import (  # noqa: E402
+    MANIFEST_NAME,
+    SKIP_NAMES,
+    SOURCE_MODE_ENV,
+    SOURCE_REF_ENV,
+    TEXT_SUFFIXES,
+    ReleaseSourceError,
+    SourceBundle,
+    build_archive_from_commit,
+    build_archive_from_worktree,
+    fetch_origin,
+    resolve_source_commit,
+    resolve_source_ref,
+    verify_archive,
+)
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEPLOY_DIR = REPO_ROOT / ".deploy"
@@ -50,20 +67,12 @@ DEPLOY_FILES = (
     "scripts/deploy/platform-healthcheck.sh",
     "scripts/deploy/musicapi-healthcheck.sh",
 )
-SKIP_NAMES = {
-    "node_modules",
-    ".venv",
-    "__pycache__",
-    ".git",
-    ".next",
-    "dist",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".dbg",
-    "uploads",
-    "tests",
-    ".env",
-}
+# Kept for callers that imported these names from deploy.py.
+__all__ = [
+    "SKIP_NAMES",
+    "TEXT_SUFFIXES",
+    "MANIFEST_NAME",
+]
 
 DeployEnv = Literal["sandbox", "production"]
 
@@ -374,95 +383,118 @@ def tar_filter(tarinfo: tarfile.TarInfo) -> tarfile.TarInfo | None:
     return tarinfo
 
 
-# Shipped with LF endings regardless of how this checkout stores them.
-# Deploys are packaged from a Windows worktree, and git checks these files out
-# as CRLF, so the archive used to carry CRLF to Linux hosts: on 2026-10-22,
-# 498 of 502 platform_api files on production were CRLF and no longer matched
-# the commit they came from. Python tolerates CRLF, but the drift makes
-# "is prod actually on this commit?" unanswerable without normalizing first.
-TEXT_SUFFIXES = {
-    ".py",
-    ".sh",
-    ".sql",
-    ".json",
-    ".md",
-    ".txt",
-    ".toml",
-    ".cfg",
-    ".ini",
-    ".yml",
-    ".yaml",
-    ".conf",
-    ".ts",
-    ".tsx",
-    ".js",
-    ".jsx",
-    ".mjs",
-    ".cjs",
-    ".css",
-    ".scss",
-    ".html",
-    ".xml",
-    ".svg",
-    ".example",
-}
+_LAST_BUNDLE: SourceBundle | None = None
 
 
-def _archive_bytes(path: Path) -> bytes:
-    data = path.read_bytes()
-    if path.suffix.lower() in TEXT_SUFFIXES and b"\r\n" in data:
-        return data.replace(b"\r\n", b"\n")
-    return data
+def last_source_bundle() -> SourceBundle | None:
+    """The bundle most recently built in this process (for the deploy marker)."""
+    return _LAST_BUNDLE
 
 
-def _add_file(tar: tarfile.TarFile, path: Path, arcname: str) -> None:
-    info = tar.gettarinfo(str(path), arcname=arcname)
-    data = _archive_bytes(path)
-    if info.size != len(data):
-        info.size = len(data)
-    tar.addfile(info, io.BytesIO(data))
+def build_source_bundle(
+    source_ref: str | None = None, *, mode: str | None = None
+) -> SourceBundle:
+    """Package the deploy source and refuse to continue unless it self-verifies.
 
+    Default mode is ``commit``: the archive is produced with ``git archive``
+    from one commit, so a stale working tree (or an unrelated worktree) can
+    never ship. ``CAMXORA_DEPLOY_SOURCE=worktree`` is the deliberate escape
+    hatch for an uncommitted hotfix and is recorded as dirty.
+    """
+    global _LAST_BUNDLE
 
-def build_source_tarball() -> Path:
+    resolved_mode = (mode or os.environ.get(SOURCE_MODE_ENV, "commit")).strip().lower()
+    if resolved_mode not in {"commit", "worktree"}:
+        raise SystemExit(
+            f"{SOURCE_MODE_ENV} must be 'commit' or 'worktree', got {resolved_mode!r}"
+        )
+
+    try:
+        wanted_ref = resolve_source_ref(REPO_ROOT, source_ref)
+        commit = resolve_source_commit(REPO_ROOT, source_ref)
+    except ReleaseSourceError as exc:
+        raise SystemExit(f"Refusing deploy — {exc}") from exc
+
     tmp = Path(tempfile.mkdtemp(prefix="camxora-deploy-"))
     archive = tmp / "camxora-src.tar.gz"
-    print("Packaging local source for upload...")
-    with tarfile.open(archive, "w:gz") as tar:
-        for name in DEPLOY_DIRS:
-            src = REPO_ROOT / name
-            if not src.is_dir():
-                raise FileNotFoundError(f"Missing deploy directory: {src}")
-            # Walk instead of tar.add(recursive=True) so text files can be
-            # written with normalized endings. Skipped directories are pruned
-            # before descending, which is what tar_filter used to achieve.
-            for dirpath, dirnames, filenames in os.walk(src):
-                dirnames[:] = sorted(d for d in dirnames if d not in SKIP_NAMES)
-                for filename in sorted(filenames):
-                    path = Path(dirpath) / filename
-                    arcname = path.relative_to(REPO_ROOT).as_posix()
-                    info = tar_filter(tar.gettarinfo(str(path), arcname=arcname))
-                    if info is None or not info.isfile():
-                        continue
-                    data = _archive_bytes(path)
-                    if info.size != len(data):
-                        info.size = len(data)
-                    tar.addfile(info, io.BytesIO(data))
-        for name in DEPLOY_FILES:
-            src = REPO_ROOT / name
-            if not src.is_file():
-                raise FileNotFoundError(f"Missing deploy file: {src}")
-            _add_file(tar, src, name)
+
+    if resolved_mode == "worktree":
+        print(
+            "WARNING: packaging the working tree "
+            f"({SOURCE_MODE_ENV}=worktree); this may include uncommitted code."
+        )
+        manifest = build_archive_from_worktree(
+            REPO_ROOT,
+            commit,
+            archive,
+            roots=DEPLOY_DIRS,
+            files=DEPLOY_FILES,
+            ref=wanted_ref,
+        )
+    else:
+        print(f"Packaging commit {commit[:8]} from {wanted_ref} for upload...")
+        manifest = build_archive_from_commit(
+            REPO_ROOT,
+            commit,
+            archive,
+            roots=DEPLOY_DIRS,
+            files=DEPLOY_FILES,
+            ref=wanted_ref,
+        )
+
+    # Prove the archive matches the manifest we are about to enforce on the
+    # server. A corrupt archive must fail here, not halfway through a deploy.
+    problems = verify_archive(archive)
+    if problems:
+        raise SystemExit(
+            "Refusing deploy — packaged source failed its own verification:\n  - "
+            + "\n  - ".join(problems[:10])
+        )
+
+    files = int(manifest.get("file_count", 0))
     size_mb = archive.stat().st_size / (1024 * 1024)
-    print(f"Source archive ready ({size_mb:.1f} MB)")
-    return archive
+    print(
+        f"Source archive ready ({size_mb:.1f} MB, {files} files, "
+        f"{resolved_mode} @ {commit[:8]})"
+    )
+
+    bundle = SourceBundle(
+        path=archive,
+        commit=commit,
+        ref=wanted_ref,
+        mode=resolved_mode,
+        dirty=bool(manifest.get("dirty")),
+        files=files,
+        manifest=manifest,
+    )
+    _LAST_BUNDLE = bundle
+    return bundle
 
 
-def upload_source(client) -> None:
-    archive = build_source_tarball()
+def build_source_tarball(source_ref: str | None = None) -> Path:
+    """Backwards-compatible wrapper around :func:`build_source_bundle`."""
+    return build_source_bundle(source_ref).path
+
+
+def upload_verifier(client) -> None:
+    """Upload the stdlib-only manifest verifier used right after extraction."""
+    verifier = Path(__file__).resolve().parent / "verify_release_manifest.py"
+    if not verifier.is_file():
+        raise SystemExit(f"Missing deploy verifier: {verifier}")
+    sftp = client.open_sftp()
+    try:
+        sftp.put(str(verifier), "/tmp/camxora-verify-manifest.py")
+        sftp.chmod("/tmp/camxora-verify-manifest.py", stat.S_IRWXU | stat.S_IRGRP | stat.S_IROTH)
+    finally:
+        sftp.close()
+
+
+def upload_source(client, bundle: SourceBundle | None = None) -> SourceBundle:
+    bundle = bundle or build_source_bundle()
     remote_path = "/tmp/camxora-src.tar.gz"
     sftp = client.open_sftp()
     uploaded = 0
-    total = archive.stat().st_size
+    total = bundle.path.stat().st_size
 
     def progress(sent: int, _total: int) -> None:
         nonlocal uploaded
@@ -472,9 +504,13 @@ def upload_source(client) -> None:
             print(f"\rUploading source... {pct}%", end="", flush=True)
 
     print(f"Uploading to {remote_path}...")
-    sftp.put(str(archive), remote_path, callback=progress)
+    sftp.put(str(bundle.path), remote_path, callback=progress)
     print()
     sftp.close()
+    # The verifier runs on the server right after extraction; it only needs the
+    # stdlib, so upload it next to the archive instead of relying on the host.
+    upload_verifier(client)
+    return bundle
 
 
 def upload_and_run(client, secrets: dict[str, str]) -> int:
