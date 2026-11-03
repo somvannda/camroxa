@@ -58,6 +58,12 @@ false picture:
 - `scripts/deploy/install_musicapi_backup_production.py` restores the backup
   script and runs one dump.
 
+### `fix(nginx): redirect the retired user portal`
+- `app.camxora.com` now answers `301 https://music.camxora.com/` instead of
+  falling through to the default server and returning 404. HTTP is included in
+  the port-80 redirect list. The existing `api.camxora.com` certificate already
+  covers the hostname.
+
 ## Verification
 
 - `bash -n scripts/deploy/ops-alert.sh` passes.
@@ -67,6 +73,8 @@ false picture:
 - After the deploy, the monitor reports every app `🟢 up`.
 - Backup: `sunoapi-20261103T052649Z.dump`, 103 MB, `pg_restore --list` verified
   by the script.
+- `app.camxora.com` (HTTPS and HTTP, root and deep paths) returns 301 to
+  `https://music.camxora.com/`; the other hosts still return 200.
 
 ## Follow-ups
 
@@ -74,5 +82,3 @@ false picture:
   dumps from Sep 22, Oct 4 and Oct 30. Needs its own timer.
 - Backups are on the same VPS and unencrypted. Add an off-host copy to a private
   Backblaze B2 bucket/prefix and encrypt at rest.
-- `app.camxora.com` should 301 to `music.camxora.com` (or lose its DNS record)
-  instead of returning the default 404.
