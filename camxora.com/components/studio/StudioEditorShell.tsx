@@ -12,6 +12,7 @@ import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTra
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { renderMix, type ExportClip, type ExportTrack } from "@/lib/studio-export";
+import { analyse, formatMeter, type MeterReading } from "@/lib/studio-meter";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
@@ -104,6 +105,8 @@ export function StudioEditorShell() {
   const [view, setView] = useState({ left: 0, width: 0 });
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  /** Master peak readout while playing (W4.4). */
+  const [meter, setMeter] = useState<MeterReading | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
@@ -679,7 +682,7 @@ export function StudioEditorShell() {
   }, [playing, loop, playhead, duration]);
 
   /** Minimal playback engine: decode each clip's audio and schedule it from the playhead. */
-  const audioRef = useRef<{ ctx: AudioContext; sources: AudioBufferSourceNode[] } | null>(null);
+  const audioRef = useRef<{ ctx: AudioContext; sources: AudioBufferSourceNode[]; analyser?: AnalyserNode } | null>(null);
 
   async function stopAudio() {
     const engine = audioRef.current;
@@ -696,7 +699,6 @@ export function StudioEditorShell() {
 
   async function startAudio(from: number) {
     const context = audioRef.current?.ctx ?? new AudioContext();
-    audioRef.current = { ctx: context, sources: [] };
     await context.resume();
 
     const buffers = new Map<string, AudioBuffer>();
@@ -728,7 +730,12 @@ export function StudioEditorShell() {
     })();
     const bus = buildMasterBus(context, masterChain);
     master.connect(bus.input);
-    bus.output.connect(context.destination);
+    // Meter the master output (W4.4) without altering the signal.
+    const analyser = context.createAnalyser();
+    analyser.fftSize = 2048;
+    bus.output.connect(analyser);
+    analyser.connect(context.destination);
+    audioRef.current = { ctx: context, sources: [], analyser };
 
     for (const clip of clips) {
       const buffer = buffers.get(clip.id);
@@ -837,6 +844,30 @@ export function StudioEditorShell() {
       setExporting(false);
     }
   }
+
+  /** Sample the master analyser while playing (W4.4). */
+  useEffect(() => {
+    if (!playing) {
+      setMeter(null);
+      return;
+    }
+    let raf = 0;
+    let last = 0;
+    const loop = (now: number) => {
+      if (now - last > 120) {
+        last = now;
+        const analyser = audioRef.current?.analyser;
+        if (analyser) {
+          const frame = new Float32Array(analyser.fftSize);
+          analyser.getFloatTimeDomainData(frame);
+          setMeter(analyse(frame));
+        }
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(raf);
+  }, [playing]);
 
   function togglePlayback() {
     setPlaying((value) => {
@@ -1027,6 +1058,9 @@ export function StudioEditorShell() {
           />
           <span className="se-pill">{project?.time_signature || "4/4"}</span>
           <StudioSaveStatus status={saveStatus} onRetry={() => retryRef.current?.()} />
+          <span className="se-pill se-meter" aria-label="Master peak" title="Peak level at the master output">
+            {formatMeter(meter)}
+          </span>
           <button
             type="button"
             className={`se-pill${playbackRate !== 1 ? " on" : ""}`}
