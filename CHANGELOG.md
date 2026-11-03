@@ -7,6 +7,21 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.0] - 2026-11-03
+
+### Added
+
+- **Continue with Google on the sign-in card.** Desktop sign-in now works with a Google account instead of a password. The system browser performs consent and hands the code back to the app through a one-shot loopback listener on `127.0.0.1:41580`; only the app ever receives tokens. It reuses the same Google OAuth client and redirect URI as music.camxora.com, so no extra Google Cloud configuration is needed. See `docs/changelog/2026-11-03-desktop-google-signin.md`.
+
+### Changed
+
+- Google sign-in goes through the same desktop paid-entitlement gate as the password path: an account without live pack credits gets the existing "Desktop studio requires a paid plan" message and the pack dialog, not a broken session.
+- A cancelled consent, a busy loopback port (another CAMXORA window signing in), a closed browser and a 5-minute timeout each show a specific message.
+
+### Fixed
+
+- The app no longer hangs on the sign-in screen when it talks to a platform API that predates the desktop Google hand-off; it reports that the server needs updating.
+
 ## [1.4.9] - 2026-10-22
 
 ### Added
