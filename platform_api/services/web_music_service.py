@@ -1275,6 +1275,46 @@ class WebMusicService:
                 is_preview = True
                 preview_seconds = PREVIEW_SECONDS
 
+        async def release_reservation(task_id: str | None = None) -> None:
+            """Refund the reservation without ever raising.
+
+            The debit is written before the task row exists, so any failure
+            between the charge and the enqueue must reverse it. ``except
+            Exception`` is not enough here: a client that double-clicks moves
+            on and Starlette cancels the request, and ``asyncio.CancelledError``
+            derives from ``BaseException``. ``asyncio.shield`` lets the refund
+            finish after the outer task is cancelled, so a cancelled request
+            cannot keep the credits.
+            """
+            try:
+                await asyncio.shield(
+                    self._release_daily_slot(
+                        user_id,
+                        reference_id=reservation_id,
+                        task_id=task_id,
+                    )
+                )
+            except BaseException:
+                logger.exception(
+                    "release_reservation failed user=%s reservation=%s task=%s",
+                    user_id,
+                    reservation_id,
+                    task_id,
+                )
+            # Before the task row exists there is nothing for
+            # _release_preview_for_task to find, so release it directly.
+            if is_preview and preview_period is not None and not task_id:
+                try:
+                    await asyncio.shield(
+                        self._release_preview(user_id, preview_period, normalized_model)
+                    )
+                except BaseException:
+                    logger.exception(
+                        "release_preview failed user=%s reservation=%s",
+                        user_id,
+                        reservation_id,
+                    )
+
         # Charge only after title/blocklist checks so 422s do not burn credits.
         try:
             quota = await self._reserve_daily_slot(
@@ -1283,22 +1323,12 @@ class WebMusicService:
                 model=normalized_model,
                 allow_free_preview=is_preview,
             )
-        except Exception:
-            if is_preview and preview_period is not None:
-                await self._release_preview(user_id, preview_period, normalized_model)
+        except BaseException:
+            # A cancellation can land after the debit but before the charge is
+            # tracked in _open_charges, so attempt the refund on every failure.
+            await release_reservation()
             raise
         logger.info("service.generate step reserved_ok user=%s reservation=%s", user_id, reservation_id)
-
-        async def release_reservation(task_id: str | None = None) -> None:
-            await self._release_daily_slot(
-                user_id,
-                reference_id=reservation_id,
-                task_id=task_id,
-            )
-            # Before the task row exists there is nothing for
-            # _release_preview_for_task to find, so release it directly.
-            if is_preview and preview_period is not None and not task_id:
-                await self._release_preview(user_id, preview_period, normalized_model)
 
         if mode_key == "simple":
             try:
@@ -1306,7 +1336,7 @@ class WebMusicService:
                 generated_lyrics, generated_title = await self._generation.generate_suno_lyrics(
                     safe_prompt
                 )
-            except Exception:
+            except BaseException:
                 await release_reservation()
                 raise
             safe_lyrics = str(generated_lyrics or "").strip() or safe_prompt
@@ -1327,7 +1357,7 @@ class WebMusicService:
                     style=safe_style,
                     negative_tags=safe_negative,
                 )
-            except Exception:
+            except BaseException:
                 await release_reservation()
                 raise
 
@@ -1366,7 +1396,7 @@ class WebMusicService:
                 preview_seconds=preview_seconds,
             )
             logger.info("service.generate step submitted_ok user=%s reservation=%s task=%s", user_id, reservation_id, task_id)
-        except Exception:
+        except BaseException:
             await release_reservation(task_id=str(task_id) if task_id else None)
             raise
 

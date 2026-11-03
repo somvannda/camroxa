@@ -33,6 +33,7 @@ class DraftEnforcementProtocol(Protocol):
         ai_service: str,
         *,
         sub_model: str | None = None,
+        ref_id: str | None = None,
     ) -> int: ...
 
     async def refund_failed_operation(

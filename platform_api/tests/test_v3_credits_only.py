@@ -88,6 +88,9 @@ class FakeStore:
         self.conversion_runs: list[dict] = []
         self._pool = _EmptyPool()
 
+    async def music_credits_spent_today(self, user_id: UUID) -> int:
+        return 0
+
     async def list_plans(self) -> list[dict]:
         return list(self.plans.values())
 

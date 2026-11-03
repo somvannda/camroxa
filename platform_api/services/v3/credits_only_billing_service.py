@@ -7,7 +7,13 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
-from platform_api.exceptions import InsufficientCreditsError, NotFoundError, ValidationError
+from platform_api.config import get_settings
+from platform_api.exceptions import (
+    InsufficientCreditsError,
+    NotFoundError,
+    QuotaExceededError,
+    ValidationError,
+)
 from platform_api.services.credit_units import CREDIT_SCALE, credits_to_units, units_to_credits
 from platform_api.services.pricing_display import credit_reset_label
 from platform_api.services.v3.list_prices import (
@@ -220,6 +226,31 @@ class CreditsOnlyBillingService:
     ) -> dict[str, Any]:
         return overlay_plan_list_prices(plan, op_credits, overlay_ops=overlay_ops)
 
+    async def _assert_daily_music_cap(self, user_id: UUID, quote: QuoteResult) -> None:
+        """Refuse a music charge that would exceed the per-user daily cap.
+
+        Paid Suno accounts are a shared pool, so one user generating hundreds of
+        songs in a day drains capacity for everyone else. The cap counts credits
+        per calendar day across web and desktop; ``0`` disables it.
+        """
+        if quote.op != "music":
+            return
+        cap = int(get_settings().music_daily_credit_cap or 0)
+        if cap <= 0:
+            return
+        spent = await self._store.music_credits_spent_today(user_id)
+        if spent + int(quote.amount_units) <= cap * CREDIT_SCALE:
+            return
+        raise QuotaExceededError(
+            f"Daily music limit reached ({cap} credits). It resets at midnight.",
+            details={
+                "code": "music_daily_cap",
+                "cap_credits": cap,
+                "spent_credits": units_to_credits(spent),
+                "requires_upgrade": False,
+            },
+        )
+
     async def charge(
         self,
         *,
@@ -261,6 +292,8 @@ class CreditsOnlyBillingService:
                     "idempotent": True,
                     "balance_units": int(await self._credit_repo.get_balance(user_id)),
                 }
+
+        await self._assert_daily_music_cap(user_id, quote)
 
         metadata = {
             "billing": "wallet",
