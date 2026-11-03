@@ -47,6 +47,53 @@ REMOTE_SCRIPT = Path(__file__).resolve().parent / "camxora-production-remote.sh"
 NGINX_CONF = Path(__file__).resolve().parent / "nginx-camxora-production.conf"
 
 
+def ensure_https_config(client) -> tuple[bool, str]:
+    """Guarantee production ends with the canonical TLS vhosts applied.
+
+    The remote install script bootstraps an HTTP-only site and then applies the
+    uploaded HTTPS config *conditionally*; when that condition is false it exits
+    0 and leaves production serving the wrong certificate for ``api.``/``admin.``.
+    Re-apply the committed template here, verify the resulting file really has
+    TLS for every required host, and fail the deploy otherwise.
+    """
+    from nginx_guard import missing_tls_error
+
+    if not NGINX_CONF.is_file():
+        return False, f"missing nginx template: {NGINX_CONF}"
+
+    template = NGINX_CONF.read_text(encoding="utf-8")
+    local_error = missing_tls_error(template)
+    if local_error:
+        return False, f"committed template is not safe: {local_error}"
+
+    sftp = client.open_sftp()
+    try:
+        sftp.put(str(NGINX_CONF), "/tmp/nginx-camxora-production.conf")
+    finally:
+        sftp.close()
+
+    site = "/etc/nginx/sites-available/camxora-production"
+    command = (
+        "set -e; "
+        "cp /tmp/nginx-camxora-production.conf {site}; "
+        "ln -sf {site} /etc/nginx/sites-enabled/camxora-production; "
+        "nginx -t; "
+        "systemctl reload nginx; "
+        "cat {site}"
+    ).format(site=site)
+    _, stdout, stderr = client.exec_command(command)
+    applied = stdout.read().decode("utf-8", errors="replace")
+    errors = stderr.read().decode("utf-8", errors="replace").strip()
+    status = stdout.channel.recv_exit_status()
+    if status != 0:
+        return False, f"applying nginx config failed: {errors or applied[-400:]}"
+
+    remote_error = missing_tls_error(applied)
+    if remote_error:
+        return False, remote_error
+    return True, "TLS vhosts applied and verified"
+
+
 def upload_and_run(client, secrets: dict[str, str], bundle: SourceBundle) -> int:
     upload_source(client, bundle)
     remote_path = "/tmp/camxora-production-remote.sh"
@@ -155,6 +202,17 @@ def main() -> int:
             )
 
         code = upload_and_run(client, secrets, bundle)
+        # Always re-assert TLS, even when the remote script failed: its early
+        # fatal paths exit *after* overwriting the site with the HTTP-only
+        # bootstrap, which is exactly the state that must never persist.
+        https_ok, https_detail = ensure_https_config(client)
+        print(f"[deploy-guard] nginx TLS: {https_detail}")
+        if code == 0 and not https_ok:
+            print(
+                "DEPLOY_VERIFY_FAILED — production was left without TLS; "
+                "fix the nginx template/config before retrying."
+            )
+            code = 1
         if code == 0:
             post_deploy_record(
                 client,
