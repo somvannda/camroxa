@@ -6,6 +6,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
+import { listStudioProjects } from "@/lib/studio-api";
+import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
@@ -64,6 +66,10 @@ export function StudioEditorShell() {
   /** A draft recovered from storage after a failed or offline write (W2.3). */
   const [draft, setDraft] = useState<StudioDraft | null>(null);
   const projectRef = useRef<StudioProject | null>(null);
+  /** Library panel data (G12): songs and other projects, loaded on first open. */
+  const [libraryTab, setLibraryTab] = useState<"songs" | "projects">("songs");
+  const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
+  const [libraryProjects, setLibraryProjects] = useState<StudioProject[] | null>(null);
   /** Active clip drag: every selected clip's origin plus the latest pointer delta. */
   const [drag, setDrag] = useState<{
     ids: string[];
@@ -176,6 +182,54 @@ export function StudioEditorShell() {
 
   /** Keep the freshest project for draft writes made from event handlers. */
   projectRef.current = project;
+
+  /** Load the library panel's two lists the first time it opens (G12). */
+  useEffect(() => {
+    if (!libraryOpen || !user) return;
+    let active = true;
+    if (librarySongs === null) {
+      fetchGenerations(20)
+        .then((items) => {
+          if (active) setLibrarySongs(items);
+        })
+        .catch(() => {
+          if (active) setLibrarySongs([]);
+        });
+    }
+    if (libraryProjects === null) {
+      listStudioProjects(20, 0, false)
+        .then((result) => {
+          if (active) setLibraryProjects(result.items ?? []);
+        })
+        .catch(() => {
+          if (active) setLibraryProjects([]);
+        });
+    }
+    return () => {
+      active = false;
+    };
+  }, [libraryOpen, user, librarySongs, libraryProjects]);
+
+  /** Drop a library song onto the selected track at the playhead (G12). */
+  function addSongToTimeline(song: WebMusicGeneration) {
+    const clip = song.clips?.find((candidate) => candidate.audio_url);
+    const trackId = selectedTrack ?? tracks[0]?.id;
+    if (!clip || !trackId) return;
+    insertClips([
+      {
+        trackId,
+        clip: {
+          id: `clip-${song.id}-${Date.now().toString(36)}`,
+          title: clip.title || song.title || "Song",
+          start: snapToGrid(playhead, secondsPerBar, 4),
+          duration: clip.duration_seconds ?? 8,
+          volume: 1,
+          pan: 0,
+          audioUrl: clip.audio_url,
+        } as ClipLike & { audioUrl?: string | null },
+      },
+    ]);
+  }
 
   /** Apply a recovered draft locally and try to write it (W2.3). */
   function restoreDraft() {
@@ -1043,7 +1097,74 @@ export function StudioEditorShell() {
                 <Icon name="fa-xmark" />
               </button>
             </div>
-            <p className="se-lib-empty">Song library is not wired into this shell yet.</p>
+
+            <div className="se-lib-tabs" role="tablist" aria-label="Library sections">
+              {(["songs", "projects"] as const).map((tab) => (
+                <button
+                  key={tab}
+                  type="button"
+                  role="tab"
+                  aria-selected={libraryTab === tab}
+                  className={`se-lib-tab${libraryTab === tab ? " on" : ""}`}
+                  onClick={() => setLibraryTab(tab)}
+                >
+                  {tab === "songs" ? "Songs" : "Projects"}
+                </button>
+              ))}
+            </div>
+
+            {libraryTab === "songs" ? (
+              librarySongs === null ? (
+                <p className="se-lib-empty">Loading songs…</p>
+              ) : librarySongs.length === 0 ? (
+                <p className="se-lib-empty">
+                  No songs yet. Create one, then drop it onto a track here.
+                </p>
+              ) : (
+                <ul className="se-lib-list">
+                  {librarySongs.map((song) => (
+                    <li key={song.id} className="se-lib-row">
+                      <span className="se-lib-title">{song.title || "Untitled song"}</span>
+                      <span className="se-lib-meta">{song.style?.slice(0, 44) || "No style"}</span>
+                      <button
+                        type="button"
+                        className="se-pill"
+                        onClick={() => addSongToTimeline(song)}
+                        disabled={!song.clips?.some((clip) => clip.audio_url)}
+                      >
+                        Add
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )
+            ) : libraryProjects === null ? (
+              <p className="se-lib-empty">Loading projects…</p>
+            ) : (libraryProjects ?? []).filter((item) => item.id !== projectId).length === 0 ? (
+              <p className="se-lib-empty">No other projects yet.</p>
+            ) : (
+              <ul className="se-lib-list">
+                {(libraryProjects ?? [])
+                  .filter((item) => item.id !== projectId)
+                  .map((item) => (
+                    <li key={item.id} className="se-lib-row">
+                      <span className="se-lib-title">{item.title}</span>
+                      <span className="se-lib-meta">
+                        {item.bpm} BPM · {item.time_signature || "4/4"}
+                      </span>
+                      <button
+                        type="button"
+                        className="se-pill"
+                        onClick={() => {
+                          window.location.href = `/studio/editor?project=${encodeURIComponent(item.id)}`;
+                        }}
+                      >
+                        Open
+                      </button>
+                    </li>
+                  ))}
+              </ul>
+            )}
           </aside>
         ) : null}
       </div>

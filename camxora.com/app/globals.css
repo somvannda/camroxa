@@ -4578,3 +4578,11 @@ html{color-scheme:dark}
 
 .se-conflict{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:12px;background:hsl(var(--card));border:1px solid hsl(var(--accent));z-index:40;max-width:420px}
 .se-conflict-actions{display:flex;gap:8px;justify-content:flex-end}
+
+.se-lib-tabs{display:flex;gap:6px;padding:8px 12px}
+.se-lib-tab{padding:6px 12px;border-radius:999px;background:transparent;border:1px solid hsl(var(--border));color:inherit}
+.se-lib-tab.on{background:hsl(var(--card));border-color:hsl(var(--accent))}
+.se-lib-list{list-style:none;margin:0;padding:0 12px;display:flex;flex-direction:column;gap:8px}
+.se-lib-row{display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:10px;background:hsl(var(--card))}
+.se-lib-title{font-weight:600}
+.se-lib-meta{opacity:.7}
