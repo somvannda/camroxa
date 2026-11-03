@@ -24,11 +24,15 @@
 # `camxora_platform`):
 #
 #   LATEST="$(ls -1t /opt/camxora/backups/platform/camxora_platform-*.dump | head -n1)"
+#   # The backup dir is 0750 camxora:camxora so postgres cannot traverse it;
+#   # copy the archive somewhere postgres can read.
+#   install -o postgres -g postgres -m 600 "$LATEST" /tmp/camxora-platform-drill.dump
 #   sudo -u postgres createdb camxora_platform_restore_check
 #   sudo -u postgres pg_restore --no-owner --no-privileges --exit-on-error \
-#     -d camxora_platform_restore_check "$LATEST"
+#     -d camxora_platform_restore_check /tmp/camxora-platform-drill.dump
 #   sudo -u postgres psql -d camxora_platform_restore_check -c '\dt'
 #   sudo -u postgres dropdb camxora_platform_restore_check
+#   rm -f /tmp/camxora-platform-drill.dump
 #
 # The drill is green when pg_restore exits 0 and `\dt` lists the app tables.
 # This is a nightly logical snapshot with BACKUP_RETENTION_DAYS history; there

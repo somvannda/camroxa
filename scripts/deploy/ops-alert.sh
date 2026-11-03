@@ -39,6 +39,11 @@ REALERT_SECONDS="${REALERT_SECONDS:-3600}"
 DAILY_HOUR="${DAILY_HOUR:-9}"
 HTTP_TIMEOUT="${HTTP_TIMEOUT:-15}"
 HTTP_RETRIES="${HTTP_RETRIES:-2}"
+# A dump older than this is treated as a broken backup even when the unit is
+# not "failed" (timer disabled, deploy deleted the script, host was down).
+BACKUP_MAX_AGE_H="${BACKUP_MAX_AGE_H:-26}"
+BACKUP_DIR_MUSICAPI="${BACKUP_DIR_MUSICAPI:-/opt/camxora/backups/musicapi}"
+BACKUP_DIR_PLATFORM="${BACKUP_DIR_PLATFORM:-/opt/camxora/backups/platform}"
 
 case "$FAIL_STREAK_ALERT" in ''|*[!0-9]*|0) FAIL_STREAK_ALERT=2;; esac
 case "$REALERT_SECONDS" in ''|*[!0-9]*|0) REALERT_SECONDS=3600;; esac
@@ -156,6 +161,33 @@ http_code() {
   printf '%s' "${code:-000}"
 }
 
+# Hours since the newest dump in a directory, or "missing" when there is none.
+newest_dump_age_h() {
+  local dir="$1" pattern="$2" newest
+  newest="$(find "$dir" -maxdepth 1 -type f -name "$pattern" -printf '%T@\n' 2>/dev/null \
+    | sort -n | tail -1)"
+  if [ -z "$newest" ]; then
+    printf 'missing'
+    return
+  fi
+  printf '%s' $(( ( $(date +%s) - ${newest%.*} ) / 3600 ))
+}
+
+backup_issue() {
+  local unit="$1" dir="$2" pattern="$3" age msg="" when
+  if systemctl is-failed --quiet "$unit" 2>/dev/null; then
+    when="$(systemctl show "$unit" -p ExecMainExitTimestamp --value 2>/dev/null)"
+    msg="last backup failed${when:+ at $when}"
+  fi
+  age="$(newest_dump_age_h "$dir" "$pattern")"
+  if [ "$age" = "missing" ]; then
+    msg="${msg:+$msg; }no dump found"
+  elif [ "$age" -gt "$BACKUP_MAX_AGE_H" ]; then
+    msg="${msg:+$msg; }newest dump is ${age}h old"
+  fi
+  printf '%s' "$msg"
+}
+
 # Prints the concrete issue(s) for one app, or nothing when healthy.
 probe_app() {
   local unit="$1" url="$2" extra="$3"
@@ -180,18 +212,10 @@ probe_app() {
       fi
       ;;
     backup)
-      if systemctl is-failed --quiet camxora-musicapi-backup.service 2>/dev/null; then
-        local when
-        when="$(systemctl show camxora-musicapi-backup.service -p ExecMainExitTimestamp --value 2>/dev/null)"
-        issues="last backup failed${when:+ at $when}"
-      fi
+      issues="$(backup_issue camxora-musicapi-backup.service "$BACKUP_DIR_MUSICAPI" 'sunoapi-*.dump')"
       ;;
     backup-platform)
-      if systemctl is-failed --quiet camxora-platform-db-backup.service 2>/dev/null; then
-        local when
-        when="$(systemctl show camxora-platform-db-backup.service -p ExecMainExitTimestamp --value 2>/dev/null)"
-        issues="last backup failed${when:+ at $when}"
-      fi
+      issues="$(backup_issue camxora-platform-db-backup.service "$BACKUP_DIR_PLATFORM" 'camxora_platform-*.dump')"
       ;;
   esac
 

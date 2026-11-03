@@ -71,7 +71,13 @@ false picture:
 - `camxora-platform-db-backup.service` + `.timer` (daily 04:00, persistent,
   randomized 5 min).
 - `scripts/deploy/install_platform_db_backup_production.py`.
-- `ops-alert.sh` now reports the platform backup alongside the musicapi one.
+- `ops-alert.sh` now reports the platform backup alongside the musicapi one,
+  and both backup checks include **freshness**: the newest dump being older than
+  26h (or missing) is reported even when the unit is not marked failed, which
+  catches a disabled timer or a deploy that removed the script.
+- Restore-drill docs in both backup scripts now copy the archive to a
+  postgres-readable path first (the platform backup dir is `0750
+  camxora:camxora`, so `sudo -u postgres pg_restore` cannot traverse it).
 
 ## Verification
 
@@ -84,6 +90,11 @@ false picture:
   by the script.
 - `app.camxora.com` (HTTPS and HTTP, root and deep paths) returns 301 to
   `https://music.camxora.com/`; the other hosts still return 200.
+- **Restore drill passed** for both backups into scratch databases:
+  - `camxora_platform-20261103T054458Z.dump` (222 MB) → 114 public tables,
+    250 users, 25 `billing_payments`, `alembic_version` 178.
+  - `sunoapi-20261103T052649Z.dump` (103 MB) → 28 public tables, 35 users.
+  - Both scratch databases were dropped afterwards.
 
 ## Follow-ups
 
