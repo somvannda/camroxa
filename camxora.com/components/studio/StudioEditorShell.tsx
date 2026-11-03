@@ -14,6 +14,7 @@ import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } fro
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
+import { StudioOnboarding } from "@/components/studio/StudioOnboarding";
 
 const ROW_HEIGHT = 85;
 const ROW_STEP = 86;
@@ -1195,6 +1196,8 @@ export function StudioEditorShell() {
           </aside>
         ) : null}
       </div>
+
+      <StudioOnboarding projectId={projectId} isEmpty={!loading && tracks.length === 0 && clips.length === 0} />
 
       {clipSource ? (
         <div className="se-clip-source" aria-label="Clip source">
