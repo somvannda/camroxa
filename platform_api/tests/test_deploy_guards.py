@@ -164,7 +164,7 @@ def test_build_marker_payload() -> None:
 
 def test_deployed_marker_path() -> None:
     module = _load()
-    assert module.deployed_marker_path("/opt/camxora/repo/") == "/opt/camxora/repo/.deployed.json"
+    assert module.deployed_marker_path("/opt/camxora/repo/") == "/opt/camxora/.deployed.json"
 
 
 class _FakeSftp:
@@ -212,7 +212,7 @@ def test_write_remote_marker() -> None:
     path = module.write_remote_marker(
         client, {"commit": "c"}, remote_repo="/opt/camxora/repo"
     )
-    assert path == "/opt/camxora/repo/.deployed.json"
+    assert path == "/opt/camxora/.deployed.json"
     assert client.sftp.path == path
     assert client.sftp.mode == 0o644
     assert json.loads(client.sftp.data.decode())["commit"] == "c"
@@ -296,7 +296,7 @@ def test_build_gate_does_not_enforce() -> None:
 def test_lock_scripts_contain_expected_guards() -> None:
     module = _load()
     acquire = module.build_acquire_lock_script("/opt/camxora/repo", "tok", "actor", 60)
-    assert "/opt/camxora/repo/.deploy.lock" in acquire
+    assert "/opt/camxora/.deploy.lock" in acquire
     assert "noclobber" in acquire
     assert "tok" in acquire and "actor" in acquire
     assert "exit 3" in acquire
@@ -307,7 +307,7 @@ def test_lock_scripts_contain_expected_guards() -> None:
 
 def test_deploy_lock_path() -> None:
     module = _load()
-    assert module.deploy_lock_path("/opt/camxora/repo/") == "/opt/camxora/repo/.deploy.lock"
+    assert module.deploy_lock_path("/opt/camxora/repo/") == "/opt/camxora/.deploy.lock"
 
 
 def test_acquire_remote_lock_ok_and_refuse(monkeypatch) -> None:

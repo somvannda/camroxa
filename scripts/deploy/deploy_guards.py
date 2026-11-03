@@ -23,6 +23,7 @@ from __future__ import annotations
 import getpass
 import json
 import os
+import posixpath
 import shlex
 import subprocess
 import uuid
@@ -295,7 +296,16 @@ def enforce_deploy_gate(
 
 
 def deployed_marker_path(remote_repo: str = DEFAULT_REMOTE_REPO) -> str:
-    return f"{str(remote_repo).rstrip('/')}/{MARKER_FILENAME}"
+    """Marker lives beside the checkout, not inside it.
+
+    A SYNC_FROM_LOCAL deploy renames the whole checkout to ``repo.bak.*`` and
+    extracts a fresh one, so a marker (or lock) kept inside it vanishes for the
+    duration of the deploy — that is how the lock stopped refusing concurrent
+    deploys mid-run.
+    """
+    return posixpath.join(
+        posixpath.dirname(str(remote_repo).rstrip("/")), MARKER_FILENAME
+    )
 
 
 def build_marker(
@@ -370,7 +380,10 @@ class DeployLock:
 
 
 def deploy_lock_path(remote_repo: str = DEFAULT_REMOTE_REPO) -> str:
-    return f"{str(remote_repo).rstrip('/')}/{LOCK_FILENAME}"
+    """Lock beside the checkout so the repo swap cannot move it away."""
+    return posixpath.join(
+        posixpath.dirname(str(remote_repo).rstrip("/")), LOCK_FILENAME
+    )
 
 
 def build_acquire_lock_script(

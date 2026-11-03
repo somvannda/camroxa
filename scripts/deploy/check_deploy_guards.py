@@ -85,13 +85,15 @@ def live_source_status(client, remote_repo: str) -> tuple[str, str]:
     status: ``ok`` | ``drift`` | ``no-manifest``.
     """
     from deploy import upload_verifier
+    from deploy_guards import deployed_marker_path
 
+    marker_path = deployed_marker_path(remote_repo)
     sftp = client.open_sftp()
     try:
-        with sftp.file(f"{remote_repo}/.deployed.json", "r") as handle:
+        with sftp.file(marker_path, "r") as handle:
             marker = handle.read().decode("utf-8", "replace")
     except OSError:
-        return "no-manifest", "no .deployed.json (not deployed through the verified pipeline)"
+        return "no-manifest", f"no {marker_path} (not deployed through the verified pipeline)"
     finally:
         sftp.close()
 
@@ -117,8 +119,8 @@ def verify_live_source(client, remote_repo: str) -> None:
     print(detail)
     if status == "no-manifest":
         raise SystemExit(
-            f"Refusing: {remote_repo}/.deployed.json is missing — the live source "
-            "was not deployed through the verified pipeline."
+            f"Refusing: {detail} — the live source was not deployed through the "
+            "verified pipeline."
         )
     if status == "drift":
         raise SystemExit(
