@@ -70,6 +70,8 @@ export function StudioEditorShell() {
   const [libraryTab, setLibraryTab] = useState<"songs" | "projects">("songs");
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
   const [libraryProjects, setLibraryProjects] = useState<StudioProject[] | null>(null);
+  /** Source generation of the selected clip, when it came from the library (G16). */
+  const [clipSource, setClipSource] = useState<WebMusicGeneration | null>(null);
   /** Active clip drag: every selected clip's origin plus the latest pointer delta. */
   const [drag, setDrag] = useState<{
     ids: string[];
@@ -210,7 +212,31 @@ export function StudioEditorShell() {
     };
   }, [libraryOpen, user, librarySongs, libraryProjects]);
 
-  /** Drop a library song onto the selected track at the playhead (G12). */
+  /** Resolve the selected clip's source song for the provenance strip (G16). */
+  useEffect(() => {
+    const clip = clips.find((candidate) => candidate.id === selectedClip);
+    const songId = (clip as { songId?: string } | undefined)?.songId;
+    if (!songId) {
+      setClipSource(null);
+      return;
+    }
+    const cached = librarySongs?.find((song) => song.id === songId);
+    if (cached) {
+      setClipSource(cached);
+      return;
+    }
+    let active = true;
+    fetchGenerations(50)
+      .then((items) => {
+        if (active) setClipSource(items.find((song) => song.id === songId) ?? null);
+      })
+      .catch(() => {
+        if (active) setClipSource(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedClip, clips, librarySongs]);
   function addSongToTimeline(song: WebMusicGeneration) {
     const clip = song.clips?.find((candidate) => candidate.audio_url);
     const trackId = selectedTrack ?? tracks[0]?.id;
@@ -226,7 +252,8 @@ export function StudioEditorShell() {
           volume: 1,
           pan: 0,
           audioUrl: clip.audio_url,
-        } as ClipLike & { audioUrl?: string | null },
+          songId: song.id,
+        } as ClipLike & { audioUrl?: string | null; songId?: string },
       },
     ]);
   }
@@ -1168,6 +1195,19 @@ export function StudioEditorShell() {
           </aside>
         ) : null}
       </div>
+
+      {clipSource ? (
+        <div className="se-clip-source" aria-label="Clip source">
+          <strong>{clipSource.title || "Untitled song"}</strong>
+          <span>
+            {clipSource.model_label || clipSource.model || "model"} ·{" "}
+            {clipSource.created_at
+              ? new Date(clipSource.created_at).toLocaleDateString()
+              : "unknown date"}
+            {clipSource.style ? ` · ${clipSource.style.slice(0, 60)}` : ""}
+          </span>
+        </div>
+      ) : null}
 
       {selectedTrack ? (
         <StudioPluginDock

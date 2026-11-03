@@ -4586,3 +4586,6 @@ html{color-scheme:dark}
 .se-lib-row{display:flex;flex-direction:column;gap:4px;padding:10px;border-radius:10px;background:hsl(var(--card))}
 .se-lib-title{font-weight:600}
 .se-lib-meta{opacity:.7}
+
+.se-clip-source{display:flex;flex-direction:column;gap:2px;padding:8px 16px;border-top:1px solid hsl(var(--border));background:hsl(var(--card))}
+.se-clip-source span{opacity:.7}
