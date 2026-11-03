@@ -44,7 +44,7 @@ Scoring for this document:
 | G13 | No Studio test suite | Regressions found by hand | W5 | open |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | open |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | open |
-| G16 | No generation history view | Users cannot retrace how a clip was made | W3 | open |
+| G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
 | G17 | No playback speed control | Cannot audition at half speed | W3 | open (PLY-020) |
 | G18 | No first-run onboarding in the DAW | New users face a dense UI | W3 | open |
 | G19 | Long-project rendering not virtualised | Perf cliff | W3 | open |
