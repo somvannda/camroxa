@@ -107,6 +107,8 @@ export function StudioEditorShell() {
   const [loop, setLoop] = useState(false);
   const [metronome, setMetronome] = useState(false);
   const [bpm, setBpm] = useState(120);
+  /** Audition speed (G17): 0.5x / 1x / 2x. */
+  const [playbackRate, setPlaybackRate] = useState(1);
   const [projectId, setProjectId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -656,7 +658,7 @@ export function StudioEditorShell() {
       const delta = Math.min(0.25, (now - last) / 1000);
       last = now;
       setPlayhead((current) => {
-        const next = current + delta;
+        const next = current + delta * playbackRate;
         if (next >= duration) return loop ? 0 : duration;
         return next;
       });
@@ -721,10 +723,13 @@ export function StudioEditorShell() {
       const track = tracks.find((item) => item.clipIds.includes(clip.id));
       if (track?.muted) continue;
 
-      const when = now + Math.max(0, start - from);
+      const when = now + Math.max(0, start - from) / playbackRate;
       const offset = Math.max(0, from - start);
       const source = context.createBufferSource();
       source.buffer = buffer;
+      // Audition speed (G17): playbackRate scales both the scheduling offset and
+      // how long the buffer takes to play, so clips stay in sync with each other.
+      source.playbackRate.value = playbackRate;
       const gain = context.createGain();
       gain.gain.value = (track?.volume ?? 80) / 100;
       source.connect(gain).connect(master);
@@ -910,6 +915,16 @@ export function StudioEditorShell() {
           />
           <span className="se-pill">{project?.time_signature || "4/4"}</span>
           <StudioSaveStatus status={saveStatus} onRetry={() => retryRef.current?.()} />
+          <button
+            type="button"
+            className={`se-pill${playbackRate !== 1 ? " on" : ""}`}
+            aria-label={`Audition speed ${playbackRate}x`}
+            onClick={() =>
+              setPlaybackRate((current) => (current === 1 ? 0.5 : current === 0.5 ? 2 : 1))
+            }
+          >
+            {playbackRate}×
+          </button>
           <button type="button" className="se-pill" disabled aria-label="Export (not wired)"><Icon name="fa-arrow-up-from-bracket" /> Export</button>
           <button
             type="button"
