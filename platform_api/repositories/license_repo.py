@@ -497,9 +497,10 @@ class LicenseRepository:
     async def has_paid_desktop_access(self, user_id: str) -> bool:
         """True when the user may use the desktop studio.
 
-        Credits-only model: a live credit pack is the only entitlement.
-        Plans, licenses and web subscriptions no longer grant access.
-        Pack lots expire 30 days after purchase, so access ends with the pack.
+        Credits-only model: a live credit pack -- or an admin comp, which is the
+        same 30-day credit -- is the only entitlement. Plans, licenses and web
+        subscriptions no longer grant access. Both lot kinds expire 30 days out,
+        so access ends with the credits.
         """
         result = await self._pool.fetchval(
             """
@@ -512,7 +513,7 @@ class LicenseRepository:
                     SELECT 1
                     FROM credit_wallet_lots lot
                     WHERE lot.user_id = $1
-                      AND lot.tag = 'pack'
+                      AND lot.tag IN ('pack', 'admin')
                       AND lot.remaining_units > 0
                       AND lot.expires_at IS NOT NULL
                       AND lot.expires_at > NOW()

@@ -9,6 +9,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- The user-detail **Top up credits** dialog says added credits are valid for 30 days, the same clock as a credit pack. See `docs/changelog/2026-11-03-admin-topup-30-day-expiry.md`.
+
 ### Removed
 
 - Deleted the unmounted `MusicWebFreeCreditsSection`; free daily credits are edited on the **Free** plan row. See `docs/changelog/2026-09-27-retire-web-music-free-daily-settings.md`.

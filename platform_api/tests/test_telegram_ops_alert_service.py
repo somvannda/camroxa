@@ -731,3 +731,40 @@ async def test_user_snapshot_marks_pack_buyer_paid(
     assert snapshot["email"] == "pack@example.com"
 
 
+@pytest.mark.asyncio
+async def test_user_snapshot_sql_counts_admin_topups(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A comped top-up has no purchase row, so the probe must read the ledger."""
+    from platform_api import dependencies
+    from platform_api.services import telegram_ops_alert_service as svc
+
+    captured: dict[str, str] = {}
+
+    class _FakePool:
+        async def fetchrow(self, sql: str, *_args, **_kwargs):  # type: ignore[no-untyped-def]
+            captured["sql"] = sql
+            return {
+                "email": "comp@example.com",
+                "display_name": "Comped User",
+                "has_studio_license": False,
+                "has_web_sub": False,
+                "has_pack_this_month": True,
+            }
+
+    monkeypatch.setattr(dependencies, "get_db_pool", lambda: _FakePool())
+    svc._SNAPSHOT_CACHE.clear()
+    try:
+        snapshot = await svc._user_snapshot(
+            "9eebdf0a-d9b3-487f-b4ec-fbfab6f17a80"
+        )
+    finally:
+        svc._SNAPSHOT_CACHE.clear()
+
+    assert snapshot["account_status"] == "PAID"
+    assert "topup_purchases" in captured["sql"]
+    assert "admin_adjustment:" in captured["sql"]
+    assert "ct.amount > 0" in captured["sql"]
+
+
+
