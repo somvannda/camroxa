@@ -125,6 +125,29 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
     mv "${REPO_BACKUP}/musicapi" "${REPO_DIR}/musicapi"
   fi
   chown -R camxora:camxora "${REPO_DIR}"
+
+  # A deploy must land exactly the commit it was built from. The archive ships
+  # .deploy-manifest.json (sha256 per file); verify it before any build or
+  # restart, then delete files the previous deploy shipped that this one does
+  # not, so a retired module cannot linger and shadow the new code.
+  if [[ ! -f "${REPO_DIR}/.deploy-manifest.json" ]]; then
+    log "ERROR: source archive has no .deploy-manifest.json; refusing to deploy unverifiable code"
+    exit 1
+  fi
+  if [[ ! -f /tmp/camxora-verify-manifest.py ]]; then
+    log "ERROR: verifier missing on the server (/tmp/camxora-verify-manifest.py)"
+    exit 1
+  fi
+  log "Verifying deployed source against .deploy-manifest.json..."
+  VERIFY_ARGS=(--repo "${REPO_DIR}" --manifest "${REPO_DIR}/.deploy-manifest.json")
+  if [[ -n "${REPO_BACKUP}" && -f "${REPO_BACKUP}/.deploy-manifest.json" ]]; then
+    VERIFY_ARGS+=(--prev-manifest "${REPO_BACKUP}/.deploy-manifest.json")
+  fi
+  python3 /tmp/camxora-verify-manifest.py "${VERIFY_ARGS[@]}" || {
+    log "ERROR: deployed source failed manifest verification; aborting before builds and restarts"
+    exit 1
+  }
+  chown camxora:camxora "${REPO_DIR}/.deploy-manifest.json" 2>/dev/null || true
 elif [[ ! -d "${REPO_DIR}/.git" ]]; then
   log "Cloning repository..."
   sudo -u camxora -H git clone --branch "${GIT_BRANCH}" "${CLONE_URL}" "${REPO_DIR}"

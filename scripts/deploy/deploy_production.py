@@ -1,23 +1,54 @@
 ﻿#!/usr/bin/env python3
-"""Deploy Camxora production to VPS via SSH. Reads .deploy/secrets.env (never commit it)."""
+"""Deploy Camxora production to VPS via SSH. Reads .deploy/secrets.production.env.
+
+Production ships **one commit of main**, never a working tree:
+
+  1. fetch origin (unless ``--no-fetch``)
+  2. resolve the deploy source (default ``origin/main``)
+  3. refuse unless that commit is merged to ``origin/main``
+  4. package it with ``git archive`` + a sha256 manifest
+  5. verify the manifest on the server before any build or restart
+
+Escape hatches (deliberate hotfix only, recorded as unmerged/dirty):
+
+    CAMXORA_DEPLOY_SOURCE=worktree   package the working tree
+    CAMXORA_DEPLOY_SOURCE_REF=HEAD   package HEAD instead of origin/main
+    CAMXORA_ALLOW_UNMERGED_DEPLOY=1  allow a commit that is not on main
+"""
 from __future__ import annotations
+
+import argparse
+import os
 import stat
 import sys
-import time
 from pathlib import Path
-from deploy import ensure_deploy_key, ensure_paramiko, load_production_secrets, ssh_connect, upload_source
-from deploy_guards import (
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from deploy import (  # noqa: E402
+    build_source_bundle,
+    ensure_deploy_key,
+    ensure_paramiko,
+    fetch_origin,
+    load_production_secrets,
+    resolve_production_ssh,
+    ssh_connect,
+    upload_source,
+)
+from deploy_guards import (  # noqa: E402
     acquire_remote_lock,
     enforce_deploy_gate,
     post_deploy_record,
     release_remote_lock,
 )
+from release_source import DEFAULT_SOURCE_REF, SOURCE_MODE_ENV, SourceBundle  # noqa: E402
 
 REMOTE_SCRIPT = Path(__file__).resolve().parent / "camxora-production-remote.sh"
 NGINX_CONF = Path(__file__).resolve().parent / "nginx-camxora-production.conf"
 
-def upload_and_run(client, secrets: dict[str, str]) -> int:
-    upload_source(client)
+
+def upload_and_run(client, secrets: dict[str, str], bundle: SourceBundle) -> int:
+    upload_source(client, bundle)
     remote_path = "/tmp/camxora-production-remote.sh"
     sftp = client.open_sftp()
     with sftp.file(remote_path, "wb") as remote_file:
@@ -44,12 +75,25 @@ def upload_and_run(client, secrets: dict[str, str]) -> int:
             sys.stdout.buffer.write(channel.recv(4096)); sys.stdout.flush()
         if channel.recv_stderr_ready():
             sys.stderr.buffer.write(channel.recv_stderr(4096)); sys.stderr.flush()
-        time.sleep(0.2)
     while channel.recv_ready(): sys.stdout.buffer.write(channel.recv(4096))
     while channel.recv_stderr_ready(): sys.stderr.buffer.write(channel.recv_stderr(4096))
     return channel.recv_exit_status()
 
+
 def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--source-ref",
+        default=os.environ.get("CAMXORA_DEPLOY_SOURCE_REF", "").strip() or DEFAULT_SOURCE_REF,
+        help=f"commit-ish to ship (default {DEFAULT_SOURCE_REF})",
+    )
+    parser.add_argument(
+        "--no-fetch",
+        action="store_true",
+        help="do not `git fetch origin` before resolving the source",
+    )
+    args = parser.parse_args()
+
     ensure_paramiko()
     secrets = load_production_secrets()
     host = secrets.get("PRODUCTION_VPS_HOST") or secrets.get("VPS_HOST", "")
@@ -60,19 +104,82 @@ def main() -> int:
         print("PRODUCTION_VPS_HOST or VPS_HOST is required in secrets.env"); return 1
     if not REMOTE_SCRIPT.is_file():
         print(f"Missing {REMOTE_SCRIPT}"); return 1
-    gate = enforce_deploy_gate()
+
+    if not args.no_fetch:
+        ok, detail = fetch_origin()
+        if not ok:
+            print(f"WARNING: git fetch origin failed ({detail}); using the local {args.source_ref}")
+        else:
+            print(f"[deploy-guard] origin/main refreshed: {detail}")
+
+    # Package first: the bundle is the source of truth for what ships, and the
+    # gate should judge that commit, not whatever HEAD happens to be.
+    try:
+        bundle = build_source_bundle(args.source_ref)
+    except SystemExit:
+        raise
+    except Exception as exc:  # noqa: BLE001 - surface a clean refusal
+        print(f"Refusing deploy — could not build the source bundle: {exc}")
+        return 1
+
+    mode = os.environ.get(SOURCE_MODE_ENV, "commit").strip().lower()
+    gate = enforce_deploy_gate(
+        commit=bundle.commit,
+        require_merged=True,
+        # A commit archive cannot be stale; only the worktree escape hatch can.
+        require_clean=(mode == "worktree"),
+    )
+
     client = ssh_connect(host, user, Path(custom_key) if custom_key else ensure_deploy_key(), password)
     lock = acquire_remote_lock(client)
+    live_status = "not-checked"
+    live_detail = ""
     try:
-        code = upload_and_run(client, secrets)
+        # Surface the case that used to be invisible: production was hotfixed in
+        # place after the last deploy, and this deploy is about to replace it.
+        from check_deploy_guards import live_source_status
+
+        live_status, live_detail = live_source_status(client, "/opt/camxora/repo")
+        if live_status == "drift":
+            print(
+                "\nWARNING: the live checkout has drifted from its deployed manifest — "
+                "production was edited in place (a server-side hotfix). This deploy "
+                "replaces it with the source commit; if that change is not on main, "
+                "merge it first or it will be lost.\n"
+                + live_detail
+            )
+        elif live_status == "no-manifest":
+            print(
+                "\nWARNING: production has no .deploy-manifest.json (deployed before "
+                "verified-source deploys); this deploy starts tracking it."
+            )
+
+        code = upload_and_run(client, secrets, bundle)
         if code == 0:
-            post_deploy_record(client, gate, target="production", script=Path(__file__).name)
+            post_deploy_record(
+                client,
+                gate,
+                target="production",
+                script=Path(__file__).name,
+                extra={
+                    "source_commit": bundle.commit,
+                    "source_ref": bundle.ref,
+                    "source_mode": bundle.mode,
+                    "source_files": bundle.files,
+                    "manifest": ".deploy-manifest.json",
+                    "previous_live_status": live_status,
+                },
+            )
     finally:
         release_remote_lock(client, lock)
         client.close()
     if code == 0:
         print("\nProduction deploy finished successfully.")
-        print("  API:    https://api.camxora.com/health\n  Site:   https://camxora.com\n  Admin:  https://admin.camxora.com\n  Music:  https://music.camxora.com")
+        print(f"  Live commit: {bundle.short} ({bundle.ref}, {bundle.files} files)")
+        print("  API:    https://api.camxora.com/health\n  Site:   https://camxora.com\n  Portal: https://app.camxora.com\n  Admin:  https://admin.camxora.com\n  Music:  https://music.camxora.com")
     else: print(f"\nProduction deploy failed with exit code {code}")
     return code
-if __name__ == "__main__": raise SystemExit(main())
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

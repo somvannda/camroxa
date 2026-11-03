@@ -190,6 +190,13 @@ Nginx timed out before the API response reached the browser. The API may still h
 
 | Script | Purpose |
 |--------|---------|
+| `scripts/deploy/deploy_production.py` | Full production deploy from a commit of `origin/main` (fetch → gate → package → verify) |
+| `scripts/deploy/sync_platform_api_production.py` | API-only production sync from `origin/main`, scoped manifest verify |
+| `scripts/deploy/sync_music_web_production.py` | music_web-only production sync from `origin/main` |
+| `scripts/deploy/release_source.py` | Package one commit + `.deploy-manifest.json` (no working-tree deploys) |
+| `scripts/deploy/verify_release_manifest.py` | Verify deployed bytes on the server; prune stale files |
+| `scripts/deploy/check_deploy_guards.py` | Preflight: worktree/server invariants, no deploy (`--verify-live` re-hashes the live tree) |
+| `scripts/deploy/check_deploy_hygiene.py` | CI gate: no deploy script may write source into the checkout unverified |
 | `scripts/deploy/deploy.py` | Full sandbox deploy (source tarball + remote setup) |
 | `scripts/deploy/apply_nginx.py` | Push nginx config from repo → VPS |
 | `scripts/deploy/verify_nginx_api_timeouts.py` | Confirm 300s timeouts on live nginx |
@@ -201,7 +208,110 @@ Nginx timed out before the API response reached the browser. The API may still h
 
 ---
 
-## 7. Post-deploy checklist (sandbox and production)
+## 7. Verified source deploys (how production stops shipping old code)
+
+**Rule:** production ships **one commit of `origin/main`**. It never ships a
+working tree, a feature branch, or a tag on an unmerged branch. This is enforced
+in code, not by convention.
+
+### Pipeline
+
+1. `scripts/deploy/deploy_production.py` runs `git fetch --prune origin`, then
+   resolves the source ref (default `origin/main`).
+2. `release_source.build_archive_from_commit()` packages that commit with
+   `git archive` — only committed content, LF-normalized text — and writes
+   `.deploy-manifest.json` (sha256 per shipped file).
+3. The archive is verified locally against its own manifest before upload.
+4. `deploy_guards.enforce_deploy_gate(require_merged=True)` refuses a source
+   commit that is not an ancestor of `origin/main`. A tag alone no longer
+   bypasses this.
+5. On the VPS, `scripts/deploy/verify_release_manifest.py` re-hashes every
+   shipped file and **aborts before any build or restart** on mismatch.
+6. Files the previous deploy shipped but this commit does not are pruned (from
+   the previous checkout's manifest), so retired modules cannot shadow new ones.
+7. `.deployed.json` records `commit`, `source_commit`, `source_ref`,
+   `source_mode`, `source_files`, `deployed_by`, `deployed_at`, invariants.
+
+### Why
+
+Repeated incidents had one shape: the deploy packaged whatever files were in the
+worktree the script was launched from, `tar -xzf`'d them over
+`/opt/camxora/repo`, and a later deploy from another worktree reverted the fix.
+Server-only hotfixes were also wiped by the next deploy. Production ran
+`feat/postforme-publishing` (2026-11-02) although it was not merged to `main`.
+
+### Commands
+
+```bash
+git fetch origin && git switch main && git pull --ff-only
+
+python scripts/deploy/check_deploy_guards.py production   # preflight, no deploy
+python scripts/deploy/deploy_production.py                # full, from origin/main
+python scripts/deploy/sync_platform_api_production.py     # API only, from origin/main
+python scripts/deploy/sync_music_web_production.py        # music_web only, from origin/main
+python scripts/deploy/sync_admin_portal_production.py     # admin_portal only, from origin/main
+python scripts/deploy/deploy_musicapi_production.py --yes # musicapi; HEAD must equal origin/main
+
+ssh root@<prod-host> cat /opt/camxora/repo/.deployed.json  # what is live
+```
+
+### Failure handling
+
+| Symptom | Meaning | Action |
+|---------|---------|--------|
+| `Refusing deploy — deploy guards failed` | source commit not on `origin/main`, or dirty worktree in worktree mode | merge to `main`; do not override |
+| `ARCHIVE_VERIFY_FAILED` | archive and manifest disagree before upload | rebuild; report the corrupt file |
+| `DEPLOY_VERIFY_FAILED` / `missing deployed file` | server bytes differ from the commit | stop; investigate disk/extraction, then redeploy the same commit |
+| `DEPLOY_LOCKED` | another deploy is running | wait for it |
+| Invariants failed | a critical path was removed/reverted | fix on `main`, redeploy |
+
+**Never** edit files on the VPS to "fix" an incident: the next deploy removes
+them. Commit, merge, deploy.
+
+### Drift detection (is production still the commit we shipped?)
+
+```bash
+# worktree gate + server invariants + live tree re-hash against the manifest
+python scripts/deploy/check_deploy_guards.py production --verify-live
+
+# CI/report: which deploy scripts bypass the verified-source pipeline?
+python scripts/deploy/check_deploy_hygiene.py            # report
+python scripts/deploy/check_deploy_hygiene.py --strict   # fail (legacy allowlist exempt)
+```
+
+`--verify-live` prints `.deployed.json` and re-hashes every manifest entry on the
+VPS. A non-zero exit means someone edited production in place (a server-side
+hotfix, a partial write, or a deploy that skipped the manifest) — deploy merged
+`main` to restore it. CI fails any PR that adds or edits a deploy script which
+writes source without `build_source_bundle()`/`enforce_deploy_gate()`, so the
+hole cannot be reopened.
+
+`deploy_production.py` runs the same check **before** uploading and prints a
+warning when the live checkout drifted, recording `previous_live_status` in
+`.deployed.json`. That is the "my change vanished" case surfaced *before* the
+deploy replaces the in-place hotfix, instead of after.
+
+### Adding a new deploy script
+
+It must package a commit and enforce the gate:
+
+```python
+from deploy import build_source_bundle, upload_verifier
+from deploy_guards import enforce_deploy_gate
+from release_source import DEFAULT_SOURCE_REF
+
+bundle = build_source_bundle(DEFAULT_SOURCE_REF)   # origin/main
+enforce_deploy_gate(commit=bundle.commit, require_merged=True,
+                    require_clean=False)           # exact commit, not HEAD
+```
+
+Then extract with `--scope <dir>` verification and reuse
+`verify_release_manifest.py`. A script that patches files in place will be
+flagged by `check_deploy_hygiene.py`.
+
+---
+
+## 8. Post-deploy checklist (sandbox and production)
 
 ### Infrastructure
 
@@ -225,7 +335,7 @@ Nginx timed out before the API response reached the browser. The API may still h
 
 ---
 
-## 8. Moving sandbox → production
+## 9. Moving sandbox → production
 
 **Primary runbook:** [`PRODUCTION_CUTOVER.md`](./PRODUCTION_CUTOVER.md) (new VPS, config-only migration, no user data).
 
@@ -242,7 +352,7 @@ Also use [`SANDBOX_DEPLOYMENT_GUIDE.md` §18](./SANDBOX_DEPLOYMENT_GUIDE.md#18-m
 
 ---
 
-## 9. Timezone (Phnom Penh / ICT)
+## 10. Timezone (Phnom Penh / ICT)
 
 **Server:** VPS and PostgreSQL should use `Asia/Phnom_Penh` (`timedatectl set-timezone Asia/Phnom_Penh`).
 

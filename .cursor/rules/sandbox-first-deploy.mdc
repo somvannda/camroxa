@@ -36,6 +36,70 @@ Never treat “deploy”, “ship it”, or “update sandbox” as production p
 
 When the working tree has unrelated local changes, use **file-scoped** production hotfixes (allowlisted paths only) — never a full `platform_api` / admin tree sync from a mixed workspace. Prefer shipping from merged `main` when possible.
 
+## Production deploy procedure (verified source)
+
+Production **only** ships a commit that is merged to `origin/main`. The scripts
+package that commit with `git archive` (never the working tree), write
+`.deploy-manifest.json` (sha256 per file), and the server verifies every file
+before it builds or restarts anything. If verification fails the deploy stops —
+it does not silently ship half-old code.
+
+```bash
+# 1. Land the work on main first (PR merge). Nothing else ships.
+git fetch origin
+git switch main && git pull --ff-only
+
+# 2. Full deploy (fetch + package origin/main + verify on the server)
+python scripts/deploy/deploy_production.py
+
+# 3. Or one surface, still from origin/main
+python scripts/deploy/sync_platform_api_production.py
+python scripts/deploy/sync_music_web_production.py
+
+# 4. Preflight only: worktree/server invariants, no deploy
+python scripts/deploy/check_deploy_guards.py production
+
+# 5. Confirm what is live
+ssh root@82.197.71.248 cat /opt/camxora/repo/.deployed.json
+
+# 6. Confirm the live bytes still match that commit (drift / server-side edits)
+python scripts/deploy/check_deploy_guards.py production --verify-live
+```
+
+Rules:
+
+- **Never** deploy from a feature worktree, a dirty tree, or a tag on an
+  unmerged branch. An unmerged tag no longer satisfies the production gate.
+- **Never** edit files on the VPS. A server-only change is deleted by the next
+  deploy — that is exactly how fixes appeared to "revert".
+- **Never** add a deploy script that writes source into `/opt/camxora/repo`
+  directly. CI (`check_deploy_hygiene.py`) fails such a PR; new scripts must use
+  `build_source_bundle()` + `enforce_deploy_gate()`.
+- `musicapi` ships the working tree (its remote pipeline stages and rebuilds it),
+  so `deploy_musicapi_production.py` refuses unless **HEAD equals
+  `origin/main`**. Pull first; override only with `CAMXORA_ALLOW_STALE_SOURCE=1`.
+- `DEPLOY_VERIFY_FAILED`, `missing deployed file`, `does not match the deploy
+  source`, or an invariants failure means stop and investigate. Do not retry
+  with an override.
+- One deploy at a time: the server lock (`.deploy.lock`, 1 h TTL) refuses a
+  concurrent deploy.
+
+Escape hatches (deliberate, recorded as dirty/unmerged in `.deployed.json`):
+
+| Variable | Effect |
+|----------|--------|
+| `CAMXORA_DEPLOY_SOURCE=worktree` | package the working tree (uncommitted hotfix) |
+| `CAMXORA_DEPLOY_SOURCE_REF=HEAD` (or any ref) | ship a different commit-ish |
+| `CAMXORA_ALLOW_UNMERGED_DEPLOY=1` | allow a commit that is not on `origin/main` |
+| `CAMXORA_ALLOW_DIRTY_DEPLOY=1` | allow an uncommitted worktree in worktree mode |
+| `CAMXORA_ALLOW_CONCURRENT_DEPLOY=1` | ignore the deploy lock (recovery only) |
+
+Files that the previous deploy shipped but the new commit does not are pruned
+on the server (from the previous manifest, scoped to the deployed dirs), so a
+retired module cannot linger and shadow the new code. Runtime state
+(`uploads/`, `dist/`, `.next/`, `.env`, `musicapi/`) is never in a manifest and
+is never pruned.
+
 ## Common sandbox scripts
 
 | Surface | Script |
