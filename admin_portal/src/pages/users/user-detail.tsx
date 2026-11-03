@@ -1479,7 +1479,8 @@ export default function UserDetailPage() {
             <DialogTitle>Top up credits</DialogTitle>
             <DialogDescription>
               Adjust wallet balance for {user.email}. Positive adds credits; negative deducts.
-              Applies immediately (admin-only, audit-logged).
+              Applies immediately (admin-only, audit-logged). Added credits are valid for 30
+              days, the same clock as a credit pack.
             </DialogDescription>
           </DialogHeader>
           <Form {...creditForm}>

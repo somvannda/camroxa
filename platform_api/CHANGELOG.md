@@ -13,6 +13,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - `credit_transactions.reason` was `VARCHAR(100)` from the initial schema, but `POST /credits/adjust` accepts 255 characters and stores them prefixed with `admin_adjustment: `. A reason longer than ~81 characters failed inside `add_credits` *after* the balance check, so the operator got a 500 and the adjustment silently did not apply. Migration `178_credit_txn_reason_text` widens the column to `TEXT` (binary-compatible in PostgreSQL, no rewrite), matching `credit_grant_claims` and `admin_pending_ops`. See `docs/changelog/2026-11-03-credit-txn-reason-width.md`.
 
+## [2026-11-03] — Admin comps expire and unlock the studio
+
+### Fixed
+
+- `CreditService.admin_adjust` already minted an `admin` lot stamped 30 days out, but `expired_lots()` only swept grant/daily_grant/pack/referral, so admin credit was the only wallet credit that never burned. `'admin'` is now in the sweep.
+- `LicenseRepository.has_paid_desktop_access()` required `tag = 'pack'`, so a comped licence-less user got a spendable balance the studio gate rejected. The gate now accepts `tag IN ('pack', 'admin')`.
+
+### Changed
+
+- `has_completed_topup_this_month()` and the Telegram ops snapshot also match a positive `admin_adjustment:` ledger entry this month, so a comped Free user keeps V6-Pro / V6-Wild until month end and is badged **PAID**. No synthetic `topup_purchases` row is written — revenue, receipts, refunds and referral rewards stay purchase-only, and `subtract_web_topup()` is deliberately not mirrored. See `docs/changelog/2026-11-03-admin-topup-30-day-expiry.md`.
+
 ## [2026-10-29] — Batch generation is a credit-pack feature
 
 ### Changed

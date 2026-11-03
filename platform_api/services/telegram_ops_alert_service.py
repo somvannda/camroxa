@@ -513,6 +513,16 @@ async def _user_snapshot(user_id: Any) -> dict[str, Any]:
                      WHERE t.user_id = u.id
                        AND t.payment_status = 'completed'
                        AND COALESCE(t.completed_at, t.created_at) >= date_trunc('month', NOW())
+                   )
+                   OR EXISTS(
+                     -- Admin top-ups are comps: no purchase row, but paid-tier
+                     -- credit, so the spend report badges them PAID like a pack.
+                     SELECT 1 FROM credit_transactions ct
+                     WHERE ct.user_id = u.id
+                       AND ct.direction = 'credit'
+                       AND ct.amount > 0
+                       AND ct.reason LIKE 'admin_adjustment:%'
+                       AND ct.created_at >= date_trunc('month', NOW())
                    ) AS has_pack_this_month
             FROM users u
             WHERE u.id = $1
