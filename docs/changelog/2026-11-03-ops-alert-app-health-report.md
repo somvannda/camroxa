@@ -1,4 +1,4 @@
-# Ops Telegram: per-app downtime reporting, retired portal, backup restore
+# Ops Telegram: per-app downtime reporting, retired portal, backups
 
 **Branch:** `fix/ops-app-health-report`
 **Date:** 2026-11-03
@@ -12,29 +12,27 @@ false picture:
 
 - **The user portal is retired, not broken.** `camxora-portal` was stopped and
   disabled on 2026-10-30 10:56 and its `app.camxora.com` nginx server block was
-  removed, so the hostname falls to the default server and returns 404. The
-  server-only `ops-alert.sh` still watched `camxora-portal` and paged
-  "🔴 camxora-portal is inactive" **every 30 minutes** (state file rewritten at
-  05:09 on 2026-11-03).
+  removed, so the hostname fell through to the default server and returned 404.
+  The server-only `ops-alert.sh` still watched `camxora-portal` and paged
+  "🔴 camxora-portal is inactive" **every 30 minutes**.
 - **The nightly Music API backup had been failing since 2026-10-31.** The unit
   exited 127 because `/opt/camxora/repo/scripts/deploy/musicapi-backup.sh` was
   missing: it lives outside `DEPLOY_DIRS`, so the tarball deploy deleted it. The
   last good dump was 2026-11-01 08:23.
 - **The 502s were deploy windows and provider timeouts.** 32 of 34 came from two
   API restarts on 2026-11-02 at 06:45:22 and 06:52:20 (desktop polling through
-  nginx). The remaining ones were `POST /api/v3/web-music/generate` returning
-  502 after a 27 s upstream timeout — a provider failure mapped by the API, not
-  an outage.
+  nginx). The rest were `POST /api/v3/web-music/generate` returning 502 after a
+  27 s upstream timeout — a provider failure mapped by the API, not an outage.
 
 ## Changes
 
-### `feat(ops): version the Telegram ops monitor and report every app`
+### `feat(ops): report every app's downtime and issue to Telegram`
 - New `scripts/deploy/ops-alert.sh` (the old script existed only on the host at
   `/opt/camxora/bin/ops-alert.sh`).
 - Monitors every app with **unit + public endpoint**: Website, Music web, Admin
   console, Platform API, Music API, Music API playground, Music API admin, plus
-  PostgreSQL, Redis, Nginx and the nightly DB backup.
-- Per-app `down_since` marker, so every page states the concrete issue and the
+  PostgreSQL, Redis, Nginx and both nightly backups and the off-host copy.
+- Per-app `down_since` marker: every page states the concrete issue and the
   downtime, e.g. `Music web — down 1h 12m / issue: service inactive (failed);
   HTTP 502`.
 - One consolidated DOWN message instead of one per check; hourly re-alert with a
@@ -51,10 +49,10 @@ false picture:
   installs by rename, removes the legacy host-only script, drops the stale
   portal state file, restarts the timer, prints the status.
 
-### `fix(deploy): stop tarball deploys deleting timer scripts`
-- `DEPLOY_FILES` now includes `scripts/deploy/ops-alert.sh` and
-  `scripts/deploy/musicapi-backup.sh`, the two files systemd runs by absolute
-  path from outside `DEPLOY_DIRS`.
+### `fix(deploy): stop deploys deleting timer scripts`
+- `DEPLOY_FILES` now includes `ops-alert.sh`, `musicapi-backup.sh`,
+  `platform-db-backup.sh` and `backup-offhost.py` — the files systemd runs by
+  absolute path from outside `DEPLOY_DIRS`.
 - `scripts/deploy/install_musicapi_backup_production.py` restores the backup
   script and runs one dump.
 
@@ -71,13 +69,23 @@ false picture:
 - `camxora-platform-db-backup.service` + `.timer` (daily 04:00, persistent,
   randomized 5 min).
 - `scripts/deploy/install_platform_db_backup_production.py`.
-- `ops-alert.sh` now reports the platform backup alongside the musicapi one,
-  and both backup checks include **freshness**: the newest dump being older than
-  26h (or missing) is reported even when the unit is not marked failed, which
+- Both backup checks include **freshness**: the newest dump being older than 26h
+  (or missing) is reported even when the unit is not marked failed, which
   catches a disabled timer or a deploy that removed the script.
 - Restore-drill docs in both backup scripts now copy the archive to a
   postgres-readable path first (the platform backup dir is `0750
   camxora:camxora`, so `sudo -u postgres pg_restore` cannot traverse it).
+
+### `feat(backup): off-host copy in a private B2 bucket`
+- New `scripts/deploy/backup-offhost.py`: uploads the newest `sunoapi-*` and
+  `camxora_platform-*` dumps to the private `camxora-db-backup` bucket with
+  SSE-B2, skips objects already present with the same size, prunes remote
+  copies older than 14 days, and writes `/var/lib/camxora-ops-alert/offhost.last`.
+- Credential lives in `/opt/camxora/.backup-b2.env` (root 600) and is scoped to
+  that bucket only (`listFiles`, `readFiles`, `writeFiles`, `deleteFiles`).
+- `camxora-backup-offhost.service` + `.timer` (05:00, persistent).
+- `ops-alert.sh` reports `Off-host backup` when the unit fails or the marker is
+  older than 26h.
 
 ## Verification
 
@@ -85,9 +93,7 @@ false picture:
 - Against a throwaway state dir on production: first failure stays quiet
   (streak 1), second failure pages the failed backup with its issue, and the
   recovery after the fix reports `back up after 56s`, then the next run is quiet.
-- After the deploy, the monitor reports every app `🟢 up`.
-- Backup: `sunoapi-20261103T052649Z.dump`, 103 MB, `pg_restore --list` verified
-  by the script.
+- Live monitor status: all apps `🟢 up`.
 - `app.camxora.com` (HTTPS and HTTP, root and deep paths) returns 301 to
   `https://music.camxora.com/`; the other hosts still return 200.
 - **Restore drill passed** for both backups into scratch databases:
@@ -95,21 +101,16 @@ false picture:
     250 users, 25 `billing_payments`, `alembic_version` 178.
   - `sunoapi-20261103T052649Z.dump` (103 MB) → 28 public tables, 35 users.
   - Both scratch databases were dropped afterwards.
+- **Off-host upload verified**: both objects landed in `camxora-db-backup` with
+  SSE-B2, and their B2 `contentSha1` matches the local `sha1sum` exactly.
 
 ## Follow-ups
 
-- **Off-host copy is blocked on one credential.** Both backups currently sit on
-  the same VPS. The existing B2 key is restricted to the public media bucket
-  (`productions-camxora-song`), so it cannot create a private bucket, write to
-  one, or mint a key. To finish this in the B2 dashboard:
-  1. Create a **private** bucket, e.g. `camxora-db-backups`.
-  2. Create an application key scoped to it with `listFiles`, `writeFiles`,
-     `readFiles`, `deleteFiles`.
-  3. Put the values in `/opt/camxora/.backup-b2.env` (root 600) as
-     `B2_BACKUP_BUCKET`, `B2_BACKUP_BUCKET_ID`, `B2_BACKUP_KEY_ID`,
-     `B2_BACKUP_APP_KEY`.
-  Then a small uploader timer can push the nightly dumps and prune remote copies
-  older than the retention window. Keep a copy of the key outside the VPS too —
-  if the host dies, the on-host env file dies with it.
-- The old `repo-20260922-134107.tgz` (12.6 GB) in `/opt/camxora/backups` can be
-  pruned to recover disk once it is confirmed unnecessary.
+- Escrow the backup key outside the VPS; if the host dies, the on-host env file
+  dies with it. The key shared during setup should be rotated once the pipeline
+  is confirmed, then the new value written to `/opt/camxora/.backup-b2.env`.
+- The old `repo-20260922-134107.tgz` (12.6 GB) was deleted from
+  `/opt/camxora/backups`; disk went from 51% to 45% used.
+- Production code ships one commit of `origin/main` through
+  `build_source_bundle()`; the bootstrap installers in this branch are for
+  units/secrets only and must not be used to hotfix deployed scripts.

@@ -137,6 +137,7 @@ APPS=(
   "Nginx|nginx||"
   "Nightly DB backup|||backup"
   "Nightly platform backup|||backup-platform"
+  "Off-host backup|||offhost"
 )
 
 slugify() {
@@ -216,6 +217,17 @@ probe_app() {
       ;;
     backup-platform)
       issues="$(backup_issue camxora-platform-db-backup.service "$BACKUP_DIR_PLATFORM" 'camxora_platform-*.dump')"
+      ;;
+    offhost)
+      if systemctl is-failed --quiet camxora-backup-offhost.service 2>/dev/null; then
+        issues="last upload failed"
+      fi
+      if [ -f /var/lib/camxora-ops-alert/offhost.last ]; then
+        age=$(( ( $(date +%s) - $(cat /var/lib/camxora-ops-alert/offhost.last 2>/dev/null || echo 0) ) / 3600 ))
+        [ "$age" -gt "$BACKUP_MAX_AGE_H" ] && issues="${issues:+$issues; }last upload is ${age}h old"
+      else
+        issues="${issues:+$issues; }no successful upload recorded"
+      fi
       ;;
   esac
 
