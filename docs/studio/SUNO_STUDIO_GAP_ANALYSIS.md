@@ -38,7 +38,7 @@ Scoring for this document:
 | G7 | No snap guideline while dragging | Users cannot tell where a clip will land | W3 | **done** — clip renders at the snapped position with a guideline |
 | G8 | No drag threshold | 2 px pointer jitter repositions a clip | W3 | **done** — 3 px before a press becomes a drag |
 | G9 | No clip focus management on delete | Keyboard users lose their place | W3 | **done** — delete keeps focus on the nearest clip |
-| G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | open |
+| G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | open |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs + Projects tabs wired; workspaces/stems/uploads still missing |
 | G13 | No Studio test suite | Regressions found by hand | W5 | open |
