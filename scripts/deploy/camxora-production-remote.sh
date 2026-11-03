@@ -577,14 +577,25 @@ else
 fi
 # After adding music.camxora.com DNS A record, run:
 # certbot --nginx -d music.camxora.com --non-interactive --agree-tos -m "${CERTBOT_EMAIL}" --redirect
-if [[ -f /tmp/nginx-camxora-production.conf && -f /etc/letsencrypt/live/api.camxora.com/fullchain.pem ]]; then
-  log "Applying uploaded HTTPS nginx configuration..."
-  cp /tmp/nginx-camxora-production.conf /etc/nginx/sites-available/camxora-production
-  nginx -t
-  systemctl reload nginx
+if [[ ! -f /etc/letsencrypt/live/api.camxora.com/fullchain.pem ]]; then
+  log "FATAL: no TLS certificate for api.camxora.com — refusing to finish an HTTP-only deploy"
+  exit 1
+fi
+if [[ ! -f /tmp/nginx-camxora-production.conf ]]; then
+  log "FATAL: uploaded HTTPS nginx config missing from /tmp — refusing to finish an HTTP-only deploy"
+  exit 1
+fi
+log "Applying uploaded HTTPS nginx configuration..."
+cp /tmp/nginx-camxora-production.conf /etc/nginx/sites-available/camxora-production
+nginx -t
+systemctl reload nginx
+if ! grep -q 'ssl_certificate' /etc/nginx/sites-available/camxora-production; then
+  log "FATAL: nginx site has no ssl_certificate after apply — production would serve the wrong certificate"
+  exit 1
 fi
 log "Health checks..."
 sleep 3
+curl -sf "https://api.camxora.com/health" | head -c 200 || log "WARN: API health check failed (HTTPS)"
 curl -sf "http://127.0.0.1:${API_PORT}/health" | head -c 200 || log "WARN: API health check failed"
 systemctl is-active camxora-api camxora-website camxora-music nginx postgresql redis-server || true
 
