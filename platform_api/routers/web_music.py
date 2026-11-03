@@ -503,6 +503,7 @@ async def update_studio_project(
         pinned=body.pinned,
         archived=body.archived,
         tags=body.tags,
+        expected_updated_at=body.expected_updated_at,
     )
 
 

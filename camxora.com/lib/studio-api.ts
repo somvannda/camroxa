@@ -44,10 +44,21 @@ async function readError(response: Response, fallback: string): Promise<string> 
 async function studioJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await musicAuthFetch(path, init);
   if (!response.ok) {
-    throw new Error(await readError(response, `Studio request failed (${response.status})`));
+    const message = await readError(response, `Studio request failed (${response.status})`);
+    // Optimistic concurrency: the caller decides between reload and overwrite.
+    if (response.status === 409) throw new StudioConflictError(message);
+    throw new Error(message);
   }
   if (response.status === 204) return undefined as T;
   return (await response.json()) as T;
+}
+
+/** Raised when a write was based on a version the server has since moved on. */
+export class StudioConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "StudioConflictError";
+  }
 }
 
 export async function listStudioProjects(
@@ -92,12 +103,18 @@ export async function updateStudioProject(
     pinned?: boolean;
     archived?: boolean;
     tags?: string[];
+    /** Version this write is based on; a mismatch makes the server reject it (409). */
+    expectedUpdatedAt?: string | null;
   }
 ): Promise<StudioProject> {
+  const { expectedUpdatedAt, ...rest } = input;
   return studioJson(`/api/v3/web-music/studio/projects/${encodeURIComponent(id)}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      ...rest,
+      ...(expectedUpdatedAt ? { expected_updated_at: expectedUpdatedAt } : {}),
+    }),
   });
 }
 

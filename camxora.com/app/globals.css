@@ -4575,3 +4575,6 @@ html{color-scheme:dark}
 .se-snap-line{position:absolute;top:0;bottom:0;width:1px;background:hsl(var(--accent));opacity:.7;pointer-events:none;z-index:2}
 
 .se-marquee{position:absolute;border:1px solid hsl(var(--accent));background:hsl(var(--card));opacity:.55;pointer-events:none;z-index:4}
+
+.se-conflict{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;display:flex;flex-direction:column;gap:8px;padding:16px;border-radius:12px;background:hsl(var(--card));border:1px solid hsl(var(--accent));z-index:40;max-width:420px}
+.se-conflict-actions{display:flex;gap:8px;justify-content:flex-end}

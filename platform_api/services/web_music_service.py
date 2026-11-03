@@ -1821,7 +1821,23 @@ class WebMusicService:
         pinned: bool | None = None,
         archived: bool | None = None,
         tags: list[str] | None = None,
+        expected_updated_at: datetime | None = None,
     ) -> dict[str, Any]:
+        # Optimistic concurrency: a write carrying the version it was based on must
+        # fail if another writer (a second tab, a fork, a version restore) moved it.
+        if expected_updated_at is not None:
+            current = await self._pool.fetchrow(
+                "SELECT updated_at FROM studio_projects WHERE id = $1 AND user_id = $2",
+                project_id,
+                user_id,
+            )
+            if current is not None and current["updated_at"] is not None:
+                if abs((current["updated_at"] - expected_updated_at).total_seconds()) > 0.001:
+                    raise ConflictError(
+                        "This project changed since you loaded it. Reload before saving.",
+                        details={"project_id": str(project_id)},
+                    )
+
         safe_tags = None
         if tags is not None:
             safe_tags = sorted(

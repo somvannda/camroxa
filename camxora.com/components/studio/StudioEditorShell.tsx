@@ -5,7 +5,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
-import { getStudioProject, updateStudioProject, type StudioProject } from "@/lib/studio-api";
+import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
@@ -57,6 +57,9 @@ export function StudioEditorShell() {
   const [error, setError] = useState("");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const retryRef = useRef<(() => void) | null>(null);
+  /** Retry that ignores the version check — used by "overwrite" (W2.2). */
+  const forceRetryRef = useRef<(() => void) | null>(null);
+  const [conflict, setConflict] = useState<string | null>(null);
   /** Active clip drag: every selected clip's origin plus the latest pointer delta. */
   const [drag, setDrag] = useState<{
     ids: string[];
@@ -164,24 +167,60 @@ export function StudioEditorShell() {
 
   /**
    * Every write goes through here so the header can tell the truth about saving
-   * (roadmap W2.1). Keeps the last attempt so the error state can offer a retry.
+   * (roadmap W2.1) and so a version mismatch can be resolved (W2.2).
    */
-  function persist(run: () => Promise<unknown>, failure: string) {
+  function persist(
+    run: (expectedUpdatedAt: string | null) => Promise<StudioProject>,
+    failure: string
+  ) {
+    const expected = project?.updated_at ?? null;
     retryRef.current = () => persist(run, failure);
+    forceRetryRef.current = () => persist(() => run(null), failure);
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setSaveStatus("offline");
       return;
     }
     setSaveStatus("saving");
-    void run()
-      .then(() => {
+    void run(expected)
+      .then((saved) => {
+        // The response carries the new version; adopt it so the next write is based
+        // on what the server actually stored.
+        setProject((current) =>
+          current ? { ...current, updated_at: saved.updated_at ?? current.updated_at } : current
+        );
         setSaveStatus("saved");
         setError("");
       })
-      .catch(() => {
+      .catch((cause: unknown) => {
+        if (cause instanceof StudioConflictError) {
+          setConflict(cause.message);
+          setSaveStatus("error");
+          return;
+        }
         setSaveStatus("error");
         setError(failure);
       });
+  }
+
+  /** Reload the server's version, discarding the local one (W2.2). */
+  async function resolveConflictByReload() {
+    if (!projectId) return;
+    try {
+      const fresh = await getStudioProject(projectId);
+      setProject(fresh);
+      setLocalTracks(null);
+      setConflict(null);
+      setSaveStatus("saved");
+      setError("");
+    } catch {
+      setError("Could not reload the project.");
+    }
+  }
+
+  /** Keep the local edits and write them over the newer version (W2.2). */
+  function resolveConflictByOverwrite() {
+    setConflict(null);
+    forceRetryRef.current?.();
   }
 
   useEffect(() => {
@@ -219,7 +258,8 @@ export function StudioEditorShell() {
     if (!projectId) return;
     const base = (project?.data || {}) as Record<string, unknown>;
     persist(
-      () => updateStudioProject(projectId, { data: { ...base, tracks: next } }),
+      (expected) =>
+        updateStudioProject(projectId, { data: { ...base, tracks: next }, expectedUpdatedAt: expected }),
       "Could not save the track list."
     );
   }
@@ -262,7 +302,8 @@ export function StudioEditorShell() {
     if (!projectId) return;
     const base = (project?.data || {}) as Record<string, unknown>;
     persist(
-      () => updateStudioProject(projectId, { data: { ...base, chains: merged } }),
+      (expected) =>
+        updateStudioProject(projectId, { data: { ...base, chains: merged }, expectedUpdatedAt: expected }),
       "Could not save the plugin chain."
     );
   }
@@ -281,7 +322,8 @@ export function StudioEditorShell() {
       current ? { ...current, data: { ...(current.data || {}), lanes: updated } } : current
     );
     persist(
-      () => updateStudioProject(projectId, { data: { ...data, lanes: updated } }),
+      (expected) =>
+        updateStudioProject(projectId, { data: { ...data, lanes: updated }, expectedUpdatedAt: expected }),
       "Could not move the clip."
     );
   }
@@ -317,7 +359,11 @@ export function StudioEditorShell() {
     setLocalTracks(nextTracks);
     setSelectedIds(entries.map((entry) => entry.clip.id));
     persist(
-      () => updateStudioProject(projectId, { data: { ...data, lanes, tracks: nextTracks } }),
+      (expected) =>
+        updateStudioProject(projectId, {
+          data: { ...data, lanes, tracks: nextTracks },
+          expectedUpdatedAt: expected,
+        }),
       "Could not add the clips."
     );
   }
@@ -418,7 +464,11 @@ export function StudioEditorShell() {
 
     const data = (project?.data || {}) as Record<string, unknown>;
     persist(
-      () => updateStudioProject(projectId, { data: { ...data, lanes: remaining, tracks: nextTracks } }),
+      (expected) =>
+        updateStudioProject(projectId, {
+          data: { ...data, lanes: remaining, tracks: nextTracks },
+          expectedUpdatedAt: expected,
+        }),
       "Could not delete the clips."
     );
   }
@@ -737,7 +787,7 @@ export function StudioEditorShell() {
             onBlur={() => {
               if (!projectId) return;
               persist(
-                () => updateStudioProject(projectId, { bpm }),
+                (expected) => updateStudioProject(projectId, { bpm, expectedUpdatedAt: expected }),
                 "Could not save the tempo."
               );
             }}
@@ -1003,6 +1053,21 @@ export function StudioEditorShell() {
       </footer>
 
       {error ? <div className="se-error" role="alert">{error}</div> : null}
+
+      {conflict ? (
+        <div className="se-conflict" role="alertdialog" aria-label="Project changed elsewhere">
+          <strong>This project changed in another tab.</strong>
+          <span>{conflict}</span>
+          <div className="se-conflict-actions">
+            <button type="button" className="se-pill" onClick={() => void resolveConflictByReload()}>
+              Reload theirs
+            </button>
+            <button type="button" className="se-pill on" onClick={resolveConflictByOverwrite}>
+              Keep mine
+            </button>
+          </div>
+        </div>
+      ) : null}
       {loading ? <div className="se-loading" aria-live="polite">Loading project…</div> : null}
     </div>
   );
