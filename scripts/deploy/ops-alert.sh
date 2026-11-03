@@ -131,6 +131,7 @@ APPS=(
   "Redis|redis-server||redis"
   "Nginx|nginx||"
   "Nightly DB backup|||backup"
+  "Nightly platform backup|||backup-platform"
 )
 
 slugify() {
@@ -182,6 +183,13 @@ probe_app() {
       if systemctl is-failed --quiet camxora-musicapi-backup.service 2>/dev/null; then
         local when
         when="$(systemctl show camxora-musicapi-backup.service -p ExecMainExitTimestamp --value 2>/dev/null)"
+        issues="last backup failed${when:+ at $when}"
+      fi
+      ;;
+    backup-platform)
+      if systemctl is-failed --quiet camxora-platform-db-backup.service 2>/dev/null; then
+        local when
+        when="$(systemctl show camxora-platform-db-backup.service -p ExecMainExitTimestamp --value 2>/dev/null)"
         issues="last backup failed${when:+ at $when}"
       fi
       ;;

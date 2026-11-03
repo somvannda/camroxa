@@ -68,6 +68,7 @@ DEPLOY_FILES = (
     "scripts/deploy/musicapi-healthcheck.sh",
     "scripts/deploy/ops-alert.sh",
     "scripts/deploy/musicapi-backup.sh",
+    "scripts/deploy/platform-db-backup.sh",
 )
 # Kept for callers that imported these names from deploy.py.
 __all__ = [

@@ -64,6 +64,15 @@ false picture:
   the port-80 redirect list. The existing `api.camxora.com` certificate already
   covers the hostname.
 
+### `feat(backup): nightly platform database backup`
+- New `scripts/deploy/platform-db-backup.sh`: `pg_dump` of `camxora_platform`
+  (2.1 GB) in custom format, archive verified with `pg_restore --list`, 14-day
+  retention under `/opt/camxora/backups/platform`.
+- `camxora-platform-db-backup.service` + `.timer` (daily 04:00, persistent,
+  randomized 5 min).
+- `scripts/deploy/install_platform_db_backup_production.py`.
+- `ops-alert.sh` now reports the platform backup alongside the musicapi one.
+
 ## Verification
 
 - `bash -n scripts/deploy/ops-alert.sh` passes.
@@ -78,7 +87,8 @@ false picture:
 
 ## Follow-ups
 
-- **`camxora_platform` (2.1 GB) has no scheduled backup** — only one-off manual
-  dumps from Sep 22, Oct 4 and Oct 30. Needs its own timer.
 - Backups are on the same VPS and unencrypted. Add an off-host copy to a private
-  Backblaze B2 bucket/prefix and encrypt at rest.
+  Backblaze B2 bucket/prefix and encrypt at rest. This needs a bucket-scoped key;
+  the existing B2 key only has access to the public media bucket.
+- The old `repo-20260922-134107.tgz` (12.6 GB) in `/opt/camxora/backups` can be
+  pruned to recover disk once it is confirmed unnecessary.
