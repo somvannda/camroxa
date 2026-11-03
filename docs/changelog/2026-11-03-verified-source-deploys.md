@@ -58,6 +58,25 @@ the archive follows the commit (not the worktree), LF normalization, drift
 detection, stale-file pruning that leaves runtime files alone, and the
 production rule that a tag no longer excuses an unmerged branch.
 
+`platform_api/tests/test_deploy_hygiene.py` covers the CI gate: tarball
+extraction / `sftp.put` / `cp` / pathlib edits into `/opt/camxora/repo` are
+rejected unless the script uses the verified-source pipeline, while read-only
+checks and runtime paths (`.env`, `uploads/`, `.next/`, `.deployed.json`) are
+not flagged.
+
+## Closing the other hole
+
+Deploy scripts are not the only way old code can reach production: ~99 legacy
+`*production*.py` one-shot scripts still patch `/opt/camxora/repo` directly.
+
+- `scripts/deploy/check_deploy_hygiene.py` scans them. CI fails any PR that adds
+  or edits one without the verified pipeline; pre-existing one-shot scripts are
+  reported and allowlisted in `--strict` so the check stays actionable.
+- `python scripts/deploy/check_deploy_guards.py production --verify-live` now
+  re-hashes the live checkout against the deployed manifest, so any in-place
+  server edit (or a legacy script that ran) shows up as drift instead of
+  silently surviving until it is blamed on a later deploy.
+
 ## Not changed
 
 Production still runs `2fca5548` (`feat/postforme-publishing`, 2026-11-02) until

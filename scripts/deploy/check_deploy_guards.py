@@ -40,6 +40,11 @@ def main() -> int:
     parser.add_argument("--allow-unmerged", action="store_true")
     parser.add_argument("--base-ref", default=None)
     parser.add_argument("--remote-repo", default=DEFAULT_REMOTE_REPO)
+    parser.add_argument(
+        "--verify-live",
+        action="store_true",
+        help="also re-hash the live checkout against its .deploy-manifest.json",
+    )
     args = parser.parse_args()
 
     target = args.target.strip().lower()
@@ -66,10 +71,50 @@ def main() -> int:
     client = ssh_connect(host, user, ensure_deploy_key(), password)
     try:
         enforce_invariants(client, args.remote_repo)
+        if args.verify_live:
+            verify_live_source(client, args.remote_repo)
     finally:
         client.close()
     print("[deploy-guard] OK — worktree deployable and server invariants present.")
     return 0
+
+
+def verify_live_source(client, remote_repo: str) -> None:
+    """Re-hash the live checkout against the deployed manifest.
+
+    Detects a server-side hotfix, a partial write, or a deploy that skipped the
+    manifest step — the drift that used to go unnoticed until a later deploy
+    "reverted" the change.
+    """
+    from deploy import upload_verifier
+
+    sftp = client.open_sftp()
+    try:
+        with sftp.file(f"{remote_repo}/.deployed.json", "r") as handle:
+            marker = handle.read().decode("utf-8", "replace")
+    except OSError:
+        raise SystemExit(
+            f"Refusing: {remote_repo}/.deployed.json is missing — the live source "
+            "was not deployed through the verified pipeline."
+        )
+    finally:
+        sftp.close()
+    print("[deploy-guard] live marker:")
+    print(marker.strip())
+
+    upload_verifier(client)
+    _, stdout, _stderr = client.exec_command(
+        "python3 /tmp/camxora-verify-manifest.py "
+        f"--repo {remote_repo} --manifest {remote_repo}/.deploy-manifest.json"
+    )
+    output = stdout.read().decode("utf-8", "replace")
+    code = stdout.channel.recv_exit_status()
+    print(output.strip())
+    if code != 0:
+        raise SystemExit(
+            "Refusing: the live checkout does not match the deployed manifest — "
+            "someone edited production in place. Deploy merged main to restore it."
+        )
 
 
 if __name__ == "__main__":

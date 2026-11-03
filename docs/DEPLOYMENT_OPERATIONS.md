@@ -195,7 +195,8 @@ Nginx timed out before the API response reached the browser. The API may still h
 | `scripts/deploy/sync_music_web_production.py` | music_web-only production sync from `origin/main` |
 | `scripts/deploy/release_source.py` | Package one commit + `.deploy-manifest.json` (no working-tree deploys) |
 | `scripts/deploy/verify_release_manifest.py` | Verify deployed bytes on the server; prune stale files |
-| `scripts/deploy/check_deploy_guards.py` | Preflight: worktree/server invariants, no deploy |
+| `scripts/deploy/check_deploy_guards.py` | Preflight: worktree/server invariants, no deploy (`--verify-live` re-hashes the live tree) |
+| `scripts/deploy/check_deploy_hygiene.py` | CI gate: no deploy script may write source into the checkout unverified |
 | `scripts/deploy/deploy.py` | Full sandbox deploy (source tarball + remote setup) |
 | `scripts/deploy/apply_nginx.py` | Push nginx config from repo → VPS |
 | `scripts/deploy/verify_nginx_api_timeouts.py` | Confirm 300s timeouts on live nginx |
@@ -264,6 +265,42 @@ ssh root@<prod-host> cat /opt/camxora/repo/.deployed.json  # what is live
 
 **Never** edit files on the VPS to "fix" an incident: the next deploy removes
 them. Commit, merge, deploy.
+
+### Drift detection (is production still the commit we shipped?)
+
+```bash
+# worktree gate + server invariants + live tree re-hash against the manifest
+python scripts/deploy/check_deploy_guards.py production --verify-live
+
+# CI/report: which deploy scripts bypass the verified-source pipeline?
+python scripts/deploy/check_deploy_hygiene.py            # report
+python scripts/deploy/check_deploy_hygiene.py --strict   # fail (legacy allowlist exempt)
+```
+
+`--verify-live` prints `.deployed.json` and re-hashes every manifest entry on the
+VPS. A non-zero exit means someone edited production in place (a server-side
+hotfix, a partial write, or a deploy that skipped the manifest) — deploy merged
+`main` to restore it. CI fails any PR that adds or edits a deploy script which
+writes source without `build_source_bundle()`/`enforce_deploy_gate()`, so the
+hole cannot be reopened.
+
+### Adding a new deploy script
+
+It must package a commit and enforce the gate:
+
+```python
+from deploy import build_source_bundle, upload_verifier
+from deploy_guards import enforce_deploy_gate
+from release_source import DEFAULT_SOURCE_REF
+
+bundle = build_source_bundle(DEFAULT_SOURCE_REF)   # origin/main
+enforce_deploy_gate(commit=bundle.commit, require_merged=True,
+                    require_clean=False)           # exact commit, not HEAD
+```
+
+Then extract with `--scope <dir>` verification and reuse
+`verify_release_manifest.py`. A script that patches files in place will be
+flagged by `check_deploy_hygiene.py`.
 
 ---
 
