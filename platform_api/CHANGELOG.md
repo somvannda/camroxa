@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-11-03] — v3 image charges follow AI Routing again
+
+### Fixed
+
+- `image` still priced from a provider-blind chain (`fal` then `openai`), unlike `music` since 2026-10-05. Production routes background/thumbnail images to `slai / cx/gpt-image-2.5`, so neither named row matched and `_scan_pricing_units()` charged the first `background_image` row in `get_all()` order — a stale FAL row — producing a **60-credit** debit against the routed **6-credit** SLAI row. The routed provider/model is now tried first, the scan is provider-aware and logs when it takes a foreign row, and `background_image` / `thumbnail_image` bill their own assignment via an optional `operation` on quote/charge/refund. See `docs/changelog/2026-11-03-v3-image-routed-price.md`.
+
 ## [2026-11-03] — Admin adjust reasons no longer overflow the ledger column
 
 ### Fixed

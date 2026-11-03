@@ -362,7 +362,9 @@ class UsageEnforcementService:
                 f"Operation '{operation_type}' is not mapped to credits-only billing.",
                 details={"operation_type": operation_type},
             )
-        return await self._v3_billing_service().quote(op=op, user_id=user_id)
+        return await self._v3_billing_service().quote(
+            op=op, user_id=user_id, operation=operation_type
+        )
 
     async def _charge_via_v3(
         self,
@@ -394,6 +396,7 @@ class UsageEnforcementService:
             ref_id=ref_id,
             product=product,
             model=model,
+            operation=operation_type,
         )
         return int(result.get("amount_units") or 0)
 
