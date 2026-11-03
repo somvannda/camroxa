@@ -12,49 +12,30 @@ Resume here. **Execution order only** — the authoritative plans live elsewhere
 
 ## Phase 0 — Capture: **complete**
 
-65 screens: **60 DONE, 3 PART, 2 OPEN-by-design**, 69 images, spec through §96.
+65 screens: **60 DONE, 3 PART, 2 OPEN-by-design**, 78 images, spec through §96.
 
 The three `PART` (S30 warp markers, S32 CC lane, S44 convolution IR) and the two
 `OPEN` (S60 moderation, S61 credits) are parked in `reference/CAPTURE_GAPS.md`. They
 are **opportunistic**, not blocking: fill them when the trigger happens naturally.
 Do not spend another session on interactive archaeology for them.
 
-## Phase 1 — W1 Studio entry (start here)
+## Phase 1 — W1 Studio entry: **DONE**
 
-The single largest structural gap: `/studio` is marketing, the chooser is an in-editor
-dialog, and there is no `?project=` deep link.
+`/studio` is routed (`app/studio/page.tsx`), the home lists/resumes/creates projects,
+card actions work, the auth gate falls back to marketing, and "Start from a song"
+seeds a project from a library generation.
 
-| Order | Task | Exit test |
-|---|---|---|
-| **1** | **W1.1** `StudioHome` at `/studio` (authenticated): recent projects, resume card, new project, search/sort, archived toggle | renders with 0, 1 and 20 projects; empty state has a real CTA |
-| 2 | W1.5 signed-out `/studio` keeps the marketing page with a sign-in CTA | signed-out render shows no broken controls |
-| 3 | W1.2 create project → editor route with the id, autosaving | new project opens and persists |
-| 4 | W1.3 card actions: open, rename, fork, archive, delete (confirm) | each action survives reload |
-| 5 | W1.4 "Start from a song" seeds a project with that clip | clip appears on a track |
+## Phase 2 — W2 trustworthy persistence: **DONE**
 
-**Reference contract for phase 1:** §56 (My Projects chooser), §62 (signed-in entry
-reopens the last project), §19.1 (library workspaces + project cards with ages),
-§57 (loading), §58 (auth gate). This is the best-evidenced area we have — build it
-without re-opening the reference.
+W2.1 save status · W2.2 409 conflict detection + reload/overwrite · W2.3 offline draft
+recovery · W2.4 unsaved-changes guard. All four are deliberate divergences from the
+reference, which has none of them.
 
-## Phase 2 — W2 trustworthy persistence
+## Phase 3 — W3 editor completeness: mostly done
 
-Deliberate divergence, and say so in the code: the reference has **no** conflict UI
-(§93) and **no** offline state (§96). We are adding both.
-
-| Order | Task | Exit test |
-|---|---|---|
-| 6 | W2.1 autosave status (saved / saving / error / offline) + retry | kill the API mid-edit → status shows error, retry recovers |
-| 7 | W2.4 unsaved-changes guard on navigation | leaving with pending writes prompts |
-| 8 | W2.2 conflict handling on 409 (reload vs overwrite) | simulated 409 shows a resolution dialog |
-| 9 | W2.3 local draft recovery offline | reload offline restores the draft with a banner |
-
-## Phase 3 — W3 editor completeness
-
-Work the `GAP` column of `SUNO_STUDIO_FEATURE_MATRIX.md` top-down. Highest-value
-first, all evidenced: multi-select and marquee (G6), drag threshold (G8), snap
-guideline (G7), clip focus on delete (G9), library stems/projects tabs (G12),
-generation history (G16), first-run onboarding (G18).
+| Done | Remaining |
+|---|---|
+| G6 marquee + multi-drag + C/V/D · G7 snap · G8 drag threshold · G9 delete + focus · G16 clip provenance · G17 audition speed · G18 first-run onboarding · G19 visible-window culling · G20 touch targets | **G12** workspaces/stems/uploads tabs (needs a stems-listing API) · **G13** test runner · **G14** axe pass · **G15** split the 6.9k-line shell |
 
 ## Phase 4 — W4 advanced audio, then W5 tests, then W6 verification
 
