@@ -97,6 +97,10 @@ The first real deploy exposed two gaps, fixed here:
   duration of the run, and `--verify-live` reported `no-manifest` mid-deploy.
   Both now live beside the checkout (`/opt/camxora/.deploy.lock`,
   `/opt/camxora/.deployed.json`).
+- **The post-deploy health probe was too eager.** A single `curl` after
+  `sleep 3` logged `WARN: API health check failed` while the 4 uvicorn workers
+  were still booting, even though the API answered 200 seconds later. It now
+  polls for up to 60 s and only warns if the API is genuinely down.
 
 ## Not changed
 
