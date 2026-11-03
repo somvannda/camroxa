@@ -123,6 +123,10 @@ async def main() -> None:
         help="only debits on/after this date (YYYY-MM-DD)",
     )
     args = parser.parse_args()
+    try:
+        since = date.fromisoformat(args.since)
+    except ValueError as exc:
+        parser.error(f"--since must be YYYY-MM-DD: {exc}")
 
     settings = get_settings()
     dsn = settings.database_url.replace("postgresql+asyncpg://", "postgresql://", 1)
@@ -149,7 +153,7 @@ async def main() -> None:
           AND amount > $1
           AND created_at >= $2::timestamptz
         """
-        params: list = [reference, args.since]
+        params: list = [reference, since]
         if args.user_id:
             sql += " AND user_id = $3::uuid"
             params.append(args.user_id)
