@@ -37,7 +37,7 @@ Scoring for this document:
 | G6 | No marquee multi-select / multi-drag / copy-paste | Slower bulk arrangement work | W3 | **done** — marquee, multi-drag and C/V/D |
 | G7 | No snap guideline while dragging | Users cannot tell where a clip will land | W3 | **done** — clip renders at the snapped position with a guideline |
 | G8 | No drag threshold | 2 px pointer jitter repositions a clip | W3 | **done** — 3 px before a press becomes a drag |
-| G9 | No clip focus management on delete | Keyboard users lose their place | W3 | open |
+| G9 | No clip focus management on delete | Keyboard users lose their place | W3 | **done** — delete keeps focus on the nearest clip |
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | open |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | open |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | open (needs API for stems listing) |
