@@ -164,6 +164,7 @@ const creditAdjustSchema = z.object({
   reason: z
     .string()
     .min(1, 'Reason is required')
+    .max(255, 'Reason must be 255 characters or fewer')
     .transform((v) => v.trim()),
 });
 

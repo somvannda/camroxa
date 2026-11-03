@@ -7,6 +7,12 @@ Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [2026-11-03] — Admin adjust reasons no longer overflow the ledger column
+
+### Fixed
+
+- `credit_transactions.reason` was `VARCHAR(100)` from the initial schema, but `POST /credits/adjust` accepts 255 characters and stores them prefixed with `admin_adjustment: `. A reason longer than ~81 characters failed inside `add_credits` *after* the balance check, so the operator got a 500 and the adjustment silently did not apply. Migration `178_credit_txn_reason_text` widens the column to `TEXT` (binary-compatible in PostgreSQL, no rewrite), matching `credit_grant_claims` and `admin_pending_ops`. See `docs/changelog/2026-11-03-credit-txn-reason-width.md`.
+
 ## [2026-10-29] — Batch generation is a credit-pack feature
 
 ### Changed
