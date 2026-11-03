@@ -58,6 +58,8 @@ install -m 755 -o camxora -g camxora /tmp/camxora-platform-db-backup.sh {SCRIPT_
 mv -f {SCRIPT_REMOTE}.new {SCRIPT_REMOTE}
 install -m 644 /tmp/camxora-platform-db-backup.service /etc/systemd/system/
 install -m 644 /tmp/camxora-platform-db-backup.timer /etc/systemd/system/
+# /opt/camxora/backups is root-owned; the unit runs as camxora.
+install -d -m 750 -o camxora -g camxora /opt/camxora/backups/platform
 systemctl daemon-reload
 systemctl enable --now camxora-platform-db-backup.timer
 systemctl start camxora-platform-db-backup.service
