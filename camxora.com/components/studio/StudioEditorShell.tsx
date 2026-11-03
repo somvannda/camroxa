@@ -817,6 +817,18 @@ export function StudioEditorShell() {
   }, [drag, secondsPerBar]);
 
 
+  /** Coarse pointers get 44px hit areas without changing desktop density (G20). */
+  const [touchMode, setTouchMode] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const query = window.matchMedia("(pointer: coarse)");
+    setTouchMode(query.matches);
+    const onChange = () => setTouchMode(query.matches);
+    query.addEventListener("change", onChange);
+    return () => query.removeEventListener("change", onChange);
+  }, []);
+
   if (authLoading) return <div className="se-shell is-loading" aria-busy="true" />;
 
   if (!user) {
@@ -840,7 +852,7 @@ export function StudioEditorShell() {
   }
 
   return (
-    <div className="se-shell">
+    <div className={`se-shell${touchMode ? " is-touch" : ""}`}>
       <header className="se-head">
         <div className="se-head-left">
           <span className="se-logo">CAMXORA</span>

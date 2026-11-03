@@ -1,0 +1,6 @@
+.se-shell.is-touch button,
+.se-shell.is-touch a[href]{position:relative}
+.se-shell.is-touch button::after,
+.se-shell.is-touch a[href]::after{content:'';position:absolute;left:50%;top:50%;width:44px;height:44px;transform:translate(-50%,-50%)}
+/* Clips are large targets already; a centred 44px plate would sit in the middle. */
+.se-shell.is-touch .se-clip::after{content:none}

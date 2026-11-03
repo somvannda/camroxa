@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./touch-targets.css";
 
 import { AuthProvider } from "@/components/AuthProvider";
 
