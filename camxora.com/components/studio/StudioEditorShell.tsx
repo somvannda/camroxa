@@ -8,6 +8,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
+import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
@@ -60,6 +61,9 @@ export function StudioEditorShell() {
   /** Retry that ignores the version check — used by "overwrite" (W2.2). */
   const forceRetryRef = useRef<(() => void) | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
+  /** A draft recovered from storage after a failed or offline write (W2.3). */
+  const [draft, setDraft] = useState<StudioDraft | null>(null);
+  const projectRef = useRef<StudioProject | null>(null);
   /** Active clip drag: every selected clip's origin plus the latest pointer delta. */
   const [drag, setDrag] = useState<{
     ids: string[];
@@ -115,6 +119,11 @@ export function StudioEditorShell() {
         setProject(next);
         setBpm(next.bpm || 120);
         setError("");
+        // A draft only surfaces when it is newer than what the server has (W2.3).
+        const stored = loadDraft(projectId);
+        const serverAt = next.updated_at ? new Date(next.updated_at).getTime() : 0;
+        const draftAt = stored ? new Date(stored.savedAt).getTime() : 0;
+        setDraft(stored && draftAt > serverAt ? stored : null);
       })
       .catch((cause) => {
         if (!active) return;
@@ -165,6 +174,27 @@ export function StudioEditorShell() {
     setLocalTracks(null);
   }, [projectId]);
 
+  /** Keep the freshest project for draft writes made from event handlers. */
+  projectRef.current = project;
+
+  /** Apply a recovered draft locally and try to write it (W2.3). */
+  function restoreDraft() {
+    if (!projectId || !draft) return;
+    const data = (draft.data || {}) as StudioProject["data"];
+    setProject((current) => (current ? { ...current, data } : current));
+    setLocalTracks(null);
+    setDraft(null);
+    persist(
+      (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
+      "Could not restore the draft."
+    );
+  }
+
+  function discardDraft() {
+    if (projectId) clearDraft(projectId);
+    setDraft(null);
+  }
+
   /**
    * Every write goes through here so the header can tell the truth about saving
    * (roadmap W2.1) and so a version mismatch can be resolved (W2.2).
@@ -178,6 +208,7 @@ export function StudioEditorShell() {
     forceRetryRef.current = () => persist(() => run(null), failure);
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setSaveStatus("offline");
+      if (projectId) saveDraft(projectId, projectRef.current?.data ?? null);
       return;
     }
     setSaveStatus("saving");
@@ -190,6 +221,7 @@ export function StudioEditorShell() {
         );
         setSaveStatus("saved");
         setError("");
+        if (projectId) clearDraft(projectId);
       })
       .catch((cause: unknown) => {
         if (cause instanceof StudioConflictError) {
@@ -197,6 +229,8 @@ export function StudioEditorShell() {
           setSaveStatus("error");
           return;
         }
+        // Keep the edit burst so a reload does not lose it (W2.3).
+        if (projectId) saveDraft(projectId, projectRef.current?.data ?? null);
         setSaveStatus("error");
         setError(failure);
       });
@@ -1064,6 +1098,21 @@ export function StudioEditorShell() {
             </button>
             <button type="button" className="se-pill on" onClick={resolveConflictByOverwrite}>
               Keep mine
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {draft ? (
+        <div className="se-conflict" role="alert" aria-label="Recovered draft">
+          <strong>We found {describeDraft(draft)}.</strong>
+          <span>The last change did not reach the server.</span>
+          <div className="se-conflict-actions">
+            <button type="button" className="se-pill" onClick={discardDraft}>
+              Discard
+            </button>
+            <button type="button" className="se-pill on" onClick={restoreDraft}>
+              Restore draft
             </button>
           </div>
         </div>
