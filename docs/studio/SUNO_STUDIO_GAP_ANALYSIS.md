@@ -32,7 +32,7 @@ Scoring for this document:
 | G1 | No Studio home; `/studio` is marketing | Users cannot discover, resume, or manage projects without entering the DAW | W1.1-W1.3 | **done** — route added 2026-11-01; the home component already had the rest |
 | G2 | No deep link `?project=` in the editor | Home cannot open a specific project; refreshes fall back to "most recent" | W1.2 | **done** — home navigates with `?project=`; editor-side read to be verified signed-in |
 | G3 | No conflict resolution UI on save | Concurrent edits can overwrite | W2.2 | **done** — version check + reload/overwrite panel |
-| G4 | No offline draft | A network blip loses the last edit burst | W2.3 | open |
+| G4 | No offline draft | A network blip loses the last edit burst | W2.3 | **done** — draft stored on failure, offered on reopen |
 | G5 | No unsaved-changes guard | Navigation can drop a pending write | W2.4 | open |
 | G6 | No marquee multi-select / multi-drag / copy-paste | Slower bulk arrangement work | W3 | **done** — marquee, multi-drag and C/V/D |
 | G7 | No snap guideline while dragging | Users cannot tell where a clip will land | W3 | **done** — clip renders at the snapped position with a guideline |

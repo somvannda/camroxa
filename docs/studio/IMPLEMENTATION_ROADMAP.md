@@ -54,7 +54,7 @@ been built; `createStudioProject` accepts a `data` payload, so seeding is possib
 |---|---|---|---|
 | W2.1 | ✅ Autosave status surface (saved / saving / error / offline) with retry — `StudioSaveStatus` + a single `persist()` path in the shell | — | header shows the four states; error chip is the retry button |
 | W2.2 | ✅ Conflict handling on 409 — backend compares `expected_updated_at`, editor offers `Reload theirs` / `Keep mine` | W2.1 | stale write → 409 → resolution panel, not a silent overwrite |
-| W2.3 | Local draft recovery when the network is down | W2.1 | reload offline restores the last local draft with a banner |
+| W2.3 | ✅ Local draft recovery — failed/offline writes persist to localStorage and are offered back on open | W2.1 | draft stored on failure, banner on reopen, restore writes through |
 | W2.4 | ✅ Unsaved-changes guard on navigation — `beforeunload` while status ≠ saved | W2.1 | leaving with pending writes prompts |
 
 ### W3 — Editor completeness against the inventory
