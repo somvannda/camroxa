@@ -68,7 +68,7 @@ needs an interaction spec row before code.
 |---|---|---|
 | W4.1 | ✅ Mixdown/mastering chain audible — lib/studio-master-bus.ts builds real EQ/comp/limiter/drive nodes on the master | A/B render differs measurably from dry (measured) |
 | W4.2 | Stem separation surfaced with credit cost from `pricing` | job starts, cost matches pricing table, result lands on new tracks |
-| W4.3 | Export: full mix, selected range, stems, per-track WAV, project JSON | each produces a valid file; range export length matches selection |
+| W4.3 | ✅ Export: full mix WAV, one file per track, project JSON (range + stems still open) | valid RIFF files, exact byte length, per-track and JSON verified live |
 | W4.4 | Loudness/true-peak readout on the master | readout matches an external analyser within tolerance |
 
 ### W5 — Test suite (M11)
