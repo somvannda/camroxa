@@ -594,9 +594,26 @@ if ! grep -q 'ssl_certificate' /etc/nginx/sites-available/camxora-production; th
   exit 1
 fi
 log "Health checks..."
-sleep 3
+# The API restarts with 4 uvicorn workers; on a loaded box it can take tens of
+# seconds before /health answers. A single curl after `sleep 3` used to log
+# "WARN: API health check failed" on deploys that were actually fine, which
+# trains everyone to ignore the one warning that matters.
+api_health_ok=0
+for _ in $(seq 1 30); do
+  if curl -sf -o /dev/null "http://127.0.0.1:${API_PORT}/health"; then
+    api_health_ok=1
+    break
+  fi
+  sleep 2
+done
+if [[ "${api_health_ok}" == "1" ]]; then
+  log "API health OK (http://127.0.0.1:${API_PORT}/health)"
+  curl -sf "http://127.0.0.1:${API_PORT}/health" | head -c 200 || true
+  echo
+else
+  log "WARN: API health check failed after 60s (http://127.0.0.1:${API_PORT}/health)"
+fi
 curl -sf "https://api.camxora.com/health" | head -c 200 || log "WARN: API health check failed (HTTPS)"
-curl -sf "http://127.0.0.1:${API_PORT}/health" | head -c 200 || log "WARN: API health check failed"
 systemctl is-active camxora-api camxora-website camxora-music nginx postgresql redis-server || true
 
 log "Done."
