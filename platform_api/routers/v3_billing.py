@@ -37,6 +37,10 @@ StoreDep = Annotated[Any, Depends(get_v3_store)]
 
 class QuoteRequest(BaseModel):
     op: str
+    # Concrete v1 operation (e.g. ``thumbnail_image``) when ``op`` collapses
+    # several operations into one (``image``). Optional; defaults to the
+    # background image assignment for ``image``.
+    operation: str | None = None
     user_id: UUID | None = None
     plan_id: UUID | None = None
     waive: bool = False
@@ -44,6 +48,7 @@ class QuoteRequest(BaseModel):
 
 class ChargeRequest(BaseModel):
     op: str
+    operation: str | None = None
     user_id: UUID | None = None
     plan_id: UUID | None = None
     ref_id: str | None = None
@@ -52,6 +57,7 @@ class ChargeRequest(BaseModel):
 
 class RefundRequest(BaseModel):
     op: str
+    operation: str | None = None
     user_id: UUID | None = None
     amount_credits: float | None = None
     ref_id: str | None = None
@@ -124,6 +130,7 @@ async def quote(body: QuoteRequest, ctx: UserDep, billing: BillingDep) -> dict[s
         user_id=target,
         plan_id=body.plan_id,
         waive=body.waive,
+        operation=body.operation,
     )
     return result.to_dict()
 
@@ -139,6 +146,7 @@ async def charge(body: ChargeRequest, ctx: UserDep, billing: BillingDep) -> dict
         ref_id=body.ref_id,
         waive=body.waive,
         plan_id=body.plan_id,
+        operation=body.operation,
     )
 
 
@@ -154,6 +162,7 @@ async def refund(body: RefundRequest, ctx: AdminDep, billing: BillingDep) -> dic
         amount_credits=body.amount_credits,
         ref_id=body.ref_id,
         absorb=body.absorb,
+        operation=body.operation,
     )
 
 
