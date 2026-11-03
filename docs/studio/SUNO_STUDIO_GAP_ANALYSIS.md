@@ -47,7 +47,7 @@ Scoring for this document:
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
 | G17 | No playback speed control | Cannot audition at half speed | W3 | **done** - 1x/0.5x/2x applied to sources and the tick |
 | G18 | No first-run onboarding in the DAW | New users face a dense UI | W3 | **done** - empty projects open a start overlay, remembered per project |
-| G19 | Long-project rendering not virtualised | Perf cliff | W3 | open |
+| G19 | Long-project rendering not virtualised | Perf cliff | W3 | **done** - clips culled to the visible window (300 -> 80..140 rendered) |
 | G20 | No touch-target sizing | Unusable on tablets | W3 | **done** - coarse pointers get 44x44 hit plates |
 
 ## 3. Deliberate non-parity
