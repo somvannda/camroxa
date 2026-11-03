@@ -292,6 +292,8 @@ export function StudioEditorShell() {
 
   /** Copy buffer for CTRL C / V, holding the owning track so paste stays in place. */
   const clipboardRef = useRef<{ clip: ClipLike; trackId: string }[]>([]);
+  /** Set when a delete should move DOM focus to the surviving clip (G9). */
+  const focusPendingRef = useRef(false);
 
   /** Insert new clips into their owner tracks and persist lanes + tracks together. */
   function insertClips(entries: { clip: ClipLike; trackId: string }[]) {
@@ -376,10 +378,62 @@ export function StudioEditorShell() {
     insertClips(duplicateEntries(entries, secondsPerBar));
   }
 
+  /** Remove the selected clips, then hand keyboard focus to a neighbour (G9). */
+  function deleteSelection() {
+    const ids = activeClipIds();
+    if (ids.length === 0 || !projectId) return;
+
+    const removed = clips.filter((clip) => ids.includes(clip.id));
+    const remaining = clips.filter((clip) => !ids.includes(clip.id));
+    const nextTracks = tracks.map((track) => ({
+      ...track,
+      clipIds: track.clipIds.filter((id) => !ids.includes(id)),
+    }));
+
+    // Focus the closest survivor on the same track as the first removed clip, so
+    // keyboard users keep their place instead of landing on <body> (G9).
+    const anchorTrack = ownerOf(removed[0]?.id ?? "");
+    const anchorStart = removed[0]?.start ?? 0;
+    const candidate =
+      clips
+        .filter(
+          (clip) =>
+            !ids.includes(clip.id) &&
+            (anchorTrack ? ownerOf(clip.id) === anchorTrack : true)
+        )
+        .sort(
+          (a, b) =>
+            Math.abs((a.start ?? 0) - anchorStart) - Math.abs((b.start ?? 0) - anchorStart)
+        )[0] ?? null;
+
+    setProject((current) =>
+      current
+        ? { ...current, data: { ...(current.data || {}), lanes: remaining, tracks: nextTracks } }
+        : current
+    );
+    setLocalTracks(nextTracks);
+    setSelectedIds(candidate ? [candidate.id] : []);
+    setSelectedClip(candidate ? candidate.id : null);
+    focusPendingRef.current = Boolean(candidate);
+
+    const data = (project?.data || {}) as Record<string, unknown>;
+    persist(
+      () => updateStudioProject(projectId, { data: { ...data, lanes: remaining, tracks: nextTracks } }),
+      "Could not delete the clips."
+    );
+  }
+
+  /** After a delete, move real DOM focus to the surviving clip. */
+  useEffect(() => {
+    if (!focusPendingRef.current) return;
+    focusPendingRef.current = false;
+    const element = document.querySelector<HTMLElement>(".se-clip.selected");
+    element?.focus();
+  }, [selectedIds]);
+
   /** CTRL/CMD + C / V / D on the arrangement (spec §36). */
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -389,6 +443,16 @@ export function StudioEditorShell() {
       ) {
         return;
       }
+
+      // BACKSPACE / DELETE remove the selection (spec §36).
+      if (event.key === "Backspace" || event.key === "Delete") {
+        if (activeClipIds().length === 0) return;
+        event.preventDefault();
+        deleteSelection();
+        return;
+      }
+
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
       if (key !== "c" && key !== "v" && key !== "d") return;
       event.preventDefault();
