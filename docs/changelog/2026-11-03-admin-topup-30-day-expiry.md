@@ -97,14 +97,19 @@ API works without it). Expiry rides the existing grant-maintenance sweep.
 5. Deduct credits — no new lot appears, and the month stays unlocked for a prior comp.
 6. Backdate the lot past `NOW()` and run the grant sweep — the remaining balance is clawed back.
 
+## Decisions
+
+- **No backfill (option C: fix forward only).** Wallets whose balance exceeds
+  their live-lot remainder are visible with a read-only query (wallet balance
+  minus live-lot `remaining_units`), but that delta is not only admin comps: it
+  also contains legacy pre-`create_lot` credits and conversion credits that were
+  meant to be permanent. Stamping the whole delta with a 30-day expiry would burn
+  real customer value, and attributing it to admin adjustments alone is not
+  provable from the ledger. Existing balances therefore keep their current
+  behaviour; every comp issued from this release onward is swept correctly.
+
 ## Known gaps (out of scope)
 
-- **Pre-existing comps are still immortal.** Migration `177` stamped every live
-  lot with a 30-day expiry, but lots minted before `create_lot` existed never
-  existed at all. A read-only Blast-radius query (wallet balance minus live-lot
-  remaining) shows the unbacked total, but that delta also contains legacy
-  conversion credits that were meant to be permanent — burning them is a product
-  decision, not a mechanical backfill.
 - A manual deduction leaves lot `remaining_units` overstated. Harmless — the sweep
   clamps with `min(remaining, balance)` — but the admin lots table reads high
   until expiry.
