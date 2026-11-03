@@ -7,7 +7,7 @@ import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
-import { dragToStart, isDrag } from "@/lib/studio-snap";
+import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
@@ -289,6 +289,116 @@ export function StudioEditorShell() {
   function commitClipStart(clipId: string, start: number) {
     commitClipStarts({ [clipId]: start });
   }
+
+  /** Copy buffer for CTRL C / V, holding the owning track so paste stays in place. */
+  const clipboardRef = useRef<{ clip: ClipLike; trackId: string }[]>([]);
+
+  /** Insert new clips into their owner tracks and persist lanes + tracks together. */
+  function insertClips(entries: { clip: ClipLike; trackId: string }[]) {
+    if (!projectId || entries.length === 0) return;
+    const data = (project?.data || {}) as Record<string, unknown>;
+    const lanes = [...clips, ...entries.map((entry) => entry.clip)];
+    const additions = new Map<string, string[]>();
+    entries.forEach((entry) => {
+      additions.set(entry.trackId, [...(additions.get(entry.trackId) || []), entry.clip.id]);
+    });
+    const nextTracks = tracks.map((track) =>
+      additions.has(track.id)
+        ? { ...track, clipIds: [...track.clipIds, ...(additions.get(track.id) || [])] }
+        : track
+    );
+    setProject((current) =>
+      current
+        ? { ...current, data: { ...(current.data || {}), lanes, tracks: nextTracks } }
+        : current
+    );
+    setLocalTracks(nextTracks);
+    setSelectedIds(entries.map((entry) => entry.clip.id));
+    persist(
+      () => updateStudioProject(projectId, { data: { ...data, lanes, tracks: nextTracks } }),
+      "Could not add the clips."
+    );
+  }
+
+  /** The clips the user is acting on: an explicit selection, else the focused clip. */
+  function activeClipIds(): string[] {
+    if (selectedIds.length > 0) return selectedIds;
+    return selectedClip ? [selectedClip] : [];
+  }
+
+  function ownerOf(clipId: string): string | null {
+    const track = tracks.find((candidate) => candidate.clipIds.includes(clipId));
+    return track ? track.id : null;
+  }
+
+  function copySelection() {
+    const ids = activeClipIds();
+    clipboardRef.current = ids
+      .map((id) => {
+        const clip = clips.find((candidate) => candidate.id === id);
+        const trackId = ownerOf(id);
+        return clip && trackId ? { clip: { ...clip }, trackId } : null;
+      })
+      .filter((entry): entry is { clip: ClipLike; trackId: string } => entry !== null);
+  }
+
+  function duplicateEntries(entries: { clip: ClipLike; trackId: string }[], offset: number) {
+    const stamp = Date.now().toString(36);
+    return entries.map((entry, index) => ({
+      trackId: entry.trackId,
+      clip: {
+        ...entry.clip,
+        id: `${entry.clip.id}-copy-${stamp}-${index}`,
+        // Never let a duplicate land before zero.
+        start: Math.max(0, (entry.clip.start ?? 0) + offset),
+      },
+    }));
+  }
+
+  function pasteSelection() {
+    const entries = clipboardRef.current;
+    if (entries.length === 0) return;
+    const earliest = Math.min(...entries.map((entry) => entry.clip.start ?? 0));
+    const target = snapToGrid(playhead, secondsPerBar, 4);
+    insertClips(duplicateEntries(entries, target - earliest));
+  }
+
+  function duplicateSelection() {
+    const ids = activeClipIds();
+    const entries = ids
+      .map((id) => {
+        const clip = clips.find((candidate) => candidate.id === id);
+        const trackId = ownerOf(id);
+        return clip && trackId ? { clip, trackId } : null;
+      })
+      .filter((entry): entry is { clip: ClipLike; trackId: string } => entry !== null);
+    if (entries.length === 0) return;
+    insertClips(duplicateEntries(entries, secondsPerBar));
+  }
+
+  /** CTRL/CMD + C / V / D on the arrangement (spec §36). */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      const key = event.key.toLowerCase();
+      if (key !== "c" && key !== "v" && key !== "d") return;
+      event.preventDefault();
+      if (key === "c") copySelection();
+      else if (key === "v") pasteSelection();
+      else duplicateSelection();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  });
 
   /** Commit whatever the current drag session moved. */
   function commitDrag(current: { ids: string[]; origins: Record<string, number>; deltaPx: number }) {
