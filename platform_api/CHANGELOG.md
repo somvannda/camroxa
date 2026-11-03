@@ -1,31 +1,37 @@
-# Changelog — Platform API
+﻿# Changelog â€” Platform API
 
-Backend REST/WebSocket API — generation, billing, streaming, image jobs, admin routes, public endpoints.
+Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, admin routes, public endpoints.
 
 **Code:** `platform_api/`  
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-
-## [2026-11-03] — v3 image charges follow AI Routing again
-
-### Fixed
-
-- `image` still priced from a provider-blind chain (`fal` then `openai`), unlike `music` since 2026-10-05. Production routes background/thumbnail images to `slai / cx/gpt-image-2.5`, so neither named row matched and `_scan_pricing_units()` charged the first `background_image` row in `get_all()` order — a stale FAL row — producing a **60-credit** debit against the routed **6-credit** SLAI row. The routed provider/model is now tried first, the scan is provider-aware and logs when it takes a foreign row, and `background_image` / `thumbnail_image` bill their own assignment via an optional `operation` on quote/charge/refund. See `docs/changelog/2026-11-03-v3-image-routed-price.md`.
-
-## [2026-11-03] — A full deploy can no longer finish HTTP-only
+## [2026-11-03] — 178 was recorded but never applied; 179 re-asserts it
 
 ### Fixed
 
-- deploy_production.py reported success while camxora-production-remote.sh left production on its HTTP-only nginx bootstrap: the HTTPS apply was a silent conditional (/tmp config + certificate both present), so pi./dmin. served a certificate that did not match the hostname. The remote script now fails loudly instead of skipping, asserts ssl_certificate is present and probes https://api.camxora.com/health. deploy_production.py re-applies the committed template, reads it back, and fails with DEPLOY_VERIFY_FAILED if any required host lacks TLS — even when the remote script itself fails. New scripts/deploy/nginx_guard.py holds the check. See `docs/changelog/2026-11-03-deploy-nginx-tls-guard.md`.
+- Production reached `alembic_version = 178` with `credit_transactions.reason` still `character varying(100)`, so the long-admin-reason fix was not live. Migration `179` re-asserts `TEXT` (a type change to the current type is a no-op in PostgreSQL, and the `178 -> 179` gate guarantees execution). `174` rebuilds tables from `*_archive` snapshots and that deploy logged `DEPLOY_LOCK_NOT_OWNER`, so overlapping runners most likely restored the pre-178 shape.
+- `runner.verify_schema_assertions()` now runs after every upgrade and logs CRITICAL (never raises) when a recorded revision's schema fact is missing — starting with `credit_transactions.reason = text`. See `docs/changelog/2026-11-03-migration-178-not-applied.md`.
 
-## [2026-11-03] — Admin adjust reasons no longer overflow the ledger column
+## [2026-11-03] â€” v3 image charges follow AI Routing again
+
+### Fixed
+
+- `image` still priced from a provider-blind chain (`fal` then `openai`), unlike `music` since 2026-10-05. Production routes background/thumbnail images to `slai / cx/gpt-image-2.5`, so neither named row matched and `_scan_pricing_units()` charged the first `background_image` row in `get_all()` order â€” a stale FAL row â€” producing a **60-credit** debit against the routed **6-credit** SLAI row. The routed provider/model is now tried first, the scan is provider-aware and logs when it takes a foreign row, and `background_image` / `thumbnail_image` bill their own assignment via an optional `operation` on quote/charge/refund. See `docs/changelog/2026-11-03-v3-image-routed-price.md`.
+
+## [2026-11-03] â€” A full deploy can no longer finish HTTP-only
+
+### Fixed
+
+- deploy_production.py reported success while camxora-production-remote.sh left production on its HTTP-only nginx bootstrap: the HTTPS apply was a silent conditional (/tmp config + certificate both present), so pi./dmin. served a certificate that did not match the hostname. The remote script now fails loudly instead of skipping, asserts ssl_certificate is present and probes https://api.camxora.com/health. deploy_production.py re-applies the committed template, reads it back, and fails with DEPLOY_VERIFY_FAILED if any required host lacks TLS â€” even when the remote script itself fails. New scripts/deploy/nginx_guard.py holds the check. See `docs/changelog/2026-11-03-deploy-nginx-tls-guard.md`.
+
+## [2026-11-03] â€” Admin adjust reasons no longer overflow the ledger column
 
 ### Fixed
 
 - `credit_transactions.reason` was `VARCHAR(100)` from the initial schema, but `POST /credits/adjust` accepts 255 characters and stores them prefixed with `admin_adjustment: `. A reason longer than ~81 characters failed inside `add_credits` *after* the balance check, so the operator got a 500 and the adjustment silently did not apply. Migration `178_credit_txn_reason_text` widens the column to `TEXT` (binary-compatible in PostgreSQL, no rewrite), matching `credit_grant_claims` and `admin_pending_ops`. See `docs/changelog/2026-11-03-credit-txn-reason-width.md`.
 
-## [2026-11-03] — Admin comps expire and unlock the studio
+## [2026-11-03] â€” Admin comps expire and unlock the studio
 
 ### Fixed
 
@@ -34,27 +40,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- `has_completed_topup_this_month()` and the Telegram ops snapshot also match a positive `admin_adjustment:` ledger entry this month, so a comped Free user keeps V6-Pro / V6-Wild until month end and is badged **PAID**. No synthetic `topup_purchases` row is written — revenue, receipts, refunds and referral rewards stay purchase-only, and `subtract_web_topup()` is deliberately not mirrored. See `docs/changelog/2026-11-03-admin-topup-30-day-expiry.md`.
+- `has_completed_topup_this_month()` and the Telegram ops snapshot also match a positive `admin_adjustment:` ledger entry this month, so a comped Free user keeps V6-Pro / V6-Wild until month end and is badged **PAID**. No synthetic `topup_purchases` row is written â€” revenue, receipts, refunds and referral rewards stay purchase-only, and `subtract_web_topup()` is deliberately not mirrored. See `docs/changelog/2026-11-03-admin-topup-30-day-expiry.md`.
 
-## [2026-10-29] — Batch generation is a credit-pack feature
+## [2026-10-29] â€” Batch generation is a credit-pack feature
 
 ### Changed
 
 - `GET /api/v3/web-music/quota` now always returns `premium_unlocked`, including the legacy (pre-v3) credit path via `_legacy_pack_unlocked()` (pack `topup_balance` or a grandfathered paid subscription). Batch generation is gated on it: the Free plan's 50 monthly credits are single-song only, while a pack purchase unlocks 5 / 10 / 20-song batches. The v3 path already computed it through `WebMusicChargeBridge.premium_unlocked()`.
 - `WEB_MUSIC_GENERATE_QUEUE_CAP_FREE` is now **20** (was 2). The unsubscribed cap applied to every packs-only user, so a pack buyer's 5-song batch was rejected at song 3 with *"You already have 2 songs waiting"* before the Suno queue could drain. Both tiers share one number; credits bound the wallet. See `docs/changelog/2026-10-29-web-batch-pack-only.md`.
 
-## [2026-10-29] — Streaming report stops counting on-demand WAVs
+## [2026-10-29] â€” Streaming report stops counting on-demand WAVs
 
 ### Fixed
 
-- `_WEB_MUSIC_MISSING_ASSETS_PREDICATE` still treated an absent `b2_wav_storage_key_*` as a missing companion asset after web-music WAVs became on-demand-only (2026-10-28, never written back to B2). Production paged `web music missing assets: 122` on 2026-10-29 while missing MP3s were `0` — the number was tracking generation volume, and the on-demand download path only sets `wav_status_* = 'success'` (never a B2 key), so downloading a WAV also kept the task flagged. The WAV clause is removed from the shared predicate, which also stops the asset recovery pass from spending its 8-task-per-pass budget on WAV gaps it no longer recovers. Package (`package_status <> 'ready'`) and LRC gaps still alert. See `docs/changelog/2026-10-29-streaming-health-ignore-lazy-wav.md`.
+- `_WEB_MUSIC_MISSING_ASSETS_PREDICATE` still treated an absent `b2_wav_storage_key_*` as a missing companion asset after web-music WAVs became on-demand-only (2026-10-28, never written back to B2). Production paged `web music missing assets: 122` on 2026-10-29 while missing MP3s were `0` â€” the number was tracking generation volume, and the on-demand download path only sets `wav_status_* = 'success'` (never a B2 key), so downloading a WAV also kept the task flagged. The WAV clause is removed from the shared predicate, which also stops the asset recovery pass from spending its 8-task-per-pass budget on WAV gaps it no longer recovers. Package (`package_status <> 'ready'`) and LRC gaps still alert. See `docs/changelog/2026-10-29-streaming-health-ignore-lazy-wav.md`.
 
 
-## [2026-10-28] — Thumbnails are no longer charged before their background exists
+## [2026-10-28] â€” Thumbnails are no longer charged before their background exists
 
 ### Fixed
 
-- `claim_image_jobs_for_run` selected chained image jobs on `status = 'pending'` alone, and `_run_one_job` placed the wallet hold (`reserve_and_hold_before_provider` â†’ `atomic_deduct`) **before** checking whether the job's `source_job_id` had produced an artefact. A thumbnail therefore charged first, waited 10s (`_wait_for_source_job_output`), raised `DependencyPendingError`, and refunded as `image_generation_deferred` — to be charged and refunded again on the next sweep. Production on 2026-10-28 showed 21 `v3_image` debits against 14 refunds (67%) for that loop. Chained jobs are now only claimable when their source row is `success` or `failed` (terminal-inclusive, so a failed source still fails fast with a clear message), and `_ensure_dependency_ready` re-checks readiness before the hold, so a not-ready dependency writes no debit and no refund. See `docs/changelog/2026-10-28-image-dependency-gate.md`.
+- `claim_image_jobs_for_run` selected chained image jobs on `status = 'pending'` alone, and `_run_one_job` placed the wallet hold (`reserve_and_hold_before_provider` Ã¢â€ â€™ `atomic_deduct`) **before** checking whether the job's `source_job_id` had produced an artefact. A thumbnail therefore charged first, waited 10s (`_wait_for_source_job_output`), raised `DependencyPendingError`, and refunded as `image_generation_deferred` â€” to be charged and refunded again on the next sweep. Production on 2026-10-28 showed 21 `v3_image` debits against 14 refunds (67%) for that loop. Chained jobs are now only claimable when their source row is `success` or `failed` (terminal-inclusive, so a failed source still fails fast with a clear message), and `_ensure_dependency_ready` re-checks readiness before the hold, so a not-ready dependency writes no debit and no refund. See `docs/changelog/2026-10-28-image-dependency-gate.md`.
 
 ## [Unreleased] - Packs-only billing: 30-day pack credits
 
@@ -80,49 +86,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Telegram spend reports badge a Free-plan user who bought a credit pack this month as **PAID**, not **FREE**. A pack unlocks V6-Pro / V6-Wild for the calendar month, so those generations are paid usage; `_user_snapshot()` now treats a completed `topup_purchases` row like a subscription or studio licence. See `docs/changelog/2026-10-25-telegram-paid-pack-badge.md`.
 
-## [2026-10-18] — Pending-downloads poll stays under the desktop 30s timeout
+## [2026-10-18] â€” Pending-downloads poll stays under the desktop 30s timeout
 
 ### Fixed
 
-- `GET /music/downloads/pending` ran Suno reconcile and per-batch image-job healing inline (plus a sequential B2 `HEAD` per archived track), pushing the route past the desktop's 30s httpx timeout — clients never received the pending list and runs froze at 2–4 of 15 tracks. Reconcile and image-job healing now run debounced (60s, per user) in the background, and B2 URL resolution fans out concurrently (8) under an 8s cap that returns partial results. Separately, the reseller's `audiostream.api.box` host now answers `200 audio/mpeg` with a **0-byte body**, so stored/stream URLs are rewritten to the working `tempfile.aiquickdraw.com/r/<id>.mp3` sibling and the dead host is blocklisted. No desktop rebuild required. See `docs/changelog/2026-10-02-pending-downloads-poll-latency.md`.
+- `GET /music/downloads/pending` ran Suno reconcile and per-batch image-job healing inline (plus a sequential B2 `HEAD` per archived track), pushing the route past the desktop's 30s httpx timeout â€” clients never received the pending list and runs froze at 2â€“4 of 15 tracks. Reconcile and image-job healing now run debounced (60s, per user) in the background, and B2 URL resolution fans out concurrently (8) under an 8s cap that returns partial results. Separately, the reseller's `audiostream.api.box` host now answers `200 audio/mpeg` with a **0-byte body**, so stored/stream URLs are rewritten to the working `tempfile.aiquickdraw.com/r/<id>.mp3` sibling and the dead host is blocklisted. No desktop rebuild required. See `docs/changelog/2026-10-02-pending-downloads-poll-latency.md`.
 
-## [2026-10-14] — Admin quota "Used" for songs now matches enforcement
+## [2026-10-14] â€” Admin quota "Used" for songs now matches enforcement
 
 ### Fixed
 
-- The admin "Plan quota (this period)" card and the user-facing quota display read the incremental `usage_tracking` counter, which the credits-only v3 charge path no longer increments — so every user showed **Used = 0 / full Remaining** while the monthly song cap was still enforced from the real `songs` table. `QuotaTopupService._used_for_kind("music")` and `quota_display_service.get_monthly_quota_status("songs")` now use `count_generated_songs_for_period` (real generations), matching `_enforce_plan_quotas`. No migration. See `docs/changelog/2026-10-14-admin-quota-used-authoritative-songs.md`.
+- The admin "Plan quota (this period)" card and the user-facing quota display read the incremental `usage_tracking` counter, which the credits-only v3 charge path no longer increments â€” so every user showed **Used = 0 / full Remaining** while the monthly song cap was still enforced from the real `songs` table. `QuotaTopupService._used_for_kind("music")` and `quota_display_service.get_monthly_quota_status("songs")` now use `count_generated_songs_for_period` (real generations), matching `_enforce_plan_quotas`. No migration. See `docs/changelog/2026-10-14-admin-quota-used-authoritative-songs.md`.
 
-## [2026-10-08] — Batch status counts songs, not Suno task rows
+## [2026-10-08] â€” Batch status counts songs, not Suno task rows
 
 ### Fixed
 
 - `get_batch_status_counters` counted `suno_tasks` **rows** by status, so a batch whose songs all completed stayed `partial`: a superseded `failed` row made `suno_failed > 0`, and duplicate `success` rows made `suno_completed != drafts_completed`. 19 production batches (all songs `suno_success`) were stuck `partial`. The counters are now **per song**: `suno_submitted = COUNT(DISTINCT song_id)`, `suno_completed`/`suno_failed` from `songs.status`. Finished batches self-heal on the next `refresh_batch_status`. See `docs/changelog/2026-10-08-platform-batch-status-per-song.md`.
 
-## [2026-10-08] — Stuck Suno tasks no longer hang `pending` when the provider returns 404
+## [2026-10-08] â€” Stuck Suno tasks no longer hang `pending` when the provider returns 404
 
 ### Fixed
 
-- `reconcile_pending_suno_tasks` caught every poll error with `except Exception: … continue`, so a task the provider no longer knows (`check_status` â†’ HTTP 404) stayed `pending` forever — the song never finished and the wallet debit was never refunded (23 stale rows in production, 17 of them one user's). An aged (>30 min) 404 is now treated as terminal: it is reconciled as a failure via the existing `update_status` + `handle_suno_task_update` path, which refunds (`suno_generation_failed`) and refreshes the batch. A fresh 404 (propagation lag) and transient errors keep the old skip. See `docs/changelog/2026-10-08-platform-reconcile-suno-404-terminal.md`.
+- `reconcile_pending_suno_tasks` caught every poll error with `except Exception: â€¦ continue`, so a task the provider no longer knows (`check_status` Ã¢â€ â€™ HTTP 404) stayed `pending` forever â€” the song never finished and the wallet debit was never refunded (23 stale rows in production, 17 of them one user's). An aged (>30 min) 404 is now treated as terminal: it is reconciled as a failure via the existing `update_status` + `handle_suno_task_update` path, which refunds (`suno_generation_failed`) and refreshes the batch. A fresh 404 (propagation lag) and transient errors keep the old skip. See `docs/changelog/2026-10-08-platform-reconcile-suno-404-terminal.md`.
 
-## [2026-10-08] — Retrying a failed Suno song no longer charge-refunds forever
-
-### Fixed
-
-- `suno_tasks` is `UNIQUE(user_id, request_hash)`, and after the #372 change `find_by_hash` skips `failed` rows so a retry regenerates — but `create_suno_task` still did a plain `INSERT`, so it collided with the still-present failed row (`duplicate key value violates unique constraint "suno_tasks_user_id_request_hash_key"`). The batch retry path caught that as a failure and refunded, producing a `v3_music` charge â†’ `suno_generation_failed` refund on every retry, so a failed song could never regenerate. `create_suno_task` is now an upsert that revives the failed row in place (`WHERE suno_tasks.status = 'failed'`) and reuses its id; a live/successful row is never clobbered. See `docs/changelog/2026-10-08-platform-suno-retry-unique-constraint.md`.
-
-## [2026-10-08] — Version 2 no longer stranded by a first-clip success
+## [2026-10-08] â€” Retrying a failed Suno song no longer charge-refunds forever
 
 ### Fixed
 
-- `parse_suno_generate_poll` still returned `success` when the upstream status was non-terminal (`FIRST_SUCCESS` / `TEXT_SUCCESS` / `PENDING` / `RUNNING`) but one of the generation's two clips already had an audio URL. `musicapi` holds `FIRST_SUCCESS` while it finishes B2-ingesting the second clip, so a poll during that window marked the task `SUCCESS` with `audio_url_alt` empty; because the task was no longer pending it was never polled again, and Version 2 stayed on "Waiting"/"Loading…" forever (Version 1 played and downloaded). A non-terminal status now wins over partial audio and the poll keeps waiting for the terminal `SUCCESS`. See `docs/changelog/2026-10-08-version2-first-success-still-pending.md`.
+- `suno_tasks` is `UNIQUE(user_id, request_hash)`, and after the #372 change `find_by_hash` skips `failed` rows so a retry regenerates â€” but `create_suno_task` still did a plain `INSERT`, so it collided with the still-present failed row (`duplicate key value violates unique constraint "suno_tasks_user_id_request_hash_key"`). The batch retry path caught that as a failure and refunded, producing a `v3_music` charge Ã¢â€ â€™ `suno_generation_failed` refund on every retry, so a failed song could never regenerate. `create_suno_task` is now an upsert that revives the failed row in place (`WHERE suno_tasks.status = 'failed'`) and reuses its id; a live/successful row is never clobbered. See `docs/changelog/2026-10-08-platform-suno-retry-unique-constraint.md`.
 
-## [2026-10-07] — Partial generation no longer reported as success
+## [2026-10-08] â€” Version 2 no longer stranded by a first-clip success
 
 ### Fixed
 
-- `parse_suno_generate_poll` returned `success` as soon as any clip had an audio URL, before checking the upstream status. A music generation that failed after storing only one of its two clips (`GENERATE_AUDIO_FAILED`) was reported as success with `audio_url_alt` empty — Version 1 played while Version 2 stayed stuck. The failure status is now checked first. Part of the both-versions fix; see `docs/changelog/2026-10-07-musicapi-both-versions-complete.md`.
+- `parse_suno_generate_poll` still returned `success` when the upstream status was non-terminal (`FIRST_SUCCESS` / `TEXT_SUCCESS` / `PENDING` / `RUNNING`) but one of the generation's two clips already had an audio URL. `musicapi` holds `FIRST_SUCCESS` while it finishes B2-ingesting the second clip, so a poll during that window marked the task `SUCCESS` with `audio_url_alt` empty; because the task was no longer pending it was never polled again, and Version 2 stayed on "Waiting"/"Loadingâ€¦" forever (Version 1 played and downloaded). A non-terminal status now wins over partial audio and the poll keeps waiting for the terminal `SUCCESS`. See `docs/changelog/2026-10-08-version2-first-success-still-pending.md`.
 
-## [2026-10-05] — Music provider is a real AI Routing switch
+## [2026-10-07] â€” Partial generation no longer reported as success
+
+### Fixed
+
+- `parse_suno_generate_poll` returned `success` as soon as any clip had an audio URL, before checking the upstream status. A music generation that failed after storing only one of its two clips (`GENERATE_AUDIO_FAILED`) was reported as success with `audio_url_alt` empty â€” Version 1 played while Version 2 stayed stuck. The failure status is now checked first. Part of the both-versions fix; see `docs/changelog/2026-10-07-musicapi-both-versions-complete.md`.
+
+## [2026-10-05] â€” Music provider is a real AI Routing switch
 
 ### Added
 
@@ -132,31 +138,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Web Create on `music.camxora.com` charged 15 credits even when the music pool was switched to musicapi. `music` pricing was hard-coded to `suno`; it now resolves the routed provider (`suno` = 15, `camxora_music_api` = 10) for quote, charge, refund, plan pages, and the create-button label. Generation submit/poll and the worker/callback resolver follow the same switch. See `docs/changelog/2026-10-05-music-provider-ai-routing.md`.
 
-## [2026-10-05] — Free monthly grant reset (stop daily restacking)
+## [2026-10-05] â€” Free monthly grant reset (stop daily restacking)
 
 ### Fixed
 
 - A license-less **Free** account was minted a `v3_period_grant` every day instead of once per month: `ensure_period_grant()` anchored the monthly allowance to `billing_today()` when no active subscription context existed, and each lot stayed valid for the full billing cycle (30 days), so grants stacked (~50 credits/day). It now anchors to `billing_month_start()` and expires the lot at the next month start. Licensed plans keep their activation anchor. See `docs/changelog/2026-10-05-free-monthly-grant-reset.md`.
 
-## [2026-10-02] — SLAI image model `cx/gpt-image-2.5`
+## [2026-10-02] â€” SLAI image model `cx/gpt-image-2.5`
 
 ### Changed
 
 - SLAI image generation now uses the provider's renamed model id **`cx/gpt-image-2.5`** (was `slai/gpt-image-2`) in the registry, SLAI client default, and image fallback defaults. Migration `125_slai_image_model_cx_gpt_image_2_5` rewrites existing `ai_routing_assignments` / `ai_routing_image_fallback_chain` settings and renames `credit_pricing` / `ai_model_costs` rows. Cost unchanged (~$0.0067/img). See `docs/changelog/2026-10-02-slai-image-model-cx-gpt-image-2-5.md`.
 
-## [2026-10-02] — Paid plan fulfillment connection fix
+## [2026-10-02] â€” Paid plan fulfillment connection fix
 
 ### Fixed
 
-- Paid plan checkouts were marked `paid` but never fulfilled: `_fulfill_paid_payment()` passed an acquired `asyncpg.Connection` to `CreditRepository`, whose `add_credits`/`atomic_deduct`/`refund` called `pool.acquire()`. The new `ensure_period_grant()` step raised `AttributeError` â†’ billing webhook 500 â†’ license never activated â†’ desktop "Upgrade required". `CreditRepository` now reuses an injected connection. See `docs/changelog/2026-10-02-billing-fulfillment-connection-period-grant.md`.
+- Paid plan checkouts were marked `paid` but never fulfilled: `_fulfill_paid_payment()` passed an acquired `asyncpg.Connection` to `CreditRepository`, whose `add_credits`/`atomic_deduct`/`refund` called `pool.acquire()`. The new `ensure_period_grant()` step raised `AttributeError` Ã¢â€ â€™ billing webhook 500 Ã¢â€ â€™ license never activated Ã¢â€ â€™ desktop "Upgrade required". `CreditRepository` now reuses an injected connection. See `docs/changelog/2026-10-02-billing-fulfillment-connection-period-grant.md`.
 
-## [2026-09-22] — API v3 production cutover (executed)
+## [2026-09-22] â€” API v3 production cutover (executed)
 
 ### Changed
 
 - `/api/v3` is the live API surface on production; `/api/v1` remains dual-mounted for rollback. Alembic applied through `121_upload_job_permanent_failed`; `credits_only_v3_charge` is **On**.
 - Production `admin_portal` and `music_web` rebuilt from the v3 cutover RC; nginx production routes stream/WS under `/api/v3`.
-- Executed the credits-only leftover conversion: web-subscription leftover (2 users, 827 credits) and desktop plan quota (`leftover packages Ã— 10`; 3 users, 2,200 credits) minted as non-expiring `quota_conversion` credits. Plan per-op credit fields seeded and the `Free` plan row created.
+- Executed the credits-only leftover conversion: web-subscription leftover (2 users, 827 credits) and desktop plan quota (`leftover packages Ãƒâ€” 10`; 3 users, 2,200 credits) minted as non-expiring `quota_conversion` credits. Plan per-op credit fields seeded and the `Free` plan row created.
 - Added the `kie` provider to production (key pool + last-resort image fallback); draft pricing rows created for review.
 
 ### Fixed
@@ -167,7 +173,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Added `docs/API_V3_CUTOVER_RUNBOOK.md` (deploy + rollback).
 
-## [2026-08-05] — Desktop 1.1.1 image modes (production)
+## [2026-08-05] â€” Desktop 1.1.1 image modes (production)
 
 ### Added
 
@@ -200,7 +206,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reconciled production-only hotfixes into `main` for the v3 cutover (streaming/B2 capture + WAV upload, Suno 409/recovery, batch preflight, monthly free reset, tz-aware quota reset, Suno title cap 80, play-lane select, free downloads, Telegram download alerts). Dropped prod-only features never merged or intentionally reverted (quota renewal, DistroKid, signup domain guard, streaming progress/publish gate, waive billing, public subscription terms, genre catalog). Adds Alembic `120`/`121`. See `docs/changelog/2026-09-18-api-v3-hotfix-reconciliation.md`.
 - Suno downloads prefer callback/record-info `audio_url` (`audioUrl`) over unsigned `cdn1.suno.ai` `source_audio_url`. See `docs/changelog/2026-08-29-suno-prefer-callback-audio-url.md`.
 - Generate quote/charge always uses the Credits page list price. Plan per-op fields are ignored. Public catalogs send `credits_per_generate` from that music rate. See `docs/changelog/2026-08-28-credit-pricing-single-source.md`.
-- Song hints use 10 credits = 1 generate = 2 songs (Free 50 â†’ 10 songs/day). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
+- Song hints use 10 credits = 1 generate = 2 songs (Free 50 Ã¢â€ â€™ 10 songs/day). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 
 ### Fixed
 
@@ -218,7 +224,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Cutover: JSON media URLs, Suno callbacks, YouTube OAuth, desktop-release links, geo/auth, and nginx stream/WS are `/api/v3` only. See `docs/changelog/2026-08-26-api-v3-cutover-emitted-urls.md`.
 - `/api/v3` is the full canonical API surface (dual-mount of former v1 routers + CutLuy billing + webhooks + wallet). `/api/v1` and `/api/v2` remain temporary. See `docs/changelog/2026-08-25-api-v3-superset-dual-mount.md`.
-- Sandbox credits-only billing cutover: plan grants locked (incl. hidden $79 â†’ 3000 monthly credits), leftover mint idempotent, `credits_only_v3_charge` On. See `docs/changelog/2026-08-25-sandbox-billing-cutover-v3.md`.
+- Sandbox credits-only billing cutover: plan grants locked (incl. hidden $79 Ã¢â€ â€™ 3000 monthly credits), leftover mint idempotent, `credits_only_v3_charge` On. See `docs/changelog/2026-08-25-sandbox-billing-cutover-v3.md`.
 - Fix Free daily mint (`daily_grant` lot tag) and streaming likes wiring that caused music web `/me/credits`, `/web-music/quota`, and `/streaming/library/likes/ids` 500s. See `docs/changelog/2026-08-25-fix-v3-daily-grant-and-likes.md`.
 - `GET /api/v3/subscriptions/plans` includes `daily_credits` from DB (was always `0` for Free). Same incomplete-payload class as admin credits-only.
 - Admin user-spend uses the unified plan resolver only (no separate Music-tag web-sub path). Sandbox 500 fixed. See `docs/changelog/2026-08-23-wallet-api-audit-e2e.md`.
@@ -248,7 +254,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - After the email confirmation code, `POST /auth/verify-email` sets login cookies and already-verified emails return success so music-web can open Create. Dual-mounted at `/api/v1` and `/api/v3`. See `docs/changelog/2026-08-25-verify-email-redirect-create.md`.
-- Create play Ready with Chrome “no supported source”: concurrent packaging
+- Create play Ready with Chrome â€œno supported sourceâ€: concurrent packaging
   left `content_key_id` pointing at an older key than the CXA1 file. Lock +
   skip-if-ready, then repair DB keys from the package header. See
   `docs/changelog/2026-08-25-web-music-play-key-mismatch.md`.
@@ -278,8 +284,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - AES-128 HLS lane for iOS Safari: ffmpeg packaging at ingest, session-bound `index.m3u8` + key routes, admin HLS backfill. See `docs/changelog/2026-08-21-ios-hls-aes128-playback.md`.
-- `GET /api/v1/web-music/licenses/play/{token}` — session-bound clamped MP3 stream (server-side CXA1 decrypt, 90s cache) for iOS native HTML audio playback. See `docs/changelog/2026-08-21-ios-native-html-playback.md`.
-- `GET /api/v1/web-music/playlists/memberships` — owner clip-to-playlist map for Create-page chips. Packaged clips can be added to playlists (ready check matches playback). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
+- `GET /api/v1/web-music/licenses/play/{token}` â€” session-bound clamped MP3 stream (server-side CXA1 decrypt, 90s cache) for iOS native HTML audio playback. See `docs/changelog/2026-08-21-ios-native-html-playback.md`.
+- `GET /api/v1/web-music/playlists/memberships` â€” owner clip-to-playlist map for Create-page chips. Packaged clips can be added to playlists (ready check matches playback). See `docs/changelog/2026-08-21-playlist-add-packaged-ux.md`.
 - Music web play traces: `POST /api/v1/web-music/licenses/client-trace` logs `music_web_play_trace` and stores `playback_events.detail` (migration `114`). See `docs/changelog/2026-08-21-ios-safari-play-trace.md`.
 - Overview (`/api/v1/web-music/studio/*`) owner APIs, versioned royalty policy, settle worker, and admin payout/fraud/origin endpoints. Studio tracks are per version (ok/alt), with public = on a public playlist or published catalog. See `docs/changelog/2026-08-20-artist-royalty-program.md`.
 - Opt-in artist pages (`/api/v1/web-music/artist-pages`, public list/detail). Multi-page schema with admin `artist_page_limit` (default 1). Create/publish require name, location, country, and at least one genre. Cover crop, contact email, and Facebook/TikTok/Instagram/YouTube links are optional. Typed genres (up to 10) from an expanded music catalog including Khmer/SEA labels. Owners can attach tracks and playlists to a page. See `docs/changelog/2026-08-20-artist-pages.md` and `docs/changelog/2026-08-20-artist-page-attach.md`.
@@ -350,7 +356,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Web music download hardening: MP3-only Suno fetch, play tokens, download rate limits, B2 backfill on fallback. See `docs/changelog/2026-08-17-web-music-download-hardening.md`.
 - Web music LRC cached on Backblaze (`101_web_music_b2_lrc_storage`); playback and streaming play-url require login (free users can play). See `docs/changelog/2026-08-17-web-music-lrc-b2-login-playback.md`.
 - Web music credit hardening (P0): async Suno failure refunds, subscription period enforcement, 15-min maintenance loop, removed public `/v2/credits/consume`. See `docs/changelog/2026-08-17-web-music-credit-hardening-p0.md`.
-- Web music credit hardening (P1): refund to monthly/top-up pools from debit metadata, reservationâ†’task debit linking, refund idempotency index, removed v2 `credit_wallets` updates. See `docs/changelog/2026-08-17-web-music-credit-hardening-p1.md`.
+- Web music credit hardening (P1): refund to monthly/top-up pools from debit metadata, reservationÃ¢â€ â€™task debit linking, refund idempotency index, removed v2 `credit_wallets` updates. See `docs/changelog/2026-08-17-web-music-credit-hardening-p1.md`.
 - Web music credit billing polish: simple-mode Suno lyrics included in song charge (credits reserved first); yearly plans refresh monthly credits every 30 days. See `docs/changelog/2026-08-17-web-music-credit-billing-polish.md`.
 
 See `docs/changelog/2026-08-17-music-web-profile-likes-avatar.md`.
@@ -505,19 +511,19 @@ See `docs/changelog/2026-08-16-admin-web-music-plans.md`.
 - `GET /api/v1/health` alias of root `/health` so same-origin admin portals can
   reach health via nginx `/api/` proxy. See
   `docs/changelog/2026-08-06-admin-health-via-api-proxy.md`.
-- `GET /health` includes `environment` and `environment_label` (stagingâ†’Sandbox,
-  productionâ†’Production) for admin API Health Â· System Status. See
+- `GET /health` includes `environment` and `environment_label` (stagingÃ¢â€ â€™Sandbox,
+  productionÃ¢â€ â€™Production) for admin API Health Ã‚Â· System Status. See
   `docs/changelog/2026-08-06-admin-api-health-env-label.md`.
 
 ### Changed
 
-- Batch run directories are portable relative keys (`channel\date_album`) only — API no
+- Batch run directories are portable relative keys (`channel\date_album`) only â€” API no
   longer stores machine absolute `C:\Users\...` / `D:\...` paths for new planning,
   download sync, or local progress sync. Legacy absolute rows are stripped to the
   trailing key on write/heal. Desktop joins its local Suno root. Image job
   `output_image_path` values use the same portable join (no Linux-cwd resolve).
   See `docs/changelog/2026-08-06-app-owned-run-paths-and-missing-mp3.md`.
-- Category image samples use **admin VPS packs only** — no fallback to desktop
+- Category image samples use **admin VPS packs only** â€” no fallback to desktop
   `imageBackgroundSamplesDir` / `imageBgSamples` on the API host. Empty packs return
   a clear ValidationError (switch to Prompt only or upload packs).
 - `POST /progress/sync-local` rewrites `batches.ok_run_dir` / `alt_run_dir` only when
@@ -543,12 +549,12 @@ See `docs/changelog/2026-08-16-admin-web-music-plans.md`.
 - Admin period quota top-ups: `user_period_quota_topups` migration `081`, `POST /users/{id}/quota-topups`, details `quota_period` snapshot; dual-control credit adjust default off (`PLATFORM_ADMIN_ADJUST_DUAL_CONTROL_CREDITS=0`). See `docs/changelog/2026-08-04-admin-user-quota-topup.md`.
 - Pipeline stuck-batch housekeeping: scheduled in-process scan (PipelineStuckAlertService) detects batches with no draft/Suno/image/asset activity for 15+ min (configurable) that aren't fully complete on every configured channel role, and pushes a throttled admin:pipeline_stuck_alert WebSocket alert to every admin (same fan-out as admin:abuse_alert). New GET /admin/pipeline/stuck for an on-demand view of the same detection. See docs/changelog/2026-08-01-pipeline-stuck-batch-alerting.md.
 - Restored admin Pipeline Ops API (`/admin/pipeline/board`, batch detail, owner-charged retries via job_queue). See `docs/changelog/2026-08-02-admin-restore-pipeline-ops.md`.
-- Pipeline Ops board no longer requires desktop filesystem paths for stage/status; promotes Image â†’ Converter/Streaming/Done from image jobs + stream uploads.
+- Pipeline Ops board no longer requires desktop filesystem paths for stage/status; promotes Image Ã¢â€ â€™ Converter/Streaming/Done from image jobs + stream uploads.
 - Admin `GET /admin/provider-key-balances`: remaining credits/money per key-pool label (Suno/DeepSeek/Fal/SLAI live; OpenAI marked unsupported). See `docs/changelog/2026-08-02-admin-provider-key-balances.md` and `docs/changelog/2026-08-05-slai-provider-key-balance.md`.
 
 ### Changed
 
-- Phase 1c: `execute_batch` priority 25 (above draft/Suno) + stage multi-workers (`draft`/`suno`/`images` Ã—2) via `CAMXORA_WORKER_JOB_TYPES` claim filter; shared key pools handle rate-limit failover. See `docs/changelog/2026-08-02-api-phase1c-stage-workers.md`.
+- Phase 1c: `execute_batch` priority 25 (above draft/Suno) + stage multi-workers (`draft`/`suno`/`images` Ãƒâ€”2) via `CAMXORA_WORKER_JOB_TYPES` claim filter; shared key pools handle rate-limit failover. See `docs/changelog/2026-08-02-api-phase1c-stage-workers.md`.
 - Phase 1b queue follow-ons: image drains + YouTube uploads move to `job_queue`/`camxora-worker`; `execute_batch` fans out per-song `draft`/`suno_submit`; admin `GET /admin/job-queue/metrics` (queue depth, busy workers, `/progress` p95 alerts). See `docs/changelog/2026-08-02-api-phase1b-queue-followons.md`.
 - Phase 1 job queue: `POST /batches` and song draft/Suno retries enqueue durable `job_queue` rows; `platform_api.worker` drains them outside uvicorn. Migration `080_job_queue`. See `docs/changelog/2026-08-02-api-phase1-job-queue.md`.
 - Phase 0 API capacity: DB pool `min_size=4` / `max_size=8`; `/progress` only ensures image jobs for batches missing rows (skips the previous every-poll heal loop). Pair with uvicorn `--workers 4` on the host. See `docs/changelog/2026-08-02-api-phase0-capacity.md`.
@@ -569,21 +575,21 @@ See `docs/changelog/2026-08-16-admin-web-music-plans.md`.
   draft (Force update checkbox), not from the installer filename. Filename
   parse is auto-fill only; `CamxoraSetup-*.exe` still parses when present.
   See `docs/changelog/2026-08-03-software-update-setup-filename.md`.
-- Startup `alembic upgrade heads` now serializes across worker processes via a Postgres advisory lock — with `API_WORKERS` > 1, every worker previously ran migrations independently and concurrently, which raced DDL against other workers' open connection pools and caused a ~30 minute burst of 500s across nearly every endpoint after today's v1.0.9 production deploy. See `docs/changelog/2026-08-01-migration-worker-race-incident.md`.
-- Production/sandbox systemd unit templates now set `PYTHONUNBUFFERED=1` — stdout was block-buffered, so error tracebacks (including this incident's) were invisible in `journalctl` until a restart. Same incident doc.
-- **Production ran a single uvicorn worker**, confirmed live (--workers 1 on a 6 vCPU/11GB box sitting almost entirely idle), while all heavy background work (image job orchestration, Suno streaming uploads, YouTube uploads, batch orchestration) runs in-process on that same one process via asyncio.create_task()/BackgroundTasks — the planned separate platform_worker queue process doesn't exist yet. A busy batch could starve unrelated simple requests (/auth/refresh, /users/me) sharing the same event loop, matching desktop-client timeout reports across several releases. Bumped to --workers 2 (systemd unit edited + restarted, verified healthy) and persisted via .deploy/secrets.production.env / deploy-script fallback default so it survives future redeploys. See docs/changelog/2026-08-01-production-api-single-worker-bottleneck.md.
+- Startup `alembic upgrade heads` now serializes across worker processes via a Postgres advisory lock â€” with `API_WORKERS` > 1, every worker previously ran migrations independently and concurrently, which raced DDL against other workers' open connection pools and caused a ~30 minute burst of 500s across nearly every endpoint after today's v1.0.9 production deploy. See `docs/changelog/2026-08-01-migration-worker-race-incident.md`.
+- Production/sandbox systemd unit templates now set `PYTHONUNBUFFERED=1` â€” stdout was block-buffered, so error tracebacks (including this incident's) were invisible in `journalctl` until a restart. Same incident doc.
+- **Production ran a single uvicorn worker**, confirmed live (--workers 1 on a 6 vCPU/11GB box sitting almost entirely idle), while all heavy background work (image job orchestration, Suno streaming uploads, YouTube uploads, batch orchestration) runs in-process on that same one process via asyncio.create_task()/BackgroundTasks â€” the planned separate platform_worker queue process doesn't exist yet. A busy batch could starve unrelated simple requests (/auth/refresh, /users/me) sharing the same event loop, matching desktop-client timeout reports across several releases. Bumped to --workers 2 (systemd unit edited + restarted, verified healthy) and persisted via .deploy/secrets.production.env / deploy-script fallback default so it survives future redeploys. See docs/changelog/2026-08-01-production-api-single-worker-bottleneck.md.
 - Dual-channel Suno submit no longer crashes on Secondary daily attribution (`increment_usage` now accepts `count` / `include_monthly`). That mismatch was failing after plan deduct and inflating fail/retry absorb on Retry batch. See `docs/changelog/2026-08-03-usage-tracking-count-kwargs.md`.
 - Streaming karaoke LRC: retry Suno `get-timestamped-lyrics` after generation (alignments often empty immediately), and fetch LRC on admin MP3 upload retry. See `docs/changelog/2026-08-03-streaming-karaoke-lrc-retry.md`.
 - Admin streaming upload-jobs list returns joined user/song/album/batch/publish detail (UI was showing dashes). See `docs/changelog/2026-08-02-admin-streaming-upload-job-details.md`.
 - Generate preflight / wallet soft-overage coverage now scales monthly song/image/draft limits by profile add-on slots (same as quota enforcement). Without this, add-on accounts with empty wallets were blocked when base-plan meters looked full (e.g. images 111+16 > 120 while scaled limit is 480). Insufficient-credits messages now show display credits, not micro-units. See `docs/changelog/2026-08-02-subscription-covers-addon-scaling.md`.
 - Progress/export can advance once the **background** image is ready; thumbnail is no longer required for `long_ready` / Converter (YouTube upload still needs BG+TH via `compute_youtube_*_ready`). See `docs/changelog/2026-08-02-export-without-waiting-for-thumbnail.md`.
 - Suno blocklist sanitize now replaces spaced/hyphenated variants of blocked terms (e.g. `low-light` / `low light` for `lowlight`), so producer-tag rejects are caught before submit. See `docs/changelog/2026-08-02-suno-blocklist-hyphen-variants.md`.
-- Dual-channel batches now attribute **daily** song **and draft** usage to Secondary as well as Primary (monthly package still +1 once on Primary; draft slot math unchanged at â‰ˆ`2N+1`). Per-channel draft daily used/limit exposed on `/credits/quota-status` (was always `0/0` in UIs). See `docs/changelog/2026-08-02-quota-multi-channel-charging.md`.
+- Dual-channel batches now attribute **daily** song **and draft** usage to Secondary as well as Primary (monthly package still +1 once on Primary; draft slot math unchanged at Ã¢â€°Ë†`2N+1`). Per-channel draft daily used/limit exposed on `/credits/quota-status` (was always `0/0` in UIs). See `docs/changelog/2026-08-02-quota-multi-channel-charging.md`.
 
 ## [1.0.9] - 2026-08-01
 
 Deployed to sandbox and production (`release/desktop-1.0.9`, tag `v1.0.9`). Migration head
-merge (`078`) plus `079_image_job_storage_key` applied to both — production had not yet
+merge (`078`) plus `079_image_job_storage_key` applied to both â€” production had not yet
 picked up `075_batch_channel_pipeline_complete` or any DistroKid migration, so its upgrade
 ran the full `074 -> 075_distrokid_addon -> 076_distrokid_wav -> 077_batch_auto_distrokid ->
 078 -> 079` chain (additive schema only; DistroKid's router/services remain unregistered).
@@ -595,10 +601,10 @@ See `docs/changelog/2026-08-01-v109-unified-branch-and-migration-merge.md`.
 - Secondary (Album 2) uniqueness: pool seed + AI polish with retries; never clear `alt_album` to Primary on failure; Progress/run-dir no longer copy Primary onto empty Secondary. See `docs/changelog/2026-07-28-progress-filters-and-album2-uniqueness.md`.
 - Progress list: `limit` is row count after OK/ALT expansion; over-fetch batches; freeze Update timestamp when stage is Done/Error.
 - Secondary album uniqueness hardening: never persist Primary + `II`/`Alt` as Album 2; export/image readiness no longer requires thumbnail for video start. See `docs/changelog/2026-07-28-secondary-album-no-ii-suffix.md` and `docs/changelog/2026-07-28-export-without-waiting-for-thumbnail.md`.
-- `list_pending_suno_downloads` (background account-wide MP3 auto-sync) now excludes any channel whose `batch_channel_assets.pipeline_complete` is already `true` — previously it kept retrying every already-finished pipeline's failed/skipped download forever, on **every** machine the account logs into, which is what produced unrelated phantom date/profile folders (e.g. yesterday's batch, or an unrelated channel) on a fresh machine. Still-running pipelines (no `pipeline_complete` row yet, or explicitly `false`) keep auto-syncing to any device the account is logged into, by design — no per-device scoping yet. See `docs/changelog/2026-07-31-desktop-startup-freeze-hardening.md`.
-- Migration `078_merge_pipeline_complete_and_distrokid` — sandbox's `alembic_version` had two independent, un-merged heads (`075_batch_channel_pipeline_complete` and the parked/unreleased `077_batch_auto_distrokid` from `feature/distrokid`), which breaks a bare `alembic upgrade head` deploy. This is a schema-no-op bookkeeping merge only; DistroKid's router stays unregistered in `main.py` and ships nothing new. See `docs/changelog/2026-08-01-migration-heads-merge.md`.
+- `list_pending_suno_downloads` (background account-wide MP3 auto-sync) now excludes any channel whose `batch_channel_assets.pipeline_complete` is already `true` â€” previously it kept retrying every already-finished pipeline's failed/skipped download forever, on **every** machine the account logs into, which is what produced unrelated phantom date/profile folders (e.g. yesterday's batch, or an unrelated channel) on a fresh machine. Still-running pipelines (no `pipeline_complete` row yet, or explicitly `false`) keep auto-syncing to any device the account is logged into, by design â€” no per-device scoping yet. See `docs/changelog/2026-07-31-desktop-startup-freeze-hardening.md`.
+- Migration `078_merge_pipeline_complete_and_distrokid` â€” sandbox's `alembic_version` had two independent, un-merged heads (`075_batch_channel_pipeline_complete` and the parked/unreleased `077_batch_auto_distrokid` from `feature/distrokid`), which breaks a bare `alembic upgrade head` deploy. This is a schema-no-op bookkeeping merge only; DistroKid's router stays unregistered in `main.py` and ships nothing new. See `docs/changelog/2026-08-01-migration-heads-merge.md`.
 
 ### Added
 
-- `image_jobs.storage_key` (migration `079_image_job_storage_key`, after a `078` merge revision reconciling this lineage with the parked, unreleased DistroKid migrations — see Fixed) — background/thumbnail image job outputs are now durably archived to Backblaze in the background on every successful generation (mirrors the existing MP3 streaming-archive pattern), instead of only living in the API server's local disk cache. `GET /api/v1/image-jobs/{job_id}/output` now falls back to the Backblaze copy (and repopulates the local cache) if the local cache and any client-reachable path are both missing, so a lost server cache no longer means paying the AI provider again to regenerate a previous batch's images. See `docs/changelog/2026-07-31-desktop-startup-freeze-hardening.md` (v1.0.9 part 4).
-- `POST /music/downloads/batch-redownload-plan` — batch/channel-scoped Suno audio re-download plan (ignores `downloaded_ok`/`downloaded_alt`), powering the desktop "Change Run Folder & Resume" recovery flow. `download_url` is the original Suno URL (primary — Suno retains audio 14 days); a new optional `fallback_download_url` carries a signed Backblaze URL (`stream_tracks.storage_key`, archived automatically on every successful Suno callback) for the desktop client to retry with only if the Suno URL is dead — Backblaze is never hit proactively. See `docs/changelog/2026-07-31-desktop-startup-freeze-hardening.md` (v1.0.9 update).
+- `image_jobs.storage_key` (migration `079_image_job_storage_key`, after a `078` merge revision reconciling this lineage with the parked, unreleased DistroKid migrations â€” see Fixed) â€” background/thumbnail image job outputs are now durably archived to Backblaze in the background on every successful generation (mirrors the existing MP3 streaming-archive pattern), instead of only living in the API server's local disk cache. `GET /api/v1/image-jobs/{job_id}/output` now falls back to the Backblaze copy (and repopulates the local cache) if the local cache and any client-reachable path are both missing, so a lost server cache no longer means paying the AI provider again to regenerate a previous batch's images. See `docs/changelog/2026-07-31-desktop-startup-freeze-hardening.md` (v1.0.9 part 4).
+- `POST /music/downloads/batch-redownload-plan` â€” batch/channel-scoped Suno audio re-download plan (ignores `downloaded_ok`/`downloaded_alt`), powering the desktop "Change Run Folder & Resume" recovery flow. `download_url` is the original Suno URL (primary â€” Suno retains audio 14 days); a new optional `fallback_download_url` carries a signed Backblaze URL (`stream_tracks.storage_key`, archived automatically on every successful Suno callback) for the desktop client to retry with only if the Suno URL is dead â€” Backblaze is never hit proactively. See `docs/changelog/2026-07-31-desktop-startup-freeze-hardening.md` (v1.0.9 update).
