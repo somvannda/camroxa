@@ -249,6 +249,8 @@ python scripts/deploy/check_deploy_guards.py production   # preflight, no deploy
 python scripts/deploy/deploy_production.py                # full, from origin/main
 python scripts/deploy/sync_platform_api_production.py     # API only, from origin/main
 python scripts/deploy/sync_music_web_production.py        # music_web only, from origin/main
+python scripts/deploy/sync_admin_portal_production.py     # admin_portal only, from origin/main
+python scripts/deploy/deploy_musicapi_production.py --yes # musicapi; HEAD must equal origin/main
 
 ssh root@<prod-host> cat /opt/camxora/repo/.deployed.json  # what is live
 ```

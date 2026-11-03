@@ -76,6 +76,10 @@ Deploy scripts are not the only way old code can reach production: ~99 legacy
   re-hashes the live checkout against the deployed manifest, so any in-place
   server edit (or a legacy script that ran) shows up as drift instead of
   silently surviving until it is blamed on a later deploy.
+- Per-surface syncs were converted too: `sync_admin_portal_production.py` now
+  packages `origin/main` (it used to tar the local `admin_portal` directory),
+  and `deploy_musicapi_production.py` requires `HEAD == origin/main` because its
+  remote pipeline still stages the working tree.
 
 ## Not changed
 
