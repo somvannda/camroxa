@@ -257,6 +257,20 @@ class SettingsServiceProtocol(Protocol):
 # ---------------------------------------------------------------------------
 
 
+def charge_stash_keys(song_id: UUID, task_id: "UUID | str | None") -> list[str]:
+    """Stash keys for the amount an attempt actually charged.
+
+    The task key is first and is per attempt, so retrying a song cannot clobber
+    the amount a previous failure still needs to refund. The song key remains as
+    a fallback for an attempt that never produced a task id.
+    """
+    keys: list[str] = []
+    if task_id:
+        keys.append(f"suno:task:{task_id}")
+    keys.append(f"suno:{song_id}")
+    return keys
+
+
 class BatchService:
     """Batch orchestration service.
 
@@ -4303,7 +4317,8 @@ class BatchService:
             if self._enforcement_service is not None:
                 pop = getattr(self._enforcement_service, "pop_operation_charge", None)
                 if pop is not None:
-                    await pop(f"suno:{song_id}")
+                    for key in charge_stash_keys(song_id, task_id):
+                        await pop(key)
             return await self.on_suno_task_completed(song_id=song_id, batch_id=batch_id)
 
         song = await self._batch_repo.get_song_by_id(song_id)
@@ -4395,6 +4410,7 @@ class BatchService:
                         music_sub_model=music_sub_model,
                         charged_credit_units=None,
                         song_id=song_id,
+                        ref_id=str(task_id) if task_id else None,
                         reason="suno_generation_failed",
                         secondary_channel_profile_id=(
                             batch.alt_profile_id if batch is not None else None
@@ -5335,7 +5351,8 @@ class BatchService:
             if self._enforcement_service is not None:
                 stash = getattr(self._enforcement_service, "stash_operation_charge", None)
                 if stash is not None:
-                    await stash(f"suno:{song.id}", int(charged or 0))
+                    for key in charge_stash_keys(song.id, task_id):
+                        await stash(key, int(charged or 0))
             return task_id
         except Exception as exc:
             self._log_suno_failure_metric(
@@ -5370,6 +5387,7 @@ class BatchService:
         music_sub_model: str | None = None,
         charged_credit_units: int | None = None,
         song_id: UUID,
+        ref_id: str | None = None,
         reason: str = "suno_generation_failed",
         secondary_channel_profile_id: UUID | None = None,
     ) -> None:
@@ -5379,11 +5397,16 @@ class BatchService:
         charged = charged_credit_units
         if charged is None:
             pop = getattr(self._enforcement_service, "pop_operation_charge", None)
+            charged = 0
             if pop is not None:
-                stored = await pop(f"suno:{song_id}")
-                charged = int(stored or 0) if stored is not None else 0
-            else:
-                charged = 0
+                # The task key is per attempt, so a retry of the same song does
+                # not overwrite it. The song key stays as a fallback for an
+                # attempt that never produced a task id.
+                for key in charge_stash_keys(song_id, ref_id):
+                    stored = await pop(key)
+                    if stored is not None:
+                        charged = int(stored or 0)
+                        break
         try:
             await self._enforcement_service.refund_failed_operation(
                 UUID(user_id),
