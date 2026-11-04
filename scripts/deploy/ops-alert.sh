@@ -299,6 +299,43 @@ alert_once() {
   fi
 }
 
+# --- credit integrity + pool capacity ---------------------------------------
+# Read-only checks against the platform and musicapi databases. They page on a
+# real finding but never fail the run: a broken check must not mask an app being
+# down. Both scripts exit 1 when they find something, 2 on error.
+credit_integrity_alerts() {
+  local py repo platform_dsn music_dsn out rc count runway
+  py="/opt/camxora/repo/platform_api/.venv/bin/python"
+  repo="/opt/camxora/repo"
+  [ -x "$py" ] || return 0
+
+  platform_dsn="$(read_env PLATFORM_DATABASE_URL 2>/dev/null || true)"
+  music_dsn=""
+  if [ -r "$repo/musicapi/.env" ]; then
+    music_dsn="$(grep -m1 '^DATABASE_URL=' "$repo/musicapi/.env" 2>/dev/null | cut -d= -f2- || true)"
+  fi
+
+  # A user was charged for a song that was never created and never refunded.
+  if [ -n "$platform_dsn" ] && [ -f "$repo/scripts/ops/audit_orphan_music_charges.py" ]; then
+    rc=0
+    out="$(PLATFORM_DATABASE_URL="$platform_dsn" "$py" "$repo/scripts/ops/audit_orphan_music_charges.py" --days 7 --json 2>/dev/null)" || rc=$?
+    if [ "$rc" = "1" ]; then
+      count="$(printf '%s' "$out" | sed -n 's/.*"orphaned_charges": *\([0-9][0-9]*\).*/\1/p' | head -n1)"
+      alert_once orphan-charges "⚠️ <b>${HOST}</b>: ${count:-some} music charge(s) with no song and no refund (7d). See scripts/ops/audit_orphan_music_charges.py"
+    fi
+  fi
+
+  # The shared paid Suno pool is about to run dry.
+  if [ -n "$music_dsn" ] && [ -f "$repo/scripts/ops/pool_capacity.py" ]; then
+    rc=0
+    out="$(MUSICAPI_DATABASE_URL="$music_dsn" "$py" "$repo/scripts/ops/pool_capacity.py" --min-runway 2 --json 2>/dev/null)" || rc=$?
+    if [ "$rc" = "1" ]; then
+      runway="$(printf '%s' "$out" | sed -n 's/.*"runway_days": *\([0-9.][0-9.]*\).*/\1/p' | head -n1)"
+      alert_once pool-runway "⚠️ <b>${HOST}</b>: Suno pool runway ${runway:-under 2} day(s). Add credits or cut usage."
+    fi
+  fi
+}
+
 # --- full status (--status / --dry-run) -------------------------------------
 status_report() {
   local lines=() row label unit url extra slug since dur issue
@@ -422,6 +459,7 @@ if [ "${#report_down[@]}" -gt 0 ] || [ "${#report_up[@]}" -gt 0 ]; then
 fi
 
 host_alerts
+credit_integrity_alerts
 
 # --- daily all-app summary --------------------------------------------------
 today="$(TZ="$TIMER_TZ" date +%F)"
