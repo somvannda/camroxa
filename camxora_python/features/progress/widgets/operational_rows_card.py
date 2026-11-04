@@ -571,25 +571,35 @@ class OperationalRowsCard(StudioPanel):
         # Manual publishing: only when this row already has a merged MP4 on disk
         # and a channel profile. The upload itself runs off the UI thread in the
         # Progress view (PublishUploadWorker), which quotes credits first.
-        from shared.lib.manual_asset_paths import manual_inspection_key as _inspection_key
-        from shared.lib.publish_auto import discover_merged_path, manual_publish_context
+        # Manual publishing: available for any row with a channel profile. The
+        # menu is critical, so an unexpected error here must never remove the
+        # other actions.
+        try:
+            from shared.lib.manual_asset_paths import manual_inspection_key as _inspection_key
+            from shared.lib.publish_auto import discover_merged_path
 
-        inspection = getattr(self, "_inspections", {}).get(
-            _inspection_key(meta.batch_id, meta.profile_id, meta.role)
-        )
-        merged_paths = list(getattr(inspection, "merged_long_paths", ()) or [])
-        merged_path = (
-            str(merged_paths[0]) if merged_paths else discover_merged_path(getattr(meta, "run_dir", ""))
-        )
-        # Show the action for any row with a channel profile: the run folder is the
-        # source of truth, so a missing inspection no longer hides it.
-        if str(getattr(meta, "profile_id", "") or "").strip():
-            action = menu.addAction("Upload to YouTube")
-            action.setToolTip("Publish this run's merged video through Post for Me (per-upload credits).")
-            action.triggered.connect(
-                partial(self.upload_youtube_requested.emit, entry.row, merged_path)
+            inspection = getattr(self, "_inspections", {}).get(
+                _inspection_key(meta.batch_id, meta.profile_id, meta.role)
             )
-            menu.addSeparator()
+            merged_paths = list(getattr(inspection, "merged_long_paths", ()) or [])
+            merged_path = (
+                str(merged_paths[0])
+                if merged_paths
+                else discover_merged_path(getattr(meta, "run_dir", ""))
+            )
+            if str(getattr(meta, "profile_id", "") or "").strip():
+                action = menu.addAction("Upload to YouTube")
+                action.setToolTip(
+                    "Publish this run's merged video through Post for Me (per-upload credits)."
+                )
+                action.triggered.connect(
+                    partial(self.upload_youtube_requested.emit, entry.row, merged_path)
+                )
+                menu.addSeparator()
+        except Exception as exc:  # pragma: no cover - defensive
+            from shared.services.app_logger import log_warn
+
+            log_warn(f"Publish menu action unavailable: {exc}", category="progress")
 
         if not finished:
             draft_ids = list(meta.draft_failed_song_ids or [])

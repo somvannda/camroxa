@@ -8,6 +8,7 @@ context the publishing worker needs.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Mapping
 
 AUTO_UPLOAD_SETTING_KEY = "autoUploadYouTube"
