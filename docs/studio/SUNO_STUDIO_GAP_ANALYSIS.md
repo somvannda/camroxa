@@ -41,7 +41,7 @@ Scoring for this document:
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | open |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs + Projects tabs wired; workspaces/stems/uploads still missing |
-| G13 | No Studio test suite | Regressions found by hand | W5 | open |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **partial** - vitest + 33 tests over the pure modules; component/API/Playwright layers open |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | open |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | open |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
