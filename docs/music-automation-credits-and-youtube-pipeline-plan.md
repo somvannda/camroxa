@@ -66,6 +66,13 @@ delta        +110, unexplained by the panel
 
 ## Work breakdown
 
+> **P2 architecture note (verified 2026-11-04):** the `batches` row stores `auto_gen_image`
+> and `auto_gsuno` only — there are no `auto_video` / `auto_merge` / `auto_upload` columns, because
+> export, merge and upload run **on the desktop** after the server-side generation stages. So the
+> queue cannot be enqueued by a server-side merge hook; the desktop enqueues publish jobs as each
+> local merge finishes, while `youtube_upload_jobs` remains the durable queue of record. A server
+> hook would require a new column + migration and is not needed for P2.
+
 ### A. Credits (client + server) — implemented
 
 - [x] `music_costs.py`: `publish_unit_cost`, `upload_ops`, `publish_total_cost` in
