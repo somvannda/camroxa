@@ -1,4 +1,4 @@
-﻿Camxora 1.5.4
+﻿Camxora 1.5.5
 YouTube upload credits + Progress publishing
 November 4, 2026
 
@@ -29,7 +29,7 @@ Fixed
 
 Requirements
 ------------
-- Installer: CamxoraSetup-1.5.4.exe
+- Installer: CamxoraSetup-1.5.5.exe
 - Production API: https://api.camxora.com/api/v3
 
 Still included

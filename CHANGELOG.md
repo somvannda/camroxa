@@ -7,6 +7,21 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.5] - 2026-11-04
+
+### Fixed
+
+- Connecting a channel now completes on **our** callback page and links the account to the
+  profile immediately. The connect request passes `redirect_url_override` to Post for Me, which
+  previously redirected to its own page — so our backend never learned about the new account and
+  the panel stayed "Not connected" until a manual sync. The waiting poll also re-listens from the
+  database after each sync, so a provider response that omits the account cannot hide it.
+
+### Changed
+
+- After consent the browser lands on a CAMXORA-branded page ("YouTube connected" / failed) with the
+  account count and a "close this tab" hint, instead of the provider's generic page.
+
 ## [1.5.4] - 2026-11-04
 
 ### Fixed
