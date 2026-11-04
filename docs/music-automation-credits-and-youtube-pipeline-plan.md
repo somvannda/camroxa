@@ -90,14 +90,14 @@ delta        +110, unexplained by the panel
 Acceptance: for one plan, `panel total == preflight total`, and the difference vs today equals
 `uploads × publish_unit_price` when YouTube Upload is on.
 
-### B. Progress pipeline
+### B. Progress pipeline — implemented
 
-- [ ] Batch progress card: YouTube stage chip per batch — `queued / uploading / uploaded / failed`
-      from `youtube_pending`, `youtube_status`, `youtube_failed`, `youtube_url`.
-- [ ] Row action **Upload to YouTube** for a completed merge: `POST /publish/jobs` (quote first via
-      `POST /publish/quote`, confirm cost in the dialog); disabled with a tooltip when no channel is
-      connected, already uploaded, or no merge exists.
-- [ ] Reuse the publish worker pattern from Settings so the UI never blocks.
+- [x] Delivery summary on a completed row: `uploading x/y`, `uploaded y/y`, `upload failed · retry`,
+      `upload blocked` (`format_delivery_summary`, shown next to the YouTube step).
+- [x] Row action **Upload to YouTube** for a finished merge (`PublishUploadWorker`, quotes credits
+      first, off the UI thread).
+- [x] Auto-publish after a merge in both finishing paths (video page + pipeline automation), gated by
+      the toggle, with a per-file claim so one merged file is never uploaded/charged twice.
 
 ### C. Follow-ups
 

@@ -831,6 +831,12 @@ class PipelineAutomationService(QObject):
         profile_id = str(context.get("profile_id") or "").strip()
         if not profile_id:
             return
+        from shared.lib.publish_auto import claim_publish, release_publish
+
+        if not claim_publish(merged_output):
+            # The video page already published this file in this session.
+            return
+        self._publish_claim_path = merged_output
         try:
             from shared.workers.data_workers import PublishUploadWorker
 
@@ -867,8 +873,11 @@ class PipelineAutomationService(QObject):
     def _on_publish_failed(self, message: str) -> None:
         text = str(message or "YouTube upload failed.").strip()
         emit_shell_status(text, tone="warning")
+        from shared.lib.publish_auto import release_publish
         from shared.services.app_logger import log_warn
 
+        release_publish(getattr(self, "_publish_claim_path", ""))
+        self._publish_claim_path = ""
         log_warn(text, category="export")
 
     def _on_merge_failed(self, message: str) -> None:

@@ -75,3 +75,16 @@ def test_manual_context_needs_only_a_file_and_profile() -> None:
     # No upload toggle involved: an explicit click is enough.
     assert manual_publish_context(row, "") is None
     assert manual_publish_context(SimpleNamespace(meta=SimpleNamespace(profile_id="")), "m.mp4") is None
+
+
+def test_claim_prevents_publishing_the_same_file_twice() -> None:
+    from shared.lib.publish_auto import claim_publish, release_publish
+
+    path = "C:/media/BATCH_MERGED_OK.mp4"
+    assert claim_publish(path) is True
+    # Same file, different separators/case must not publish again.
+    assert claim_publish("c:\\media\\batch_merged_ok.mp4") is False
+
+    release_publish(path)
+    assert claim_publish(path) is True
+    assert claim_publish("") is False

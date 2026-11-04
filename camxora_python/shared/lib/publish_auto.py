@@ -12,6 +12,33 @@ from typing import Any, Mapping
 
 AUTO_UPLOAD_SETTING_KEY = "autoUploadYouTube"
 
+# Merged files already claimed for publishing in this process. Both the video
+# page and the pipeline automation service can finish the same merge; this keeps
+# one upload per file so a path is never published (and charged) twice.
+_CLAIMED_PATHS: set[str] = set()
+
+
+def _path_key(path: str) -> str:
+    normalized = str(path or "").strip().replace("\\", "/")
+    return normalized.lower() if normalized else ""
+
+
+def claim_publish(path: str | None) -> bool:
+    """Reserve ``path`` for publishing. False when it was already claimed."""
+    key = _path_key(path or "")
+    if not key:
+        return False
+    if key in _CLAIMED_PATHS:
+        return False
+    _CLAIMED_PATHS.add(key)
+    return True
+
+
+def release_publish(path: str | None) -> None:
+    """Allow a retry after a failed upload."""
+    _CLAIMED_PATHS.discard(_path_key(path or ""))
+
+
 
 @dataclass(frozen=True, slots=True)
 class AutoPublishPlan:

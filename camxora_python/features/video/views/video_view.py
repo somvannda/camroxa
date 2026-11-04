@@ -3095,10 +3095,18 @@ class VideoView(QWidget):
         creates the publish job and PUTs the file off the UI thread, so a failed
         upload never blocks or fails the merge that just completed.
         """
-        from shared.lib.publish_auto import auto_publish_plan, worker_context
+        from shared.lib.publish_auto import (
+            auto_publish_plan,
+            claim_publish,
+            release_publish,
+            worker_context,
+        )
 
         plan = auto_publish_plan(self._settings, merge_context, merged_path)
         if plan is None:
+            return
+        if not claim_publish(plan.merged_path):
+            # Another path already published this file (video page vs pipeline).
             return
         worker = PublishUploadWorker(
             self._api,
@@ -3112,6 +3120,7 @@ class VideoView(QWidget):
         worker.failed.connect(
             lambda message: notify_action(f"YouTube upload failed: {message}", tone="error")
         )
+        worker.failed.connect(lambda *_: release_publish(plan.merged_path))
         worker.finished.connect(lambda: self._auto_publish_workers_remove(worker))
         self._auto_publish_workers.append(worker)
         worker.start()
