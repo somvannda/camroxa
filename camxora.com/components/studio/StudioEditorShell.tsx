@@ -18,6 +18,7 @@ import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } fro
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
+import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioOnboarding } from "@/components/studio/StudioOnboarding";
 import { StudioMetricsProbe } from "@/components/studio/StudioMetricsProbe";
 
@@ -1281,138 +1282,44 @@ export function StudioEditorShell() {
 
   return (
     <div className={`se-shell${touchMode ? " is-touch" : ""}`}>
-      <header className="se-head">
-        <div className="se-head-left">
-          <span className="se-logo">CAMXORA</span>
-          <button type="button" className="se-chip" disabled title="Project menu is not wired in the shell yet">
-            {project?.title || "Untitled project"}
-            <Icon name="fa-chevron-down" />
-          </button>
-          <button type="button" className="se-icon" aria-label="Undo" disabled={!historyState.canUndo} onClick={undo}>
-            <Icon name="fa-rotate-left" />
-          </button>
-          <button type="button" className="se-icon" aria-label="Redo" disabled={!historyState.canRedo} onClick={redo}>
-            <Icon name="fa-rotate-right" />
-          </button>
-        </div>
-
-        <div className="se-head-center">
-          <button type="button" className="se-icon" onClick={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }} aria-label="Back to start"><Icon name="fa-backward-step" /></button>
-          <button
-            type="button"
-            className={`se-icon${loop ? " on" : ""}`}
-            onClick={toggleLoop}
-            aria-pressed={loop}
-            aria-label="Loop"
-            title="Loop"
-          >
-            <Icon name="fa-repeat" />
-          </button>
-          <button
-            type="button"
-            className="se-icon"
-            onClick={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}
-            aria-label="Stop"
-          >
-            <Icon name="fa-stop" />
-          </button>
-          <button
-            type="button"
-            className={`se-icon se-play${playing ? " on" : ""}`}
-            onClick={togglePlayback}
-            aria-label={playing ? "Pause" : "Play"}
-            title={playing ? "Pause" : "Play"}
-          >
-            <Icon name={playing ? "fa-pause" : "fa-play"} />
-          </button>
-          <button
-            type="button"
-            className={`se-icon${metronome ? " on" : ""}`}
-            onClick={() => setMetronome((value) => !value)}
-            aria-pressed={metronome}
-            aria-label="Metronome (visual only)"
-            title="Metronome (visual only — no click audio yet)"
-          >
-            <Icon name="fa-bell" />
-          </button>
-          <span className="se-readout" aria-label="Time">{clock(playhead)}</span>
-          <span className="se-readout" aria-label="Bar and beat">{barBeat(playhead, bpm)}</span>
-        </div>
-
-        <div className="se-head-right">
-          <input
-            className="se-pill se-bpm"
-            value={bpm}
-            inputMode="numeric"
-            aria-label="Tempo in BPM"
-            onChange={(event) => {
-              const next = Number(event.target.value.replace(/\D/g, ""));
-              if (Number.isFinite(next)) setBpm(Math.min(300, Math.max(20, next || 20)));
-            }}
-            onBlur={() => {
-              if (!projectId) return;
-              persist(
-                (expected) => updateStudioProject(projectId, { bpm, expectedUpdatedAt: expected }),
-                "Could not save the tempo."
-              );
-            }}
-          />
-          <span className="se-pill">{project?.time_signature || "4/4"}</span>
-          <StudioSaveStatus status={saveStatus} onRetry={() => retryRef.current?.()} />
-          <span className="se-pill se-meter" aria-label="Master peak" title="Peak level at the master output">
-            {formatMeter(meter)}
-          </span>
-          <button
-            type="button"
-            className={`se-pill${playbackRate !== 1 ? " on" : ""}`}
-            aria-label={`Audition speed ${playbackRate}×`}
-            onClick={() =>
-              setPlaybackRate((current) => (current === 1 ? 0.5 : current === 0.5 ? 2 : 1))
-            }
-          >
-            {playbackRate}×
-          </button>
-          <button
-            type="button"
-            className={`se-pill${exportOpen ? " on" : ""}`}
-            aria-label="Export menu"
-            aria-expanded={exportOpen}
-            onClick={() => setExportOpen((open) => !open)}
-            disabled={exporting}
-          >
-            <Icon name="fa-arrow-up-from-bracket" /> {exporting ? "Exporting…" : "Export"}
-          </button>
-          {exportOpen ? (
-            <div className="se-export-menu" role="menu" aria-label="Export options">
-              <button type="button" role="menuitem" onClick={() => void runExport("mix")}>
-                Full mix (WAV)
-              </button>
-              <button type="button" role="menuitem" onClick={() => void runExport("tracks")}>
-                One file per track
-              </button>
-              <button
-                type="button"
-                role="menuitem"
-                disabled={loopEnd <= loopStart}
-                onClick={() => void runExport("range")}
-              >
-                Selected time range (WAV)
-              </button>
-              <button type="button" role="menuitem" onClick={() => void runExport("json")}>
-                Project (JSON)
-              </button>
-            </div>
-          ) : null}
-          <button
-            type="button"
-            className={`se-pill${libraryOpen ? " on" : ""}`}
-            onClick={() => setLibraryOpen((open) => !open)}
-            aria-expanded={libraryOpen}
-          >
-            <Icon name="fa-table-columns" /> Library
-          </button>
-        </div>
-      </header>
+      <StudioHeader
+        title={project?.title || "Untitled project"}
+        timeSignature={project?.time_signature || "4/4"}
+        clock={clock(playhead)}
+        barBeat={barBeat(playhead, bpm)}
+        bpm={bpm}
+        onBpmChange={setBpm}
+        onBpmCommit={() => {
+          if (!projectId) return;
+          persist(
+            (expected) => updateStudioProject(projectId, { bpm, expectedUpdatedAt: expected }),
+            "Could not save the tempo."
+          );
+        }}
+        playing={playing}
+        loop={loop}
+        metronome={metronome}
+        canUndo={historyState.canUndo}
+        canRedo={historyState.canRedo}
+        saveStatus={saveStatus}
+        onRetrySave={() => retryRef.current?.()}
+        meter={meter}
+        playbackRate={playbackRate}
+        onCycleSpeed={() => setPlaybackRate((current) => (current === 1 ? 0.5 : current === 0.5 ? 2 : 1))}
+        exportOpen={exportOpen}
+        exporting={exporting}
+        rangeReady={loopEnd > loopStart}
+        onToggleExport={() => setExportOpen((open) => !open)}
+        onExport={(scope) => void runExport(scope)}
+        libraryOpen={libraryOpen}
+        onToggleLibrary={() => setLibraryOpen((open) => !open)}
+        onBackToStart={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}
+        onTogglePlay={togglePlayback}
+        onToggleLoop={toggleLoop}
+        onToggleMetronome={() => setMetronome((value) => !value)}
+        onUndo={undo}
+        onRedo={redo}
+      />
 
       <div className={`se-body${libraryOpen ? " with-library" : ""}`} role="main">
         <h1 className="se-sr-only">{project?.title || "Studio project"}</h1>
