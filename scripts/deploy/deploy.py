@@ -70,6 +70,9 @@ DEPLOY_FILES = (
     "scripts/deploy/musicapi-backup.sh",
     "scripts/deploy/platform-db-backup.sh",
     "scripts/deploy/backup-offhost.py",
+    # Read-only billing/capacity checks the ops-alert timer runs by absolute path.
+    "scripts/ops/audit_orphan_music_charges.py",
+    "scripts/ops/pool_capacity.py",
 )
 # Kept for callers that imported these names from deploy.py.
 __all__ = [
