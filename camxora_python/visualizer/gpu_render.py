@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -2493,10 +2494,16 @@ def _start_ffmpeg(
         "48000",
         "-ac",
         "2",
-        "-shortest",
+        # No ``-shortest`` here: it makes the *audio* track decide when the output
+        # ends, so ffmpeg exits (code 0, empty stderr) at the audio tail while the
+        # render loop is still writing frames. The next stdin write then fails with
+        # EPIPE — or, on Windows, "[Errno 22] Invalid argument" — and aborted the
+        # export at ~100%. The video length is defined by stdin EOF instead: the
+        # render loop writes exactly ceil(audio_duration * fps) frames.
         out_path,
     ]
-    err_file = open(Path(out_path).parent / f"ffmpeg_error_{uuid.uuid4().hex[:8]}.log", "w+", encoding="utf-8")
+    err_path = Path(out_path).parent / f"ffmpeg_error_{uuid.uuid4().hex[:8]}.log"
+    err_file = open(err_path, "w+", encoding="utf-8")
     # One-frame stdin buffer (~3 MiB yuv420p / ~8 MiB rgba) avoids 8 KiB default churn.
     _stdin_buf = max(1024 * 1024, pipe_frame_byte_size(w, h, pipe_fmt))
     enc = popen_hidden(cmd, stdin=subprocess.PIPE, stderr=err_file, bufsize=_stdin_buf)
@@ -2529,6 +2536,7 @@ def _start_ffmpeg(
 
     # attach err_file to enc so we can close/read it later
     enc._err_file = err_file
+    enc._err_log_path = str(err_path)
     enc._pipe_pix_fmt = pipe_fmt
     return enc, video_codec
 
@@ -2654,7 +2662,120 @@ def _smooth_env(
     """Backward-compatible alias; see ``frame_integrator.smooth_env``."""
     return smooth_env(prev, target, smoothing, dt=dt, ref_fps=ref_fps)
 
+
+# ── Encoder lifecycle ────────────────────────────────────────────────────────
+# One export at a time per process (daemon jobs are serial, in-process export runs
+# on its own worker thread), so a small registry is enough to guarantee a failed
+# render never leaves ffmpeg running with the output file locked.
+_active_encode_handles: list[Any] = []
+_active_encode_lock = threading.Lock()
+
+
+def _track_encode_handle(handle: Any) -> Any:
+    with _active_encode_lock:
+        _active_encode_handles.append(handle)
+    return handle
+
+
+def _clear_encode_handles() -> None:
+    with _active_encode_lock:
+        _active_encode_handles.clear()
+
+
+def abort_active_encoders() -> None:
+    """Terminate/close every encoder still open after a failed export."""
+    with _active_encode_lock:
+        handles = list(_active_encode_handles)
+        _active_encode_handles.clear()
+    for handle in reversed(handles):
+        cancel = getattr(handle, "cancel", None)
+        if callable(cancel):
+            try:
+                cancel()
+                continue
+            except Exception:
+                pass
+        terminate_encoder(handle)
+
+
+def terminate_encoder(enc: Any, *, timeout: float = 5.0) -> None:
+    """Make sure a failed export does not leave ffmpeg running."""
+    if enc is None:
+        return
+    try:
+        if enc.poll() is None:
+            enc.terminate()
+            try:
+                enc.wait(timeout=timeout)
+            except Exception:
+                enc.kill()
+    except Exception:
+        pass
+    finally:
+        try:
+            if enc.stdin is not None:
+                enc.stdin.close()
+        except Exception:
+            pass
+
+
+def encoder_log_path(enc: Any) -> str:
+    return str(getattr(enc, "_err_log_path", "") or "")
+
+
+def close_encoder_log(enc: Any, *, keep: bool) -> str:
+    """Close the ffmpeg stderr log; delete it unless it is needed for diagnosis."""
+    path = encoder_log_path(enc)
+    err_file = getattr(enc, "_err_file", None)
+    if err_file is not None:
+        try:
+            err_file.close()
+        except Exception:
+            pass
+    if path and not keep:
+        try:
+            Path(path).unlink(missing_ok=True)
+        except Exception:
+            pass
+    return path
+
+
 def run_gpu_render(
+    opts: GpuOptions,
+    *,
+    single_frame_png: str | None = None,
+    single_frame_index: int | None = None,
+    on_event: Callable[[dict], None] | None = None,
+    existing_analyzer: Any | None = None,
+    ctx_factory: Callable[[], moderngl.Context] | None = None,
+    cancel_check: Callable[[], bool] | None = None,
+    cancel_hooks: dict[str, Any] | None = None,
+) -> int:
+    """Export entry point — never leaves a failed job with a live encoder.
+
+    A mid-render failure (GL, readback, encoder) used to propagate out of
+    ``_run_gpu_render`` with ffmpeg still running, which kept the output file
+    locked and leaked a process per failed job in daemon/in-process mode.
+    """
+    try:
+        return _run_gpu_render(
+            opts,
+            single_frame_png=single_frame_png,
+            single_frame_index=single_frame_index,
+            on_event=on_event,
+            existing_analyzer=existing_analyzer,
+            ctx_factory=ctx_factory,
+            cancel_check=cancel_check,
+            cancel_hooks=cancel_hooks,
+        )
+    except BaseException:
+        abort_active_encoders()
+        raise
+    finally:
+        _clear_encode_handles()
+
+
+def _run_gpu_render(
     opts: GpuOptions,
     *,
     single_frame_png: str | None = None,
@@ -3037,6 +3158,7 @@ def run_gpu_render(
         video_codec = "native_nvenc"
 
         if native_writer is not None:
+            _track_encode_handle(native_writer)
             if cancel_hooks is not None:
                 cancel_hooks["pipe_writer"] = native_writer
 
@@ -3068,6 +3190,7 @@ def run_gpu_render(
                 pipe_pix_fmt=pipe_pix_fmt,
             )
             pack_on_writer = pipe_needs_cpu_pack(pipe_pix_fmt)
+            _track_encode_handle(enc)
             if pipelined_encode_enabled():
                 pack_fn = PipeFramePacker(w, h, pipe_pix_fmt) if pack_on_writer else None
                 pipe_writer = PipelinedEncodeWriter(
@@ -3075,7 +3198,9 @@ def run_gpu_render(
                     queue_size=encode_q,
                     err_file=getattr(enc, "_err_file", None),
                     pack_fn=pack_fn,
+                    err_path=encoder_log_path(enc),
                 )
+                _track_encode_handle(pipe_writer)
                 if cancel_hooks is not None:
                     cancel_hooks["pipe_writer"] = pipe_writer
 
@@ -3093,11 +3218,18 @@ def run_gpu_render(
                 try:
                     enc.stdin.write(payload)
                 except (BrokenPipeError, OSError) as e:
-                    if hasattr(enc, "_err_file"):
-                        enc._err_file.seek(0)
-                        err_txt = enc._err_file.read()
-                    else:
-                        err_txt = ""
+                    from visualizer.encode_pipeline import ffmpeg_stderr_tail
+
+                    exit_code = enc.poll()
+                    if exit_code == 0:
+                        # Encoder already finished (audio tail); nothing left to write.
+                        return
+                    err_txt = ffmpeg_stderr_tail(getattr(enc, "_err_file", None))
+                    if exit_code is not None:
+                        raise RuntimeError(
+                            f"FFmpeg exited (code {exit_code}) before the export finished: "
+                            f"{err_txt or 'no FFmpeg stderr output'}"
+                        ) from e
                     from visualizer.nvenc_capability import (
                         mark_nvenc_unavailable,
                         nvenc_error_indicates_unavailable,
@@ -3111,7 +3243,10 @@ def run_gpu_render(
                             "Camxora will use software encode (x264) on the next try. "
                             f"Details: {err_txt.strip() or e}"
                         ) from e
-                    raise RuntimeError(f"FFmpeg pipe closed unexpectedly: {err_txt} (OS Error: {e})")
+                    raise RuntimeError(
+                        f"FFmpeg pipe closed unexpectedly: {err_txt or 'no FFmpeg stderr output'} "
+                        f"(OS Error: {e})"
+                    )
 
             codec_label = export_video_codec_label(video_codec)
             pipe_label = pipe_pix_fmt.upper()
@@ -4316,8 +4451,23 @@ def run_gpu_render(
         )
     elif pipe_writer is not None:
         pipe_writer.finish()
+        stats = pipe_writer.stats()
+        dropped = int(stats.get("framesDropped") or 0)
+        if dropped > 0:
+            # ffmpeg ended before the render loop finished; the MP4 may be a few
+            # frames short. Surface it instead of silently shipping a short export.
+            _emit_event(
+                {
+                    "status": "warning",
+                    "message": (
+                        f"Encoder stopped early: {dropped} frame(s) were not written "
+                        f"({stats.get('framesWritten')}/{stats.get('framesSubmitted')} written)."
+                    ),
+                    "progress": 0.995,
+                    "encodePipeMetrics": stats,
+                }
+            )
         if os.environ.get("CAMXORA_ENCODE_METRICS", "").strip().lower() in {"1", "true", "yes", "on"}:
-            stats = pipe_writer.stats()
             pack_avg = stats.get("packAvgMs")
             pack_part = f", pack avg={pack_avg:.2f} ms" if isinstance(pack_avg, (int, float)) else ""
             _emit_event(
@@ -4336,14 +4486,16 @@ def run_gpu_render(
         if enc is not None:
             code = enc.wait()
             if code != 0:
-                if hasattr(enc, "_err_file"):
-                    enc._err_file.seek(0)
-                    err_txt = enc._err_file.read()
-                else:
-                    err_txt = ""
-                raise RuntimeError(err_txt.strip() or f"FFmpeg failed (exit code {code})")
-            if hasattr(enc, "_err_file"):
-                enc._err_file.close()
+                from visualizer.encode_pipeline import ffmpeg_stderr_tail
+
+                err_txt = ffmpeg_stderr_tail(getattr(enc, "_err_file", None))
+                log_path = close_encoder_log(enc, keep=True)
+                detail = err_txt or "no FFmpeg stderr output"
+                raise RuntimeError(
+                    f"{detail} (exit code {code})"
+                    + (f" [stderr log: {log_path}]" if log_path else "")
+                )
+            close_encoder_log(enc, keep=False)
     elif enc is not None:
         if enc.stdin is not None:
             try:
@@ -4352,14 +4504,16 @@ def run_gpu_render(
                 pass
         code = enc.wait()
         if code != 0:
-            if hasattr(enc, "_err_file"):
-                enc._err_file.seek(0)
-                err_txt = enc._err_file.read()
-            else:
-                err_txt = ""
-            raise RuntimeError(err_txt.strip() or f"FFmpeg failed (exit code {code})")
-        if hasattr(enc, "_err_file"):
-            enc._err_file.close()
+            from visualizer.encode_pipeline import ffmpeg_stderr_tail
+
+            err_txt = ffmpeg_stderr_tail(getattr(enc, "_err_file", None))
+            log_path = close_encoder_log(enc, keep=True)
+            detail = err_txt or "no FFmpeg stderr output"
+            raise RuntimeError(
+                f"{detail} (exit code {code})"
+                + (f" [stderr log: {log_path}]" if log_path else "")
+            )
+        close_encoder_log(enc, keep=False)
 
     _emit_event(
         {

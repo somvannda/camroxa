@@ -28,6 +28,50 @@ def _stem(p: str) -> str:
     return Path(p).stem or "output"
 
 
+def _export_crash_log_path() -> Path:
+    """Where the visualizer writes a full traceback when an export fails."""
+    try:
+        from shared.lib.app_paths import get_client_logs_dir
+
+        return Path(get_client_logs_dir()) / "export-crash.log"
+    except Exception:
+        base = os.environ.get("LOCALAPPDATA") or os.path.expanduser("~")
+        return Path(base) / "Camxora" / "logs" / "export-crash.log"
+
+
+def report_export_failure(exc: BaseException) -> int:
+    """Report a crashed export as a failed MG_EVENT instead of an unhandled dialog.
+
+    Frozen builds used to pop the PyInstaller "Unhandled exception in script"
+    window with a raw traceback. The ExportJob now receives a failed event (shown
+    in the progress view) and the full traceback still lands in the client logs.
+    """
+    import traceback
+
+    detail = traceback.format_exc()
+    log_path = ""
+    try:
+        path = _export_crash_log_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as fh:
+            fh.write(f"\n[{time.strftime('%Y-%m-%dT%H:%M:%S')}] export failed\n{detail}\n")
+        log_path = str(path)
+    except Exception:
+        log_path = ""
+    message = str(exc).strip() or type(exc).__name__
+    if log_path:
+        message = f"{message} (details: {log_path})"
+    _send(
+        {
+            "status": "failed",
+            "message": message,
+            "progress": 0.0,
+            "traceback": detail[-4000:],
+        }
+    )
+    return 2
+
+
 def normalize_visualizer_job_argv(argv: list[str]) -> list[str]:
     """Strip launcher flags so argparse sees mp3_path as the first positional arg."""
     parts = [str(part) for part in argv if part is not None]
@@ -154,10 +198,15 @@ def _main_impl() -> int:
             _send({"status": "done", "message": "Preview ready", "progress": 1.0, "outputPath": str(out_png)})
             return 0
         
-        # Do not catch exceptions here! Let the GPU renderer crash so we can see the exact error traceback
         from features.video.lib.export_cancel import export_cancel_requested
 
-        return run_gpu_render(gopts, cancel_check=export_cancel_requested)
+        try:
+            return run_gpu_render(gopts, cancel_check=export_cancel_requested)
+        except Exception as exc:
+            # Never let a frozen build surface the raw PyInstaller "Unhandled
+            # exception in script" dialog: report it as a failed MG_EVENT so the
+            # ExportJob can show a real message, and keep the traceback on disk.
+            return report_export_failure(exc)
 
     # CPU path only — keep pygame out of the GPU export import graph so
     # OpenBLAS/librosa.stft is not poisoned before audio analysis.
@@ -316,12 +365,15 @@ def _main_impl() -> int:
             "48000",
             "-ac",
             "2",
-            "-shortest",
+            # No ``-shortest``: the audio track must not decide when the output
+            # ends, or ffmpeg exits at the audio tail while we still write frames.
             str(out_path),
         ]
-        err_file = open(Path(out_path).parent / f"ffmpeg_error_{uuid.uuid4().hex[:8]}.log", "w+", encoding="utf-8")
+        err_path = Path(out_path).parent / f"ffmpeg_error_{uuid.uuid4().hex[:8]}.log"
+        err_file = open(err_path, "w+", encoding="utf-8")
         enc = popen_hidden(cmd, stdin=subprocess.PIPE, stderr=err_file)
         enc._err_file = err_file
+        enc._err_log_path = str(err_path)
         return enc
 
     _send({"status": "running", "message": "Starting encoder...", "progress": 0.0})
@@ -445,12 +497,16 @@ def _main_impl() -> int:
                 raise RuntimeError("FFmpeg stdin is not available")
             enc.stdin.write(raw)
         except (BrokenPipeError, OSError) as e:
-            if hasattr(enc, "_err_file"):
-                enc._err_file.seek(0)
-                err_txt = enc._err_file.read()
-            else:
-                err_txt = ""
-            raise RuntimeError(f"FFmpeg pipe closed unexpectedly: {err_txt} (OS Error: {e})")
+            from visualizer.encode_pipeline import ffmpeg_stderr_tail
+
+            if enc.poll() == 0:
+                # Encoder already finished; the remaining frames have no sink.
+                break
+            err_txt = ffmpeg_stderr_tail(getattr(enc, "_err_file", None))
+            raise RuntimeError(
+                f"FFmpeg pipe closed unexpectedly: {err_txt or 'no FFmpeg stderr output'} "
+                f"(OS Error: {e})"
+            )
         if i == 0 or (i + 1) % 10 == 0 or i + 1 == total_frames:
             _send(
                 {
@@ -470,15 +526,19 @@ def _main_impl() -> int:
             pass
     code = enc.wait()
     if code != 0:
-        if hasattr(enc, "_err_file"):
-            enc._err_file.seek(0)
-            err_txt = enc._err_file.read()
-        else:
-            err_txt = ""
-        raise RuntimeError(err_txt.strip() or f"FFmpeg failed (exit code {code})")
-        
+        from visualizer.encode_pipeline import ffmpeg_stderr_tail
+
+        err_txt = ffmpeg_stderr_tail(getattr(enc, "_err_file", None))
+        raise RuntimeError(f"{err_txt or 'no FFmpeg stderr output'} (exit code {code})")
+
     if hasattr(enc, "_err_file"):
         enc._err_file.close()
+    log_path = str(getattr(enc, "_err_log_path", "") or "")
+    if log_path:
+        try:
+            Path(log_path).unlink(missing_ok=True)
+        except Exception:
+            pass
 
     _send({"status": "done", "message": "Exported MP4", "progress": 1.0, "outputPath": str(out_path)})
     return 0
