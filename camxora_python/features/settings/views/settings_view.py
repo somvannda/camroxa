@@ -124,6 +124,7 @@ from shared.workers.data_workers import (
     SettingsWorkspaceWorker,
     PublishAccountsWorker,
     PublishConnectionWorker,
+    PublishSyncAccountsWorker,
     PublishDisconnectWorker,
     YouTubeActionWorker,
     YouTubeConnectionsWorker,
@@ -194,6 +195,7 @@ class SettingsView(QWidget):
         self._youtube_worker: YouTubeActionWorker | None = None
         self._youtube_connections_worker: YouTubeConnectionsWorker | None = None
         self._publish_accounts_worker: PublishAccountsWorker | None = None
+        self._publish_sync_worker: PublishSyncAccountsWorker | None = None
         self._publish_connection_worker: PublishConnectionWorker | None = None
         self._publish_accounts: list[object] = []
         # Poll while the browser sign-in is open: the provider records the
@@ -3925,7 +3927,28 @@ class SettingsView(QWidget):
         if not self._publish_poll_slow and self._publish_poll_remaining <= 54:
             self._publish_poll_slow = True
             self._publish_poll_timer.setInterval(10000)
-        self._refresh_publish_accounts()
+        self._sync_publish_accounts_during_poll()
+
+    def _sync_publish_accounts_during_poll(self) -> None:
+        """Sync (not list) while waiting: the account appears only after a sync."""
+        worker = self._publish_sync_worker
+        if worker is not None and worker.isRunning():
+            return
+        profile_id = str(self._publish_poll_profile_id or "").strip()
+        if not profile_id:
+            self._refresh_publish_accounts()
+            return
+        worker = PublishSyncAccountsWorker(self._api, profile_id, "youtube", parent=self)
+        worker.succeeded.connect(self._on_publish_accounts_loaded)
+        worker.failed.connect(self._on_publish_poll_sync_failed)
+        worker.finished.connect(lambda: setattr(self, "_publish_sync_worker", None))
+        self._publish_sync_worker = worker
+        worker.start()
+
+    def _on_publish_poll_sync_failed(self, message: str) -> None:
+        # A provider hiccup must not end the poll; log and try the next tick.
+        if message:
+            log_warn(f"Publish account sync while waiting failed: {message}", category="settings")
 
     def _selected_profile_has_publish_account(self) -> bool:
         profile_id = str(self._publish_poll_profile_id or self._selected_profile_id() or "")

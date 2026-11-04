@@ -2733,6 +2733,40 @@ class PublishAccountsWorker(QThread):
             self.failed.emit(str(exc) or "Failed to load publishing accounts.")
 
 
+class PublishSyncAccountsWorker(QThread):
+    """Pull provider-linked accounts into our DB (POST /publish/accounts/sync).
+
+    Post for Me reports upload events by webhook but **not** account linking, so
+    the account only appears after this sync runs. The connect flow used to rely
+    on the user clicking Connect again; polling now syncs instead of listing.
+    """
+
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        profile_id: str,
+        platform: str = "youtube",
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._profile_id = profile_id
+        self._platform = platform
+
+    def run(self) -> None:
+        try:
+            self.succeeded.emit(
+                self._api.sync_publish_accounts(self._profile_id, self._platform)
+            )
+        except PlatformApiError as exc:
+            self.failed.emit(str(exc))
+        except Exception as exc:
+            self.failed.emit(str(exc) or "Failed to sync publishing accounts.")
+
+
 class PublishConnectionWorker(QThread):
     succeeded = Signal(object)
     failed = Signal(str)
