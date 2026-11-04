@@ -22,6 +22,8 @@ import { StudioMetricsProbe } from "@/components/studio/StudioMetricsProbe";
 
 const ROW_HEIGHT = 85;
 const ROW_STEP = 86;
+/** How many documents the undo stack keeps. */
+const HISTORY_LIMIT = 50;
 const PANEL_W = 260;
 const LIBRARY_W = 368;
 const BAR_PX = 96;
@@ -106,6 +108,17 @@ export function StudioEditorShell() {
   const [view, setView] = useState({ left: 0, width: 0 });
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
+  /** Undo/redo: documents, newest last. */
+  const historyRef = useRef<{ undo: { data: unknown; label: string }[]; redo: { data: unknown; label: string }[] }>(
+    { undo: [], redo: [] }
+  );
+  const [historyState, setHistoryState] = useState({ canUndo: false, canRedo: false });
+  function syncHistory() {
+    setHistoryState({
+      canUndo: historyRef.current.undo.length > 0,
+      canRedo: historyRef.current.redo.length > 0,
+    });
+  }
   /** Master peak readout while playing (W4.4). */
   const [meter, setMeter] = useState<MeterReading | null>(null);
   const [loading, setLoading] = useState(true);
@@ -290,6 +303,59 @@ export function StudioEditorShell() {
   }
 
   /**
+   * Single write path for project data, with history (undo/redo).
+   *
+   * Every data-changing action funnels through here so history is one stack rather
+   * than a per-feature afterthought: push the outgoing document, apply the new one
+   * optimistically, then persist through the W2.1/W2.2 path.
+   */
+  function writeProjectData(
+    next: Record<string, unknown>,
+    label: string,
+    nextTracks?: StudioTrack[] | null
+  ) {
+    const current = (project?.data || {}) as Record<string, unknown>;
+    const history = historyRef.current;
+    history.undo.push({ data: current, label });
+    if (history.undo.length > HISTORY_LIMIT) history.undo.shift();
+    history.redo = [];
+    syncHistory();
+    setProject((prev) => (prev ? { ...prev, data: next } : prev));
+    if (nextTracks !== undefined) setLocalTracks(nextTracks);
+    if (!projectId) return;
+    persist(
+      (expected) => updateStudioProject(projectId, { data: next, expectedUpdatedAt: expected }),
+      `Could not save ${label}.`
+    );
+  }
+
+  function applyHistoryEntry(entry: { data: unknown; label: string }, to: "undo" | "redo") {
+    if (!projectId) return;
+    const current = (project?.data || {}) as Record<string, unknown>;
+    const history = historyRef.current;
+    const opposite = to === "undo" ? history.redo : history.undo;
+    opposite.push({ data: current, label: entry.label });
+    const data = entry.data as Record<string, unknown>;
+    setProject((prev) => (prev ? { ...prev, data } : prev));
+    setLocalTracks(null);
+    syncHistory();
+    persist(
+      (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
+      `Could not ${to} ${entry.label}.`
+    );
+  }
+
+  function undo() {
+    const entry = historyRef.current.undo.pop();
+    if (entry) applyHistoryEntry(entry, "undo");
+  }
+
+  function redo() {
+    const entry = historyRef.current.redo.pop();
+    if (entry) applyHistoryEntry(entry, "redo");
+  }
+
+  /**
    * Every write goes through here so the header can tell the truth about saving
    * (roadmap W2.1) and so a version mismatch can be resolved (W2.2).
    */
@@ -390,14 +456,8 @@ export function StudioEditorShell() {
 
   /** Persist the track list into the project document. */
   function commitTracks(next: StudioTrack[]) {
-    setLocalTracks(next);
-    if (!projectId) return;
     const base = (project?.data || {}) as Record<string, unknown>;
-    persist(
-      (expected) =>
-        updateStudioProject(projectId, { data: { ...base, tracks: next }, expectedUpdatedAt: expected }),
-      "Could not save the track list."
-    );
+    writeProjectData({ ...base, tracks: next }, "the track list", next);
   }
 
   function addTrack() {
@@ -435,13 +495,8 @@ export function StudioEditorShell() {
   function commitChain(trackId: string, next: PluginChainEntry[]) {
     const merged = { ...chains, [trackId]: next };
     setLocalChains(merged);
-    if (!projectId) return;
     const base = (project?.data || {}) as Record<string, unknown>;
-    persist(
-      (expected) =>
-        updateStudioProject(projectId, { data: { ...base, chains: merged }, expectedUpdatedAt: expected }),
-      "Could not save the plugin chain."
-    );
+    writeProjectData({ ...base, chains: merged }, "the plugin chain");
   }
 
   /** Persist new start positions for one or more clips (drag result). */
@@ -452,16 +507,7 @@ export function StudioEditorShell() {
     const updated = lanes.map((clip) =>
       next[clip.id] !== undefined ? { ...clip, start: next[clip.id] } : clip
     );
-    // Optimistic: `clips` derives from project.data, so the clips land immediately
-    // and the write only reports success through the save chip.
-    setProject((current) =>
-      current ? { ...current, data: { ...(current.data || {}), lanes: updated } } : current
-    );
-    persist(
-      (expected) =>
-        updateStudioProject(projectId, { data: { ...data, lanes: updated }, expectedUpdatedAt: expected }),
-      "Could not move the clip."
-    );
+    writeProjectData({ ...data, lanes: updated }, "the clip move");
   }
 
   function commitClipStart(clipId: string, start: number) {
@@ -487,21 +533,8 @@ export function StudioEditorShell() {
         ? { ...track, clipIds: [...track.clipIds, ...(additions.get(track.id) || [])] }
         : track
     );
-    setProject((current) =>
-      current
-        ? { ...current, data: { ...(current.data || {}), lanes, tracks: nextTracks } }
-        : current
-    );
-    setLocalTracks(nextTracks);
     setSelectedIds(entries.map((entry) => entry.clip.id));
-    persist(
-      (expected) =>
-        updateStudioProject(projectId, {
-          data: { ...data, lanes, tracks: nextTracks },
-          expectedUpdatedAt: expected,
-        }),
-      "Could not add the clips."
-    );
+    writeProjectData({ ...data, lanes, tracks: nextTracks }, "adding clips", nextTracks);
   }
 
   /** The clips the user is acting on: an explicit selection, else the focused clip. */
@@ -588,25 +621,12 @@ export function StudioEditorShell() {
             Math.abs((a.start ?? 0) - anchorStart) - Math.abs((b.start ?? 0) - anchorStart)
         )[0] ?? null;
 
-    setProject((current) =>
-      current
-        ? { ...current, data: { ...(current.data || {}), lanes: remaining, tracks: nextTracks } }
-        : current
-    );
-    setLocalTracks(nextTracks);
     setSelectedIds(candidate ? [candidate.id] : []);
     setSelectedClip(candidate ? candidate.id : null);
     focusPendingRef.current = Boolean(candidate);
 
     const data = (project?.data || {}) as Record<string, unknown>;
-    persist(
-      (expected) =>
-        updateStudioProject(projectId, {
-          data: { ...data, lanes: remaining, tracks: nextTracks },
-          expectedUpdatedAt: expected,
-        }),
-      "Could not delete the clips."
-    );
+    writeProjectData({ ...data, lanes: remaining, tracks: nextTracks }, "deleting clips", nextTracks);
   }
 
   /** After a delete, move real DOM focus to the surviving clip. */
@@ -640,6 +660,18 @@ export function StudioEditorShell() {
 
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // Undo / redo (spec §36). Shift+Z is redo alongside Y.
+      if (key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) redo();
+        else undo();
+        return;
+      }
+      if (key === "y") {
+        event.preventDefault();
+        redo();
+        return;
+      }
       if (key !== "c" && key !== "v" && key !== "d") return;
       event.preventDefault();
       if (key === "c") copySelection();
@@ -1003,8 +1035,12 @@ export function StudioEditorShell() {
             {project?.title || "Untitled project"}
             <Icon name="fa-chevron-down" />
           </button>
-          <button type="button" className="se-icon" disabled aria-label="Undo (not wired)"><Icon name="fa-rotate-left" /></button>
-          <button type="button" className="se-icon" disabled aria-label="Redo (not wired)"><Icon name="fa-rotate-right" /></button>
+          <button type="button" className="se-icon" aria-label="Undo" disabled={!historyState.canUndo} onClick={undo}>
+            <Icon name="fa-rotate-left" />
+          </button>
+          <button type="button" className="se-icon" aria-label="Redo" disabled={!historyState.canRedo} onClick={redo}>
+            <Icon name="fa-rotate-right" />
+          </button>
         </div>
 
         <div className="se-head-center">
