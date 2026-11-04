@@ -442,3 +442,52 @@ jobs:
         continue-on-error: true
         working-directory: website
         run: CI=1 npm run build
+
+  # camxora.com had no job at all: the Studio editor, its unit tests, the UI-system
+  # gate and the metric parity harness were only ever run by hand. These gates are
+  # deterministic (no network, no database), so they block the PR.
+  camxora-web-checks:
+    name: camxora.com typecheck + UI gate + tests (if changed)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect camxora.com changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- camxora.com/ .github/workflows/pr-checks.yml | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: camxora.com/package-lock.json
+
+      - name: npm ci
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        run: npm ci --no-audit --no-fund
+
+      - name: typecheck
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        run: npm run typecheck
+
+      - name: UI system gate
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        run: npm run check:ui
+
+      - name: unit tests
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        run: npm test
