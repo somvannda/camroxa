@@ -52,6 +52,7 @@ from shared.workers.data_workers import (
     ManualInspectionWorker,
     MissingMp3DownloadResult,
     MissingMp3DownloadWorker,
+    PublishUploadWorker,
     RunFolderRecoveryResult,
     RunFolderRecoveryWorker,
     SettingsWorker,
@@ -182,6 +183,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         QScrollArea.__init__(self, parent)
         self._init_pollable()
         self._api = api
+        self._publish_upload_worker: PublishUploadWorker | None = None
         self._cache = cache or WorkspaceCache()
         self._worker: WorkflowLoadWorker | None = None
         self._settings_worker: SettingsWorker | None = None
@@ -308,6 +310,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.enqueue_images_requested.connect(self._enqueue_images)
         self._rows_card.retry_drafts_requested.connect(self._retry_failed_drafts)
         self._rows_card.retry_suno_requested.connect(self._retry_failed_suno)
+        self._rows_card.upload_youtube_requested.connect(self._upload_row_to_youtube)
         self._rows_card.force_export_regenerate_requested.connect(
             lambda row: self._run_video_pipeline_action(row, "force_export")
         )
@@ -1170,6 +1173,34 @@ class ProgressView(PollablePageMixin, QScrollArea):
         worker.failed.connect(self._on_draft_retry_failed)
         worker.finished.connect(lambda: setattr(self, "_draft_retry_worker", None))
         self._draft_retry_worker = worker
+        worker.start()
+
+    def _upload_row_to_youtube(self, row: object, merged_path: str) -> None:
+        """Manual publish for one finished merge (Progress row action)."""
+        from shared.lib.publish_auto import manual_publish_context
+
+        context = manual_publish_context(row, merged_path)
+        if context is None:
+            self._show_retry_notice("No merged video found for this row.", tone="warning")
+            return
+        if self._publish_upload_worker is not None and self._publish_upload_worker.isRunning():
+            self._show_retry_notice("A YouTube upload is already in progress.", tone="warning")
+            return
+        self._show_retry_notice("Publishing to YouTube…", tone="neutral")
+        worker = PublishUploadWorker(self._api, auto_context=context, parent=self)
+        worker.status_changed.connect(
+            lambda message: self._show_retry_notice(message, tone="neutral")
+        )
+        worker.succeeded.connect(
+            lambda _result: self._show_retry_notice("Video published to YouTube.", tone="success")
+        )
+        worker.failed.connect(
+            lambda message: self._show_retry_notice(
+                f"YouTube upload failed: {message}", tone="error"
+            )
+        )
+        worker.finished.connect(lambda: setattr(self, "_publish_upload_worker", None))
+        self._publish_upload_worker = worker
         worker.start()
 
     def _retry_failed_suno(self, batch_id: str, song_ids: list[str]) -> None:

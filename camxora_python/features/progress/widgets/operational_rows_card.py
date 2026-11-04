@@ -161,6 +161,7 @@ class OperationalRowsCard(StudioPanel):
     regenerate_track_requested = Signal(object, str)
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
+    upload_youtube_requested = Signal(object, str)
     change_run_folder_requested = Signal(object)
     download_missing_mp3s_requested = Signal(object)
     cancel_job_requested = Signal(object)
@@ -566,6 +567,25 @@ class OperationalRowsCard(StudioPanel):
         copy_action.setEnabled(bool(str(meta.batch_id or "").strip()))
         copy_action.triggered.connect(partial(self._copy_batch_id, meta.batch_id))
         menu.addSeparator()
+
+        # Manual publishing: only when this row already has a merged MP4 on disk
+        # and a channel profile. The upload itself runs off the UI thread in the
+        # Progress view (PublishUploadWorker), which quotes credits first.
+        from shared.lib.manual_asset_paths import manual_inspection_key as _inspection_key
+        from shared.lib.publish_auto import manual_publish_context
+
+        inspection = getattr(self, "_inspections", {}).get(
+            _inspection_key(meta.batch_id, meta.profile_id, meta.role)
+        )
+        merged_paths = list(getattr(inspection, "merged_long_paths", ()) or [])
+        merged_path = str(merged_paths[0]) if merged_paths else ""
+        if manual_publish_context(entry.row, merged_path) is not None:
+            action = menu.addAction("Upload to YouTube")
+            action.setToolTip("Publish this merged video through Post for Me (per-upload credits).")
+            action.triggered.connect(
+                partial(self.upload_youtube_requested.emit, entry.row, merged_path)
+            )
+            menu.addSeparator()
 
         if not finished:
             draft_ids = list(meta.draft_failed_song_ids or [])

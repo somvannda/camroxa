@@ -50,3 +50,28 @@ def test_accepts_string_flags_from_persisted_settings() -> None:
         assert auto_publish_plan({"autoUploadYouTube": value}, CONTEXT, "m.mp4") is not None
     for value in ("false", "0", "", None):
         assert auto_publish_plan({"autoUploadYouTube": value}, CONTEXT, "m.mp4") is None
+
+
+def test_manual_context_needs_only_a_file_and_profile() -> None:
+    from types import SimpleNamespace
+
+    from shared.lib.publish_auto import manual_publish_context
+
+    row = SimpleNamespace(
+        meta=SimpleNamespace(
+            profile_id="profile-1",
+            batch_id="batch-1",
+            run_dir="run/dir",
+            role="ok",
+        )
+    )
+
+    context = manual_publish_context(row, "C:/media/merged.mp4")
+
+    assert context is not None
+    assert context["merged_path"] == "C:/media/merged.mp4"
+    assert context["profile_id"] == "profile-1"
+    assert context["role"] == "OK"
+    # No upload toggle involved: an explicit click is enough.
+    assert manual_publish_context(row, "") is None
+    assert manual_publish_context(SimpleNamespace(meta=SimpleNamespace(profile_id="")), "m.mp4") is None

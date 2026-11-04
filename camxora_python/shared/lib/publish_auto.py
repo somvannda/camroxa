@@ -67,3 +67,28 @@ def worker_context(plan: AutoPublishPlan) -> dict[str, object]:
         "batch_id": plan.batch_id,
         "role": plan.role,
     }
+
+
+def manual_publish_context(
+    row: object,
+    merged_path: str | None,
+) -> dict[str, object] | None:
+    """Context for the Progress "Upload to YouTube" action (no toggle required).
+
+    Unlike the automation path this is an explicit user action, so it only needs
+    a merged file and the row's channel profile.
+    """
+    path = str(merged_path or "").strip()
+    if not path:
+        return None
+    meta = getattr(row, "meta", None)
+    profile_id = str(getattr(meta, "profile_id", "") or "").strip()
+    if not profile_id:
+        return None
+    return {
+        "profile_id": profile_id,
+        "merged_path": path,
+        "run_dir": str(getattr(meta, "run_dir", "") or "").strip(),
+        "batch_id": str(getattr(meta, "batch_id", "") or "").strip() or None,
+        "role": str(getattr(meta, "role", "") or "OK").strip().upper() or "OK",
+    }
