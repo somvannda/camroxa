@@ -76,7 +76,7 @@ needs an interaction spec row before code.
 | # | Task | Exit test |
 |---|---|---|
 | W5.1 | ◐ Unit tests for pure helpers (snap, meter, draft, seed, WAV encode) — 33 passing, enforced by CI | `npm test` green |
-| W5.2 | Component tests for reduction/undo/mixer invariants | green |
+| W5.2 | ✅ Component tests for the extracted Studio components (header, footer, library strip, track panel) | green |
 | W5.3 | API contract tests for `lib/studio-api.ts` against a mock server | green |
 | W5.4 | Playwright smoke: open project → add clip → move → undo → export | green in CI |
 | W5.5 | Accessibility pass (axe) on `/studio` and `/studio/editor` | no serious violations |
