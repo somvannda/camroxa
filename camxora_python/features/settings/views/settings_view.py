@@ -14,6 +14,7 @@ from pathlib import Path
 from PySide6.QtCore import QSize, Qt, QTimer
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import (
+    QApplication,
     QButtonGroup,
     QCheckBox,
     QComboBox,
@@ -203,6 +204,8 @@ class SettingsView(QWidget):
         self._publish_poll_timer.timeout.connect(self._poll_publish_accounts)
         self._publish_poll_profile_id: str = ""
         self._publish_poll_remaining = 0
+        self._publish_poll_slow = False
+        self._publish_auth_url = ""
         self._youtube_poll_timer = QTimer(self)
         self._youtube_poll_timer.setInterval(3000)
         self._youtube_poll_timer.timeout.connect(self._poll_youtube_connections)
@@ -1057,9 +1060,29 @@ class SettingsView(QWidget):
         self._publish_refresh_btn = QPushButton("Refresh Status")
         self._publish_refresh_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
         self._publish_refresh_btn.clicked.connect(self._refresh_publish_accounts)
-        btn_row.addWidget(self._youtube_connect_btn)
-        btn_row.addWidget(self._publish_refresh_btn)
+        # Waiting-for-browser controls: the sign-in may live in another browser or
+        # Chrome profile, so the link must be portable and re-openable.
+        self._publish_reopen_btn = QPushButton("Open browser again")
+        self._publish_reopen_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._publish_reopen_btn.clicked.connect(self._reopen_publish_auth_url)
+        self._publish_copy_link_btn = QPushButton("Copy link")
+        self._publish_copy_link_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._publish_copy_link_btn.clicked.connect(self._copy_publish_auth_url)
+        self._publish_cancel_btn = QPushButton("Cancel")
+        self._publish_cancel_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._publish_cancel_btn.clicked.connect(self._cancel_publish_connection)
+        for button in (
+            self._youtube_connect_btn,
+            self._publish_refresh_btn,
+            self._publish_reopen_btn,
+            self._publish_copy_link_btn,
+            self._publish_cancel_btn,
+        ):
+            btn_row.addWidget(button)
         btn_row.addStretch()
+        self._publish_reopen_btn.hide()
+        self._publish_copy_link_btn.hide()
+        self._publish_cancel_btn.hide()
         panel.add_layout(btn_row)
 
         self._publish_account_note = note_box(
@@ -3835,22 +3858,56 @@ class SettingsView(QWidget):
     def _on_publish_connection_started(self, payload: object) -> None:
         auth_url = getattr(payload, "auth_url", None)
         if auth_url:
-            webbrowser.open(str(auth_url))
+            self._publish_auth_url = str(auth_url)
+            webbrowser.open(self._publish_auth_url)
+            self._set_publish_waiting_ui(True)
             self._profile_youtube_note.setText(
-                "YouTube: finish the sign-in in your browser. This panel updates automatically."
+                "YouTube: choose the Google account that owns this channel. "
+                "Using a different browser or Chrome profile? Copy the link and open it there."
             )
             self._status_message = "YouTube connect started."
             self._start_publish_poll()
             return
+        self._set_publish_waiting_ui(False)
         self._show_save_success("YouTube channel is already connected.")
         self._refresh_publish_accounts()
         self.refresh_data(force=True)
 
+    def _set_publish_waiting_ui(self, waiting: bool) -> None:
+        self._youtube_connect_btn.setEnabled(not waiting)
+        self._publish_reopen_btn.setVisible(waiting)
+        self._publish_copy_link_btn.setVisible(waiting)
+        self._publish_cancel_btn.setVisible(waiting)
+
+    def _reopen_publish_auth_url(self) -> None:
+        if self._publish_auth_url:
+            webbrowser.open(self._publish_auth_url)
+
+    def _copy_publish_auth_url(self) -> None:
+        if not self._publish_auth_url:
+            return
+        clipboard = QApplication.clipboard()
+        if clipboard is not None:
+            clipboard.setText(self._publish_auth_url)
+            self._status_message = "YouTube sign-in link copied."
+
+    def _cancel_publish_connection(self) -> None:
+        self._publish_poll_timer.stop()
+        self._publish_poll_remaining = 0
+        self._publish_auth_url = ""
+        self._set_publish_waiting_ui(False)
+        self._profile_youtube_note.setText("YouTube: connection cancelled.")
+
     def _start_publish_poll(self) -> None:
-        """Poll for the connected account until it lands or we give up."""
+        """Poll for the connected account until it lands or we give up.
+
+        Google sign-in can happen in another browser or Chrome profile, so the
+        window is generous: 20 ticks at 3s, then 54 at 10s (~10 minutes total).
+        """
         self._publish_poll_profile_id = str(self._selected_profile_id() or "")
-        # 40 ticks x 3s = 2 minutes, enough for browser + provider sync.
-        self._publish_poll_remaining = 40
+        self._publish_poll_remaining = 74
+        self._publish_poll_slow = False
+        self._publish_poll_timer.setInterval(3000)
         self._publish_poll_timer.start()
         self._poll_publish_accounts()
 
@@ -3859,11 +3916,15 @@ class SettingsView(QWidget):
             self._publish_poll_timer.stop()
             if self._selected_profile_has_publish_account():
                 return
+            self._set_publish_waiting_ui(False)
             self._profile_youtube_note.setText(
-                "YouTube: not connected yet. Click Refresh, or Connect YouTube again."
+                "YouTube: still not connected. Click Connect YouTube again, or Refresh."
             )
             return
         self._publish_poll_remaining -= 1
+        if not self._publish_poll_slow and self._publish_poll_remaining <= 54:
+            self._publish_poll_slow = True
+            self._publish_poll_timer.setInterval(10000)
         self._refresh_publish_accounts()
 
     def _selected_profile_has_publish_account(self) -> bool:
@@ -3903,6 +3964,8 @@ class SettingsView(QWidget):
             # The browser sign-in landed: stop polling and show the result.
             self._publish_poll_timer.stop()
             self._publish_poll_remaining = 0
+            self._publish_auth_url = ""
+            self._set_publish_waiting_ui(False)
             self._profile_youtube_note.setText("YouTube: connected via Post for Me.")
             self._show_save_success("YouTube channel connected.")
             self.refresh_data(force=True)
@@ -3915,6 +3978,8 @@ class SettingsView(QWidget):
     def _disconnect_publish_account(self, account_id: str | None = None) -> None:
         self._publish_poll_timer.stop()
         self._publish_poll_remaining = 0
+        self._publish_auth_url = ""
+        self._set_publish_waiting_ui(False)
         if not account_id:
             if not self._publish_accounts:
                 return
