@@ -82,6 +82,20 @@ class V3BillingStore:
     def __init__(self, pool: Any) -> None:
         self._pool = pool
 
+    async def system_setting(self, key: str) -> str | None:
+        """Raw ``system_settings`` value for ``key``, or None when unset.
+
+        Admin-editable settings live here so an operator can change them without
+        a deploy; callers fall back to their env default when this returns None.
+        """
+        try:
+            value = await self._pool.fetchval(
+                "SELECT value FROM system_settings WHERE key = $1", key
+            )
+        except Exception:  # noqa: BLE001 - a missing table must not block billing
+            return None
+        return None if value is None else str(value)
+
     async def music_credits_spent_today(self, user_id: UUID) -> int:
         """Units of ``v3_music`` debit this user has accrued since midnight.
 

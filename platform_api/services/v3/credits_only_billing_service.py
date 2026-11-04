@@ -28,6 +28,9 @@ from platform_api.services.v3.store import V3BillingStore
 logger = logging.getLogger(__name__)
 
 
+MUSIC_DAILY_CAP_SETTING_KEY = "music_daily_credit_cap"
+
+
 @dataclass(frozen=True, slots=True)
 class QuoteResult:
     op: str
@@ -226,16 +229,37 @@ class CreditsOnlyBillingService:
     ) -> dict[str, Any]:
         return overlay_plan_list_prices(plan, op_credits, overlay_ops=overlay_ops)
 
+    async def _resolve_music_daily_cap(self) -> int:
+        """Per-user daily music cap in credits: admin setting over env default."""
+        raw = None
+        getter = getattr(self._store, "system_setting", None)
+        if getter is not None:
+            try:
+                raw = await getter(MUSIC_DAILY_CAP_SETTING_KEY)
+            except Exception:  # noqa: BLE001 - fall back to the env default
+                logger.debug("music daily cap setting lookup failed", exc_info=True)
+        text = str(raw).strip() if raw is not None else ""
+        if text:
+            try:
+                return max(0, int(text))
+            except ValueError:
+                logger.warning(
+                    "Ignoring invalid %s setting: %r", MUSIC_DAILY_CAP_SETTING_KEY, raw
+                )
+        return max(0, int(get_settings().music_daily_credit_cap or 0))
+
     async def _assert_daily_music_cap(self, user_id: UUID, quote: QuoteResult) -> None:
         """Refuse a music charge that would exceed the per-user daily cap.
 
         Paid Suno accounts are a shared pool, so one user generating hundreds of
         songs in a day drains capacity for everyone else. The cap counts credits
-        per calendar day across web and desktop; ``0`` disables it.
+        per calendar day across web and desktop; ``0`` disables it. Admins set it
+        in the console (``system_settings.music_daily_credit_cap``), which wins
+        over ``MUSIC_DAILY_CREDIT_CAP``.
         """
         if quote.op != "music":
             return
-        cap = int(get_settings().music_daily_credit_cap or 0)
+        cap = await self._resolve_music_daily_cap()
         if cap <= 0:
             return
         spent = await self._store.music_credits_spent_today(user_id)

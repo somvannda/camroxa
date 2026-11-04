@@ -19,6 +19,7 @@ def _service(spent_units: int) -> CreditsOnlyBillingService:
     service = CreditsOnlyBillingService.__new__(CreditsOnlyBillingService)
     service._store = MagicMock()
     service._store.music_credits_spent_today = AsyncMock(return_value=spent_units)
+    service._store.system_setting = AsyncMock(return_value=None)
     service._credit_repo = MagicMock()
     service._credit_repo.has_transaction = AsyncMock(return_value=False)
     service._credit_repo.atomic_deduct = AsyncMock(return_value=True)
@@ -90,5 +91,62 @@ async def test_other_operations_are_not_capped(monkeypatch: pytest.MonkeyPatch) 
     await service._assert_daily_music_cap(
         uuid4(),
         QuoteResult(op="image", amount_credits=60.0, amount_units=600_000, source="plan", plan_id=None),
+    )
+    service._store.music_credits_spent_today.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_admin_setting_overrides_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The console value must win over MUSIC_DAILY_CREDIT_CAP."""
+    _settings(500, monkeypatch)
+    service = _service(spent_units=2_450_000)  # 245 credits today
+    service._store.system_setting = AsyncMock(return_value="250")
+
+    with pytest.raises(QuotaExceededError) as exc:
+        await service._assert_daily_music_cap(
+            uuid4(),
+            QuoteResult(
+                op="music",
+                amount_credits=10.0,
+                amount_units=100_000,
+                source="plan",
+                plan_id=None,
+            ),
+        )
+
+    assert exc.value.details["cap_credits"] == 250
+    service._store.system_setting.assert_awaited_with("music_daily_credit_cap")
+
+
+@pytest.mark.asyncio
+async def test_invalid_admin_setting_falls_back_to_env(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _settings(500, monkeypatch)
+    service = _service(spent_units=0)
+    service._store.system_setting = AsyncMock(return_value="not-a-number")
+
+    # Env default (500) applies, so a 10-credit song is allowed.
+    await service._assert_daily_music_cap(
+        uuid4(),
+        QuoteResult(
+            op="music", amount_credits=10.0, amount_units=100_000, source="plan", plan_id=None
+        ),
+    )
+
+
+@pytest.mark.asyncio
+async def test_admin_zero_setting_disables_the_cap(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _settings(500, monkeypatch)
+    service = _service(spent_units=99_000_000)
+    service._store.system_setting = AsyncMock(return_value="0")
+
+    await service._assert_daily_music_cap(
+        uuid4(),
+        QuoteResult(
+            op="music", amount_credits=10.0, amount_units=100_000, source="plan", plan_id=None
+        ),
     )
     service._store.music_credits_spent_today.assert_not_awaited()
