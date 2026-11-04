@@ -1,5 +1,51 @@
 # PROJECT PROGRESS
 
+Reverse-chronological. Newest session first.
+
+## Session 2026-11-04 — Studio build: gaps closed, tests and CI in place
+
+Continued from the 2026-11-03 capture/backfill session. This one is about **building**
+against the captured contract rather than photographing it.
+
+### Shipped (each verified in the running app, not just typechecked)
+
+| Area | What landed |
+|---|---|
+| **W1 entry** | `/studio` routed to `StudioHome` (was a missing route; every page 500'd on a stale duplicate-route state); start-from-song seeds a project with playable audio |
+| **W2 persistence** | save status with retry · 409 conflict detection (server `expected_updated_at`) + reload/overwrite panel · offline draft capture and restore · unsaved-changes guard |
+| **W3 editor** | clip drag with 3px threshold, snap and guideline · marquee multi-select · multi-drag · copy/paste/duplicate · delete with focus management · library Songs/Projects + search · clip provenance · audition speed · first-run onboarding · clip culling (300 → 80–140 rendered) · 44px touch targets on coarse pointers · track options menu · hidden tracks · undo/redo |
+| **W4 audio** | real master bus (EQ / compressor / limiter / drive, measured dry RMS 0.293 → 0.631) · export full mix, per-track, selected range, project JSON (byte-exact WAV) · master peak meter |
+| **W5 tests** | vitest: 54 unit + component tests · Playwright smoke · CI job that runs typecheck, the UI gate and the tests on any `camxora.com` PR |
+
+### Bugs the tests found (not hypothetical)
+
+1. **Drag saved twice** — the commit ran inside a `setDrag(prev => …)` updater, which React
+   double-invokes in dev, so the second write raced the first into a 409. Every clip drag
+   would have shown `Save failed`. Found by the Playwright smoke, fixed with a ref.
+2. **Two of my own assertions were wrong**, not the code: 40px of a 96px bar snaps to
+   1.0s (not 0.5s), and `setInt16` truncates rather than rounds.
+3. **Accessibility**: axe found six contrast failures (3.52:1 on ruler ticks), a
+   label/content mismatch on the speed pill, and `role=main` wrapping header + footer.
+   Both Studio routes are now axe-clean.
+
+### Gates run every commit
+
+```
+cd camxora.com && npm run typecheck && npm run check:ui && npm test
+```
+
+Plus `npm run test:e2e` for anything touching the editor's interaction model.
+
+### Environment notes that cost real time
+
+- The platform API must run **from this worktree** or backend edits do not apply; see
+  `SESSION_HANDOFF.md` for the exact command (quoted `set "VAR=value"`, `PYTHONIOENCODING`,
+  and the `camxora_pfm_sandbox` database).
+- Access tokens live **30 minutes** — expect a 401 mid-session and re-login rather than
+  debugging a phantom failure.
+- `requestAnimationFrame` is throttled in a background tab, so the playhead and the master
+  meter cannot be observed there; that is not a playback bug.
+
 ## Session 2026-10-30 — decompilation groundwork + architecture correction
 
 ### Completed
@@ -16,7 +62,7 @@
 | 8 | UI string mining: 9,679 candidates, **2,400 in studio chunks** | `reference/ui-strings.md` |
 | 9 | **First measured layout capture** (1958×1245): tokens, header 52 px, track panel 260 px, control geometry | `reference/live-studio-layout.md` |
 | 10 | Studio home implementation (resume, grid, search, sort, create, per-card actions) | `components/studio/StudioHome.tsx` |
-| 11 | Marketing page extracted to its own component; `/studio` now routes by auth | `components/studio/StudioMarketing.tsx`, `app/(site)/studio/page.tsx` |
+| 11 | Marketing page extracted to its own component; `/studio` now routes by auth | `components/studio/StudioMarketing.tsx` |
 
 ### Tests executed
 
@@ -28,40 +74,3 @@
 | Endpoint extraction | 322 unique, 81 studio-related |
 | String extraction | 9,679 unique, 2,400 studio-chunk |
 | Layout capture | complete for 1 viewport (1958×1245) |
-
-Not run: `typecheck`/`check:ui` after the Studio home commit; no E2E; no accessibility run.
-
-### Newly discovered (from the authenticated bundle/session)
-
-- Studio endpoints beyond the previously documented set (81 studio-related paths total).
-- Onboarding overlay with four entry cards + "Empty Project" + "Browse Studio projects".
-- Header composition: transport centred, session settings right-aligned ~550 px apart.
-- Track panel is a fixed 260 px column; control height 32 px, compact 28 px.
-- App typeface is Neue Montreal (commercial — we must substitute).
-
-### Coverage snapshot
-
-| Metric | Value |
-|---|---|
-| Inventory rows | 221 |
-| `VERIFIED` | **0** |
-| `TESTING` | 0 |
-| `IMPLEMENTED` (typechecks only) | 184 |
-| Reference endpoints recovered | 322 (81 studio) |
-| Reference UI strings recovered | 9,679 (2,400 studio) |
-| Layout checkpoints captured | 1 of 4 planned viewports |
-
-### Session close-out — 2026-10-30
-
-Delivered this session: 12 programme documents + 45-section implementation spec,
-78-target capture matrix, 5-layer capture protocol, 5-item backend spec, decompile
-toolkit (`tools/suno-re/`), 322-endpoint inventory, 9,679-string corpus, 17 derived
-feature areas, measured layout, four menus, full keyboard map, settings/share/history
-semantics, and the corrected clip model.
-
-Not delivered (needs different evidence types): 27 capture targets — pixel-only
-geometry, paid-flow dialogs, collaboration surfaces, induced failure states, and
-responsive widths.
-
-Next session: run `CAPTURE_PROTOCOL.md` §3 per surface, or begin implementation at
-spec §2/§3/§5 (header, track panel, Magic Bar) which are already measured.
