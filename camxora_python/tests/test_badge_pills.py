@@ -29,8 +29,14 @@ def qapp() -> QApplication:
     app = QApplication.instance()
     if app is None:
         app = QApplication([])
+    # The app stylesheet is process-wide: restore it so later Qt tests see the
+    # default metrics (padding here made shell-chrome labels 4px taller).
+    previous = app.styleSheet()
     app.setStyleSheet(MAIN_STYLESHEET)
-    return app
+    try:
+        yield app
+    finally:
+        app.setStyleSheet(previous)
 
 
 def test_role_pill_is_neutral() -> None:
