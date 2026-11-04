@@ -34,6 +34,69 @@ def test_sandbox_locks_api_url(tmp_path, monkeypatch: pytest.MonkeyPatch) -> Non
     assert storage.is_api_url_locked()
 
 
+def test_bundled_env_ignores_other_environments(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A leftover .env.production must not override a sandbox build's URLs.
+
+    Regression: every ``.env.*`` file in the install dir / _internal / source tree
+    was merged in a fixed order, so ``.env.production`` won and a sandbox installer
+    pointed at production.
+    """
+    monkeypatch.setenv("CAMXORA_BUILD_ENV", "sandbox")
+    (tmp_path / ".env.production").write_text(
+        "CAMXORA_PORTAL_BASE_URL=https://app.camxora.com\n"
+        "CAMXORA_MUSIC_WEB_BASE_URL=https://music.camxora.com\n",
+        encoding="utf-8",
+    )
+    (tmp_path / ".env.sandbox").write_text(
+        "CAMXORA_PORTAL_BASE_URL=https://app.sandbox.camxora.com\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(build_config, "get_install_dir", lambda: tmp_path)
+
+    assert build_config.get_portal_base_url() == "https://app.sandbox.camxora.com"
+    assert build_config.get_music_web_base_url() == "https://music.sandbox.camxora.com"
+
+
+def _isolate_env_dir(tmp_path, monkeypatch: pytest.MonkeyPatch) -> "object":
+    """Point build_config's module dir at an empty package folder.
+
+    ``_load_bundled_env`` also scans the real source tree, which has its own
+    ``.env.*`` files; redirecting ``__file__`` keeps these tests hermetic.
+    """
+    fake = tmp_path / "pkg" / "shared" / "services" / "build_config.py"
+    fake.parent.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(build_config, "__file__", str(fake))
+    monkeypatch.setattr(build_config, "get_install_dir", lambda: tmp_path)
+    return fake.parents[2]
+
+
+def test_single_bundled_env_file_selects_environment(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A release installer ships one .env.<env> and sets no env var at runtime."""
+    pkg = _isolate_env_dir(tmp_path, monkeypatch)
+    (pkg / ".env.sandbox").write_text(
+        "CAMXORA_BUILD_ENV=sandbox\n"
+        "CAMXORA_PORTAL_BASE_URL=https://app.sandbox.camxora.com\n",
+        encoding="utf-8",
+    )
+    assert build_config.build_environment() == "sandbox"
+    assert build_config.get_portal_base_url() == "https://app.sandbox.camxora.com"
+
+
+def test_ambiguous_bundled_env_files_are_not_merged(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Two environment files (dev checkout) must not silently pick production."""
+    pkg = _isolate_env_dir(tmp_path, monkeypatch)
+    (pkg / ".env.sandbox").write_text(
+        "CAMXORA_BUILD_ENV=sandbox\nCAMXORA_PORTAL_BASE_URL=https://app.sandbox.camxora.com\n",
+        encoding="utf-8",
+    )
+    (pkg / ".env.production").write_text(
+        "CAMXORA_BUILD_ENV=production\nCAMXORA_PORTAL_BASE_URL=https://app.camxora.com\n",
+        encoding="utf-8",
+    )
+    assert build_config.build_environment() == "development"
+    assert build_config.get_portal_base_url() == "http://localhost:3001"
+
+
 def test_portal_url_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CAMXORA_BUILD_ENV", "sandbox")
     assert build_config.get_portal_base_url() == "https://app.sandbox.camxora.com"
