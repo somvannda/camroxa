@@ -26,7 +26,7 @@ const ROW_STEP = 86;
 const HISTORY_LIMIT = 50;
 const PANEL_W = 260;
 const LIBRARY_W = 368;
-const BAR_PX = 96;
+const ZOOM_LEVELS = [48, 64, 96, 144, 192];
 
 type ClipLike = {
   id: string;
@@ -130,6 +130,8 @@ export function StudioEditorShell() {
   const [loop, setLoop] = useState(false);
   const [metronome, setMetronome] = useState(false);
   const [bpm, setBpm] = useState(120);
+  /** Pixels per bar; 96 is the captured default (spec §44.3). */
+  const [barWidth, setBarWidth] = useState(96);
   /** Audition speed (G17): 0.5x / 1x / 2x. */
   const [playbackRate, setPlaybackRate] = useState(1);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -446,6 +448,23 @@ export function StudioEditorShell() {
     return () => window.removeEventListener("beforeunload", guard);
   }, [saveStatus]);
 
+  /** Zoom in/out through the captured density levels (spec §66). */
+  function zoomBy(direction: 1 | -1) {
+    setBarWidth((current) => {
+      const index = ZOOM_LEVELS.indexOf(current);
+      const next = index === -1
+        ? direction === 1
+          ? ZOOM_LEVELS[ZOOM_LEVELS.length - 1]
+          : ZOOM_LEVELS[0]
+        : ZOOM_LEVELS[Math.min(ZOOM_LEVELS.length - 1, Math.max(0, index + direction))];
+      return next;
+    });
+  }
+
+  function zoomToFit() {
+    setBarWidth(ZOOM_LEVELS[2]);
+  }
+
   /** Toggle a boolean track flag and persist it (G21: mute, solo). */
   function toggleTrackFlag(trackId: string, flag: "muted" | "solo") {
     const next = tracks.map((track) =>
@@ -672,6 +691,17 @@ export function StudioEditorShell() {
         redo();
         return;
       }
+      // Zoom (spec §36): CTRL = / CTRL -
+      if (key === "=" || key === "+") {
+        event.preventDefault();
+        zoomBy(1);
+        return;
+      }
+      if (key === "-") {
+        event.preventDefault();
+        zoomBy(-1);
+        return;
+      }
       if (key !== "c" && key !== "v" && key !== "d") return;
       event.preventDefault();
       if (key === "c") copySelection();
@@ -688,7 +718,7 @@ export function StudioEditorShell() {
     for (const id of current.ids) {
       const origin = current.origins[id];
       if (origin === undefined) continue;
-      const start = dragToStart(origin, current.deltaPx, BAR_PX, secondsPerBar, 4);
+      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, 4);
       if (Math.abs(start - origin) > 0.0001) next[id] = start;
     }
     if (Object.keys(next).length > 0) commitClipStarts(next);
@@ -956,8 +986,8 @@ export function StudioEditorShell() {
         clipsRef.current
           .filter((clip) => track.clipIds.includes(clip.id))
           .forEach((clip) => {
-            const clipLeft = ((clip.start ?? 0) / secondsPerBar) * BAR_PX;
-            const clipRight = clipLeft + Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * BAR_PX);
+            const clipLeft = ((clip.start ?? 0) / secondsPerBar) * barWidth;
+            const clipRight = clipLeft + Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * barWidth);
             if (clipRight >= left && clipLeft <= right) hit.push(clip.id);
           });
       });
@@ -1237,9 +1267,9 @@ export function StudioEditorShell() {
           }}
         >
           <div className="se-ruler-bars" aria-hidden="true">
-            <div className="se-ruler-inner" style={{ width: barCount * BAR_PX }}>
+            <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
               {Array.from({ length: barCount }).map((_, bar) => (
-                <span key={bar} className="se-bar-tick" style={{ left: bar * BAR_PX }}>
+                <span key={bar} className="se-bar-tick" style={{ left: bar * barWidth }}>
                   {bar + 1}
                 </span>
               ))}
@@ -1264,11 +1294,11 @@ export function StudioEditorShell() {
               };
               setSelectedIds([]);
               setSelectedClip(null);
-              const barsIn = x / BAR_PX;
+              const barsIn = x / barWidth;
               setPlayhead(Math.max(0, Math.min(duration, barsIn * secondsPerBar)));
             }}
           >
-            <div className="se-lanes-inner" style={{ width: barCount * BAR_PX }}>
+            <div className="se-lanes-inner" style={{ width: barCount * barWidth }}>
               {tracks.map((track) => (
                 <div key={track.id} className="se-lane" style={{ height: ROW_STEP }}>
                   {clips
@@ -1277,8 +1307,8 @@ export function StudioEditorShell() {
                       // Cull clips outside the visible window plus one screen of
                       // slack, so scrolling never shows an empty gap (G19).
                       if (view.width === 0) return true;
-                      const left = ((clip.start ?? 0) / secondsPerBar) * BAR_PX;
-                      const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * BAR_PX);
+                      const left = ((clip.start ?? 0) / secondsPerBar) * barWidth;
+                      const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * barWidth);
                       const slack = view.width;
                       return left + width >= view.left - slack && left <= view.left + view.width + slack;
                     })
@@ -1288,11 +1318,11 @@ export function StudioEditorShell() {
                       const dragOrigin = drag ? drag.origins[clip.id] : undefined;
                       const left =
                         isDragging && drag && dragOrigin !== undefined
-                          ? (dragToStart(dragOrigin, drag.deltaPx, BAR_PX, secondsPerBar, 4) /
+                          ? (dragToStart(dragOrigin, drag.deltaPx, barWidth, secondsPerBar, 4) /
                               secondsPerBar) *
-                            BAR_PX
-                          : ((clip.start ?? 0) / secondsPerBar) * BAR_PX;
-                      const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * BAR_PX);
+                            barWidth
+                          : ((clip.start ?? 0) / secondsPerBar) * barWidth;
+                      const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * barWidth);
                       return (
                         <button
                           type="button"
@@ -1326,7 +1356,7 @@ export function StudioEditorShell() {
                 </div>
               ))}
 
-              <div className="se-playhead" style={{ left: (playhead / secondsPerBar) * BAR_PX }} aria-hidden="true" />
+              <div className="se-playhead" style={{ left: (playhead / secondsPerBar) * barWidth }} aria-hidden="true" />
 
               {marquee ? (
                 <div
@@ -1350,12 +1380,12 @@ export function StudioEditorShell() {
                       (dragToStart(
                         drag.origins[drag.ids[0]] ?? 0,
                         drag.deltaPx,
-                        BAR_PX,
+                        barWidth,
                         secondsPerBar,
                         4
                       ) /
                         secondsPerBar) *
-                      BAR_PX,
+                      barWidth,
                   }}
                 />
               ) : null}
@@ -1370,9 +1400,9 @@ export function StudioEditorShell() {
           </div>
 
           <div className="se-ruler-time" aria-hidden="true">
-            <div className="se-ruler-inner" style={{ width: barCount * BAR_PX }}>
+            <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
               {Array.from({ length: Math.ceil(duration / 30) }).map((_, index) => (
-                <span key={index} className="se-time-tick" style={{ left: (index * 30 / secondsPerBar) * BAR_PX }}>
+                <span key={index} className="se-time-tick" style={{ left: (index * 30 / secondsPerBar) * barWidth }}>
                   {clock(index * 30).slice(0, 5)}
                 </span>
               ))}
@@ -1509,6 +1539,9 @@ export function StudioEditorShell() {
         <div className="se-foot-right">
           <button type="button" className="se-icon" disabled aria-label="Projects (not wired)"><Icon name="fa-folder" /></button>
           <button type="button" className="se-icon" disabled aria-label="Search (not wired)"><Icon name="fa-magnifying-glass" /></button>
+          <button type="button" className="se-icon" onClick={() => zoomBy(-1)} aria-label="Zoom out"><Icon name="fa-magnifying-glass-minus" /></button>
+          <button type="button" className="se-icon" onClick={zoomToFit} aria-label="Fit to content"><Icon name="fa-maximize" /></button>
+          <button type="button" className="se-icon" onClick={() => zoomBy(1)} aria-label="Zoom in"><Icon name="fa-magnifying-glass-plus" /></button>
           <button type="button" className="se-icon" onClick={() => setLibraryOpen((open) => !open)} aria-label="Toggle library"><Icon name="fa-table-columns" /></button>
           <button type="button" className={`se-icon${loop ? " on" : ""}`} onClick={() => setLoop((value) => !value)} aria-label="Loop" aria-pressed={loop}><Icon name="fa-repeat" /></button>
           <Link className="se-foot-link" href={`/studio/editor/classic?project=${projectId}`}>Learn</Link>

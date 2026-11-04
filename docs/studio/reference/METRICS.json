@@ -46,8 +46,8 @@
       "tolerance": 0,
       "spec": "44.3",
       "feature": "Ruler & zoom",
-      "functional": "partial",
-      "note": "zoom controls are not wired"
+      "functional": "wired",
+      "note": "4 levels 48-192 at the captured 96 default; CTRL = / - and fit"
     },
     {
       "id": "pillHeight",
