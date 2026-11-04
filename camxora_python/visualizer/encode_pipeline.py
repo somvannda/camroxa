@@ -1,4 +1,10 @@
-"""Pipelined ffmpeg stdin writer — decouple render loop from slow pipe ingest (REQ-2.4)."""
+"""Pipelined encoder writers — decouple the render loop from slow encode ingest (REQ-2.4).
+
+``BoundedFrameWriter`` owns the queue/writer-thread lifecycle shared by the ffmpeg
+stdin writer (``PipelinedEncodeWriter``) and the native NVENC writer
+(``NativeEncodeWriter``): back-pressure, cooperative cancel, error propagation to
+the render thread, and dropped-frame accounting.
+"""
 
 from __future__ import annotations
 
@@ -21,6 +27,7 @@ _ERR_TAIL_CHARS = 2000
 # Windows reports "the encoder closed its end of the pipe" as EINVAL (22) rather
 # than EPIPE (32); the classifier lives in shared.lib.pipe_errors.
 __all__ = [
+    "BoundedFrameWriter",
     "PipelinedEncodeWriter",
     "ffmpeg_stderr_tail",
     "is_pipe_closed_error",
@@ -65,63 +72,52 @@ def _percentile(values: list[float], pct: float) -> float | None:
     return float(ordered[idx])
 
 
-def _ffmpeg_err_text(enc: Any, err_file: Any) -> str:
-    """Back-compat alias — stderr text is only ever needed as a tail."""
-    return ffmpeg_stderr_tail(err_file)
+class BoundedFrameWriter:
+    """Bounded frame queue + writer thread shared by the export encoders.
 
-
-class PipelinedEncodeWriter:
-    """Bounded queue + writer thread between render loop and ffmpeg stdin.
-
-    Optional ``pack_fn`` moves CPU packing (e.g. RGBA→NV12) onto the writer
-    thread so the render loop only enqueues raw readback bytes.
-
-    ``stop_on_clean_exit`` (default) treats an encoder that already exited 0 as a
-    finished export: ffmpeg ends at the audio tail, so the last queued frames are
-    dropped instead of crashing the render loop with a bogus broken-pipe error.
+    Subclasses implement ``_consume(item)`` — write the payload to ffmpeg stdin or
+    submit it to a native encoder — and may override the ``_on_*`` hooks. Keeping
+    the lifecycle here means the ffmpeg and native paths cannot drift apart on
+    cancel, error reporting, or dropped-frame accounting.
     """
 
     def __init__(
         self,
-        enc: Any,
         *,
         queue_size: int | None = None,
-        err_file: Any = None,
-        pack_fn: Callable[[Any], Any] | None = None,
-        err_path: str | None = None,
-        stop_on_clean_exit: bool = True,
+        thread_name: str = "camxora-encode-writer",
+        finish_join_timeout: float | None = None,
+        copy_on_submit: bool = False,
     ) -> None:
-        size = resolve_encode_queue_size(queue_size)
-        self._enc = enc
-        self._err_file = err_file
-        self._err_path = str(err_path or "").strip() or None
-        self._pack_fn = pack_fn
-        self._stop_on_clean_exit = bool(stop_on_clean_exit)
-        self._queue: queue.Queue[Any] = queue.Queue(maxsize=size)
+        self._queue: queue.Queue[Any] = queue.Queue(maxsize=resolve_encode_queue_size(queue_size))
         self._stop = threading.Event()
         self._cancelled = False
-        self._error: Exception | None = None
         self._closed = False
-        self._encoder_finished = False
+        self._error: Exception | None = None
+        self._copy_on_submit = bool(copy_on_submit)
+        # ``None`` resolves the module constant at call time (tests patch it).
+        self._finish_join_timeout = finish_join_timeout
 
         self._submit_block_times_ms: list[float] = []
-        self._pack_times_ms: list[float] = []
-        self._stdin_block_times_ms: list[float] = []
         self._frames_submitted = 0
         self._frames_written = 0
         self._frames_dropped = 0
 
         self._thread = threading.Thread(
             target=self._writer_loop,
-            name="camxora-encode-writer",
+            name=thread_name,
             daemon=True,
         )
         self._thread.start()
 
+    # ── public API ───────────────────────────────────────────────────────────
     @property
-    def encoder_finished(self) -> bool:
-        """True when ffmpeg exited cleanly before the render loop finished."""
-        return self._encoder_finished
+    def closed(self) -> bool:
+        return self._closed
+
+    @property
+    def cancelled(self) -> bool:
+        return self._cancelled
 
     def submit(self, payload: Any) -> None:
         """Enqueue one frame payload; blocks when queue is full (back-pressure)."""
@@ -129,6 +125,9 @@ class PipelinedEncodeWriter:
         if self._closed:
             self._frames_dropped += 1
             return
+        if self._copy_on_submit:
+            # Copy so a buffer pool (e.g. AsyncFramebufferReader) can reclaim it.
+            payload = bytes(payload)
         t0 = time.perf_counter()
         while not self._closed:
             if self._stop.is_set():
@@ -160,7 +159,11 @@ class PipelinedEncodeWriter:
         self._frames_submitted += 1
 
     def finish(self) -> None:
-        """Drain queued frames, close stdin, and wait for the writer thread."""
+        """Drain queued frames, stop the writer, and surface any writer error."""
+        if self._cancelled:
+            # Cooperative cancel fired inside submit(); release the encoder too.
+            self.cancel()
+            return
         if self._closed:
             self._raise_if_error()
             return
@@ -170,22 +173,28 @@ class PipelinedEncodeWriter:
         except queue.Full:
             self._drain_queue()
             self._queue.put(_SENTINEL, timeout=1.0)
-        self._thread.join(timeout=_FINISH_JOIN_TIMEOUT_SEC)
+        self._thread.join(timeout=self._resolve_finish_timeout())
         if self._thread.is_alive():
-            # Writer is stuck inside a blocked pipe write. Kill the encoder so the
-            # caller's ``enc.wait()`` cannot hang the export forever.
+            # Writer is stuck inside a blocked write. Kill the encoder so the
+            # caller's ``wait()`` cannot hang the export forever.
+            timeout = self._resolve_finish_timeout()
             self.cancel()
             raise RuntimeError(
                 "Encode writer did not finish within "
-                f"{_FINISH_JOIN_TIMEOUT_SEC:.0f}s "
+                f"{timeout:.0f}s "
                 f"({self._frames_written}/{self._frames_submitted} frames written); "
-                "FFmpeg was terminated"
+                "the encoder was terminated"
             )
-        self._raise_if_error()
+        try:
+            self._raise_if_error()
+            self._after_finish()
+        finally:
+            self._cleanup()
 
     def cancel(self, *, terminate_process: bool = True) -> None:
-        """Stop the writer and optionally terminate ffmpeg (export cancel)."""
+        """Stop the writer and release the encoder (export cancel)."""
         if self._closed and not self._thread.is_alive():
+            self._cleanup()
             return
         self._cancelled = True
         self._closed = True
@@ -195,33 +204,52 @@ class PipelinedEncodeWriter:
             self._queue.put_nowait(_SENTINEL)
         except queue.Full:
             pass
-        if terminate_process and self._enc.poll() is None:
-            try:
-                self._enc.terminate()
-            except OSError:
-                pass
+        self._on_cancel(terminate_process)
         self._thread.join(timeout=2.0)
-        if self._enc.poll() is None:
-            try:
-                self._enc.kill()
-            except OSError:
-                pass
+        self._on_cancel_joined()
+        self._cleanup()
 
     def stats(self) -> dict[str, float | int | bool | None]:
         return {
             "framesSubmitted": self._frames_submitted,
             "framesWritten": self._frames_written,
             "framesDropped": self._frames_dropped,
-            "encoderExitedEarly": self._encoder_finished,
             "queueSize": self._queue.maxsize,
-            "packOnWriter": self._pack_fn is not None,
             "submitBlockP95Ms": _percentile(self._submit_block_times_ms, 95.0),
-            "stdinBlockP95Ms": _percentile(self._stdin_block_times_ms, 95.0),
-            "packAvgMs": (sum(self._pack_times_ms) / len(self._pack_times_ms)) if self._pack_times_ms else None,
-            "packP95Ms": _percentile(self._pack_times_ms, 95.0),
             "submitBlockMaxMs": max(self._submit_block_times_ms) if self._submit_block_times_ms else None,
-            "stdinBlockMaxMs": max(self._stdin_block_times_ms) if self._stdin_block_times_ms else None,
         }
+
+    # ── subclass hooks ───────────────────────────────────────────────────────
+    def _consume(self, item: Any) -> bool:
+        """Handle one dequeued frame. Return False to stop consuming."""
+        raise NotImplementedError
+
+    def _on_sentinel(self) -> None:
+        """Called when ``finish()``'s sentinel reaches the writer thread."""
+
+    def _on_error(self) -> None:
+        """Called after ``self._error`` is set by the writer thread."""
+
+    def _finalize(self) -> None:
+        """Always called when the writer thread exits."""
+
+    def _on_cancel(self, terminate_process: bool) -> None:
+        """Called before joining the writer during ``cancel()``."""
+
+    def _on_cancel_joined(self) -> None:
+        """Called after joining the writer during ``cancel()``."""
+
+    def _after_finish(self) -> None:
+        """Called after a clean ``finish()`` (drain the encoder)."""
+
+    def _cleanup(self) -> None:
+        """Called at the end of ``finish()``/``cancel()`` (release resources)."""
+
+    # ── internals ────────────────────────────────────────────────────────────
+    def _resolve_finish_timeout(self) -> float:
+        if self._finish_join_timeout is not None:
+            return float(self._finish_join_timeout)
+        return float(_FINISH_JOIN_TIMEOUT_SEC)
 
     def _drain_queue(self) -> int:
         drained = 0
@@ -237,6 +265,140 @@ class PipelinedEncodeWriter:
         if self._error is not None:
             raise self._error
 
+    def _writer_loop(self) -> None:
+        try:
+            while True:
+                try:
+                    item = self._queue.get(timeout=0.1)
+                except queue.Empty:
+                    if self._stop.is_set():
+                        break
+                    continue
+                if item is _SENTINEL:
+                    self._on_sentinel()
+                    break
+                if self._stop.is_set():
+                    self._frames_dropped += 1
+                    continue
+                if self._consume(item) is False:
+                    break
+        except Exception as exc:
+            self._error = exc
+            self._on_error()
+        finally:
+            self._finalize()
+
+
+class PipelinedEncodeWriter(BoundedFrameWriter):
+    """ffmpeg stdin writer with an optional CPU packer on the writer thread.
+
+    Optional ``pack_fn`` moves CPU packing (e.g. RGBA→NV12) onto the writer
+    thread so the render loop only enqueues raw readback bytes.
+
+    ``stop_on_clean_exit`` (default) treats an encoder that already exited 0 as a
+    finished export: ffmpeg ends at the audio tail, so the last queued frames are
+    dropped instead of crashing the render loop with a bogus broken-pipe error.
+    """
+
+    def __init__(
+        self,
+        enc: Any,
+        *,
+        queue_size: int | None = None,
+        err_file: Any = None,
+        pack_fn: Callable[[Any], Any] | None = None,
+        err_path: str | None = None,
+        stop_on_clean_exit: bool = True,
+    ) -> None:
+        self._enc = enc
+        self._err_file = err_file
+        self._err_path = str(err_path or "").strip() or None
+        self._pack_fn = pack_fn
+        self._stop_on_clean_exit = bool(stop_on_clean_exit)
+        self._encoder_finished = False
+        self._close_stdin = False
+        self._pack_times_ms: list[float] = []
+        self._stdin_block_times_ms: list[float] = []
+        super().__init__(queue_size=queue_size, thread_name="camxora-encode-writer")
+
+    @property
+    def encoder_finished(self) -> bool:
+        """True when ffmpeg exited cleanly before the render loop finished."""
+        return self._encoder_finished
+
+    def stats(self) -> dict[str, float | int | bool | None]:
+        stats = super().stats()
+        stats.update(
+            {
+                "encoderExitedEarly": self._encoder_finished,
+                "packOnWriter": self._pack_fn is not None,
+                "stdinBlockP95Ms": _percentile(self._stdin_block_times_ms, 95.0),
+                "packAvgMs": (
+                    (sum(self._pack_times_ms) / len(self._pack_times_ms))
+                    if self._pack_times_ms
+                    else None
+                ),
+                "packP95Ms": _percentile(self._pack_times_ms, 95.0),
+                "stdinBlockMaxMs": (
+                    max(self._stdin_block_times_ms) if self._stdin_block_times_ms else None
+                ),
+            }
+        )
+        return stats
+
+    # ── writer hooks ─────────────────────────────────────────────────────────
+    def _consume(self, item: Any) -> bool:
+        # Cheap liveness check: a frame written into a dead pipe is what produced
+        # the confusing "[Errno 22] Invalid argument" reports.
+        exit_code = self._encoder_exit_code()
+        if exit_code is not None:
+            self._close_stdin = True
+            self._finish_on_encoder_exit(exit_code)
+            return False
+        payload = item
+        if self._pack_fn is not None:
+            t_pack = time.perf_counter()
+            payload = self._pack_fn(item)  # type: ignore[arg-type]
+            self._pack_times_ms.append((time.perf_counter() - t_pack) * 1000.0)
+        stdin = self._enc.stdin
+        if stdin is None:
+            raise RuntimeError("FFmpeg stdin is not available")
+        t0 = time.perf_counter()
+        try:
+            stdin.write(payload)
+        except (BrokenPipeError, OSError) as exc:
+            self._close_stdin = True
+            self._handle_write_failure(exc)
+            return False
+        self._stdin_block_times_ms.append((time.perf_counter() - t0) * 1000.0)
+        self._frames_written += 1
+        return True
+
+    def _on_sentinel(self) -> None:
+        self._close_stdin = not self._cancelled
+
+    def _finalize(self) -> None:
+        if self._close_stdin and self._enc.stdin is not None:
+            try:
+                self._enc.stdin.close()
+            except Exception:
+                pass
+
+    def _on_cancel(self, terminate_process: bool) -> None:
+        if terminate_process and self._enc.poll() is None:
+            try:
+                self._enc.terminate()
+            except OSError:
+                pass
+
+    def _on_cancel_joined(self) -> None:
+        if self._enc.poll() is None:
+            try:
+                self._enc.kill()
+            except OSError:
+                pass
+
+    # ── encoder diagnostics ──────────────────────────────────────────────────
     def _encoder_exit_code(self) -> int | None:
         try:
             return self._enc.poll()
@@ -300,52 +462,3 @@ class PipelinedEncodeWriter:
         err_txt = ffmpeg_stderr_tail(self._err_file)
         self._mark_nvenc_unavailable_if_needed(err_txt)
         raise RuntimeError(self._pipe_closed_message(exc, err_txt)) from exc
-
-    def _writer_loop(self) -> None:
-        close_stdin = False
-        try:
-            while True:
-                try:
-                    item = self._queue.get(timeout=0.1)
-                except queue.Empty:
-                    if self._stop.is_set():
-                        break
-                    continue
-                if item is _SENTINEL:
-                    close_stdin = not self._cancelled
-                    break
-                if self._stop.is_set():
-                    self._frames_dropped += 1
-                    continue
-                # Cheap liveness check: a frame written into a dead pipe is what
-                # produced the confusing "[Errno 22] Invalid argument" reports.
-                exit_code = self._encoder_exit_code()
-                if exit_code is not None:
-                    close_stdin = True
-                    self._finish_on_encoder_exit(exit_code)
-                    break
-                payload = item
-                if self._pack_fn is not None:
-                    t_pack = time.perf_counter()
-                    payload = self._pack_fn(item)  # type: ignore[arg-type]
-                    self._pack_times_ms.append((time.perf_counter() - t_pack) * 1000.0)
-                stdin = self._enc.stdin
-                if stdin is None:
-                    raise RuntimeError("FFmpeg stdin is not available")
-                t0 = time.perf_counter()
-                try:
-                    stdin.write(payload)
-                except (BrokenPipeError, OSError) as exc:
-                    close_stdin = True
-                    self._handle_write_failure(exc)
-                    break
-                self._stdin_block_times_ms.append((time.perf_counter() - t0) * 1000.0)
-                self._frames_written += 1
-        except Exception as exc:
-            self._error = exc
-        finally:
-            if close_stdin and self._enc.stdin is not None:
-                try:
-                    self._enc.stdin.close()
-                except Exception:
-                    pass

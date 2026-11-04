@@ -78,6 +78,10 @@ OSError errno=22 winerror=None msg=[Errno 22] Invalid argument
   duration and the decoded audio length differ by > 0.5 s, an `log` MG_EVENT records both
   numbers — this is the field condition (211.6 s header vs 208.6 s decoded) that triggered
   the crash.
+- **Shared writer lifecycle** (`BoundedFrameWriter`): the ffmpeg stdin writer and the native
+  NVENC writer now share queue/back-pressure/cancel/error propagation and dropped-frame
+  accounting, so the two paths cannot drift apart. `NativeEncodeWriter` gained lifecycle
+  tests (submit/finish/cancel/error) driven by a fake session — no GPU required.
 
 ## Files touched
 
@@ -111,10 +115,10 @@ produced a 2.00 s MP4 — exactly the audio length. Skipped when ffmpeg/ffprobe 
 
 ## Follow-ups
 
-- `visualizer/native_encode_writer.py` duplicates the queue/writer lifecycle; share a base
-  class so both paths get the same exit handling.
 - Add a *frozen* smoke export whose MP3 header duration exceeds the decoded length (the
   ffmpeg-level guard now lives in `tests/test_export_pipe_tail_integration.py`).
+- Run one real NVENC export after the `BoundedFrameWriter` unification — the lifecycle is
+  unit-tested with a fake session, but only hardware proves the submit path end to end.
 - Export gate: already rejects an MP4 shorter than `expected_duration_sec` (1 s tolerance)
   in `export_output_validity.export_media_looks_complete`, and both the manual and pipeline
   workers feed it `job.rendered_duration_sec` — keep that wiring when adding new export

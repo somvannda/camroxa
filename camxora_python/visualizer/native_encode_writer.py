@@ -10,14 +10,12 @@ from __future__ import annotations
 
 import logging
 import os
-import queue
 import subprocess
-import threading
 import time
 from pathlib import Path
 from typing import Any
 
-from visualizer.encode_pipeline import resolve_encode_queue_size
+from visualizer.encode_pipeline import BoundedFrameWriter
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +105,7 @@ def try_open_native_encode_writer(
     return NativeEncodeWriter(session, h264_path=h264_path, width=width, height=height)
 
 
-class NativeEncodeWriter:
+class NativeEncodeWriter(BoundedFrameWriter):
     """Bounded queue + writer thread: pack RGBA→NV12, then native NVENC submit."""
 
     def __init__(
@@ -125,173 +123,80 @@ class NativeEncodeWriter:
         self._height = int(height)
         self._stride = self._width * 4
         self._use_nv12 = bool(getattr(session, "supports_nv12", lambda: False)())
-
-        size = resolve_encode_queue_size(queue_size)
-        self._queue: queue.Queue[Any] = queue.Queue(maxsize=size)
-        self._stop = threading.Event()
-        self._cancelled = False
-        self._finished = False
-        self._error: Exception | None = None
-
-        self._submit_block_times_ms: list[float] = []
         self._pack_times_ms: list[float] = []
         self._submit_encode_times_ms: list[float] = []
-        self._frames_submitted = 0
         self._frames_encoded = 0
-
-        self._thread = threading.Thread(
-            target=self._writer_loop,
-            name="camxora-native-encode",
-            daemon=True,
+        super().__init__(
+            queue_size=queue_size,
+            thread_name="camxora-native-encode",
+            finish_join_timeout=60.0,
+            # Copy so AsyncFramebufferReader / CPU pool can reclaim the buffer.
+            copy_on_submit=True,
         )
-        self._thread.start()
 
     @property
     def h264_path(self) -> str:
         return self._h264_path
 
-    def submit(self, raw_rgba: Any) -> None:
-        """Enqueue one RGBA frame (copied so the buffer pool can reuse)."""
-        self._raise_if_error()
-        if self._finished or self._cancelled:
-            return
-        # Copy so AsyncFramebufferReader / CPU pool can reclaim the buffer.
-        payload = bytes(raw_rgba)
-        t0 = time.perf_counter()
-        while not self._finished and not self._cancelled:
-            if self._stop.is_set():
-                self._raise_if_error()
-                return
-            try:
-                from features.video.lib.export_cancel import export_cancel_requested
+    def stats(self) -> dict[str, Any]:
+        stats = super().stats()
+        stats.pop("framesWritten", None)
+        stats.update(
+            {
+                "framesEncoded": self._frames_encoded,
+                "backend": "native_nvenc",
+                "submitNv12": self._use_nv12,
+                "packAvgMs": (
+                    (sum(self._pack_times_ms) / len(self._pack_times_ms))
+                    if self._pack_times_ms
+                    else None
+                ),
+                "packP95Ms": _percentile(self._pack_times_ms, 95.0),
+                "submitEncodeP95Ms": _percentile(self._submit_encode_times_ms, 95.0),
+            }
+        )
+        return stats
 
-                if export_cancel_requested():
-                    self._cancelled = True
-                    self._finished = True
-                    self._stop.set()
-                    return
-            except Exception:
-                pass
-            try:
-                self._queue.put(payload, timeout=0.05)
-                break
-            except queue.Full:
-                continue
-        self._submit_block_times_ms.append((time.perf_counter() - t0) * 1000.0)
-        self._frames_submitted += 1
+    # ── writer hooks ─────────────────────────────────────────────────────────
+    def _consume(self, item: Any) -> bool:
+        if self._use_nv12:
+            packer = self._nv12_packer()
+            t_pack = time.perf_counter()
+            nv12 = packer(item)
+            self._pack_times_ms.append((time.perf_counter() - t_pack) * 1000.0)
+            t_enc = time.perf_counter()
+            self._session.submit_nv12(nv12, self._width)
+        else:
+            t_enc = time.perf_counter()
+            self._session.submit_rgba(item, self._stride)
+        self._submit_encode_times_ms.append((time.perf_counter() - t_enc) * 1000.0)
+        self._frames_encoded += 1
+        self._frames_written += 1
+        return True
 
-    def cancel(self, *, terminate_process: bool = True) -> None:
-        """Stop the writer and destroy the encode session."""
-        del terminate_process  # no ffmpeg process; kept for pipe-writer API parity
-        if self._finished and not self._thread.is_alive():
-            return
-        self._cancelled = True
-        self._finished = True
+    def _on_error(self) -> None:
+        # Stop consuming immediately; ``submit()`` re-raises on the render thread.
         self._stop.set()
-        self._drain_queue()
-        try:
-            self._queue.put_nowait(_SENTINEL)
-        except queue.Full:
-            pass
-        self._thread.join(timeout=2.0)
+
+    def _after_finish(self) -> None:
+        self._session.finish()
+
+    def _cleanup(self) -> None:
         try:
             self._session.__exit__(None, None, None)
         except Exception:
             pass
 
-    def finish(self) -> None:
-        """Drain queue, finish NVENC, destroy session."""
-        if self._finished and not self._thread.is_alive():
-            self._raise_if_error()
-            return
-        if self._cancelled:
-            self.cancel()
-            return
-        self._finished = True
-        try:
-            self._queue.put(_SENTINEL, timeout=1.0)
-        except queue.Full:
-            self._drain_queue()
-            self._queue.put(_SENTINEL, timeout=1.0)
-        self._thread.join(timeout=60.0)
-        try:
-            self._raise_if_error()
-            self._session.finish()
-        finally:
-            try:
-                self._session.__exit__(None, None, None)
-            except Exception:
-                pass
-
-    def stats(self) -> dict[str, Any]:
-        return {
-            "framesSubmitted": self._frames_submitted,
-            "framesEncoded": self._frames_encoded,
-            "queueSize": self._queue.maxsize,
-            "backend": "native_nvenc",
-            "submitNv12": self._use_nv12,
-            "submitBlockP95Ms": _percentile(self._submit_block_times_ms, 95.0),
-            "packAvgMs": (
-                (sum(self._pack_times_ms) / len(self._pack_times_ms))
-                if self._pack_times_ms
-                else None
-            ),
-            "packP95Ms": _percentile(self._pack_times_ms, 95.0),
-            "submitEncodeP95Ms": _percentile(self._submit_encode_times_ms, 95.0),
-        }
-
-    def _drain_queue(self) -> None:
-        while True:
-            try:
-                self._queue.get_nowait()
-            except queue.Empty:
-                break
-
-    def _raise_if_error(self) -> None:
-        if self._error is not None:
-            raise self._error
-
-    def _writer_loop(self) -> None:
-        try:
+    # ── internals ────────────────────────────────────────────────────────────
+    def _nv12_packer(self) -> Any:
+        packer = getattr(self, "_packer", None)
+        if packer is None:
             from visualizer.readback import PipeFramePacker
 
-            packer = (
-                PipeFramePacker(self._width, self._height, "nv12")
-                if self._use_nv12
-                else None
-            )
-            while True:
-                try:
-                    item = self._queue.get(timeout=0.1)
-                except queue.Empty:
-                    if self._stop.is_set():
-                        break
-                    continue
-                if item is _SENTINEL:
-                    break
-                if self._cancelled:
-                    continue
-                if packer is not None:
-                    t_pack = time.perf_counter()
-                    nv12 = packer(item)
-                    self._pack_times_ms.append(
-                        (time.perf_counter() - t_pack) * 1000.0
-                    )
-                    t_enc = time.perf_counter()
-                    self._session.submit_nv12(nv12, self._width)
-                    self._submit_encode_times_ms.append(
-                        (time.perf_counter() - t_enc) * 1000.0
-                    )
-                else:
-                    t_enc = time.perf_counter()
-                    self._session.submit_rgba(item, self._stride)
-                    self._submit_encode_times_ms.append(
-                        (time.perf_counter() - t_enc) * 1000.0
-                    )
-                self._frames_encoded += 1
-        except Exception as exc:
-            self._error = exc
-            self._stop.set()
+            packer = PipeFramePacker(self._width, self._height, "nv12")
+            self._packer = packer
+        return packer
+
 
 
 def remux_native_h264_with_audio(
