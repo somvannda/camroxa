@@ -22,6 +22,7 @@ import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
 import { StudioLibrary } from "@/components/studio/StudioLibrary";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
+import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioOnboarding } from "@/components/studio/StudioOnboarding";
 import { StudioMetricsProbe } from "@/components/studio/StudioMetricsProbe";
 
@@ -1326,175 +1327,28 @@ export function StudioEditorShell() {
 
       <div className={`se-body${libraryOpen ? " with-library" : ""}`} role="main">
         <h1 className="se-sr-only">{project?.title || "Studio project"}</h1>
-        <aside className="se-tracks" aria-label="Tracks">
-          <div className="se-tracks-head">
-            <span className="se-tracks-title">{tracks.length} track{tracks.length === 1 ? "" : "s"}</span>
-          </div>
-
-          <div className="se-track-list">
-            {tracks.filter((track) => !track.hidden).map((track, index) => {
-              const active = selectedTrack === track.id;
-              return (
-                <div
-                  key={track.id}
-                  className={`se-track${active ? " selected" : ""}`}
-                  style={{ height: ROW_HEIGHT, marginBottom: ROW_STEP - ROW_HEIGHT }}
-                >
-                  {menuTrackId === track.id ? (
-                    <div className="se-track-menu" role="menu" aria-label={`${track.name} options`}>
-                      <button type="button" role="menuitem" onClick={() => startRename(track)}>
-                        Rename track
-                      </button>
-                      <div className="se-track-menu-colors" role="group" aria-label="Track colour">
-                        {["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"].map((color) => (
-                          <button
-                            key={color}
-                            type="button"
-                            aria-label={`Use ${color}`}
-                            style={{ background: color }}
-                            className={track.color === color ? "on" : undefined}
-                            onClick={() => {
-                              updateTrack(track.id, { color });
-                              setMenuTrackId(null);
-                            }}
-                          />
-                        ))}
-                      </div>
-                      <button type="button" role="menuitem" onClick={() => setMenuTrackId(null)}>
-                        Collapse controls
-                      </button>
-                      <button type="button" role="menuitem" onClick={() => duplicateTrack(track.id)}>
-                        Duplicate
-                      </button>
-                      <button type="button" role="menuitem" onClick={() => hideTrack(track.id)}>
-                        Hide &amp; Mute Track
-                      </button>
-                      <button type="button" role="menuitem" className="danger" onClick={() => deleteTrack(track.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  ) : null}
-                  <span className="se-track-color" style={{ background: track.color }} aria-hidden="true" />
-                  <div className="se-track-top">
-                    <span className="se-track-index">{index + 1}</span>
-                    {renameTrackId === track.id ? (
-                      <input
-                        className="se-track-rename"
-                        value={renameValue}
-                        autoFocus
-                        onChange={(event) => setRenameValue(event.target.value)}
-                        onBlur={commitRename}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter") commitRename();
-                          if (event.key === "Escape") setRenameTrackId(null);
-                        }}
-                        aria-label="Track name"
-                      />
-                    ) : (
-                      <button
-                        type="button"
-                        className="se-track-name"
-                        onClick={() => setSelectedTrack(track.id)}
-                        aria-pressed={active}
-                      >
-                        {track.name}
-                      </button>
-                    )}
-                    <span className="se-track-buttons">
-                      <button
-                        type="button"
-                        aria-label={`Mute ${track.name}`}
-                        aria-pressed={track.muted}
-                        className={track.muted ? "on" : undefined}
-                        onClick={() => toggleTrackFlag(track.id, "muted")}
-                      >
-                        <Icon name="fa-volume-high" />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label={`Solo ${track.name}`}
-                        aria-pressed={track.solo}
-                        className={track.solo ? "on" : undefined}
-                        onClick={() => toggleTrackFlag(track.id, "solo")}
-                      >
-                        S
-                      </button>
-                      <button type="button" disabled aria-label={`Arm ${track.name} (recording not implemented)`}>A</button>
-                      <button
-                        type="button"
-                        aria-label={`Options for ${track.name}`}
-                        aria-haspopup="menu"
-                        aria-expanded={menuTrackId === track.id}
-                        onClick={() => setMenuTrackId(menuTrackId === track.id ? null : track.id)}
-                      >
-                        <Icon name="fa-chevron-down" />
-                      </button>
-                    </span>
-                  </div>
-                  <div className="se-track-sliders">
-                    <div className="se-track-level" aria-hidden="true">
-                      <span
-                        className="se-track-level-fill"
-                        style={{ width: `${track.volume}%`, background: track.color }}
-                      />
-                      <span className="se-track-level-handle" style={{ left: `${track.volume}%` }} />
-                    </div>
-                    <div className="se-track-level pan" aria-hidden="true">
-                      <span className="se-track-level-handle" style={{ left: `${50 + track.pan / 2}%` }} />
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-
-            <button type="button" className="se-add-track" onClick={addTrack}>
-              <Icon name="fa-plus" /> Add new track
-            </button>
-
-            {tracks.some((track) => track.hidden) ? (
-              <div className="se-hidden-wrap">
-                <button
-                  type="button"
-                  className="se-hidden-pill"
-                  aria-label={`${tracks.filter((track) => track.hidden).length} hidden track${
-                    tracks.filter((track) => track.hidden).length === 1 ? "" : "s"
-                  }`}
-                  aria-expanded={hiddenOpen}
-                  onClick={() => setHiddenOpen((open) => !open)}
-                >
-                  {tracks.filter((track) => track.hidden).length}
-                </button>
-                {hiddenOpen ? (
-                  <div className="se-hidden-pop" role="dialog" aria-label="Hidden tracks">
-                    <div className="se-hidden-head">
-                      <strong>Hidden tracks</strong>
-                      <button type="button" className="se-icon" aria-label="Close hidden tracks" onClick={() => setHiddenOpen(false)}>
-                        <Icon name="fa-xmark" />
-                      </button>
-                    </div>
-                    {tracks
-                      .filter((track) => track.hidden)
-                      .map((track) => (
-                        <div key={track.id} className="se-hidden-row">
-                          <span className="se-track-color" style={{ background: track.color }} aria-hidden="true" />
-                          <span>{track.name}</span>
-                          <button type="button" className="se-pill" onClick={() => updateTrack(track.id, { hidden: false })}>
-                            Show
-                          </button>
-                          <button type="button" className="se-pill" onClick={() => updateTrack(track.id, { muted: !track.muted })}>
-                            {track.muted ? "Unmute" : "Mute"}
-                          </button>
-                        </div>
-                      ))}
-                    <button type="button" className="se-pill on" onClick={showAllHidden}>
-                      Show All Hidden Tracks
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-          </div>
-        </aside>
+        <StudioTrackPanel
+          tracks={tracks}
+          selectedTrack={selectedTrack}
+          menuTrackId={menuTrackId}
+          renameTrackId={renameTrackId}
+          renameValue={renameValue}
+          hiddenOpen={hiddenOpen}
+          onSelectTrack={setSelectedTrack}
+          onToggleMenu={setMenuTrackId}
+          onToggleFlag={toggleTrackFlag}
+          onUpdateTrack={updateTrack}
+          onRenameStart={startRename}
+          onRenameChange={setRenameValue}
+          onRenameCommit={commitRename}
+          onRenameCancel={() => setRenameTrackId(null)}
+          onDuplicate={duplicateTrack}
+          onHide={hideTrack}
+          onDelete={deleteTrack}
+          onAddTrack={addTrack}
+          onToggleHidden={() => setHiddenOpen((open) => !open)}
+          onShowAllHidden={showAllHidden}
+        />
 
         <div
           className="se-timeline"
