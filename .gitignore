@@ -99,3 +99,7 @@ image_output_cache/
 
 # TypeScript incremental build info
 *.tsbuildinfo
+
+# Playwright artefacts
+camxora.com/test-results/
+camxora.com/playwright-report/
