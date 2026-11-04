@@ -50,6 +50,23 @@ from studio.ui.preview_widget import PlaybackController, PreviewWidget
 from studio.ui.timeline.timeline_view import TimelineWrap
 
 
+def _qt_object_alive(widget: object) -> bool:
+    """False once Qt deleted the C++ side — pending timers still fire after that.
+
+    ``QTimer.singleShot(0, bound_method)`` keeps the Python callable alive, so a
+    zero-delay callback scheduled in ``showEvent`` can run after the widget was
+    destroyed (seen as "libshiboken: Internal C++ object already deleted").
+    """
+    try:
+        import shiboken6
+    except Exception:
+        return True
+    try:
+        return bool(shiboken6.isValid(widget))
+    except Exception:
+        return True
+
+
 class Topbar(QFrame):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -506,6 +523,8 @@ class MainWindow(QMainWindow):
         the maximized state has not actually changed, so it never re-pins the
         splitter during unrelated resize churn.
         """
+        if not _qt_object_alive(self):
+            return
         if not self.isVisible():
             return
         lp = getattr(self, "library_panel", None)

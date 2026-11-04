@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+from shared.lib.subprocess_utils import popen_hidden, run_hidden
 from visualizer.encode_pipeline import PipelinedEncodeWriter
 from visualizer.gpu_render import build_pipe_encode_command
 
@@ -35,7 +36,7 @@ AUDIO_SEC = 2.0
 
 
 def _make_audio(path: Path, seconds: float) -> None:
-    subprocess.run(
+    run_hidden(
         [
             FFMPEG,
             "-hide_banner",
@@ -56,7 +57,7 @@ def _make_audio(path: Path, seconds: float) -> None:
 
 
 def _probe_duration(path: Path) -> float:
-    completed = subprocess.run(
+    completed = run_hidden(
         [
             FFPROBE,
             "-v",
@@ -106,7 +107,7 @@ def test_pipe_accepts_frames_past_the_audio_tail(tmp_path: Path) -> None:
 
     err_path = tmp_path / "ffmpeg_error.log"
     with err_path.open("w+", encoding="utf-8") as err_file:
-        proc = subprocess.Popen(
+        proc = popen_hidden(
             cmd,
             stdin=subprocess.PIPE,
             stderr=err_file,
