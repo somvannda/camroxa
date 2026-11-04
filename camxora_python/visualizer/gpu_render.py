@@ -2398,39 +2398,41 @@ def _x264_preset_for_speed(mode: str) -> str:
     return "veryfast"
 
 
-def _start_ffmpeg(
+def build_pipe_encode_command(
+    *,
     ffmpeg_path: str,
     mp3_path: str,
     out_path: str,
-    w: int,
-    h: int,
+    width: int,
+    height: int,
     fps: int,
     speed_mode: str,
-    *,
     pipe_pix_fmt: str = "rgba",
-) -> tuple[subprocess.Popen, str]:
+    use_nvenc: bool = False,
+) -> tuple[list[str], str, str]:
+    """ffmpeg argv for the rawvideo-stdin export.
+
+    Returns ``(cmd, video_codec, pipe_pix_fmt)``. Kept separate from
+    ``_start_ffmpeg`` so the pipe contract — no ``-shortest``, stdin EOF defines
+    the video end — is testable without spawning ffmpeg.
+    """
     from shared.lib.export_bitrate import ffmpeg_vbr_bitrate_args, recommended_vbr_ladder_kbps
+    from visualizer.readback import pipe_needs_cpu_pack, yuv_pipe_color_range
 
     mode = str(speed_mode or "balanced").strip().lower()
     pipe_fmt = str(pipe_pix_fmt or "rgba").strip().lower()
     if pipe_fmt not in {"rgba", "nv12", "yuv420p"}:
         pipe_fmt = "rgba"
-    if pipe_fmt in {"nv12", "yuv420p"} and (int(w) % 2 != 0 or int(h) % 2 != 0):
+    if pipe_fmt in {"nv12", "yuv420p"} and (int(width) % 2 != 0 or int(height) % 2 != 0):
         pipe_fmt = "rgba"
     if mode in {"best", "master"}:
         mode = "best_quality"
     x264_preset = _x264_preset_for_speed(mode)
-    target_kbps, maxrate_kbps, bufsize_kbps = recommended_vbr_ladder_kbps(int(w), int(h), fps, mode)
-    vbr_args = ffmpeg_vbr_bitrate_args(target_kbps, maxrate_kbps, bufsize_kbps)
-    from visualizer.nvenc_capability import (
-        nvenc_error_indicates_unavailable,
-        probe_h264_nvenc,
-        rewrite_nvenc_cmd_to_x264,
+    target_kbps, maxrate_kbps, bufsize_kbps = recommended_vbr_ladder_kbps(
+        int(width), int(height), fps, mode
     )
-    from visualizer.readback import pipe_frame_byte_size, pipe_needs_cpu_pack, yuv_pipe_color_range
-
+    vbr_args = ffmpeg_vbr_bitrate_args(target_kbps, maxrate_kbps, bufsize_kbps)
     color_range = yuv_pipe_color_range() if pipe_needs_cpu_pack(pipe_fmt) else "pc"
-    use_nvenc = probe_h264_nvenc(ffmpeg_path)
     # Deeper demux queue reduces stdin back-pressure when pack/write outpaces NVENC briefly.
     cmd: list[str] = [
         ffmpeg_path,
@@ -2446,7 +2448,7 @@ def _start_ffmpeg(
         "-pix_fmt",
         pipe_fmt,
         "-s",
-        f"{w}x{h}",
+        f"{width}x{height}",
         "-r",
         str(fps),
         "-thread_queue_size",
@@ -2465,8 +2467,8 @@ def _start_ffmpeg(
     if use_nvenc:
         cmd += build_nvenc_export_args(
             mode,
-            width=int(w),
-            height=int(h),
+            width=int(width),
+            height=int(height),
             fps=fps,
             pipe_pix_fmt=pipe_fmt,
             color_range=color_range,
@@ -2502,6 +2504,44 @@ def _start_ffmpeg(
         # render loop writes exactly ceil(audio_duration * fps) frames.
         out_path,
     ]
+    return cmd, video_codec, pipe_fmt
+
+
+def _start_ffmpeg(
+    ffmpeg_path: str,
+    mp3_path: str,
+    out_path: str,
+    w: int,
+    h: int,
+    fps: int,
+    speed_mode: str,
+    *,
+    pipe_pix_fmt: str = "rgba",
+) -> tuple[subprocess.Popen, str]:
+    from visualizer.nvenc_capability import (
+        nvenc_error_indicates_unavailable,
+        probe_h264_nvenc,
+        rewrite_nvenc_cmd_to_x264,
+    )
+    from visualizer.readback import pipe_frame_byte_size
+
+    use_nvenc = probe_h264_nvenc(ffmpeg_path)
+    cmd, video_codec, pipe_fmt = build_pipe_encode_command(
+        ffmpeg_path=ffmpeg_path,
+        mp3_path=mp3_path,
+        out_path=out_path,
+        width=w,
+        height=h,
+        fps=fps,
+        speed_mode=speed_mode,
+        pipe_pix_fmt=pipe_pix_fmt,
+        use_nvenc=use_nvenc,
+    )
+    # Only needed for the delayed NVENC→x264 fallback below.
+    mode = str(speed_mode or "balanced").strip().lower()
+    if mode in {"best", "master"}:
+        mode = "best_quality"
+    x264_preset = _x264_preset_for_speed(mode)
     err_path = Path(out_path).parent / f"ffmpeg_error_{uuid.uuid4().hex[:8]}.log"
     err_file = open(err_path, "w+", encoding="utf-8")
     # One-frame stdin buffer (~3 MiB yuv420p / ~8 MiB rgba) avoids 8 KiB default churn.
