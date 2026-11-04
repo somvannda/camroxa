@@ -57,10 +57,13 @@ export function StudioMetricsProbe() {
     void (async () => {
       const response = await fetch("/studio-metrics.json");
       const data = (await response.json()) as { metrics: Metric[] };
-      await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
-      if (cancelled) return;
-      setRows(
-        data.metrics.map((metric) => {
+
+      // The editor loads its project asynchronously, so measuring once on mount finds
+      // an empty arrangement. Retry until every selector resolves (or ~3s passes).
+      const deadline = Date.now() + 3000;
+      let measured: Result[] = [];
+      while (!cancelled) {
+        measured = data.metrics.map((metric) => {
           const actual = measure(metric);
           const delta = actual === null ? null : actual - metric.expected;
           return {
@@ -69,8 +72,13 @@ export function StudioMetricsProbe() {
             delta,
             pass: delta !== null && Math.abs(delta) <= metric.tolerance,
           };
-        })
-      );
+        });
+        const complete = measured.every((row) => row.actual !== null);
+        if (complete || Date.now() > deadline) break;
+        await new Promise((resolve) => setTimeout(resolve, 120));
+      }
+
+      if (!cancelled) setRows(measured);
     })();
     return () => {
       cancelled = true;
