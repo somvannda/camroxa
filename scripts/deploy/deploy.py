@@ -75,6 +75,9 @@ DEPLOY_FILES = (
     "scripts/ops/pool_capacity.py",
     "scripts/ops/audit_ledger_drift.py",
     "scripts/ops/drift_baseline.json",
+    # Manual report (not alerted yet): failed attempts whose charge was not
+    # refunded. Wiring it to a page would be noise until the per-attempt ref fix.
+    "scripts/ops/audit_failed_music_refunds.py",
 )
 # Kept for callers that imported these names from deploy.py.
 __all__ = [
