@@ -899,6 +899,32 @@ class PlatformApi:
         )
         return YouTubeConnectionResponse.model_validate(data)
 
+    def enqueue_youtube_merge_upload(
+        self,
+        *,
+        profile_id: str,
+        batch_id: str,
+        role: str,
+        merged_mp4_path: str,
+    ) -> dict[str, Any]:
+        """Queue a server-side YouTube upload for an already-merged MP4.
+
+        Used by the Progress page's manual "Upload to YouTube" action, where the
+        merged artifact already exists on this machine and the direct-Google
+        connection (not Post for Me) owns the channel.
+        """
+        data = self._client.request(
+            f"/youtube/profiles/{profile_id}/uploads/merge",
+            method="POST",
+            auth=True,
+            body={
+                "batch_id": batch_id,
+                "role": role,
+                "merged_mp4_path": merged_mp4_path,
+            },
+        )
+        return data if isinstance(data, dict) else {}
+
     def list_youtube_playlists(self, profile_id: str) -> YouTubePlaylistsResponse:
         data = self._client.request(f"/youtube/profiles/{profile_id}/playlists", auth=True)
         return YouTubePlaylistsResponse.model_validate(data)
