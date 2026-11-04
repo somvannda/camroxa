@@ -1178,6 +1178,9 @@ class MusicView(QWidget):
                 format_operation_cost_label(self._operation_costs.get("lyric"), "Draft"),
                 format_operation_cost_label(self._operation_costs.get("music"), "Suno"),
                 format_operation_cost_label(self._operation_costs.get("background_image"), "Image"),
+                format_operation_cost_label(self._operation_costs.get("video"), "Video export"),
+                format_operation_cost_label(self._operation_costs.get("video_merge"), "Merge"),
+                format_operation_cost_label(self._operation_costs.get("publish"), "YouTube upload"),
             ]
         )
         self._automation_card.set_cost_lines(costs)

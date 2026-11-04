@@ -156,7 +156,11 @@ class AutomationCard(StudioPanel):
         self._auto_video = StudioCheckBox("Auto-Video")
         self._auto_merge = StudioCheckBox("Auto Merge")
         self._auto_reel = StudioCheckBox("Auto Reel")
-        self._auto_upload = StudioCheckBox("Auto-Upload")
+        self._auto_upload = StudioCheckBox("YouTube Upload")
+        self._auto_upload.setToolTip(
+            "Publish each merged video to YouTube through Post for Me. "
+            "Requires a connected channel; uploads are billed per video."
+        )
         self._auto_upload.setEnabled(False)
         self._auto_upload_enabled = False
         self._skip_existing = StudioCheckBox("Skip days with batches")
