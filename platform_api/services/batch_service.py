@@ -4288,9 +4288,17 @@ class BatchService:
         batch_id: UUID,
         status: TaskStatus,
         *,
+        task_id: UUID | None = None,
         error_message: str | None = None,
     ) -> list[ImageJob]:
-        """Route Suno callback status changes back into the batch lifecycle."""
+        """Route Suno callback status changes back into the batch lifecycle.
+
+        ``task_id`` identifies the individual attempt. It is threaded through
+        here and not yet used: a song can be submitted several times, and the
+        refund path currently keys its per-attempt charge on the song, so a
+        retry overwrites the amount the previous failure needed to refund. The
+        follow-up change keys that stash on ``task_id`` instead.
+        """
         if status == TaskStatus.SUCCESS:
             if self._enforcement_service is not None:
                 pop = getattr(self._enforcement_service, "pop_operation_charge", None)
