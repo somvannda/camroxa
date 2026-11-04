@@ -1293,8 +1293,15 @@ export default function CreatePageClient() {
       try {
         return await generateWebMusic(input);
       } catch (err) {
+        // A 429 is retryable only when it is a short-window rate limit. Quota
+        // errors (daily music cap, no credits) will not clear by waiting, so
+        // retrying just delays the real message by up to three cooldowns.
+        const isQuota =
+          err instanceof MusicApiError &&
+          (err.code === 'QUOTA_EXCEEDED' || /daily music limit|quota|credits/i.test(err.message));
         const retryable =
-          err instanceof MusicApiError && (err.status === 429 || err.status === 503);
+          err instanceof MusicApiError &&
+          (err.status === 503 || (err.status === 429 && !isQuota));
         attempt += 1;
         if (!retryable || attempt > 3) throw err;
         const waitMs =
