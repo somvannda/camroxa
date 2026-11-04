@@ -195,6 +195,14 @@ class SettingsView(QWidget):
         self._publish_accounts_worker: PublishAccountsWorker | None = None
         self._publish_connection_worker: PublishConnectionWorker | None = None
         self._publish_accounts: list[object] = []
+        # Poll while the browser sign-in is open: the provider records the
+        # account when the user finishes the Google step, which can take longer
+        # than a single delayed refresh.
+        self._publish_poll_timer = QTimer(self)
+        self._publish_poll_timer.setInterval(3000)
+        self._publish_poll_timer.timeout.connect(self._poll_publish_accounts)
+        self._publish_poll_profile_id: str = ""
+        self._publish_poll_remaining = 0
         self._youtube_poll_timer = QTimer(self)
         self._youtube_poll_timer.setInterval(3000)
         self._youtube_poll_timer.timeout.connect(self._poll_youtube_connections)
@@ -3814,6 +3822,7 @@ class SettingsView(QWidget):
         profile_id = profile_id or self._selected_profile_id()
         if not profile_id:
             return
+        self._publish_poll_timer.stop()
         worker = PublishConnectionWorker(
             self._api, str(profile_id), "youtube", parent=self
         )
@@ -3828,14 +3837,43 @@ class SettingsView(QWidget):
         if auth_url:
             webbrowser.open(str(auth_url))
             self._profile_youtube_note.setText(
-                "YouTube: browser sign-in started. Return here and press Refresh."
+                "YouTube: finish the sign-in in your browser. This panel updates automatically."
             )
             self._status_message = "YouTube connect started."
-            QTimer.singleShot(8000, self._refresh_publish_accounts)
+            self._start_publish_poll()
             return
         self._show_save_success("YouTube channel is already connected.")
         self._refresh_publish_accounts()
         self.refresh_data(force=True)
+
+    def _start_publish_poll(self) -> None:
+        """Poll for the connected account until it lands or we give up."""
+        self._publish_poll_profile_id = str(self._selected_profile_id() or "")
+        # 40 ticks x 3s = 2 minutes, enough for browser + provider sync.
+        self._publish_poll_remaining = 40
+        self._publish_poll_timer.start()
+        self._poll_publish_accounts()
+
+    def _poll_publish_accounts(self) -> None:
+        if self._publish_poll_remaining <= 0:
+            self._publish_poll_timer.stop()
+            if self._selected_profile_has_publish_account():
+                return
+            self._profile_youtube_note.setText(
+                "YouTube: not connected yet. Click Refresh, or Connect YouTube again."
+            )
+            return
+        self._publish_poll_remaining -= 1
+        self._refresh_publish_accounts()
+
+    def _selected_profile_has_publish_account(self) -> bool:
+        profile_id = str(self._publish_poll_profile_id or self._selected_profile_id() or "")
+        if not profile_id:
+            return False
+        for account in self._publish_accounts:
+            if str(getattr(account, "profile_id", "") or "") == profile_id:
+                return True
+        return False
 
     def _refresh_publish_accounts(self, profile_id: str | None = None) -> None:
         if self._publish_accounts_worker is not None and self._publish_accounts_worker.isRunning():
@@ -3861,6 +3899,13 @@ class SettingsView(QWidget):
     def _on_publish_accounts_loaded(self, accounts: object) -> None:
         items = list(accounts or []) if isinstance(accounts, (list, tuple)) else []
         self._publish_accounts = items
+        if self._publish_poll_timer.isActive() and self._selected_profile_has_publish_account():
+            # The browser sign-in landed: stop polling and show the result.
+            self._publish_poll_timer.stop()
+            self._publish_poll_remaining = 0
+            self._profile_youtube_note.setText("YouTube: connected via Post for Me.")
+            self._show_save_success("YouTube channel connected.")
+            self.refresh_data(force=True)
         is_new = self._selected_profile_key == "new"
         profile = self._selected_profile() if not is_new else None
         self._refresh_profile_identity(is_new=is_new, profile=profile)
@@ -3868,6 +3913,8 @@ class SettingsView(QWidget):
         self._filter_profile_list()
 
     def _disconnect_publish_account(self, account_id: str | None = None) -> None:
+        self._publish_poll_timer.stop()
+        self._publish_poll_remaining = 0
         if not account_id:
             if not self._publish_accounts:
                 return
