@@ -1,0 +1,59 @@
+{
+  "_comment": "Reference metrics measured from the live Suno Studio and recorded in SUNO_STUDIO_IMPLEMENTATION_SPEC.md. The probe at /studio/editor?metrics=1 compares these against our rendered DOM.",
+  "metrics": [
+    {
+      "id": "trackRowHeight",
+      "label": "Track row height",
+      "selector": ".se-track",
+      "measure": "height",
+      "expected": 85,
+      "tolerance": 0,
+      "spec": "52.1"
+    },
+    {
+      "id": "rowStep",
+      "label": "Row step (lane pitch)",
+      "selector": ".se-lane",
+      "measure": "height",
+      "expected": 86,
+      "tolerance": 0,
+      "spec": "52.1"
+    },
+    {
+      "id": "gutterWidth",
+      "label": "Track gutter width",
+      "selector": ".se-tracks",
+      "measure": "width",
+      "expected": 283,
+      "tolerance": 0,
+      "spec": "52.1"
+    },
+    {
+      "id": "barWidth",
+      "label": "Bar width in the ruler",
+      "selector": ".se-bar-tick",
+      "measure": "spacing",
+      "expected": 96,
+      "tolerance": 0,
+      "spec": "44.3"
+    },
+    {
+      "id": "pillHeight",
+      "label": "Header pill height",
+      "selector": ".se-pill",
+      "measure": "height",
+      "expected": 32,
+      "tolerance": 0,
+      "spec": "44.1"
+    },
+    {
+      "id": "transportTarget",
+      "label": "Transport button target",
+      "selector": ".se-head-right button",
+      "measure": "height",
+      "expected": 32,
+      "tolerance": 0,
+      "spec": "44.1"
+    }
+  ]
+}

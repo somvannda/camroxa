@@ -4602,3 +4602,11 @@ html{color-scheme:dark}
 .se-export-menu button{text-align:left;padding:8px 10px;border-radius:8px}
 
 .se-meter{min-width:74px;text-align:center;font-variant-numeric:tabular-nums}
+
+.se-metrics{position:fixed;right:16px;bottom:16px;z-index:70;padding:12px 14px;border-radius:12px;background:hsl(var(--card));border:1px solid hsl(var(--border));font-variant-numeric:tabular-nums}
+.se-metrics-head{display:flex;gap:16px;justify-content:space-between;margin-bottom:8px}
+.se-metrics table{border-collapse:collapse}
+.se-metrics th,.se-metrics td{padding:2px 10px;text-align:right}
+.se-metrics th:first-child,.se-metrics td:first-child{text-align:left}
+.se-metrics tr.ok td:nth-child(4){opacity:.75}
+.se-metrics tr.off td{color:hsl(var(--destructive))}

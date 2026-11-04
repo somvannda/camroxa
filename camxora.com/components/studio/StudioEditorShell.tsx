@@ -18,6 +18,7 @@ import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { StudioOnboarding } from "@/components/studio/StudioOnboarding";
+import { StudioMetricsProbe } from "@/components/studio/StudioMetricsProbe";
 
 const ROW_HEIGHT = 85;
 const ROW_STEP = 86;
@@ -1399,6 +1400,8 @@ export function StudioEditorShell() {
       </div>
 
       <StudioOnboarding projectId={projectId} isEmpty={!loading && tracks.length === 0 && clips.length === 0} />
+
+      <StudioMetricsProbe />
 
       {clipSource ? (
         <div className="se-clip-source" aria-label="Clip source">
