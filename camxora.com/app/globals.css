@@ -4638,3 +4638,7 @@ html{color-scheme:dark}
 .se-loop-handle{position:absolute;top:0;width:8px;height:16px;margin-left:-4px;border-radius:3px;background:hsl(var(--accent));z-index:5;cursor:ew-resize;padding:0}
 
 .se-lib-search{flex:1;margin:0 8px;padding:5px 8px;border-radius:8px;background:hsl(var(--card));color:inherit;border:1px solid hsl(var(--border))}
+
+.se-clip-source-actions{display:flex;align-items:center;gap:10px;margin-top:6px}
+.se-stem-status{font-style:normal;opacity:.75}
+.se-stem-status.off{color:hsl(var(--destructive))}

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
+import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import { listStudioProjects } from "@/lib/studio-api";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
@@ -81,6 +82,8 @@ export function StudioEditorShell() {
   const librarySearchRef = useRef<HTMLInputElement | null>(null);
   /** Source generation of the selected clip, when it came from the library (G16). */
   const [clipSource, setClipSource] = useState<WebMusicGeneration | null>(null);
+  /** Stem separation request state for the selected clip (W4.2). */
+  const [stems, setStems] = useState<{ status: string; message?: string } | null>(null);
   /** Active clip drag: every selected clip's origin plus the latest pointer delta. */
   const [drag, setDrag] = useState<{
     ids: string[];
@@ -596,6 +599,85 @@ export function StudioEditorShell() {
     const name = renameValue.trim();
     if (name) updateTrack(renameTrackId, { name });
     setRenameTrackId(null);
+  }
+
+  /**
+   * Stem separation (W4.2). The reference surfaces it as "Get Stems" on a clip and
+   * lands the results on new tracks, so that is the shape implemented here: request,
+   * poll the operation, then add one track per returned stem at the playhead.
+   */
+  async function requestStems() {
+    const clip = clips.find((candidate) => candidate.id === selectedClip);
+    const songId = (clip as { songId?: string } | undefined)?.songId;
+    if (!songId) return;
+    setStems({ status: "queued" });
+    try {
+      const operation = await requestStudioStems({
+        taskId: songId,
+        variant: "ok",
+        mode: "stems",
+        projectId,
+      });
+      setStems({ status: operation.status });
+
+      const deadline = Date.now() + 120_000;
+      let current = operation;
+      while (Date.now() < deadline) {
+        if (current.status === "done" && current.result?.clips?.length) break;
+        if (current.status === "error" || current.status === "failed") {
+          setStems({ status: "error", message: current.error_message ?? "Stem separation failed." });
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 2500));
+        current = await getStudioOperation(operation.id);
+        setStems({ status: current.status });
+      }
+
+      const stemsClips = current.result?.clips ?? [];
+      if (stemsClips.length === 0) {
+        setStems({ status: "error", message: "No stems came back." });
+        return;
+      }
+
+      const stamp = Date.now().toString(36);
+      const data = (project?.data || {}) as Record<string, unknown>;
+      const base = Math.round(playhead * 1000) / 1000;
+      const addedLanes = stemsClips.map((stem, index) => ({
+        id: `stem-${stamp}-${index}`,
+        title: stem.label ?? stem.title ?? `Stem ${index + 1}`,
+        start: base,
+        duration: stem.duration_seconds ?? stem.duration ?? 8,
+        volume: 1,
+        pan: 0,
+        audioUrl: stem.durable_url ?? stem.durableUrl ?? stem.audio_url ?? null,
+        songId,
+      }));
+      const addedTracks: StudioTrack[] = stemsClips.map((stem, index) => ({
+        id: `stem-track-${stamp}-${index}`,
+        name: stem.label ?? stem.title ?? `Stem ${index + 1}`,
+        color: colorForTrackName(`stem ${index}`),
+        index: tracks.length + index,
+        volume: 1,
+        pan: 0,
+        muted: false,
+        solo: false,
+        hidden: false,
+        groupId: null,
+        chain: [],
+        clipIds: [addedLanes[index].id],
+      }));
+      writeProjectData(
+        { ...data, lanes: [...clips, ...addedLanes], tracks: [...tracks, ...addedTracks] },
+        "stem separation",
+        [...tracks, ...addedTracks]
+      );
+      setStems({ status: "added" });
+    } catch (cause) {
+      setStems({
+        status: "error",
+        message: cause instanceof Error ? cause.message : "Could not start stem separation.",
+      });
+    }
   }
 
   /** Toggle a boolean track flag and persist it (G21: mute, solo). */
@@ -1792,6 +1874,16 @@ export function StudioEditorShell() {
               : "unknown date"}
             {clipSource.style ? ` · ${clipSource.style.slice(0, 60)}` : ""}
           </span>
+          <div className="se-clip-source-actions">
+            <button type="button" className="se-pill" onClick={() => void requestStems()} disabled={!clipSource}>
+              Get stems
+            </button>
+            {stems ? (
+              <em className={`se-stem-status ${stems.status === "error" ? "off" : ""}`}>
+                {stems.status === "added" ? "stems added as tracks" : stems.message ?? stems.status}
+              </em>
+            ) : null}
+          </div>
         </div>
       ) : null}
 
