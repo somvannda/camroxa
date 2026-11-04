@@ -100,6 +100,10 @@ export function StudioEditorShell() {
     ids: string[];
     origins: Record<string, number>;
   } | null>(null);
+  /** Mirror of `drag` so pointer handlers can read it without a state updater. */
+  const dragStateRef = useRef<{ ids: string[]; origins: Record<string, number>; deltaPx: number } | null>(
+    null
+  );
   /** Marquee (rubber-band) selection, in lane-local pixels. */
   const [marquee, setMarquee] = useState<{ x1: number; y1: number; x2: number; y2: number } | null>(
     null
@@ -1193,7 +1197,9 @@ export function StudioEditorShell() {
       if (session) {
         const deltaPx = event.clientX - session.startX;
         if (isDrag(deltaPx) || drag !== null) {
-          setDrag({ ids: session.ids, origins: session.origins, deltaPx });
+          const next = { ids: session.ids, origins: session.origins, deltaPx };
+          dragStateRef.current = next;
+          setDrag(next);
         }
         return;
       }
@@ -1227,10 +1233,12 @@ export function StudioEditorShell() {
       const session = dragRef.current;
       dragRef.current = null;
       if (session) {
-        setDrag((current) => {
-          if (current && Math.abs(current.deltaPx) > 0) commitDrag(current);
-          return null;
-        });
+        // Commit from a ref, not from inside a state updater: React double-invokes
+        // updaters, which fired the save twice and turned the second into a 409.
+        const current = dragStateRef.current;
+        if (current && Math.abs(current.deltaPx) > 0) commitDrag(current);
+        dragStateRef.current = null;
+        setDrag(null);
       }
       const band = marqueeRef.current;
       marqueeRef.current = null;
