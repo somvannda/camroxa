@@ -104,6 +104,11 @@ export function StudioEditorShell() {
     hit: string[];
   } | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  /** Track options menu (spec §65) and hidden-tracks popover (S21). */
+  const [menuTrackId, setMenuTrackId] = useState<string | null>(null);
+  const [hiddenOpen, setHiddenOpen] = useState(false);
+  const [renameTrackId, setRenameTrackId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   /** Visible horizontal window of the timeline, for clip culling (G19). */
   const [view, setView] = useState({ left: 0, width: 0 });
   const [exporting, setExporting] = useState(false);
@@ -463,6 +468,81 @@ export function StudioEditorShell() {
 
   function zoomToFit() {
     setBarWidth(ZOOM_LEVELS[2]);
+  }
+
+  /** Track menu actions (spec §65). All persist through the history-aware write path. */
+  function updateTrack(trackId: string, patch: Partial<StudioTrack>) {
+    commitTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
+  }
+
+  function duplicateTrack(trackId: string) {
+    const source = tracks.find((track) => track.id === trackId);
+    if (!source) return;
+    const stamp = Date.now().toString(36);
+    const copies = clips
+      .filter((clip) => source.clipIds.includes(clip.id))
+      .map((clip, index) => ({ ...clip, id: `${clip.id}-copy-${stamp}-${index}` }));
+    const copy: StudioTrack = {
+      ...source,
+      id: `track-${stamp}`,
+      name: `${source.name} copy`,
+      index: tracks.length,
+      clipIds: copies.map((clip) => clip.id),
+    };
+    const data = (project?.data || {}) as Record<string, unknown>;
+    const nextTracks = [...tracks, copy];
+    setMenuTrackId(null);
+    writeProjectData(
+      { ...data, lanes: [...clips, ...copies], tracks: nextTracks },
+      "duplicating a track",
+      nextTracks
+    );
+  }
+
+  /** Hide & Mute is one action in the reference, not two (§65). */
+  function hideTrack(trackId: string) {
+    setMenuTrackId(null);
+    setLocalTracks(
+      tracks.map((track) =>
+        track.id === trackId ? { ...track, hidden: true, muted: true } : track
+      )
+    );
+    commitTracks(
+      tracks.map((track) =>
+        track.id === trackId ? { ...track, hidden: true, muted: true } : track
+      )
+    );
+  }
+
+  function showAllHidden() {
+    setHiddenOpen(false);
+    commitTracks(tracks.map((track) => (track.hidden ? { ...track, hidden: false } : track)));
+  }
+
+  function deleteTrack(trackId: string) {
+    const track = tracks.find((candidate) => candidate.id === trackId);
+    if (!track) return;
+    const nextTracks = tracks
+      .filter((candidate) => candidate.id !== trackId)
+      .map((candidate, index) => ({ ...candidate, index }));
+    const lanes = clips.filter((clip) => !track.clipIds.includes(clip.id));
+    const data = (project?.data || {}) as Record<string, unknown>;
+    setMenuTrackId(null);
+    setSelectedTrack(null);
+    writeProjectData({ ...data, lanes, tracks: nextTracks }, "deleting a track", nextTracks);
+  }
+
+  function startRename(track: StudioTrack) {
+    setMenuTrackId(null);
+    setRenameTrackId(track.id);
+    setRenameValue(track.name);
+  }
+
+  function commitRename() {
+    if (!renameTrackId) return;
+    const name = renameValue.trim();
+    if (name) updateTrack(renameTrackId, { name });
+    setRenameTrackId(null);
   }
 
   /** Toggle a boolean track flag and persist it (G21: mute, solo). */
@@ -1190,7 +1270,7 @@ export function StudioEditorShell() {
           </div>
 
           <div className="se-track-list">
-            {tracks.map((track, index) => {
+            {tracks.filter((track) => !track.hidden).map((track, index) => {
               const active = selectedTrack === track.id;
               return (
                 <div
@@ -1198,17 +1278,66 @@ export function StudioEditorShell() {
                   className={`se-track${active ? " selected" : ""}`}
                   style={{ height: ROW_HEIGHT, marginBottom: ROW_STEP - ROW_HEIGHT }}
                 >
+                  {menuTrackId === track.id ? (
+                    <div className="se-track-menu" role="menu" aria-label={`${track.name} options`}>
+                      <button type="button" role="menuitem" onClick={() => startRename(track)}>
+                        Rename track
+                      </button>
+                      <div className="se-track-menu-colors" role="group" aria-label="Track colour">
+                        {["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"].map((color) => (
+                          <button
+                            key={color}
+                            type="button"
+                            aria-label={`Use ${color}`}
+                            style={{ background: color }}
+                            className={track.color === color ? "on" : undefined}
+                            onClick={() => {
+                              updateTrack(track.id, { color });
+                              setMenuTrackId(null);
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <button type="button" role="menuitem" onClick={() => setMenuTrackId(null)}>
+                        Collapse controls
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => duplicateTrack(track.id)}>
+                        Duplicate
+                      </button>
+                      <button type="button" role="menuitem" onClick={() => hideTrack(track.id)}>
+                        Hide &amp; Mute Track
+                      </button>
+                      <button type="button" role="menuitem" className="danger" onClick={() => deleteTrack(track.id)}>
+                        Delete
+                      </button>
+                    </div>
+                  ) : null}
                   <span className="se-track-color" style={{ background: track.color }} aria-hidden="true" />
                   <div className="se-track-top">
                     <span className="se-track-index">{index + 1}</span>
-                    <button
-                      type="button"
-                      className="se-track-name"
-                      onClick={() => setSelectedTrack(track.id)}
-                      aria-pressed={active}
-                    >
-                      {track.name}
-                    </button>
+                    {renameTrackId === track.id ? (
+                      <input
+                        className="se-track-rename"
+                        value={renameValue}
+                        autoFocus
+                        onChange={(event) => setRenameValue(event.target.value)}
+                        onBlur={commitRename}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") commitRename();
+                          if (event.key === "Escape") setRenameTrackId(null);
+                        }}
+                        aria-label="Track name"
+                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className="se-track-name"
+                        onClick={() => setSelectedTrack(track.id)}
+                        aria-pressed={active}
+                      >
+                        {track.name}
+                      </button>
+                    )}
                     <span className="se-track-buttons">
                       <button
                         type="button"
@@ -1229,7 +1358,13 @@ export function StudioEditorShell() {
                         S
                       </button>
                       <button type="button" disabled aria-label={`Arm ${track.name} (recording not implemented)`}>A</button>
-                      <button type="button" disabled aria-label={`Options for ${track.name} (not wired)`}>
+                      <button
+                        type="button"
+                        aria-label={`Options for ${track.name}`}
+                        aria-haspopup="menu"
+                        aria-expanded={menuTrackId === track.id}
+                        onClick={() => setMenuTrackId(menuTrackId === track.id ? null : track.id)}
+                      >
                         <Icon name="fa-chevron-down" />
                       </button>
                     </span>
@@ -1253,6 +1388,49 @@ export function StudioEditorShell() {
             <button type="button" className="se-add-track" onClick={addTrack}>
               <Icon name="fa-plus" /> Add new track
             </button>
+
+            {tracks.some((track) => track.hidden) ? (
+              <div className="se-hidden-wrap">
+                <button
+                  type="button"
+                  className="se-hidden-pill"
+                  aria-label={`${tracks.filter((track) => track.hidden).length} hidden track${
+                    tracks.filter((track) => track.hidden).length === 1 ? "" : "s"
+                  }`}
+                  aria-expanded={hiddenOpen}
+                  onClick={() => setHiddenOpen((open) => !open)}
+                >
+                  {tracks.filter((track) => track.hidden).length}
+                </button>
+                {hiddenOpen ? (
+                  <div className="se-hidden-pop" role="dialog" aria-label="Hidden tracks">
+                    <div className="se-hidden-head">
+                      <strong>Hidden tracks</strong>
+                      <button type="button" className="se-icon" aria-label="Close hidden tracks" onClick={() => setHiddenOpen(false)}>
+                        <Icon name="fa-xmark" />
+                      </button>
+                    </div>
+                    {tracks
+                      .filter((track) => track.hidden)
+                      .map((track) => (
+                        <div key={track.id} className="se-hidden-row">
+                          <span className="se-track-color" style={{ background: track.color }} aria-hidden="true" />
+                          <span>{track.name}</span>
+                          <button type="button" className="se-pill" onClick={() => updateTrack(track.id, { hidden: false })}>
+                            Show
+                          </button>
+                          <button type="button" className="se-pill" onClick={() => updateTrack(track.id, { muted: !track.muted })}>
+                            {track.muted ? "Unmute" : "Mute"}
+                          </button>
+                        </div>
+                      ))}
+                    <button type="button" className="se-pill on" onClick={showAllHidden}>
+                      Show All Hidden Tracks
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
           </div>
         </aside>
 
