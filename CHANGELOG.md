@@ -7,6 +7,14 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.2] - 2026-11-04
+
+### Fixed
+
+- Connecting a YouTube channel now refreshes by itself: the Settings panel polls for up to
+  two minutes instead of waiting a single 8-second refresh, so finishing the browser sign-in
+  at any pace shows the connected channel without pressing Refresh.
+
 ## [1.5.1] - 2026-11-04
 
 ### Added
