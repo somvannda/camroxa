@@ -4616,3 +4616,5 @@ html{color-scheme:dark}
 .se-metrics .func.wired{opacity:.85}
 .se-metrics .func.partial{color:hsl(var(--accent))}
 .se-metrics .func.visual{opacity:.6}
+
+.se-track-buttons button.on{background:hsl(var(--accent));color:hsl(var(--accent-foreground))}

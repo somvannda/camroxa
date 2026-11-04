@@ -11,7 +11,7 @@
       "spec": "52.1",
       "feature": "Track rows",
       "functional": "partial",
-      "note": "mute / solo / arm are disabled"
+      "note": "mute and solo wired; arm needs recording"
     },
     {
       "id": "rowStep",

@@ -380,6 +380,14 @@ export function StudioEditorShell() {
     return () => window.removeEventListener("beforeunload", guard);
   }, [saveStatus]);
 
+  /** Toggle a boolean track flag and persist it (G21: mute, solo). */
+  function toggleTrackFlag(trackId: string, flag: "muted" | "solo") {
+    const next = tracks.map((track) =>
+      track.id === trackId ? { ...track, [flag]: !track[flag] } : track
+    );
+    commitTracks(next);
+  }
+
   /** Persist the track list into the project document. */
   function commitTracks(next: StudioTrack[]) {
     setLocalTracks(next);
@@ -745,7 +753,10 @@ export function StudioEditorShell() {
       const duration = clip.duration ?? buffer.duration;
       if (start + duration <= from) continue;
       const track = tracks.find((item) => item.clipIds.includes(clip.id));
+      // Solo wins over mute, and any solo silences everything not soloed (G21).
+      const anySolo = tracks.some((item) => item.solo);
       if (track?.muted) continue;
+      if (anySolo && !track?.solo) continue;
 
       const when = now + Math.max(0, start - from) / playbackRate;
       const offset = Math.max(0, from - start);
@@ -1133,11 +1144,25 @@ export function StudioEditorShell() {
                       {track.name}
                     </button>
                     <span className="se-track-buttons">
-                      <button type="button" disabled aria-label={`Mute ${track.name} (not wired)`}>
+                      <button
+                        type="button"
+                        aria-label={`Mute ${track.name}`}
+                        aria-pressed={track.muted}
+                        className={track.muted ? "on" : undefined}
+                        onClick={() => toggleTrackFlag(track.id, "muted")}
+                      >
                         <Icon name="fa-volume-high" />
                       </button>
-                      <button type="button" disabled aria-label={`Solo ${track.name} (not wired)`}>S</button>
-                      <button type="button" disabled aria-label={`Arm ${track.name} (not wired)`}>A</button>
+                      <button
+                        type="button"
+                        aria-label={`Solo ${track.name}`}
+                        aria-pressed={track.solo}
+                        className={track.solo ? "on" : undefined}
+                        onClick={() => toggleTrackFlag(track.id, "solo")}
+                      >
+                        S
+                      </button>
+                      <button type="button" disabled aria-label={`Arm ${track.name} (recording not implemented)`}>A</button>
                       <button type="button" disabled aria-label={`Options for ${track.name} (not wired)`}>
                         <Icon name="fa-chevron-down" />
                       </button>
