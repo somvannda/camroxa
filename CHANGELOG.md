@@ -7,6 +7,16 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.7] - 2026-11-04
+
+### Fixed
+
+- **Upload to YouTube** now appears for every Progress row that has a channel profile. It was
+  gated on a manual-inspection merged path, which is empty unless the manual panel had scanned that
+  run, so finished rows showed no action. The action resolves the newest `MERGED_*.mp4` in the run
+  folder (long form, reel excluded) when no inspection exists, and says so clearly when the video
+  has not been merged yet.
+
 ## [1.5.6] - 2026-11-04
 
 ### Fixed
