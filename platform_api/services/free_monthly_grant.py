@@ -12,6 +12,7 @@ See docs/credits-only-two-tier.md and docs/credits-e2e-audit.md.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from uuid import UUID, uuid4
 
@@ -99,6 +100,21 @@ async def ensure_free_monthly_grant(
                     uid,
                     free_remaining,
                 )
+                # The wallet moved, so the ledger must record it. Without this
+                # every monthly reset left wallet/ledger drift that the daily
+                # reconciliation could not explain.
+                await conn.execute(
+                    """
+                    INSERT INTO credit_transactions
+                        (id, user_id, amount, direction, reason, ref_id, metadata, created_at)
+                    VALUES ($1, $2, $3, 'debit', 'v3_grant_expire', $4, $5::jsonb, now())
+                    """,
+                    uuid4(),
+                    uid,
+                    free_remaining,
+                    ref,
+                    json.dumps({"source": "free_monthly", "op": "reset"}),
+                )
 
             if other >= FREE_MONTHLY_UNITS:
                 # Other credits already cover the cap; just mark this period.
@@ -136,6 +152,19 @@ async def ensure_free_monthly_grant(
                 next_billing_month_start(),
                 period,
                 ref,
+            )
+            # Mirror the wallet credit in the ledger so balance == ledger sum.
+            await conn.execute(
+                """
+                INSERT INTO credit_transactions
+                    (id, user_id, amount, direction, reason, ref_id, metadata, created_at)
+                VALUES ($1, $2, $3, 'credit', 'free_monthly_grant', $4, $5::jsonb, now())
+                """,
+                uuid4(),
+                uid,
+                grant_units,
+                ref,
+                json.dumps({"source": "free_monthly", "op": "grant"}),
             )
             return {
                 "granted": True,
