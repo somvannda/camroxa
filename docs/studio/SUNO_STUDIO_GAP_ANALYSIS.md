@@ -52,6 +52,8 @@ Scoring for this document:
 
 | G21 | Track mute / solo / arm were visual-only | The reference has working per-track mute and solo (spec 52.1) | W3 | **partial** - mute + solo wired and persisted; arm needs recording |
 
+| G22 | Undo / redo were placeholders | The reference binds CTRL Z / CTRL SHIFT Z (spec 36) | W3 | **done** - single write path + 50-document history |
+
 ## 3. Deliberate non-parity
 
 | Item | Why |
