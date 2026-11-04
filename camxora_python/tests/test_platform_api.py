@@ -128,4 +128,5 @@ def test_list_progress_passes_query_params(api: PlatformApi) -> None:
             "from_date": "2026-07-07",
             "to_date": "2026-07-07",
         },
+        timeout=90.0,
     )

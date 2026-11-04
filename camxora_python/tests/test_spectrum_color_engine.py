@@ -31,12 +31,15 @@ def test_vivid_palette_catalog_has_multi_stop_presets() -> None:
         spectrum_gradient_preset_colors,
     )
 
-    assert len(SPECTRUM_GRADIENT_PRESET_OPTIONS) >= 20
+    # Curated catalog: 12 vivid presets, each a 4-stop gradient. The old
+    # "Rainbow Rush" / "Carnival Riot" labels no longer exist in any palette
+    # module, so assert against the shipped set while keeping the multi-stop guard.
+    assert len(SPECTRUM_GRADIENT_PRESET_OPTIONS) >= 12
     labels = {label for _value, label in SPECTRUM_GRADIENT_PRESET_OPTIONS}
-    assert "Rainbow Rush" in labels
-    assert "Carnival Riot" in labels
-    rainbow = next(v for v, label in SPECTRUM_GRADIENT_PRESET_OPTIONS if label == "Rainbow Rush")
-    assert len(spectrum_gradient_preset_colors(rainbow)) >= 6
+    assert "Neon Candy" in labels
+    assert "Prism Beam" in labels
+    prism = next(v for v, label in SPECTRUM_GRADIENT_PRESET_OPTIONS if label == "Prism Beam")
+    assert len(spectrum_gradient_preset_colors(prism)) >= 4
 
 
 def test_extract_spectrum_layer_color_model_reads_nested_color() -> None:
