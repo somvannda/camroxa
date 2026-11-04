@@ -7,6 +7,24 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.1] - 2026-11-04
+
+### Added
+
+- **YouTube upload credits are now part of the plan estimate.** The automation panel prices every operation live from the database (routed provider for AI ops, `local` for export/merge, `postforme` for uploads) and shows a dedicated **YouTube** credit column, so a plan's total includes what publishing will actually cost.
+- **Upload to YouTube** from a completed Progress row (right-click), and automatic publishing after a merge when the toggle is on — both report progress and reuse the same credit quote.
+- Completed rows now state their delivery status: `uploading 1/2`, `uploaded 2/2`, `upload failed · retry`, `upload blocked`.
+
+### Changed
+
+- The automation toggle is labelled **YouTube Upload** with a tooltip explaining Post for Me and per-video billing.
+- The server preflight counts upload credits too (`publish_ops` / `publish_wallet_cost`), so the button total and the API's required total agree.
+
+### Fixed
+
+- Disabling the upload toggle no longer clears the saved preference.
+- The same merged file can no longer be published (and charged) twice when both finishing paths complete a merge.
+
 ## [1.5.0] - 2026-11-03
 
 ### Added

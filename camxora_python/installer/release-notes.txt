@@ -1,21 +1,33 @@
-﻿Camxora 1.5.0
-Sign in with Google
-November 3, 2026
+﻿Camxora 1.5.1
+YouTube upload credits + Progress publishing
+November 4, 2026
 
 What's new
 ----------
-- "Continue with Google" on the sign-in card. Sign in (or create your account)
-  with a Google account instead of typing a password. Your browser handles the
-  Google prompt and the app takes over from there; your password and tokens are
-  never shared with the browser.
-- Same access rules as before: the studio still requires live credit-pack
-  credits, and a free account gets the usual upgrade prompt.
-- Clear messages if the browser is closed, the Google prompt is cancelled, or
-  another CAMXORA window is already signing in.
+- Credits now show exactly what a plan costs, including YouTube uploads. The
+  automation panel prices every step live (draft, Suno, image, video export,
+  merge, upload) and adds a YouTube column to the plan total.
+- Publish finished videos without leaving the app: right-click a completed row
+  in Progress and choose "Upload to YouTube". With the YouTube Upload toggle on,
+  merges publish automatically.
+- Completed rows tell you where delivery stands: uploading, uploaded (with the
+  video link), upload failed with a retry hint, or upload blocked.
+
+Changed
+-------
+- The automation toggle is now labelled "YouTube Upload" and explains that
+  uploads go through Post for Me and are billed per video.
+- The credit check before generating counts upload credits too, so the button
+  total and the server's required total match.
+
+Fixed
+-----
+- Turning the upload toggle off no longer forgets your saved preference.
+- A merged file can no longer be published twice (and charged twice).
 
 Requirements
 ------------
-- Installer: CamxoraSetup-1.5.0.exe
+- Installer: CamxoraSetup-1.5.1.exe
 - Production API: https://api.camxora.com/api/v3
 
 Still included
@@ -24,5 +36,6 @@ Still included
   30 days; buying again resets the clock.
 - Buy Credits dialog with the four web-music packs.
 - Create channel profiles directly in Settings -> Profiles.
+- Continue with Google on the sign-in card.
 - Suno V6 model series (V6, V6 Mini, V6 Wild) plus V5.5 / V5 options.
 - YouTube upload automation for connected channel profiles.
