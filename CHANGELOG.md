@@ -7,6 +7,15 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.4] - 2026-11-04
+
+### Fixed
+
+- Connecting a channel updates as soon as the browser sign-in finishes. The waiting poll now
+  calls `POST /publish/accounts/sync` instead of only listing accounts: Post for Me announces
+  uploads by webhook but not account linking, so the account never appeared until something
+  synced it (which is why pressing Connect again looked like a refresh).
+
 ## [1.5.3] - 2026-11-04
 
 ### Changed
