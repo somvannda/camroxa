@@ -4633,3 +4633,6 @@ html{color-scheme:dark}
 .se-hidden-head{display:flex;justify-content:space-between;align-items:center}
 .se-hidden-row{display:flex;align-items:center;gap:8px}
 .se-hidden-row .se-track-color{width:8px;height:8px;border-radius:2px}
+
+.se-loop-band{position:absolute;top:0;bottom:0;background:hsl(var(--accent));opacity:.12;pointer-events:none;z-index:1}
+.se-loop-handle{position:absolute;top:0;width:8px;height:16px;margin-left:-4px;border-radius:3px;background:hsl(var(--accent));z-index:5;cursor:ew-resize;padding:0}

@@ -133,6 +133,10 @@ export function StudioEditorShell() {
   const [playhead, setPlayhead] = useState(0);
   const [playing, setPlaying] = useState(false);
   const [loop, setLoop] = useState(false);
+  /** Loop / export range in seconds (spec §68). */
+  const [loopStart, setLoopStart] = useState(0);
+  const [loopEnd, setLoopEnd] = useState(0);
+  const loopDragRef = useRef(false);
   const [metronome, setMetronome] = useState(false);
   const [bpm, setBpm] = useState(120);
   /** Pixels per bar; 96 is the captured default (spec §44.3). */
@@ -453,7 +457,54 @@ export function StudioEditorShell() {
     return () => window.removeEventListener("beforeunload", guard);
   }, [saveStatus]);
 
-  /** Zoom in/out through the captured density levels (spec §66). */
+  /** Seed the loop range from the project document (spec §68 persists it). */
+  useEffect(() => {
+    const data = (project?.data || {}) as { loopStart?: unknown; loopEnd?: unknown };
+    if (typeof data.loopStart === "number") setLoopStart(data.loopStart);
+    if (typeof data.loopEnd === "number") setLoopEnd(data.loopEnd);
+  }, [project?.id, project?.data]);
+
+  /** Persist the loop range — the same document field the reference uses. */
+  function commitLoopRange(start: number, end: number) {
+    const data = (project?.data || {}) as Record<string, unknown>;
+    writeProjectData({ ...data, loopStart: start, loopEnd: end }, "the loop range");
+  }
+
+  /** Arming the loop with no range selects the first four bars. */
+  function toggleLoop() {
+    if (!loop && (!loopEnd || loopEnd <= loopStart)) {
+      const end = Math.min(duration, loopStart + secondsPerBar * 4);
+      setLoopEnd(end);
+      commitLoopRange(loopStart, end);
+    }
+    setLoop((value) => !value);
+  }
+
+  /** Drag the loop's right handle on the ruler (spec §68). */
+  useEffect(() => {
+    const move = (event: PointerEvent) => {
+      if (!loopDragRef.current) return;
+      const lanes = document.querySelector(".se-lanes-inner");
+      if (!lanes) return;
+      const rect = lanes.getBoundingClientRect();
+      const seconds = ((event.clientX - rect.left) / barWidth) * secondsPerBar;
+      setLoopEnd(Math.max(loopStart + secondsPerBar / 4, snapToGrid(seconds, secondsPerBar, 4)));
+    };
+    const up = () => {
+      if (!loopDragRef.current) return;
+      loopDragRef.current = false;
+      setLoopEnd((end) => {
+        commitLoopRange(loopStart, end);
+        return end;
+      });
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+  });
   function zoomBy(direction: 1 | -1) {
     setBarWidth((current) => {
       const index = ZOOM_LEVELS.indexOf(current);
@@ -954,7 +1005,7 @@ export function StudioEditorShell() {
    * Deliberately the same shape as the reference — pick a scope, get a file, no dialog
    * (§87) — but rendered locally so nothing is queued server-side.
    */
-  async function runExport(scope: "mix" | "tracks" | "json") {
+  async function runExport(scope: "mix" | "tracks" | "json" | "range") {
     if (!project) return;
     setExportOpen(false);
     if (scope === "json") {
@@ -982,6 +1033,14 @@ export function StudioEditorShell() {
       if (scope === "mix") {
         const wav = await renderMix(buffers, exportClips, exportTracks, { chain });
         download(wav, `${project.title || "mix"}.wav`, "audio/wav");
+      } else if (scope === "range") {
+        // Exports exactly the loop range, the reference's "Selected Time Range" (§87).
+        const wav = await renderMix(buffers, exportClips, exportTracks, {
+          chain,
+          from: loopStart,
+          to: loopEnd,
+        });
+        download(wav, `${project.title || "mix"} — selection.wav`, "audio/wav");
       } else {
         for (const track of exportTracks) {
           const wav = await renderMix(buffers, exportClips, exportTracks, {
@@ -1158,7 +1217,7 @@ export function StudioEditorShell() {
           <button
             type="button"
             className={`se-icon${loop ? " on" : ""}`}
-            onClick={() => setLoop((value) => !value)}
+            onClick={toggleLoop}
             aria-pressed={loop}
             aria-label="Loop"
             title="Loop"
@@ -1246,6 +1305,14 @@ export function StudioEditorShell() {
               </button>
               <button type="button" role="menuitem" onClick={() => void runExport("tracks")}>
                 One file per track
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled={loopEnd <= loopStart}
+                onClick={() => void runExport("range")}
+              >
+                Selected time range (WAV)
               </button>
               <button type="button" role="menuitem" onClick={() => void runExport("json")}>
                 Project (JSON)
@@ -1535,6 +1602,29 @@ export function StudioEditorShell() {
               ))}
 
               <div className="se-playhead" style={{ left: (playhead / secondsPerBar) * barWidth }} aria-hidden="true" />
+
+              {loop && loopEnd > loopStart ? (
+                <>
+                  <div
+                    className="se-loop-band"
+                    aria-hidden="true"
+                    style={{
+                      left: (loopStart / secondsPerBar) * barWidth,
+                      width: ((loopEnd - loopStart) / secondsPerBar) * barWidth,
+                    }}
+                  />
+                  <button
+                    type="button"
+                    className="se-loop-handle"
+                    aria-label="Loop end"
+                    style={{ left: (loopEnd / secondsPerBar) * barWidth }}
+                    onPointerDown={(event) => {
+                      event.stopPropagation();
+                      loopDragRef.current = true;
+                    }}
+                  />
+                </>
+              ) : null}
 
               {marquee ? (
                 <div
