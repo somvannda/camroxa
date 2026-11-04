@@ -334,6 +334,16 @@ credit_integrity_alerts() {
       alert_once pool-runway "⚠️ <b>${HOST}</b>: Suno pool runway ${runway:-under 2} day(s). Add credits or cut usage."
     fi
   fi
+
+  # New wallet-vs-ledger drift, ignoring the recorded historical set.
+  if [ -n "$platform_dsn" ] && [ -f "$repo/scripts/ops/audit_ledger_drift.py" ]; then
+    rc=0
+    out="$(PLATFORM_DATABASE_URL="$platform_dsn" "$py" "$repo/scripts/ops/audit_ledger_drift.py" --json 2>/dev/null)" || rc=$?
+    if [ "$rc" = "1" ]; then
+      count="$(printf '%s' "$out" | sed -n 's/.*"new_drift": *\([0-9][0-9]*\).*/\1/p' | head -n1)"
+      alert_once ledger-drift "⚠️ <b>${HOST}</b>: ${count:-new} account(s) with new wallet/ledger drift. See scripts/ops/audit_ledger_drift.py"
+    fi
+  fi
 }
 
 # --- full status (--status / --dry-run) -------------------------------------

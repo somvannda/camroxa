@@ -73,6 +73,8 @@ DEPLOY_FILES = (
     # Read-only billing/capacity checks the ops-alert timer runs by absolute path.
     "scripts/ops/audit_orphan_music_charges.py",
     "scripts/ops/pool_capacity.py",
+    "scripts/ops/audit_ledger_drift.py",
+    "scripts/ops/drift_baseline.json",
 )
 # Kept for callers that imported these names from deploy.py.
 __all__ = [
