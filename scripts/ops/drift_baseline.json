@@ -1,0 +1,327 @@
+{
+  "recorded_at": "2026-11-04",
+  "note": "Known wallet-vs-ledger gaps older than 2026-11-04: monthly free-grant cycles that predate their ledger rows, and lots that expired without a v3_grant_expire row. Wallets are correct (they equal live lots); the ledger is the incomplete side. Regenerate only with a deliberate decision.",
+  "threshold_units": 10000,
+  "users": [
+    {
+      "user_id": "07a8a30b-33aa-48fe-9784-bf8f178f2986",
+      "email": "facebookwithfahad@gmail.com",
+      "drift_units": 1000000
+    },
+    {
+      "user_id": "d9fa6efa-fa56-49b7-a266-da2f5b79a2a9",
+      "email": "gagayhu3@gmail.com",
+      "drift_units": 1000000
+    },
+    {
+      "user_id": "33335a32-b608-4efe-bc86-b4ed9dad249d",
+      "email": "sopheakdsmt@gmail.com",
+      "drift_units": 1000000
+    },
+    {
+      "user_id": "18a0dc4e-fbc0-41df-b6c5-fb31b758d0b2",
+      "email": "kbidouble168@gmail.com",
+      "drift_units": 1000000
+    },
+    {
+      "user_id": "e418ac08-0081-43df-b76d-3553a63853e9",
+      "email": "sompheaktra777@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "93a4941f-8d8d-4abb-a522-e951114b53f7",
+      "email": "mr.sh4dow2017@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "a1678130-5557-4573-8151-56a1def96d10",
+      "email": "mr.zhiwei@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "12abfc53-ac83-4645-8755-f775f382dd80",
+      "email": "korn0124307@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "90fd9558-951b-4c39-8797-ccae4517ea3f",
+      "email": "pengchun.psad@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "ad6eda59-18f0-4ffb-b80e-fdae60028980",
+      "email": "edmbass1@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "454bdbc1-1ed6-430b-8668-4690cb6d66ab",
+      "email": "sarisila207@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "3f3367fb-031e-4e25-a947-6df4756df1c2",
+      "email": "jamsanto314@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "d7746eae-9579-4af8-879f-43099d8431ae",
+      "email": "kduke168@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "3bfef9ed-ee8f-4ca9-ba44-79125ae02cd3",
+      "email": "sokunthearytouch22@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "2f4ae556-7698-4da3-b5ac-f473a9dd4b67",
+      "email": "netvichet0102@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "5613a9a2-2421-4659-bb21-4019fd703a5a",
+      "email": "pengpheakdey02@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "aee6a009-590f-43fc-bbd1-cf9d05ff69a0",
+      "email": "keochanleakna@gmail.com",
+      "drift_units": 500000
+    },
+    {
+      "user_id": "c078cb1d-da12-47c9-adc0-364670becdcc",
+      "email": "teangchunpanhavorn@gmail.com",
+      "drift_units": 488699
+    },
+    {
+      "user_id": "aa09a59d-907e-487f-9965-4d733e52791a",
+      "email": "khunmao.kh@gmail.com",
+      "drift_units": 479970
+    },
+    {
+      "user_id": "2e241ae8-54e7-4823-879b-dc54d5af6734",
+      "email": "meas67136@gmail.com",
+      "drift_units": 440000
+    },
+    {
+      "user_id": "9054389a-9dec-4728-a70b-f0fcaf997325",
+      "email": "nottheoriginal007@gmail.com",
+      "drift_units": 420000
+    },
+    {
+      "user_id": "7bcc1da4-605c-4b55-bfe2-2e685dc66f35",
+      "email": "sarisilat01@gmail.com",
+      "drift_units": 420000
+    },
+    {
+      "user_id": "17229e25-b01a-4e57-9e88-68c34d482c7c",
+      "email": "sokhengsarom8@gmail.com",
+      "drift_units": 420000
+    },
+    {
+      "user_id": "00ce9e69-1d1d-45f5-8b9b-b0f0c2c7d099",
+      "email": "hinseyha92@gmail.com",
+      "drift_units": 420000
+    },
+    {
+      "user_id": "9274aba7-9d1c-4b3e-a0ce-2f8a229875a7",
+      "email": "hengtbh14@gmail.com",
+      "drift_units": 420000
+    },
+    {
+      "user_id": "88ff25e8-9639-49a6-8b7a-b0df7d746e72",
+      "email": "meysomaly49@gmail.com",
+      "drift_units": 420000
+    },
+    {
+      "user_id": "cc8ae7ae-e242-410c-a814-2a834d889d6a",
+      "email": "ung.sony2626@gmail.com",
+      "drift_units": 400000
+    },
+    {
+      "user_id": "ff901338-2f00-40b1-8e97-37192e0f59ac",
+      "email": "hourtgame01@gmail.com",
+      "drift_units": 340000
+    },
+    {
+      "user_id": "674b4a05-8b08-4873-8d63-a7ebf874d2dc",
+      "email": "som168chan@gmail.com",
+      "drift_units": 320000
+    },
+    {
+      "user_id": "0e250f7a-976f-4ae3-a9ae-338080b45666",
+      "email": "sopheak86@gmail.com",
+      "drift_units": 300000
+    },
+    {
+      "user_id": "c0836099-44a9-418f-a818-66b7fac0c985",
+      "email": "dara737grab@gmail.com",
+      "drift_units": 300000
+    },
+    {
+      "user_id": "ca4457ac-8fa2-4b98-bda3-eacf82a45860",
+      "email": "sopheakbou90@gmail.com",
+      "drift_units": 299936
+    },
+    {
+      "user_id": "2d944a4d-1c5b-4037-aac5-7aa3637ebd27",
+      "email": "ilovecambodia2025@gmail.com",
+      "drift_units": 260000
+    },
+    {
+      "user_id": "804c7755-99ee-4594-8281-fde4b91c9af4",
+      "email": "pheakttra1255@gmail.com",
+      "drift_units": 220000
+    },
+    {
+      "user_id": "f0b3d34e-5ef8-44a4-91e6-16562ef3f746",
+      "email": "narithsky@gmail.com",
+      "drift_units": 220000
+    },
+    {
+      "user_id": "0d35925b-5d93-4921-8edf-e7571e360274",
+      "email": "edisulep98@gmail.com",
+      "drift_units": 200000
+    },
+    {
+      "user_id": "de15da0d-a975-4041-bca0-635045cad8f6",
+      "email": "ren58791@gmail.com",
+      "drift_units": 200000
+    },
+    {
+      "user_id": "ab912b09-bd67-47f2-a4cc-512b3ebf73ba",
+      "email": "bimtatip@gmail.com",
+      "drift_units": 200000
+    },
+    {
+      "user_id": "47e212eb-30af-4791-83e6-02d2f79c8831",
+      "email": "sarangkhin1@gmail.com",
+      "drift_units": 200000
+    },
+    {
+      "user_id": "d782f8d2-6b7a-4e20-a486-8bd39ad340c4",
+      "email": "karkphone9998@gmail.com",
+      "drift_units": 200000
+    },
+    {
+      "user_id": "55e7e15c-4810-41f5-90b2-fb02bb5abb04",
+      "email": "longsarot987654@gmail.com",
+      "drift_units": 200000
+    },
+    {
+      "user_id": "45fcdb95-1732-46c3-946e-5b2405c56ca0",
+      "email": "lamtan4355@gmail.com",
+      "drift_units": 200000
+    },
+    {
+      "user_id": "8fcb8830-0a08-4ea5-ace8-2b52061fb946",
+      "email": "darete1682023@gmail.com",
+      "drift_units": 120000
+    },
+    {
+      "user_id": "b0cc422b-bd2b-43da-88fc-09eee9e6de97",
+      "email": "limrady009@gmail.com",
+      "drift_units": 120000
+    },
+    {
+      "user_id": "eb855c36-2a66-4ae4-bb20-632caef06d96",
+      "email": "sokeakim123@gmail.com",
+      "drift_units": 120000
+    },
+    {
+      "user_id": "ef2cb4e4-4d43-4ca5-8236-92d15b904d46",
+      "email": "bmsnak7@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "eee71930-bf40-4237-b83c-905e44e010f3",
+      "email": "aboyer772@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "76ac39c5-b5bd-495b-aad9-0ba8a5d937b2",
+      "email": "hengbuntev@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "450d584b-adbe-466a-80ab-24deb6e582af",
+      "email": "vanrady5@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "0cd7e0d5-fe78-4055-9712-ad737ef1e536",
+      "email": "kinggorilla760@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "fa0c467c-11d4-4329-8132-cac2d6116067",
+      "email": "chanmonigen@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "6e360d41-38b5-42b2-9c94-ebc897ca5dd2",
+      "email": "monmab17@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "5fdc7099-d85b-4bba-9adc-2b906502590f",
+      "email": "kolsarin1979@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "36b86209-e5f1-4afd-904a-4e31ef284a72",
+      "email": "Steav.Leeminhoo@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "ef6659b2-59f1-4400-b3d3-933dd9ac052b",
+      "email": "pesortheya018@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "fea3bdd9-222d-435e-89ad-974d4251af13",
+      "email": "zunora19@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "382ef925-0c22-412b-b23b-b7542fad2788",
+      "email": "badmanvip1@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "ccfc797e-99b7-459a-a947-176c96acda3f",
+      "email": "dendavith2023@gmail.com",
+      "drift_units": 100000
+    },
+    {
+      "user_id": "76408122-d43c-407b-9abd-13bd0b93d0c4",
+      "email": "Seabseavmey57@gmail.com",
+      "drift_units": 99980
+    },
+    {
+      "user_id": "6a7b92c1-0c50-4794-b685-830b7d89b199",
+      "email": "youyoeurn66@gmail.com",
+      "drift_units": 99908
+    },
+    {
+      "user_id": "46269fff-28d2-4b23-bbdc-729d1e69f1b2",
+      "email": "pclearn1@gmail.com",
+      "drift_units": 99900
+    },
+    {
+      "user_id": "29cdf36a-8412-4f5e-a9f6-9eb1a5b011bf",
+      "email": "taisreng519@gmail.com",
+      "drift_units": 20000
+    },
+    {
+      "user_id": "72535c4a-cd9e-40b0-b5aa-d6c777acb0ac",
+      "email": "kim860551@gmail.com",
+      "drift_units": 20000
+    },
+    {
+      "user_id": "5b1673dc-75c0-4f55-9e31-06987f6c468c",
+      "email": "pich.sou11@gmail.com",
+      "drift_units": -6920564
+    }
+  ]
+}
