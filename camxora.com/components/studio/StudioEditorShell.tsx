@@ -21,6 +21,7 @@ import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSav
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
 import { StudioLibrary } from "@/components/studio/StudioLibrary";
+import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioOnboarding } from "@/components/studio/StudioOnboarding";
 import { StudioMetricsProbe } from "@/components/studio/StudioMetricsProbe";
 
@@ -1696,28 +1697,11 @@ export function StudioEditorShell() {
 
       <StudioMetricsProbe />
 
-      {clipSource ? (
-        <div className="se-clip-source" aria-label="Clip source">
-          <strong>{clipSource.title || "Untitled song"}</strong>
-          <span>
-            {clipSource.model_label || clipSource.model || "model"} ·{" "}
-            {clipSource.created_at
-              ? new Date(clipSource.created_at).toLocaleDateString()
-              : "unknown date"}
-            {clipSource.style ? ` · ${clipSource.style.slice(0, 60)}` : ""}
-          </span>
-          <div className="se-clip-source-actions">
-            <button type="button" className="se-pill" onClick={() => void requestStems()} disabled={!clipSource}>
-              Get stems
-            </button>
-            {stems ? (
-              <em className={`se-stem-status ${stems.status === "error" ? "off" : ""}`}>
-                {stems.status === "added" ? "stems added as tracks" : stems.message ?? stems.status}
-              </em>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
+      <ClipSourceStrip
+        source={clipSource}
+        stems={stems}
+        onRequestStems={() => void requestStems()}
+      />
 
       {selectedTrack ? (
         <StudioPluginDock
