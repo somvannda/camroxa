@@ -43,7 +43,7 @@ Scoring for this document:
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs + Projects tabs wired; workspaces/stems/uploads still missing |
 | G13 | No Studio test suite | Regressions found by hand | W5 | **partial** - vitest + 33 tests over the pure modules; component/API/Playwright layers open |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
-| G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **partial** - header extracted (StudioHeader); shell 1,967 -> 1,873 lines |
+| G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **partial** - header + footer extracted; shell 1,967 -> 1,857 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
 | G17 | No playback speed control | Cannot audition at half speed | W3 | **done** - 1x/0.5x/2x applied to sources and the tick |
 | G18 | No first-run onboarding in the DAW | New users face a dense UI | W3 | **done** - empty projects open a start overlay, remembered per project |
