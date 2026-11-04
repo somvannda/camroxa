@@ -68,31 +68,46 @@ OSError errno=22 winerror=None msg=[Errno 22] Invalid argument
 - **No more raw crash dialog** (`main.py`): export exceptions are logged to
   `<logs>/export-crash.log` and emitted as a `failed` MG_EVENT, so the ExportJob shows a
   real message and returns exit code 2.
+- **Shared pipe-error classifier** (`shared/lib/pipe_errors.py`): `is_pipe_closed_error()`
+  treats `EPIPE` and Windows `EINVAL` alike, used by both encode writers and the studio
+  exporter.
+- **Studio exporter** (`studio/export/ffmpeg_export.py`): command moved into a testable
+  `build_export_command()` with `-shortest` removed, and the write loop now handles
+  `OSError` (not just `BrokenPipeError`) with an exit-code-aware message.
+- **Duration diagnostic** (`gpu_render._report_duration_mismatch`): when the container
+  duration and the decoded audio length differ by > 0.5 s, an `log` MG_EVENT records both
+  numbers — this is the field condition (211.6 s header vs 208.6 s decoded) that triggered
+  the crash.
 
 ## Files touched
 
 - `camxora_python/visualizer/encode_pipeline.py`
 - `camxora_python/visualizer/gpu_render.py`
 - `camxora_python/visualizer/main.py`
+- `camxora_python/studio/export/ffmpeg_export.py`
+- `camxora_python/shared/lib/pipe_errors.py` — new
 - `camxora_python/tests/test_encode_pipeline.py`
+- `camxora_python/tests/test_pipe_errors.py` — new
+- `camxora_python/tests/test_export_duration_mismatch.py` — new
 
 ## Tests
 
 ```powershell
-pytest camxora_python/tests/test_encode_pipeline.py camxora_python/tests/test_export_cancel.py `
+pytest camxora_python/tests/test_encode_pipeline.py camxora_python/tests/test_pipe_errors.py `
+       camxora_python/tests/test_export_duration_mismatch.py camxora_python/tests/test_export_cancel.py `
        camxora_python/tests/test_export_coordinator.py camxora_python/tests/test_in_process_export.py `
        camxora_python/tests/test_native_encode_writer.py camxora_python/tests/test_export_readback.py -q
 ```
 
-85 passed. New regression tests cover: Windows `EINVAL` classification, clean encoder exit
-(no crash), non-zero exit reporting, stuck-writer termination, and "the pipe command has no
-`-shortest`".
+New regression tests cover: Windows `EINVAL` classification (writer + shared helper), clean
+encoder exit (no crash), non-zero exit reporting, stuck-writer termination, duration
+mismatch logging, and "neither pipe command uses `-shortest`" (GPU + studio).
 
 ## Follow-ups
 
 - `visualizer/native_encode_writer.py` duplicates the queue/writer lifecycle; share a base
   class so both paths get the same exit handling.
-- `studio/export/ffmpeg_export.py` still passes `-shortest` with a rawvideo pipe (it raises
-  `ExportError` instead of crashing, but can still truncate the tail).
-- `analyzer.duration_sec` (decoded length) vs ffprobe header duration can differ by
-  seconds for some MP3s; consider logging both at export start.
+- Add a frozen smoke export whose MP3 header duration exceeds the decoded length (the exact
+  field condition behind this crash).
+- Export gate: reject an MP4 shorter than the `durationSec` already sent in the `done`
+  event.

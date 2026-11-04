@@ -2663,6 +2663,44 @@ def _smooth_env(
     return smooth_env(prev, target, smoothing, dt=dt, ref_fps=ref_fps)
 
 
+def _report_duration_mismatch(
+    mp3_path: str,
+    render_duration_sec: float,
+    emit: Callable[[dict], None],
+    *,
+    tolerance_sec: float = 0.5,
+) -> None:
+    """Log when the container duration disagrees with the decoded audio length.
+
+    The render length comes from the *decoded* audio, so an MP3 whose header
+    claims a longer duration than it decodes to (seen in the wild: 211.6s vs
+    208.6s) is the classic cause of an encoder that ends before the render loop
+    finished. Surface the two numbers instead of leaving support to guess.
+    """
+    try:
+        from .audio import probe_audio_duration_sec
+
+        probed = float(probe_audio_duration_sec(mp3_path))
+    except Exception:
+        return
+    if probed <= 0:
+        return
+    delta = probed - float(render_duration_sec)
+    if abs(delta) < tolerance_sec:
+        return
+    emit(
+        {
+            "status": "log",
+            "message": (
+                f"Audio duration mismatch: container {probed:.2f}s vs decoded "
+                f"{float(render_duration_sec):.2f}s (delta {delta:+.2f}s); "
+                "export uses the decoded length."
+            ),
+            "progress": 0.09,
+        }
+    )
+
+
 # ── Encoder lifecycle ────────────────────────────────────────────────────────
 # One export at a time per process (daemon jobs are serial, in-process export runs
 # on its own worker thread), so a small registry is enough to guarantee a failed
@@ -2886,6 +2924,7 @@ def _run_gpu_render(
 
     duration_sec = float(analyzer.info.duration_sec)
     total_frames = int(max(1, int(np.ceil(duration_sec * float(fps)))))
+    _report_duration_mismatch(opts.mp3_path, duration_sec, _emit_event)
 
     _emit_event({"status": "running", "message": "Initializing GPU renderer...", "progress": 0.0})
     if ctx_factory is not None:

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import errno
 import os
 import queue
 import threading
 import time
 from collections.abc import Callable
 from typing import Any
+
+from shared.lib.pipe_errors import is_pipe_closed_error, os_error_suffix
 
 _SENTINEL = object()
 _DEFAULT_QUEUE_SIZE = 6
@@ -18,8 +19,14 @@ _FINISH_JOIN_TIMEOUT_SEC = 30.0
 _ERR_TAIL_CHARS = 2000
 
 # Windows reports "the encoder closed its end of the pipe" as EINVAL (22) rather
-# than EPIPE (32), so a BrokenPipeError-only check silently misdiagnoses it.
-_PIPE_CLOSED_ERRNOS = frozenset({errno.EPIPE, errno.EINVAL})
+# than EPIPE (32); the classifier lives in shared.lib.pipe_errors.
+__all__ = [
+    "PipelinedEncodeWriter",
+    "ffmpeg_stderr_tail",
+    "is_pipe_closed_error",
+    "pipelined_encode_enabled",
+    "resolve_encode_queue_size",
+]
 
 
 def pipelined_encode_enabled() -> bool:
@@ -35,15 +42,6 @@ def resolve_encode_queue_size(requested: int | None = None) -> int:
     if raw.isdigit():
         return int(max(_MIN_QUEUE_SIZE, min(_MAX_QUEUE_SIZE, int(raw))))
     return _DEFAULT_QUEUE_SIZE
-
-
-def is_pipe_closed_error(exc: BaseException) -> bool:
-    """True when ``exc`` means the encoder stopped reading our stdin pipe."""
-    if isinstance(exc, BrokenPipeError):
-        return True
-    if isinstance(exc, OSError):
-        return exc.errno in _PIPE_CLOSED_ERRNOS
-    return False
 
 
 def ffmpeg_stderr_tail(err_file: Any, *, max_chars: int = _ERR_TAIL_CHARS) -> str:
@@ -70,11 +68,6 @@ def _percentile(values: list[float], pct: float) -> float | None:
 def _ffmpeg_err_text(enc: Any, err_file: Any) -> str:
     """Back-compat alias — stderr text is only ever needed as a tail."""
     return ffmpeg_stderr_tail(err_file)
-
-
-def _os_error_suffix(exc: BaseException) -> str:
-    win = getattr(exc, "winerror", None)
-    return f", winerror {win}" if win else ""
 
 
 class PipelinedEncodeWriter:
@@ -265,7 +258,7 @@ class PipelinedEncodeWriter:
 
     def _pipe_closed_message(self, exc: OSError, err_txt: str) -> str:
         detail = err_txt or "no FFmpeg stderr output"
-        message = f"FFmpeg pipe closed unexpectedly: {detail} (OS Error: {exc}{_os_error_suffix(exc)})"
+        message = f"FFmpeg pipe closed unexpectedly: {detail} (OS Error: {exc}{os_error_suffix(exc)})"
         if self._err_path:
             message = f"{message} [stderr log: {self._err_path}]"
         return message
