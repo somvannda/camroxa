@@ -60,7 +60,9 @@ def test_plan_summary_under_generate(qapp: QApplication) -> None:
         for frame in card._plan_metrics.findChildren(QFrame)
         if frame.objectName() == "PlanColumnRule"
     ]
-    assert len(rules) == 7
+    # One divider between each pair of the 9 plan columns (the YouTube upload
+    # column landed in 34e3cfe3); bump this when a column is added or removed.
+    assert len(rules) == 8
     card.set_plan_lines("")
     assert card._plan_box.isHidden()
 
