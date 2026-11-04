@@ -1128,6 +1128,8 @@ class MusicView(QWidget):
             self._music_settings.auto_video_after_suno,
             self._music_settings.auto_merge_after_video,
             self._music_settings.auto_reel_after_video,
+            self._operation_costs.get("publish"),
+            self._music_settings.auto_upload_youtube,
         )
         breakdown = get_music_plan_cost_breakdown(*cost_args)
         total_cost = get_batch_generate_total_cost(*cost_args)
@@ -1204,6 +1206,8 @@ class MusicView(QWidget):
                 video_ops=breakdown.video_ops,
                 merge_ops=breakdown.merge_ops,
                 video_credits=breakdown.video_merge_total_cost,
+                upload_ops=breakdown.upload_ops,
+                upload_credits=breakdown.publish_total_cost,
             )
         self._automation_card.set_helper_text("")
         self._render_history()
