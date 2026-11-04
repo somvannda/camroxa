@@ -66,17 +66,19 @@ delta        +110, unexplained by the panel
 
 ## Work breakdown
 
-### A. Credits (client + server)
+### A. Credits (client + server) — implemented
 
-- [ ] `music_costs.py`: add `publish_unit_cost`, `upload_ops`, `publish_total_cost` to
-      `MusicPlanCostBreakdown`, include publish in `total_cost`, add `upload_ops_for_plan()`.
-- [ ] `automation_card.py`: 6th credit cell **YouTube**; `set_plan_summary(..., youtube_ops,
-      youtube_credits)`; keep the 5-cell metric row unchanged.
-- [ ] `music_view.py`: pass `publish_cost`, `auto_upload`, and the derived upload count; extend the
-      unit-price strip (already shows all six) and include YouTube in the plan summary.
-- [ ] `batch_service.py`: add `publish_wallet_cost` to `total_wallet_cost`; return it (and
-      `publish_ops`) in every preflight payload, and mention it in `video_merge_note`-style copy.
-- [ ] `set_auto_upload_enabled`: never uncheck on disable (bug 1).
+- [x] `music_costs.py`: `publish_unit_cost`, `upload_ops`, `publish_total_cost` in
+      `MusicPlanCostBreakdown`, included in `total_cost`; `upload_ops_for_plan()`.
+- [x] `automation_card.py`: 6th credit cell **YouTube**; `set_plan_summary(..., upload_ops,
+      upload_credits)`.
+- [x] `music_view.py`: passes `publish_cost` + `auto_upload`, and the flag into both the preflight
+      request and `BatchCreateRequest`.
+- [x] `batch_service.py`: `publish_ops`/`publish_wallet_cost` added to `total_wallet_cost`, returned
+      in every preflight payload, named in the insufficient-credits note; `_publish_operation_price()`
+      reads `credit_pricing` (postforme/upload) with a 5-credit fallback.
+- [x] `set_auto_upload_enabled`: never unchecks; `apply_automation_flags` restores the saved value
+      even while disabled (bug 1).
 
 Acceptance: for one plan, `panel total == preflight total`, and the difference vs today equals
 `uploads × publish_unit_price` when YouTube Upload is on.

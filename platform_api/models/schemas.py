@@ -125,6 +125,7 @@ class BatchCreateRequest(BaseModel):
     auto_video_after_suno: bool = False
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
+    auto_upload_youtube: bool = False
     song_count: int = Field(ge=1, le=50)
     language: str = Field(default="en")
     secondary_language: str | None = Field(default=None, max_length=20)
@@ -171,6 +172,7 @@ class MusicPlanPreflightRequest(BaseModel):
     auto_video_after_suno: bool = False
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
+    auto_upload_youtube: bool = False
 
     @field_validator("to_date")
     @classmethod

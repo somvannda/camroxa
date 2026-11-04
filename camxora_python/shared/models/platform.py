@@ -487,6 +487,7 @@ class MusicPlanPreflightRequest(BaseModel):
     auto_video_after_suno: bool = False
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
+    auto_upload_youtube: bool = False
 
 
 class MusicPlanPreflightResponse(BaseModel):
@@ -505,6 +506,8 @@ class MusicPlanPreflightResponse(BaseModel):
     merge_ops: int = 0
     video_wallet_cost: int = 0
     merge_wallet_cost: int = 0
+    publish_ops: int = 0
+    publish_wallet_cost: int = 0
 
 
 class BatchCreateRequest(BaseModel):
@@ -521,6 +524,7 @@ class BatchCreateRequest(BaseModel):
     auto_video_after_suno: bool = False
     auto_merge_after_video: bool = False
     auto_reel_after_video: bool = False
+    auto_upload_youtube: bool = False
     song_count: int = 4
     language: str = "en"
     secondary_language: str | None = None

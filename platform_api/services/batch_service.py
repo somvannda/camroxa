@@ -332,13 +332,15 @@ class BatchService:
         auto_video_after_suno: bool = False,
         auto_merge_after_video: bool = False,
         auto_reel_after_video: bool = False,
+        auto_upload_youtube: bool = False,
     ) -> dict[str, Any]:
         """Validate whether an entire automation plan can run before creating batches.
 
-        The estimate covers the full pipeline: drafts + Suno + images **and**
-        the local video-export + merge operations that run after them. Video and
-        merge are otherwise charged per stage at export time, which let plans
-        start and then stall at export when the wallet ran dry.
+        The estimate covers the full pipeline: drafts + Suno + images, the local
+        video-export + merge operations that run after them, and the YouTube
+        uploads that publishing will bill. Video/merge/upload are otherwise
+        charged per stage later, which let plans start and then stall when the
+        wallet ran dry.
         """
         from collections import defaultdict
 
@@ -443,10 +445,17 @@ class BatchService:
             video_wallet_cost = (await self._local_operation_price("video")) * video_ops
         if merge_ops > 0:
             merge_wallet_cost = (await self._local_operation_price("video_merge")) * merge_ops
-        total_wallet_cost += video_wallet_cost + merge_wallet_cost
+        # Post for Me bills one upload per published video. A merge yields one
+        # video; Auto-Reel adds a second. Same rule as the desktop estimate
+        # (shared/lib/music_costs.py) so the panel and this check agree.
+        publish_ops = merge_ops if (auto_upload_youtube and merge_ops > 0) else 0
+        publish_wallet_cost = 0
+        if publish_ops > 0:
+            publish_wallet_cost = (await self._publish_operation_price()) * publish_ops
+        total_wallet_cost += video_wallet_cost + merge_wallet_cost + publish_wallet_cost
 
         video_merge_note = ""
-        if video_ops > 0 or merge_ops > 0:
+        if video_ops > 0 or merge_ops > 0 or publish_ops > 0:
             note_parts: list[str] = []
             if video_ops > 0:
                 note_parts.append(
@@ -457,6 +466,11 @@ class BatchService:
                 note_parts.append(
                     f"merge {units_to_credits(merge_wallet_cost)} "
                     f"({merge_ops} merge{'s' if merge_ops != 1 else ''})"
+                )
+            if publish_ops > 0:
+                note_parts.append(
+                    f"YouTube upload {units_to_credits(publish_wallet_cost)} "
+                    f"({publish_ops} upload{'s' if publish_ops != 1 else ''})"
                 )
             video_merge_note = " Includes " + " and ".join(note_parts) + "."
 
@@ -586,6 +600,8 @@ class BatchService:
                         "merge_ops": merge_ops,
                         "video_wallet_cost": video_wallet_cost,
                         "merge_wallet_cost": merge_wallet_cost,
+                        "publish_ops": publish_ops,
+                        "publish_wallet_cost": publish_wallet_cost,
                     }
             except QuotaExceededError as exc:
                 quota_reason = exc.message
@@ -611,6 +627,8 @@ class BatchService:
                     "merge_ops": merge_ops,
                     "video_wallet_cost": video_wallet_cost,
                     "merge_wallet_cost": merge_wallet_cost,
+                    "publish_ops": publish_ops,
+                    "publish_wallet_cost": publish_wallet_cost,
                 }
             except InsufficientCreditsError as exc:
                 details = exc.details or {}
@@ -630,6 +648,8 @@ class BatchService:
                     "merge_ops": merge_ops,
                     "video_wallet_cost": video_wallet_cost,
                     "merge_wallet_cost": merge_wallet_cost,
+                    "publish_ops": publish_ops,
+                    "publish_wallet_cost": publish_wallet_cost,
                 }
         elif wallet_balance < total_wallet_cost:
             required_credits = units_to_credits(total_wallet_cost)
@@ -673,6 +693,8 @@ class BatchService:
             "merge_ops": merge_ops,
             "video_wallet_cost": video_wallet_cost,
             "merge_wallet_cost": merge_wallet_cost,
+            "publish_ops": publish_ops,
+            "publish_wallet_cost": publish_wallet_cost,
         }
 
     async def create_batch(
@@ -692,6 +714,7 @@ class BatchService:
         auto_video_after_suno: bool = False,
         auto_merge_after_video: bool = False,
         auto_reel_after_video: bool = False,
+        auto_upload_youtube: bool = False,
         language: str = "en",
         secondary_language: str | None = None,
         creativity_level: int = 50,
@@ -829,6 +852,9 @@ class BatchService:
             total_cost += (await self._local_operation_price("video")) * video_ops
         if merge_ops > 0:
             total_cost += (await self._local_operation_price("video_merge")) * merge_ops
+        publish_ops = merge_ops if (auto_upload_youtube and merge_ops > 0) else 0
+        if publish_ops > 0:
+            total_cost += (await self._publish_operation_price()) * publish_ops
 
         image_jobs = 0
         if billable_auto_gen_image:
@@ -4524,6 +4550,26 @@ class BatchService:
         if spec is None:
             return 0
         return credits_to_units(float(spec["list_credits_display"]))
+
+    async def _publish_operation_price(self) -> int:
+        """Unit price (micro-credits) for one Post for Me YouTube upload.
+
+        Reads the ``credit_pricing`` row for the postforme provider; falls back to
+        the publishing list price so preflight never hard-fails when the row is
+        missing (same pattern as ``_local_operation_price``).
+        """
+        from platform_api.services.credit_units import credits_to_units
+        from platform_api.services.publish_pricing import (
+            POSTFORME_UPLOAD_CREDITS,
+        )
+
+        try:
+            price = await self._pricing_service.get_price("postforme", "upload", "")
+            if price:
+                return int(price)
+        except Exception:
+            pass
+        return credits_to_units(float(POSTFORME_UPLOAD_CREDITS))
 
     async def _resolve_batch_languages(
         self,

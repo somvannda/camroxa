@@ -2026,6 +2026,7 @@ class MusicView(QWidget):
             auto_video_after_suno=self._music_settings.auto_video_after_suno,
             auto_merge_after_video=self._music_settings.auto_merge_after_video,
             auto_reel_after_video=self._music_settings.auto_reel_after_video,
+            auto_upload_youtube=self._music_settings.auto_upload_youtube,
         )
         worker = MusicPlanPreflightWorker(self._api, payload, parent=self)
         worker.succeeded.connect(self._on_preflight_succeeded)
@@ -2101,6 +2102,7 @@ class MusicView(QWidget):
                         auto_video_after_suno=self._music_settings.auto_video_after_suno,
                         auto_merge_after_video=self._music_settings.auto_merge_after_video,
                         auto_reel_after_video=self._music_settings.auto_reel_after_video,
+                        auto_upload_youtube=self._music_settings.auto_upload_youtube,
                         song_count=self._music_settings.song_count,
                         language=self._music_settings.language,
                         secondary_language=self._music_settings.secondary_language or None,
