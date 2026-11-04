@@ -2284,7 +2284,7 @@ class SettingsView(QWidget):
             return cached
         # Match the left navigation: same lucide glyph, size and muted colour,
         # instead of a bright red brand mark.
-        from shared.constants.navigation import NAV_ICON_COLOR
+        from shared.icons.lucide_icons import NAV_ICON_COLOR
 
         icon = QIcon(lucide_pixmap("youtube", size=14, color=NAV_ICON_COLOR))
         self._cached_youtube_icon = icon
