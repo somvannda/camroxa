@@ -12,6 +12,18 @@ from features.video.services.video_local_store import VideoLocalStore
 from shared.lib import app_paths
 
 
+@pytest.fixture(autouse=True)
+def _clear_global_workspace_state():
+    """Keep the module hermetic: read_workspace_state() prefers a running export
+    from the process-wide VideoWorkspaceService, which other tests mutate."""
+    from shared.services.video_workspace_service import get_video_workspace_service
+
+    service = get_video_workspace_service()
+    service.set_workspace_state(None)
+    yield
+    service.set_workspace_state(None)
+
+
 @pytest.fixture()
 def isolated_video_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> VideoLocalStore:
     user_templates_path = tmp_path / "user-templates.json"

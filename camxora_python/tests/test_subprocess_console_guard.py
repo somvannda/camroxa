@@ -29,11 +29,13 @@ def _iter_python_files() -> list[Path]:
     files: list[Path] = []
     for path in ROOT.rglob("*.py"):
         rel = path.relative_to(ROOT).as_posix()
-        if (
-            rel.startswith("build/")
-            or rel.startswith("dist/")
-            or "/__pycache__/" in f"/{rel}/"
-        ):
+        # Skip build artifacts, hidden dirs, and runtime scratch output (e.g.
+        # output/_compare/*.py debug scripts) — only shipped source is guarded.
+        if any(part.startswith(".") for part in rel.split("/")[:-1]):
+            continue
+        if rel.startswith(("build/", "dist/", "output/", "node_modules/", ".venv/", "venv/")):
+            continue
+        if "/__pycache__/" in f"/{rel}/":
             continue
         files.append(path)
     return files
