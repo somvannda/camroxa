@@ -7,6 +7,32 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.4] - 2026-11-04
+
+### Fixed
+
+- Connecting a channel updates as soon as the browser sign-in finishes. The waiting poll now
+  calls `POST /publish/accounts/sync` instead of only listing accounts: Post for Me announces
+  uploads by webhook but not account linking, so the account never appeared until something
+  synced it (which is why pressing Connect again looked like a refresh).
+
+## [1.5.3] - 2026-11-04
+
+### Changed
+
+- Connecting a channel keeps a waiting card visible while the browser sign-in is open:
+  **Open browser again**, **Copy link** (paste it into another browser or Chrome profile that
+  holds the right Google account) and **Cancel**. Connect is disabled while waiting, and the
+  panel polls for up to ~10 minutes (3 s, then 10 s) instead of two.
+
+## [1.5.2] - 2026-11-04
+
+### Fixed
+
+- Connecting a YouTube channel now refreshes by itself: the Settings panel polls for up to
+  two minutes instead of waiting a single 8-second refresh, so finishing the browser sign-in
+  at any pace shows the connected channel without pressing Refresh.
+
 ## [1.5.1] - 2026-11-04
 
 ### Added

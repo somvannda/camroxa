@@ -1,4 +1,4 @@
-﻿Camxora 1.5.1
+﻿Camxora 1.5.4
 YouTube upload credits + Progress publishing
 November 4, 2026
 
@@ -22,12 +22,14 @@ Changed
 
 Fixed
 -----
+- Connecting a YouTube channel updates immediately: the Settings panel now waits
+  for the browser sign-in instead of needing a manual Refresh.
 - Turning the upload toggle off no longer forgets your saved preference.
 - A merged file can no longer be published twice (and charged twice).
 
 Requirements
 ------------
-- Installer: CamxoraSetup-1.5.1.exe
+- Installer: CamxoraSetup-1.5.4.exe
 - Production API: https://api.camxora.com/api/v3
 
 Still included
