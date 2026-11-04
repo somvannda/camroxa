@@ -1257,7 +1257,7 @@ export function StudioEditorShell() {
     return () => query.removeEventListener("change", onChange);
   }, []);
 
-  if (authLoading) return <div className="se-shell is-loading" aria-busy="true" />;
+  if (authLoading) return <div className="se-shell is-loading" role="main" aria-busy="true" />;
 
   if (!user) {
     return (
@@ -1365,7 +1365,7 @@ export function StudioEditorShell() {
           <button
             type="button"
             className={`se-pill${playbackRate !== 1 ? " on" : ""}`}
-            aria-label={`Audition speed ${playbackRate}x`}
+            aria-label={`Audition speed ${playbackRate}×`}
             onClick={() =>
               setPlaybackRate((current) => (current === 1 ? 0.5 : current === 0.5 ? 2 : 1))
             }
@@ -1414,7 +1414,8 @@ export function StudioEditorShell() {
         </div>
       </header>
 
-      <div className={`se-body${libraryOpen ? " with-library" : ""}`}>
+      <div className={`se-body${libraryOpen ? " with-library" : ""}`} role="main">
+        <h1 className="se-sr-only">{project?.title || "Studio project"}</h1>
         <aside className="se-tracks" aria-label="Tracks">
           <div className="se-tracks-head">
             <span className="se-tracks-title">{tracks.length} track{tracks.length === 1 ? "" : "s"}</span>

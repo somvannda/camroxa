@@ -255,7 +255,7 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
   if (!user) return <>{marketing}</>;
 
   return (
-    <div className="studio-home">
+    <main className="studio-home">
       <div className="studio-home-inner">
         <header className="studio-home-head">
           <div>
@@ -537,6 +537,6 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
           </div>
         </div>
       ) : null}
-    </div>
+    </main>
   );
 }
