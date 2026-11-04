@@ -103,11 +103,19 @@ New regression tests cover: Windows `EINVAL` classification (writer + shared hel
 encoder exit (no crash), non-zero exit reporting, stuck-writer termination, duration
 mismatch logging, and "neither pipe command uses `-shortest`" (GPU + studio).
 
+`tests/test_export_pipe_tail_integration.py` is the end-to-end guard: it runs the production
+pipe command (`gpu_render.build_pipe_encode_command`) plus `PipelinedEncodeWriter` against a
+real ffmpeg, pushes 1.5× the audio length, and asserts no frames are dropped and the MP4
+keeps the rendered duration. Measured with the old `-shortest`: 90 frames rendered (3.00 s)
+produced a 2.00 s MP4 — exactly the audio length. Skipped when ffmpeg/ffprobe are missing.
+
 ## Follow-ups
 
 - `visualizer/native_encode_writer.py` duplicates the queue/writer lifecycle; share a base
   class so both paths get the same exit handling.
-- Add a frozen smoke export whose MP3 header duration exceeds the decoded length (the exact
-  field condition behind this crash).
-- Export gate: reject an MP4 shorter than the `durationSec` already sent in the `done`
-  event.
+- Add a *frozen* smoke export whose MP3 header duration exceeds the decoded length (the
+  ffmpeg-level guard now lives in `tests/test_export_pipe_tail_integration.py`).
+- Export gate: already rejects an MP4 shorter than `expected_duration_sec` (1 s tolerance)
+  in `export_output_validity.export_media_looks_complete`, and both the manual and pipeline
+  workers feed it `job.rendered_duration_sec` — keep that wiring when adding new export
+  paths.
