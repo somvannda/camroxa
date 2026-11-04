@@ -216,23 +216,19 @@ async def latest_publish_connection(
 )
 async def start_publish_connection(
     request: StartPublishConnectionRequest,
-    http_request: Request,
     ctx: CurrentUserDep,
     service: PublishServiceDep,
 ) -> StartPublishConnectionResponse:
-    # Send the browser back to OUR page after consent, not the provider's. That
-    # is what links the account to this profile immediately (the provider does
-    # not webhook account creation).
-    from platform_api.config import get_settings
-
-    base = (get_settings().publish_callback_base_url or "").strip().rstrip("/")
-    if not base:
-        base = f"{http_request.url.scheme}://{http_request.url.netloc}/api/v3"
+    # NOTE: Post for Me "Quickstart" projects reject `redirect_url_override`
+    # (400: "Redirect URL Override is not allowed for Quickstart Projects").
+    # The redirect must be configured as the Project Redirect URL in the
+    # Post for Me dashboard; point it at
+    #   https://<api-host>/api/v3/publish/accounts/callback
+    # so consent finishes on our branded page and the account is linked.
     result = await service.start_connection(
         user_id=ctx.user_id,
         profile_id=str(request.profile_id),
         platform=request.platform,
-        callback_url=f"{base}/publish/accounts/callback",
     )
     return StartPublishConnectionResponse(
         session_id=result.session_id,
