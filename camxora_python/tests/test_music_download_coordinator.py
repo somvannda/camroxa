@@ -28,6 +28,20 @@ def qapp() -> QApplication:
     return app
 
 
+@pytest.fixture(autouse=True)
+def _reset_app_quitting():
+    """``_poll()`` refuses to start a worker while the app-quitting flag is set.
+
+    That flag is process-wide, so a test that simulates shutdown used to leave it
+    ``True`` and make these tests pass alone but fail in a full run.
+    """
+    from shared.services.video_pipeline_activity import set_app_quitting
+
+    set_app_quitting(False)
+    yield
+    set_app_quitting(False)
+
+
 def _pump() -> None:
     QCoreApplication.processEvents()
 
