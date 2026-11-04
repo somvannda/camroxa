@@ -805,6 +805,7 @@ async def suno_callback(
                 song_id=UUID(str(song_id_value)),
                 batch_id=UUID(str(batch_id_value)),
                 status=persist_status,
+                task_id=UUID(str(task_id)) if task_id else None,
                 error_message=task_error_message,
             )
         except Exception as exc:
