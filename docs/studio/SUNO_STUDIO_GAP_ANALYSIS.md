@@ -50,6 +50,8 @@ Scoring for this document:
 | G19 | Long-project rendering not virtualised | Perf cliff | W3 | **done** - clips culled to the visible window (300 -> 80..140 rendered) |
 | G20 | No touch-target sizing | Unusable on tablets | W3 | **done** - coarse pointers get 44x44 hit plates |
 
+| G21 | Track mute / solo / arm are visual-only (measured: 14 disabled controls in the editor) | The reference has working per-track mute and solo (spec 52.1) | W3 | open - discovered by measurement, not in the original list |
+
 ## 3. Deliberate non-parity
 
 | Item | Why |
