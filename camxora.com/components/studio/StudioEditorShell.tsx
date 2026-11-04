@@ -23,6 +23,7 @@ import { StudioFooter } from "@/components/studio/StudioFooter";
 import { StudioLibrary } from "@/components/studio/StudioLibrary";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
+import { StudioTimeline } from "@/components/studio/StudioTimeline";
 import { StudioOnboarding } from "@/components/studio/StudioOnboarding";
 import { StudioMetricsProbe } from "@/components/studio/StudioMetricsProbe";
 
@@ -125,6 +126,53 @@ export function StudioEditorShell() {
   const [renameValue, setRenameValue] = useState("");
   /** Visible horizontal window of the timeline, for clip culling (G19). */
   const [view, setView] = useState({ left: 0, width: 0 });
+  /** Scroll container, measured once so culling has a window before any scroll. */
+  const timelineRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const el = timelineRef.current;
+    if (!el) return;
+    if (view.width !== 0) return;
+    setView({ left: el.scrollLeft, width: el.clientWidth });
+  });
+
+  /** Press on empty lane: seek; dragging from there becomes a marquee (G6). */
+  function handleLanePointerDown(event: React.PointerEvent<HTMLDivElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
+    marqueeRef.current = {
+      x1: x,
+      y1: y,
+      startX: event.clientX,
+      originX: rect.left,
+      originY: rect.top,
+      moved: false,
+      hit: [],
+    };
+    setSelectedIds([]);
+    setSelectedClip(null);
+    setPlayhead(Math.max(0, Math.min(duration, (x / barWidth) * secondsPerBar)));
+  }
+
+  /** Press on a clip: select it (or keep the group) and start a drag session (G7/G8). */
+  function handleClipPointerDown(
+    event: React.PointerEvent<HTMLButtonElement>,
+    clip: ClipLike,
+    trackId: string
+  ) {
+    event.stopPropagation();
+    setSelectedTrack(trackId);
+    setSelectedClip(clip.id);
+    const group = selectedIds.includes(clip.id) ? selectedIds : [clip.id];
+    setSelectedIds(group);
+    const origins: Record<string, number> = {};
+    group.forEach((id) => {
+      const found = clips.find((candidate) => candidate.id === id);
+      if (found) origins[id] = found.start ?? 0;
+    });
+    dragRef.current = { startX: event.clientX, ids: group, origins };
+  }
   const [exporting, setExporting] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   /** Undo/redo: documents, newest last. */
@@ -1358,182 +1406,34 @@ export function StudioEditorShell() {
           onShowAllHidden={showAllHidden}
         />
 
-        <div
-          className="se-timeline"
-          onScroll={(event) => {
-            const el = event.currentTarget;
-            setView({ left: el.scrollLeft, width: el.clientWidth });
+        <StudioTimeline
+          tracks={tracks}
+          clips={clips}
+          barWidth={barWidth}
+          barCount={barCount}
+          secondsPerBar={secondsPerBar}
+          duration={duration}
+          playhead={playhead}
+          clock={clock}
+          rowStep={ROW_STEP}
+          selectedClip={selectedClip}
+          selectedIds={selectedIds}
+          drag={drag}
+          marquee={marquee}
+          loop={loop}
+          loopStart={loopStart}
+          loopEnd={loopEnd}
+          viewWidth={view.width}
+          viewLeft={view.left}
+          timelineRef={timelineRef}
+          onScroll={(left, width) => setView({ left, width })}
+          onLanePointerDown={handleLanePointerDown}
+          onClipPointerDown={handleClipPointerDown}
+          onLoopHandleDown={(event) => {
+            event.stopPropagation();
+            loopDragRef.current = true;
           }}
-          ref={(el) => {
-            if (el && view.width === 0) setView({ left: el.scrollLeft, width: el.clientWidth });
-          }}
-        >
-          <div className="se-ruler-bars" aria-hidden="true">
-            <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
-              {Array.from({ length: barCount }).map((_, bar) => (
-                <span key={bar} className="se-bar-tick" style={{ left: bar * barWidth }}>
-                  {bar + 1}
-                </span>
-              ))}
-            </div>
-          </div>
-
-          <div
-            className="se-lanes"
-            onPointerDown={(event) => {
-              const rect = event.currentTarget.getBoundingClientRect();
-              const x = event.clientX - rect.left;
-              const y = event.clientY - rect.top;
-              // A press that does not move is still "seek"; a drag becomes a marquee.
-              marqueeRef.current = {
-                x1: x,
-                y1: y,
-                startX: event.clientX,
-                originX: rect.left,
-                originY: rect.top,
-                moved: false,
-                hit: [],
-              };
-              setSelectedIds([]);
-              setSelectedClip(null);
-              const barsIn = x / barWidth;
-              setPlayhead(Math.max(0, Math.min(duration, barsIn * secondsPerBar)));
-            }}
-          >
-            <div className="se-lanes-inner" style={{ width: barCount * barWidth }}>
-              {tracks.map((track) => (
-                <div key={track.id} className="se-lane" style={{ height: ROW_STEP }}>
-                  {clips
-                    .filter((clip) => track.clipIds.includes(clip.id))
-                    .filter((clip) => {
-                      // Cull clips outside the visible window plus one screen of
-                      // slack, so scrolling never shows an empty gap (G19).
-                      if (view.width === 0) return true;
-                      const left = ((clip.start ?? 0) / secondsPerBar) * barWidth;
-                      const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * barWidth);
-                      const slack = view.width;
-                      return left + width >= view.left - slack && left <= view.left + view.width + slack;
-                    })
-                    .map((clip) => {
-                      const isDragging = drag?.ids.includes(clip.id) ?? false;
-                      const isSelected = selectedClip === clip.id || selectedIds.includes(clip.id);
-                      const dragOrigin = drag ? drag.origins[clip.id] : undefined;
-                      const left =
-                        isDragging && drag && dragOrigin !== undefined
-                          ? (dragToStart(dragOrigin, drag.deltaPx, barWidth, secondsPerBar, 4) /
-                              secondsPerBar) *
-                            barWidth
-                          : ((clip.start ?? 0) / secondsPerBar) * barWidth;
-                      const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * barWidth);
-                      return (
-                        <button
-                          type="button"
-                          key={clip.id}
-                          className={`se-clip${isSelected ? " selected" : ""}${
-                            isDragging ? " dragging" : ""
-                          }`}
-                          style={{ left, width, background: track.color }}
-                          onPointerDown={(event) => {
-                            event.stopPropagation();
-                            setSelectedTrack(track.id);
-                            setSelectedClip(clip.id);
-                            // Dragging a clip that is part of the selection moves the
-                            // whole selection; otherwise the press re-selects just it.
-                            const group = selectedIds.includes(clip.id) ? selectedIds : [clip.id];
-                            setSelectedIds(group);
-                            const origins: Record<string, number> = {};
-                            group.forEach((id) => {
-                              const found = clips.find((candidate) => candidate.id === id);
-                              if (found) origins[id] = found.start ?? 0;
-                            });
-                            dragRef.current = { startX: event.clientX, ids: group, origins };
-                          }}
-                          aria-pressed={isSelected}
-                        >
-                          <span className="se-clip-head">{clip.title || "Clip"}</span>
-                          <span className="se-clip-body" aria-hidden="true" />
-                        </button>
-                      );
-                    })}
-                </div>
-              ))}
-
-              <div className="se-playhead" style={{ left: (playhead / secondsPerBar) * barWidth }} aria-hidden="true" />
-
-              {loop && loopEnd > loopStart ? (
-                <>
-                  <div
-                    className="se-loop-band"
-                    aria-hidden="true"
-                    style={{
-                      left: (loopStart / secondsPerBar) * barWidth,
-                      width: ((loopEnd - loopStart) / secondsPerBar) * barWidth,
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="se-loop-handle"
-                    aria-label="Loop end"
-                    style={{ left: (loopEnd / secondsPerBar) * barWidth }}
-                    onPointerDown={(event) => {
-                      event.stopPropagation();
-                      loopDragRef.current = true;
-                    }}
-                  />
-                </>
-              ) : null}
-
-              {marquee ? (
-                <div
-                  className="se-marquee"
-                  aria-hidden="true"
-                  style={{
-                    left: Math.min(marquee.x1, marquee.x2),
-                    top: Math.min(marquee.y1, marquee.y2),
-                    width: Math.abs(marquee.x2 - marquee.x1),
-                    height: Math.abs(marquee.y2 - marquee.y1),
-                  }}
-                />
-              ) : null}
-
-              {drag ? (
-                <div
-                  className="se-snap-line"
-                  aria-hidden="true"
-                  style={{
-                    left:
-                      (dragToStart(
-                        drag.origins[drag.ids[0]] ?? 0,
-                        drag.deltaPx,
-                        barWidth,
-                        secondsPerBar,
-                        4
-                      ) /
-                        secondsPerBar) *
-                      barWidth,
-                  }}
-                />
-              ) : null}
-            </div>
-
-            {!tracks.length ? (
-              <div className="se-empty">
-                <strong>Your session is empty</strong>
-                <span>Add a track to start arranging.</span>
-              </div>
-            ) : null}
-          </div>
-
-          <div className="se-ruler-time" aria-hidden="true">
-            <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
-              {Array.from({ length: Math.ceil(duration / 30) }).map((_, index) => (
-                <span key={index} className="se-time-tick" style={{ left: (index * 30 / secondsPerBar) * barWidth }}>
-                  {clock(index * 30).slice(0, 5)}
-                </span>
-              ))}
-            </div>
-          </div>
-        </div>
+        />
 
         {libraryOpen ? (
           <StudioLibrary
