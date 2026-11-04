@@ -1,5 +1,5 @@
 {
-  "_comment": "Reference metrics measured from the live Suno Studio and recorded in SUNO_STUDIO_IMPLEMENTATION_SPEC.md. The probe at /studio/editor?metrics=1 compares these against our rendered DOM.",
+  "_comment": "Reference metrics measured from the live Suno Studio (SUNO_STUDIO_IMPLEMENTATION_SPEC.md). 'feature' names the surface and 'functional' states whether that surface is actually wired in our build - so a pixel match never implies a working feature.",
   "metrics": [
     {
       "id": "trackRowHeight",
@@ -8,7 +8,10 @@
       "measure": "height",
       "expected": 85,
       "tolerance": 0,
-      "spec": "52.1"
+      "spec": "52.1",
+      "feature": "Track rows",
+      "functional": "partial",
+      "note": "mute / solo / arm are disabled"
     },
     {
       "id": "rowStep",
@@ -17,7 +20,10 @@
       "measure": "height",
       "expected": 86,
       "tolerance": 0,
-      "spec": "52.1"
+      "spec": "52.1",
+      "feature": "Arrangement grid",
+      "functional": "wired",
+      "note": "lanes + clip drag share the same pitch"
     },
     {
       "id": "gutterWidth",
@@ -26,7 +32,10 @@
       "measure": "width",
       "expected": 283,
       "tolerance": 0,
-      "spec": "52.1"
+      "spec": "52.1",
+      "feature": "Track panel",
+      "functional": "wired",
+      "note": "name, colour, collapse"
     },
     {
       "id": "barWidth",
@@ -35,7 +44,10 @@
       "measure": "spacing",
       "expected": 96,
       "tolerance": 0,
-      "spec": "44.3"
+      "spec": "44.3",
+      "feature": "Ruler & zoom",
+      "functional": "partial",
+      "note": "zoom controls are not wired"
     },
     {
       "id": "pillHeight",
@@ -44,7 +56,10 @@
       "measure": "height",
       "expected": 32,
       "tolerance": 0,
-      "spec": "44.1"
+      "spec": "44.1",
+      "feature": "Header controls",
+      "functional": "wired",
+      "note": "save chip, speed, export, library"
     },
     {
       "id": "transportTarget",
@@ -53,7 +68,10 @@
       "measure": "height",
       "expected": 32,
       "tolerance": 0,
-      "spec": "44.1"
+      "spec": "44.1",
+      "feature": "Transport",
+      "functional": "partial",
+      "note": "play / stop / loop wired, metronome is visual"
     }
   ]
 }

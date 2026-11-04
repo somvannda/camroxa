@@ -4610,3 +4610,9 @@ html{color-scheme:dark}
 .se-metrics th:first-child,.se-metrics td:first-child{text-align:left}
 .se-metrics tr.ok td:nth-child(4){opacity:.75}
 .se-metrics tr.off td{color:hsl(var(--destructive))}
+
+.se-metrics .feature{opacity:.85}
+.se-metrics .func em{font-style:normal;opacity:.6}
+.se-metrics .func.wired{opacity:.85}
+.se-metrics .func.partial{color:hsl(var(--accent))}
+.se-metrics .func.visual{opacity:.6}

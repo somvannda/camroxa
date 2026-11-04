@@ -20,6 +20,9 @@ type Metric = {
   expected: number;
   tolerance: number;
   spec: string;
+  feature: string;
+  functional: "wired" | "partial" | "visual";
+  note?: string;
 };
 
 type Result = Metric & { actual: number | null; delta: number | null; pass: boolean };
@@ -77,13 +80,17 @@ export function StudioMetricsProbe() {
   if (!enabled || rows.length === 0) return null;
 
   const failures = rows.filter((row) => !row.pass).length;
+  const wired = rows.filter((row) => row.functional === "wired").length;
+  const partial = rows.filter((row) => row.functional === "partial").length;
+  const visual = rows.filter((row) => row.functional === "visual").length;
 
   return (
     <div className="se-metrics" role="dialog" aria-label="Metric parity">
       <div className="se-metrics-head">
         <strong>Metric parity</strong>
         <span>
-          {rows.length - failures}/{rows.length} within tolerance
+          {rows.length - failures}/{rows.length} px · {wired} wired · {partial} partial ·{" "}
+          {visual} visual
         </span>
       </div>
       <table>
@@ -93,6 +100,8 @@ export function StudioMetricsProbe() {
             <th>Ref</th>
             <th>Ours</th>
             <th>Δ</th>
+            <th>Feature</th>
+            <th>Functionality</th>
             <th>§</th>
           </tr>
         </thead>
@@ -103,6 +112,11 @@ export function StudioMetricsProbe() {
               <td>{row.expected}</td>
               <td>{row.actual ?? "—"}</td>
               <td>{row.delta === null ? "—" : row.delta > 0 ? `+${row.delta}` : row.delta}</td>
+              <td className="feature">{row.feature}</td>
+              <td className={`func ${row.functional}`} title={row.note ?? undefined}>
+                {row.functional}
+                {row.note ? <em> — {row.note}</em> : null}
+              </td>
               <td>{row.spec}</td>
             </tr>
           ))}
