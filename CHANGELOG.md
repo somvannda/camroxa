@@ -7,6 +7,20 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.6] - 2026-11-04
+
+### Fixed
+
+- The profile list repaints as soon as publish accounts load, so a freshly connected channel shows
+  its badge immediately instead of after selecting another profile.
+
+### Changed
+
+- The connected-channel badge uses the same lucide YouTube glyph, 14 px size and muted navigation
+  colour as the left menu, replacing the bright red mark.
+- The post-connect browser page draws the CAMXORA mark inline (the previous `<img>` pointed at a
+  URL that answered 502, so the logo was broken).
+
 ## [1.5.5] - 2026-11-04
 
 ### Fixed
