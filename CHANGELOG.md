@@ -7,6 +7,14 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.8] - 2026-11-05
+
+### Fixed
+
+- Progress right-click works again. `discover_merged_path` used `Path` without importing it, so the
+  new Upload-to-YouTube block raised `NameError` while the menu was being built and no menu appeared
+  at all. The menu block is also wrapped so a future error there can never remove the other actions.
+
 ## [1.5.7] - 2026-11-04
 
 ### Fixed
