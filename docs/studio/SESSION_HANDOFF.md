@@ -49,6 +49,23 @@ Helpers in `scripts/`:
   that make a clip playable (`stream_ready_*`, `package_status_*`).
 - `verify_studio_conflict.py` — proves the 409 path against the live API.
 
+## Tests and CI (added 2026-11-04)
+
+| Layer | Command | Count |
+|---|---|---|
+| unit (pure helpers) | `npm test` | snap, meter, draft, seed, WAV encode |
+| component | `npm test` | header, footer, provenance strip, track panel |
+| API contract | `npm test` | paging, version field, 409 mapping, 204 |
+| e2e | `npm run test:e2e` | interaction smoke, metric parity, axe ×2 |
+
+CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` on
+any PR touching `camxora.com`. The e2e specs are not in CI yet — they need the app plus
+the platform API and a database, which the workflow does not provision.
+
+`beforeunload` note: when a save is pending the editor blocks navigation, so a
+Playwright `page.goto` can hang on the confirmation dialog. Close the save first, or open
+a fresh page.
+
 ## Traps that cost time
 
 | Trap | Avoid |
@@ -64,8 +81,11 @@ Helpers in `scripts/`:
 ## Gates before every commit
 
 ```
-cd camxora.com && npm run typecheck && npm run check:ui
+cd camxora.com && npm run typecheck && npm run check:ui && npm test
 ```
+
+Add `npm run test:e2e` when the change touches the editor's interaction model, the
+metric surface, or accessibility.
 
 `check:ui` rejects raw hex outside the palette (use `hsl(var(--token))`) and font sizes
 outside the `.s-*` scale.
