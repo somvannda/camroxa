@@ -194,7 +194,9 @@ def test_build_queue_rows_groups_by_batch_and_role_not_song() -> None:
     assert len(ok_row.bg_jobs) == 2
     assert ok_row.bg_job is not None and ok_row.bg_job.status == "success"
     assert format_queue_role_status(ok_row.bg_jobs) == "1 fail"
-    assert alt_row.album_label == "Neon Nights"
+    # The alt-channel row shares the album name, so the queue disambiguates it
+    # with a roman-numeral suffix ("<album> II") instead of showing two identical rows.
+    assert alt_row.album_label == "Neon Nights II"
 
 
 def test_pick_preferred_image_job_prefers_success_over_failed() -> None:
