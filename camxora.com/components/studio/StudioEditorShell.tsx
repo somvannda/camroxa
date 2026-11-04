@@ -77,6 +77,8 @@ export function StudioEditorShell() {
   const [libraryTab, setLibraryTab] = useState<"songs" | "projects">("songs");
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
   const [libraryProjects, setLibraryProjects] = useState<StudioProject[] | null>(null);
+  const [libraryQuery, setLibraryQuery] = useState("");
+  const librarySearchRef = useRef<HTMLInputElement | null>(null);
   /** Source generation of the selected clip, when it came from the library (G16). */
   const [clipSource, setClipSource] = useState<WebMusicGeneration | null>(null);
   /** Active clip drag: every selected clip's origin plus the latest pointer delta. */
@@ -1682,6 +1684,14 @@ export function StudioEditorShell() {
           <aside className="se-library" aria-label="Library" style={{ width: LIBRARY_W }}>
             <div className="se-library-head">
               <strong>Library</strong>
+              <input
+                ref={librarySearchRef}
+                className="se-lib-search"
+                value={libraryQuery}
+                onChange={(event) => setLibraryQuery(event.target.value)}
+                placeholder="Search library"
+                aria-label="Search library"
+              />
               <button type="button" className="se-icon" onClick={() => setLibraryOpen(false)} aria-label="Close library">
                 <Icon name="fa-xmark" />
               </button>
@@ -1711,7 +1721,13 @@ export function StudioEditorShell() {
                 </p>
               ) : (
                 <ul className="se-lib-list">
-                  {librarySongs.map((song) => (
+                  {librarySongs
+                    .filter((song) => {
+                      const q = libraryQuery.trim().toLowerCase();
+                      if (!q) return true;
+                      return `${song.title} ${song.style ?? ""}`.toLowerCase().includes(q);
+                    })
+                    .map((song) => (
                     <li key={song.id} className="se-lib-row">
                       <span className="se-lib-title">{song.title || "Untitled song"}</span>
                       <span className="se-lib-meta">{song.style?.slice(0, 44) || "No style"}</span>
@@ -1735,6 +1751,10 @@ export function StudioEditorShell() {
               <ul className="se-lib-list">
                 {(libraryProjects ?? [])
                   .filter((item) => item.id !== projectId)
+                  .filter((item) => {
+                    const q = libraryQuery.trim().toLowerCase();
+                    return q ? item.title.toLowerCase().includes(q) : true;
+                  })
                   .map((item) => (
                     <li key={item.id} className="se-lib-row">
                       <span className="se-lib-title">{item.title}</span>
@@ -1805,8 +1825,8 @@ export function StudioEditorShell() {
         </div>
 
         <div className="se-foot-right">
-          <button type="button" className="se-icon" disabled aria-label="Projects (not wired)"><Icon name="fa-folder" /></button>
-          <button type="button" className="se-icon" disabled aria-label="Search (not wired)"><Icon name="fa-magnifying-glass" /></button>
+          <Link className="se-icon" href="/studio" aria-label="All projects"><Icon name="fa-folder" /></Link>
+          <button type="button" className="se-icon" aria-label="Search library" onClick={() => { setLibraryOpen(true); setTimeout(() => librarySearchRef.current?.focus(), 60); }}><Icon name="fa-magnifying-glass" /></button>
           <button type="button" className="se-icon" onClick={() => zoomBy(-1)} aria-label="Zoom out"><Icon name="fa-magnifying-glass-minus" /></button>
           <button type="button" className="se-icon" onClick={zoomToFit} aria-label="Fit to content"><Icon name="fa-maximize" /></button>
           <button type="button" className="se-icon" onClick={() => zoomBy(1)} aria-label="Zoom in"><Icon name="fa-magnifying-glass-plus" /></button>
