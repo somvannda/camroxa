@@ -96,6 +96,37 @@ def worker_context(plan: AutoPublishPlan) -> dict[str, object]:
     }
 
 
+def discover_merged_path(run_dir: str | None) -> str:
+    """Newest long-form MERGED_*.mp4 under a run folder ("" when none).
+
+    The Progress row does not always have a manual inspection, and relying on it
+    hid the Upload action; the run folder is written by the desktop itself.
+    """
+    root_text = str(run_dir or "").strip()
+    if not root_text:
+        return ""
+    root = Path(root_text)
+    if not root.is_dir():
+        return ""
+    candidates = [
+        item
+        for item in root.glob("MERGED_*.mp4")
+        if item.is_file() and not item.name.upper().startswith("MERGED_REEL_")
+    ]
+    if not candidates:
+        sub = root / "merged"
+        if sub.is_dir():
+            candidates = [
+                item
+                for item in sub.glob("*.mp4")
+                if item.is_file() and not item.name.upper().startswith("MERGED_REEL_")
+            ]
+    if not candidates:
+        return ""
+    newest = max(candidates, key=lambda item: item.stat().st_mtime)
+    return str(newest)
+
+
 def manual_publish_context(
     row: object,
     merged_path: str | None,

@@ -572,16 +572,20 @@ class OperationalRowsCard(StudioPanel):
         # and a channel profile. The upload itself runs off the UI thread in the
         # Progress view (PublishUploadWorker), which quotes credits first.
         from shared.lib.manual_asset_paths import manual_inspection_key as _inspection_key
-        from shared.lib.publish_auto import manual_publish_context
+        from shared.lib.publish_auto import discover_merged_path, manual_publish_context
 
         inspection = getattr(self, "_inspections", {}).get(
             _inspection_key(meta.batch_id, meta.profile_id, meta.role)
         )
         merged_paths = list(getattr(inspection, "merged_long_paths", ()) or [])
-        merged_path = str(merged_paths[0]) if merged_paths else ""
-        if manual_publish_context(entry.row, merged_path) is not None:
+        merged_path = (
+            str(merged_paths[0]) if merged_paths else discover_merged_path(getattr(meta, "run_dir", ""))
+        )
+        # Show the action for any row with a channel profile: the run folder is the
+        # source of truth, so a missing inspection no longer hides it.
+        if str(getattr(meta, "profile_id", "") or "").strip():
             action = menu.addAction("Upload to YouTube")
-            action.setToolTip("Publish this merged video through Post for Me (per-upload credits).")
+            action.setToolTip("Publish this run's merged video through Post for Me (per-upload credits).")
             action.triggered.connect(
                 partial(self.upload_youtube_requested.emit, entry.row, merged_path)
             )

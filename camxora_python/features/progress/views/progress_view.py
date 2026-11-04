@@ -1177,11 +1177,17 @@ class ProgressView(PollablePageMixin, QScrollArea):
 
     def _upload_row_to_youtube(self, row: object, merged_path: str) -> None:
         """Manual publish for one finished merge (Progress row action)."""
-        from shared.lib.publish_auto import manual_publish_context
+        from shared.lib.publish_auto import discover_merged_path, manual_publish_context
 
+        if not str(merged_path or "").strip():
+            meta = getattr(row, "meta", None)
+            merged_path = discover_merged_path(getattr(meta, "run_dir", ""))
         context = manual_publish_context(row, merged_path)
         if context is None:
-            self._show_retry_notice("No merged video found for this row.", tone="warning")
+            self._show_retry_notice(
+                "No merged video found for this run yet. Merge it first, then upload.",
+                tone="warning",
+            )
             return
         if self._publish_upload_worker is not None and self._publish_upload_worker.isRunning():
             self._show_retry_notice("A YouTube upload is already in progress.", tone="warning")
