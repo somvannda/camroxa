@@ -3,8 +3,10 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 /**
- * Vitest only needs to resolve the `@/` alias the app uses; the tests cover pure
- * modules (snap, meter, draft, seed, WAV encoding) so no DOM environment is required.
+ * Two kinds of test live here:
+ *   - pure modules (snap, meter, draft, seed, WAV encoding) run in `node`
+ *   - component tests render with jsdom
+ * The `@/` alias has to resolve for both.
  */
 export default defineConfig({
   resolve: {
@@ -13,7 +15,8 @@ export default defineConfig({
     },
   },
   test: {
-    environment: "node",
-    include: ["tests/**/*.test.ts"],
+    environment: "jsdom",
+    include: ["tests/**/*.test.ts", "tests/**/*.test.tsx"],
+    globals: false,
   },
 });
