@@ -20,6 +20,7 @@ import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
+import { StudioLibrary } from "@/components/studio/StudioLibrary";
 import { StudioOnboarding } from "@/components/studio/StudioOnboarding";
 import { StudioMetricsProbe } from "@/components/studio/StudioMetricsProbe";
 
@@ -1672,100 +1673,22 @@ export function StudioEditorShell() {
         </div>
 
         {libraryOpen ? (
-          <aside className="se-library" aria-label="Library" style={{ width: LIBRARY_W }}>
-            <div className="se-library-head">
-              <strong>Library</strong>
-              <input
-                ref={librarySearchRef}
-                className="se-lib-search"
-                value={libraryQuery}
-                onChange={(event) => setLibraryQuery(event.target.value)}
-                placeholder="Search library"
-                aria-label="Search library"
-              />
-              <button type="button" className="se-icon" onClick={() => setLibraryOpen(false)} aria-label="Close library">
-                <Icon name="fa-xmark" />
-              </button>
-            </div>
-
-            <div className="se-lib-tabs" role="tablist" aria-label="Library sections">
-              {(["songs", "projects"] as const).map((tab) => (
-                <button
-                  key={tab}
-                  type="button"
-                  role="tab"
-                  aria-selected={libraryTab === tab}
-                  className={`se-lib-tab${libraryTab === tab ? " on" : ""}`}
-                  onClick={() => setLibraryTab(tab)}
-                >
-                  {tab === "songs" ? "Songs" : "Projects"}
-                </button>
-              ))}
-            </div>
-
-            {libraryTab === "songs" ? (
-              librarySongs === null ? (
-                <p className="se-lib-empty">Loading songs…</p>
-              ) : librarySongs.length === 0 ? (
-                <p className="se-lib-empty">
-                  No songs yet. Create one, then drop it onto a track here.
-                </p>
-              ) : (
-                <ul className="se-lib-list">
-                  {librarySongs
-                    .filter((song) => {
-                      const q = libraryQuery.trim().toLowerCase();
-                      if (!q) return true;
-                      return `${song.title} ${song.style ?? ""}`.toLowerCase().includes(q);
-                    })
-                    .map((song) => (
-                    <li key={song.id} className="se-lib-row">
-                      <span className="se-lib-title">{song.title || "Untitled song"}</span>
-                      <span className="se-lib-meta">{song.style?.slice(0, 44) || "No style"}</span>
-                      <button
-                        type="button"
-                        className="se-pill"
-                        onClick={() => addSongToTimeline(song)}
-                        disabled={!song.clips?.some((clip) => clip.audio_url)}
-                      >
-                        Add
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              )
-            ) : libraryProjects === null ? (
-              <p className="se-lib-empty">Loading projects…</p>
-            ) : (libraryProjects ?? []).filter((item) => item.id !== projectId).length === 0 ? (
-              <p className="se-lib-empty">No other projects yet.</p>
-            ) : (
-              <ul className="se-lib-list">
-                {(libraryProjects ?? [])
-                  .filter((item) => item.id !== projectId)
-                  .filter((item) => {
-                    const q = libraryQuery.trim().toLowerCase();
-                    return q ? item.title.toLowerCase().includes(q) : true;
-                  })
-                  .map((item) => (
-                    <li key={item.id} className="se-lib-row">
-                      <span className="se-lib-title">{item.title}</span>
-                      <span className="se-lib-meta">
-                        {item.bpm} BPM · {item.time_signature || "4/4"}
-                      </span>
-                      <button
-                        type="button"
-                        className="se-pill"
-                        onClick={() => {
-                          window.location.href = `/studio/editor?project=${encodeURIComponent(item.id)}`;
-                        }}
-                      >
-                        Open
-                      </button>
-                    </li>
-                  ))}
-              </ul>
-            )}
-          </aside>
+          <StudioLibrary
+            ref={librarySearchRef}
+            width={LIBRARY_W}
+            tab={libraryTab}
+            onTab={setLibraryTab}
+            query={libraryQuery}
+            onQuery={setLibraryQuery}
+            songs={librarySongs}
+            projects={libraryProjects}
+            currentProjectId={projectId}
+            onClose={() => setLibraryOpen(false)}
+            onAddSong={addSongToTimeline}
+            onOpenProject={(id) => {
+              window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;
+            }}
+          />
         ) : null}
       </div>
 
