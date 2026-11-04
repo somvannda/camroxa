@@ -210,6 +210,9 @@ class Settings(BaseSettings):
     postforme_timeout_seconds: int = 30
     # Feature flag: keep false until the sandbox end-to-end flow passes.
     postforme_enabled: bool = False
+    # Where Post for Me sends the browser after consent. Empty = derive from the
+    # request (https://<api-host>/api/v3) so sandbox and production both work.
+    publish_callback_base_url: str = ""
 
     # --- Billing / CutLuy ---
     cutluy_api_base_url: str = "https://cutluy.com"

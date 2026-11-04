@@ -216,13 +216,23 @@ async def latest_publish_connection(
 )
 async def start_publish_connection(
     request: StartPublishConnectionRequest,
+    http_request: Request,
     ctx: CurrentUserDep,
     service: PublishServiceDep,
 ) -> StartPublishConnectionResponse:
+    # Send the browser back to OUR page after consent, not the provider's. That
+    # is what links the account to this profile immediately (the provider does
+    # not webhook account creation).
+    from platform_api.config import get_settings
+
+    base = (get_settings().publish_callback_base_url or "").strip().rstrip("/")
+    if not base:
+        base = f"{http_request.url.scheme}://{http_request.url.netloc}/api/v3"
     result = await service.start_connection(
         user_id=ctx.user_id,
         profile_id=str(request.profile_id),
         platform=request.platform,
+        callback_url=f"{base}/publish/accounts/callback",
     )
     return StartPublishConnectionResponse(
         session_id=result.session_id,
@@ -258,6 +268,8 @@ async def publish_account_callback(
 ) -> HTMLResponse:
     params = dict(request.query_params)
     result = await service.finalize_connection(params)
+    tone = "#34d399" if result.status == "connected" else "#f87171"
+    glyph = "✓" if result.status == "connected" else "!"
     return HTMLResponse(
         content=f"""
 <!doctype html>
@@ -265,12 +277,15 @@ async def publish_account_callback(
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>{result.title}</title>
+    <title>{result.title} · CAMXORA</title>
     <style>
+      * {{ box-sizing: border-box; }}
       body {{
         margin: 0;
-        font-family: Inter, system-ui, sans-serif;
-        background: #020817;
+        font-family: Inter, "Segoe UI", system-ui, sans-serif;
+        background:
+          radial-gradient(1200px 600px at 50% -10%, rgba(116, 102, 241, 0.28), transparent 60%),
+          #05070f;
         color: #e2e8f0;
         display: grid;
         place-items: center;
@@ -278,27 +293,43 @@ async def publish_account_callback(
         padding: 24px;
       }}
       .card {{
-        width: min(100%, 560px);
+        width: min(100%, 520px);
         border: 1px solid rgba(148, 163, 184, 0.18);
         background: linear-gradient(180deg, rgba(15, 23, 42, 0.92), rgba(2, 6, 23, 0.96));
-        border-radius: 18px;
-        padding: 28px;
+        border-radius: 20px;
+        padding: 32px;
+        text-align: center;
+        box-shadow: 0 24px 60px rgba(2, 6, 23, 0.65);
       }}
-      .eyebrow {{
-        font-size: 11px;
-        letter-spacing: 0.16em;
-        text-transform: uppercase;
-        color: #94a3b8;
+      .brand {{ display: flex; align-items: center; justify-content: center; gap: 10px; }}
+      .brand img {{ width: 32px; height: 32px; }}
+      .brand span {{
+        font-size: 12px; letter-spacing: 0.18em; text-transform: uppercase; color: #cbd5e1;
       }}
-      h1 {{ margin: 12px 0 0; font-size: 28px; line-height: 1.2; }}
-      p {{ margin: 14px 0 0; color: #cbd5e1; line-height: 1.6; }}
+      .badge {{
+        width: 64px; height: 64px; margin: 26px auto 0; border-radius: 50%;
+        display: grid; place-items: center; font-size: 30px; font-weight: 700;
+        color: {tone}; background: color-mix(in srgb, {tone} 16%, transparent);
+        border: 1px solid color-mix(in srgb, {tone} 35%, transparent);
+      }}
+      h1 {{ margin: 18px 0 0; font-size: 26px; line-height: 1.25; }}
+      p {{ margin: 12px 0 0; color: #cbd5e1; line-height: 1.65; font-size: 15px; }}
+      .hint {{
+        margin-top: 24px; padding: 14px 16px; border-radius: 12px;
+        background: rgba(148, 163, 184, 0.08); color: #94a3b8; font-size: 13px;
+      }}
     </style>
   </head>
   <body>
     <div class="card">
-      <div class="eyebrow">CAMXORA</div>
+      <div class="brand">
+        <img src="https://music.camxora.com/camxora-logo.svg" alt="" />
+        <span>Camxora</span>
+      </div>
+      <div class="badge">{glyph}</div>
       <h1>{result.title}</h1>
       <p>{result.message}</p>
+      <div class="hint">You can close this tab and return to the CAMXORA studio.</div>
     </div>
   </body>
 </html>

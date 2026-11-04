@@ -3939,7 +3939,9 @@ class SettingsView(QWidget):
             self._refresh_publish_accounts()
             return
         worker = PublishSyncAccountsWorker(self._api, profile_id, "youtube", parent=self)
-        worker.succeeded.connect(self._on_publish_accounts_loaded)
+        # Sync links the provider account into our DB; the list below is what the
+        # UI renders, so a sync that returns nothing still shows DB truth.
+        worker.succeeded.connect(lambda _accounts: self._refresh_publish_accounts())
         worker.failed.connect(self._on_publish_poll_sync_failed)
         worker.finished.connect(lambda: setattr(self, "_publish_sync_worker", None))
         self._publish_sync_worker = worker

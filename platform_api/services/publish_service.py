@@ -154,7 +154,12 @@ class PublishService:
         return await self._repo.list_accounts(user_id, profile_id=profile_id)
 
     async def start_connection(
-        self, *, user_id: str, profile_id: str, platform: str
+        self,
+        *,
+        user_id: str,
+        profile_id: str,
+        platform: str,
+        callback_url: str | None = None,
     ) -> PublishConnectionStart:
         self.require_enabled()
         normalized_platform = str(platform or "").strip().lower() or PUBLISH_PLATFORM
@@ -168,6 +173,7 @@ class PublishService:
         auth = await self._client.create_account_auth_url(
             platform=normalized_platform,
             external_id=_external_id(user_id, profile_id),
+            redirect_url_override=callback_url,
         )
         session = await self._repo.create_connect_session(
             user_id=user_id,
