@@ -168,15 +168,28 @@ class CreditRepository:
                 remaining,
             )
 
+    @staticmethod
+    def _restore_split(amount: int, remaining: int, capacity: int) -> tuple[int, int]:
+        """Split a refund between the lot it refills and a new lot.
+
+        A lot may never hold more than it was granted (``remaining_units <=
+        amount_units``), so restoring into a nearly-full lot used to violate
+        ``credit_wallet_lots_remaining_check``. Returns ``(into_lot, overflow)``.
+        """
+        room = max(0, int(capacity) - int(remaining))
+        into_lot = min(max(0, int(amount)), room)
+        return into_lot, max(0, int(amount) - into_lot)
+
     async def _restore_lots(self, conn: Any, user_id: UUID, amount: int) -> None:
         """Return refunded credits to the most relevant live lot.
 
-        Prefer a live pack lot (keeps Pro status), then any live lot. If none
-        exists, create a non-expiring grant lot so the invariant holds.
+        Prefer a live pack lot (keeps Pro status), then any live lot. A lot is
+        capped at the amount it was granted, so anything that does not fit goes
+        into a fresh non-expiring grant lot instead of overflowing the old one.
         """
         row = await conn.fetchrow(
             """
-            SELECT id
+            SELECT id, amount_units, remaining_units
             FROM credit_wallet_lots
             WHERE user_id = $1
               AND remaining_units > 0
@@ -187,16 +200,24 @@ class CreditRepository:
             """,
             user_id,
         )
+        overflow = int(amount)
         if row is not None:
-            await conn.execute(
-                """
-                UPDATE credit_wallet_lots
-                SET remaining_units = remaining_units + $2
-                WHERE id = $1
-                """,
-                row["id"],
+            into_lot, overflow = self._restore_split(
                 amount,
+                int(row["remaining_units"] or 0),
+                int(row["amount_units"] or 0),
             )
+            if into_lot > 0:
+                await conn.execute(
+                    """
+                    UPDATE credit_wallet_lots
+                    SET remaining_units = remaining_units + $2
+                    WHERE id = $1
+                    """,
+                    row["id"],
+                    into_lot,
+                )
+        if overflow <= 0:
             return
         await conn.execute(
             """
@@ -206,7 +227,7 @@ class CreditRepository:
             """,
             uuid4(),
             user_id,
-            amount,
+            overflow,
         )
 
     async def atomic_deduct(
