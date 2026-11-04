@@ -319,7 +319,21 @@ async def publish_account_callback(
   <body>
     <div class="card">
       <div class="brand">
-        <img src="https://music.camxora.com/camxora-logo.svg" alt="" />
+        <svg width="32" height="32" viewBox="0 0 64 64" aria-hidden="true">
+          <defs>
+            <linearGradient id="cx" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#7c3aed"/>
+              <stop offset="1" stop-color="#a855f7"/>
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="60" height="60" rx="16" fill="url(#cx)"/>
+          <g fill="#ffffff">
+            <rect x="17" y="27" width="5" height="10" rx="2.5"/>
+            <rect x="25.5" y="20" width="5" height="24" rx="2.5"/>
+            <rect x="34" y="16" width="5" height="32" rx="2.5"/>
+            <rect x="42.5" y="24" width="5" height="16" rx="2.5"/>
+          </g>
+        </svg>
         <span>Camxora</span>
       </div>
       <div class="badge">{glyph}</div>

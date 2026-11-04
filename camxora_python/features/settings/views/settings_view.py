@@ -2282,7 +2282,11 @@ class SettingsView(QWidget):
         cached = getattr(self, "_cached_youtube_icon", None)
         if cached is not None:
             return cached
-        icon = QIcon(lucide_pixmap("youtube", size=16, color="#FF0033"))
+        # Match the left navigation: same lucide glyph, size and muted colour,
+        # instead of a bright red brand mark.
+        from shared.constants.navigation import NAV_ICON_COLOR
+
+        icon = QIcon(lucide_pixmap("youtube", size=14, color=NAV_ICON_COLOR))
         self._cached_youtube_icon = icon
         return icon
 
@@ -3985,6 +3989,9 @@ class SettingsView(QWidget):
     def _on_publish_accounts_loaded(self, accounts: object) -> None:
         items = list(accounts or []) if isinstance(accounts, (list, tuple)) else []
         self._publish_accounts = items
+        # Repaint the list immediately: the badge for a freshly connected profile
+        # used to appear only after the user selected another row.
+        self._filter_profile_list()
         if self._publish_poll_timer.isActive() and self._selected_profile_has_publish_account():
             # The browser sign-in landed: stop polling and show the result.
             self._publish_poll_timer.stop()
