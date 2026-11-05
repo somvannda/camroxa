@@ -7,6 +7,15 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.15] - 2026-11-05
+
+### Added
+
+- **Cancel YouTube upload** in the Progress row menu: stops the running transfer and aborts the
+  multipart upload on storage.
+- **Upload reuse**: a file already pushed to storage (same path, size and mtime) skips the transfer
+  and goes straight to publishing, so a retry or a second click no longer re-sends several GB.
+
 ## [1.5.14] - 2026-11-05
 
 ### Changed
