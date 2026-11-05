@@ -99,7 +99,10 @@ class V3BillingStore:
     async def music_credits_spent_today(self, user_id: UUID) -> int:
         """Units of ``v3_music`` debit this user has accrued since midnight.
 
-        Backs the per-user daily music cap. Refunds are credits, so they are not
+        Backs the per-user daily music cap. The boundary is Cambodia local
+        midnight (``Asia/Phnom_Penh``), not the database/session timezone: the
+        VPS runs CET, so ``date_trunc('day', now())`` reset the cap at 06:00 ICT
+        while the UI said "midnight". Refunds are credits, so they are not
         subtracted here: the cap guards gross drain on the shared Suno pool, and
         a failed song is refunded to the wallet without reopening the cap.
         """
@@ -110,7 +113,10 @@ class V3BillingStore:
             WHERE user_id = $1
               AND reason = 'v3_music'
               AND direction = 'debit'
-              AND created_at >= date_trunc('day', now())
+              AND created_at >= (
+                    date_trunc('day', now() AT TIME ZONE 'Asia/Phnom_Penh')
+                    AT TIME ZONE 'Asia/Phnom_Penh'
+                  )
             """,
             user_id,
         )
