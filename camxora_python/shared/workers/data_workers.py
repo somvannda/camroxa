@@ -2873,7 +2873,10 @@ class _ProgressReader:
 class PublishUploadWorker(QThread):
     """Create a publish job, upload the media, then charge + create the post."""
 
-    progress = Signal(int, int)
+    # (bytes sent, total bytes). `object` on purpose: merged videos are often
+    # larger than 2 GiB and Qt's `int` is 32-bit -> OverflowError on the first
+    # emit, before any byte was sent (the job then sat in pending_upload).
+    progress = Signal(object, object)
     status_changed = Signal(str)
     succeeded = Signal(object)
     failed = Signal(str)
@@ -2895,6 +2898,9 @@ class PublishUploadWorker(QThread):
         step = "quote"
         try:
             request = self._request or self._build_auto_request()
+            self._request = request
+            step = "prepare upload"
+            request = self._prepare_upload_copy(request)
             self._request = request
             step = "quote"
             self.status_changed.emit("Checking publishing credits…")
@@ -2937,6 +2943,9 @@ class PublishUploadWorker(QThread):
             except Exception:
                 pass
             self.failed.emit(message)
+        finally:
+            # The upload copy was only needed for the transfer.
+            self._cleanup_upload_copy()
 
     def _build_auto_request(self) -> CreatePublishJobRequest:
         profile_id = str(self._auto_context.get("profile_id") or "").strip()
@@ -2979,6 +2988,65 @@ class PublishUploadWorker(QThread):
             file_size_bytes=Path(merged_path).stat().st_size if Path(merged_path).is_file() else None,
             file_path=merged_path,
         )
+
+    def _prepare_upload_copy(self, request: CreatePublishJobRequest):
+        """Transcode an upload-friendly copy for very large merges.
+
+        Post for Me takes one presigned PUT, so a multi-GB file cannot be
+        retried/resumed; above 2 GiB we upload a 1080p ~6 Mbps copy instead.
+        """
+        from shared.lib.upload_copy import build_upload_copy_command, make_upload_copy_plan
+
+        source = str(getattr(request, "file_path", "") or "").strip()
+        plan = make_upload_copy_plan(source) if source else None
+        if plan is None:
+            return request
+        from shared.lib.ffmpeg_paths import resolve_ffmpeg_path
+
+        ffmpeg = resolve_ffmpeg_path(None)
+        self.status_changed.emit("Preparing an upload-friendly copy (large video)…")
+        self._upload_copy_path = str(plan.target)
+        command = build_upload_copy_command(ffmpeg, plan.source, plan.target)
+        import subprocess
+
+        try:
+            completed = subprocess.run(
+                command,
+                capture_output=True,
+                text=True,
+                timeout=3 * 60 * 60,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            )
+        except Exception:
+            self._cleanup_upload_copy()
+            raise
+        if completed.returncode != 0 or not plan.target.is_file():
+            self._cleanup_upload_copy()
+            detail = (completed.stderr or "").strip().splitlines()[-1:] or ["ffmpeg failed"]
+            raise RuntimeError(f"could not prepare upload copy: {detail[0][:200]}")
+        size = plan.target.stat().st_size
+        self.status_changed.emit(
+            f"Upload copy ready: {size / (1024 * 1024):.0f} MB "
+            f"(original {plan.source_bytes / (1024 * 1024):.0f} MB)"
+        )
+        return request.model_copy(
+            update={
+                "file_path": str(plan.target),
+                "file_name": plan.target.name,
+                "file_size_bytes": size,
+                "file_checksum": None,
+            }
+        )
+
+    def _cleanup_upload_copy(self) -> None:
+        path = str(getattr(self, "_upload_copy_path", "") or "")
+        self._upload_copy_path = ""
+        if not path:
+            return
+        try:
+            Path(path).unlink(missing_ok=True)
+        except OSError:
+            pass
 
     def _put(self, upload_url: str, path: str, content_type: str) -> None:
         target = str(path or "").strip()

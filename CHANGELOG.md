@@ -7,6 +7,30 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.11] - 2026-11-05
+
+### Added
+
+- **Upload-friendly copy for large merges.** Above 2 GiB the upload worker transcodes a 1080p
+  ~6 Mbps copy (about 0.9 GB per hour) with the bundled FFmpeg, uploads that, and deletes it
+  afterwards; the original file stays on disk. A 6 GB merge now uploads ~900 MB instead of timing
+  out on a single 6 GB PUT.
+
+### Changed
+
+- Upload timeout raised to 30 minutes end-to-end with the copy step included; failures still name
+  the step and exception.
+
+## [1.5.10] - 2026-11-05
+
+### Fixed
+
+- YouTube uploads no longer fail with `OverflowError` on videos larger than 2 GiB. The upload worker's
+  progress signal was typed Qt `int` (32-bit), so the first progress emit overflowed and the transfer
+  aborted before a single byte was sent — leaving the job `pending_upload` and the row "Uploading 0/1".
+  The signal now carries Python objects.
+- The Progress notice shows upload percentage and MB sent, so a long transfer is visible.
+
 ## [1.5.9] - 2026-11-05
 
 ### Changed

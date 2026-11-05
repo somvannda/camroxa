@@ -1197,6 +1197,26 @@ class ProgressView(PollablePageMixin, QScrollArea):
         worker.status_changed.connect(
             lambda message: self._show_retry_notice(message, tone="neutral")
         )
+        last_percent = {"value": -1}
+
+        def _on_progress(sent: object, total: object) -> None:
+            try:
+                total_bytes = float(total or 0)
+                sent_bytes = float(sent or 0)
+            except (TypeError, ValueError):
+                return
+            if total_bytes <= 0:
+                return
+            percent = int(sent_bytes * 100 / total_bytes)
+            if percent >= last_percent["value"] + 5 or percent >= 100:
+                last_percent["value"] = percent
+                self._show_retry_notice(
+                    f"Uploading to YouTube… {percent}% "
+                    f"({sent_bytes / 1048576:.0f} / {total_bytes / 1048576:.0f} MB)",
+                    tone="neutral",
+                )
+
+        worker.progress.connect(_on_progress)
         worker.succeeded.connect(
             lambda _result: self._show_retry_notice("Video published to YouTube.", tone="success")
         )
