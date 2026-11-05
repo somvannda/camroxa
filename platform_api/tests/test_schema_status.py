@@ -1,4 +1,4 @@
-"""A schema mismatch must show up on /health, not only in a log line.
+﻿"""A schema mismatch must show up on /health, not only in a log line.
 
 Production sat at `alembic_version = 178` with
 `credit_transactions.reason` still `varchar(100)` while `/health` reported
@@ -47,7 +47,7 @@ def test_reset_clears_the_record() -> None:
 @pytest.mark.asyncio
 async def test_runner_records_a_passing_pass() -> None:
     conn = AsyncMock()
-    conn.fetchval = AsyncMock(return_value="text")
+    conn.fetchval = AsyncMock(side_effect=["text", "1"])
 
     failures = await runner.verify_schema_assertions(conn)
 
@@ -60,7 +60,7 @@ async def test_runner_records_a_passing_pass() -> None:
 async def test_runner_records_the_production_failure() -> None:
     """The exact state that hid for days: version ahead, column still varchar."""
     conn = AsyncMock()
-    conn.fetchval = AsyncMock(return_value="character varying")
+    conn.fetchval = AsyncMock(side_effect=["character varying", "1"])
 
     failures = await runner.verify_schema_assertions(conn)
 
@@ -69,3 +69,16 @@ async def test_runner_records_the_production_failure() -> None:
     assert snapshot["checked"] is True
     assert snapshot["ok"] is False
     assert "character varying" in snapshot["failures"][0]
+
+
+@pytest.mark.asyncio
+async def test_runner_flags_a_lot_constraint_without_admin() -> None:
+    """A table rebuild that restores an older tag CHECK breaks admin comps."""
+    conn = AsyncMock()
+    conn.fetchval = AsyncMock(side_effect=["text", "0"])
+
+    failures = await runner.verify_schema_assertions(conn)
+
+    assert len(failures) == 1
+    assert "credit_wallet_lots.tag accepts admin" in failures[0]
+    assert schema_status.snapshot()["ok"] is False

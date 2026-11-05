@@ -183,6 +183,20 @@ _SCHEMA_ASSERTIONS: tuple[tuple[str, str, str], ...] = (
         """,
         "text",
     ),
+    (
+        # `174` rebuilds tables from `*_archive` snapshots. A rebuild that
+        # restored an older definition would silently drop `admin` from the lot
+        # tag constraint, and admin comps would start failing inserts.
+        "credit_wallet_lots.tag accepts admin",
+        """
+        SELECT count(*)::text
+        FROM pg_constraint
+        WHERE conrelid = 'public.credit_wallet_lots'::regclass
+          AND contype = 'c'
+          AND position('admin' in pg_get_constraintdef(oid)) > 0
+        """,
+        "1",
+    ),
 )
 
 
@@ -200,7 +214,7 @@ async def verify_schema_assertions(conn: asyncpg.Connection) -> list[str]:
             logger.exception("Schema assertion could not run: %s", label)
             failures.append(f"{label}: <query failed>")
             continue
-        if actual != expected:
+        if str(actual) != expected:
             failures.append(f"{label}: {actual!r} (expected {expected!r})")
     if failures:
         logger.critical(
