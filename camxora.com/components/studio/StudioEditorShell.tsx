@@ -24,6 +24,7 @@ import {
   type StudioSettings,
 } from "@/lib/studio-settings";
 import { analyse, formatMeter, type MeterReading } from "@/lib/studio-meter";
+import { beatAt, clicksBetween } from "@/lib/studio-metronome";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
@@ -1048,6 +1049,8 @@ export function StudioEditorShell() {
           event.preventDefault();
           setPlaying(false);
           void stopAudio();
+          stopClicks();
+          scheduledThroughRef.current = 0;
           setPlayhead(0);
           return;
         }
@@ -1145,11 +1148,13 @@ export function StudioEditorShell() {
     const tick = (now: number) => {
       const delta = Math.min(0.25, (now - last) / 1000);
       last = now;
-      setPlayhead((current) => {
-        const next = current + delta * playbackRate;
-        if (next >= duration) return loop ? 0 : duration;
-        return next;
-      });
+      const current = playheadRef.current;
+      let next = current + delta * rateRef.current;
+      if (next >= durationRef.current) next = loop ? 0 : durationRef.current;
+      // Loop wrap moves the playhead backwards; clicks must restart from there.
+      if (next < current) scheduledThroughRef.current = next;
+      if (metronomeRef.current) scheduleClicks(current, next + 0.35);
+      setPlayhead(next);
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -1169,6 +1174,18 @@ export function StudioEditorShell() {
   playheadRef.current = playhead;
   const playingRef = useRef(playing);
   playingRef.current = playing;
+  const metronomeRef = useRef(metronome);
+  metronomeRef.current = metronome;
+  const bpmRef = useRef(bpm);
+  bpmRef.current = bpm;
+  const rateRef = useRef(playbackRate);
+  rateRef.current = playbackRate;
+  const durationRef = useRef(0);
+  durationRef.current = duration;
+  /** Song time up to which metronome clicks have already been scheduled. */
+  const scheduledThroughRef = useRef(0);
+  /** Clicks already scheduled, so switching the metronome off can silence them. */
+  const clickNodesRef = useRef<OscillatorNode[]>([]);
 
   async function stopAudio() {
     const engine = audioRef.current;
@@ -1189,6 +1206,54 @@ export function StudioEditorShell() {
       await stopAudio();
       await startAudio(from, arrangement);
     })();
+  }
+
+  /** Silence clicks that were scheduled but have not sounded yet. */
+  function stopClicks() {
+    clickNodesRef.current.forEach((node) => {
+      try {
+        node.stop();
+      } catch {
+        /* already stopped */
+      }
+    });
+    clickNodesRef.current = [];
+  }
+
+  /**
+   * Schedule metronome clicks for the window [from, to) with a short lookahead.
+   *
+   * Position-driven rather than pre-scheduled for the whole song: it survives loop
+   * wraps and seeks, and a long project cannot queue thousands of oscillators.
+   */
+  function scheduleClicks(from: number, to: number) {
+    const engine = audioRef.current;
+    if (!engine) return;
+    const until = Math.min(to, durationRef.current);
+    if (until <= from) return;
+    if (from < scheduledThroughRef.current - 0.01) scheduledThroughRef.current = from;
+    const start = Math.max(from, scheduledThroughRef.current);
+    if (until <= start) return;
+    const context = engine.ctx;
+    for (const click of clicksBetween(start, until, bpmRef.current)) {
+      const delay = Math.max(0.005, (click.time - from) / rateRef.current);
+      const when = context.currentTime + delay;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "square";
+      oscillator.frequency.value = click.accent ? 1760 : 1100;
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.linearRampToValueAtTime(click.accent ? 0.16 : 0.09, when + 0.002);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(when);
+      oscillator.stop(when + 0.06);
+      clickNodesRef.current.push(oscillator);
+    }
+    scheduledThroughRef.current = until;
+    if (clickNodesRef.current.length > 64) {
+      clickNodesRef.current = clickNodesRef.current.slice(-64);
+    }
   }
 
   async function startAudio(from: number, arrangement: ClipLike[] = clips) {
@@ -1382,10 +1447,13 @@ export function StudioEditorShell() {
     setPlaying((value) => {
       if (value) {
         void stopAudio();
+        stopClicks();
         return false;
       }
+      const from = !loop && playhead >= duration ? 0 : playhead;
       if (!loop && playhead >= duration) setPlayhead(0);
-      void startAudio(!loop && playhead >= duration ? 0 : playhead);
+      scheduledThroughRef.current = from;
+      void startAudio(from);
       return true;
     });
   }
@@ -1552,7 +1620,17 @@ export function StudioEditorShell() {
         onBackToStart={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}
         onTogglePlay={togglePlayback}
         onToggleLoop={toggleLoop}
-        onToggleMetronome={() => setMetronome((value) => !value)}
+        onToggleMetronome={() =>
+          setMetronome((value) => {
+            if (value) {
+              stopClicks();
+              return false;
+            }
+            scheduledThroughRef.current = playheadRef.current;
+            return true;
+          })
+        }
+        beat={metronome ? beatAt(playhead, bpm) : 0}
         onUndo={undo}
         onRedo={redo}
       />

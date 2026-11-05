@@ -39,7 +39,7 @@ export const HELP_ENTRIES: Record<string, HelpEntry> = {
   },
   metronome: {
     title: "Metronome",
-    body: "Visual beat indicator only — this build does not click audibly yet.",
+    body: "Plays a click on every beat while the transport runs, with the first beat of each bar accented. Clicks are not part of the exported mix.",
   },
   undo: {
     title: "Undo",

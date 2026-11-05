@@ -31,6 +31,8 @@ export type StudioHeaderProps = {
   playing: boolean;
   loop: boolean;
   metronome: boolean;
+  /** 1-based beat within the bar while playing, 0 when the click is off. */
+  beat: number;
   canUndo: boolean;
   canRedo: boolean;
 
@@ -77,6 +79,7 @@ export function StudioHeader(props: StudioHeaderProps) {
     playing,
     loop,
     metronome,
+    beat,
     canUndo,
     canRedo,
     saveStatus,
@@ -161,8 +164,9 @@ export function StudioHeader(props: StudioHeaderProps) {
           className={`se-icon${metronome ? " on" : ""}`}
           onClick={onToggleMetronome}
           aria-pressed={metronome}
-          aria-label="Metronome (visual only)"
-          title="Metronome (visual only — no click audio yet)"
+          aria-label={metronome ? `Metronome (click track) — beat ${beat || 1}` : "Metronome (click track)"}
+          title="Metronome (click track)"
+          data-beat={metronome ? beat : 0}
           data-help="metronome"
         >
           <Icon name="fa-bell" />

@@ -34,6 +34,7 @@ function headerProps() {
     playing: false,
     loop: false,
     metronome: false,
+    beat: 0,
     canUndo: false,
     canRedo: false,
     saveStatus: "saved" as const,
@@ -103,6 +104,14 @@ describe("StudioHeader", () => {
   it("marks the loop button as pressed when armed", () => {
     render(<StudioHeader {...headerProps()} loop />);
     expect(screen.getByLabelText("Loop").getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("reports the metronome beat while the click track is on", () => {
+    render(<StudioHeader {...headerProps()} metronome beat={3} />);
+    const button = screen.getByLabelText(/Metronome \(click track\)/);
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.getAttribute("data-beat")).toBe("3");
+    expect(button.getAttribute("aria-label")).toContain("beat 3");
   });
 
   it("disables the range export until a range exists", async () => {
