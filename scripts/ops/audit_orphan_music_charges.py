@@ -57,7 +57,8 @@ SELECT d.id,
 FROM debits d
 JOIN users u ON u.id = d.user_id
 WHERE NOT EXISTS (
-        SELECT 1 FROM suno_tasks t WHERE t.id::text = d.ref_id
+        SELECT 1 FROM suno_tasks t
+        WHERE t.id::text = d.ref_id OR t.song_id::text = d.ref_id
       )
   AND NOT EXISTS (
         SELECT 1 FROM job_queue q
