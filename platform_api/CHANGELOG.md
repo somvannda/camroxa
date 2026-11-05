@@ -6,6 +6,11 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-05] — Assert the lot tag constraint too
+
+### Added
+
+- `verify_schema_assertions()` also checks that the `credit_wallet_lots` tag CHECK still accepts `admin`. Migration `174` rebuilds tables from `*_archive` snapshots; a rebuild that restored an older definition would drop `admin` and break every comp insert while `alembic_version` looked fine. Comparisons now stringify, so integer-returning assertions work alongside the text ones. See `docs/changelog/2026-11-05-schema-assertion-lots-tag.md`.
 ## [2026-11-05] — Schema assertions surface on /health
 
 ### Added
