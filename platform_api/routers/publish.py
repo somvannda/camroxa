@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import logging
+import math
 from typing import Annotated, Any
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel, Field
 from platform_api.middleware.auth import AuthContext, get_current_user
@@ -101,6 +102,9 @@ class CreatePublishJobRequest(BaseModel):
     file_checksum: str | None = None
     file_path: str | None = None
     thumbnail_path: str | None = None
+    # Media already hosted by us (B2). When set, the provider fetches this URL
+    # instead of receiving a direct upload, so large originals need no PUT.
+    media_url: str | None = None
 
 
 class CreatePublishJobResponse(BaseModel):
@@ -390,6 +394,7 @@ async def create_publish_job(
         file_checksum=request.file_checksum,
         file_path=request.file_path,
         thumbnail_path=request.thumbnail_path,
+        media_url=request.media_url,
     )
     return CreatePublishJobResponse(**data)
 

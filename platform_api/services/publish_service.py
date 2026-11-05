@@ -372,6 +372,7 @@ class PublishService:
         file_checksum: str | None,
         file_path: str | None,
         thumbnail_path: str | None,
+        media_url: str | None = None,
     ) -> dict[str, Any]:
         self.require_enabled()
         normalized_platform = str(platform or "").strip().lower() or PUBLISH_PLATFORM
@@ -410,10 +411,16 @@ class PublishService:
             if scheduled_at <= _utcnow():
                 raise ValidationError("publish_at must be in the future.")
 
-        media = await self._client.create_media_upload_url()
+        external_media_url = str(media_url or "").strip()
+        if external_media_url:
+            # Media already uploaded by us (B2): the provider fetches the URL,
+            # so there is no presigned upload leg and no size wall.
+            media = {"media_url": external_media_url, "upload_url": None}
+        else:
+            media = await self._client.create_media_upload_url()
         thumbnail_media_url = None
         thumbnail_upload_url = None
-        if str(thumbnail_path or "").strip():
+        if not external_media_url and str(thumbnail_path or "").strip():
             thumbnail_media = await self._client.create_media_upload_url()
             thumbnail_media_url = thumbnail_media["media_url"]
             thumbnail_upload_url = thumbnail_media["upload_url"]
