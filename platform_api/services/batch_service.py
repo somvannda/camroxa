@@ -2540,7 +2540,11 @@ class BatchService:
                 task_id=task_id,
             )
         except Exception as exc:
-            await self.update_song_to_suno_failed(song.id)
+            # A quota/cap rejection is a deferral, not a generation failure: the
+            # song was never submitted and must stay retryable. Marking it
+            # suno_failed hid the real reason and made desktops retry forever.
+            if not isinstance(exc, QuotaExceededError):
+                await self.update_song_to_suno_failed(song.id)
             reason = str(exc) or exc.__class__.__name__
             draft_log.log_suno_submit_failed(
                 batch_id=str(batch.id),

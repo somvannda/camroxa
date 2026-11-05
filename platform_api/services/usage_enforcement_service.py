@@ -617,6 +617,14 @@ class UsageEnforcementService:
             required = int(getattr(quote, "amount_units", 0) or 0)
             if required <= 0:
                 return
+            # The daily music cap is enforced inside charge(); preflighting it
+            # here makes retry/batch callers fail now instead of queueing a job
+            # the worker is guaranteed to reject (and mark suno_failed).
+            assert_cap = getattr(
+                self._v3_billing_service(), "assert_daily_music_cap", None
+            )
+            if assert_cap is not None:
+                await assert_cap(user_id, quote)
             current_balance = await self._credit_repo.get_balance(user_id)
             if current_balance < required:
                 raise InsufficientCreditsError(

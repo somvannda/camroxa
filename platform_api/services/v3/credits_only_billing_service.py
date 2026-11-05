@@ -284,6 +284,17 @@ class CreditsOnlyBillingService:
             },
         )
 
+    async def assert_daily_music_cap(self, user_id: UUID, quote: QuoteResult) -> None:
+        """Public preflight wrapper for the per-user daily music cap.
+
+        ``charge()`` already enforces the cap, but callers that only *queue*
+        work (Suno retry, batch preflight) used to accept the job and let the
+        worker fail later. Exposing the check lets those callers reject the
+        request up front with the same ``music_daily_cap`` error, instead of
+        burning a retry attempt and marking the song ``suno_failed``.
+        """
+        await self._assert_daily_music_cap(user_id, quote)
+
     async def charge(
         self,
         *,

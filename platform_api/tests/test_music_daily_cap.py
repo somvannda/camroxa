@@ -150,3 +150,37 @@ async def test_admin_zero_setting_disables_the_cap(
         ),
     )
     service._store.music_credits_spent_today.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_public_assert_wrapper_matches_charge_enforcement(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Callers that only queue work must get the same cap error as charge()."""
+    from platform_api.services.usage_enforcement_service import (
+        UsageEnforcementService,
+    )
+
+    _settings(500, monkeypatch)
+    billing = _service(spent_units=4_950_000)
+    enforcement = UsageEnforcementService.__new__(UsageEnforcementService)
+    enforcement.enforce_fail_absorb_budget = AsyncMock()
+    enforcement._v3_op_if_enabled = AsyncMock(return_value="music")
+    enforcement._quote_via_v3 = AsyncMock(
+        return_value=QuoteResult(
+            op="music", amount_credits=10.0, amount_units=100_000, source="plan", plan_id=None
+        )
+    )
+    enforcement._v3_billing_service = lambda: billing
+    enforcement._credit_repo = MagicMock()
+    enforcement._credit_repo.get_balance = AsyncMock(return_value=1_000_000)
+
+    with pytest.raises(QuotaExceededError) as exc:
+        await enforcement.preflight_quotas_and_balance(
+            uuid4(), None, "music", min_credits=10
+        )
+
+    assert exc.value.details["code"] == "music_daily_cap"
+    # The balance lookup after the cap check must not run: the request is
+    # rejected before it can be queued.
+    enforcement._credit_repo.get_balance.assert_not_awaited()
