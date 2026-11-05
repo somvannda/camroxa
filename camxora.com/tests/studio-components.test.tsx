@@ -4,12 +4,13 @@ import userEvent from "@testing-library/user-event";
 
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
-import { StudioLibrary, formatUploadLength } from "@/components/studio/StudioLibrary";
+import { StudioLibrary, formatSongCount, formatUploadLength } from "@/components/studio/StudioLibrary";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import type { StudioTrack } from "@/lib/studio-tracks";
 import type { StudioUpload } from "@/lib/studio-api";
 import type { WebMusicGeneration } from "@/lib/library-api";
+import type { WebMusicWorkspace } from "@/lib/web-music-api";
 
 const noop = () => {};
 
@@ -140,6 +141,10 @@ function upload(overrides: Partial<StudioUpload> = {}): StudioUpload {
   };
 }
 
+function workspace(overrides: Partial<WebMusicWorkspace> = {}): WebMusicWorkspace {
+  return { id: "w1", name: "My Workspace", is_default: true, song_count: 946, ...overrides };
+}
+
 function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = {}) {
   return {
     width: 368,
@@ -148,11 +153,14 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     query: "",
     onQuery: noop,
     songs: [],
+    workspaces: [],
+    activeWorkspaceId: null,
     projects: [],
     uploads: [],
     currentProjectId: null,
     onClose: noop,
     onAddSong: noop,
+    onSelectWorkspace: noop,
     onAddUpload: noop,
     onOpenProject: noop,
     ...overrides,
@@ -168,11 +176,75 @@ describe("formatUploadLength", () => {
   });
 });
 
+describe("formatSongCount", () => {
+  it("pluralises and never shows a negative or fractional count", () => {
+    expect(formatSongCount(946)).toBe("946 songs");
+    expect(formatSongCount(1)).toBe("1 song");
+    expect(formatSongCount(0)).toBe("0 songs");
+    expect(formatSongCount(undefined)).toBe("0 songs");
+    expect(formatSongCount(-3)).toBe("0 songs");
+    expect(formatSongCount(2.4)).toBe("2 songs");
+  });
+});
+
 describe("StudioLibrary", () => {
-  it("lists both project sections plus uploads in the tab bar", () => {
+  it("lists the drawer's four sections in order", () => {
     render(<StudioLibrary {...libraryProps()} />);
     const tabs = screen.getAllByRole("tab").map((node) => node.textContent);
-    expect(tabs).toEqual(["Songs", "Projects", "Uploads"]);
+    expect(tabs).toEqual(["Songs", "Workspaces", "Projects", "Uploads"]);
+  });
+
+  it("shows each workspace with its song count and opens it", async () => {
+    const user = userEvent.setup();
+    const onSelectWorkspace = vi.fn();
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          tab: "workspaces",
+          workspaces: [workspace(), workspace({ id: "w2", name: "Empty", song_count: 1 })],
+          onSelectWorkspace,
+        })}
+      />
+    );
+
+    expect(screen.getByText("946 songs")).toBeTruthy();
+    expect(screen.getByText("1 song")).toBeTruthy();
+    await user.click(screen.getByLabelText("Show songs in My Workspace"));
+    expect(onSelectWorkspace).toHaveBeenCalledWith("w1");
+
+    await user.click(screen.getByLabelText("Show songs from every workspace"));
+    expect(onSelectWorkspace).toHaveBeenLastCalledWith(null);
+  });
+
+  it("marks the active workspace's Open button as current", () => {
+    render(
+      <StudioLibrary
+        {...libraryProps({ tab: "workspaces", workspaces: [workspace()], activeWorkspaceId: "w1" })}
+      />
+    );
+    expect(screen.getByLabelText("Show songs in My Workspace").getAttribute("aria-current")).toBe(
+      "true"
+    );
+  });
+
+  it("shows and clears the workspace filter on the songs tab", async () => {
+    const user = userEvent.setup();
+    const onSelectWorkspace = vi.fn();
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          tab: "songs",
+          workspaces: [workspace()],
+          activeWorkspaceId: "w1",
+          songs: [],
+          onSelectWorkspace,
+        })}
+      />
+    );
+    expect(screen.getByText("My Workspace")).toBeTruthy();
+    expect(screen.getByText("No songs in this workspace yet.")).toBeTruthy();
+    await user.click(screen.getByLabelText("Clear workspace filter"));
+    expect(onSelectWorkspace).toHaveBeenCalledWith(null);
   });
 
   it("shows uploads with their length and adds one to the timeline", async () => {

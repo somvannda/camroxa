@@ -29,13 +29,14 @@ test("library tabs switch sections and the search filters them", async ({ page }
   await expect(library).toBeVisible();
 
   const tabs = library.getByRole("tab");
-  await expect(tabs).toHaveCount(3);
+  await expect(tabs).toHaveCount(4);
   await expect(tabs.nth(0)).toHaveText("Songs");
-  await expect(tabs.nth(1)).toHaveText("Projects");
-  await expect(tabs.nth(2)).toHaveText("Uploads");
+  await expect(tabs.nth(1)).toHaveText("Workspaces");
+  await expect(tabs.nth(2)).toHaveText("Projects");
+  await expect(tabs.nth(3)).toHaveText("Uploads");
 
   // Every section resolves to either rows or its own empty explanation.
-  for (const label of ["Songs", "Projects", "Uploads"]) {
+  for (const label of ["Songs", "Workspaces", "Projects", "Uploads"]) {
     await library.getByRole("tab", { name: label }).click();
     await expect(library.getByRole("tab", { name: label })).toHaveAttribute("aria-selected", "true");
     await expect
@@ -46,6 +47,15 @@ test("library tabs switch sections and the search filters them", async ({ page }
       )
       .toBeGreaterThan(0);
   }
+
+  // Workspaces are real data: choose one, land on Songs filtered to it, then clear.
+  await library.getByRole("tab", { name: "Workspaces" }).click();
+  await expect(library.getByLabel("Show songs from every workspace")).toBeVisible();
+  await library.getByLabel(/^Show songs in /).first().click();
+  await expect(library.getByRole("tab", { name: "Songs" })).toHaveAttribute("aria-selected", "true");
+  await expect(library.getByLabel("Clear workspace filter")).toBeVisible();
+  await library.getByLabel("Clear workspace filter").click();
+  await expect(library.getByLabel("Clear workspace filter")).toHaveCount(0);
 
   // The one project that is not open must be findable, and nothing else may match.
   await library.getByRole("tab", { name: "Projects" }).click();

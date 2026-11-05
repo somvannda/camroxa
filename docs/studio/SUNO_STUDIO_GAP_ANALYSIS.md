@@ -40,7 +40,7 @@ Scoring for this document:
 | G9 | No clip focus management on delete | Keyboard users lose their place | W3 | **done** — delete keeps focus on the nearest clip |
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
-| G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Projects and Uploads tabs wired (uploads load from `GET /studio/uploads`); the stems tab waits on a finished stems job (B-005) and workspaces have no API |
+| G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Workspaces (with server-side song counts and a filter), Projects and Uploads tabs wired; the stems tab waits on a finished stems job (B-005) |
 | G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 83 tests (pure modules, components, API contract); Playwright: 7 specs (smoke, persistence across reload, library tabs/filter, metric parity, axe on home/editor/drawer). e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |

@@ -369,6 +369,7 @@ class WebMusicWorkspaceResponse(BaseModel):
     id: str
     name: str
     is_default: bool = False
+    song_count: int = 0
     created_at: str | None = None
 
 

@@ -8,6 +8,7 @@ import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import { listStudioProjects, listStudioUploads, type StudioUpload } from "@/lib/studio-api";
+import { listWebMusicWorkspaces, type WebMusicWorkspace } from "@/lib/web-music-api";
 import { StudioLibrary, type StudioLibraryTab } from "@/components/studio/StudioLibrary";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
@@ -81,9 +82,12 @@ export function StudioEditorShell() {
   /** A draft recovered from storage after a failed or offline write (W2.3). */
   const [draft, setDraft] = useState<StudioDraft | null>(null);
   const projectRef = useRef<StudioProject | null>(null);
-  /** Library panel data (G12): songs, other projects and uploads, loaded on first open. */
+  /** Library panel data (G12): songs, workspaces, other projects and uploads. */
   const [libraryTab, setLibraryTab] = useState<StudioLibraryTab>("songs");
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
+  const [libraryWorkspaces, setLibraryWorkspaces] = useState<WebMusicWorkspace[] | null>(null);
+  /** Workspace the Songs tab is filtered to; null means every song. */
+  const [libraryWorkspaceId, setLibraryWorkspaceId] = useState<string | null>(null);
   const [libraryProjects, setLibraryProjects] = useState<StudioProject[] | null>(null);
   const [libraryUploads, setLibraryUploads] = useState<StudioUpload[] | null>(null);
   const [libraryQuery, setLibraryQuery] = useState("");
@@ -293,12 +297,21 @@ export function StudioEditorShell() {
     if (!libraryOpen || !user) return;
     let active = true;
     if (librarySongs === null) {
-      fetchGenerations(20)
+      fetchGenerations(20, libraryWorkspaceId)
         .then((items) => {
           if (active) setLibrarySongs(items);
         })
         .catch(() => {
           if (active) setLibrarySongs([]);
+        });
+    }
+    if (libraryWorkspaces === null) {
+      listWebMusicWorkspaces()
+        .then((result) => {
+          if (active) setLibraryWorkspaces(result.items ?? []);
+        })
+        .catch(() => {
+          if (active) setLibraryWorkspaces([]);
         });
     }
     if (libraryProjects === null) {
@@ -322,7 +335,22 @@ export function StudioEditorShell() {
     return () => {
       active = false;
     };
-  }, [libraryOpen, user, librarySongs, libraryProjects, libraryUploads]);
+  }, [
+    libraryOpen,
+    user,
+    librarySongs,
+    libraryWorkspaceId,
+    libraryWorkspaces,
+    libraryProjects,
+    libraryUploads,
+  ]);
+
+  /** Choose a workspace: the Songs tab reloads filtered to it (spec §19.1). */
+  function selectLibraryWorkspace(workspaceId: string | null) {
+    setLibraryWorkspaceId(workspaceId);
+    setLibrarySongs(null);
+    setLibraryTab("songs");
+  }
 
   /** Resolve the selected clip's source song for the provenance strip (G16). */
   useEffect(() => {
@@ -1484,11 +1512,14 @@ export function StudioEditorShell() {
             query={libraryQuery}
             onQuery={setLibraryQuery}
             songs={librarySongs}
+            workspaces={libraryWorkspaces}
+            activeWorkspaceId={libraryWorkspaceId}
             projects={libraryProjects}
             uploads={libraryUploads}
             currentProjectId={projectId}
             onClose={() => setLibraryOpen(false)}
             onAddSong={addSongToTimeline}
+            onSelectWorkspace={selectLibraryWorkspace}
             onAddUpload={addUploadToTimeline}
             onOpenProject={(id) => {
               window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;

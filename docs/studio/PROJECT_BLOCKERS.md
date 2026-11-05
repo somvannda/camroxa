@@ -50,10 +50,11 @@ and `platform_api` (8100) were stopped. PostgreSQL (5432) is up.
 
 **Blocks:** G12's stems tab, and PRJ-023.
 
-**State:** uploads now list (`GET /api/v3/web-music/studio/uploads` — wired into the
-library's Uploads tab). Stems do not: a stem set exists only as a `studio_operations`
-row with a provider-shaped `result_json`, and no stems job has ever completed in this
-environment (B-005), so the projection cannot be written against real data.
+**State:** uploads and workspaces now list (`GET /studio/uploads`, `GET /workspaces`
+with `song_count`), and workspace selection filters the song list. Stems do not: a stem
+set exists only as a `studio_operations` row with a provider-shaped `result_json`, and
+no stems job has ever completed in this environment (B-005), so the projection cannot be
+written against real data.
 
 **Unblock:** finish B-005, capture one successful stems result, then project it as a
 typed list endpoint. Not on the critical path.

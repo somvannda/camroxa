@@ -1608,20 +1608,32 @@ class WebMusicService:
 
     async def list_workspaces(self, user_id: UUID) -> list[dict[str, Any]]:
         await self.ensure_default_workspace(user_id)
+        # Song counts come from one grouped pass over the user's generations; the
+        # library panel shows them next to each workspace (spec §19.1). A LEFT JOIN
+        # keeps a freshly created workspace at 0 instead of dropping it.
         rows = await self._pool.fetch(
             """
-            SELECT id, name, is_default, created_at
-            FROM web_music_workspaces
-            WHERE user_id = $1
-            ORDER BY is_default DESC, created_at ASC
+            SELECT w.id, w.name, w.is_default, w.created_at,
+                   COALESCE(counts.song_count, 0) AS song_count
+            FROM web_music_workspaces w
+            LEFT JOIN (
+                SELECT workspace_id, COUNT(*) AS song_count
+                FROM suno_tasks
+                WHERE user_id = $1 AND source = $2
+                GROUP BY workspace_id
+            ) counts ON counts.workspace_id = w.id
+            WHERE w.user_id = $1
+            ORDER BY w.is_default DESC, w.created_at ASC
             """,
             user_id,
+            SUNO_TASK_SOURCE_WEB_MUSIC,
         )
         return [
             {
                 "id": str(row["id"]),
                 "name": str(row["name"]),
                 "is_default": bool(row["is_default"]),
+                "song_count": int(row.get("song_count") or 0),
                 "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
             }
             for row in rows
