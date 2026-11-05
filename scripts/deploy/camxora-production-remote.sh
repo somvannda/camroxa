@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 # CamXora production full-stack install (Ubuntu 22/24). Idempotent where practical.
 set -euo pipefail
 
@@ -141,7 +141,7 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   # The musicapi core shares this checkout directory but is deployed by its own
   # script (scripts/deploy/camxora-musicapi-remote.sh); the platform tarball does
   # NOT contain it. Restore it from the backup so this deploy never removes it
-  # out from under the running camxora-musicapi service — that breaks its
+  # out from under the running camxora-musicapi service â€” that breaks its
   # absolute node_modules paths (e.g. ffmpeg-static) and every generation fails
   # with audio_ingest_failed.
   if [[ -n "${REPO_BACKUP}" && -e "${REPO_BACKUP}/musicapi" && ! -e "${REPO_DIR}/musicapi" ]]; then
@@ -174,14 +174,14 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   chown camxora:camxora "${REPO_DIR}/.deploy-manifest.json" 2>/dev/null || true
 
   # The checkout was just swapped, so every frontend build artefact is gone.
-  # If anything below fails — npm ci, a Next build, a service reload — the site
+  # If anything below fails â€” npm ci, a Next build, a service reload â€” the site
   # is left with no .next/dist and nginx returns 502 (this happened twice on
   # 2026-10-21). The previous checkout is intact in REPO_BACKUP, so put its
   # artefacts back rather than leaving production broken.
   # A build is "complete" only when its entry point exists. An interrupted
   # `next build` / `vite build` leaves a partial directory (e.g. `.next` with
   # only cache/ and server/ but no BUILD_ID) that `next start` then crash-loops
-  # on, so restore in that case too — not only when the directory is absent.
+  # on, so restore in that case too â€” not only when the directory is absent.
   frontend_build_complete() {
     case "$2" in
       .next) [[ -f "$1/.next/BUILD_ID" ]] ;;
@@ -293,7 +293,7 @@ PLATFORM_GOOGLE_REDIRECT_URIS=${PLATFORM_GOOGLE_REDIRECT_URIS:-https://music.cam
 # Music web: Google is the signup path; existing password users still sign in.
 PLATFORM_MUSIC_WEB_EMAIL_SIGNUP_ENABLED=${PLATFORM_MUSIC_WEB_EMAIL_SIGNUP_ENABLED:-false}
 PLATFORM_MUSIC_WEB_GEO_ENFORCE=${PLATFORM_MUSIC_WEB_GEO_ENFORCE:-false}
-# Cloudflare Turnstile — verifies the music_web login/sign-up tokens server-side.
+# Cloudflare Turnstile â€” verifies the music_web login/sign-up tokens server-side.
 CLOUDFLARE_TURNSTILE_SITE_KEY=${CLOUDFLARE_TURNSTILE_SITE_KEY:-}
 CLOUDFLARE_TURNSTILE_SECRET_KEY=${CLOUDFLARE_TURNSTILE_SECRET_KEY:-}
 CLOUDFLARE_TURNSTILE_HOSTNAMES=${CLOUDFLARE_TURNSTILE_HOSTNAMES:-music.camxora.com,app.camxora.com,camxora.com,www.camxora.com}
@@ -304,10 +304,12 @@ chown camxora:camxora "${REPO_DIR}/platform_api/.env"
 log "Running migrations..."
 sudo -u postgres psql camxora_platform -c \
   "ALTER TABLE IF EXISTS alembic_version ALTER COLUMN version_num TYPE VARCHAR(128);"
+# Go through the locked entrypoint, not the raw Alembic CLI: the deploy used to
+# upgrade outside the advisory lock the API startup runner holds, so both paths
+# could migrate concurrently.
 sudo -u camxora -H bash -lc "
-  cd '${REPO_DIR}/platform_api'
-  source .venv/bin/activate
-  alembic upgrade head
+  cd '${REPO_DIR}'
+  platform_api/.venv/bin/python -m platform_api.migrations.upgrade
 "
 
 log "Building admin portal..."
@@ -611,11 +613,11 @@ fi
 # After adding music.camxora.com DNS A record, run:
 # certbot --nginx -d music.camxora.com --non-interactive --agree-tos -m "${CERTBOT_EMAIL}" --redirect
 if [[ ! -f /etc/letsencrypt/live/api.camxora.com/fullchain.pem ]]; then
-  log "FATAL: no TLS certificate for api.camxora.com — refusing to finish an HTTP-only deploy"
+  log "FATAL: no TLS certificate for api.camxora.com â€” refusing to finish an HTTP-only deploy"
   exit 1
 fi
 if [[ ! -f /tmp/nginx-camxora-production.conf ]]; then
-  log "FATAL: uploaded HTTPS nginx config missing from /tmp — refusing to finish an HTTP-only deploy"
+  log "FATAL: uploaded HTTPS nginx config missing from /tmp â€” refusing to finish an HTTP-only deploy"
   exit 1
 fi
 log "Applying uploaded HTTPS nginx configuration..."
@@ -623,7 +625,7 @@ cp /tmp/nginx-camxora-production.conf /etc/nginx/sites-available/camxora-product
 nginx -t
 systemctl reload nginx
 if ! grep -q 'ssl_certificate' /etc/nginx/sites-available/camxora-production; then
-  log "FATAL: nginx site has no ssl_certificate after apply — production would serve the wrong certificate"
+  log "FATAL: nginx site has no ssl_certificate after apply â€” production would serve the wrong certificate"
   exit 1
 fi
 log "Health checks..."
