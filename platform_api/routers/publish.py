@@ -648,12 +648,12 @@ async def complete_publish_upload(
     )
 
 
-@router.post("/uploads/abort", status_code=204)
+@router.post("/uploads/abort")
 async def abort_publish_upload(
     request: AbortUploadRequest,
     ctx: CurrentUserDep,
-) -> None:
+) -> dict[str, bool]:
     key = _owned_media_key(ctx.user_id, request.key)
     storage = await _media_storage()
     await storage.abort_multipart(key=key, upload_id=request.upload_id)
-    return None
+    return {"ok": True}
