@@ -26,6 +26,7 @@ import { hashPassword, verifyPassword, signToken, verifyToken, signOAuthState, v
 const SESSION_COOKIE_ADMIN_CSRF = "sunosession_admin_csrf";
 import { OAuth2Client } from "google-auth-library";
 import { config, isProduction } from "./config.js";
+import { callbackSignatureHeaders } from "./callbackSignature.js";
 import { maskedIntegrations, updateIntegrations } from "./runtimeSettings.js";
 import { assertCallbackUrlAllowed, CallbackUrlError, isCallbackSentinel } from "./callbackUrl.js";
 import { trustProxyOption } from "./trustProxy.js";
@@ -2079,6 +2080,24 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       // Re-check at the sink as well: a public hostname accepted earlier can be
       // re-pointed at an internal address before the job finishes (DNS rebinding).
       await assertCallbackUrlAllowed(job.callbackUrl);
+      // Sign every callback body with the platform's shared secret. The
+      // platform rejects unsigned callbacks from non-allowlisted IPs, which is
+      // why these posts used to 403 and status fell back to polling.
+      const send = async (payload: unknown): Promise<void> => {
+        const bodyText = JSON.stringify(payload);
+        await fetch(job.callbackUrl as string, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...callbackSignatureHeaders(config.callbackHmacSecret, bodyText),
+          },
+          // Do not follow redirects — a 3xx to an internal address would
+          // otherwise bypass the check above.
+          redirect: "manual",
+          signal: AbortSignal.timeout(10_000),
+          body: bodyText,
+        });
+      };
       // WAV conversion uses sunoapi.org's own callback envelope:
       // {code,msg,data:{audioWavUrl,task_id}}, not the track-list envelope below.
       if (job.type === "wav" || job.endpoint === "wav") {
@@ -2087,16 +2106,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         const wavUrl = ok
           ? ((res.download_url as string) ?? (res.wav_url as string) ?? null)
           : null;
-        await fetch(job.callbackUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            code: ok ? 200 : 400,
-            msg: ok ? "success" : (job.error || "WAV format conversion failed"),
-            data: { audioWavUrl: wavUrl, task_id: job.id },
-          }),
+        await send({
+          code: ok ? 200 : 400,
+          msg: ok ? "success" : (job.error || "WAV format conversion failed"),
+          data: { audioWavUrl: wavUrl, task_id: job.id },
         });
         return;
       }
@@ -2105,16 +2118,10 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         const ok = job.status === "complete";
         const res = (job.result ?? {}) as Record<string, unknown>;
         const videoUrl = ok ? ((res.video_url as string) ?? null) : null;
-        await fetch(job.callbackUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            code: ok ? 200 : 400,
-            msg: ok ? "MP4 generated successfully." : (job.error || "MP4 generation failed"),
-            data: { task_id: job.id, video_url: videoUrl },
-          }),
+        await send({
+          code: ok ? 200 : 400,
+          msg: ok ? "MP4 generated successfully." : (job.error || "MP4 generation failed"),
+          data: { task_id: job.id, video_url: videoUrl },
         });
         return;
       }
@@ -2122,17 +2129,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       if (job.type === "midi_generate" || job.endpoint === "midi_generate") {
         const ok = job.status === "complete";
         const res = (job.result ?? {}) as Record<string, unknown>;
-        await fetch(job.callbackUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            task_id: job.id,
-            code: ok ? 200 : 500,
-            msg: ok ? "success" : (job.error || "MIDI generation failed"),
-            data: ok ? (res.midi_data ?? null) : null,
-          }),
+        await send({
+          task_id: job.id,
+          code: ok ? 200 : 500,
+          msg: ok ? "success" : (job.error || "MIDI generation failed"),
+          data: ok ? (res.midi_data ?? null) : null,
         });
         return;
       }
@@ -2141,17 +2142,11 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
         const res = (job.result ?? {}) as Record<string, unknown>;
         const tracks = Array.isArray(res.tracks) ? res.tracks : null;
         const ok = job.status === "complete";
-        await fetch(job.callbackUrl, {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          redirect: "manual",
-          signal: AbortSignal.timeout(10_000),
-          body: JSON.stringify({
-            code: ok ? 200 : 500,
-            msg: ok ? "success" : (job.error || "Recovery failed"),
-            task_id: job.id,
-            data: tracks,
-          }),
+        await send({
+          code: ok ? 200 : 500,
+          msg: ok ? "success" : (job.error || "Recovery failed"),
+          task_id: job.id,
+          data: tracks,
         });
         return;
       }
@@ -2161,7 +2156,7 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
       const tracks: Array<Record<string, unknown>> = [];
       collectClipObjects(job.result, tracks);
       const ok = job.status === "complete";
-      const payload = {
+      await send({
         code: ok ? 200 : 400,
         msg: ok ? "All generated successfully." : (job.error || "Music generation failed"),
         data: {
@@ -2169,15 +2164,6 @@ export async function buildServer({ pool }: ServerDeps): Promise<FastifyInstance
           task_id: job.id,
           data: ok ? tracks.map(sunoTrack) : null,
         },
-      };
-      await fetch(job.callbackUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        // Do not follow redirects — a 3xx to an internal address would otherwise
-        // bypass the check above.
-        redirect: "manual",
-        signal: AbortSignal.timeout(10_000),
-        body: JSON.stringify(payload),
       });
     } catch {
       // callback failures are non-fatal

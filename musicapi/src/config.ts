@@ -78,6 +78,16 @@ export const config = {
     .split(",")
     .map((h) => h.trim().toLowerCase())
     .filter(Boolean),
+  /**
+   * Shared HMAC secret for signing outbound task callbacks. Must match the
+   * platform API's `PLATFORM_SUNO_CALLBACK_HMAC_SECRET`; empty keeps callbacks
+   * unsigned (sandbox/dev only).
+   */
+  callbackHmacSecret: (
+    process.env.CALLBACK_HMAC_SECRET ??
+    process.env.SUNO_CALLBACK_HMAC_SECRET ??
+    ""
+  ).trim(),
   jwtSecret: resolveJwtSecret(),
   /** AES-256-GCM key for `suno_accounts.client_cookie` at rest. */
   cookieEncryptionKey: resolveCookieEncryptionKey(),
