@@ -211,3 +211,55 @@ def test_video_merge_ignored_without_suno() -> None:
     assert breakdown.video_ops == 0
     assert breakdown.merge_ops == 0
     assert breakdown.total_cost == 12
+
+
+def test_server_draft_math_matches_preflight() -> None:
+    """5 batches / 50 songs / 20 image jobs / 100 exports / 10 merges = 1,050.
+
+    The panel used to quote 940 because drafts counted one op per song; the
+    server prices lyric + title per song plus one album per batch.
+    """
+    costs = map_operation_costs(
+        [
+            OperationCostResponse(operation_type="lyric", credits_per_operation=2, available=True),
+            OperationCostResponse(operation_type="title", credits_per_operation=2, available=True),
+            OperationCostResponse(operation_type="album", credits_per_operation=2, available=True),
+            OperationCostResponse(operation_type="music", credits_per_operation=10, available=True),
+            OperationCostResponse(
+                operation_type="background_image", credits_per_operation=6, available=True
+            ),
+            OperationCostResponse(operation_type="video", credits_per_operation=2, available=True),
+            OperationCostResponse(
+                operation_type="video_merge", credits_per_operation=2, available=True
+            ),
+        ]
+    )
+    primary = [_profile(f"ok{index}", "Primary") for index in range(5)]
+    secondary = [_profile(f"alt{index}", "Secondary") for index in range(5)]
+    breakdown = get_music_plan_cost_breakdown(
+        costs.get("lyric"),
+        costs.get("music"),
+        costs.get("background_image"),
+        primary,
+        secondary,
+        song_count=10,
+        auto_gen_image=True,
+        auto_gsuno=True,
+        planned_day_count=1,
+        image_source_mode="auto",
+        video_cost=costs.get("video"),
+        merge_cost=costs.get("video_merge"),
+        auto_video=True,
+        auto_merge=True,
+        title_cost=costs.get("title"),
+        album_cost=costs.get("album"),
+        server_draft_math=True,
+    )
+
+    assert breakdown is not None
+    assert breakdown.planned_batch_count == 5
+    assert breakdown.planned_song_count == 50
+    assert breakdown.draft_total_cost == 210
+    assert breakdown.image_total_cost == 120
+    assert breakdown.video_merge_total_cost == 220
+    assert breakdown.total_cost == 1050
