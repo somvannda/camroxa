@@ -2873,7 +2873,10 @@ class _ProgressReader:
 class PublishUploadWorker(QThread):
     """Create a publish job, upload the media, then charge + create the post."""
 
-    progress = Signal(int, int)
+    # (bytes sent, total bytes). `object` on purpose: merged videos are often
+    # larger than 2 GiB and Qt's `int` is 32-bit -> OverflowError on the first
+    # emit, before any byte was sent (the job then sat in pending_upload).
+    progress = Signal(object, object)
     status_changed = Signal(str)
     succeeded = Signal(object)
     failed = Signal(str)
