@@ -344,6 +344,17 @@ credit_integrity_alerts() {
       alert_once ledger-drift "⚠️ <b>${HOST}</b>: ${count:-new} account(s) with new wallet/ledger drift. See scripts/ops/audit_ledger_drift.py"
     fi
   fi
+
+  # A failed song charged without a refund. The 2026-11 backlog is cleared, so a
+  # nonzero result here means the refund path regressed.
+  if [ -n "$platform_dsn" ] && [ -f "$repo/scripts/ops/audit_failed_music_refunds.py" ]; then
+    rc=0
+    out="$(PLATFORM_DATABASE_URL="$platform_dsn" "$py" "$repo/scripts/ops/audit_failed_music_refunds.py" --days 7 --json 2>/dev/null)" || rc=$?
+    if [ "$rc" = "1" ]; then
+      count="$(printf '%s' "$out" | sed -n 's/.*"unrefunded_failed_charges": *\([0-9][0-9]*\).*/\1/p' | head -n1)"
+      alert_once failed-refunds "⚠️ <b>${HOST}</b>: ${count:-some} failed song(s) charged without a refund (7d). See scripts/ops/audit_failed_music_refunds.py"
+    fi
+  fi
 }
 
 # --- full status (--status / --dry-run) -------------------------------------
