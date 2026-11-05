@@ -204,6 +204,32 @@ costs belong to the pricing table; the charge bridge was wired to the retired on
 
 ---
 
+## D-011 — Project menu keeps the captured order, disabling what we cannot honour
+
+**Date:** 2026-11-05 · **Status:** accepted (G23)
+
+**Decision.** The project chip opens the nine items captured in §18.1/§44.2, in that
+order. Six are wired: **New Project**, **Open Project**, **Rename**, **Duplicate
+Project**, **Version History** (list + restore) and **Show Quick Start again**. Three are
+rendered **disabled with the reason in the tooltip**: Share Project, Open a copy in v1,
+Studio Settings.
+
+**Why.** Hiding the missing three would break the muscle-memory order the capture
+records, and showing them enabled would promise surfaces that do not exist. A disabled
+row with a truthful tooltip is the same pattern the editor already uses for Tools, Draw,
+List and the microphone.
+
+**Consequences.**
+
+- "Open a copy in v1" is not implementable here at all: this product has no v1 Studio.
+  It stays as a disabled marker so nobody re-adds it by accident.
+- Sharing exists in the API but not in the editor; wiring it is its own surface.
+- Settings has no captured layout, so building it now would be guessing.
+- Rename updates the header title but does not touch the arrangement document, so it
+  never participates in the 409 version check.
+
+---
+
 ## D-010 — Export normalisation is sample-peak, mix-only, opt-in
 
 **Date:** 2026-11-05 · **Status:** accepted (G11)

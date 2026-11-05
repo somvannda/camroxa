@@ -20,6 +20,9 @@ afterEach(cleanup);
 function headerProps() {
   return {
     title: "Demo",
+    projectId: "p1" as string | null,
+    onRenamed: noop,
+    onShowQuickStart: noop,
     timeSignature: "4/4",
     clock: "00:01.000",
     barBeat: "001.1.1",

@@ -22,6 +22,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Take model: audition vs commit, newest on top | §72.1 | captured in spec; take UI still reference-only |
 | Clip remembers its source generation | §70 | `songId` on clip + provenance strip |
 | Library panel: songs with Add, workspace filter with counts, projects with Open, uploads with Add | §19.1 / gap G12 | `components/studio/StudioLibrary.tsx` + `selectLibraryWorkspace` |
+| Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (6 wired, 3 disabled with reasons) |
 | Empty project asks how to start | §10 / gap G18 | `components/studio/StudioOnboarding.tsx` |
 | Coarse pointers get 44 px targets | gap G20 | `app/touch-targets.css` |
 | Clips culled outside the visible window | gap G19 | `view` state in `StudioEditorShell` |
@@ -55,6 +56,6 @@ which we cannot honour).
 
 - Screenshots: `reference/screens/` (78 files) + `reference/SCREENSHOT_INDEX.md`
 - Measurements: `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §1–§96
-- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (20 of 22 closed; G12 and G21 partial)
+- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (21 of 23 closed; G12 and G21 partial)
 - Audio claims: `window.__buildMasterBus`, `__studioExport`, `__studioMeter`,
   `__studioNormalise` in dev

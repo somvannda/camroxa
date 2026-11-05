@@ -23,9 +23,12 @@ function seenKey(projectId: string): string {
 export function StudioOnboarding({
   projectId,
   isEmpty,
+  reopenToken = 0,
 }: {
   projectId: string | null;
   isEmpty: boolean;
+  /** Increment to re-open the overlay ("Show Quick Start again" in the project menu). */
+  reopenToken?: number;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -40,6 +43,17 @@ export function StudioOnboarding({
       setOpen(true);
     }
   }, [projectId, isEmpty]);
+
+  useEffect(() => {
+    if (!projectId || reopenToken <= 0) return;
+    // Re-opening clears the "seen" flag so the overlay is not a one-shot.
+    try {
+      window.localStorage.removeItem(seenKey(projectId));
+    } catch {
+      /* storage may be unavailable; the overlay still opens */
+    }
+    setOpen(true);
+  }, [projectId, reopenToken]);
 
   function dismiss() {
     if (projectId) {
@@ -59,7 +73,9 @@ export function StudioOnboarding({
       <div className="se-onboard">
         <h2>How do you want to start?</h2>
         <p className="se-onboard-sub">
-          This project is empty. Pick a starting point — you can always add more later.
+          {isEmpty
+            ? "This project is empty. Pick a starting point — you can always add more later."
+            : "Pick a starting point — you can always add more later."}
         </p>
 
         <div className="se-onboard-tiles">

@@ -1,6 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/Icon";
+import { StudioProjectMenu } from "@/components/studio/StudioProjectMenu";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { formatMeter, type MeterReading } from "@/lib/studio-meter";
 
@@ -14,6 +15,9 @@ import { formatMeter, type MeterReading } from "@/lib/studio-meter";
 
 export type StudioHeaderProps = {
   title: string;
+  projectId: string | null;
+  onRenamed: (title: string) => void;
+  onShowQuickStart: () => void;
   timeSignature: string;
   clock: string;
   barBeat: string;
@@ -56,6 +60,9 @@ export type StudioHeaderProps = {
 export function StudioHeader(props: StudioHeaderProps) {
   const {
     title,
+    projectId,
+    onRenamed,
+    onShowQuickStart,
     timeSignature,
     clock,
     barBeat,
@@ -93,10 +100,19 @@ export function StudioHeader(props: StudioHeaderProps) {
     <header className="se-head">
       <div className="se-head-left">
         <span className="se-logo">CAMXORA</span>
-        <button type="button" className="se-chip" disabled title="Project menu is not wired in the shell yet">
-          {title}
-          <Icon name="fa-chevron-down" />
-        </button>
+        {projectId ? (
+          <StudioProjectMenu
+            projectId={projectId}
+            title={title}
+            onRenamed={onRenamed}
+            onShowQuickStart={onShowQuickStart}
+          />
+        ) : (
+          <button type="button" className="se-chip" disabled>
+            {title}
+            <Icon name="fa-chevron-down" />
+          </button>
+        )}
         <button type="button" className="se-icon" aria-label="Undo" disabled={!canUndo} onClick={onUndo}>
           <Icon name="fa-rotate-left" />
         </button>

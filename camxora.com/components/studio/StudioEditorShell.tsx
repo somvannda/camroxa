@@ -872,6 +872,8 @@ export function StudioEditorShell() {
   const clipboardRef = useRef<{ clip: ClipLike; trackId: string }[]>([]);
   /** Set when a delete should move DOM focus to the surviving clip (G9). */
   const focusPendingRef = useRef(false);
+  /** Bumped by "Show Quick Start again"; the overlay re-opens on change. */
+  const [quickStartToken, setQuickStartToken] = useState(0);
 
   /** Insert new clips into their owner tracks and persist lanes + tracks together. */
   function insertClips(entries: { clip: ClipLike; trackId: string }[]) {
@@ -1410,6 +1412,9 @@ export function StudioEditorShell() {
     <div className={`se-shell${touchMode ? " is-touch" : ""}`}>
       <StudioHeader
         title={project?.title || "Untitled project"}
+        projectId={projectId}
+        onRenamed={(next) => setProject((current) => (current ? { ...current, title: next } : current))}
+        onShowQuickStart={() => setQuickStartToken((value) => value + 1)}
         timeSignature={project?.time_signature || "4/4"}
         clock={clock(playhead)}
         barBeat={barBeat(playhead, bpm)}
@@ -1528,7 +1533,11 @@ export function StudioEditorShell() {
         ) : null}
       </div>
 
-      <StudioOnboarding projectId={projectId} isEmpty={!loading && tracks.length === 0 && clips.length === 0} />
+      <StudioOnboarding
+        projectId={projectId}
+        isEmpty={!loading && tracks.length === 0 && clips.length === 0}
+        reopenToken={quickStartToken}
+      />
 
       <StudioMetricsProbe />
 
