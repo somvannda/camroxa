@@ -7,6 +7,19 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.12] - 2026-11-05
+
+### Added
+
+- **Resumable uploads for large videos.** Files of 200 MB or more are uploaded to CAMXORA storage
+  in 16 MB parts with per-part retries, then the publisher fetches the file from a signed URL.
+  A 6 GB merge no longer depends on one long PUT: a dropped part retries alone and progress is
+  reported per part.
+
+### Removed
+
+- The 1080p upload copy added in 1.5.11. CAMXORA never re-encodes the user's video.
+
 ## [1.5.11] - 2026-11-05
 
 ### Added
