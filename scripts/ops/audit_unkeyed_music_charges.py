@@ -94,6 +94,12 @@ WHERE (
           AND r.created_at >= d.created_at
           AND r.created_at <= d.created_at + interval '10 minutes'
   )
+  -- Refunds issued by the admin page / refund script use this stable key.
+  AND NOT EXISTS (
+        SELECT 1 FROM credit_transactions r
+        WHERE r.user_id = d.user_id
+          AND r.ref_id = ('orphan:' || d.id::text)
+  )
 ORDER BY d.created_at;
 """
 

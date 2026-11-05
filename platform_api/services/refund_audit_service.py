@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 from uuid import UUID
+from uuid import UUID
 
 UNITS_PER_CREDIT = 10_000
 
@@ -71,6 +72,61 @@ WHERE (
           AND r.amount = d.amount
           AND r.created_at >= d.created_at
           AND r.created_at <= d.created_at + interval '10 minutes'
+  )
+  -- Refunds issued by the admin page / ops script use this stable key.
+  AND NOT EXISTS (
+        SELECT 1 FROM credit_transactions r
+        WHERE r.user_id = d.user_id
+          AND r.ref_id = ('orphan:' || d.id::text)
+  )
+ORDER BY d.created_at;
+"""
+
+REFUND_SQL = """
+WITH debits AS (
+    SELECT ct.id, ct.user_id, ct.created_at, ct.amount
+    FROM credit_transactions ct
+    WHERE ct.id = ANY($1::uuid[])
+      AND ct.user_id = $2
+      AND ct.reason = 'v3_music'
+      AND ct.direction = 'debit'
+      AND ct.ref_id IS NULL
+)
+SELECT d.id, d.user_id, d.created_at, d.amount
+FROM debits d
+LEFT JOIN LATERAL (
+    SELECT t.id, t.song_id, t.status
+    FROM suno_tasks t
+    WHERE t.user_id = d.user_id
+      AND t.created_at BETWEEN d.created_at - interval '120 seconds'
+                           AND d.created_at + interval '120 seconds'
+    ORDER BY abs(extract(epoch FROM (t.created_at - d.created_at)))
+    LIMIT 1
+) t ON true
+WHERE (
+        t.id IS NULL
+        OR (
+             lower(coalesce(t.status, '')) IN ('failed', 'error')
+             AND NOT EXISTS (
+                 SELECT 1 FROM credit_transactions r
+                 WHERE r.user_id = d.user_id
+                   AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
+                   AND (r.ref_id = t.id::text OR r.ref_id = t.song_id::text)
+             )
+        )
+      )
+  AND NOT EXISTS (
+        SELECT 1 FROM credit_transactions r
+        WHERE r.user_id = d.user_id
+          AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
+          AND r.amount = d.amount
+          AND r.created_at >= d.created_at
+          AND r.created_at <= d.created_at + interval '10 minutes'
+  )
+  AND NOT EXISTS (
+        SELECT 1 FROM credit_transactions r
+        WHERE r.user_id = d.user_id
+          AND r.ref_id = ('orphan:' || d.id::text)
   )
 ORDER BY d.created_at;
 """
@@ -142,9 +198,66 @@ def refund_command(total_credits: int, *, days: int = 30) -> str:
     )
 
 
+async def refund_failed_charges(
+    pool: Any,
+    *,
+    user_id: UUID | str,
+    debit_ids: list[UUID | str],
+    admin_id: str,
+) -> dict[str, Any]:
+    """Refund selected debits through the idempotent ledger path.
+
+    Only rows that still match the audit (unrefunded, no successful task) are
+    refunded. The refund key is ``orphan:<debit id>`` — the same key the ops
+    script uses — so a retry or a second click is a no-op.
+    """
+    from platform_api.repositories.credit_repo import CreditRepository
+
+    uid = UUID(str(user_id))
+    ids = [UUID(str(debit_id)) for debit_id in debit_ids]
+    rows = await pool.fetch(REFUND_SQL, ids, uid)
+    repo = CreditRepository(pool)
+
+    refunded = 0
+    skipped = 0
+    failed = 0
+    credits = 0.0
+    for row in rows:
+        try:
+            applied = await repo.refund_once(
+                uid,
+                int(row["amount"]),
+                reason="v3_refund_music",
+                ref_id=f"orphan:{row['id']}",
+                metadata={
+                    "source": "admin_failed_refunds",
+                    "admin_id": admin_id,
+                    "note": "charged with no successful Suno task",
+                },
+            )
+        except Exception:  # noqa: BLE001 - report and continue
+            failed += 1
+            continue
+        if applied:
+            refunded += 1
+            credits += _credits(row["amount"])
+        else:
+            skipped += 1
+
+    return {
+        "requested": len(ids),
+        "matched": len(rows),
+        "refunded": refunded,
+        "skipped": skipped,
+        "failed": failed,
+        "credits": round(credits, 2),
+    }
+
+
 __all__ = [
     "collect_unrefunded_music_charges",
     "summarize_by_user",
     "refund_command",
+    "refund_failed_charges",
     "UNITS_PER_CREDIT",
 ]

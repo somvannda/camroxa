@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle,
   Check,
@@ -115,6 +115,15 @@ export default function FailedRefundsPage() {
   const [days, setDays] = useState('30');
   const [selectedUser, setSelectedUser] = useState<UserSummary | null>(null);
   const [copied, setCopied] = useState(false);
+  const [refundTarget, setRefundTarget] = useState<{
+    user: UserSummary;
+    rows: FailedCharge[];
+  } | null>(null);
+  const [refundNotice, setRefundNotice] = useState<{
+    tone: 'success' | 'error';
+    message: string;
+  } | null>(null);
+  const queryClient = useQueryClient();
 
   const { data, isLoading, isError, isFetching, refetch } =
     useQuery<FailedRefundsPayload>({
@@ -132,6 +141,39 @@ export default function FailedRefundsPage() {
     if (!data || !selectedUser) return [];
     return data.rows.filter((row) => row.user_id === selectedUser.user_id);
   }, [data, selectedUser]);
+
+  const refundMutation = useMutation({
+    mutationFn: async (target: { user: UserSummary; rows: FailedCharge[] }) => {
+      const response = await apiClient.post<{
+        refunded: number;
+        skipped: number;
+        failed: number;
+        credits: number;
+      }>('/api/v3/admin/failed-refunds/refund', {
+        user_id: target.user.user_id,
+        debit_ids: target.rows.map((row) => row.debit_id),
+        confirm: 'REFUND',
+      });
+      return response.data;
+    },
+    onSuccess: (result, target) => {
+      setRefundTarget(null);
+      setRefundNotice({
+        tone: result.refunded > 0 ? 'success' : 'error',
+        message:
+          result.refunded > 0
+            ? `Refunded ${result.credits.toLocaleString()} credits for ${target.user.email}. ${result.skipped} already settled.`
+            : `Nothing refunded — ${result.skipped} row(s) were already settled or no longer matched.`,
+      });
+      void queryClient.invalidateQueries({ queryKey: ['failed-refunds'] });
+    },
+    onError: () => {
+      setRefundNotice({
+        tone: 'error',
+        message: 'Refund failed. Check the API logs and try again.',
+      });
+    },
+  });
 
   const copyCommand = async () => {
     if (!data) return;
@@ -195,6 +237,18 @@ export default function FailedRefundsPage() {
           song reference. Refunding is a manual, reviewed action.
         </div>
       </div>
+
+      {refundNotice ? (
+        <div
+          className={
+            refundNotice.tone === 'success'
+              ? 'rounded-2xl border border-emerald-500/20 bg-emerald-500/5 px-4 py-3 text-sm text-emerald-200'
+              : 'rounded-2xl border border-red-500/20 bg-red-500/5 px-4 py-3 text-sm text-red-200'
+          }
+        >
+          {refundNotice.message}
+        </div>
+      ) : null}
 
       {isError ? (
         <ErrorState
@@ -271,6 +325,7 @@ export default function FailedRefundsPage() {
                   <TableHead className="text-right">Credits</TableHead>
                   <TableHead>First seen</TableHead>
                   <TableHead>Last seen</TableHead>
+                  <TableHead className="text-right">Refund</TableHead>
                   <TableHead className="text-right">Details</TableHead>
                 </TableRow>
               </TableHeader>
@@ -300,6 +355,25 @@ export default function FailedRefundsPage() {
                       </TableCell>
                       <TableCell className="text-xs text-slate-400">
                         {formatAdminDateTime(user.last_seen)}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="border-red-500/30 bg-red-500/10 text-red-300 hover:bg-red-500/20"
+                          onClick={() =>
+                            setRefundTarget({
+                              user,
+                              rows: data.rows.filter(
+                                (row) => row.user_id === user.user_id,
+                              ),
+                            })
+                          }
+                          disabled={refundMutation.isPending}
+                        >
+                          <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                          Refund
+                        </Button>
                       </TableCell>
                       <TableCell className="text-right">
                         <Button
@@ -341,6 +415,7 @@ export default function FailedRefundsPage() {
                       <TableHead>Reason</TableHead>
                       <TableHead>Task</TableHead>
                       <TableHead>Debit ID</TableHead>
+                      <TableHead className="text-right">Refund</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -369,10 +444,76 @@ export default function FailedRefundsPage() {
                         <TableCell className="font-mono text-[11px] text-slate-500">
                           {row.debit_id}
                         </TableCell>
+                        <TableCell className="text-right">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-300 hover:bg-red-500/10"
+                            onClick={() => {
+                              if (!selectedUser) return;
+                              setRefundTarget({ user: selectedUser, rows: [row] });
+                              setSelectedUser(null);
+                            }}
+                            disabled={refundMutation.isPending}
+                          >
+                            Refund
+                          </Button>
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
                 </Table>
+              </div>
+            </DialogContent>
+          </Dialog>
+
+          <Dialog
+            open={refundTarget !== null}
+            onOpenChange={(open) => !open && setRefundTarget(null)}
+          >
+            <DialogContent className="max-w-lg border-slate-800 bg-slate-950">
+              <DialogHeader>
+                <DialogTitle className="text-slate-100">
+                  Refund{' '}
+                  {(
+                    refundTarget?.rows.reduce((sum, row) => sum + row.credits, 0) ??
+                    0
+                  ).toLocaleString()}{' '}
+                  credits?
+                </DialogTitle>
+                <DialogDescription>
+                  {refundTarget?.user.email} — {refundTarget?.rows.length} failed
+                  charge(s). This writes a credit refund to the wallet and is
+                  idempotent per charge.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
+                Only charges that still have no successful task are refunded.
+                Already-settled rows are skipped.
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  className="border-slate-800 bg-slate-950/60"
+                  onClick={() => setRefundTarget(null)}
+                  disabled={refundMutation.isPending}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  className="bg-red-600 text-white hover:bg-red-500"
+                  onClick={() => refundTarget && refundMutation.mutate(refundTarget)}
+                  disabled={refundMutation.isPending}
+                >
+                  {refundMutation.isPending
+                    ? 'Refunding…'
+                    : `Refund ${(
+                        refundTarget?.rows.reduce(
+                          (sum, row) => sum + row.credits,
+                          0,
+                        ) ?? 0
+                      ).toLocaleString()} credits`}
+                </Button>
               </div>
             </DialogContent>
           </Dialog>

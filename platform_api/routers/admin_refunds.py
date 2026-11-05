@@ -4,20 +4,32 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Annotated, Any
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel, Field
 
 from platform_api.dependencies import get_db_pool
+from platform_api.exceptions import ValidationError
 from platform_api.middleware.auth import AuthContext, require_admin
 from platform_api.services.refund_audit_service import (
     collect_unrefunded_music_charges,
     refund_command,
+    refund_failed_charges,
     summarize_by_user,
 )
 
 router = APIRouter(prefix="/admin/failed-refunds", tags=["admin"])
 
 AdminDep = Annotated[AuthContext, Depends(require_admin)]
+
+
+class RefundFailedRequest(BaseModel):
+    """Refund one or more failed debits; ``confirm`` guards accidental clicks."""
+
+    user_id: UUID
+    debit_ids: list[UUID] = Field(min_length=1, max_length=500)
+    confirm: str = Field(default="", max_length=20)
 
 
 @router.get("", summary="Failed music charges awaiting a refund")
@@ -58,3 +70,27 @@ async def list_failed_refunds(
         "truncated": len(rows) > limit,
         "refund_command": refund_command(int(round(total_credits)), days=days),
     }
+
+
+@router.post("/refund", summary="Refund selected failed music charges")
+async def refund_failed(
+    ctx: AdminDep,
+    body: RefundFailedRequest,
+) -> dict[str, Any]:
+    """Refund the selected debits through the idempotent wallet refund.
+
+    Requires ``confirm="REFUND"``. Debits that no longer match the audit
+    (already refunded, or a successful task appeared) are left untouched.
+    """
+    if body.confirm.strip().upper() != "REFUND":
+        raise ValidationError(
+            "Refund confirmation missing.",
+            details={"confirm": "type REFUND to confirm"},
+        )
+    result = await refund_failed_charges(
+        get_db_pool(),
+        user_id=body.user_id,
+        debit_ids=body.debit_ids,
+        admin_id=str(ctx.user_id),
+    )
+    return result

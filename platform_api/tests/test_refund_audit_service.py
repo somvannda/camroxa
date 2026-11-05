@@ -113,3 +113,82 @@ async def test_endpoint_payload_has_totals_and_command(monkeypatch: pytest.Monke
     }
     assert payload["refund_command"].endswith("--confirm-credits 10")
     assert payload["rows"][0]["debit_id"] == "d1"
+
+
+@pytest.mark.asyncio
+async def test_refund_failed_charges_uses_idempotent_orphan_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from platform_api.services import refund_audit_service as service
+
+    class _Repo:
+        def __init__(self, pool: object) -> None:
+            self.calls: list[dict] = []
+
+        async def refund_once(self, user_id, amount, reason, ref_id, metadata):
+            self.calls.append(
+                {
+                    "user_id": user_id,
+                    "amount": amount,
+                    "reason": reason,
+                    "ref_id": ref_id,
+                    "metadata": metadata,
+                }
+            )
+            return True
+
+    pool = _Pool(
+        [
+            {
+                "id": "d1",
+                "user_id": "u1",
+                "created_at": NOW,
+                "amount": 100_000,
+            }
+        ]
+    )
+    monkeypatch.setattr(
+        "platform_api.repositories.credit_repo.CreditRepository", _Repo
+    )
+
+    result = await service.refund_failed_charges(
+        pool,
+        user_id="11111111-1111-1111-1111-111111111111",
+        debit_ids=["22222222-2222-2222-2222-222222222222"],
+        admin_id="33333333-3333-3333-3333-333333333333",
+    )
+
+    assert result == {
+        "requested": 1,
+        "matched": 1,
+        "refunded": 1,
+        "skipped": 0,
+        "failed": 0,
+        "credits": 10.0,
+    }
+    assert pool.calls[0][0].count("orphan:") == 1
+
+
+@pytest.mark.asyncio
+async def test_refund_endpoint_requires_confirmation() -> None:
+    from types import SimpleNamespace
+
+    from pydantic import ValidationError as PydanticValidationError
+
+    from platform_api.exceptions import ValidationError
+
+    body = admin_refunds.RefundFailedRequest(
+        user_id="11111111-1111-1111-1111-111111111111",
+        debit_ids=["22222222-2222-2222-2222-222222222222"],
+        confirm="",
+    )
+
+    with pytest.raises(ValidationError):
+        await admin_refunds.refund_failed(SimpleNamespace(user_id="admin"), body)
+
+    with pytest.raises(PydanticValidationError):
+        admin_refunds.RefundFailedRequest(
+            user_id="11111111-1111-1111-1111-111111111111",
+            debit_ids=[],
+            confirm="REFUND",
+        )
