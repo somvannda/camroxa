@@ -178,6 +178,18 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
   # is left with no .next/dist and nginx returns 502 (this happened twice on
   # 2026-10-21). The previous checkout is intact in REPO_BACKUP, so put its
   # artefacts back rather than leaving production broken.
+  # A build is "complete" only when its entry point exists. An interrupted
+  # `next build` / `vite build` leaves a partial directory (e.g. `.next` with
+  # only cache/ and server/ but no BUILD_ID) that `next start` then crash-loops
+  # on, so restore in that case too — not only when the directory is absent.
+  frontend_build_complete() {
+    case "$2" in
+      .next) [[ -f "$1/.next/BUILD_ID" ]] ;;
+      dist)  [[ -f "$1/dist/index.html" ]] ;;
+      *)     return 1 ;;
+    esac
+  }
+
   restore_frontends_on_failure() {
     local rc=$?
     [[ ${rc} -eq 0 ]] && return 0
@@ -186,15 +198,29 @@ if [[ "${SYNC_FROM_LOCAL:-}" == "1" ]]; then
     local app artefact
     for app in admin_portal website music_web; do
       for artefact in .next dist; do
-        if [[ -d "${REPO_BACKUP}/${app}/${artefact}" && ! -d "${REPO_DIR}/${app}/${artefact}" ]]; then
+        if [[ -d "${REPO_BACKUP}/${app}/${artefact}" ]] && ! frontend_build_complete "${REPO_DIR}/${app}" "${artefact}"; then
+          rm -rf "${REPO_DIR}/${app}/${artefact}"
           if cp -a "${REPO_BACKUP}/${app}/${artefact}" "${REPO_DIR}/${app}/${artefact}"; then
             chown -R camxora:camxora "${REPO_DIR}/${app}/${artefact}" || true
             log "Restored ${app}/${artefact}"
           fi
         fi
       done
+      # `npm ci` removes node_modules before reinstalling, so an interrupted run
+      # leaves the `next` binary gone and the service crash-loops with
+      # "next: not found". Restore the last-good node_modules for the Next.js
+      # apps served via `npm run start` (admin_portal is static `dist/`).
+      if [[ "${app}" == "website" || "${app}" == "music_web" ]]; then
+        if [[ -x "${REPO_BACKUP}/${app}/node_modules/.bin/next" && ! -x "${REPO_DIR}/${app}/node_modules/.bin/next" ]]; then
+          rm -rf "${REPO_DIR}/${app}/node_modules"
+          if cp -a "${REPO_BACKUP}/${app}/node_modules" "${REPO_DIR}/${app}/node_modules"; then
+            chown -R camxora:camxora "${REPO_DIR}/${app}/node_modules" || true
+            log "Restored ${app}/node_modules"
+          fi
+        fi
+      fi
     done
-    systemctl restart camxora-music camxora-api 2>/dev/null || true
+    systemctl restart camxora-website camxora-music camxora-api 2>/dev/null || true
   }
   trap restore_frontends_on_failure EXIT
 elif [[ ! -d "${REPO_DIR}/.git" ]]; then
