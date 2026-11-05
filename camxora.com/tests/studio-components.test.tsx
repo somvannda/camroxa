@@ -4,9 +4,11 @@ import userEvent from "@testing-library/user-event";
 
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
+import { StudioLibrary, formatUploadLength } from "@/components/studio/StudioLibrary";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import type { StudioTrack } from "@/lib/studio-tracks";
+import type { StudioUpload } from "@/lib/studio-api";
 import type { WebMusicGeneration } from "@/lib/library-api";
 
 const noop = () => {};
@@ -102,6 +104,89 @@ describe("StudioHeader", () => {
     expect(range.disabled).toBe(true);
     expect(screen.getByText("Full mix (WAV)")).toBeTruthy();
     await user.click(screen.getByLabelText("Export menu"));
+  });
+});
+
+function upload(overrides: Partial<StudioUpload> = {}): StudioUpload {
+  return {
+    id: "u1",
+    filename: "take-1.wav",
+    content_type: "audio/wav",
+    size_bytes: 1024,
+    duration_seconds: 127,
+    url: "https://example.test/u1.wav",
+    ...overrides,
+  };
+}
+
+function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = {}) {
+  return {
+    width: 368,
+    tab: "songs" as const,
+    onTab: noop,
+    query: "",
+    onQuery: noop,
+    songs: [],
+    projects: [],
+    uploads: [],
+    currentProjectId: null,
+    onClose: noop,
+    onAddSong: noop,
+    onAddUpload: noop,
+    onOpenProject: noop,
+    ...overrides,
+  };
+}
+
+describe("formatUploadLength", () => {
+  it("formats known lengths and admits when one is missing", () => {
+    expect(formatUploadLength(127)).toBe("2:07");
+    expect(formatUploadLength(59.6)).toBe("1:00");
+    expect(formatUploadLength(null)).toBe("—");
+    expect(formatUploadLength(0)).toBe("—");
+  });
+});
+
+describe("StudioLibrary", () => {
+  it("lists both project sections plus uploads in the tab bar", () => {
+    render(<StudioLibrary {...libraryProps()} />);
+    const tabs = screen.getAllByRole("tab").map((node) => node.textContent);
+    expect(tabs).toEqual(["Songs", "Projects", "Uploads"]);
+  });
+
+  it("shows uploads with their length and adds one to the timeline", async () => {
+    const user = userEvent.setup();
+    const onAddUpload = vi.fn();
+    render(
+      <StudioLibrary {...libraryProps({ tab: "uploads", uploads: [upload()], onAddUpload })} />
+    );
+    expect(screen.getByText("take-1.wav")).toBeTruthy();
+    expect(screen.getByText("2:07")).toBeTruthy();
+    await user.click(screen.getByLabelText("Add take-1.wav"));
+    expect(onAddUpload).toHaveBeenCalledWith(upload());
+  });
+
+  it("disables adding an upload that has no signed url", () => {
+    render(<StudioLibrary {...libraryProps({ tab: "uploads", uploads: [upload({ url: "" })] })} />);
+    expect((screen.getByLabelText("Add take-1.wav") as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("explains the empty uploads state", () => {
+    render(<StudioLibrary {...libraryProps({ tab: "uploads", uploads: [] })} />);
+    expect(screen.getByText("No uploads yet. Audio you import appears here.")).toBeTruthy();
+  });
+
+  it("filters uploads by the shared search box", async () => {
+    const user = userEvent.setup();
+    const onQuery = vi.fn();
+    render(
+      <StudioLibrary
+        {...libraryProps({ tab: "uploads", uploads: [upload()], query: "zzz", onQuery })}
+      />
+    );
+    expect(screen.queryByText("take-1.wav")).toBeNull();
+    await user.type(screen.getByLabelText("Search library"), "a");
+    expect(onQuery).toHaveBeenCalled();
   });
 });
 

@@ -352,6 +352,11 @@ export async function getStudioUploadUrl(id: string): Promise<string> {
   return upload.url;
 }
 
+/** The user's imported audio, newest first (library "Uploads" tab). */
+export async function listStudioUploads(limit = 50): Promise<{ items: StudioUpload[] }> {
+  return studioJson(`/api/v3/web-music/studio/uploads?limit=${limit}`);
+}
+
 export type StudioProjectVersion = {
   id: string;
   project_id: string;

@@ -54,7 +54,7 @@ Helpers in `scripts/`:
 | Layer | Command | Count |
 |---|---|---|
 | unit (pure helpers) | `npm test` | snap, meter, draft, seed, WAV encode |
-| component | `npm test` | header, footer, provenance strip, track panel |
+| component | `npm test` | header, footer, library, provenance strip, track panel |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
 | e2e | `npm run test:e2e` | interaction smoke, metric parity, axe ×2 |
 
@@ -114,7 +114,8 @@ Everything that does **not** depend on a missing backend endpoint is done. What 
 2. **W4.3 range export** — needs a time-selection model first (the editor has a playhead
    and a loop flag, no range).
 3. **G11 mastering presets / export normalisation** — design work on top of W4.1.
-4. **G12 remainder** — workspaces/stems/uploads tabs need a stems-listing endpoint.
+4. **G12 remainder** — a stems tab (needs a finished stems job first, B-005) and
+   workspaces (no API). Uploads, Songs and Projects are wired.
 5. **G13/G14/G15** — test runner (none installed), axe pass, splitting the 6.9k-line
    shell.
 6. The five capture gaps, opportunistically — see `reference/CAPTURE_GAPS.md`.

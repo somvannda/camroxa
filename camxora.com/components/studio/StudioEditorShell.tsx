@@ -7,7 +7,8 @@ import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
-import { listStudioProjects } from "@/lib/studio-api";
+import { listStudioProjects, listStudioUploads, type StudioUpload } from "@/lib/studio-api";
+import { StudioLibrary, type StudioLibraryTab } from "@/components/studio/StudioLibrary";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
@@ -20,7 +21,6 @@ import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
-import { StudioLibrary } from "@/components/studio/StudioLibrary";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import { StudioTimeline } from "@/components/studio/StudioTimeline";
@@ -80,10 +80,11 @@ export function StudioEditorShell() {
   /** A draft recovered from storage after a failed or offline write (W2.3). */
   const [draft, setDraft] = useState<StudioDraft | null>(null);
   const projectRef = useRef<StudioProject | null>(null);
-  /** Library panel data (G12): songs and other projects, loaded on first open. */
-  const [libraryTab, setLibraryTab] = useState<"songs" | "projects">("songs");
+  /** Library panel data (G12): songs, other projects and uploads, loaded on first open. */
+  const [libraryTab, setLibraryTab] = useState<StudioLibraryTab>("songs");
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
   const [libraryProjects, setLibraryProjects] = useState<StudioProject[] | null>(null);
+  const [libraryUploads, setLibraryUploads] = useState<StudioUpload[] | null>(null);
   const [libraryQuery, setLibraryQuery] = useState("");
   const librarySearchRef = useRef<HTMLInputElement | null>(null);
   /** Source generation of the selected clip, when it came from the library (G16). */
@@ -284,7 +285,7 @@ export function StudioEditorShell() {
   /** Keep the freshest project for draft writes made from event handlers. */
   projectRef.current = project;
 
-  /** Load the library panel's two lists the first time it opens (G12). */
+  /** Load the library panel's lists the first time it opens (G12). */
   useEffect(() => {
     if (!libraryOpen || !user) return;
     let active = true;
@@ -306,10 +307,19 @@ export function StudioEditorShell() {
           if (active) setLibraryProjects([]);
         });
     }
+    if (libraryUploads === null) {
+      listStudioUploads(50)
+        .then((result) => {
+          if (active) setLibraryUploads(result.items ?? []);
+        })
+        .catch(() => {
+          if (active) setLibraryUploads([]);
+        });
+    }
     return () => {
       active = false;
     };
-  }, [libraryOpen, user, librarySongs, libraryProjects]);
+  }, [libraryOpen, user, librarySongs, libraryProjects, libraryUploads]);
 
   /** Resolve the selected clip's source song for the provenance strip (G16). */
   useEffect(() => {
@@ -353,6 +363,28 @@ export function StudioEditorShell() {
           audioUrl: clip.audio_url,
           songId: song.id,
         } as ClipLike & { audioUrl?: string | null; songId?: string },
+      },
+    ]);
+  }
+
+  /** Drop an imported upload onto the selected (or first) track at the playhead. */
+  function addUploadToTimeline(upload: StudioUpload) {
+    const trackId = selectedTrack ?? tracks[0]?.id;
+    if (!trackId || !upload.url) return;
+    const title = upload.filename.replace(/\.[^.]+$/, "") || "Audio";
+    insertClips([
+      {
+        trackId,
+        clip: {
+          id: `clip-upload-${upload.id}-${Date.now().toString(36)}`,
+          title,
+          start: snapToGrid(playhead, secondsPerBar, 4),
+          duration: upload.duration_seconds ?? 8,
+          volume: 1,
+          pan: 0,
+          audioUrl: upload.url,
+          uploadId: upload.id,
+        } as ClipLike & { audioUrl?: string | null; uploadId?: string },
       },
     ]);
   }
@@ -1445,9 +1477,11 @@ export function StudioEditorShell() {
             onQuery={setLibraryQuery}
             songs={librarySongs}
             projects={libraryProjects}
+            uploads={libraryUploads}
             currentProjectId={projectId}
             onClose={() => setLibraryOpen(false)}
             onAddSong={addSongToTimeline}
+            onAddUpload={addUploadToTimeline}
             onOpenProject={(id) => {
               window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;
             }}

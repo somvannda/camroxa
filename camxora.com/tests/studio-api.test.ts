@@ -31,6 +31,20 @@ beforeEach(() => {
   calls.length = 0;
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
     calls.push({ url: String(url), init });
+    if (String(url).includes("/studio/uploads")) {
+      return jsonResponse({
+        items: [
+          {
+            id: "u1",
+            filename: "take-1.wav",
+            content_type: "audio/wav",
+            size_bytes: 1024,
+            duration_seconds: 12.5,
+            url: "https://example.test/u1.wav",
+          },
+        ],
+      });
+    }
     if (String(url).includes("/projects/missing")) {
       return jsonResponse({ error: { message: "Project not found." } }, 404);
     }
@@ -110,6 +124,16 @@ describe("getStudioProject", () => {
   it("encodes the id into the path", async () => {
     await getStudioProject("a b/c");
     expect(calls[0].url).toContain("a%20b%2Fc");
+  });
+});
+
+describe("listStudioUploads", () => {
+  it("asks for the newest uploads and returns the server payload", async () => {
+    const { listStudioUploads } = await import("@/lib/studio-api");
+    const result = await listStudioUploads(25);
+    expect(calls[0].url).toContain("/studio/uploads?limit=25");
+    expect(result.items[0].filename).toBe("take-1.wav");
+    expect(result.items[0].duration_seconds).toBe(12.5);
   });
 });
 

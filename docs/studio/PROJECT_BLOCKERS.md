@@ -46,15 +46,17 @@ and `platform_api` (8100) were stopped. PostgreSQL (5432) is up.
 **Unblock:** start the two services (see `README.md` / `musicapi/README.md`), ensure
 `camxora.com/.env.local` points at `PLATFORM_API_URL=http://localhost:8100`.
 
-## B-004 — Uploads/stems tabs need a listing API
+## B-004 — Stems tab needs a listing API
 
-**Blocks:** PRJ-022/023 completion.
+**Blocks:** G12's stems tab, and PRJ-023.
 
-**State:** uploads and stems exist as objects but there is no "list my stems" /
-"list my uploads" endpoint surfaced to the web client.
+**State:** uploads now list (`GET /api/v3/web-music/studio/uploads` — wired into the
+library's Uploads tab). Stems do not: a stem set exists only as a `studio_operations`
+row with a provider-shaped `result_json`, and no stems job has ever completed in this
+environment (B-005), so the projection cannot be written against real data.
 
-**Unblock:** add `GET /api/v3/web-music/studio/uploads` and a stems projection, or
-derive from generations. Needs a small backend task; not on the critical path.
+**Unblock:** finish B-005, capture one successful stems result, then project it as a
+typed list endpoint. Not on the critical path.
 
 ## B-005 — Studio ops need one genuinely generated clip
 

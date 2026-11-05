@@ -35,7 +35,7 @@ reference, which has none of them.
 
 | Done | Remaining |
 |---|---|
-| G6 marquee + multi-drag + C/V/D · G7 snap · G8 drag threshold · G9 delete + focus · G16 clip provenance · G17 audition speed · G18 first-run onboarding · G19 visible-window culling · G20 touch targets | **G12** workspaces/stems/uploads tabs (needs a stems-listing API) · **G13** test runner · **G14** axe pass · **G15** split the 6.9k-line shell |
+| G6 marquee + multi-drag + C/V/D · G7 snap · G8 drag threshold · G9 delete + focus · G16 clip provenance · G17 audition speed · G18 first-run onboarding · G19 visible-window culling · G20 touch targets | **G12** library: stems tab (needs a finished stems job, B-005) and workspaces (no API) · **G13** Playwright layer · **G14** axe pass · **G15** split the 6.9k-line shell |
 
 ## Phase 4 — W4 advanced audio, then W5 tests, then W6 verification
 
