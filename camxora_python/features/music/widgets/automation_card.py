@@ -509,6 +509,12 @@ class AutomationCard(StudioPanel):
         self._auto_upload_enabled = enabled
         self._auto_upload.setEnabled(enabled)
 
+    def set_auto_upload_hint(self, hint: str) -> None:
+        """Explain why the YouTube Upload toggle is unavailable."""
+        base = "Publish each merged video to YouTube through Post for Me."
+        cleaned = str(hint or "").strip()
+        self._auto_upload.setToolTip(f"{base}\n{cleaned}" if cleaned else base)
+
     def automation_values(self) -> dict[str, bool]:
         return {
             "auto_gen_image": self._auto_image.isChecked(),

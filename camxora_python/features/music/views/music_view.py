@@ -1131,8 +1131,18 @@ class MusicView(QWidget):
             self._operation_costs.get("publish"),
             self._music_settings.auto_upload_youtube,
         )
-        breakdown = get_music_plan_cost_breakdown(*cost_args)
-        total_cost = get_batch_generate_total_cost(*cost_args)
+        breakdown = get_music_plan_cost_breakdown(
+            *cost_args,
+            title_cost=self._operation_costs.get("title"),
+            album_cost=self._operation_costs.get("album"),
+            server_draft_math=True,
+        )
+        total_cost = get_batch_generate_total_cost(
+            *cost_args,
+            title_cost=self._operation_costs.get("title"),
+            album_cost=self._operation_costs.get("album"),
+            server_draft_math=True,
+        )
         preflight = self._generation_preflight
         if preflight and preflight.covered_by_subscription:
             if not self._music_settings.auto_gsuno and not self._music_settings.auto_gen_image:
@@ -1156,7 +1166,15 @@ class MusicView(QWidget):
         readiness = self._build_readiness_report()
         setup_ready = readiness.generate_ready if base_ready else False
         can_generate = base_ready and setup_ready and (preflight.can_generate if preflight is not None else False)
-        self._automation_card.set_auto_upload_enabled(bool(base_ready and readiness.upload_ready))
+        upload_ready = bool(base_ready and readiness.upload_ready)
+        self._automation_card.set_auto_upload_enabled(upload_ready)
+        if upload_ready:
+            self._automation_card.set_auto_upload_hint("")
+        else:
+            missing = readiness.incomplete_upload_labels()
+            self._automation_card.set_auto_upload_hint(
+                "Upload needs: " + "; ".join(missing) if missing else "Finish the plan first."
+            )
         self._automation_card.set_generate_enabled(can_generate)
         warnings = []
         if pair_mismatch:
