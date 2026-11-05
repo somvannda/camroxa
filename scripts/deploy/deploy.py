@@ -79,6 +79,7 @@ DEPLOY_FILES = (
     # refunded. Wiring it to a page would be noise until the per-attempt ref fix.
     "scripts/ops/audit_failed_music_refunds.py",
     "scripts/ops/refund_failed_music_charges.py",
+    "scripts/ops/cap_usage.py",
 )
 # Kept for callers that imported these names from deploy.py.
 __all__ = [

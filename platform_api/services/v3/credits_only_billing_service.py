@@ -265,6 +265,15 @@ class CreditsOnlyBillingService:
         spent = await self._store.music_credits_spent_today(user_id)
         if spent + int(quote.amount_units) <= cap * CREDIT_SCALE:
             return
+        # Record the rejection: without this there is no evidence of who was
+        # blocked or how often, because the charge never reaches the ledger.
+        logger.warning(
+            "music daily cap blocked user=%s spent_credits=%s requested_credits=%s cap_credits=%s",
+            user_id,
+            units_to_credits(spent),
+            quote.amount_credits,
+            cap,
+        )
         raise QuotaExceededError(
             f"Daily music limit reached ({cap} credits). It resets at midnight.",
             details={
