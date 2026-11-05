@@ -57,8 +57,7 @@ SELECT d.id,
        EXISTS (
            SELECT 1 FROM credit_transactions r
            WHERE r.user_id = d.user_id
-             AND r.direction IN ('credit', 'refund')
-             AND r.reason ILIKE '%refund%'
+             AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
              AND (r.ref_id = t.id::text OR r.ref_id = t.song_id::text)
        ) AS refunded
 FROM debits d
@@ -78,8 +77,7 @@ WHERE t.id IS NULL
         AND NOT EXISTS (
             SELECT 1 FROM credit_transactions r
             WHERE r.user_id = d.user_id
-              AND r.direction IN ('credit', 'refund')
-              AND r.reason ILIKE '%refund%'
+              AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
               AND (r.ref_id = t.id::text OR r.ref_id = t.song_id::text)
         )
    )

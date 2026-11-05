@@ -57,8 +57,7 @@ WHERE (t.id IS NULL OR lower(coalesce(t.status, '')) IN ('failed', 'error'))
   AND NOT EXISTS (
         SELECT 1 FROM credit_transactions r
         WHERE r.user_id = d.user_id
-          AND r.direction IN ('credit', 'refund')
-          AND r.reason ILIKE '%refund%'
+          AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
           AND (
                 r.ref_id = d.id::text
                 OR r.ref_id = ('orphan:' || d.id::text)
