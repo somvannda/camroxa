@@ -38,6 +38,9 @@ export type StudioHeaderProps = {
   rangeReady: boolean;
   onToggleExport: () => void;
   onExport: (scope: "mix" | "tracks" | "range" | "json") => void;
+  /** Mix/range exports are gain-matched to the menu's target when on (G11). */
+  normalise: boolean;
+  onToggleNormalise: () => void;
 
   libraryOpen: boolean;
   onToggleLibrary: () => void;
@@ -74,6 +77,8 @@ export function StudioHeader(props: StudioHeaderProps) {
     rangeReady,
     onToggleExport,
     onExport,
+    normalise,
+    onToggleNormalise,
     libraryOpen,
     onToggleLibrary,
     onBackToStart,
@@ -177,6 +182,15 @@ export function StudioHeader(props: StudioHeaderProps) {
         </button>
         {exportOpen ? (
           <div className="se-export-menu" role="menu" aria-label="Export options">
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={normalise}
+              onClick={onToggleNormalise}
+              title="Sets the mix peak to −1 dBFS so successive exports compare"
+            >
+              {normalise ? "✓ " : ""}Normalise mix to −1 dBFS
+            </button>
             <button type="button" role="menuitem" onClick={() => onExport("mix")}>
               Full mix (WAV)
             </button>

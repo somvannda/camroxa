@@ -14,6 +14,7 @@ import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTra
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { renderMix, type ExportClip, type ExportTrack } from "@/lib/studio-export";
+import { EXPORT_TARGET_PEAK_DB } from "@/lib/studio-normalise";
 import { analyse, formatMeter, type MeterReading } from "@/lib/studio-meter";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
@@ -175,6 +176,8 @@ export function StudioEditorShell() {
     dragRef.current = { startX: event.clientX, ids: group, origins };
   }
   const [exporting, setExporting] = useState(false);
+  /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
+  const [exportNormalise, setExportNormalise] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   /** Undo/redo: documents, newest last. */
   const historyRef = useRef<{ undo: { data: unknown; label: string }[]; redo: { data: unknown; label: string }[] }>(
@@ -1202,14 +1205,17 @@ export function StudioEditorShell() {
         clipIds: track.clipIds,
       }));
       const chain = ((project.data || {}) as { masterChain?: MasterChainEntry[] }).masterChain;
+      // Mix/range only: per-track files must keep their relative balance (G11).
+      const normalise = exportNormalise ? EXPORT_TARGET_PEAK_DB : null;
 
       if (scope === "mix") {
-        const wav = await renderMix(buffers, exportClips, exportTracks, { chain });
+        const wav = await renderMix(buffers, exportClips, exportTracks, { chain, normalise });
         download(wav, `${project.title || "mix"}.wav`, "audio/wav");
       } else if (scope === "range") {
         // Exports exactly the loop range, the reference's "Selected Time Range" (§87).
         const wav = await renderMix(buffers, exportClips, exportTracks, {
           chain,
+          normalise,
           from: loopStart,
           to: loopEnd,
         });
@@ -1403,6 +1409,8 @@ export function StudioEditorShell() {
         rangeReady={loopEnd > loopStart}
         onToggleExport={() => setExportOpen((open) => !open)}
         onExport={(scope) => void runExport(scope)}
+        normalise={exportNormalise}
+        onToggleNormalise={() => setExportNormalise((value) => !value)}
         libraryOpen={libraryOpen}
         onToggleLibrary={() => setLibraryOpen((open) => !open)}
         onBackToStart={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}

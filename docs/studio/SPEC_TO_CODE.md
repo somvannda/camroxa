@@ -37,8 +37,9 @@ implements it, and how it was verified. Only rows that exist are listed.
 ## Added — they don't have it, we do
 
 Save status · conflict resolution · offline draft · unsaved guard · master peak
-readout · project JSON export · 3-tile onboarding (theirs has 5, three of which we
-cannot honour).
+readout · **export normalisation** (`lib/studio-normalise.ts`: mix/range gained to a
+−1 dBFS sample peak) · project JSON export · 3-tile onboarding (theirs has 5, three of
+which we cannot honour).
 
 ## Captured as negatives (so there is nothing to clone)
 
@@ -54,5 +55,6 @@ cannot honour).
 
 - Screenshots: `reference/screens/` (78 files) + `reference/SCREENSHOT_INDEX.md`
 - Measurements: `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §1–§96
-- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (15 of 20 closed, each with its commit)
-- Audio claims: `window.__buildMasterBus`, `__studioExport`, `__studioMeter` in dev
+- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (19 of 22 closed; G12, G13 and G21 partial)
+- Audio claims: `window.__buildMasterBus`, `__studioExport`, `__studioMeter`,
+  `__studioNormalise` in dev

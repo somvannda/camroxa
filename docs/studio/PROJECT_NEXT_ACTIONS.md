@@ -41,7 +41,8 @@ reference, which has none of them.
 
 Unchanged from the roadmap: mastering chain (W4.1), stems with pricing (W4.2),
 export matrix (W4.3), loudness readout (W4.4), then the test suite (W5.1–W5.5) and
-the coverage re-walk (W6).
+the coverage re-walk (W6). Export normalisation (G11) landed as an opt-in mix/range
+gain match — see D-010.
 
 ## Rules
 

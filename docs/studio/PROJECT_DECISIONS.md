@@ -170,7 +170,6 @@ Concretely:
 ---
 
 ## D-009 — Studio operations price from `credit_pricing`, never from `plans`
-
 **Date:** 2026-11-05 · **Status:** accepted — **owner direction** ("we can go on", narrow scope)
 
 **Decision.** Studio charge, quote and refund go through
@@ -202,4 +201,35 @@ costs belong to the pricing table; the charge bridge was wired to the retired on
   against a store whose `resolve_charge_plan` raises, and that `music` still resolves a
   plan; `test_v3_credits_only.py` proves the billing service prices a studio op from
   `credit_pricing`.
+
+---
+
+## D-010 — Export normalisation is sample-peak, mix-only, opt-in
+
+**Date:** 2026-11-05 · **Status:** accepted (G11)
+
+**Decision.** The export menu carries one checkbox: **Normalise mix to −1 dBFS**. When
+on, `renderMix` scales the finished mix (and the selection render) so its loudest sample
+sits at −1 dBFS. Per-track exports are never normalised. The setting is off by default
+and lives in component state for the session — it is not written into the project.
+
+**Why.**
+
+- The export dialog was never captured (`reference/CAPTURE_GAPS.md`, C-02), so inventing
+  a full mastering UI would be guessing. A single, measurable option closes the real gap
+  (exports of the same project landing at different levels) without pretending to know
+  their dialog.
+- **Sample peak, not LUFS**: integrated loudness needs a BS.1770 meter. We have a 4x
+  inter-sample estimate, labelled as such — aiming a LUFS target with it would be a
+  number that looks authoritative and is not.
+- **Mix-only**: normalising each track file independently would flatten the arrangement's
+  relative balance. A mixer must be able to reimport stems and keep their levels.
+- **−1 dBFS** matches the default limiter threshold in `lib/studio-master-bus.ts`, so the
+  target and the chain agree.
+- **Opt-in**: existing exports stay byte-identical unless the box is ticked, which keeps
+  the W4.3 byte-exact expectations meaningful.
+
+**Consequences.** The gain is computed after the master chain, so the chain still shapes
+the sound; only the final level moves. If LUFS matching is ever wanted, add a real meter
+first — do not relabel this one.
 

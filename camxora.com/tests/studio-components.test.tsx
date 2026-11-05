@@ -40,6 +40,8 @@ function headerProps() {
     rangeReady: false,
     onToggleExport: noop,
     onExport: noop,
+    normalise: false,
+    onToggleNormalise: noop,
     libraryOpen: false,
     onToggleLibrary: noop,
     onBackToStart: noop,
@@ -104,6 +106,25 @@ describe("StudioHeader", () => {
     expect(range.disabled).toBe(true);
     expect(screen.getByText("Full mix (WAV)")).toBeTruthy();
     await user.click(screen.getByLabelText("Export menu"));
+  });
+
+  it("exposes export normalisation as a checkbox that does not close the menu", async () => {
+    const user = userEvent.setup();
+    const onToggleNormalise = vi.fn();
+    const { rerender } = render(
+      <StudioHeader {...headerProps()} exportOpen onToggleNormalise={onToggleNormalise} />
+    );
+    const item = screen.getByRole("menuitemcheckbox", { name: /Normalise mix/ });
+    expect(item.getAttribute("aria-checked")).toBe("false");
+
+    await user.click(item);
+    expect(onToggleNormalise).toHaveBeenCalledOnce();
+    expect(screen.getByRole("menu")).toBeTruthy();
+
+    rerender(<StudioHeader {...headerProps()} exportOpen normalise onToggleNormalise={onToggleNormalise} />);
+    expect(
+      screen.getByRole("menuitemcheckbox", { name: /Normalise mix/ }).getAttribute("aria-checked")
+    ).toBe("true");
   });
 });
 

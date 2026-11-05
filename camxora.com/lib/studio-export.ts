@@ -10,6 +10,7 @@
  */
 
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
+import { normaliseChannels } from "@/lib/studio-normalise";
 
 export type ExportClip = {
   id: string;
@@ -72,6 +73,11 @@ export type RenderOptions = {
   from?: number;
   to?: number;
   chain?: MasterChainEntry[];
+  /**
+   * Normalise the finished render to this sample-peak target (dBFS). Off when
+   * omitted, so a plain render stays byte-identical to what the mix produced.
+   */
+  normalise?: number | null;
 };
 
 /**
@@ -125,9 +131,11 @@ export async function renderMix(
   }
 
   const rendered = await context.startRendering();
-  const channels = Array.from({ length: rendered.numberOfChannels }, (_, index) =>
+  const raw = Array.from({ length: rendered.numberOfChannels }, (_, index) =>
     rendered.getChannelData(index)
   );
+  const channels =
+    options.normalise == null ? raw : normaliseChannels(raw, options.normalise).channels;
   return encodeWav(channels, sampleRate);
 }
 

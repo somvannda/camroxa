@@ -130,6 +130,7 @@ Everything that does **not** depend on a missing backend endpoint is done. What 
 | `lib/studio-master-bus.ts` | real EQ/comp/limiter/drive node graph | `window.__buildMasterBus` |
 | `lib/studio-export.ts` | 16-bit WAV encoder + offline mixdown | `window.__studioExport` |
 | `lib/studio-meter.ts` | peak / RMS / 4x inter-sample estimate | `window.__studioMeter` |
+| `lib/studio-normalise.ts` | sample-peak gain matching for exports | `window.__studioNormalise` |
 
 The handles exist so audio behaviour can be measured with an `OfflineAudioContext`
 instead of by ear — that is how W4.1, W4.3 and W4.4 were verified.
