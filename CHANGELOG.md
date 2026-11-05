@@ -7,6 +7,15 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.14] - 2026-11-05
+
+### Changed
+
+- A Progress row shows the live upload state while a video is being sent to storage
+  (`uploading 42%`) instead of keeping its old "Not started" label, and restores the server state when
+  the transfer finishes. Previously the row looked idle for the whole multi-GB upload because the
+  publish job is only created after the file lands.
+
 ## [1.5.13] - 2026-11-05
 
 ### Fixed
