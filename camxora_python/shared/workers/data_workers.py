@@ -2892,9 +2892,11 @@ class PublishUploadWorker(QThread):
         self._auto_context = dict(auto_context or {})
 
     def run(self) -> None:
+        step = "quote"
         try:
             request = self._request or self._build_auto_request()
             self._request = request
+            step = "quote"
             self.status_changed.emit("Checking publishing credits…")
             quote = self._api.get_publish_quote()
             if not quote.available:
@@ -2902,25 +2904,39 @@ class PublishUploadWorker(QThread):
                     f"Not enough credits: this upload costs {quote.credits_per_upload:g} "
                     f"and your balance is {quote.balance:g}."
                 )
+            step = "create job"
             self.status_changed.emit("Creating upload job…")
             job = self._api.create_publish_job(request)
             if not job.upload_url:
                 raise RuntimeError("The publishing service did not return an upload URL.")
+            step = "upload video"
             self._put(job.upload_url, request.file_path or "", "video/mp4")
             if job.thumbnail_upload_url and request.thumbnail_path:
+                step = "upload thumbnail"
                 self.status_changed.emit("Uploading thumbnail…")
                 self._put(
                     job.thumbnail_upload_url,
                     request.thumbnail_path,
                     _image_mime(request.thumbnail_path),
                 )
+            step = "finalize"
             self.status_changed.emit("Finalizing upload…")
             result = self._api.complete_publish_job(job.job_uid, request.file_checksum)
             self.succeeded.emit(result)
         except PlatformApiError as exc:
-            self.failed.emit(str(exc))
+            detail = str(exc).strip()
+            self.failed.emit(f"{step}: {detail}" if detail else f"{step}: request rejected.")
         except Exception as exc:
-            self.failed.emit(str(exc) or "Publishing failed.")
+            detail = str(exc).strip()
+            label = type(exc).__name__
+            message = f"{step}: {detail}" if detail else f"{step}: {label}"
+            try:
+                from shared.services.app_logger import log_error
+
+                log_error(f"YouTube upload failed at {message}", category="export", exc=exc)
+            except Exception:
+                pass
+            self.failed.emit(message)
 
     def _build_auto_request(self) -> CreatePublishJobRequest:
         profile_id = str(self._auto_context.get("profile_id") or "").strip()
@@ -2982,15 +2998,26 @@ class PublishUploadWorker(QThread):
             },
         )
         try:
-            with urllib_request.urlopen(request, timeout=900) as response:
+            with urllib_request.urlopen(request, timeout=1800) as response:
                 status = int(getattr(response, "status", 200) or 200)
                 if status >= 300:
                     raise RuntimeError(f"Upload failed with HTTP {status}.")
         except urllib_error.HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")[:500]
             raise RuntimeError(f"Upload failed with HTTP {exc.code}: {body}") from exc
+        except TimeoutError as exc:
+            sent_mb = reader._sent / (1024 * 1024)
+            total_mb = size / (1024 * 1024)
+            raise RuntimeError(
+                f"Upload timed out after 30 min ({sent_mb:.1f} of {total_mb:.1f} MB sent). "
+                "Check your connection and try again."
+            ) from exc
         except urllib_error.URLError as exc:
             raise RuntimeError(f"Upload failed: {exc.reason}") from exc
+        except OSError as exc:
+            raise RuntimeError(
+                f"Upload interrupted: {type(exc).__name__}: {str(exc).strip() or 'connection closed'}"
+            ) from exc
         finally:
             reader.close()
 
