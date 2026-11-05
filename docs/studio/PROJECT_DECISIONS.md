@@ -166,3 +166,40 @@ Concretely:
 **Verification impact:** "1:1" becomes measurable. Layout is compared against
 `reference/live-studio-layout.md`; contracts against
 `reference/endpoint-inventory.json`; labels against `reference/ui-strings.md`.
+
+---
+
+## D-009 — Studio operations price from `credit_pricing`, never from `plans`
+
+**Date:** 2026-11-05 · **Status:** accepted — **owner direction** ("we can go on", narrow scope)
+
+**Decision.** Studio charge, quote and refund go through
+`CreditsOnlyBillingService` and read prices from `credit_pricing`:
+
+| Operation | Row | Credits |
+|---|---|---|
+| `studio_edit` | `suno/studio_edit` | 12 |
+| `studio_stems_2` | `suno/studio_stems_2` | 12 |
+| `studio_stems_12` | `suno/studio_stems_12` | 60 |
+
+`WebMusicChargeBridge` no longer resolves a charge plan for studio ops. Music, lyric,
+style, title, album, image, video and merge keep their existing behaviour, so this change
+cannot move any other price.
+
+**Why.** Migration 174 dropped `plans`, but the Studio path still asked for a plan before
+reading a price, so every stems/extend/cover request died with
+`UndefinedTableError: relation "plans" does not exist`. Project rules already say credit
+costs belong to the pricing table; the charge bridge was wired to the retired one.
+
+**Consequences.**
+
+- Recreating a `plans` row, or inventing a per-operation allowance, stays forbidden: it
+  would hide the defect and price studio work from a table the product no longer has.
+- Studio pricing has no plan-specific discount by construction. If a per-plan discount is
+  ever wanted, introduce it deliberately in `credit_pricing`/billing rather than
+  resurrecting plan columns.
+- Regression tests: `test_web_music_v3_charge.py` proves studio quote/charge/refund work
+  against a store whose `resolve_charge_plan` raises, and that `music` still resolves a
+  plan; `test_v3_credits_only.py` proves the billing service prices a studio op from
+  `credit_pricing`.
+

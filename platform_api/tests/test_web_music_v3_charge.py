@@ -10,6 +10,7 @@ import pytest
 
 from platform_api.exceptions import InsufficientCreditsError, QuotaExceededError
 from platform_api.services.credit_units import credits_to_units, units_to_credits
+from platform_api.services.v3.credits_only_billing_service import CreditsOnlyBillingService
 from platform_api.services.v3.web_music_charge import WebMusicChargeBridge
 from platform_api.services.web_music_service import WebMusicService
 
@@ -76,8 +77,10 @@ class FakeStore:
             "style_credits": 2,
             "daily_credits": 0,
         }
+        self.resolve_calls = 0
 
     async def resolve_charge_plan(self, user_id: UUID) -> dict | None:
+        self.resolve_calls += 1
         return self.plan
 
     async def get_active_free_plan(self) -> dict | None:
@@ -86,6 +89,20 @@ class FakeStore:
             "daily_credits": 50,
             "music_credits": 10,
         }
+
+
+class RetiredPlansStore:
+    """Store for a database where ``plans`` has been dropped (migration 174).
+
+    Music ops still ask for a plan context; studio ops must never touch it.
+    """
+
+    def __init__(self) -> None:
+        self.resolve_calls = 0
+
+    async def resolve_charge_plan(self, user_id: UUID) -> dict | None:
+        self.resolve_calls += 1
+        raise RuntimeError('relation "plans" does not exist')
 
 
 class FakeWallet:
@@ -313,3 +330,142 @@ async def test_release_does_not_refund_when_no_debit_recorded() -> None:
 
 def test_units_round_trip() -> None:
     assert units_to_credits(credits_to_units(10)) == 10.0
+
+
+class StudioPricing:
+    """credit_pricing rows for studio operations (display credits -> units)."""
+
+    def __init__(self) -> None:
+        self.prices = {
+            ("suno", "studio_edit"): credits_to_units(12),
+            ("suno", "studio_stems_2"): credits_to_units(12),
+            ("suno", "studio_stems_12"): credits_to_units(60),
+        }
+
+    async def get_price(
+        self, ai_service: str, operation_type: str, sub_model: str | None = None
+    ) -> int:
+        try:
+            return self.prices[(ai_service, operation_type)]
+        except KeyError as exc:
+            raise RuntimeError(f"missing {ai_service}/{operation_type}") from exc
+
+    async def get_all_pricing(self) -> list[dict]:
+        return [
+            {
+                "ai_service": service,
+                "operation_type": op,
+                "credits_per_operation": units,
+            }
+            for (service, op), units in self.prices.items()
+        ]
+
+
+def _studio_bridge(
+    *, store: FakeStore | RetiredPlansStore
+) -> tuple[WebMusicChargeBridge, FakeV3Billing, FakeGrant]:
+    billing = FakeV3Billing(amount_credits=12)
+    grant = FakeGrant()
+
+    async def has_paid_web(_user_id: UUID) -> bool:
+        return False
+
+    bridge = WebMusicChargeBridge(
+        v3_billing=billing,
+        v3_grant=grant,
+        v3_store=store,
+        credit_repo=FakeWallet(500),
+        credit_service=FakeV2Credits(0),
+        has_paid_web_subscription=has_paid_web,
+    )
+    return bridge, billing, grant
+
+
+@pytest.mark.asyncio
+async def test_studio_quote_never_reads_the_retired_plans_table() -> None:
+    store = RetiredPlansStore()
+    bridge, _billing, _grant = _studio_bridge(store=store)
+
+    op, amount, quote = await bridge.quote_credits(USER_ID, "studio_stems_2")
+
+    assert op == "studio_stems_2"
+    assert amount == 12
+    assert quote.plan_id is None
+    assert store.resolve_calls == 0
+
+
+@pytest.mark.asyncio
+async def test_studio_charge_works_without_a_plans_table() -> None:
+    store = RetiredPlansStore()
+    bridge, billing, grant = _studio_bridge(store=store)
+
+    charged = await bridge.charge(USER_ID, "studio_stems_2", ref_id="op-1")
+
+    assert charged.path == "v3"
+    assert charged.op == "studio_stems_2"
+    assert charged.amount_credits == 12
+    assert charged.ref_id == "op-1"
+    assert store.resolve_calls == 0
+    assert grant.calls == 1
+    assert billing.charges == [
+        {
+            "user_id": USER_ID,
+            "op": "studio_stems_2",
+            "ref_id": "op-1",
+            "product": "web_music",
+            "model": None,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_studio_refund_reverses_the_studio_charge() -> None:
+    bridge, billing, _grant = _studio_bridge(store=RetiredPlansStore())
+
+    charged = await bridge.charge(USER_ID, "studio_stems_12", ref_id="op-2")
+    await bridge.refund(USER_ID, charged)
+
+    assert billing.refunds == [
+        {
+            "user_id": USER_ID,
+            "op": "studio_stems_12",
+            "amount_credits": 12.0,
+            "ref_id": "op-2",
+            "product": "web_music",
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_music_op_still_resolves_a_charge_plan() -> None:
+    """The studio carve-out must not remove plan context from generated ops."""
+    store = FakeStore()
+    bridge, _billing, _grant = _studio_bridge(store=store)
+
+    await bridge.charge(USER_ID, "music", ref_id="res-1")
+
+    assert store.resolve_calls >= 1
+
+
+@pytest.mark.asyncio
+async def test_studio_operation_pricing_reads_credit_pricing() -> None:
+    """The real billing service prices studio ops with no plan row anywhere."""
+    billing = CreditsOnlyBillingService(
+        store=RetiredPlansStore(),  # type: ignore[arg-type]
+        credit_repo=FakeWallet(500),
+        pricing_service=StudioPricing(),
+    )
+    service = WebMusicService(
+        AsyncMock(),
+        AsyncMock(),
+        credit_service=FakeV2Credits(0),
+        v3_billing=billing,
+        v3_grant=FakeGrant(),
+        v3_store=RetiredPlansStore(),  # type: ignore[arg-type]
+        credit_repo=FakeWallet(500),
+        settings_repo=SimpleNamespace(get_system_setting=AsyncMock(return_value=True)),
+    )
+
+    pricing = await service.studio_operation_pricing(USER_ID)
+
+    assert pricing == {"edit": 12, "stems_2": 12, "stems_12": 60}

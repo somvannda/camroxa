@@ -56,8 +56,27 @@ and `platform_api` (8100) were stopped. PostgreSQL (5432) is up.
 **Unblock:** add `GET /api/v3/web-music/studio/uploads` and a stems projection, or
 derive from generations. Needs a small backend task; not on the critical path.
 
+## B-005 — Studio ops need one genuinely generated clip
+
+**Blocks:** the last step of W4.2 (receiving an actual stem set) and the stems half of
+W4.3.
+
+**State:** the credit path is fixed and verified (D-009). The forward now reaches
+musicapi, which answers `409 "The source clip's Suno account is not recorded."` because
+`findAssetAccountAny` finds nothing for the seeded `sandbox-clip-ok`: it reads
+`asset_owners` / `jobs.result_json` in the `sunoapi` database, and the seeded clip never
+came from a Suno account.
+
+**Unblock:** generate one real clip in the sandbox (needs a public
+`PLATFORM_SUNO_CALLBACK_BASE_URL` — Suno refuses to call back to localhost, which the
+readiness endpoint reports as `suno_callback_base_url: false`), then request stems on it.
+
+**Do not** point a seeded task at another user's real asset id: it would run a paid
+Studio operation against someone else's Suno asset.
+
 ## Closed
 
 | ID | Was | Closed by |
 |---|---|---|
-| — | — | — |
+| — | Studio charge died on `relation "plans" does not exist` | D-009 — studio ops price from `credit_pricing` |
+

@@ -67,7 +67,7 @@ needs an interaction spec row before code.
 | # | Task | Exit test |
 |---|---|---|
 | W4.1 | ✅ Mixdown/mastering chain audible — lib/studio-master-bus.ts builds real EQ/comp/limiter/drive nodes on the master | A/B render differs measurably from dry (measured) |
-| W4.2 | ◐ Stem separation UI — "Get stems" on a clip, polls the operation, lands one track per stem | path verified end to end; a seeded clip is not Studio-ready, so the server's refusal is surfaced verbatim |
+| W4.2 | ◐ Stem separation UI — "Get stems" on a clip, polls the operation, lands one track per stem | quote/debit/operation/forward/refund verified live (§D-009, `reference/STEMS_CHAIN.md`); receiving stems needs one genuinely generated clip, because musicapi resolves the owning Suno account |
 | W4.3 | ✅ Export: full mix, one file per track, selected range, project JSON (stems open) | RIFF files, byte-exact lengths; range matches loopEnd - loopStart |
 | W4.4 | ✅ Master peak readout — sample peak, RMS and a 4x inter-sample estimate on the master bus | maths verified against an independent calculation; live needle blocked by tab throttling |
 

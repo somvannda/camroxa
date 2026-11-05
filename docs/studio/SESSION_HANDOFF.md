@@ -62,6 +62,14 @@ CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm 
 any PR touching `camxora.com`. The e2e specs are not in CI yet — they need the app plus
 the platform API and a database, which the workflow does not provision.
 
+**Backend suite:** `python -m pytest platform_api/tests -q` → 3159 passed, 2 failed at
+`dbe0245d`. Both failures pre-date D-009 and are unrelated (they assert on retired plan
+machinery): `test_user_spend_service.py::test_user_spend_flags_over_allowance_and_margin_risk`
+(expects a `song` meter) and
+`test_web_music_batch_access.py::test_legacy_ledger_unlocks_pack_balance` (expects the
+legacy pack unlock to win with the v3 flag off). Fixing them is a separate billing
+cleanup; do not read them as studio regressions.
+
 `beforeunload` note: when a save is pending the editor blocks navigation, so a
 Playwright `page.goto` can hang on the confirmation dialog. Close the save first, or open
 a fresh page.
@@ -100,8 +108,9 @@ future "parity" work should not delete them.
 
 Everything that does **not** depend on a missing backend endpoint is done. What is left:
 
-1. **W4.2 stems** and the stems half of **W4.3** — both need the stems job API plus a
-   `pricing` lookup; neither can be exercised without them.
+1. **W4.2 stems** and the stems half of **W4.3** — the charge path is fixed and verified
+   (D-009); what remains is one genuinely generated clip so musicapi can resolve the
+   owning Suno account (blocker B-005).
 2. **W4.3 range export** — needs a time-selection model first (the editor has a playhead
    and a loop flag, no range).
 3. **G11 mastering presets / export normalisation** — design work on top of W4.1.

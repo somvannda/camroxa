@@ -86,6 +86,7 @@ class FakeStore:
         self.lots: list[dict] = []
         self.applied: set[str] = set()
         self.conversion_runs: list[dict] = []
+        self._pool = _EmptyPool()
 
     async def list_plans(self) -> list[dict]:
         return list(self.plans.values())
@@ -137,6 +138,9 @@ class FakeStore:
             for lot in await self.list_lots(user_id)
             if lot["tag"] == "grant"
         )
+
+    async def live_pack_expiry(self, user_id: UUID):
+        return None
 
     async def insert_lot(self, **kwargs) -> dict:
         lot = {"id": uuid4(), **kwargs}
@@ -198,6 +202,9 @@ class FakeTopup:
 class _EmptyPool:
     async def fetch(self, query: str, *args):
         return []
+
+    async def fetchval(self, query: str, *args):
+        return False
 
 
 class FakePlanRepo:
@@ -303,6 +310,34 @@ async def test_quote_falls_back_to_credit_pricing(billing: CreditsOnlyBillingSer
     assert quote.source == "credit_pricing"
     assert quote.amount_credits == 7.5
     assert quote.amount_units == credits_to_units(7.5)
+
+
+@pytest.mark.asyncio
+async def test_studio_ops_price_from_credit_pricing(
+    store: FakeStore, wallet: FakeWallet
+) -> None:
+    """Studio ops have no plan column; their rows in credit_pricing rule."""
+    pricing = FakePricing()
+    pricing.prices[("suno", "studio_edit")] = credits_to_units(12)
+    billing = CreditsOnlyBillingService(
+        store=store,
+        credit_repo=wallet,
+        pricing_service=pricing,
+        enforcement=FakeEnforcement(),
+    )
+
+    before = wallet.balance
+    charged = await billing.charge(user_id=USER_ID, op="studio_edit", ref_id="op-1")
+
+    assert charged["source"] == "credit_pricing"
+    assert charged["amount_credits"] == 12
+    assert wallet.balance == before - credits_to_units(12)
+
+    refunded = await billing.refund(
+        user_id=USER_ID, op="studio_edit", amount_credits=12, ref_id="op-1"
+    )
+    assert refunded["amount_credits"] == 12
+    assert wallet.balance == before
 
 
 class _RoutingResult:

@@ -85,9 +85,8 @@ the credits-only model is a billing decision, not a refactor. Rewriting those qu
 without that decision would trade a loud failure for a quiet one.
 
 Not covered by tests either: `tests/test_credit_repo.py`, `test_credit_ledger.py` and
-`test_v3_credits_only.py` pass 62/63 without ever reaching `get_active_plan_slots`.
-(`test_admin_adjust_visible_on_v3_wallet` fails for an unrelated reason — its
-`FakeStore` has no `_pool`.)
+`test_v3_credits_only.py` passed 62/63 without ever reaching `get_active_plan_slots`
+(the one failure was a `FakeStore` fixture gap, since repaired).
 
 ### Follow-up 3: the root cause is a retired billing bridge on a live path
 
@@ -117,16 +116,52 @@ rules). That is money semantics — the one area where a guess is worse than a b
 the error disappear while silently pricing Studio operations from a table the product no
 longer has.
 
+### Follow-up 4 (2026-11-05): the rebind is in — the chain now ends at the account guard
+
+Owner decision: **narrow scope, studio operations only.** Music/lyric/style keep their
+existing plan lookup; studio ops price from `credit_pricing` through
+`credits_only_billing_service` and never read `plans`.
+
+What changed, in one file (`platform_api/services/v3/web_music_charge.py`):
+
+| Path | Before | After |
+|---|---|---|
+| `quote_credits` | always `store.resolve_charge_plan()` → `FROM plans` | resolves a plan **only for non-studio ops**; studio ops pass `plan_id=None` |
+| `charge` | always ran the free-model scope check (needs a plan) | studio ops skip it — they carry no Suno model and are priced flat |
+| `refund` | already path/amount based | unchanged (reverses the recorded debit via the credits-only service) |
+
+Prices come from the `credit_pricing` rows that already existed: `suno/studio_edit`
+120,000 units = **12 credits**, `suno/studio_stems_2` 120,000 = **12**,
+`suno/studio_stems_12` 600,000 = **60** (CREDIT_SCALE = 10,000).
+
+Verified live (platform_api from this worktree, sandbox DB, `mode=stems`):
+
+| Step | Evidence |
+|---|---|
+| Quote | `GET /api/v3/web-music/studio/pricing` → `{"edit":12,"stems_2":12,"stems_12":60}` |
+| Charge | `credit_transactions` debit 600,000 units, reason `v3_studio_stems_12`, metadata `quote_source=credit_pricing`, `product=web_music` |
+| Operation row | `studio_operations.credits_charged=60`, `charge_path=v3`, `charge_op=studio_stems_12`, `charge_ref=<op id>` |
+| Forward | `POST /internal/studio/stems` reached musicapi |
+| New gate | musicapi `409` → **"The source clip's Suno account is not recorded."** |
+| Refund | `v3_refund_studio_stems_12` +600,000 units, `refunded_at` set, wallet back to its pre-charge balance |
+
+So the plans failure is gone, the money path is real, and the **only** remaining stop is
+the one this file always predicted: `findAssetAccountAny` needs a clip that a real Suno
+account actually produced. The seeded `sandbox-clip-ok` is not one, and no amount of
+schema work will change that.
+
 ## Requirement summary
 
-1. a database at this branch's schema (so `plans` exists for the charge bridge), **and**
-2. a genuinely generated clip whose Suno account is recorded (`findAssetAccountAny`).
+1. ~~a database at this branch's schema (so `plans` exists for the charge bridge)~~ —
+   removed; studio pricing no longer consults a plan table.
+2. **A genuinely generated clip whose Suno account is recorded** (`asset_owners`, or a
+   `jobs.result_json` containing the clip id, in the `sunoapi` database).
 
-Neither is a code gap. Faking either would produce a green test that proves nothing.
+Only #2 remains. Faking it would produce a green test that proves nothing.
 
 ## What this means for the roadmap
 
-W4.2 and the stems half of W4.3 are **environment-blocked, not code-blocked**. The UI,
-the operation record, the credit charge, the token check and the error surfacing are all
-in place and verified up to the gate they can reach. Nothing here should be "fixed" by
-faking a clip id or a key.
+The charge half of W4.2 and the stems half of W4.3 are **done and verified**: quote,
+debit, operation record, forward, failure refund. Receiving an actual stem set needs one
+real generated clip in the sandbox; that is an environment prerequisite, not a code gap.
+

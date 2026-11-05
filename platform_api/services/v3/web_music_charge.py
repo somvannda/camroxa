@@ -17,6 +17,7 @@ from uuid import UUID
 from platform_api.exceptions import InsufficientCreditsError, QuotaExceededError
 from platform_api.services.credit_units import units_to_credits
 from platform_api.services.v3.generate_charge import map_v1_op_to_v3
+from platform_api.services.v3.ops import STUDIO_OPS
 
 ChargePath = Literal["v3", "v2", "included"]
 
@@ -105,11 +106,27 @@ class WebMusicChargeBridge:
 
     async def quote_credits(self, user_id: UUID, operation: str) -> tuple[str, int, Any]:
         op = map_v1_op_to_v3(operation) or str(operation or "").strip().lower()
-        plan = await self._store.resolve_charge_plan(user_id)
-        plan_id = UUID(str(plan["id"])) if plan and plan.get("id") else None
+        plan_id = await self._charge_plan_id(user_id, op)
         quote = await self._billing.quote(op=op, user_id=user_id, plan_id=plan_id)
         amount = max(0, int(round(float(quote.amount_credits or 0))))
         return op, amount, quote
+
+    @staticmethod
+    def _is_studio_op(op: str) -> bool:
+        return op in STUDIO_OPS
+
+    async def _charge_plan_id(self, user_id: UUID, op: str) -> UUID | None:
+        """Plan context for quoted ops, or None for pricing-table-only ops.
+
+        Studio operations have no plan column: their price lives in
+        ``credit_pricing`` (see ``STUDIO_OPS``), and ``plans`` is retired. Asking
+        for a charge plan there would fail on a missing table before the price
+        was ever read, so studio pricing must skip plan resolution entirely.
+        """
+        if self._is_studio_op(op):
+            return None
+        plan = await self._store.resolve_charge_plan(user_id)
+        return UUID(str(plan["id"])) if plan and plan.get("id") else None
 
     async def charge(
         self,
@@ -126,9 +143,12 @@ class WebMusicChargeBridge:
         if amount <= 0 or bool(getattr(quote, "included", False)):
             return WebMusicCharge(path="included", op=op, amount_credits=0, ref_id=ref_id)
 
-        await self._enforce_free_model_scope(
-            user_id, model, allow_free_preview=allow_free_preview
-        )
+        # The free-model scope rule is about which Suno model a Free-plan user
+        # may run; studio operations carry no model and are priced flat.
+        if not self._is_studio_op(op):
+            await self._enforce_free_model_scope(
+                user_id, model, allow_free_preview=allow_free_preview
+            )
 
         return await self._charge_v3(user_id, op, amount, ref_id=ref_id, model=model)
 
