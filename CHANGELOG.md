@@ -7,6 +7,16 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.10] - 2026-11-05
+
+### Fixed
+
+- YouTube uploads no longer fail with `OverflowError` on videos larger than 2 GiB. The upload worker's
+  progress signal was typed Qt `int` (32-bit), so the first progress emit overflowed and the transfer
+  aborted before a single byte was sent — leaving the job `pending_upload` and the row "Uploading 0/1".
+  The signal now carries Python objects.
+- The Progress notice shows upload percentage and MB sent, so a long transfer is visible.
+
 ## [1.5.9] - 2026-11-05
 
 ### Changed
