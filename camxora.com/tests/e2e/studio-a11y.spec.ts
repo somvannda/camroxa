@@ -20,7 +20,11 @@ async function audit(page: import("@playwright/test").Page) {
     return result.violations.map((violation) => ({
       id: violation.id,
       impact: violation.impact,
-      nodes: violation.nodes.length,
+      // Targets make a failure actionable without re-running the audit by hand.
+      nodes: (violation.nodes as Array<{ target: unknown; failureSummary?: string }>).map((node) => ({
+        target: node.target,
+        summary: node.failureSummary,
+      })),
     }));
   });
 }
@@ -38,6 +42,11 @@ test("studio editor has no axe violations", async ({ page }) => {
   test.setTimeout(120_000);
   await createStudioProject(page, { title: "A11y probe" });
 
+  expect(await audit(page)).toEqual([]);
+
+  // The Learn popover is a fifth surface; audit it while open.
+  await page.getByRole("button", { name: "Learn", exact: true }).click();
+  await expect(page.getByRole("menu", { name: "Learn" })).toBeVisible();
   expect(await audit(page)).toEqual([]);
 });
 

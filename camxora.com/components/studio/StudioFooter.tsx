@@ -3,14 +3,14 @@
 import Link from "next/link";
 
 import { Icon } from "@/components/Icon";
+import { StudioLearn } from "@/components/studio/StudioLearn";
 
 /**
  * Editor footer: view tools (still stubs), the selected track's effect chain, and the
- * view/zoom/library controls. Extracted from the shell (roadmap G15).
+ * view/zoom/library controls plus the Learn menu. Extracted from the shell (roadmap G15).
  */
 
 export type StudioFooterProps = {
-  projectId: string | null;
   chain: string[];
   hasTrack: boolean;
   loop: boolean;
@@ -20,11 +20,12 @@ export type StudioFooterProps = {
   onZoomIn: () => void;
   onSearch: () => void;
   onToggleLibrary: () => void;
+  whatsThis: boolean;
+  onWhatsThis: (next: boolean) => void;
 };
 
 export function StudioFooter(props: StudioFooterProps) {
   const {
-    projectId,
     chain,
     hasTrack,
     loop,
@@ -34,6 +35,8 @@ export function StudioFooter(props: StudioFooterProps) {
     onZoomIn,
     onSearch,
     onToggleLibrary,
+    whatsThis,
+    onWhatsThis,
   } = props;
 
   return (
@@ -61,12 +64,12 @@ export function StudioFooter(props: StudioFooterProps) {
       <div className="se-foot-right">
         <Link className="se-icon" href="/studio" aria-label="All projects"><Icon name="fa-folder" /></Link>
         <button type="button" className="se-icon" aria-label="Search library" onClick={onSearch}><Icon name="fa-magnifying-glass" /></button>
-        <button type="button" className="se-icon" onClick={onZoomOut} aria-label="Zoom out"><Icon name="fa-magnifying-glass-minus" /></button>
-        <button type="button" className="se-icon" onClick={onZoomFit} aria-label="Fit to content"><Icon name="fa-maximize" /></button>
-        <button type="button" className="se-icon" onClick={onZoomIn} aria-label="Zoom in"><Icon name="fa-magnifying-glass-plus" /></button>
-        <button type="button" className="se-icon" onClick={onToggleLibrary} aria-label="Toggle library"><Icon name="fa-table-columns" /></button>
-        <button type="button" className={`se-icon${loop ? " on" : ""}`} onClick={onLoop} aria-label="Loop" aria-pressed={loop}><Icon name="fa-repeat" /></button>
-        <Link className="se-foot-link" href={`/studio/editor/classic?project=${projectId ?? ""}`}>Learn</Link>
+        <button type="button" className="se-icon" onClick={onZoomOut} aria-label="Zoom out" data-help="zoom"><Icon name="fa-magnifying-glass-minus" /></button>
+        <button type="button" className="se-icon" onClick={onZoomFit} aria-label="Fit to content" data-help="zoom"><Icon name="fa-maximize" /></button>
+        <button type="button" className="se-icon" onClick={onZoomIn} aria-label="Zoom in" data-help="zoom"><Icon name="fa-magnifying-glass-plus" /></button>
+        <button type="button" className="se-icon" onClick={onToggleLibrary} aria-label="Toggle library" data-help="library"><Icon name="fa-table-columns" /></button>
+        <button type="button" className={`se-icon${loop ? " on" : ""}`} onClick={onLoop} aria-label="Loop" aria-pressed={loop} data-help="loop"><Icon name="fa-repeat" /></button>
+        <StudioLearn whatsThis={whatsThis} onWhatsThis={onWhatsThis} />
       </div>
     </footer>
   );

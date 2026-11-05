@@ -21,7 +21,7 @@ function headerProps() {
   return {
     title: "Demo",
     projectId: "p1" as string | null,
-    settings: { ghostDrag: true },
+    settings: { ghostDrag: true, whatsThis: true },
     onSettingsChange: noop,
     onRenamed: noop,
     onShowQuickStart: noop,
@@ -294,7 +294,6 @@ describe("StudioFooter", () => {
     const onZoomIn = vi.fn();
     render(
       <StudioFooter
-        projectId="p1"
         chain={[]}
         hasTrack
         loop={false}
@@ -304,6 +303,8 @@ describe("StudioFooter", () => {
         onZoomIn={onZoomIn}
         onSearch={noop}
         onToggleLibrary={noop}
+        whatsThis={false}
+        onWhatsThis={noop}
       />
     );
     expect(screen.getByText("No effects on this track yet.")).toBeTruthy();

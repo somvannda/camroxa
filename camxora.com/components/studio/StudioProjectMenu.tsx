@@ -273,6 +273,7 @@ export function StudioProjectMenu({
         className="se-chip"
         aria-haspopup="menu"
         aria-expanded={open}
+        data-help="project"
         onClick={() => setOpen((value) => !value)}
       >
         {label}

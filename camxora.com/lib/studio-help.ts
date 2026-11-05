@@ -1,0 +1,115 @@
+/**
+ * What's This? help registry (reference §7 / §38 / §62.2).
+ *
+ * The reference exposes every control name through its hover system; the captured list
+ * lives in §62.2. The *names* are generic UI nouns, but the descriptions there are their
+ * copy, so every sentence below is written for this editor (D-004).
+ *
+ * A control opts in with `data-help="<id>"`; unknown ids render no card rather than a
+ * blank one.
+ */
+
+export type HelpEntry = {
+  /** Short control name shown as the card's heading. */
+  title: string;
+  /** One or two sentences: what it does and the consequence of changing it. */
+  body: string;
+};
+
+export const HELP_ENTRIES: Record<string, HelpEntry> = {
+  tempo: {
+    title: "Tempo",
+    body: "Sets the song's BPM. Bar width on the canvas follows it, so clips keep their musical position when you change it.",
+  },
+  "time-signature": {
+    title: "Time signature",
+    body: "How many beats make a bar. Stored with the project and used when bars are counted.",
+  },
+  play: {
+    title: "Play / pause",
+    body: "Starts playback from the playhead. Clicking the ruler moves the playhead without starting.",
+  },
+  "back-to-start": {
+    title: "Back to start",
+    body: "Moves the playhead to zero. Playback stops so you can start from the top.",
+  },
+  loop: {
+    title: "Loop",
+    body: "Repeats the loop range. Drag the round handle on the timeline to move the end.",
+  },
+  metronome: {
+    title: "Metronome",
+    body: "Visual beat indicator only — this build does not click audibly yet.",
+  },
+  undo: {
+    title: "Undo",
+    body: "Steps back through arrangement changes. The editor keeps the last 50 documents.",
+  },
+  redo: {
+    title: "Redo",
+    body: "Re-applies a change you undid, until you make a new one.",
+  },
+  export: {
+    title: "Export",
+    body: "Renders locally in the browser: full mix, one file per track, the loop range, or the project document.",
+  },
+  library: {
+    title: "Library",
+    body: "Opens the drawer with your songs, workspaces, projects and uploads. Add an item to the selected track.",
+  },
+  speed: {
+    title: "Audition speed",
+    body: "Cycles 1×, 0.5× and 2× for checking timing. Exports always render at normal speed.",
+  },
+  meter: {
+    title: "Master peak",
+    body: "Peak level at the master output while playing. The estimate is sample peak, not a certified loudness meter.",
+  },
+  project: {
+    title: "Project",
+    body: "Project menu: new, open, rename, duplicate, versions, sharing, settings and the quick-start overlay.",
+  },
+  "track-mute": {
+    title: "Mute track",
+    body: "Silences this track. Any soloed track overrides mute, so solo wins while it is on.",
+  },
+  "track-solo": {
+    title: "Solo track",
+    body: "Silences every track that is not soloed. Turn it off to hear the full arrangement again.",
+  },
+  "track-arm": {
+    title: "Arm track",
+    body: "Recording is not implemented in this build, so arming is disabled rather than pretending to record.",
+  },
+  "track-volume": {
+    title: "Track level",
+    body: "Level applied to every clip on this track, during playback and export.",
+  },
+  zoom: {
+    title: "Zoom",
+    body: "Changes how many pixels one bar takes. Fit shows the whole arrangement at once.",
+  },
+  "add-track": {
+    title: "Add track",
+    body: "Adds an empty audio track. Clips are added from the library or by recording, which is not built yet.",
+  },
+};
+
+export function helpFor(id: string | null | undefined): HelpEntry | null {
+  if (!id) return null;
+  return HELP_ENTRIES[id] ?? null;
+}
+
+/** Our real bindings, shown by Learn ▸ Keyboard Shortcuts. */
+export const SHORTCUTS: { keys: string; action: string }[] = [
+  { keys: "Space", action: "Play / pause (when the canvas has focus)" },
+  { keys: "Ctrl/⌘ + Z", action: "Undo" },
+  { keys: "Ctrl/⌘ + Shift + Z", action: "Redo (Ctrl/⌘ + Y also works)" },
+  { keys: "Ctrl/⌘ + C", action: "Copy the selected clips" },
+  { keys: "Ctrl/⌘ + V", action: "Paste at the playhead" },
+  { keys: "Ctrl/⌘ + D", action: "Duplicate the selection" },
+  { keys: "Delete / Backspace", action: "Delete the selection" },
+  { keys: "Ctrl/⌘ + + / −", action: "Zoom in / out" },
+  { keys: "Ctrl + Shift + ,", action: "Open Studio settings" },
+  { keys: "?", action: "Open this shortcut list" },
+];

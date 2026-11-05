@@ -159,6 +159,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     aria-pressed={track.muted}
                     className={track.muted ? "on" : undefined}
                     onClick={() => onToggleFlag(track.id, "muted")}
+                    data-help="track-mute"
                   >
                     <Icon name="fa-volume-high" />
                   </button>
@@ -168,10 +169,11 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     aria-pressed={track.solo}
                     className={track.solo ? "on" : undefined}
                     onClick={() => onToggleFlag(track.id, "solo")}
+                    data-help="track-solo"
                   >
                     S
                   </button>
-                  <button type="button" disabled aria-label={`Arm ${track.name} (recording not implemented)`}>
+                  <button type="button" disabled aria-label={`Arm ${track.name} (recording not implemented)`} data-help="track-arm">
                     A
                   </button>
                   <button

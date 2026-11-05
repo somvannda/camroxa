@@ -292,6 +292,36 @@ counts. The panel is a browser preference, so it does not follow the user across
 
 ---
 
+## D-014 — What's This? is opt-in help, with our own words
+
+**Date:** 2026-11-05 · **Status:** accepted (G25)
+
+**Decision.** The footer's **Learn** pill opens the four captured rows in order
+(Keyboard Shortcuts · YouTube Tutorials · Learning Center · What's This?). What's This?
+is a global toggle, default **on** like the capture, persisted in Studio settings, and it
+drives lightweight cards on any control marked `data-help`.
+
+**Why.**
+
+- The capture calls this "a real feature": every control has an explanation, not just a
+  title attribute. Ours uses one delegated listener and a registry, so adding help to a
+  control is a `data-help` attribute, not a new component.
+- Two destinations do not exist in this product (a tutorial channel, a learning centre),
+  so those rows are disabled with the reason instead of removed — the captured row order
+  is the parity part.
+- Their card copy is theirs; every title and sentence in `lib/studio-help.ts` is written
+  for this editor (D-004). The one thing borrowed is the *shape*: name, then one or two
+  sentences about the consequence.
+- The first-run card appears once per browser profile (`studio:help:seen`); dismissing it
+  must not switch behaviour off, so Dismiss and Turn off are separate actions.
+
+**Consequences.** The intro card sits on a light surface, so controls reused inside it
+need light-surface colours (`.se-help-actions`); the axe pass caught exactly that when the
+system landed. Help copy lives in one file, which means a new control without an entry
+shows no card rather than an empty one — `helpFor` returns null.
+
+---
+
 ## D-010 — Export normalisation is sample-peak, mix-only, opt-in
 
 **Date:** 2026-11-05 · **Status:** accepted (G11)

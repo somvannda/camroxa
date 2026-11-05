@@ -25,7 +25,7 @@ describe("parseStudioSettings", () => {
   });
 
   it("keeps a stored false", () => {
-    expect(parseStudioSettings('{"ghostDrag":false}')).toEqual({ ghostDrag: false });
+    expect(parseStudioSettings('{"ghostDrag":false}')).toEqual({ ghostDrag: false, whatsThis: true });
   });
 
   it("falls back per field instead of dropping the whole blob", () => {
@@ -42,19 +42,19 @@ describe("parseStudioSettings", () => {
 describe("readStudioSettings / writeStudioSettings", () => {
   it("round-trips through storage", () => {
     const store = storage();
-    writeStudioSettings({ ghostDrag: false }, store);
-    expect(readStudioSettings(store)).toEqual({ ghostDrag: false });
+    writeStudioSettings({ ghostDrag: false, whatsThis: true }, store);
+    expect(readStudioSettings(store)).toEqual({ ghostDrag: false, whatsThis: true });
   });
 
   it("uses the studio key and a readable payload", () => {
     const store = storage();
-    writeStudioSettings({ ghostDrag: false }, store);
-    expect(JSON.parse(store.map.get("studio:settings") ?? "{}")).toEqual({ ghostDrag: false });
+    writeStudioSettings({ ghostDrag: false, whatsThis: true }, store);
+    expect(JSON.parse(store.map.get("studio:settings") ?? "{}")).toEqual({ ghostDrag: false, whatsThis: true });
   });
 
   it("never throws without storage (SSR, private mode)", () => {
     expect(readStudioSettings(null)).toEqual(DEFAULT_STUDIO_SETTINGS);
-    expect(() => writeStudioSettings({ ghostDrag: false }, null)).not.toThrow();
+    expect(() => writeStudioSettings({ ghostDrag: false, whatsThis: true }, null)).not.toThrow();
     const failing = {
       getItem: () => {
         throw new Error("blocked");
@@ -64,12 +64,12 @@ describe("readStudioSettings / writeStudioSettings", () => {
       },
     };
     expect(readStudioSettings(failing)).toEqual(DEFAULT_STUDIO_SETTINGS);
-    expect(() => writeStudioSettings({ ghostDrag: false }, failing)).not.toThrow();
+    expect(() => writeStudioSettings({ ghostDrag: false, whatsThis: true }, failing)).not.toThrow();
   });
 
   it("does not mutate the shared default object", () => {
     const store = storage();
-    writeStudioSettings({ ghostDrag: false }, store);
+    writeStudioSettings({ ghostDrag: false, whatsThis: true }, store);
     expect(DEFAULT_STUDIO_SETTINGS.ghostDrag).toBe(true);
   });
 });
@@ -98,7 +98,7 @@ describe("write failures", () => {
     const setItem = vi.fn(() => {
       throw new Error("QuotaExceededError");
     });
-    expect(() => writeStudioSettings({ ghostDrag: true }, { setItem })).not.toThrow();
+    expect(() => writeStudioSettings({ ghostDrag: true, whatsThis: true }, { setItem })).not.toThrow();
     expect(setItem).toHaveBeenCalledOnce();
   });
 });

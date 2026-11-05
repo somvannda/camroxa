@@ -120,16 +120,16 @@ export function StudioHeader(props: StudioHeaderProps) {
             <Icon name="fa-chevron-down" />
           </button>
         )}
-        <button type="button" className="se-icon" aria-label="Undo" disabled={!canUndo} onClick={onUndo}>
+        <button type="button" className="se-icon" aria-label="Undo" disabled={!canUndo} onClick={onUndo} data-help="undo">
           <Icon name="fa-rotate-left" />
         </button>
-        <button type="button" className="se-icon" aria-label="Redo" disabled={!canRedo} onClick={onRedo}>
+        <button type="button" className="se-icon" aria-label="Redo" disabled={!canRedo} onClick={onRedo} data-help="redo">
           <Icon name="fa-rotate-right" />
         </button>
       </div>
 
       <div className="se-head-center">
-        <button type="button" className="se-icon" onClick={onBackToStart} aria-label="Back to start">
+        <button type="button" className="se-icon" onClick={onBackToStart} aria-label="Back to start" data-help="back-to-start">
           <Icon name="fa-backward-step" />
         </button>
         <button
@@ -139,6 +139,7 @@ export function StudioHeader(props: StudioHeaderProps) {
           aria-pressed={loop}
           aria-label="Loop"
           title="Loop"
+          data-help="loop"
         >
           <Icon name="fa-repeat" />
         </button>
@@ -151,6 +152,7 @@ export function StudioHeader(props: StudioHeaderProps) {
           onClick={onTogglePlay}
           aria-label={playing ? "Pause" : "Play"}
           title={playing ? "Pause" : "Play"}
+          data-help="play"
         >
           <Icon name={playing ? "fa-pause" : "fa-play"} />
         </button>
@@ -161,6 +163,7 @@ export function StudioHeader(props: StudioHeaderProps) {
           aria-pressed={metronome}
           aria-label="Metronome (visual only)"
           title="Metronome (visual only — no click audio yet)"
+          data-help="metronome"
         >
           <Icon name="fa-bell" />
         </button>
@@ -174,15 +177,16 @@ export function StudioHeader(props: StudioHeaderProps) {
           value={bpm}
           inputMode="numeric"
           aria-label="Tempo in BPM"
+          data-help="tempo"
           onChange={(event) => {
             const next = Number(event.target.value.replace(/\D/g, ""));
             if (Number.isFinite(next)) onBpmChange(Math.min(300, Math.max(20, next || 20)));
           }}
           onBlur={onBpmCommit}
         />
-        <span className="se-pill">{timeSignature}</span>
+        <span className="se-pill" data-help="time-signature">{timeSignature}</span>
         <StudioSaveStatus status={saveStatus} onRetry={onRetrySave} />
-        <span className="se-pill se-meter" aria-label="Master peak" title="Peak level at the master output">
+        <span className="se-pill se-meter" aria-label="Master peak" title="Peak level at the master output" data-help="meter">
           {formatMeter(meter)}
         </span>
         <button
@@ -190,6 +194,7 @@ export function StudioHeader(props: StudioHeaderProps) {
           className={`se-pill${playbackRate !== 1 ? " on" : ""}`}
           aria-label={`Audition speed ${playbackRate}×`}
           onClick={onCycleSpeed}
+          data-help="speed"
         >
           {playbackRate}×
         </button>
@@ -200,6 +205,7 @@ export function StudioHeader(props: StudioHeaderProps) {
           aria-expanded={exportOpen}
           onClick={onToggleExport}
           disabled={exporting}
+          data-help="export"
         >
           <Icon name="fa-arrow-up-from-bracket" /> {exporting ? "Exporting…" : "Export"}
         </button>
@@ -233,6 +239,7 @@ export function StudioHeader(props: StudioHeaderProps) {
           className={`se-pill${libraryOpen ? " on" : ""}`}
           onClick={onToggleLibrary}
           aria-expanded={libraryOpen}
+          data-help="library"
         >
           <Icon name="fa-table-columns" /> Library
         </button>

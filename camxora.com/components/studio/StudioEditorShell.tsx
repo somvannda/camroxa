@@ -1618,7 +1618,6 @@ export function StudioEditorShell() {
       ) : null}
 
       <StudioFooter
-        projectId={projectId}
         chain={(selectedTrack ? chains[selectedTrack] : [])?.map((entry) => entry.pluginId) ?? []}
         hasTrack={Boolean(selectedTrack)}
         loop={loop}
@@ -1631,6 +1630,12 @@ export function StudioEditorShell() {
           setTimeout(() => librarySearchRef.current?.focus(), 60);
         }}
         onToggleLibrary={() => setLibraryOpen((open) => !open)}
+        whatsThis={settings.whatsThis}
+        onWhatsThis={(next) => {
+          const updated = { ...settingsRef.current, whatsThis: next };
+          setSettings(updated);
+          writeStudioSettings(updated);
+        }}
       />
 
       {error ? <div className="se-error" role="alert">{error}</div> : null}

@@ -18,9 +18,14 @@ export type StudioSettings = {
    * Read once at gesture start, per §22.
    */
   ghostDrag: boolean;
+  /**
+   * What's This? (spec §7): hovering a control explains it. Default on, matching the
+   * captured Learn menu state.
+   */
+  whatsThis: boolean;
 };
 
-export const DEFAULT_STUDIO_SETTINGS: StudioSettings = { ghostDrag: true };
+export const DEFAULT_STUDIO_SETTINGS: StudioSettings = { ghostDrag: true, whatsThis: true };
 
 const KEY = "studio:settings";
 
@@ -46,6 +51,10 @@ export function parseStudioSettings(raw: string | null): StudioSettings {
         typeof parsed.ghostDrag === "boolean"
           ? parsed.ghostDrag
           : DEFAULT_STUDIO_SETTINGS.ghostDrag,
+      whatsThis:
+        typeof parsed.whatsThis === "boolean"
+          ? parsed.whatsThis
+          : DEFAULT_STUDIO_SETTINGS.whatsThis,
     };
   } catch {
     return { ...DEFAULT_STUDIO_SETTINGS };

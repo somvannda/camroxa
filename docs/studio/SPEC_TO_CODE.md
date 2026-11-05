@@ -25,6 +25,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (8 wired, 1 disabled with a reason) |
 | Share: view + copy link, naming gate first | §24 / §24.1 | `StudioProjectMenu` share dialog + `createStudioProjectShare` / `listStudioProjectShares` |
 | Ghost drag: hold the pre-drag audio, apply once on drop; read at gesture start | §22 / gap G24 | `lib/studio-settings.ts` (`dragApplyPlan`) + `restartAudio` in `StudioEditorShell` |
+| Learn menu: four rows, `?` shortcut list, "What's This?" hover cards | §7 / §38 / §62.2 / gap G25 | `components/studio/StudioLearn.tsx` + `lib/studio-help.ts` |
 | Empty project asks how to start | §10 / gap G18 | `components/studio/StudioOnboarding.tsx` |
 | Coarse pointers get 44 px targets | gap G20 | `app/touch-targets.css` |
 | Clips culled outside the visible window | gap G19 | `view` state in `StudioEditorShell` |
@@ -58,6 +59,6 @@ which we cannot honour).
 
 - Screenshots: `reference/screens/` (78 files) + `reference/SCREENSHOT_INDEX.md`
 - Measurements: `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §1–§96
-- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (22 of 24 closed; G12 and G21 partial)
+- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (23 of 25 closed; G12 and G21 partial)
 - Audio claims: `window.__buildMasterBus`, `__studioExport`, `__studioMeter`,
   `__studioNormalise` in dev
