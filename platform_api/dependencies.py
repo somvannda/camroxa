@@ -828,18 +828,6 @@ def get_turnstile_service():
 # ---------------------------------------------------------------------------
 
 
-def get_v2_subscription_service():
-    """Dependency that returns the v2 SubscriptionService instance."""
-    from platform_api.db.asyncpg_adapter import wrap_pool
-    from platform_api.services.v2.subscription_service import SubscriptionService
-    from platform_api.services.shared.cutluy_service import get_cutluy_service
-
-    return SubscriptionService(
-        db=wrap_pool(get_db_pool()),
-        cutluy=get_cutluy_service()
-    )
-
-
 def get_v2_credit_service():
     """Dependency that returns the v2 CreditService instance."""
     from platform_api.db.asyncpg_adapter import wrap_pool

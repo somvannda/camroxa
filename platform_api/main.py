@@ -352,59 +352,9 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 "Studio operation sweeper not started (non-fatal): %s", exc
             )
 
-        # --- Web music subscription period maintenance (retired) ---
-        try:
-            raise RuntimeError("web music subscriptions are retired")
-            from platform_api.db.asyncpg_adapter import wrap_pool
-            from platform_api.services.v2.subscription_service import SubscriptionService
-
-            async def _run_subscription_maintenance() -> None:
-                # SubscriptionService speaks fetch_one/fetch_all, so hand it the
-                # adapter (routers use wrap_pool too) instead of the raw pool.
-                handled = await SubscriptionService(wrap_pool(db_pool)).process_due_subscriptions()
-                if handled:
-                    logger.info(
-                        "Web music subscription maintenance handled %s row(s)",
-                        handled,
-                    )
-
-            async def _subscription_maintenance_loop() -> None:
-                while True:
-                    try:
-                        await _run_subscription_maintenance()
-                    except Exception as exc:
-                        logger.warning("Web music subscription maintenance failed: %s", exc)
-                    await asyncio.sleep(900)
-
-            subscription_maintenance_task = asyncio.create_task(
-                _subscription_maintenance_loop(),
-                name="web-music-subscription-maintenance",
-            )
-            logger.info("Web music subscription maintenance loop started (every 15 minutes).")
-        except Exception as exc:
-            logger.warning("Web music subscription maintenance not configured (non-fatal): %s", exc)
-
-        # --- Web music renewal reminder emails (retired) ---
-        try:
-            raise RuntimeError("plan renewals are retired")
-            from platform_api.services.renewal_reminder_service import run_renewal_reminders
-
-            async def _renewal_reminder_loop() -> None:
-                while True:
-                    try:
-                        sent = await run_renewal_reminders(db_pool)
-                        if sent:
-                            logger.info("Web music renewal reminders sent: %s", sent)
-                    except Exception as exc:
-                        logger.warning("Web music renewal reminder sweep failed: %s", exc)
-                    await asyncio.sleep(21600)  # every 6 hours
-
-            asyncio.create_task(
-                _renewal_reminder_loop(), name="web-music-renewal-reminders"
-            )
-            logger.info("Web music renewal reminder loop started (every 6 hours).")
-        except Exception as exc:
-            logger.warning("Web music renewal reminders not configured (non-fatal): %s", exc)
+        # Web-music subscriptions and plan renewals are retired (credits-only
+        # v3). Their maintenance loops are gone rather than parked behind a
+        # runtime raise, and no startup path imports the v2 subscription stack.
 
         # --- Durable B2 backfill sweep ---
         # Every 15 minutes: reprocess stuck/failed upload jobs (with provider

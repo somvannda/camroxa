@@ -1,4 +1,10 @@
-"""Subscription service for web music plans."""
+"""Subscription service for web music plans.
+
+DEPRECATED / RETIRED: web-music subscriptions were replaced by the credits-only
+v3 wallet (migration 174). Nothing in the runtime imports this module any more;
+it is kept only so the historical checkout tests still collect. Delete it and
+those subscription tests together in the v2-credits removal stage.
+"""
 
 import json
 import logging

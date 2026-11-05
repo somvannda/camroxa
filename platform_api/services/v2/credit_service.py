@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Optional
 
 from platform_api.models.products import (
@@ -25,6 +25,27 @@ _ACTIVE_SUBSCRIPTION_SQL = """
     AND status = 'active'
     AND current_period_end > NOW()
 """
+
+MONTHLY_CREDIT_RESET_DAYS = 30
+
+
+def next_credit_reset_at(
+    *,
+    billing_cycle: str,
+    current_period_end: datetime,
+    last_credit_reset: datetime,
+) -> datetime:
+    """When the subscriber's monthly credit pool next refreshes.
+
+    Kept here (instead of the retired subscription service) so the legacy
+    balance view still renders for old rows while v3 is the live wallet.
+    """
+    if billing_cycle == "yearly":
+        return min(
+            last_credit_reset + timedelta(days=MONTHLY_CREDIT_RESET_DAYS),
+            current_period_end,
+        )
+    return current_period_end
 
 
 @dataclass
@@ -151,13 +172,9 @@ class CreditService:
         return int(used or 0)
 
     async def _refresh_subscription_state(self, user_id: str) -> None:
-        """Expire or renew subscriptions whose billing period has ended."""
-        from platform_api.services.v2.subscription_service import SubscriptionService
-
-        try:
-            await SubscriptionService(self._db).get_user_subscription(user_id)
-        except Exception as exc:
-            logger.warning("Subscription refresh failed for user %s: %s", user_id, exc)
+        """No-op: web-music subscriptions are retired (credits-only v3)."""
+        _ = user_id
+        return
 
     async def _refund_already_applied(
         self,
@@ -270,7 +287,6 @@ class CreditService:
                 subscription.get("last_credit_reset")
                 or subscription["current_period_start"]
             )
-            from platform_api.services.v2.subscription_service import next_credit_reset_at
 
             return DetailedBalance(
                 has_subscription=True,

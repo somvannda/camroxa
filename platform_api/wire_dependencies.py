@@ -39,7 +39,6 @@ from platform_api.dependencies import (
     get_usage_tracking_repo,
     get_user_repo,
     get_user_service,
-    get_v2_subscription_service,
     get_v2_credit_service,
     get_v2_topup_service,
 )
