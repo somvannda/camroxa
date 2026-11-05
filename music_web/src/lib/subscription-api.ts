@@ -271,16 +271,14 @@ export async function cancelSubscription(input: {
 // ============================================================================
 
 export async function fetchCreditBalance(): Promise<CreditBalance> {
-  try {
-    const v3 = await apiFetch<V3WalletView>('/api/v3/me/credits');
-    const mapped = mergeV3CreditBalance(v3, null);
-    if (!mapped) {
-      throw new Error('Failed to load credits');
-    }
-    return mapped;
-  } catch {
-    return apiFetch<CreditBalance>(`${API_V3}/credits/balance`);
+  // v3 wallet is the only balance source; the retired v2 /credits/balance
+  // fallback returned a different shape and is gone.
+  const v3 = await apiFetch<V3WalletView>('/api/v3/me/credits');
+  const mapped = mergeV3CreditBalance(v3, null);
+  if (!mapped) {
+    throw new Error('Failed to load credits');
   }
+  return mapped;
 }
 
 export async function fetchCreditHistory(

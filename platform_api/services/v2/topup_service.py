@@ -17,7 +17,6 @@ from platform_api.services.v2.payment_security import (
     validate_payment_id,
     webhook_user_matches,
 )
-from platform_api.services.v2.credit_service import CreditService, get_credit_service
 
 logger = logging.getLogger(__name__)
 
@@ -63,11 +62,9 @@ class TopupService:
         self,
         db,
         cutluy: Optional[CutLuyService] = None,
-        credit_service: Optional[CreditService] = None
     ):
         self._db = db
         self._cutluy = cutluy or get_cutluy_service()
-        self._credit_service = credit_service
 
     async def _payment_provider(self) -> str:
         """Return the admin-selected KHQR provider, defaulting to CutLuy.
@@ -766,17 +763,22 @@ class TopupService:
             WHERE id = $1
         """, topup_id)
         
-        # Deduct credits (if user still has them)
-        if self._credit_service:
-            try:
-                await self._credit_service.consume_credits(
-                    user_id=topup.user_id,
-                    amount=topup.credits_purchased,
-                    source="topup_refund",
-                    reference_id=topup_id
-                )
-            except Exception as e:
-                logger.warning(f"Could not deduct refunded credits: {e}")
+        # Deduct credits (if user still has them). Uses the shared v3 wallet so
+        # the ledger and balance move together; failure is non-fatal because an
+        # admin refund must still mark the purchase refunded.
+        try:
+            from platform_api.dependencies import get_db_pool
+            from platform_api.repositories.credit_repo import CreditRepository
+            from platform_api.services.credit_units import CREDIT_SCALE
+
+            await CreditRepository(get_db_pool()).atomic_deduct(
+                user_id=topup.user_id,
+                amount=int(topup.credits_purchased) * CREDIT_SCALE,
+                reason="topup_refund",
+                ref_id=str(topup_id),
+            )
+        except Exception as e:
+            logger.warning(f"Could not deduct refunded credits: {e}")
         
         logger.warning(
             f"Admin {admin_id} refunded topup {topup_id}: {reason}"

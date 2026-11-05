@@ -714,7 +714,7 @@ class WebMusicService:
         import math
 
         from platform_api.services.credit_units import units_to_credits
-        from platform_api.services.v2.credit_service import InsufficientCreditsError
+        from platform_api.exceptions import InsufficientCreditsError
 
         if self._ai_routing is None or self._pricing is None:
             raise ValidationError(
@@ -902,7 +902,7 @@ class WebMusicService:
     
     async def _reserve_via_credits(self, user_id: UUID, *, reservation_id: str) -> dict[str, Any]:
         """Reserve a song slot by consuming credits (subscription or daily free pool)."""
-        from platform_api.services.v2.credit_service import InsufficientCreditsError
+        from platform_api.exceptions import InsufficientCreditsError
 
         if self._credit_service is None:
             logger.error("Credit service not available for user %s", user_id)

@@ -232,7 +232,7 @@ async def _release_web_suno_lock(redis: Any, token: str | None) -> None:
 
 
 async def _handle_web_music_generate(job: Any, payload: dict[str, Any]) -> None:
-    from platform_api.dependencies import get_db_pool, get_generation_service, get_redis, get_v2_credit_service
+    from platform_api.dependencies import get_db_pool, get_generation_service, get_redis
     from platform_api.services.web_music_service import WebMusicService
 
     user_id = UUID(str(payload.get("user_id") or job.user_id))
@@ -248,7 +248,9 @@ async def _handle_web_music_generate(job: Any, payload: dict[str, Any]) -> None:
         service = WebMusicService(
             get_db_pool(),
             get_generation_service(),
-            credit_service=get_v2_credit_service(),
+            # v3 charges-only wallet is the single source of truth; no legacy
+            # web-subscription credit service is constructed any more.
+            credit_service=None,
             redis=redis,
         )
         await service.fulfill_queued_generate(

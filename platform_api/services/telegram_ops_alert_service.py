@@ -1023,7 +1023,6 @@ def install_telegram_ops_hooks(*, enable_poller: bool = True) -> None:
     _patch_login()
     _patch_billing_fulfill()
     _patch_plan_quota_log()
-    _patch_v2_credit_service()
     _patch_web_music_downloads()
     if not enable_poller:
         return
@@ -1222,53 +1221,7 @@ def _patch_plan_quota_log() -> None:
 
 
 def _patch_v2_credit_service() -> None:
-    try:
-        from platform_api.services.v2.credit_service import CreditService
-    except Exception:
-        return
-
-    def _wrap_consume(original):  # type: ignore[no-untyped-def]
-        async def consume_credits(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-            result = await original(self, *args, **kwargs)
-            user_id = kwargs.get("user_id", args[0] if args else None)
-            amount = kwargs.get("amount", args[1] if len(args) > 1 else None)
-            source = kwargs.get("source", args[2] if len(args) > 2 else "")
-            reference_id = kwargs.get(
-                "reference_id", args[3] if len(args) > 3 else None
-            )
-            if result and user_id is not None and amount is not None:
-                notify_web_music_spend(
-                    user_id=user_id,
-                    amount=int(amount),
-                    source=str(source or ""),
-                    reference_id=reference_id,
-                )
-            return result
-
-        return consume_credits
-
-    def _wrap_refund(original):  # type: ignore[no-untyped-def]
-        async def refund_credits(self, *args, **kwargs):  # type: ignore[no-untyped-def]
-            result = await original(self, *args, **kwargs)
-            user_id = kwargs.get("user_id", args[0] if args else None)
-            amount = kwargs.get("amount", args[1] if len(args) > 1 else None)
-            source = kwargs.get("source", args[2] if len(args) > 2 else "")
-            reference_id = kwargs.get(
-                "reference_id", args[3] if len(args) > 3 else None
-            )
-            if result and user_id is not None and amount is not None:
-                notify_web_music_refund(
-                    user_id=user_id,
-                    amount=int(amount),
-                    source=str(source or ""),
-                    reference_id=reference_id,
-                )
-            return result
-
-        return refund_credits
-
-    _patch_method(CreditService, "consume_credits", _wrap_consume)
-    _patch_method(CreditService, "refund_credits", _wrap_refund)
-    logger.info("Telegram ops hooks installed on web-music credit service.")
+    """Removed: the v2 web-music credit service is gone (v3-only)."""
+    return
 
 

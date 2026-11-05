@@ -686,7 +686,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         streaming_library,
     )
     from platform_api.routers import web_music, web_music_licenses
-    from platform_api.routers import v2_credits, v2_topups, webhooks_cutluy
+    from platform_api.routers import v2_topups, webhooks_cutluy
     from platform_api.routers import v3_billing
     from platform_api.routers import invite_program
 
@@ -768,7 +768,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # On v3, mount these *before* the dual-mounted v1 credits router so
     # /credits/balance|history prefer the CutLuy ledger handlers.
     _cutluy_billing = (
-        v2_credits.router,
         v2_topups.router,
     )
     for router in _cutluy_billing:

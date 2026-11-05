@@ -250,7 +250,7 @@ class WebMusicChargeBridge:
         *,
         ref_id: str | None,
     ) -> WebMusicCharge:
-        from platform_api.services.v2.credit_service import InsufficientCreditsError as V2CreditsError
+        from platform_api.exceptions import InsufficientCreditsError as V2CreditsError
 
         if self._credit_service is None:
             raise _upgrade_error(
