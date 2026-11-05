@@ -6,6 +6,11 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-05] — Schema assertions surface on /health
+
+### Added
+
+- `GET /health` returns a `schema` object (`checked`/`ok`/`failures`) and reports `degraded` when a post-migration assertion fails. Production spent days at `alembic_version = 178` with `credit_transactions.reason` still `varchar(100)` while `/health` said `healthy`; the CRITICAL log existed and nobody read it. New `services/schema_status.py` holds the in-process result, written by `runner.verify_schema_assertions()`. It never reports `unhealthy` — the API is still serving. See `docs/changelog/2026-11-05-health-schema-assertions.md`.
 ## [2026-11-03] — 178 was recorded but never applied; 179 re-asserts it
 
 ### Fixed

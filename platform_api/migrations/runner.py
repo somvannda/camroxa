@@ -209,6 +209,11 @@ async def verify_schema_assertions(conn: asyncpg.Connection) -> list[str]:
             "this deploy.",
             "; ".join(failures),
         )
+    # Surface the result on /health: a log line nobody reads is how production sat
+    # with `reason = varchar(100)` while everything reported healthy.
+    from platform_api.services import schema_status
+
+    schema_status.record(failures)
     return failures
 
 
