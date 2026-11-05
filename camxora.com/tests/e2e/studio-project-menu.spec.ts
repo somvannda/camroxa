@@ -22,9 +22,9 @@ test("project menu renames the project and the name survives a reload", async ({
   const menu = page.getByRole("menu", { name: "Project options" });
   await expect(menu).toBeVisible();
 
-  // The order matches the capture; the unwired three are disabled.
+  // The order matches the capture; the two we cannot honour are disabled.
   await expect(menu.getByRole("menuitem")).toHaveCount(9);
-  await expect(menu.getByRole("menuitem").nth(5)).toBeDisabled(); // Share Project
+  await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Share Project
   await expect(menu.getByRole("menuitem").nth(6)).toBeDisabled(); // v1 copy
   await expect(menu.getByRole("menuitem").nth(7)).toBeDisabled(); // Settings
 
@@ -48,4 +48,32 @@ test("project menu renames the project and the name survives a reload", async ({
 
   await page.reload();
   await expect(page.locator(".se-project .se-chip")).toHaveText(renamed);
+});
+
+test("share creates a view link that resolves without the editor", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  await createStudioProject(page, { title: `Share ${tag}` });
+
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "Share Project" }).click();
+
+  const dialog = page.getByRole("dialog", { name: "Share project" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText(/view this project and make their own editable copy/)).toBeVisible();
+
+  const link = dialog.getByLabel("Share link");
+  await expect(link).toHaveValue(/\/studio\/shared\/.+$/);
+
+  // The link is view + fork: the public share endpoint must answer for its token.
+  const href = await link.inputValue();
+  const token = href.split("/studio/shared/")[1];
+  const shared = await page.request.get(`/api/v3/web-music/studio/shares/${token}`);
+  expect(shared.status()).toBe(200);
+  const body = (await shared.json()) as { title?: string };
+  expect(body.title).toBe(`Share ${tag}`);
+
+  await dialog.getByRole("button", { name: "Done" }).click();
+  await expect(dialog).toHaveCount(0);
 });

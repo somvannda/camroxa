@@ -5,26 +5,32 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import {
   createStudioProject,
+  createStudioProjectShare,
   forkStudioProject,
+  listStudioProjectShares,
   listStudioProjects,
   listStudioProjectVersions,
   restoreStudioProjectVersion,
   updateStudioProject,
   type StudioProject,
+  type StudioProjectShare,
   type StudioProjectVersion,
 } from "@/lib/studio-api";
 
 /**
- * Project menu (reference §18.1 / §44.2).
+ * Project menu (reference §18.1 / §44.2 / §24).
  *
- * The captured menu is nine items. Six are wired here with the endpoints this product
- * already has; Share, v1-copy and Settings are rendered disabled with the reason in
- * their tooltip rather than hidden, so the order still matches the capture and nothing
+ * The captured menu is nine items. Seven are wired here with the endpoints this product
+ * already has; the v1 copy and Settings are rendered disabled with the reason in their
+ * tooltip rather than hidden, so the order still matches the capture and nothing
  * pretends to work. Navigation is a full page load because the editor reads the project
  * id from the URL on mount.
+ *
+ * Sharing follows the captured semantics (§24): a link is view + fork, never live
+ * co-editing, and an unnamed project hits a naming gate first (§24.1).
  */
 
-type Dialog = "open" | "rename" | "versions" | null;
+type Dialog = "open" | "rename" | "versions" | "share" | "name-to-share" | null;
 
 export type StudioProjectMenuProps = {
   projectId: string;
@@ -34,6 +40,25 @@ export type StudioProjectMenuProps = {
 };
 
 const UNTITLED = "Untitled project";
+
+function isUnnamed(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length === 0 || trimmed.toLowerCase() === UNTITLED.toLowerCase();
+}
+
+/** Prefer an existing live link over minting a second one for the same project. */
+function liveShare(shares: StudioProjectShare[]): StudioProjectShare | null {
+  const now = Date.now();
+  return (
+    shares.find((share) => {
+      if (share.revoked_at) return false;
+      if (share.active === false) return false;
+      if (!share.expires_at) return true;
+      const expires = Date.parse(share.expires_at);
+      return Number.isNaN(expires) || expires > now;
+    }) ?? null
+  );
+}
 
 export function StudioProjectMenu({
   projectId,
@@ -46,11 +71,17 @@ export function StudioProjectMenu({
   const [projects, setProjects] = useState<StudioProject[] | null>(null);
   const [versions, setVersions] = useState<StudioProjectVersion[] | null>(null);
   const [renameValue, setRenameValue] = useState(title);
+  const [gateValue, setGateValue] = useState(title);
+  const [share, setShare] = useState<StudioProjectShare | null>(null);
+  const [shareName, setShareName] = useState(title);
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const wrapperRef = useRef<HTMLDivElement | null>(null);
 
   const label = title || UNTITLED;
+  const shareUrl =
+    share && typeof window !== "undefined" ? `${window.location.origin}${share.path}` : "";
 
   useEffect(() => {
     if (!open) return;
@@ -150,6 +181,58 @@ export function StudioProjectMenu({
     });
   }
 
+  /** Open the share surface, through the naming gate when the project is unnamed. */
+  function startSharing() {
+    setOpen(false);
+    if (isUnnamed(title)) {
+      setGateValue(title.trim() || UNTITLED);
+      setDialog("name-to-share");
+      return;
+    }
+    void openShare(title);
+  }
+
+  async function openShare(name: string) {
+    setShareName(name.trim() || UNTITLED);
+    setShare(null);
+    setCopyState("idle");
+    setDialog("share");
+    await run(async () => {
+      const existing = await listStudioProjectShares(projectId).catch(() => ({ items: [] }));
+      const found = liveShare(existing.items ?? []);
+      if (found) {
+        setShare(found);
+        return;
+      }
+      const created = await createStudioProjectShare(projectId, 7, "view");
+      setShare(created);
+    });
+  }
+
+  function saveNameThenShare() {
+    const next = gateValue.trim();
+    if (!next) {
+      setError("A project title is required.");
+      return;
+    }
+    void run(async () => {
+      const updated = await updateStudioProject(projectId, { title: next });
+      const name = updated.title || next;
+      onRenamed(name);
+      await openShare(name);
+    });
+  }
+
+  async function copyLink() {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+  }
+
   return (
     <div className="se-project" ref={wrapperRef}>
       <button
@@ -185,12 +268,7 @@ export function StudioProjectMenu({
           >
             Version History
           </button>
-          <button
-            type="button"
-            role="menuitem"
-            disabled
-            title="Sharing is not wired into the editor yet"
-          >
+          <button type="button" role="menuitem" onClick={startSharing} disabled={busy}>
             Share Project
           </button>
           <button
@@ -228,7 +306,15 @@ export function StudioProjectMenu({
           role="dialog"
           aria-modal="true"
           aria-label={
-            dialog === "open" ? "Open project" : dialog === "rename" ? "Rename project" : "Version history"
+            dialog === "open"
+              ? "Open project"
+              : dialog === "rename"
+                ? "Rename project"
+                : dialog === "versions"
+                  ? "Version history"
+                  : dialog === "share"
+                    ? "Share project"
+                    : "Name project before sharing"
           }
         >
           <div className="se-dialog">
@@ -271,7 +357,7 @@ export function StudioProjectMenu({
                   aria-label="Project title"
                 />
               </>
-            ) : (
+            ) : dialog === "versions" ? (
               <>
                 <h2>Version history</h2>
                 {versions === null ? (
@@ -304,6 +390,45 @@ export function StudioProjectMenu({
                   <p className="se-dialog-note">Restoring replaces the arrangement and reloads the editor.</p>
                 ) : null}
               </>
+            ) : dialog === "name-to-share" ? (
+              <>
+                <h2>Name project before sharing</h2>
+                <p className="se-dialog-note">Give your project a name before it is shared with others.</p>
+                <input
+                  className="se-pill"
+                  value={gateValue}
+                  onChange={(event) => setGateValue(event.target.value)}
+                  aria-label="Project title"
+                />
+              </>
+            ) : (
+              <>
+                <h2>Share “{shareName}”</h2>
+                <p className="se-dialog-note">
+                  Anyone with the link can view this project and make their own editable copy. Your
+                  project stays as it is — they cannot edit or change your version.
+                </p>
+                {share ? (
+                  <>
+                    <input
+                      className="se-pill"
+                      value={shareUrl}
+                      readOnly
+                      aria-label="Share link"
+                      onFocus={(event) => event.currentTarget.select()}
+                    />
+                    <p className="se-dialog-note">
+                      The link is view-and-copy only; it is not live collaboration. It expires in 7
+                      days.
+                    </p>
+                  </>
+                ) : (
+                  <p className="se-dialog-note">Creating the link…</p>
+                )}
+                {copyState === "failed" ? (
+                  <p className="se-dialog-error">Could not reach the clipboard — select and copy the link above.</p>
+                ) : null}
+              </>
             )}
 
             {error ? <p className="se-dialog-error">{error}</p> : null}
@@ -314,9 +439,46 @@ export function StudioProjectMenu({
                   {busy ? "Saving…" : "Save"}
                 </button>
               ) : null}
-              <button type="button" className="se-pill" onClick={() => setDialog(null)} disabled={busy}>
-                Close
-              </button>
+              {dialog === "name-to-share" ? (
+                <>
+                  <button
+                    type="button"
+                    className="se-pill"
+                    onClick={() => void openShare(title)}
+                    disabled={busy}
+                  >
+                    Skip
+                  </button>
+                  <button type="button" className="se-pill on" onClick={saveNameThenShare} disabled={busy}>
+                    {busy ? "Saving…" : "Save"}
+                  </button>
+                </>
+              ) : null}
+              {dialog === "share" ? (
+                <>
+                  <button
+                    type="button"
+                    className="se-pill"
+                    onClick={() => setDialog(null)}
+                    disabled={busy}
+                  >
+                    Done
+                  </button>
+                  <button
+                    type="button"
+                    className="se-pill on"
+                    onClick={() => void copyLink()}
+                    disabled={!shareUrl || busy}
+                  >
+                    {copyState === "copied" ? "Copied" : "Copy Link"}
+                  </button>
+                </>
+              ) : null}
+              {dialog === "open" || dialog === "versions" ? (
+                <button type="button" className="se-pill" onClick={() => setDialog(null)} disabled={busy}>
+                  Close
+                </button>
+              ) : null}
             </div>
           </div>
         </div>

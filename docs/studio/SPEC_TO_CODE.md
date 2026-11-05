@@ -22,7 +22,8 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Take model: audition vs commit, newest on top | §72.1 | captured in spec; take UI still reference-only |
 | Clip remembers its source generation | §70 | `songId` on clip + provenance strip |
 | Library panel: songs with Add, workspace filter with counts, projects with Open, uploads with Add | §19.1 / gap G12 | `components/studio/StudioLibrary.tsx` + `selectLibraryWorkspace` |
-| Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (6 wired, 3 disabled with reasons) |
+| Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (7 wired, 2 disabled with reasons) |
+| Share: view + copy link, naming gate first | §24 / §24.1 | `StudioProjectMenu` share dialog + `createStudioProjectShare` / `listStudioProjectShares` |
 | Empty project asks how to start | §10 / gap G18 | `components/studio/StudioOnboarding.tsx` |
 | Coarse pointers get 44 px targets | gap G20 | `app/touch-targets.css` |
 | Clips culled outside the visible window | gap G19 | `view` state in `StudioEditorShell` |

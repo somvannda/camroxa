@@ -209,10 +209,10 @@ costs belong to the pricing table; the charge bridge was wired to the retired on
 **Date:** 2026-11-05 · **Status:** accepted (G23)
 
 **Decision.** The project chip opens the nine items captured in §18.1/§44.2, in that
-order. Six are wired: **New Project**, **Open Project**, **Rename**, **Duplicate
-Project**, **Version History** (list + restore) and **Show Quick Start again**. Three are
-rendered **disabled with the reason in the tooltip**: Share Project, Open a copy in v1,
-Studio Settings.
+order. Seven are wired: **New Project**, **Open Project**, **Rename**, **Duplicate
+Project**, **Version History** (list + restore), **Share Project** (D-012) and **Show
+Quick Start again**. Two are rendered **disabled with the reason in the tooltip**: Open a
+copy in v1, Studio Settings.
 
 **Why.** Hiding the missing three would break the muscle-memory order the capture
 records, and showing them enabled would promise surfaces that do not exist. A disabled
@@ -227,6 +227,34 @@ List and the microphone.
 - Settings has no captured layout, so building it now would be guessing.
 - Rename updates the header title but does not touch the arrangement document, so it
   never participates in the 409 version check.
+
+---
+
+## D-012 — Share links are view-and-copy, minted lazily, reused while live
+
+**Date:** 2026-11-05 · **Status:** accepted (G23)
+
+**Decision.** Project menu → Share Project follows the captured semantics (§24): a link
+delivers a **view** of the project and lets the visitor fork their own editable copy; the
+owner's document is never co-edited. An unnamed project hits the naming gate first
+(§24.1), where Skip shares without renaming. The editor reuses an existing live link
+rather than minting a new one each time, and new links live 7 days.
+
+**Why.**
+
+- The capture is explicit that sharing is an invitation to open the editor, not real-time
+  collaboration; copy in the dialog says so rather than leaving it implied.
+- Minting a token per visit would litter `studio_project_shares` and silently invalidate
+  links the user already sent out.
+- Seven days matches the API default and keeps the dialog honest: the link is not
+  permanent, and the dialog says when it expires.
+- The naming gate exists because an "Untitled project" link is indistinguishable in a
+  recipient's editor; Skip stays available because forcing a name would block sharing.
+
+**Consequences.** Revoking a link is a backend/admin action for now — the dialog does not
+expose it. The public route is `/studio/shared/{token}` and the API answers
+`GET /api/v3/web-music/studio/shares/{token}` without editor auth, which the e2e suite
+asserts.
 
 ---
 
