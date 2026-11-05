@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
+
 import { Icon } from "@/components/Icon";
 import type { StudioTrack } from "@/lib/studio-tracks";
 
@@ -36,6 +38,7 @@ export type StudioTrackPanelProps = {
   onHide: (trackId: string) => void;
   onDelete: (trackId: string) => void;
   onAddTrack: () => void;
+  onAddUploadTrack: () => void;
   onToggleHidden: () => void;
   onShowAllHidden: () => void;
 };
@@ -60,12 +63,32 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onHide,
     onDelete,
     onAddTrack,
+    onAddUploadTrack,
     onToggleHidden,
     onShowAllHidden,
   } = props;
 
   const visible = tracks.filter((track) => !track.hidden);
   const hiddenTracks = tracks.filter((track) => track.hidden);
+
+  // Add-track menu (§8.3). Local state: nothing outside this panel depends on it.
+  const [addOpen, setAddOpen] = useState(false);
+  const addRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!addOpen) return;
+    const onPointer = (event: PointerEvent) => {
+      if (addRef.current && !addRef.current.contains(event.target as Node)) setAddOpen(false);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setAddOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [addOpen]);
 
   return (
     <aside className="se-tracks" aria-label="Tracks">
@@ -204,9 +227,49 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
           );
         })}
 
-        <button type="button" className="se-add-track" onClick={onAddTrack}>
-          <Icon name="fa-plus" /> Add new track
-        </button>
+        <div className="se-add-wrap" ref={addRef}>
+          <button
+            type="button"
+            className="se-add-track"
+            aria-haspopup="menu"
+            aria-expanded={addOpen}
+            onClick={() => setAddOpen((value) => !value)}
+          >
+            <Icon name="fa-plus" /> Add new track
+          </button>
+          {addOpen ? (
+            <div className="se-add-menu" role="menu" aria-label="Add a track">
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setAddOpen(false);
+                  onAddTrack();
+                }}
+              >
+                Audio <span>A</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                disabled
+                title="MIDI tracks are not built in this editor"
+              >
+                MIDI <span>M</span>
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                onClick={() => {
+                  setAddOpen(false);
+                  onAddUploadTrack();
+                }}
+              >
+                Upload <span>U</span>
+              </button>
+            </div>
+          ) : null}
+        </div>
 
         {hiddenTracks.length > 0 ? (
           <div className="se-hidden-wrap">

@@ -374,6 +374,7 @@ describe("StudioTrackPanel", () => {
       onHide: noop,
       onDelete: noop,
       onAddTrack: noop,
+      onAddUploadTrack: noop,
       onToggleHidden: noop,
       onShowAllHidden: noop,
       ...overrides,
@@ -411,5 +412,31 @@ describe("StudioTrackPanel", () => {
     const arm = screen.getByLabelText(/^Arm Track 1/);
     expect((arm as HTMLButtonElement).disabled).toBe(true);
     expect(arm.getAttribute("aria-label")).toContain("recording not implemented");
+  });
+
+  it("offers the captured add-track menu with its letters", async () => {
+    const user = userEvent.setup();
+    const onAddTrack = vi.fn();
+    const onAddUploadTrack = vi.fn();
+    render(<StudioTrackPanel {...panelProps({ onAddTrack, onAddUploadTrack })} />);
+
+    await user.click(screen.getByRole("button", { name: /Add new track/ }));
+    const items = screen.getAllByRole("menuitem");
+    expect(items.map((node) => node.textContent?.replace(/\s+/g, " ").trim())).toEqual([
+      "Audio A",
+      "MIDI M",
+      "Upload U",
+    ]);
+    // No MIDI tracks exist in this editor, so that row says so instead of pretending.
+    expect((items[1] as HTMLButtonElement).disabled).toBe(true);
+    expect(items[1].getAttribute("title")).toMatch(/MIDI/);
+
+    await user.click(items[0]);
+    expect(onAddTrack).toHaveBeenCalledOnce();
+    expect(onAddUploadTrack).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /Add new track/ }));
+    await user.click(screen.getAllByRole("menuitem")[2]);
+    expect(onAddUploadTrack).toHaveBeenCalledOnce();
   });
 });

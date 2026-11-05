@@ -41,7 +41,7 @@ Scoring for this document:
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Workspaces (with server-side song counts and a filter), Projects and Uploads tabs wired; the stems tab waits on a finished stems job (B-005) |
-| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 127 tests (pure modules, components, API contract); Playwright: 11 specs (smoke, persistence, library, project menu + share + settings, learn/help, metric parity, axe ×3). e2e needs local services, so it is not in CI yet |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 128 tests (pure modules, components, API contract); Playwright: 13 specs (smoke, persistence, library, project menu + share + settings, learn/help, keyboard + add-track, metric parity, axe ×3). e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
@@ -59,6 +59,8 @@ Scoring for this document:
 | G24 | No Studio settings; clip drags touched audio live | The captured ghost-drag behaviour (§22) was absent, and a drop never applied the new arrangement to the running engine | W3 | **done** - settings panel with the one captured setting (ghost drag), read at gesture start; on = hold audio and apply once on drop, off = apply per move (D-013) |
 
 | G25 | No Learn menu or hover help | The captured "What's This?" system (§7/§38) was missing; the footer's Learn link went nowhere useful | W3 | **done** - Learn popover with the four captured rows, `?` shortcut list, and hover/focus cards on annotated controls, toggled globally and remembered (D-014) |
+
+| G26 | Add-track was a single button; no transport keys | The captured add-track menu (§8.3) and the §11 keys (Space, Home/End, A/U) did not exist, though the help list implied Space worked | W3 | **done** - menu with Audio A / MIDI M / Upload U (MIDI disabled: no MIDI tracks in this editor), Space/Home/End/A/U bound with dialog and typing guards |
 
 ## 3. Deliberate non-parity
 

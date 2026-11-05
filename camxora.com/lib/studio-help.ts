@@ -91,7 +91,7 @@ export const HELP_ENTRIES: Record<string, HelpEntry> = {
   },
   "add-track": {
     title: "Add track",
-    body: "Adds an empty audio track. Clips are added from the library or by recording, which is not built yet.",
+    body: "Opens the add-track menu. Audio adds an empty track, Upload opens your imported audio, and MIDI is not built in this editor.",
   },
 };
 
@@ -102,7 +102,10 @@ export function helpFor(id: string | null | undefined): HelpEntry | null {
 
 /** Our real bindings, shown by Learn ▸ Keyboard Shortcuts. */
 export const SHORTCUTS: { keys: string; action: string }[] = [
-  { keys: "Space", action: "Play / pause (when the canvas has focus)" },
+  { keys: "Space", action: "Play / pause" },
+  { keys: "Home / End", action: "Playhead to the start / end" },
+  { keys: "A", action: "Add an audio track" },
+  { keys: "U", action: "Open the library on Uploads" },
   { keys: "Ctrl/⌘ + Z", action: "Undo" },
   { keys: "Ctrl/⌘ + Shift + Z", action: "Redo (Ctrl/⌘ + Y also works)" },
   { keys: "Ctrl/⌘ + C", action: "Copy the selected clips" },

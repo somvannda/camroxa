@@ -366,6 +366,12 @@ export function StudioEditorShell() {
     setLibraryTab("songs");
   }
 
+  /** Add-track ▸ Upload (§8.3) lands on the library's Uploads tab. */
+  function openUploadLibrary() {
+    setLibraryTab("uploads");
+    setLibraryOpen(true);
+  }
+
   /** Resolve the selected clip's source song for the provenance strip (G16). */
   useEffect(() => {
     const clip = clips.find((candidate) => candidate.id === selectedClip);
@@ -1028,6 +1034,41 @@ export function StudioEditorShell() {
         return;
       }
 
+      // Unmodified keys (spec §11): Space transport, Home/End, and the add-track
+      // accelerators A (audio) / U (uploads). M has no meaning here — MIDI tracks are
+      // not built — so it is deliberately unbound rather than adding an audio track.
+      if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+        if (document.querySelector('[role="dialog"]')) return;
+        if (event.code === "Space") {
+          event.preventDefault();
+          togglePlayback();
+          return;
+        }
+        if (event.key === "Home") {
+          event.preventDefault();
+          setPlaying(false);
+          void stopAudio();
+          setPlayhead(0);
+          return;
+        }
+        if (event.key === "End") {
+          event.preventDefault();
+          setPlayhead(duration);
+          return;
+        }
+        const plain = event.key.toLowerCase();
+        if (plain === "a") {
+          event.preventDefault();
+          addTrack();
+          return;
+        }
+        if (plain === "u") {
+          event.preventDefault();
+          openUploadLibrary();
+          return;
+        }
+      }
+
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
       // Undo / redo (spec §36). Shift+Z is redo alongside Y.
@@ -1537,6 +1578,7 @@ export function StudioEditorShell() {
           onHide={hideTrack}
           onDelete={deleteTrack}
           onAddTrack={addTrack}
+          onAddUploadTrack={openUploadLibrary}
           onToggleHidden={() => setHiddenOpen((open) => !open)}
           onShowAllHidden={showAllHidden}
         />
