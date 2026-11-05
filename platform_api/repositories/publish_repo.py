@@ -546,6 +546,27 @@ class PublishRepository:
         )
         return [_row_to_job(row) for row in rows]
 
+    async def expire_pending_uploads(self) -> int:
+        """Fail jobs whose presigned upload URL expired before the file arrived.
+
+        Without this, an abandoned or failed direct upload leaves
+        ``pending_upload`` forever, so Progress keeps showing "Uploading 0/1".
+        """
+        rows = await self._db.fetch(
+            """
+            UPDATE youtube_upload_jobs
+            SET status = 'failed',
+                error_code = 'UPLOAD_EXPIRED',
+                error_message = 'Upload URL expired before the file arrived.',
+                updated_at = NOW()
+            WHERE status = 'pending_upload'
+              AND upload_expires_at IS NOT NULL
+              AND upload_expires_at < NOW()
+            RETURNING id
+            """
+        )
+        return len(rows or [])
+
     async def set_job_status(
         self,
         job_id: str,

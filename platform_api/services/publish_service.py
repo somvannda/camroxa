@@ -635,6 +635,12 @@ class PublishService:
         limit: int = 50,
     ) -> list[dict[str, Any]]:
         self.require_enabled()
+        try:
+            expired = await self._repo.expire_pending_uploads()
+            if expired:
+                logger.info("Marked %s publish job(s) failed after upload-URL expiry.", expired)
+        except Exception:
+            logger.warning("Publish upload expiry sweep failed.", exc_info=True)
         jobs = await self._repo.list_jobs(
             user_id, batch_id=batch_id, status=status, limit=limit
         )
