@@ -995,6 +995,52 @@ class PlatformApi:
         )
         return CreatePublishJobResponse.model_validate(data)
 
+    def create_publish_upload(self, *, file_name: str, content_type: str, size_bytes: int, first_part_count: int = 10) -> dict[str, Any]:
+        """Open a multipart upload and get the first presigned part URLs."""
+        data = self._client.request(
+            "/publish/uploads",
+            method="POST",
+            auth=True,
+            body={
+                "file_name": file_name,
+                "content_type": content_type,
+                "size_bytes": int(size_bytes),
+                "first_part_count": int(first_part_count),
+            },
+        )
+        return data if isinstance(data, dict) else {}
+
+    def sign_publish_upload_parts(
+        self, *, key: str, upload_id: str, part_numbers: list[int]
+    ) -> list[dict[str, Any]]:
+        data = self._client.request(
+            "/publish/uploads/parts",
+            method="POST",
+            auth=True,
+            body={"key": key, "upload_id": upload_id, "part_numbers": list(part_numbers)},
+        )
+        parts = data.get("parts") if isinstance(data, dict) else None
+        return list(parts or [])
+
+    def complete_publish_upload(
+        self, *, key: str, upload_id: str, parts: list[dict[str, Any]]
+    ) -> str:
+        data = self._client.request(
+            "/publish/uploads/complete",
+            method="POST",
+            auth=True,
+            body={"key": key, "upload_id": upload_id, "parts": parts},
+        )
+        return str((data or {}).get("media_url") or "")
+
+    def abort_publish_upload(self, *, key: str, upload_id: str) -> None:
+        self._client.request(
+            "/publish/uploads/abort",
+            method="POST",
+            auth=True,
+            body={"key": key, "upload_id": upload_id},
+        )
+
     def complete_publish_job(self, job_uid: str, checksum: str | None = None) -> PublishJob:
         body = {"checksum": checksum} if checksum else {}
         data = self._client.request(

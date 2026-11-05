@@ -2870,6 +2870,10 @@ class _ProgressReader:
             pass
 
 
+# Originals above this size go through our storage (multipart) instead of a single PUT.
+URL_UPLOAD_THRESHOLD_BYTES = 200 * 1024 * 1024
+
+
 class PublishUploadWorker(QThread):
     """Create a publish job, upload the media, then charge + create the post."""
 
@@ -2909,11 +2913,18 @@ class PublishUploadWorker(QThread):
                 )
             step = "create job"
             self.status_changed.emit("Creating upload job…")
+            file_path = str(request.file_path or "").strip()
+            size_bytes = Path(file_path).stat().st_size if file_path and Path(file_path).is_file() else 0
+            media_url = ""
+            if size_bytes >= URL_UPLOAD_THRESHOLD_BYTES:
+                # Large original: upload it to our storage resumably and let the
+                # provider fetch it (no re-encoding, no single-PUT size wall).
+                media_url = self._upload_via_storage(request, file_path, size_bytes)
+                request = request.model_copy(update={"media_url": media_url})
             job = self._api.create_publish_job(request)
-            if not job.upload_url:
-                raise RuntimeError("The publishing service did not return an upload URL.")
-            step = "upload video"
-            self._put(job.upload_url, request.file_path or "", "video/mp4")
+            if job.upload_url:
+                step = "upload video"
+                self._put(job.upload_url, file_path, "video/mp4")
             if job.thumbnail_upload_url and request.thumbnail_path:
                 step = "upload thumbnail"
                 self.status_changed.emit("Uploading thumbnail…")
@@ -2940,6 +2951,77 @@ class PublishUploadWorker(QThread):
             except Exception:
                 pass
             self.failed.emit(message)
+
+    def _upload_via_storage(self, request: CreatePublishJobRequest, file_path: str, size_bytes: int) -> str:
+        """Upload the original file to B2 in parts and return the media URL."""
+        init = self._api.create_publish_upload(
+            file_name=request.file_name or Path(file_path).name,
+            content_type="video/mp4",
+            size_bytes=size_bytes,
+            first_part_count=10,
+        )
+        key = str(init.get("key") or "").strip()
+        upload_id = str(init.get("upload_id") or "").strip()
+        part_size = int(init.get("part_size") or 0)
+        part_count = int(init.get("part_count") or 0)
+        if not key or not upload_id or part_size <= 0 or part_count <= 0:
+            raise RuntimeError("storage did not return a usable multipart upload")
+        urls = {
+            int(part.get("part_number") or 0): str(part.get("url") or "")
+            for part in (init.get("parts") or [])
+            if isinstance(part, dict)
+        }
+        completed: list[dict[str, object]] = []
+        sent = 0
+        for number in range(1, part_count + 1):
+            url = urls.get(number)
+            if not url:
+                signed = self._api.sign_publish_upload_parts(
+                    key=key, upload_id=upload_id, part_numbers=[number]
+                )
+                url = str((signed[0] if signed else {}).get("url") or "")
+            if not url:
+                raise RuntimeError(f"missing upload URL for part {number}")
+            offset = (number - 1) * part_size
+            length = min(part_size, size_bytes - offset)
+            etag = self._put_part(url, file_path, offset, length)
+            completed.append({"part_number": number, "etag": etag})
+            sent += length
+            self.progress.emit(sent, size_bytes)
+            self.status_changed.emit(
+                f"Uploading to CAMXORA storage… {int(sent * 100 / max(size_bytes, 1))}% "
+                f"({sent / 1048576:.0f} / {size_bytes / 1048576:.0f} MB)"
+            )
+        media_url = self._api.complete_publish_upload(
+            key=key, upload_id=upload_id, parts=completed
+        )
+        if not media_url:
+            raise RuntimeError("storage did not return a media URL")
+        self.status_changed.emit("Upload complete — sending to the publisher…")
+        return media_url
+
+    def _put_part(self, url: str, path: str, offset: int, length: int) -> str:
+        """PUT one 16 MB slice and return its ETag (retries twice)."""
+        with open(path, "rb") as handle:
+            handle.seek(offset)
+            payload = handle.read(length)
+        last: Exception | None = None
+        for _attempt in range(3):
+            request = urllib_request.Request(
+                url,
+                data=payload,
+                method="PUT",
+                headers={"Content-Type": "video/mp4", "Content-Length": str(len(payload))},
+            )
+            try:
+                with urllib_request.urlopen(request, timeout=600) as response:
+                    etag = str(response.headers.get("ETag") or "").strip().strip('"')
+                    if not etag:
+                        raise RuntimeError("storage did not return an ETag for the part")
+                    return etag
+            except Exception as exc:  # noqa: BLE001 - retried below
+                last = exc
+        raise RuntimeError(f"part upload failed: {type(last).__name__}: {last}")
 
     def _build_auto_request(self) -> CreatePublishJobRequest:
         profile_id = str(self._auto_context.get("profile_id") or "").strip()
