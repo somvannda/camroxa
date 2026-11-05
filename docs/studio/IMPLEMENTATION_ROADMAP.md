@@ -78,7 +78,7 @@ needs an interaction spec row before code.
 | W5.1 | ◐ Unit tests for pure helpers (snap, meter, draft, seed, WAV encode) — 33 passing, enforced by CI | `npm test` green |
 | W5.2 | ✅ Component tests for the extracted Studio components (header, footer, library strip, track panel) | green |
 | W5.3 | ✅ API contract tests for lib/studio-api.ts against a stubbed fetch (14 tests incl. 409 mapping and the version field) | green |
-| W5.4 | ✅ Playwright smoke: login, create fixture, drag a clip one bar, undo, open export | green (found and fixed a double-save bug) |
+| W5.4 | ✅ Playwright: smoke, persistence across reload, library tabs + filter, metric parity, axe ×3 | green (found and fixed a double-save bug and two selector ambiguities) |
 | W5.5 | ✅ Accessibility pass (axe) on /studio and /studio/editor — now an e2e assertion, not a one-off audit | no violations |
 
 ### W6 — Verification (M12)

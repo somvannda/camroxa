@@ -41,7 +41,7 @@ Scoring for this document:
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Projects and Uploads tabs wired (uploads load from `GET /studio/uploads`); the stems tab waits on a finished stems job (B-005) and workspaces have no API |
-| G13 | No Studio test suite | Regressions found by hand | W5 | **partial** - vitest: 83 tests over pure modules, components and the API contract; Playwright layer open |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 83 tests (pure modules, components, API contract); Playwright: 7 specs (smoke, persistence across reload, library tabs/filter, metric parity, axe on home/editor/drawer). e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |

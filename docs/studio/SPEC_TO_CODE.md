@@ -55,6 +55,6 @@ which we cannot honour).
 
 - Screenshots: `reference/screens/` (78 files) + `reference/SCREENSHOT_INDEX.md`
 - Measurements: `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §1–§96
-- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (19 of 22 closed; G12, G13 and G21 partial)
+- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (20 of 22 closed; G12 and G21 partial)
 - Audio claims: `window.__buildMasterBus`, `__studioExport`, `__studioMeter`,
   `__studioNormalise` in dev

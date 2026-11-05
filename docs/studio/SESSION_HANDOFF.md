@@ -56,11 +56,14 @@ Helpers in `scripts/`:
 | unit (pure helpers) | `npm test` | snap, meter, draft, seed, WAV encode |
 | component | `npm test` | header, footer, library, provenance strip, track panel |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | interaction smoke, metric parity, axe ×2 |
+| e2e | `npm run test:e2e` | smoke (move/undo/export), persistence across reload, library tabs + filter, metric parity, axe ×3 (home, editor, library drawer) |
 
 CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` on
 any PR touching `camxora.com`. The e2e specs are not in CI yet — they need the app plus
-the platform API and a database, which the workflow does not provision.
+the platform API and a database, which the workflow does not provision. They build their
+own fixtures through the API (`tests/e2e/studio-fixture.ts`) and leave those fixture
+projects in the sandbox database, so the sandbox accumulates test projects by design;
+they never touch a non-sandbox account.
 
 **Backend suite:** `python -m pytest platform_api/tests -q` → 3159 passed, 2 failed at
 `dbe0245d`. Both failures pre-date D-009 and are unrelated (they assert on retired plan
@@ -106,19 +109,19 @@ future "parity" work should not delete them.
 
 ## Next moves, in order
 
-Everything that does **not** depend on a missing backend endpoint is done. What is left:
+Everything that does **not** depend on a missing backend endpoint or a real generated
+clip is done. What is left:
 
 1. **W4.2 stems** and the stems half of **W4.3** — the charge path is fixed and verified
    (D-009); what remains is one genuinely generated clip so musicapi can resolve the
    owning Suno account (blocker B-005).
-2. **W4.3 range export** — needs a time-selection model first (the editor has a playhead
-   and a loop flag, no range).
-3. **G11 mastering presets / export normalisation** — design work on top of W4.1.
-4. **G12 remainder** — a stems tab (needs a finished stems job first, B-005) and
+2. **G12 remainder** — a stems tab (needs a finished stems job first, B-005) and
    workspaces (no API). Uploads, Songs and Projects are wired.
-5. **G13/G14/G15** — test runner (none installed), axe pass, splitting the 6.9k-line
-   shell.
-6. The five capture gaps, opportunistically — see `reference/CAPTURE_GAPS.md`.
+3. **G21 remainder** — per-track Arm (needs recording, which does not exist).
+4. **W6 verification** — the inventory re-walk against a signed-in reference session
+   (B-001); that is also where the five capture gaps get filled.
+5. **e2e in CI** — the specs exist and pass locally; CI has no app/API/DB to run them.
+   Adding a service-backed job is an infrastructure decision, not a code gap.
 
 ## Modules added this session (each with a dev handle for measurement)
 
