@@ -2954,6 +2954,22 @@ class PublishUploadWorker(QThread):
 
     def _upload_via_storage(self, request: CreatePublishJobRequest, file_path: str, size_bytes: int) -> str:
         """Upload the original file to B2 in parts and return the media URL."""
+        import time
+
+        from shared.lib.publish_asset_cache import lookup_media_url, store_media_url
+
+        try:
+            stat = Path(file_path).stat()
+        except OSError:
+            stat = None
+        now = time.time()
+        if stat is not None:
+            cached = lookup_media_url(
+                file_path, size_bytes=size_bytes, mtime=stat.st_mtime, now=now
+            )
+            if cached:
+                self.status_changed.emit("Using the copy already uploaded to CAMXORA storage…")
+                return cached
         init = self._api.create_publish_upload(
             file_name=request.file_name or Path(file_path).name,
             content_type="video/mp4",
@@ -2997,6 +3013,14 @@ class PublishUploadWorker(QThread):
         )
         if not media_url:
             raise RuntimeError("storage did not return a media URL")
+        if stat is not None:
+            store_media_url(
+                file_path,
+                size_bytes=size_bytes,
+                mtime=stat.st_mtime,
+                media_url=media_url,
+                now=time.time(),
+            )
         self.status_changed.emit("Upload complete — sending to the publisher…")
         return media_url
 
