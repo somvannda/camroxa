@@ -110,6 +110,36 @@ CD_THEN_EXTRACT = re.compile(
     r"cd\s+" + re.escape(REMOTE_REPO) + r"[\s\S]{0,400}?\btar\s+-x", re.I
 )
 
+# Deploy scripts must migrate through `platform_api.migrations.upgrade`, which
+# takes the same advisory lock as the API startup runner. The raw CLI bypasses
+# it, so a deploy and a booting worker can upgrade concurrently — the overlap
+# that plausibly left `alembic_version = 178` recorded while its DDL was missing.
+LOCKED_MIGRATION_ENTRYPOINT = "platform_api.migrations.upgrade"
+RAW_ALEMBIC_CLI = re.compile(
+    r"(?:^|&&|;)\s*(?:sudo\s+[^;]*?)?(?:[\w./-]*/)?alembic\s+(?:upgrade|stamp)\b"
+)
+
+# Pre-existing scripts that still call the CLI directly. Tolerated in --strict so
+# the check stays actionable; never tolerated in --changed-only.
+KNOWN_LEGACY_RAW_ALEMBIC: dict[str, str] = {
+    "camxora-sandbox-remote.sh": "sandbox install path, predates the locked entrypoint",
+    "deploy_billing_and_fixes_sandbox.py": "sandbox one-shot, predates the locked entrypoint",
+    "deploy_desktop_renewal_production.py": "one-shot 2026 desktop renewal, predates the lock",
+    "deploy_music_streaming_production.py": "one-shot streaming patch, predates the lock",
+    "deploy_suno_blocklist_sandbox.py": "sandbox one-shot, predates the locked entrypoint",
+    "hotfix_credits_only_api_v3_sandbox.py": "sandbox stamp, already applied",
+    "hotfix_ios_hls_playback_production.py": "one-shot 2026-09 patch, already applied",
+    "hotfix_protected_playback_production.py": "one-shot playback patch, already applied",
+    "hotfix_sandbox_ios_hls_playback.py": "sandbox one-shot, already applied",
+    "hotfix_web_music_clip_duration_sandbox.py": "sandbox one-shot, already applied",
+    "migrate_sandbox_email.py": "sandbox one-shot, predates the locked entrypoint",
+    "run_alembic_075_production.py": "historical 075 runner",
+    "run_alembic_075_sandbox.py": "historical 075 runner",
+    "run_alembic_upgrade_production.py": "historical ad-hoc runner",
+    "run_alembic_upgrade_sandbox.py": "historical ad-hoc runner",
+    "sync_complete_feature_sandbox.py": "sandbox one-shot, predates the locked entrypoint",
+}
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -117,6 +147,28 @@ class Finding:
     reason: str
     line: int
     verified: bool
+
+
+@dataclass(frozen=True)
+class AlembicFinding:
+    path: Path
+    line: int
+
+
+def scan_raw_alembic(paths: Iterable[Path]) -> list[AlembicFinding]:
+    """Deploy scripts that call the Alembic CLI instead of the locked entrypoint."""
+    findings: list[AlembicFinding] = []
+    for path in sorted(paths):
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            continue
+        if LOCKED_MIGRATION_ENTRYPOINT in text and not RAW_ALEMBIC_CLI.search(text):
+            continue
+        for lineno, line in enumerate(text.splitlines(), start=1):
+            if RAW_ALEMBIC_CLI.search(line.strip()):
+                findings.append(AlembicFinding(path, lineno))
+    return findings
 
 
 def _is_runtime_path(line: str) -> bool:
@@ -249,26 +301,51 @@ def main(argv: Sequence[str] | None = None) -> int:
     blocking = [f for f in unverified if f not in allowlisted]
     render(findings, as_json=args.json)
 
+    raw_alembic = scan_raw_alembic(targets)
+    alembic_allowlisted = (
+        []
+        if args.changed_only
+        else [f for f in raw_alembic if f.path.name in KNOWN_LEGACY_RAW_ALEMBIC]
+    )
+    alembic_blocking = [f for f in raw_alembic if f not in alembic_allowlisted]
+    if raw_alembic:
+        for finding in alembic_blocking:
+            where = f"{finding.path.relative_to(REPO_ROOT).as_posix()}:{finding.line}"
+            print(
+                f"RAW ALEMBIC {where}  runs the Alembic CLI; use "
+                f"`python -m {LOCKED_MIGRATION_ENTRYPOINT}` so the advisory lock applies"
+            )
+        print(
+            f"deploy-hygiene: {len(raw_alembic) - len(alembic_allowlisted)} raw Alembic "
+            f"call(s), {len(alembic_allowlisted)} known legacy"
+        )
+
     if not findings:
         print(f"deploy-hygiene: {len(targets)} script(s) checked, no direct source writes")
-        return 0
-
-    verified = [f for f in findings if f.verified]
-    print(
-        f"deploy-hygiene: {len(verified)} verified source write(s), "
-        f"{len(unverified)} unverified ({len(allowlisted)} known legacy)"
-    )
-    for finding in allowlisted:
+    else:
+        verified = [f for f in findings if f.verified]
         print(
-            f"  legacy: {finding.path.name} — "
-            f"{KNOWN_LEGACY_UNVERIFIED[finding.path.name]}"
+            f"deploy-hygiene: {len(verified)} verified source write(s), "
+            f"{len(unverified)} unverified ({len(allowlisted)} known legacy)"
         )
+        for finding in allowlisted:
+            print(
+                f"  legacy: {finding.path.name} — "
+                f"{KNOWN_LEGACY_UNVERIFIED[finding.path.name]}"
+            )
     if args.strict and blocking:
         print(
             "\nRefusing: these scripts write source into the production checkout "
             "without the verified-source pipeline.\n"
             "Route them through build_source_bundle()/enforce_deploy_gate(), or run "
             "them as DB/ops-only scripts that never touch deployed files."
+        )
+        return 1
+    if args.strict and alembic_blocking:
+        print(
+            "\nRefusing: these scripts run the Alembic CLI directly, which bypasses "
+            "the migration advisory lock.\n"
+            f"Use `python -m {LOCKED_MIGRATION_ENTRYPOINT}` instead."
         )
         return 1
     return 0
