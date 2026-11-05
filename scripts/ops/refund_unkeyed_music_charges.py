@@ -65,6 +65,16 @@ WHERE (t.id IS NULL OR lower(coalesce(t.status, '')) IN ('failed', 'error'))
                 OR (t.song_id IS NOT NULL AND r.ref_id = t.song_id::text)
               )
   )
+  -- A same-amount refund right after the charge settles the attempt even when
+  -- its song key is outside the task time window.
+  AND NOT EXISTS (
+        SELECT 1 FROM credit_transactions r
+        WHERE r.user_id = d.user_id
+          AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
+          AND r.amount = d.amount
+          AND r.created_at >= d.created_at
+          AND r.created_at <= d.created_at + interval '10 minutes'
+  )
 ORDER BY d.created_at;
 """
 

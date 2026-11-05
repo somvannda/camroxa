@@ -71,16 +71,29 @@ LEFT JOIN LATERAL (
     ORDER BY abs(extract(epoch FROM (t.created_at - d.created_at)))
     LIMIT 1
 ) t ON true
-WHERE t.id IS NULL
-   OR (
-        lower(coalesce(t.status, '')) IN ('failed', 'error')
-        AND NOT EXISTS (
-            SELECT 1 FROM credit_transactions r
-            WHERE r.user_id = d.user_id
-              AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
-              AND (r.ref_id = t.id::text OR r.ref_id = t.song_id::text)
+WHERE (
+        t.id IS NULL
+        OR (
+             lower(coalesce(t.status, '')) IN ('failed', 'error')
+             AND NOT EXISTS (
+                 SELECT 1 FROM credit_transactions r
+                 WHERE r.user_id = d.user_id
+                   AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
+                   AND (r.ref_id = t.id::text OR r.ref_id = t.song_id::text)
+             )
         )
-   )
+      )
+  -- Refunds created for this attempt are keyed to the song, which may not be
+  -- inside the task time window. A same-amount refund landing immediately
+  -- after the charge settles it; without this the audit over-reported ~3.5x.
+  AND NOT EXISTS (
+        SELECT 1 FROM credit_transactions r
+        WHERE r.user_id = d.user_id
+          AND (r.direction = 'refund' OR r.reason ILIKE '%refund%')
+          AND r.amount = d.amount
+          AND r.created_at >= d.created_at
+          AND r.created_at <= d.created_at + interval '10 minutes'
+  )
 ORDER BY d.created_at;
 """
 
