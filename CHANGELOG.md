@@ -7,6 +7,16 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.13] - 2026-11-05
+
+### Fixed
+
+- The plan total now matches the server's credit check: drafts are priced as lyric + title per song
+  plus one album per batch (the panel used to count a single op per song, under-quoting a
+  5-batch/50-song plan by 110 credits: 940 vs 1,050).
+- The YouTube Upload toggle explains why it is unavailable (missing channel connection or
+  publication defaults per profile) instead of staying greyed out silently.
+
 ## [1.5.12] - 2026-11-05
 
 ### Added
