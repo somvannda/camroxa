@@ -506,3 +506,154 @@ async def postforme_webhook(
                 priority=PRI_PUBLISH_SYNC,
             )
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Large-media uploads: B2 multipart -> public URL the provider fetches
+# ---------------------------------------------------------------------------
+
+PUBLISH_PART_SIZE = 16 * 1024 * 1024
+PUBLISH_MEDIA_URL_TTL = 7 * 24 * 3600
+
+
+class CreateUploadRequest(BaseModel):
+    file_name: str = "video.mp4"
+    content_type: str = "video/mp4"
+    size_bytes: int = Field(gt=0)
+    first_part_count: int = Field(default=10, ge=1, le=100)
+
+
+class UploadPartUrl(BaseModel):
+    part_number: int
+    url: str
+
+
+class CreateUploadResponse(BaseModel):
+    key: str
+    upload_id: str
+    part_size: int
+    part_count: int
+    parts: list[UploadPartUrl] = Field(default_factory=list)
+
+
+class SignPartsRequest(BaseModel):
+    key: str
+    upload_id: str
+    part_numbers: list[int] = Field(min_length=1, max_length=100)
+
+
+class SignPartsResponse(BaseModel):
+    parts: list[UploadPartUrl] = Field(default_factory=list)
+
+
+class CompleteUploadPart(BaseModel):
+    part_number: int = Field(ge=1)
+    etag: str
+
+
+class CompleteUploadRequest(BaseModel):
+    key: str
+    upload_id: str
+    parts: list[CompleteUploadPart] = Field(min_length=1)
+
+
+class CompleteUploadResponse(BaseModel):
+    key: str
+    media_url: str
+    expires_in_seconds: int
+
+
+class AbortUploadRequest(BaseModel):
+    key: str
+    upload_id: str
+
+
+async def _media_storage():
+    from platform_api.dependencies import get_db_pool
+    from platform_api.services.storage_service import StorageService
+    from platform_api.services.streaming_config_service import (
+        resolve_streaming_storage_config,
+    )
+
+    config = await resolve_streaming_storage_config(get_db_pool())
+    if not config.configured:
+        raise HTTPException(status_code=503, detail="Media storage is not configured.")
+    return StorageService.from_config(config)
+
+
+def _owned_media_key(user_id: str, key: str) -> str:
+    candidate = str(key or "").strip()
+    if not candidate.startswith(f"publish/{user_id}/"):
+        raise HTTPException(
+            status_code=403, detail="Upload key does not belong to this account."
+        )
+    return candidate
+
+
+@router.post("/uploads", response_model=CreateUploadResponse, status_code=201)
+async def create_publish_upload(
+    request: CreateUploadRequest,
+    ctx: CurrentUserDep,
+) -> CreateUploadResponse:
+    storage = await _media_storage()
+    suffix = ".mov" if "quicktime" in request.content_type.lower() else ".mp4"
+    key = f"publish/{ctx.user_id}/{uuid4().hex}{suffix}"
+    upload_id = await storage.create_multipart(key=key, content_type=request.content_type)
+    part_count = max(1, math.ceil(int(request.size_bytes) / PUBLISH_PART_SIZE))
+    numbers = list(range(1, min(part_count, request.first_part_count) + 1))
+    parts = await storage.sign_parts(key=key, upload_id=upload_id, part_numbers=numbers)
+    return CreateUploadResponse(
+        key=key,
+        upload_id=upload_id,
+        part_size=PUBLISH_PART_SIZE,
+        part_count=part_count,
+        parts=[UploadPartUrl(**part) for part in parts],
+    )
+
+
+@router.post("/uploads/parts", response_model=SignPartsResponse)
+async def sign_publish_upload_parts(
+    request: SignPartsRequest,
+    ctx: CurrentUserDep,
+) -> SignPartsResponse:
+    key = _owned_media_key(ctx.user_id, request.key)
+    storage = await _media_storage()
+    parts = await storage.sign_parts(
+        key=key,
+        upload_id=request.upload_id,
+        part_numbers=request.part_numbers,
+    )
+    return SignPartsResponse(parts=[UploadPartUrl(**part) for part in parts])
+
+
+@router.post("/uploads/complete", response_model=CompleteUploadResponse)
+async def complete_publish_upload(
+    request: CompleteUploadRequest,
+    ctx: CurrentUserDep,
+) -> CompleteUploadResponse:
+    key = _owned_media_key(ctx.user_id, request.key)
+    storage = await _media_storage()
+    await storage.complete_multipart(
+        key=key,
+        upload_id=request.upload_id,
+        parts=[part.model_dump() for part in request.parts],
+    )
+    media_url = await storage.get_signed_get_url(
+        key, expires_seconds=PUBLISH_MEDIA_URL_TTL
+    )
+    return CompleteUploadResponse(
+        key=key,
+        media_url=media_url,
+        expires_in_seconds=PUBLISH_MEDIA_URL_TTL,
+    )
+
+
+@router.post("/uploads/abort", status_code=204)
+async def abort_publish_upload(
+    request: AbortUploadRequest,
+    ctx: CurrentUserDep,
+) -> None:
+    key = _owned_media_key(ctx.user_id, request.key)
+    storage = await _media_storage()
+    await storage.abort_multipart(key=key, upload_id=request.upload_id)
+    return None
