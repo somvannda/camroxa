@@ -1210,6 +1210,11 @@ class ProgressView(PollablePageMixin, QScrollArea):
             percent = int(sent_bytes * 100 / total_bytes)
             if percent >= last_percent["value"] + 5 or percent >= 100:
                 last_percent["value"] = percent
+                try:
+                    if meta is not None:
+                        meta.youtube_status = f"uploading {percent}%"
+                except Exception:
+                    pass
                 self._show_retry_notice(
                     f"Uploading to YouTube… {percent}% "
                     f"({sent_bytes / 1048576:.0f} / {total_bytes / 1048576:.0f} MB)",
@@ -1217,6 +1222,33 @@ class ProgressView(PollablePageMixin, QScrollArea):
                 )
 
         worker.progress.connect(_on_progress)
+        meta = getattr(row, "meta", None)
+        original = (
+            getattr(meta, "youtube_status", None),
+            getattr(meta, "youtube_pending", None),
+            getattr(meta, "youtube_url", None),
+        ) if meta is not None else None
+
+        def _set_overlay(status: str, pending: int) -> None:
+            nonlocal meta
+            if meta is None:
+                return
+            try:
+                meta.youtube_status = status
+                meta.youtube_pending = pending
+                self._render_table()
+            except Exception:
+                pass
+
+        def _clear_overlay(*_args) -> None:
+            nonlocal original
+            if meta is None or original is None:
+                return
+            try:
+                meta.youtube_status, meta.youtube_pending, meta.youtube_url = original
+                self._render_table()
+            except Exception:
+                pass
         worker.succeeded.connect(
             lambda _result: self._show_retry_notice("Video published to YouTube.", tone="success")
         )
@@ -1227,6 +1259,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
         )
         worker.finished.connect(lambda: setattr(self, "_publish_upload_worker", None))
         self._publish_upload_worker = worker
+        _set_overlay("uploading", 1)
+        worker.finished.connect(_clear_overlay)
         worker.start()
 
     def _retry_failed_suno(self, batch_id: str, song_ids: list[str]) -> None:
