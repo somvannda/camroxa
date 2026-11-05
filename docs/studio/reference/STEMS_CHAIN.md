@@ -89,6 +89,34 @@ Not covered by tests either: `tests/test_credit_repo.py`, `test_credit_ledger.py
 (`test_admin_adjust_visible_on_v3_wallet` fails for an unrelated reason — its
 `FakeStore` has no `_pool`.)
 
+### Follow-up 3: the root cause is a retired billing bridge on a live path
+
+Traced the traceback rather than guessing:
+
+```
+web_music_service.py:3703   charge = await self._web_music_charge_bridge().charge(...)
+v3/web_music_charge.py:125  charge(...)
+v3/web_music_charge.py:108  plan = await self._store.resolve_charge_plan(user_id)
+v3/store.py:172             resolve_charge_plan → get_plan_for_user → FROM plans
+                            → UndefinedTableError
+```
+
+`v3/web_music_charge.py` is the **pre-credits-only** bridge — its own header says
+*"One charge model: amount = plan.<op>_credits"* — while `v3/credits_only_billing_service.py`
+is the replacement that the migration series moved to. The Studio operation path still
+calls the retired one.
+
+That is why `get_active_plan_slots` looked like the culprit: it is a symptom. The real
+defect is **two billing implementations coexisting, with Studio wired to the old one**.
+
+Fixing it means repointing Studio's charge, refund and quote at the credits-only service
+and re-deciding where an operation's price comes from (the `pricing` table, per project
+rules). That is money semantics — the one area where a guess is worse than a blocker.
+
+**Do not "fix" it by recreating a `plans` row or a fake plan allowance.** It would make
+the error disappear while silently pricing Studio operations from a table the product no
+longer has.
+
 ## Requirement summary
 
 1. a database at this branch's schema (so `plans` exists for the charge bridge), **and**
