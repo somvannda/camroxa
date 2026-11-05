@@ -2990,6 +2990,12 @@ class PublishUploadWorker(QThread):
         completed: list[dict[str, object]] = []
         sent = 0
         for number in range(1, part_count + 1):
+            if self.isInterruptionRequested():
+                try:
+                    self._api.abort_publish_upload(key=key, upload_id=upload_id)
+                except Exception:
+                    pass
+                raise RuntimeError("Upload cancelled.")
             url = urls.get(number)
             if not url:
                 signed = self._api.sign_publish_upload_parts(

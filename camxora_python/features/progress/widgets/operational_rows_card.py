@@ -162,6 +162,7 @@ class OperationalRowsCard(StudioPanel):
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
     upload_youtube_requested = Signal(object, str)
+    cancel_publish_upload_requested = Signal()
     change_run_folder_requested = Signal(object)
     download_missing_mp3s_requested = Signal(object)
     cancel_job_requested = Signal(object)
@@ -588,6 +589,9 @@ class OperationalRowsCard(StudioPanel):
                 else discover_merged_path(getattr(meta, "run_dir", ""))
             )
             if str(getattr(meta, "profile_id", "") or "").strip():
+                cancel_upload = menu.addAction("Cancel YouTube upload")
+                cancel_upload.setToolTip("Stop the upload to CAMXORA storage that is running now.")
+                cancel_upload.triggered.connect(self.cancel_publish_upload_requested.emit)
                 action = menu.addAction("Upload to YouTube")
                 action.setToolTip(
                     "Publish this run's merged video through Post for Me (per-upload credits)."

@@ -311,6 +311,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._rows_card.retry_drafts_requested.connect(self._retry_failed_drafts)
         self._rows_card.retry_suno_requested.connect(self._retry_failed_suno)
         self._rows_card.upload_youtube_requested.connect(self._upload_row_to_youtube)
+        self._rows_card.cancel_publish_upload_requested.connect(self._cancel_publish_upload)
         self._rows_card.force_export_regenerate_requested.connect(
             lambda row: self._run_video_pipeline_action(row, "force_export")
         )
@@ -1174,6 +1175,15 @@ class ProgressView(PollablePageMixin, QScrollArea):
         worker.finished.connect(lambda: setattr(self, "_draft_retry_worker", None))
         self._draft_retry_worker = worker
         worker.start()
+
+    def _cancel_publish_upload(self) -> None:
+        """Stop the upload currently running for this page."""
+        worker = self._publish_upload_worker
+        if worker is None or not worker.isRunning():
+            self._show_retry_notice("No YouTube upload is running.", tone="warning")
+            return
+        worker.requestInterruption()
+        self._show_retry_notice("Cancelling the YouTube upload…", tone="neutral")
 
     def _upload_row_to_youtube(self, row: object, merged_path: str) -> None:
         """Manual publish for one finished merge (Progress row action)."""
