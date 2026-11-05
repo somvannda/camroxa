@@ -62,6 +62,33 @@ Not something to do unattended.
 The copied `musicapi/.env` was deleted immediately after the attempt; it holds production
 credentials and must never be committed (it is gitignored, and `git check-ignore` confirms).
 
+### Follow-up 2 (2026-11-05): a fresh database proves it is stale code
+
+Built an **isolated** database (`camxora_studio_dev`) from this branch's own migrations
+so the shared sandbox was never touched. At head (revision **177**) it has 110 public
+tables and **no `plans`** — exactly like the sandbox.
+
+So the charge bridge failure is not schema drift. Migration **174 ("credits-only
+two-tier model")** removed `plans`, and these queries still join it:
+
+| File | Lines |
+|---|---|
+| `platform_api/repositories/credit_repo.py` | `INNER JOIN plans p ON p.id = l.plan_id`, `… ON p.id = ws.plan_id` |
+| `platform_api/repositories/license_repo.py` | plan reads, insert, selection |
+
+`credit_repo.get_active_plan_slots` is the one the Studio charge path reaches, so any
+stems/extend/cover request fails with `UndefinedTableError: relation "plans" does not
+exist`.
+
+**Why this stops here rather than getting "fixed"**: what replaces a plan allowance under
+the credits-only model is a billing decision, not a refactor. Rewriting those queries
+without that decision would trade a loud failure for a quiet one.
+
+Not covered by tests either: `tests/test_credit_repo.py`, `test_credit_ledger.py` and
+`test_v3_credits_only.py` pass 62/63 without ever reaching `get_active_plan_slots`.
+(`test_admin_adjust_visible_on_v3_wallet` fails for an unrelated reason — its
+`FakeStore` has no `_pool`.)
+
 ## Requirement summary
 
 1. a database at this branch's schema (so `plans` exists for the charge bridge), **and**
