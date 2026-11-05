@@ -91,7 +91,6 @@ chown -R camxora:camxora $REPO/music_web
 sudo -u camxora bash -lc "
   set -e
   cd $REPO/music_web
-  rm -rf .next
   npm ci || npm install --no-audit --no-fund
   TURNSTILE_SITE=\$(grep -m1 '^CLOUDFLARE_TURNSTILE_SITE_KEY=' $REPO/platform_api/.env | cut -d= -f2- || true)
   cat > .env.production <<ENVEOF
@@ -101,11 +100,40 @@ NEXT_PUBLIC_WEBSITE_URL=https://camxora.com
 NEXT_PUBLIC_CAMXORA_ENV=production
 NEXT_PUBLIC_CLOUDFLARE_TURNSTILE_SITE_KEY=\$TURNSTILE_SITE
 ENVEOF
-  npm run build
+  # Build beside the live tree, then swap. A failed build keeps the previous
+  # .next and exits before the restart: removing .next first is what produced
+  # the 2026-11-05 restart loop (6555 restarts, 502s on music.camxora.com).
+  rm -rf .next.prev
+  if [ -d .next ]; then mv .next .next.prev; fi
+  if ! npm run build; then
+    rm -rf .next
+    if [ -d .next.prev ]; then mv .next.prev .next; fi
+    echo 'MUSIC_WEB_BUILD_FAILED' >&2
+    exit 1
+  fi
+  test -s .next/BUILD_ID
+  test -s .next/prerender-manifest.json
+  rm -rf .next.prev
 "
+# Refuse to (re)start without a build and cap the restart loop, so a missing
+# .next fails once instead of hundreds of times behind nginx.
+install -d /etc/systemd/system/camxora-music.service.d
+cat > /etc/systemd/system/camxora-music.service.d/build-guard.conf <<'UNITEOF'
+[Unit]
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Restart=on-failure
+RestartSec=10
+ExecStartPre=/bin/sh -c 'test -s /opt/camxora/repo/music_web/.next/BUILD_ID || { echo "camxora-music: missing .next/BUILD_ID; refusing to start" >&2; exit 1; }'
+UNITEOF
+systemctl daemon-reload
+systemctl reset-failed camxora-music || true
 systemctl restart camxora-music
 sleep 4
 systemctl is-active camxora-music
+test -s $REPO/music_web/.next/BUILD_ID
 echo MUSIC_WEB_PRODUCTION_SYNC_DONE
 """,
         )
