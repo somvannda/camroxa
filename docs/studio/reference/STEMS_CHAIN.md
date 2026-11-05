@@ -38,13 +38,36 @@ Failed to decrypt a stored Suno client_cookie: COOKIE_ENCRYPTION_KEY does not ma
 the key these rows were encrypted with.
 ```
 
-The rows were encrypted with the production key. Without it the service refuses to
-start, so the internal stems route cannot be exercised locally at all. Supplying or
-guessing that key is out of scope — it is an environment secret, not a code gap.
+### Follow-up (2026-11-05): both gates were cleared, and a third appeared
 
-Even with musicapi running, the last step needs a **real** clip id whose Suno account is
-recorded (`findAssetAccountAny`), which a synthetic `audio_id_ok` cannot provide. So the
-honest requirement is: a genuinely generated clip plus that key.
+Using the key from the canonical checkout's `musicapi/.env` (same machine, same owner —
+configuration, not a secret to be typed in) plus `STUDIO_INTERNAL_TOKEN` on both
+services, the chain advanced further than this file first recorded:
+
+| Gate | Result |
+|---|---|
+| cookie key | **solved** — musicapi boots with the canonical `.env` (`health 200`) |
+| platform token | **solved** — `PLATFORM_STUDIO_INTERNAL_TOKEN` (note the `PLATFORM_` prefix; the unprefixed name is ignored) |
+| credit charge | **blocked** — `UndefinedTableError: relation "plans" does not exist` |
+
+The charge bridge still queries `plans`, but the sandbox database is at alembic **178**,
+where `credit_repo.py` itself notes *"plan_id filtering is retired with plans"*. In other
+words our branch's code is **older than that database's schema** — the sandbox belongs to
+the `postforme-publishing` line.
+
+Fixing that means migrating the shared sandbox database to this branch's head (or using
+a database built from our migrations), which would disturb work in progress elsewhere.
+Not something to do unattended.
+
+The copied `musicapi/.env` was deleted immediately after the attempt; it holds production
+credentials and must never be committed (it is gitignored, and `git check-ignore` confirms).
+
+## Requirement summary
+
+1. a database at this branch's schema (so `plans` exists for the charge bridge), **and**
+2. a genuinely generated clip whose Suno account is recorded (`findAssetAccountAny`).
+
+Neither is a code gap. Faking either would produce a green test that proves nothing.
 
 ## What this means for the roadmap
 
