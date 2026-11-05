@@ -455,6 +455,24 @@ class PublishService:
             },
             scheduled_at=scheduled_at,
         )
+        if external_media_url:
+            # The media is already hosted: there is nothing for the client to
+            # upload, so finish the job server-side (charge + hand the URL to the
+            # provider). Leaving it pending_upload stranded every URL-based
+            # publish in production.
+            completed = await self.complete_job(user_id=user_id, job_uid=job.job_uid)
+            return {
+                "job_uid": completed.get("job_uid", job.job_uid),
+                "status": completed.get("status", job.status),
+                "upload_url": None,
+                "upload_expires_at": None,
+                "media_url": job.media_url,
+                "thumbnail_upload_url": None,
+                "thumbnail_media_url": thumbnail_media_url,
+                "file_name": str(file_name or "").strip(),
+                "credits_per_upload": (await self._quote_credits(user_id)),
+                "platforms": [normalized_platform],
+            }
         return {
             "job_uid": job.job_uid,
             "status": job.status,
@@ -480,6 +498,10 @@ class PublishService:
         if job is None:
             raise NotFoundError("Publish job not found.")
         if job.status == STATUS_SUCCESS:
+            return _job_view(job)
+        if str(job.status) in {"processing", "queued", "uploading"}:
+            # Media was supplied by URL and the job was finalised server-side;
+            # a client that still calls complete must not fail (or double-post).
             return _job_view(job)
         if job.status in {STATUS_FAILED, STATUS_CANCELLED}:
             raise ValidationError("This publish job has already finished.", details={"status": job.status})
