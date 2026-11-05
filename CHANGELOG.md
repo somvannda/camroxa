@@ -7,6 +7,15 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.9] - 2026-11-05
+
+### Changed
+
+- YouTube upload failures now name the step that failed (quote / create job / upload video /
+  upload thumbnail / finalize) and the exception class, instead of a bare "Publishing failed."
+  Upload timeouts report how many megabytes were sent, and interrupted transfers report the
+  connection error. The upload timeout is 30 minutes.
+
 ## [1.5.8] - 2026-11-05
 
 ### Fixed
