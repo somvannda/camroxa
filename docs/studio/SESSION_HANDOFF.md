@@ -65,8 +65,8 @@ own fixtures through the API (`tests/e2e/studio-fixture.ts`) and leave those fix
 projects in the sandbox database, so the sandbox accumulates test projects by design;
 they never touch a non-sandbox account.
 
-**Backend suite:** `python -m pytest platform_api/tests -q` → 3159 passed, 2 failed at
-`dbe0245d`. Both failures pre-date D-009 and are unrelated (they assert on retired plan
+**Backend suite:** `python -m pytest platform_api/tests -q` → **3162 passed, 2 failed**
+at `29c903a2`. Both failures pre-date D-009 and are unrelated (they assert on retired plan
 machinery): `test_user_spend_service.py::test_user_spend_flags_over_allowance_and_margin_risk`
 (expects a `song` meter) and
 `test_web_music_batch_access.py::test_legacy_ledger_unlocks_pack_balance` (expects the

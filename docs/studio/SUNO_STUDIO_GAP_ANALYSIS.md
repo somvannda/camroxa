@@ -12,25 +12,27 @@ Scoring for this document:
 
 ## 1. Headline
 
+Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy desktop app.
+
 | Area | Reference surface | Ours | Verdict |
 |---|---|---|---|
-| Studio entry | Landing + project chooser + start-from-song | Marketing page; chooser lives inside the editor as a dialog | **Missing** (W1) |
-| Arrangement editor | Multitrack, clips, fades, split, markers, zoom | Present and richer in places (automation, groups, takes) | **Parity** |
-| Mixing | Per-track mix, master, FX | Present (EQ, filter, sends, dynamics, presets, master chain) | **Parity** |
-| MIDI | Piano roll, MIDI instrument, keyboard | Present + Web MIDI + chord/arp | **Parity** |
-| Generation in the DAW | Prompt at playhead, transforms (extend/cover/replace/remaster/stems/mashup) | Present via our provider | **Parity** (unverified E2E) |
-| Export | Mix, range, stems | Present in browser + server render endpoints | **Partial** (no loudness/mastering readout) |
-| Collaboration | Share links, comments, presence | Present (links, comments, presence, fork) | **Parity** (unverified E2E) |
-| Library integration | Songs, liked, uploads, stems, projects | Songs + liked + upload; no stems/projects tabs | **Partial** |
-| Reliability | Autosave + conflict handling | Autosave present; no conflict UX, no offline draft | **Partial** (W2) |
-| Quality gates | n/a | No Studio test suite; no a11y run | **Missing** (W5) |
+| Studio entry | Landing + project chooser + start-from-song | `/studio` home: list, resume, create, duplicate, archive, delete, start from a song | **Parity** |
+| Arrangement editor | Multitrack clips, drag, marquee, zoom, loop | Drag with snap + guideline, marquee, multi-drag, C/V/D, delete focus, undo/redo, loop range, two rulers | **Parity** for the captured surface; fades/split/markers/automation have no captured menu (C-03) and are not invented |
+| Mixing | Per-track mix, master chain, FX | Track volume / mute / solo, master chain (EQ, comp, limiter, drive), plugin dock with presets | **Partial** — no sends or group buses in this editor |
+| MIDI | Piano roll + instrument + keyboard | Not in the web Studio (desktop app only) | **Missing** (deliberate: no captured contract for a browser piano roll) |
+| Generation in the DAW | Prompt bar + clip transforms | Generation lives on `/create`; **stems** is wired from the provenance strip; extend/cover/remaster/mashup/replace-section APIs exist in `lib/studio-api.ts` but their menu was never captured | **Partial** |
+| Export | Mix, range, multitrack | Browser render: full mix, one file per track, loop range, project JSON, optional −1 dBFS normalisation | **Parity** for the browser path (server render not wired) |
+| Collaboration | Share links, comments, presence | View + copy links, comments and presence APIs, fork; the editor exposes sharing only | **Partial** — comments/presence have no captured panel |
+| Library | Songs / liked / stems / uploads / workspaces / projects | Songs, workspaces (with counts + filter), projects, uploads | **Partial** — stems tab waits on a real stems job (B-005); "liked" is per clip, not a song corpus |
+| Reliability | Autosave with silent overwrite | Save status, 409 reload/overwrite, offline draft, unsaved guard | **Beyond parity** (deliberate, D-004 family) |
+| Quality gates | n/a | 137 unit/component/API tests, 14 Playwright specs, axe-clean routes | **Present** — e2e is local until CI provisioning exists |
 
 ## 2. Detailed gaps
 
 | # | Gap | Impact | Roadmap | Status |
 |---|---|---|---|---|
 | G1 | No Studio home; `/studio` is marketing | Users cannot discover, resume, or manage projects without entering the DAW | W1.1-W1.3 | **done** — route added 2026-11-01; the home component already had the rest |
-| G2 | No deep link `?project=` in the editor | Home cannot open a specific project; refreshes fall back to "most recent" | W1.2 | **done** — home navigates with `?project=`; editor-side read to be verified signed-in |
+| G2 | No deep link `?project=` in the editor | Home cannot open a specific project; refreshes fall back to "most recent" | W1.2 | **done** — home navigates with `?project=`; the editor reads it on mount and every e2e fixture opens that way |
 | G3 | No conflict resolution UI on save | Concurrent edits can overwrite | W2.2 | **done** — version check + reload/overwrite panel |
 | G4 | No offline draft | A network blip loses the last edit burst | W2.3 | **done** — draft stored on failure, offered on reopen |
 | G5 | No unsaved-changes guard | Navigation can drop a pending write | W2.4 | **done** — `beforeunload` while a save is pending, failed or offline |
@@ -72,22 +74,36 @@ Scoring for this document:
 | Provider-specific model names and marketing labels | We surface our own models and let the provider adapter map them |
 | Reference private API usage | Forbidden as a product dependency (D-002) |
 | Reproducing the reference's exact pixel metrics | We match interaction quality and density, not pixels; our tokens are ours |
-| "Projects" tab in the library drawer | Needs a projects API listing distinct from the studio list; parked until the home ships and the need is proven |
 
 ## 4. What we have that the reference does not (or does not obviously expose)
 
-These are wins to protect, not to remove:
+These are wins to protect, not to remove — all of them exist in the web Studio:
 
-- Track groups A–D with group mix and collapse.
-- Full clip automation for volume and pan.
-- Alternates/takes per clip.
-- Project JSON import/export with lossless round trip.
-- Per-track and multitrack ZIP export from the browser.
-- Shared-project long-poll updates and presence.
-- Studio AI command bar (our own).
+- **Four save states** (saved / saving / failed / offline) with retry, plus a 409
+  reload-or-overwrite choice and an offline draft. The reference overwrites silently
+  (§93, §96).
+- **Export normalisation**: mix and range renders can be gain-matched to a −1 dBFS
+  sample peak (D-010).
+- **Project JSON export** that round-trips the arrangement.
+- **Workspace filtering with server-side song counts** in the library drawer.
+- **Keyboard focus management** on delete, 44 px coarse-pointer targets, and axe-clean
+  routes — including the Learn popover.
+- **A test suite**: 137 unit/component/API tests and 14 Playwright specs.
 
 ## 5. Verification debt
 
-Nothing in this repository currently proves the Studio works end to end. The matrix
-marks most features `IMPLEMENTED`, not `VERIFIED`, on purpose. Closing that debt is
-M11/M12 and is the difference between "looks complete" and "is complete".
+What is proven today: the arrangement interactions, persistence across reloads, share
+links (resolved without editor auth), project rename/duplicate/versions, library tabs and
+workspace filtering, ghost-drag settings persistence, help copy and toggling, transport
+keys, metronome scheduling, metric parity against the captured numbers, and zero axe
+violations on three surfaces.
+
+What is still *not* proven, and why:
+
+| Item | Blocked by |
+|---|---|
+| Receiving an actual stem set | B-005 — no genuinely generated clip whose Suno account is recorded |
+| Extend / cover / remaster / mashup / replace-section from the editor | No captured menu to place them (C-03); APIs exist and are tested at the service level only |
+| Comments and presence panels | No captured panel (C-10) |
+| e2e in CI | The workflow has no app + API + database provisioning |
+| The five capture gaps (S30, S32, S44, S60, S61) | A signed-in reference session (B-001) |
