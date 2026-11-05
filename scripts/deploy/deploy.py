@@ -78,6 +78,7 @@ DEPLOY_FILES = (
     # Manual report (not alerted yet): failed attempts whose charge was not
     # refunded. Wiring it to a page would be noise until the per-attempt ref fix.
     "scripts/ops/audit_failed_music_refunds.py",
+    "scripts/ops/refund_failed_music_charges.py",
 )
 # Kept for callers that imported these names from deploy.py.
 __all__ = [
