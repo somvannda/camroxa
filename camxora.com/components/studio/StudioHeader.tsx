@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/Icon";
 import { StudioProjectMenu } from "@/components/studio/StudioProjectMenu";
+import type { StudioSettings } from "@/lib/studio-settings";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { formatMeter, type MeterReading } from "@/lib/studio-meter";
 
@@ -16,6 +17,8 @@ import { formatMeter, type MeterReading } from "@/lib/studio-meter";
 export type StudioHeaderProps = {
   title: string;
   projectId: string | null;
+  settings: StudioSettings;
+  onSettingsChange: (next: StudioSettings) => void;
   onRenamed: (title: string) => void;
   onShowQuickStart: () => void;
   timeSignature: string;
@@ -61,6 +64,8 @@ export function StudioHeader(props: StudioHeaderProps) {
   const {
     title,
     projectId,
+    settings,
+    onSettingsChange,
     onRenamed,
     onShowQuickStart,
     timeSignature,
@@ -104,6 +109,8 @@ export function StudioHeader(props: StudioHeaderProps) {
           <StudioProjectMenu
             projectId={projectId}
             title={title}
+            settings={settings}
+            onSettingsChange={onSettingsChange}
             onRenamed={onRenamed}
             onShowQuickStart={onShowQuickStart}
           />

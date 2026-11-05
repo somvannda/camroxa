@@ -34,16 +34,19 @@ afterEach(() => {
 function renderMenu(overrides: Partial<Parameters<typeof StudioProjectMenu>[0]> = {}) {
   const onRenamed = vi.fn();
   const onShowQuickStart = vi.fn();
+  const onSettingsChange = vi.fn();
   render(
     <StudioProjectMenu
       projectId="p1"
       title="Demo"
+      settings={{ ghostDrag: true }}
+      onSettingsChange={onSettingsChange}
       onRenamed={onRenamed}
       onShowQuickStart={onShowQuickStart}
       {...overrides}
     />
   );
-  return { onRenamed, onShowQuickStart };
+  return { onRenamed, onShowQuickStart, onSettingsChange };
 }
 
 describe("StudioProjectMenu", () => {
@@ -69,7 +72,33 @@ describe("StudioProjectMenu", () => {
     expect((items[5] as HTMLButtonElement).disabled).toBe(false);
     expect((items[6] as HTMLButtonElement).disabled).toBe(true);
     expect(items[6].getAttribute("title")).toMatch(/v1/);
-    expect((items[7] as HTMLButtonElement).disabled).toBe(true);
+    expect((items[7] as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("shows the captured settings sections and toggles ghost drag", async () => {
+    const user = userEvent.setup();
+    const { onSettingsChange } = renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Studio Settings" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Studio settings" });
+    expect(dialog).toBeTruthy();
+    for (const section of ["Performance", "Window management", "Content"]) {
+      expect(screen.getByText(section)).toBeTruthy();
+    }
+
+    const ghost = screen.getByRole("checkbox", { name: "Ghost drag for arrangement moves" }) as HTMLInputElement;
+    expect(ghost.checked).toBe(true);
+    await user.click(ghost);
+    expect(onSettingsChange).toHaveBeenCalledWith({ ghostDrag: false });
+  });
+
+  it("opens settings with ctrl shift ,", async () => {
+    const user = userEvent.setup();
+    renderMenu();
+    await user.keyboard("{Control>}{Shift>},<{/Shift}{/Control}");
+    expect(await screen.findByRole("dialog", { name: "Studio settings" })).toBeTruthy();
   });
 
   it("renames through the API and reports the new title", async () => {

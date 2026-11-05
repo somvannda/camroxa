@@ -21,6 +21,8 @@ function headerProps() {
   return {
     title: "Demo",
     projectId: "p1" as string | null,
+    settings: { ghostDrag: true },
+    onSettingsChange: noop,
     onRenamed: noop,
     onShowQuickStart: noop,
     timeSignature: "4/4",

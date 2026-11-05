@@ -26,7 +26,7 @@ test("project menu renames the project and the name survives a reload", async ({
   await expect(menu.getByRole("menuitem")).toHaveCount(9);
   await expect(menu.getByRole("menuitem").nth(5)).toBeEnabled(); // Share Project
   await expect(menu.getByRole("menuitem").nth(6)).toBeDisabled(); // v1 copy
-  await expect(menu.getByRole("menuitem").nth(7)).toBeDisabled(); // Settings
+  await expect(menu.getByRole("menuitem").nth(7)).toBeEnabled(); // Settings
 
   await menu.getByRole("menuitem", { name: "Rename" }).click();
   const dialog = page.getByRole("dialog", { name: "Rename project" });
@@ -76,4 +76,49 @@ test("share creates a view link that resolves without the editor", async ({ page
 
   await dialog.getByRole("button", { name: "Done" }).click();
   await expect(dialog).toHaveCount(0);
+});
+
+test("studio settings open with the captured accelerator and persist", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  await createStudioProject(page, { title: `Settings ${tag}` });
+
+  // `ctrl shift ,` — the accelerator recorded in §18.1.
+  await page.keyboard.down("Control");
+  await page.keyboard.down("Shift");
+  await page.keyboard.press(",");
+  await page.keyboard.up("Shift");
+  await page.keyboard.up("Control");
+
+  const dialog = page.getByRole("dialog", { name: "Studio settings" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText("Performance")).toBeVisible();
+  await expect(dialog.getByText("Window management")).toBeVisible();
+  await expect(dialog.getByText("Content")).toBeVisible();
+
+  const ghost = dialog.getByRole("checkbox", { name: "Ghost drag for arrangement moves" });
+  await expect(ghost).toBeChecked(); // captured default is "On"
+  await ghost.uncheck();
+  await expect(ghost).not.toBeChecked();
+  expect(await page.evaluate(() => localStorage.getItem("studio:settings"))).toContain(
+    '"ghostDrag":false'
+  );
+
+  await dialog.getByRole("button", { name: "Close" }).click();
+  await expect(dialog).toHaveCount(0);
+
+  // Editor preference, not project data: it survives a reload without a save.
+  await page.reload();
+  await expect(page.locator(".se-project .se-chip")).toBeVisible({ timeout: 30_000 });
+  await page.keyboard.down("Control");
+  await page.keyboard.down("Shift");
+  await page.keyboard.press(",");
+  await page.keyboard.up("Shift");
+  await page.keyboard.up("Control");
+  await expect(
+    page.getByRole("dialog", { name: "Studio settings" }).getByRole("checkbox", {
+      name: "Ghost drag for arrangement moves",
+    })
+  ).not.toBeChecked();
 });

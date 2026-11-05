@@ -16,25 +16,36 @@ import {
   type StudioProjectShare,
   type StudioProjectVersion,
 } from "@/lib/studio-api";
+import type { StudioSettings } from "@/lib/studio-settings";
 
 /**
  * Project menu (reference §18.1 / §44.2 / §24).
  *
- * The captured menu is nine items. Seven are wired here with the endpoints this product
- * already has; the v1 copy and Settings are rendered disabled with the reason in their
- * tooltip rather than hidden, so the order still matches the capture and nothing
- * pretends to work. Navigation is a full page load because the editor reads the project
- * id from the URL on mount.
+ * The captured menu is nine items. Eight are wired here with the endpoints this product
+ * already has; the v1 copy is rendered disabled with the reason in its tooltip rather
+ * than hidden, so the order still matches the capture and nothing pretends to work.
+ * Navigation is a full page load because the editor reads the project id from the URL
+ * on mount.
  *
  * Sharing follows the captured semantics (§24): a link is view + fork, never live
- * co-editing, and an unnamed project hits a naming gate first (§24.1).
+ * co-editing, and an unnamed project hits a naming gate first (§24.1). Settings shows
+ * only the one captured setting (§22).
  */
 
-type Dialog = "open" | "rename" | "versions" | "share" | "name-to-share" | null;
+type Dialog =
+  | "open"
+  | "rename"
+  | "versions"
+  | "share"
+  | "name-to-share"
+  | "settings"
+  | null;
 
 export type StudioProjectMenuProps = {
   projectId: string;
   title: string;
+  settings: StudioSettings;
+  onSettingsChange: (next: StudioSettings) => void;
   onRenamed: (title: string) => void;
   onShowQuickStart: () => void;
 };
@@ -63,6 +74,8 @@ function liveShare(shares: StudioProjectShare[]): StudioProjectShare | null {
 export function StudioProjectMenu({
   projectId,
   title,
+  settings,
+  onSettingsChange,
   onRenamed,
   onShowQuickStart,
 }: StudioProjectMenuProps) {
@@ -103,6 +116,26 @@ export function StudioProjectMenu({
   useEffect(() => {
     setRenameValue(title);
   }, [title]);
+
+  // `ctrl shift ,` opens Studio Settings, the accelerator the capture records (§18.1).
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.ctrlKey || !event.shiftKey || event.key !== ",") return;
+      const target = event.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      setOpen(false);
+      setError("");
+      setDialog("settings");
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   function navigate(id: string) {
     window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;
@@ -282,8 +315,8 @@ export function StudioProjectMenu({
           <button
             type="button"
             role="menuitem"
-            disabled
-            title="Studio settings are not built yet"
+            onClick={() => openDialog("settings")}
+            disabled={busy}
           >
             Studio Settings
           </button>
@@ -314,7 +347,9 @@ export function StudioProjectMenu({
                   ? "Version history"
                   : dialog === "share"
                     ? "Share project"
-                    : "Name project before sharing"
+                    : dialog === "name-to-share"
+                      ? "Name project before sharing"
+                      : "Studio settings"
           }
         >
           <div className="se-dialog">
@@ -401,6 +436,36 @@ export function StudioProjectMenu({
                   aria-label="Project title"
                 />
               </>
+            ) : dialog === "settings" ? (
+              <>
+                <h2>Studio settings</h2>
+                <section className="se-settings-section">
+                  <h3>Performance</h3>
+                  <label className="se-dialog-row">
+                    <input
+                      type="checkbox"
+                      checked={settings.ghostDrag}
+                      onChange={(event) =>
+                        onSettingsChange({ ...settings, ghostDrag: event.target.checked })
+                      }
+                    />
+                    <span className="se-dialog-title">Ghost drag for arrangement moves</span>
+                  </label>
+                  <p className="se-dialog-note">
+                    On, moving a clip keeps playing the pre-drag arrangement and applies the new
+                    position once when you drop it. Off, every move is applied to the engine live.
+                    The setting is read when the drag starts.
+                  </p>
+                </section>
+                <section className="se-settings-section">
+                  <h3>Window management</h3>
+                  <p className="se-dialog-note">Not captured yet.</p>
+                </section>
+                <section className="se-settings-section">
+                  <h3>Content</h3>
+                  <p className="se-dialog-note">Not captured yet.</p>
+                </section>
+              </>
             ) : (
               <>
                 <h2>Share “{shareName}”</h2>
@@ -474,7 +539,7 @@ export function StudioProjectMenu({
                   </button>
                 </>
               ) : null}
-              {dialog === "open" || dialog === "versions" ? (
+              {dialog === "open" || dialog === "versions" || dialog === "settings" ? (
                 <button type="button" className="se-pill" onClick={() => setDialog(null)} disabled={busy}>
                   Close
                 </button>

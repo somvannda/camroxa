@@ -16,6 +16,13 @@ import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { renderMix, type ExportClip, type ExportTrack } from "@/lib/studio-export";
 import { EXPORT_TARGET_PEAK_DB } from "@/lib/studio-normalise";
+import {
+  DEFAULT_STUDIO_SETTINGS,
+  dragApplyPlan,
+  readStudioSettings,
+  writeStudioSettings,
+  type StudioSettings,
+} from "@/lib/studio-settings";
 import { analyse, formatMeter, type MeterReading } from "@/lib/studio-meter";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
@@ -106,6 +113,8 @@ export function StudioEditorShell() {
     startX: number;
     ids: string[];
     origins: Record<string, number>;
+    /** Ghost-drag mode, captured when the gesture starts (spec §22). */
+    ghost: boolean;
   } | null>(null);
   /** Mirror of `drag` so pointer handlers can read it without a state updater. */
   const dragStateRef = useRef<{ ids: string[]; origins: Record<string, number>; deltaPx: number } | null>(
@@ -177,7 +186,7 @@ export function StudioEditorShell() {
       const found = clips.find((candidate) => candidate.id === id);
       if (found) origins[id] = found.start ?? 0;
     });
-    dragRef.current = { startX: event.clientX, ids: group, origins };
+    dragRef.current = { startX: event.clientX, ids: group, origins, ghost: settingsRef.current.ghostDrag };
   }
   const [exporting, setExporting] = useState(false);
   /** Export menu setting (G11): gain-match mix/range renders to a fixed peak. */
@@ -196,6 +205,10 @@ export function StudioEditorShell() {
   }
   /** Master peak readout while playing (W4.4). */
   const [meter, setMeter] = useState<MeterReading | null>(null);
+  /** Editor preferences (§22), loaded from the browser profile after mount. */
+  const [settings, setSettings] = useState<StudioSettings>(DEFAULT_STUDIO_SETTINGS);
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const [loading, setLoading] = useState(true);
   const [selectedTrack, setSelectedTrack] = useState<string | null>(null);
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
@@ -218,6 +231,7 @@ export function StudioEditorShell() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     setProjectId(params.get("project"));
+    setSettings(readStudioSettings());
   }, []);
 
   useEffect(() => {
@@ -1050,6 +1064,22 @@ export function StudioEditorShell() {
   });
 
   /** Commit whatever the current drag session moved. */
+  function draggedLanes(current: {
+    ids: string[];
+    origins: Record<string, number>;
+    deltaPx: number;
+  }): ClipLike[] {
+    const lanes = Array.isArray((project?.data || {}).lanes)
+      ? ((project?.data || {}) as { lanes: ClipLike[] }).lanes
+      : clipsRef.current;
+    return lanes.map((clip) => {
+      const origin = current.origins[clip.id];
+      if (origin === undefined) return clip;
+      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, 4);
+      return Math.abs(start - origin) > 0.0001 ? { ...clip, start } : clip;
+    });
+  }
+
   function commitDrag(current: { ids: string[]; origins: Record<string, number>; deltaPx: number }) {
     const next: Record<string, number> = {};
     for (const id of current.ids) {
@@ -1091,6 +1121,13 @@ export function StudioEditorShell() {
 
   /** Minimal playback engine: decode each clip's audio and schedule it from the playhead. */
   const audioRef = useRef<{ ctx: AudioContext; sources: AudioBufferSourceNode[]; analyser?: AnalyserNode } | null>(null);
+  /** Decoded buffers keyed by URL, so a restart (ghost-drag apply) does not refetch. */
+  const bufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
+  /** Latest values for pointer handlers that outlive the render they were made in. */
+  const playheadRef = useRef(playhead);
+  playheadRef.current = playhead;
+  const playingRef = useRef(playing);
+  playingRef.current = playing;
 
   async function stopAudio() {
     const engine = audioRef.current;
@@ -1105,20 +1142,28 @@ export function StudioEditorShell() {
     engine.sources = [];
   }
 
-  async function startAudio(from: number) {
+  /** Stop and re-schedule from `from` with a specific arrangement (drag apply, §22). */
+  function restartAudio(from: number, arrangement: ClipLike[]) {
+    void (async () => {
+      await stopAudio();
+      await startAudio(from, arrangement);
+    })();
+  }
+
+  async function startAudio(from: number, arrangement: ClipLike[] = clips) {
     const context = audioRef.current?.ctx ?? new AudioContext();
     await context.resume();
 
-    const buffers = new Map<string, AudioBuffer>();
+    const cache = bufferCacheRef.current;
     await Promise.all(
-      clips.map(async (clip) => {
+      arrangement.map(async (clip) => {
         const url = (clip as { audioUrl?: string | null }).audioUrl;
-        if (!url) return;
+        if (!url || cache.has(url)) return;
         try {
           const response = await fetch(url);
           if (!response.ok) return;
           const data = await response.arrayBuffer();
-          buffers.set(clip.id, await context.decodeAudioData(data));
+          cache.set(url, await context.decodeAudioData(data));
         } catch {
           /* skip clips that cannot be decoded */
         }
@@ -1145,8 +1190,9 @@ export function StudioEditorShell() {
     analyser.connect(context.destination);
     audioRef.current = { ctx: context, sources: [], analyser };
 
-    for (const clip of clips) {
-      const buffer = buffers.get(clip.id);
+    for (const clip of arrangement) {
+      const url = (clip as { audioUrl?: string | null }).audioUrl;
+      const buffer = url ? bufferCacheRef.current.get(url) : undefined;
       if (!buffer) continue;
       const start = clip.start ?? 0;
       const duration = clip.duration ?? buffer.duration;
@@ -1316,6 +1362,10 @@ export function StudioEditorShell() {
           const next = { ids: session.ids, origins: session.origins, deltaPx };
           dragStateRef.current = next;
           setDrag(next);
+          // Ghost drag off: every move frame reaches the engine (§22).
+          if (!session.ghost && playingRef.current && dragApplyPlan(false).duringMove) {
+            restartAudio(playheadRef.current, draggedLanes(next));
+          }
         }
         return;
       }
@@ -1352,7 +1402,14 @@ export function StudioEditorShell() {
         // Commit from a ref, not from inside a state updater: React double-invokes
         // updaters, which fired the save twice and turned the second into a 409.
         const current = dragStateRef.current;
-        if (current && Math.abs(current.deltaPx) > 0) commitDrag(current);
+        if (current && Math.abs(current.deltaPx) > 0) {
+          // Ghost drag on: nothing moved audio during the gesture, so apply once now.
+          const proposed = draggedLanes(current);
+          commitDrag(current);
+          if (session.ghost && playingRef.current && dragApplyPlan(true).onDrop) {
+            restartAudio(playheadRef.current, proposed);
+          }
+        }
         dragStateRef.current = null;
         setDrag(null);
       }
@@ -1413,6 +1470,11 @@ export function StudioEditorShell() {
       <StudioHeader
         title={project?.title || "Untitled project"}
         projectId={projectId}
+        settings={settings}
+        onSettingsChange={(next) => {
+          setSettings(next);
+          writeStudioSettings(next);
+        }}
         onRenamed={(next) => setProject((current) => (current ? { ...current, title: next } : current))}
         onShowQuickStart={() => setQuickStartToken((value) => value + 1)}
         timeSignature={project?.time_signature || "4/4"}

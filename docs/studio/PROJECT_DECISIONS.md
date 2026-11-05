@@ -209,10 +209,10 @@ costs belong to the pricing table; the charge bridge was wired to the retired on
 **Date:** 2026-11-05 · **Status:** accepted (G23)
 
 **Decision.** The project chip opens the nine items captured in §18.1/§44.2, in that
-order. Seven are wired: **New Project**, **Open Project**, **Rename**, **Duplicate
-Project**, **Version History** (list + restore), **Share Project** (D-012) and **Show
-Quick Start again**. Two are rendered **disabled with the reason in the tooltip**: Open a
-copy in v1, Studio Settings.
+order. Eight are wired: **New Project**, **Open Project**, **Rename**, **Duplicate
+Project**, **Version History** (list + restore), **Share Project** (D-012), **Studio
+Settings** (D-013) and **Show Quick Start again**. One is rendered **disabled with the
+reason in its tooltip**: Open a copy in v1.
 
 **Why.** Hiding the missing three would break the muscle-memory order the capture
 records, and showing them enabled would promise surfaces that do not exist. A disabled
@@ -223,6 +223,7 @@ List and the microphone.
 
 - "Open a copy in v1" is not implementable here at all: this product has no v1 Studio.
   It stays as a disabled marker so nobody re-adds it by accident.
+- Settings now exists with only its one captured setting (D-013).
 - Sharing exists in the API but not in the editor; wiring it is its own surface.
 - Settings has no captured layout, so building it now would be guessing.
 - Rename updates the header title but does not touch the arrangement document, so it
@@ -255,6 +256,39 @@ rather than minting a new one each time, and new links live 7 days.
 expose it. The public route is `/studio/shared/{token}` and the API answers
 `GET /api/v3/web-music/studio/shares/{token}` without editor auth, which the e2e suite
 asserts.
+
+---
+
+## D-013 — Ghost drag is the one Studio setting we ship
+
+**Date:** 2026-11-05 · **Status:** accepted (G24)
+
+**Decision.** Studio Settings (§22) contains exactly the setting the capture documents:
+**Ghost drag for arrangement moves**, default **On**, read once when a drag gesture
+starts.
+
+| Mode | During a move | On drop |
+|---|---|---|
+| On (default) | audio keeps playing the pre-drag arrangement | one apply: playback re-schedules from the playhead with the new positions |
+| Off | every move frame re-schedules the engine | nothing extra |
+
+Settings live in `localStorage` (`studio:settings`), not in the project document.
+
+**Why.**
+
+- The capture lists three sections but expands only this one; the other two are shown as
+  "not captured yet" rather than invented (C-11).
+- The captured wording is explicit that the value is read at gesture start, so a settings
+  change mid-drag must not alter the gesture — hence `dragApplyPlan()` takes the mode and
+  the session stores it.
+- Editor preferences are not arrangement data: storing them in `data` would make toggling
+  a checkbox undoable and sync it to collaborators who forked the project.
+- Ghost drag needs cheap restarts, so decoded buffers are cached by URL; without that,
+  "apply on drop" would refetch and re-decode every clip.
+
+**Consequences.** With ghost drag off, each pointermove stops and restarts every source —
+faithful to the capture but not free; the buffer cache keeps it usable at moderate clip
+counts. The panel is a browser preference, so it does not follow the user across devices.
 
 ---
 

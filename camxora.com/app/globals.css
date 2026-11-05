@@ -4614,6 +4614,8 @@ html{color-scheme:dark}
 .se-dialog-row .se-dialog-title{flex:1}
 .se-dialog-foot{display:flex;justify-content:flex-end;gap:8px}
 .se-dialog-error{color:hsl(var(--destructive))}
+.se-settings-section{display:flex;flex-direction:column;gap:6px}
+.se-settings-section h3{margin:0}
 
 .se-meter{min-width:74px;text-align:center;font-variant-numeric:tabular-nums}
 
