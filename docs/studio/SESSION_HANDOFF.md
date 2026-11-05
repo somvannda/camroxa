@@ -65,13 +65,12 @@ own fixtures through the API (`tests/e2e/studio-fixture.ts`) and leave those fix
 projects in the sandbox database, so the sandbox accumulates test projects by design;
 they never touch a non-sandbox account.
 
-**Backend suite:** `python -m pytest platform_api/tests -q` → **3162 passed, 2 failed**
-at `29c903a2`. Both failures pre-date D-009 and are unrelated (they assert on retired plan
-machinery): `test_user_spend_service.py::test_user_spend_flags_over_allowance_and_margin_risk`
-(expects a `song` meter) and
-`test_web_music_batch_access.py::test_legacy_ledger_unlocks_pack_balance` (expects the
-legacy pack unlock to win with the v3 flag off). Fixing them is a separate billing
-cleanup; do not read them as studio regressions.
+**Backend suite:** `python -m pytest platform_api/tests -q` → **3163 passed, 0 failed**
+at `3215e3d1`. Two tests that still asserted the retired plan machinery were rewritten to
+the credits-only contract: `test_user_spend_service` now expects every spender to be
+reported Free (no plan meters, over-allowance from soft overages), and
+`test_web_music_batch_access` asserts `usage_today` never reads the legacy v2 ledger even
+with the v3 flag off. The suite is green, so a new failure is a real one.
 
 `beforeunload` note: when a save is pending the editor blocks navigation, so a
 Playwright `page.goto` can hang on the confirmation dialog. Close the save first, or open
