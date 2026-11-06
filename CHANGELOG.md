@@ -7,6 +7,22 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.21] - 2026-11-06
+
+### Fixed
+
+- **Videos uploading again even though storage already had them.** The app now asks the server whether it
+  still hosts the original for that batch/channel (same size) before transferring anything, and reuses it.
+  This works after a re-merge, a cache reset, or on another PC - cases the local cache could not cover.
+
+### Added
+
+- **Per-row upload status**, including uploads started by the pipeline: the YouTube cell shows
+  `Storage 42%` (measured bytes) and then `Uploading 3m` (provider time), with the file name in the tooltip.
+- **Cancel is per row**: it stops that row's transfer, whether the pipeline or the menu started it.
+- **One upload at a time**: merges that finish together are queued instead of sending several multi-GB
+  originals simultaneously.
+
 ## [1.5.20] - 2026-11-06
 
 ### Fixed
