@@ -10,6 +10,30 @@ import { createStudioProject } from "./studio-fixture";
  * card below and navigated into it. The card now lifts while its menu is open.
  */
 
+test("home search narrows the grid", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const alpha = `Alpha ${tag}`;
+  const beta = `Beta ${tag}`;
+  await createStudioProject(page, { title: alpha });
+  await createStudioProject(page, { title: beta });
+  await page.goto("/studio");
+
+  await expect(page.locator(".studio-home-grid .studio-card", { hasText: beta })).toBeVisible({ timeout: 30_000 });
+
+  await page.getByLabel("Search projects").fill(alpha);
+  await expect(page.locator(".studio-home-grid .studio-card", { hasText: alpha })).toBeVisible();
+  await expect(page.locator(".studio-home-grid .studio-card", { hasText: beta })).toHaveCount(0);
+
+  await page.getByLabel("Search projects").fill("zzz-no-such-project");
+  await expect(page.locator(".studio-home-grid .studio-card", { hasText: alpha })).toHaveCount(0);
+  await expect(page.locator(".studio-home-grid .studio-card", { hasText: beta })).toHaveCount(0);
+
+  await page.getByLabel("Search projects").fill("");
+  await expect(page.locator(".studio-home-grid .studio-card", { hasText: beta })).toBeVisible();
+});
+
 test("home renames, duplicates, archives and deletes a project", async ({ page }) => {
   test.setTimeout(120_000);
 
@@ -19,7 +43,7 @@ test("home renames, duplicates, archives and deletes a project", async ({ page }
   await page.goto("/studio");
 
   const matching = (text: string) => page.locator(".studio-card", { hasText: text }).count();
-  await expect(page.locator(".studio-card").first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator(".studio-home-grid .studio-card").first()).toBeVisible({ timeout: 30_000 });
 
   // Rename through the card menu.
   await page.getByRole("button", { name: `Actions for ${title}` }).first().click();
