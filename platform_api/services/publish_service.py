@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 PUBLISH_PLATFORM = "youtube"
 SUPPORTED_PLATFORMS = ("youtube",)
 EXTERNAL_ID_PREFIX = "camxora"
-UPLOAD_URL_TTL = timedelta(minutes=30)
+UPLOAD_URL_TTL = timedelta(hours=6)
 CONNECT_SESSION_TTL = timedelta(minutes=30)
 
 # Hosted originals: uploaded, fetched by the provider, then safe to delete once

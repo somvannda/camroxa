@@ -60,6 +60,10 @@ class CreatePublishJobRequest(BaseModel):
     file_checksum: str | None = None
     file_path: str | None = None
     thumbnail_path: str | None = None
+    # Media we already hosted. Sent to the server so it hands YouTube the URL
+    # instead of asking for a second upload; without this field the value was
+    # silently dropped from the payload (model_copy only keeps real fields).
+    media_url: str | None = None
 
 
 class CreatePublishJobResponse(BaseModel):
