@@ -29,6 +29,7 @@ from shared.services.platform_client import PlatformApiError
 from shared.services.video_workspace_service import get_video_workspace_service
 
 if TYPE_CHECKING:
+    from shared.lib.upload_resume import UploadState
     from shared.models.platform import PendingMusicDownloadTarget
     from shared.services.workspace_cache import WorkspaceCache
 
@@ -3008,6 +3009,7 @@ class PublishUploadWorker(QThread):
         import time
 
         from shared.lib.publish_asset_cache import lookup_media_url, store_media_url
+        from shared.lib.upload_resume import clear_state, load_state
 
         try:
             stat = Path(file_path).stat()
@@ -3021,53 +3023,31 @@ class PublishUploadWorker(QThread):
             if cached:
                 self.status_changed.emit("Using the copy already uploaded to CAMXORA storage…")
                 return cached
-        init = self._api.create_publish_upload(
-            file_name=request.file_name or Path(file_path).name,
-            content_type="video/mp4",
-            size_bytes=size_bytes,
-            first_part_count=10,
-        )
-        key = str(init.get("key") or "").strip()
-        upload_id = str(init.get("upload_id") or "").strip()
-        part_size = int(init.get("part_size") or 0)
-        part_count = int(init.get("part_count") or 0)
-        if not key or not upload_id or part_size <= 0 or part_count <= 0:
-            raise RuntimeError("storage did not return a usable multipart upload")
-        urls = {
-            int(part.get("part_number") or 0): str(part.get("url") or "")
-            for part in (init.get("parts") or [])
-            if isinstance(part, dict)
-        }
-        completed: list[dict[str, object]] = []
-        sent = 0
-        for number in range(1, part_count + 1):
-            if self.isInterruptionRequested():
-                try:
-                    self._api.abort_publish_upload(key=key, upload_id=upload_id)
-                except Exception:
-                    pass
-                raise RuntimeError("Upload cancelled.")
-            url = urls.get(number)
-            if not url:
-                signed = self._api.sign_publish_upload_parts(
-                    key=key, upload_id=upload_id, part_numbers=[number]
-                )
-                url = str((signed[0] if signed else {}).get("url") or "")
-            if not url:
-                raise RuntimeError(f"missing upload URL for part {number}")
-            offset = (number - 1) * part_size
-            length = min(part_size, size_bytes - offset)
-            etag = self._put_part(url, file_path, offset, length)
-            completed.append({"part_number": number, "etag": etag})
-            sent += length
-            self.progress.emit(sent, size_bytes)
-            self.status_changed.emit(
-                f"Uploading to CAMXORA storage… {int(sent * 100 / max(size_bytes, 1))}% "
-                f"({sent / 1048576:.0f} / {size_bytes / 1048576:.0f} MB)"
+
+        state = None
+        if stat is not None:
+            state = load_state(
+                file_path,
+                size_bytes=size_bytes,
+                mtime=stat.st_mtime,
+                now=time.time(),
             )
-        media_url = self._api.complete_publish_upload(
-            key=key, upload_id=upload_id, parts=completed
-        )
+        if state is not None:
+            try:
+                media_url = self._stream_parts(request, file_path, size_bytes, stat, state)
+            except Exception:
+                if self.isInterruptionRequested():
+                    raise
+                # The stored multipart upload is gone (expired or aborted): a
+                # clean one is the only way forward, and it resends the parts.
+                clear_state(file_path)
+                self.status_changed.emit(
+                    "The earlier upload could not be resumed — starting it again…"
+                )
+                media_url = self._stream_parts(request, file_path, size_bytes, stat, None)
+        else:
+            media_url = self._stream_parts(request, file_path, size_bytes, stat, None)
+
         if not media_url:
             raise RuntimeError("storage did not return a media URL")
         if stat is not None:
@@ -3080,6 +3060,122 @@ class PublishUploadWorker(QThread):
             )
         self.status_changed.emit("Upload complete — sending to the publisher…")
         return media_url
+
+    def _stream_parts(
+        self,
+        request: CreatePublishJobRequest,
+        file_path: str,
+        size_bytes: int,
+        stat: object | None,
+        state: UploadState | None,
+    ) -> str:
+        """Send the parts a resumed upload still needs (or all of them) and complete it."""
+        import time
+
+        from shared.lib.upload_resume import (
+            UPLOAD_STATE_TTL_SECONDS,
+            UploadState,
+            clear_state,
+            save_state,
+        )
+
+        urls: dict[int, str] = {}
+        if state is not None:
+            key = state.key
+            upload_id = state.upload_id
+            part_size = state.part_size
+            part_count = state.part_count
+            completed = dict(state.parts)
+            self.status_changed.emit(
+                f"Resuming upload — {len(completed)}/{part_count} parts were already sent…"
+            )
+        else:
+            init = self._api.create_publish_upload(
+                file_name=request.file_name or Path(file_path).name,
+                content_type="video/mp4",
+                size_bytes=size_bytes,
+                first_part_count=10,
+            )
+            key = str(init.get("key") or "").strip()
+            upload_id = str(init.get("upload_id") or "").strip()
+            part_size = int(init.get("part_size") or 0)
+            part_count = int(init.get("part_count") or 0)
+            if not key or not upload_id or part_size <= 0 or part_count <= 0:
+                raise RuntimeError("storage did not return a usable multipart upload")
+            urls = {
+                int(part.get("part_number") or 0): str(part.get("url") or "")
+                for part in (init.get("parts") or [])
+                if isinstance(part, dict)
+            }
+            completed = {}
+
+        def part_length(number: int) -> int:
+            offset = (number - 1) * part_size
+            return max(0, min(part_size, size_bytes - offset))
+
+        def persist(parts: dict[int, str]) -> None:
+            # Remember which parts landed so a crash resumes instead of restarting.
+            if stat is None:
+                return
+            save_state(
+                file_path,
+                size_bytes=size_bytes,
+                mtime=float(getattr(stat, "st_mtime", 0.0) or 0.0),
+                state=UploadState(
+                    key=key,
+                    upload_id=upload_id,
+                    part_size=part_size,
+                    part_count=part_count,
+                    parts=dict(parts),
+                    expires_at=0.0,
+                ),
+                now=time.time(),
+                ttl_seconds=UPLOAD_STATE_TTL_SECONDS,
+            )
+
+        persist(completed)
+        sent = sum(part_length(number) for number in completed)
+        if sent:
+            self.progress.emit(sent, size_bytes)
+
+        pending = [number for number in range(1, part_count + 1) if number not in completed]
+        for number in pending:
+            if self.isInterruptionRequested():
+                try:
+                    self._api.abort_publish_upload(key=key, upload_id=upload_id)
+                except Exception:
+                    pass
+                clear_state(file_path)
+                raise RuntimeError("Upload cancelled.")
+            url = urls.get(number)
+            if not url:
+                window = [item for item in pending if item >= number][:10]
+                signed = self._api.sign_publish_upload_parts(
+                    key=key, upload_id=upload_id, part_numbers=window
+                )
+                for part in signed:
+                    urls[int(part.get("part_number") or 0)] = str(part.get("url") or "")
+                url = urls.get(number, "")
+            if not url:
+                raise RuntimeError(f"missing upload URL for part {number}")
+            offset = (number - 1) * part_size
+            length = part_length(number)
+            etag = self._put_part(url, file_path, offset, length)
+            completed[number] = etag
+            persist(completed)
+            sent += length
+            self.progress.emit(sent, size_bytes)
+            self.status_changed.emit(
+                f"Uploading to CAMXORA storage… {int(sent * 100 / max(size_bytes, 1))}% "
+                f"({sent / 1048576:.0f} / {size_bytes / 1048576:.0f} MB)"
+            )
+
+        parts = [{"part_number": number, "etag": completed[number]} for number in sorted(completed)]
+        media_url = self._api.complete_publish_upload(
+            key=key, upload_id=upload_id, parts=parts
+        )
+        clear_state(file_path)
+        return str(media_url or "")
 
     def _put_part(self, url: str, path: str, offset: int, length: int) -> str:
         """PUT one 16 MB slice and return its ETag (retries twice)."""
