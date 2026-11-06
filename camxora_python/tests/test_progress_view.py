@@ -544,3 +544,17 @@ def test_detail_completed_hides_waiting_copy(qapp: QApplication) -> None:
     assert card._context_title.text() == "COMPLETED"
     assert card._notes.isHidden()
     assert "songs" in card._completed_summary.text()
+
+
+def test_elapsed_upload_label_uses_time_not_a_fake_percentage() -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from features.progress.widgets.operational_rows_card import _elapsed_label
+
+    assert _elapsed_label(None) == ""
+    assert _elapsed_label("not-a-date") == ""
+
+    now = datetime.now(timezone.utc)
+    assert _elapsed_label(now - timedelta(seconds=20)) == "<1m"
+    assert _elapsed_label(now - timedelta(minutes=12)) == "12m"
+    assert _elapsed_label(now - timedelta(minutes=125)) == "2h 5m"

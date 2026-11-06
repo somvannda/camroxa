@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from collections import defaultdict
 from datetime import date, datetime, timezone
 from typing import Annotated, Any
@@ -29,6 +30,30 @@ from platform_api.services.video_run_inspection import (
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["progress"])
+
+# A row only refreshes its upload state when Progress is polled, so the
+# expiry sweep has to run here too — otherwise a job whose upload link died
+# keeps the row at "Uploading" indefinitely (12 such rows were live in
+# production). At most once a minute per process.
+_PUBLISH_EXPIRY_SWEEP_SECONDS = 60
+_publish_expiry_sweep_at = 0.0
+
+
+async def _sweep_expired_publish_uploads() -> None:
+    global _publish_expiry_sweep_at
+    now = time.time()
+    if now - _publish_expiry_sweep_at < _PUBLISH_EXPIRY_SWEEP_SECONDS:
+        return
+    _publish_expiry_sweep_at = now
+    try:
+        from platform_api.dependencies import get_publish_repo
+
+        expired = await get_publish_repo().expire_pending_uploads()
+        if expired:
+            logger.info("Marked %s publish job(s) failed after upload-URL expiry.", expired)
+    except Exception:
+        logger.warning("Progress publish expiry sweep failed.", exc_info=True)
+
 
 
 async def _get_batch_service() -> BatchService:
@@ -492,6 +517,7 @@ async def list_progress_rows(
     """Return aggregated progress rows for the authenticated user."""
     user_id = UUID(ctx.user_id)
     pool = get_db_pool()
+    await _sweep_expired_publish_uploads()
 
     if from_date and to_date and from_date > to_date:
         from_date, to_date = to_date, from_date

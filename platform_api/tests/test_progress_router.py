@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
+import pytest
+
 from platform_api.routers.progress import (
     _batch_run_from_date,
     _batch_run_to_date,
@@ -131,6 +133,28 @@ def test_progress_leaves_image_stage_when_background_jobs_succeed_without_local_
     assert "Waiting for image assets" in (row.converter or "")
     assert row.stage != "Merger"
     assert row.stage != "Done"
+
+
+@pytest.mark.asyncio
+async def test_progress_poll_expires_dead_upload_links(monkeypatch) -> None:
+    """A row must stop saying Uploading when its upload link died hours ago."""
+    from platform_api.routers import progress as progress_module
+
+    calls: list[int] = []
+
+    class _Repo:
+        async def expire_pending_uploads(self) -> int:
+            calls.append(1)
+            return 3
+
+    monkeypatch.setattr("platform_api.dependencies.get_publish_repo", lambda: _Repo())
+    monkeypatch.setattr(progress_module, "_publish_expiry_sweep_at", 0.0)
+
+    await progress_module._sweep_expired_publish_uploads()
+    await progress_module._sweep_expired_publish_uploads()
+
+    # Sweeps at most once per interval, so polling Progress stays cheap.
+    assert len(calls) == 1
 
 
 def test_progress_rows_carry_the_batch_youtube_choice() -> None:

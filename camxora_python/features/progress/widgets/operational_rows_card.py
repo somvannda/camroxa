@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from functools import partial
 
 from PySide6.QtCore import Qt, Signal
@@ -62,6 +62,36 @@ SUBTITLE = (
     "Scan view for active runs. Progress shows the current stage percent. "
     "Select a row for full export, merge, and error details on the right."
 )
+
+
+def _elapsed_label(value: object) -> str:
+    """'<1m' / '12m' / '2h 5m' since a timestamp; '' when unknown.
+
+    The publishing provider does not report a percentage, so elapsed time is the
+    only honest progress signal once the file is out of our storage.
+    """
+    if value is None:
+        return ""
+    if isinstance(value, datetime):
+        moment = value
+    else:
+        text = str(value).strip().replace("Z", "+00:00")
+        if not text:
+            return ""
+        try:
+            moment = datetime.fromisoformat(text)
+        except ValueError:
+            return ""
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=timezone.utc)
+    seconds = (datetime.now(timezone.utc) - moment).total_seconds()
+    if seconds < 60:
+        return "<1m"
+    minutes = int(seconds // 60)
+    if minutes < 60:
+        return f"{minutes}m"
+    hours, rest = divmod(minutes, 60)
+    return f"{hours}h {rest}m" if rest else f"{hours}h"
 
 _COL_RUN = 0
 _COL_CHANNEL = 1
@@ -310,7 +340,7 @@ class OperationalRowsCard(StudioPanel):
             tooltips = list(values)
             tooltips[_COL_EXPORT] = export_full
             tooltips[_COL_MERGE] = merge_full
-            tooltips[_COL_YOUTUBE] = str(getattr(row.meta, "youtube_status", "") or "YouTube")
+            tooltips[_COL_YOUTUBE] = self._youtube_tooltip(row)
             if row.album:
                 tooltips[_COL_ALBUM] = str(row.album).strip()
             show_start_export = self._can_show_start_export(entry)
@@ -377,7 +407,28 @@ class OperationalRowsCard(StudioPanel):
         status = str(getattr(row.meta, "youtube_status", "") or "").strip()
         if status.lower().startswith("uploading"):
             return status
-        return format_upload_status(row)
+        label = format_upload_status(row)
+        if label in {"Uploading", "Uploaded"}:
+            elapsed = _elapsed_label(getattr(row.meta, "youtube_created_at", None))
+            if elapsed and label == "Uploading":
+                return f"Uploading {elapsed}"
+        return label
+
+    @staticmethod
+    def _youtube_tooltip(row: ProgressRow) -> str:
+        label = OperationalRowsCard._format_youtube_cell(row)
+        if label.startswith("Uploading"):
+            return (
+                f"{label} — Post for Me (our publishing provider) is uploading this "
+                "video to YouTube. They do not report a percentage, so this is time "
+                "based. Right-click → Cancel YouTube upload to stop."
+            )
+        if label == "Uploaded":
+            url = str(getattr(row.meta, "youtube_url", "") or "").strip()
+            return f"Uploaded to YouTube. {url}" if url else "Uploaded to YouTube."
+        if label == "Failed":
+            return "The YouTube upload failed. Right-click → Upload to YouTube to retry."
+        return "Right-click → Upload to YouTube. The original file is sent as-is (no re-encode)."
 
     def _format_updated_cell(self, entry: EffectiveProgressRow | ProgressRow) -> str:
         if isinstance(entry, EffectiveProgressRow):
@@ -603,16 +654,30 @@ class OperationalRowsCard(StudioPanel):
                 else discover_merged_path(getattr(meta, "run_dir", ""))
             )
             if str(getattr(meta, "profile_id", "") or "").strip():
+                state = format_upload_status(entry.row)
+                if state == "Uploading":
+                    busy = menu.addAction("YouTube upload in progress…")
+                    busy.setEnabled(False)
+                    busy.setToolTip(
+                        "Post for Me is uploading this video to YouTube "
+                        "(no percentage from them). Cancel it first to start over."
+                    )
+                elif state == "Uploaded":
+                    done = menu.addAction("Already on YouTube")
+                    done.setEnabled(False)
+                    done.setToolTip("This merge is already published to YouTube.")
+                else:
+                    action = menu.addAction("Upload to YouTube")
+                    action.setToolTip(
+                        "Publish this run's merged video through Post for Me "
+                        "(per-upload credits, original file, no re-encode)."
+                    )
+                    action.triggered.connect(
+                        partial(self.upload_youtube_requested.emit, entry.row, merged_path)
+                    )
                 cancel_upload = menu.addAction("Cancel YouTube upload")
                 cancel_upload.setToolTip("Stop the upload to CAMXORA storage that is running now.")
                 cancel_upload.triggered.connect(self.cancel_publish_upload_requested.emit)
-                action = menu.addAction("Upload to YouTube")
-                action.setToolTip(
-                    "Publish this run's merged video through Post for Me (per-upload credits)."
-                )
-                action.triggered.connect(
-                    partial(self.upload_youtube_requested.emit, entry.row, merged_path)
-                )
                 menu.addSeparator()
         except Exception as exc:  # pragma: no cover - defensive
             from shared.services.app_logger import log_warn

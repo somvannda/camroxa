@@ -1187,7 +1187,19 @@ class ProgressView(PollablePageMixin, QScrollArea):
 
     def _upload_row_to_youtube(self, row: object, merged_path: str) -> None:
         """Manual publish for one finished merge (Progress row action)."""
+        from features.workflow.lib.workflow_steps import format_upload_status
         from shared.lib.publish_auto import discover_merged_path, manual_publish_context
+
+        state = format_upload_status(row)
+        if state == "Uploading":
+            self._show_retry_notice(
+                "This video is already uploading to YouTube. Cancel it first to start over.",
+                tone="warning",
+            )
+            return
+        if state == "Uploaded":
+            self._show_retry_notice("This video is already on YouTube.", tone="neutral")
+            return
 
         if not str(merged_path or "").strip():
             meta = getattr(row, "meta", None)
