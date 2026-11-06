@@ -17,6 +17,8 @@ export type FixtureClip = {
   title?: string;
   start: number;
   duration: number;
+  /** Optional audio for render/export tests (e.g. "/seed/demo-loop.wav"). */
+  audioUrl?: string;
 };
 
 export type CreateProjectOptions = {

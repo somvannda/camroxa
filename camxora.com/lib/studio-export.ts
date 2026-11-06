@@ -11,6 +11,8 @@
 
 import { buildMasterBus, type MasterChainEntry } from "@/lib/studio-master-bus";
 import { normaliseChannels } from "@/lib/studio-normalise";
+import { buildPluginChain } from "@/lib/studio-plugin-audio";
+import type { PluginChainEntry } from "@/lib/studio-plugins";
 
 export type ExportClip = {
   id: string;
@@ -73,6 +75,8 @@ export type RenderOptions = {
   from?: number;
   to?: number;
   chain?: MasterChainEntry[];
+  /** Per-track plugin chains, keyed by track id (applied before the track gain). */
+  chains?: Record<string, PluginChainEntry[]>;
   /**
    * Normalise the finished render to this sample-peak target (dBFS). Off when
    * omitted, so a plain render stays byte-identical to what the mix produced.
@@ -106,6 +110,26 @@ export async function renderMix(
   master.connect(bus.input);
   bus.output.connect(context.destination);
 
+  // One gain + optional plugin chain per track, shared by that track's clips so an
+  // effect is heard once rather than duplicated per clip.
+  const trackNodes = new Map<string, AudioNode>();
+  function trackInput(trackId: string, volume: number): AudioNode {
+    const existing = trackNodes.get(trackId);
+    if (existing) return existing;
+    const gain = context.createGain();
+    gain.gain.value = Math.max(0, volume) / 100;
+    gain.connect(master);
+    const entries = options.chains?.[trackId] ?? [];
+    if (entries.length > 0) {
+      const chain = buildPluginChain(context, entries);
+      chain.output.connect(gain);
+      trackNodes.set(trackId, chain.input);
+      return chain.input;
+    }
+    trackNodes.set(trackId, gain);
+    return gain;
+  }
+
   for (const clip of clips) {
     if (options.clipIds && !options.clipIds.has(clip.id)) continue;
     const buffer = bufferMap.get(clip.id);
@@ -123,9 +147,7 @@ export async function renderMix(
 
     const source = context.createBufferSource();
     source.buffer = buffer;
-    const gain = context.createGain();
-    gain.gain.value = (track?.volume ?? 80) / 100;
-    source.connect(gain).connect(master);
+    source.connect(trackInput(track?.id ?? clip.id, track?.volume ?? 80));
     const node = source as AudioBufferSourceNode & { start: (w: number, o?: number, d?: number) => void };
     node.start(when, offset, playable);
   }

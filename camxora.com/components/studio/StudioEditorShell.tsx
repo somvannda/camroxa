@@ -26,6 +26,7 @@ import {
 } from "@/lib/studio-settings";
 import { analyse, formatMeter, type MeterReading } from "@/lib/studio-meter";
 import { beatAt, clicksBetween } from "@/lib/studio-metronome";
+import { buildPluginChain } from "@/lib/studio-plugin-audio";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
 import { StudioPluginDock } from "@/components/studio/StudioPluginDock";
@@ -950,6 +951,8 @@ export function StudioEditorShell() {
 
   const [localChains, setLocalChains] = useState<Record<string, PluginChainEntry[]> | null>(null);
   const chains = localChains ?? derivedChains;
+  const chainsRef = useRef(chains);
+  chainsRef.current = chains;
 
   useEffect(() => {
     setLocalChains(null);
@@ -1269,7 +1272,12 @@ export function StudioEditorShell() {
   }, [playing, loop, playhead, duration]);
 
   /** Minimal playback engine: decode each clip's audio and schedule it from the playhead. */
-  const audioRef = useRef<{ ctx: AudioContext; sources: AudioBufferSourceNode[]; analyser?: AnalyserNode } | null>(null);
+  const audioRef = useRef<{
+    ctx: AudioContext;
+    sources: AudioBufferSourceNode[];
+    analyser?: AnalyserNode;
+    disposeChains?: (() => void)[];
+  } | null>(null);
   /** Decoded buffers keyed by URL, so a restart (ghost-drag apply) does not refetch. */
   const bufferCacheRef = useRef<Map<string, AudioBuffer>>(new Map());
   /** Latest values for pointer handlers that outlive the render they were made in. */
@@ -1309,6 +1317,14 @@ export function StudioEditorShell() {
       }
     });
     engine.sources = [];
+    engine.disposeChains?.forEach((dispose) => {
+      try {
+        dispose();
+      } catch {
+        /* nodes may already be disconnected */
+      }
+    });
+    engine.disposeChains = [];
   }
 
   /** Stop and re-schedule from `from` with a specific arrangement (drag apply, §22). */
@@ -1425,7 +1441,28 @@ export function StudioEditorShell() {
     analyser.fftSize = 2048;
     bus.output.connect(analyser);
     analyser.connect(context.destination);
-    audioRef.current = { ctx: context, sources: [], analyser };
+    audioRef.current = { ctx: context, sources: [], analyser, disposeChains: [] };
+
+    // Per-track input: gain plus the track's plugin chain, shared by its clips so an
+    // effect is heard once instead of being duplicated per clip.
+    const trackInputs = new Map<string, AudioNode>();
+    function trackInput(trackId: string, volume: number): AudioNode {
+      const existing = trackInputs.get(trackId);
+      if (existing) return existing;
+      const gain = context.createGain();
+      gain.gain.value = Math.max(0, volume) / 100;
+      gain.connect(master);
+      const entries = chainsRef.current[trackId] ?? [];
+      if (entries.length > 0) {
+        const chain = buildPluginChain(context, entries);
+        chain.output.connect(gain);
+        audioRef.current?.disposeChains?.push(chain.dispose);
+        trackInputs.set(trackId, chain.input);
+        return chain.input;
+      }
+      trackInputs.set(trackId, gain);
+      return gain;
+    }
 
     for (const clip of arrangement) {
       const url = (clip as { audioUrl?: string | null }).audioUrl;
@@ -1447,9 +1484,7 @@ export function StudioEditorShell() {
       // Audition speed (G17): playbackRate scales both the scheduling offset and
       // how long the buffer takes to play, so clips stay in sync with each other.
       source.playbackRate.value = playbackRate;
-      const gain = context.createGain();
-      gain.gain.value = (track?.volume ?? 80) / 100;
-      source.connect(gain).connect(master);
+      source.connect(trackInput(track?.id ?? clip.id, track?.volume ?? 80));
       source.start(when, offset, Math.max(0.05, duration - offset));
       audioRef.current?.sources.push(source);
     }
@@ -1520,14 +1555,20 @@ export function StudioEditorShell() {
       const chain = ((project.data || {}) as { masterChain?: MasterChainEntry[] }).masterChain;
       // Mix/range only: per-track files must keep their relative balance (G11).
       const normalise = exportNormalise ? EXPORT_TARGET_PEAK_DB : null;
+      const trackChains = chains;
 
       if (scope === "mix") {
-        const wav = await renderMix(buffers, exportClips, exportTracks, { chain, normalise });
+        const wav = await renderMix(buffers, exportClips, exportTracks, {
+          chain,
+          chains: trackChains,
+          normalise,
+        });
         download(wav, `${project.title || "mix"}.wav`, "audio/wav");
       } else if (scope === "range") {
         // Exports exactly the loop range, the reference's "Selected Time Range" (§87).
         const wav = await renderMix(buffers, exportClips, exportTracks, {
           chain,
+          chains: trackChains,
           normalise,
           from: loopStart,
           to: loopEnd,
@@ -1537,6 +1578,7 @@ export function StudioEditorShell() {
         for (const track of exportTracks) {
           const wav = await renderMix(buffers, exportClips, exportTracks, {
             chain,
+            chains: trackChains,
             clipIds: new Set(track.clipIds),
           });
           const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
