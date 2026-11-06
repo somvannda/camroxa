@@ -99,8 +99,9 @@ class BatchRepository:
                 INSERT INTO batches
                     (id, user_id, ok_profile_id, alt_profile_id, song_count,
                      language, secondary_language, creativity_level, pairing_mode, status, auto_gen_image, auto_gsuno,
-                     planned_from_date, planned_to_date, ok_run_dir, alt_run_dir, structure_mode, created_at, updated_at)
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, NOW(), NOW())
+                     planned_from_date, planned_to_date, ok_run_dir, alt_run_dir, structure_mode,
+                     auto_upload_youtube, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, NOW(), NOW())
                 """,
                 batch.id,
                 batch.user_id,
@@ -119,6 +120,7 @@ class BatchRepository:
                 batch.ok_run_dir,
                 batch.alt_run_dir,
                 getattr(batch, "structure_mode", "template") or "template",
+                bool(getattr(batch, "auto_upload_youtube", False)),
             )
         except Exception as error:
             if not self._is_batch_schema_drift(error):

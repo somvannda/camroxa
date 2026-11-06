@@ -916,6 +916,7 @@ class BatchService:
             status=BATCH_STATUS_PENDING,
             auto_gen_image=auto_gen_image,
             auto_gsuno=auto_gsuno,
+            auto_upload_youtube=bool(auto_upload_youtube),
             planned_from_date=from_date,
             planned_to_date=to_date,
             ok_run_dir=resolved_ok,
