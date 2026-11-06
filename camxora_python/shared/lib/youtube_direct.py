@@ -102,6 +102,11 @@ def build_metadata(profile: Any, video: Path) -> dict[str, Any]:
         str(config.get("description_template") or ""), album=album, channel=channel
     )
     tags = sanitize_tags(config.get("tags") or "")
+    # Tags are deliberately not sent: YouTube rejects the entire upload when a
+    # single keyword is invalid, and the Publication keyword list is free text
+    # a customer can paste anything into. Re-enable once tags are validated
+    # per channel; sanitize_tags() is kept for that.
+    tags = []
 
     visibility = str(config.get("visibility") or "private").strip().lower()
     if visibility not in {"private", "unlisted", "public", "scheduled"}:
@@ -111,7 +116,7 @@ def build_metadata(profile: Any, video: Path) -> dict[str, Any]:
     return {
         "title": title[:100] or video.stem[:100],
         "description": description[:5000],
-        "tags": tags[:30],
+        "tags": tags,
         "visibility": visibility,
         "publish_at": next_publish_at(str(config.get("publish_at") or ""))
         if visibility == "scheduled"

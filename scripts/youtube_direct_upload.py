@@ -215,10 +215,9 @@ def _profile_metadata(profile, video: Path, args) -> dict[str, Any]:
     )
 
     raw_tags = args.tags or config.get("tags") or ""
-    if isinstance(raw_tags, str):
-        tags = [tag.strip() for tag in raw_tags.split(",") if tag.strip()]
-    else:
-        tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+    # Not sent: YouTube fails the whole upload on one invalid keyword. The CLI
+    # still accepts --tags for future use once validation exists.
+    tags = []
 
     visibility = (args.privacy or str(config.get("visibility") or "private")).strip().lower()
     if visibility not in {"private", "unlisted", "public", "scheduled"}:
