@@ -49,6 +49,7 @@ function props(overrides: Partial<StudioTimelineProps> = {}): StudioTimelineProp
     onScroll: () => {},
     onLanePointerDown: () => {},
     onClipPointerDown: () => {},
+    onTrimPointerDown: () => {},
     onLoopHandleDown: () => {},
     ...overrides,
   };

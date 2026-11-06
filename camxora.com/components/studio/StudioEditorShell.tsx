@@ -125,6 +125,23 @@ export function StudioEditorShell() {
     origins: Record<string, number>;
     deltaPx: number;
   } | null>(null);
+  /** Live geometry while a trim grip is dragged; committed on release. */
+  const [trimPreview, setTrimPreview] = useState<{
+    id: string;
+    start: number;
+    duration: number;
+    offset: number;
+  } | null>(null);
+  const trimPreviewRef = useRef<typeof trimPreview>(null);
+  trimPreviewRef.current = trimPreview;
+  const trimRef = useRef<{
+    id: string;
+    edge: "start" | "end";
+    startX: number;
+    start: number;
+    duration: number;
+    offset: number;
+  } | null>(null);
   const dragRef = useRef<{
     startX: number;
     ids: string[];
@@ -186,8 +203,42 @@ export function StudioEditorShell() {
     seekTo(Math.max(0, Math.min(duration, (x / barWidth) * secondsPerBar)));
   }
 
-  /** Press on a clip: select it (or keep the group) and start a drag session (G7/G8). */
-  function handleClipPointerDown(
+  /** Grab a trim grip (S25): geometry follows the pointer and is written on release. */
+  function handleTrimPointerDown(
+    event: React.PointerEvent<HTMLElement>,
+    clip: ClipLike,
+    edge: "start" | "end"
+  ) {
+    event.stopPropagation();
+    event.preventDefault();
+    const start = clip.start ?? 0;
+    const duration = clip.duration ?? 4;
+    const offset = (clip as { offset?: number }).offset ?? 0;
+    setSelectedClip(clip.id);
+    setSelectedIds([clip.id]);
+    trimRef.current = { id: clip.id, edge, startX: event.clientX, start, duration, offset };
+    setTrimPreview({ id: clip.id, start, duration, offset });
+  }
+
+  function commitTrim(preview: { id: string; start: number; duration: number; offset: number }) {
+    // Read through the ref: this can run from the global pointer handler, whose closure
+    // may predate the loaded project.
+    const data = (projectRef.current?.data || {}) as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    const updated = lanes.map((clip) =>
+      clip.id === preview.id
+        ? {
+            ...clip,
+            start: preview.start,
+            duration: preview.duration,
+            offset: preview.offset > 0.0001 ? preview.offset : undefined,
+          }
+        : clip
+    );
+    writeProjectData({ ...data, lanes: updated }, "trimming the clip");
+  }
+
+  /** Press on a clip: select it (or keep the group) and start a drag session (G7/G8). */  function handleClipPointerDown(
     event: React.PointerEvent<HTMLButtonElement>,
     clip: ClipLike,
     trackId: string
@@ -241,6 +292,7 @@ export function StudioEditorShell() {
   /** Meter (H-13): editable in the header, persisted in the project columns. */
   const [timeSignature, setTimeSignature] = useState("4/4");
   const beatsPerBar = parseBeatsPerBar(timeSignature);
+  const secondsPerBar = secondsPerBarFor(bpm, timeSignature);
   /** Master level (reference F-01/F-02), persisted in the document. */
   const [masterVolume, setMasterVolume] = useState(85);
   const [masterMuted, setMasterMuted] = useState(false);
@@ -510,7 +562,7 @@ export function StudioEditorShell() {
     label: string,
     nextTracks?: StudioTrack[] | null
   ) {
-    const current = (project?.data || {}) as Record<string, unknown>;
+    const current = (projectRef.current?.data || {}) as Record<string, unknown>;
     const history = historyRef.current;
     history.undo.push({ data: current, label });
     if (history.undo.length > HISTORY_LIMIT) history.undo.shift();
@@ -1419,6 +1471,10 @@ export function StudioEditorShell() {
   metronomeRef.current = metronome;
   const beatsPerBarRef = useRef(beatsPerBar);
   beatsPerBarRef.current = beatsPerBar;
+  const barWidthRef = useRef(barWidth);
+  barWidthRef.current = barWidth;
+  const secondsPerBarRef = useRef(secondsPerBar);
+  secondsPerBarRef.current = secondsPerBar;
   const bpmRef = useRef(bpm);
   bpmRef.current = bpm;
   const rateRef = useRef(playbackRate);
@@ -1641,7 +1697,11 @@ export function StudioEditorShell() {
       // how long the buffer takes to play, so clips stay in sync with each other.
       source.playbackRate.value = playbackRate;
       source.connect(trackInput(track?.id ?? clip.id, volume));
-      source.start(when, offset, Math.max(0.05, duration - offset));
+      source.start(
+        when,
+        Math.max(0, (clip as { offset?: number }).offset ?? 0) + offset,
+        Math.max(0.05, duration - offset)
+      );
       audioRef.current?.sources.push(source);
     }
   }
@@ -1825,12 +1885,49 @@ export function StudioEditorShell() {
     }
   }, [tracks, playing]);
 
-  const secondsPerBar = secondsPerBarFor(bpm, timeSignature);
   const barCount = Math.max(1, Math.ceil(duration / secondsPerBar));
 
   /** Pointer handling for clip dragging (G7/G8) and marquee selection (G6). */
   useEffect(() => {
     const move = (event: PointerEvent) => {
+      const trimSession = trimRef.current;
+      if (trimSession) {
+        const deltaSec = ((event.clientX - trimSession.startX) / barWidthRef.current) * secondsPerBarRef.current;
+        const step = secondsPerBarRef.current / beatsPerBarRef.current;
+        const end = trimSession.start + trimSession.duration;
+        let next: { id: string; start: number; duration: number; offset: number };
+        if (trimSession.edge === "end") {
+          const newEnd = Math.max(
+            trimSession.start + step,
+            snapToGrid(end + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
+          );
+          next = {
+            id: trimSession.id,
+            start: trimSession.start,
+            duration: newEnd - trimSession.start,
+            offset: trimSession.offset,
+          };
+        } else {
+          // Left trim moves the start and the content offset together, so the audio
+          // under the remaining clip does not shift.
+          const newStart = Math.max(
+            0,
+            Math.min(
+              end - step,
+              snapToGrid(trimSession.start + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
+            )
+          );
+          next = {
+            id: trimSession.id,
+            start: newStart,
+            duration: end - newStart,
+            offset: Math.max(0, trimSession.offset + (newStart - trimSession.start)),
+          };
+        }
+        trimPreviewRef.current = next;
+        setTrimPreview(next);
+        return;
+      }
       const session = dragRef.current;
       if (session) {
         const deltaPx = event.clientX - session.startX;
@@ -1872,6 +1969,20 @@ export function StudioEditorShell() {
       setSelectedIds(hit);
     };
     const up = () => {
+      const trimSession = trimRef.current;
+      if (trimSession) {
+        trimRef.current = null;
+        const preview = trimPreviewRef.current;
+        setTrimPreview(null);
+        if (
+          preview &&
+          (Math.abs(preview.start - trimSession.start) > 0.0001 ||
+            Math.abs(preview.duration - trimSession.duration) > 0.0001)
+        ) {
+          commitTrim(preview);
+        }
+        return;
+      }
       const session = dragRef.current;
       dragRef.current = null;
       if (session) {
@@ -1904,7 +2015,7 @@ export function StudioEditorShell() {
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
     };
-  }, [drag, secondsPerBar]);
+  }, [drag, secondsPerBar, beatsPerBar, projectId]);
 
 
   /** Coarse pointers get 44px hit areas without changing desktop density (G20). */
@@ -2064,10 +2175,12 @@ export function StudioEditorShell() {
           loopEnd={loopEnd}
           viewWidth={view.width}
           viewLeft={view.left}
+          trimPreview={trimPreview}
           timelineRef={timelineRef}
           onScroll={(left, width) => setView({ left, width })}
           onLanePointerDown={handleLanePointerDown}
           onClipPointerDown={handleClipPointerDown}
+          onTrimPointerDown={handleTrimPointerDown}
           onLoopHandleDown={(event) => {
             event.stopPropagation();
             loopDragRef.current = true;

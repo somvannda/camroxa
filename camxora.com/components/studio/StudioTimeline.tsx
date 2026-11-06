@@ -53,13 +53,19 @@ export type StudioTimelineProps = {
   loopEnd: number;
   viewWidth: number;
   viewLeft: number;
+  /** Live geometry while a trim grip is dragged. */
+  trimPreview?: { id: string; start: number; duration: number } | null;
 
   /** Receives the scroll container so the shell can measure the visible window. */
   timelineRef?: RefObject<HTMLDivElement | null>;
   onScroll: (left: number, width: number) => void;
   onLanePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onClipPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, clip: TimelineClip, trackId: string) => void;
-  onLoopHandleDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  onTrimPointerDown: (
+    event: ReactPointerEvent<HTMLElement>,
+    clip: TimelineClip,
+    edge: "start" | "end"
+  ) => void;  onLoopHandleDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
 
 export function StudioTimeline(props: StudioTimelineProps) {
@@ -83,10 +89,12 @@ export function StudioTimeline(props: StudioTimelineProps) {
     loopEnd,
     viewWidth,
     viewLeft,
+    trimPreview,
     timelineRef,
     onScroll,
     onLanePointerDown,
     onClipPointerDown,
+    onTrimPointerDown,
     onLoopHandleDown,
   } = props;
 
@@ -127,27 +135,50 @@ export function StudioTimeline(props: StudioTimelineProps) {
                 .map((clip) => {
                   const isDragging = drag?.ids.includes(clip.id) ?? false;
                   const isSelected = selectedClip === clip.id || selectedIds.includes(clip.id);
+                  const preview = trimPreview?.id === clip.id ? trimPreview : null;
+                  const clipStart = preview ? preview.start : clip.start ?? 0;
+                  const clipDuration = preview ? preview.duration : clip.duration ?? 4;
                   const dragOrigin = drag ? drag.origins[clip.id] : undefined;
                   const left =
                     isDragging && drag && dragOrigin !== undefined
                       ? (dragToStart(dragOrigin, drag.deltaPx, barWidth, secondsPerBar, beatsPerBar) /
                           secondsPerBar) *
                         barWidth
-                      : ((clip.start ?? 0) / secondsPerBar) * barWidth;
-                  const width = Math.max(20, ((clip.duration ?? 4) / secondsPerBar) * barWidth);
+                      : (clipStart / secondsPerBar) * barWidth;
+                  const width = Math.max(20, (clipDuration / secondsPerBar) * barWidth);
                   return (
                     <button
                       type="button"
                       key={clip.id}
                       className={`se-clip${isSelected ? " selected" : ""}${
                         isDragging ? " dragging" : ""
-                      }`}
+                      }${preview ? " trimming" : ""}`}
                       style={{ left, width, background: track.color }}
                       onPointerDown={(event) => onClipPointerDown(event, clip, track.id)}
                       aria-pressed={isSelected}
                     >
                       <span className="se-clip-head">{clip.title || "Clip"}</span>
                       <span className="se-clip-body" aria-hidden="true" />
+                      {isSelected ? (
+                        <>
+                          <span
+                            className="se-trim se-trim-start"
+                            aria-hidden="true"
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                              onTrimPointerDown(event, clip, "start");
+                            }}
+                          />
+                          <span
+                            className="se-trim se-trim-end"
+                            aria-hidden="true"
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                              onTrimPointerDown(event, clip, "end");
+                            }}
+                          />
+                        </>
+                      ) : null}
                     </button>
                   );
                 })}

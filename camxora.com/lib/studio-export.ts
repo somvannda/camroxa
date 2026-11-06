@@ -18,6 +18,8 @@ export type ExportClip = {
   id: string;
   start?: number;
   duration?: number;
+  /** Seconds into the source file where the clip begins (left trim). */
+  offset?: number;
   audioUrl?: string | null;
 };
 
@@ -160,7 +162,7 @@ export async function renderMix(
     source.buffer = buffer;
     source.connect(trackInput(track?.id ?? clip.id, track?.volume ?? 80));
     const node = source as AudioBufferSourceNode & { start: (w: number, o?: number, d?: number) => void };
-    node.start(when, offset, playable);
+    node.start(when, Math.max(0, clip.offset ?? 0) + offset, playable);
   }
 
   const rendered = await context.startRendering();

@@ -4576,6 +4576,10 @@ html{color-scheme:dark}
 .se-save.on{opacity:1}
 
 .se-clip.dragging{opacity:.85;cursor:grabbing;z-index:3}
+.se-trim{position:absolute;top:8px;bottom:8px;width:6px;border-radius:2px;background:rgba(255,255,255,.8);cursor:ew-resize;z-index:2}
+.se-trim-start{left:3px}
+.se-trim-end{right:3px}
+.se-clip.trimming{outline:1px dashed hsl(var(--foreground))}
 .se-snap-line{position:absolute;top:0;bottom:0;width:1px;background:hsl(var(--accent));opacity:.7;pointer-events:none;z-index:2}
 
 .se-marquee{position:absolute;border:1px solid hsl(var(--accent));background:hsl(var(--card));opacity:.55;pointer-events:none;z-index:4}
