@@ -42,7 +42,7 @@ test("the clip menu splits, renames and recolours a clip", async ({ page }) => {
   expect(items.join(" ")).toContain("Clip Color");
   expect(items.join(" ")).toContain("Get Stems");
   expect(items.join(" ")).toContain("Download .WAV");
-  await expect(menu.getByRole("menuitem", { name: "Clip Info" })).toBeDisabled();
+  await expect(menu.getByRole("menuitem", { name: "Clip Info" })).toBeEnabled();
 
   // Split needs the playhead inside the clip: put it at 2 s (one bar).
   await page.locator(".se-ruler-bars").click({ position: { x: 96, y: 12 } });

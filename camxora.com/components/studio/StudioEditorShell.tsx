@@ -11,6 +11,7 @@ import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import { listStudioProjects, listStudioUploads, type StudioUpload } from "@/lib/studio-api";
 import { listWebMusicWorkspaces, type WebMusicWorkspace } from "@/lib/web-music-api";
 import { StudioLibrary, type StudioLibraryTab } from "@/components/studio/StudioLibrary";
+import { StudioClipInfo } from "@/components/studio/StudioClipInfo";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
@@ -113,6 +114,8 @@ export function StudioEditorShell() {
   const projectVersionRef = useRef<string | null>(null);
   /** Library panel data (G12): songs, workspaces, other projects and uploads. */
   const [libraryTab, setLibraryTab] = useState<StudioLibraryTab>("songs");
+  /** Right rail shows the clip inspector instead of the library (spec §70). */
+  const [inspectorOpen, setInspectorOpen] = useState(false);
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
   const [libraryWorkspaces, setLibraryWorkspaces] = useState<WebMusicWorkspace[] | null>(null);
   /** Workspace the Songs tab is filtered to; null means every song. */
@@ -2480,29 +2483,49 @@ export function StudioEditorShell() {
           }}
         />
 
-        {libraryOpen ? (
-          <StudioLibrary
-            ref={librarySearchRef}
-            width={LIBRARY_W}
-            tab={libraryTab}
-            onTab={setLibraryTab}
-            query={libraryQuery}
-            onQuery={setLibraryQuery}
-            songs={librarySongs}
-            workspaces={libraryWorkspaces}
-            activeWorkspaceId={libraryWorkspaceId}
-            projects={libraryProjects}
-            uploads={libraryUploads}
-            currentProjectId={projectId}
-            onClose={() => setLibraryOpen(false)}
-            onAddSong={addSongToTimeline}
-            onSelectWorkspace={selectLibraryWorkspace}
-            onAddUpload={addUploadToTimeline}
-            onOpenProject={(id) => {
-              window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;
-            }}
-          />
-        ) : null}
+        {(() => {
+          const inspected = inspectorOpen
+            ? clips.find((clip) => clip.id === selectedClip)
+            : undefined;
+          if (inspected) {
+            const owner = tracks.find((track) => track.clipIds.includes(inspected.id));
+            return (
+              <StudioClipInfo
+                width={LIBRARY_W}
+                clip={inspected}
+                trackName={owner?.name}
+                source={clipSource}
+                stems={stems}
+                onRequestStems={() => void requestStems()}
+                onClose={() => setInspectorOpen(false)}
+              />
+            );
+          }
+          if (!libraryOpen) return null;
+          return (
+            <StudioLibrary
+              ref={librarySearchRef}
+              width={LIBRARY_W}
+              tab={libraryTab}
+              onTab={setLibraryTab}
+              query={libraryQuery}
+              onQuery={setLibraryQuery}
+              songs={librarySongs}
+              workspaces={libraryWorkspaces}
+              activeWorkspaceId={libraryWorkspaceId}
+              projects={libraryProjects}
+              uploads={libraryUploads}
+              currentProjectId={projectId}
+              onClose={() => setLibraryOpen(false)}
+              onAddSong={addSongToTimeline}
+              onSelectWorkspace={selectLibraryWorkspace}
+              onAddUpload={addUploadToTimeline}
+              onOpenProject={(id) => {
+                window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;
+              }}
+            />
+          );
+        })()}
       </div>
 
       <StudioOnboarding
@@ -2623,8 +2646,11 @@ export function StudioEditorShell() {
                 <button
                   type="button"
                   role="menuitem"
-                  disabled
-                  title="The clip info panel is not built yet"
+                  onClick={() => {
+                    setClipMenu(null);
+                    setLibraryOpen(false);
+                    setInspectorOpen(true);
+                  }}
                 >
                   Clip Info
                 </button>
