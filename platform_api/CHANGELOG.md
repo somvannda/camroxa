@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-06] — SLAI image model `cx/gpt-6-sol-image`
+
+### Added
+
+- Registered **`cx/gpt-6-sol-image`** as an SLAI image model in `ai/registry.py`, so it appears in AI Routing and the Credits forms. Migration `184_slai_gpt_6_sol_image` clones the `cx/gpt-image-2.5` `credit_pricing` / `ai_model_costs` rows (6 credits background, 8 thumbnail; ~$0.0067/img) and adds the model to the stored image fallback chain after `cx/gpt-image-2.5`, before `fal`. See `docs/changelog/2026-11-06-slai-gpt-6-sol-image.md`.
+
 ## [2026-11-05] — Assert the lot tag constraint too
 
 ### Added

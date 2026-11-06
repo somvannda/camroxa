@@ -20,6 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`cx/gpt-6-sol-image`** is now an SLAI image option in AI Routing and in the Credits sub-model lists; the SLAI text models `gpt-5.6-sol` / `terra` / `luna` were also missing from the Credits dropdown and are now listed. See `docs/changelog/2026-11-06-slai-gpt-6-sol-image.md`.
 - **Users** has search (email / display name / ID) and filters for role, email verified, plan (or Free), status, and registration date range. Also fixes the registration-date filter, which sent `from_date` / `to_date` while the API expects `date_from` / `date_to` and was silently ignored. See `docs/changelog/2026-09-29-admin-users-search-filters.md`.
 - Credits-only plan editor has **Pricing page features** and **Pricing credit captions** textareas (one line per bullet / caption). See `docs/changelog/2026-08-26-pricing-two-songs-and-admin-feature-list.md`.
 

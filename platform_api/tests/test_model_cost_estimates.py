@@ -24,6 +24,20 @@ def test_slai_gpt_image_is_image_only() -> None:
     assert "lyric" not in ops
 
 
+def test_slai_gpt_6_sol_image_is_image_only() -> None:
+    ops = operation_types_for_model("slai", "cx/gpt-6-sol-image")
+    assert set(ops) == set(IMAGE_OPERATIONS)
+    assert "music" not in ops
+    assert "lyric" not in ops
+
+
+def test_slai_gpt_6_sol_image_seeds_with_usd_estimates() -> None:
+    rows = build_seed_cost_rows()
+    image = [r for r in rows if r["sub_model"] == "cx/gpt-6-sol-image"]
+    assert len(image) == len(IMAGE_OPERATIONS)
+    assert all(r["cost_usd"] == 0.0067 for r in image)
+
+
 def test_slai_gpt56_models_are_text_only() -> None:
     for model in ("gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"):
         ops = operation_types_for_model("slai", model)

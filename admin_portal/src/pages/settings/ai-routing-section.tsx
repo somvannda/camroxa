@@ -84,6 +84,7 @@ const DEFAULT_TEXT_FALLBACK_CHAIN: OperationAssignment[] = [
 
 const DEFAULT_IMAGE_FALLBACK_CHAIN: OperationAssignment[] = [
   { provider: 'slai', sub_model: 'cx/gpt-image-2.5', is_active: true },
+  { provider: 'slai', sub_model: 'cx/gpt-6-sol-image', is_active: true },
   { provider: 'fal', sub_model: 'flux-pro', is_active: true },
   { provider: 'openai', sub_model: 'gpt-image-1', is_active: true },
 ];

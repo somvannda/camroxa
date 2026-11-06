@@ -130,7 +130,11 @@ const SUB_MODEL_OPTIONS: Record<string, { value: string; label: string }[]> = {
   ],
   slai: [
     { value: 'xiaomi/mimo-v2.5-pro', label: 'xiaomi/mimo-v2.5-pro (SLAI MiMo text)' },
+    { value: 'gpt-5.6-sol', label: 'gpt-5.6-sol (SLAI text)' },
+    { value: 'gpt-5.6-terra', label: 'gpt-5.6-terra (SLAI text)' },
+    { value: 'gpt-5.6-luna', label: 'gpt-5.6-luna (SLAI text)' },
     { value: 'cx/gpt-image-2.5', label: 'cx/gpt-image-2.5 (SLAI images)' },
+    { value: 'cx/gpt-6-sol-image', label: 'cx/gpt-6-sol-image (SLAI images)' },
   ],
   local: [],
   cala: [],
