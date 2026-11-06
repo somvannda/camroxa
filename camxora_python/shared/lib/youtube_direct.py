@@ -23,6 +23,42 @@ class UploadCancelled(RuntimeError):
     """Raised when the user stops a transfer."""
 
 
+# YouTube rejects the whole upload when the keyword block is invalid: tags may
+# not contain angle brackets, must be non-empty, and the list is capped at 500
+# characters in total. Studio also trims very long tags.
+MAX_TAG_CHARS = 60
+MAX_TAGS_TOTAL_CHARS = 500
+
+
+def sanitize_tags(raw: Any) -> list[str]:
+    if isinstance(raw, str):
+        candidates = [part for part in raw.split(",")]
+    elif isinstance(raw, (list, tuple, set)):
+        candidates = [str(part) for part in raw]
+    else:
+        candidates = []
+    tags: list[str] = []
+    seen: set[str] = set()
+    total = 0
+    for candidate in candidates:
+        text = " ".join(
+            str(candidate).replace("<", "").replace(">", "").split()
+        ).strip()
+        if not text:
+            continue
+        if len(text) > MAX_TAG_CHARS:
+            text = text[:MAX_TAG_CHARS].rstrip()
+        key = text.lower()
+        if key in seen:
+            continue
+        if total + len(text) + 1 > MAX_TAGS_TOTAL_CHARS:
+            break
+        seen.add(key)
+        tags.append(text)
+        total += len(text) + 1
+    return tags
+
+
 def album_from_path(video: Path) -> str:
     name = video.parent.name
     stem = name.split("_", 1)[1] if "_" in name else name
@@ -65,11 +101,7 @@ def build_metadata(profile: Any, video: Path) -> dict[str, Any]:
     description = render_template(
         str(config.get("description_template") or ""), album=album, channel=channel
     )
-    raw_tags = config.get("tags") or ""
-    if isinstance(raw_tags, str):
-        tags = [tag.strip() for tag in raw_tags.split(",") if tag.strip()]
-    else:
-        tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+    tags = sanitize_tags(config.get("tags") or "")
 
     visibility = str(config.get("visibility") or "private").strip().lower()
     if visibility not in {"private", "unlisted", "public", "scheduled"}:
