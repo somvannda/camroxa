@@ -2914,6 +2914,25 @@ class PublishUploadWorker(QThread):
             step = "create job"
             self.status_changed.emit("Creating upload job…")
             file_path = str(request.file_path or "").strip()
+            from shared.lib.publish_retry import backoff_for, should_retry
+
+            attempt = 1
+            while True:
+                try:
+                    return self._create_job_with_retries(
+                        request, file_path, step, attempt
+                    )
+                except PlatformApiError as exc:
+                    if attempt >= 3 or not should_retry(getattr(exc, "status", None), str(exc)):
+                        raise
+                    attempt += 1
+                    wait = backoff_for(attempt - 1)
+                    self.status_changed.emit(
+                        f"Publishing service busy — retrying in {wait:.0f}s (attempt {attempt}/3)…"
+                    )
+                    import time as _time
+
+                    _time.sleep(wait)
             size_bytes = Path(file_path).stat().st_size if file_path and Path(file_path).is_file() else 0
             media_url = ""
             if size_bytes >= URL_UPLOAD_THRESHOLD_BYTES:
@@ -2951,6 +2970,38 @@ class PublishUploadWorker(QThread):
             except Exception:
                 pass
             self.failed.emit(message)
+
+    def _create_job_with_retries(
+        self,
+        request: CreatePublishJobRequest,
+        file_path: str,
+        step: str,
+        attempt: int,
+    ) -> None:
+        """Create (and, for URL media, finalise) the publish job, then report."""
+        size_bytes = (
+            Path(file_path).stat().st_size
+            if file_path and Path(file_path).is_file()
+            else 0
+        )
+        media_url = ""
+        if size_bytes >= URL_UPLOAD_THRESHOLD_BYTES:
+            media_url = self._upload_via_storage(request, file_path, size_bytes)
+            request = request.model_copy(update={"media_url": media_url})
+        job = self._api.create_publish_job(request)
+        if job.upload_url:
+            self.status_changed.emit("Uploading video…")
+            self._put(job.upload_url, file_path, "video/mp4")
+        if job.thumbnail_upload_url and request.thumbnail_path:
+            self.status_changed.emit("Uploading thumbnail…")
+            self._put(
+                job.thumbnail_upload_url,
+                request.thumbnail_path,
+                _image_mime(request.thumbnail_path),
+            )
+        self.status_changed.emit("Finalizing upload…")
+        result = self._api.complete_publish_job(job.job_uid, request.file_checksum)
+        self.succeeded.emit(result)
 
     def _upload_via_storage(self, request: CreatePublishJobRequest, file_path: str, size_bytes: int) -> str:
         """Upload the original file to B2 in parts and return the media URL."""
