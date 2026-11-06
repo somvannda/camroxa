@@ -1378,6 +1378,109 @@ class UsageEnforcementService:
             )
         return credits_per_operation
 
+    async def settle_music_price(
+        self,
+        user_id: UUID,
+        *,
+        charged_units: int,
+        routed_provider: str,
+        executed_provider: str,
+        sub_model: str | None = None,
+        ref_id: str | None = None,
+    ) -> int:
+        """True up a music charge after the provider chain advanced.
+
+        Music prices differ per provider (sunoapi.org 15, musicapi 10). Callers
+        charge the routed provider before submit; when a provider failure moved
+        execution to another host, the executed provider's price is the correct
+        one. The delta is applied to the same wallet/ledger the charge used.
+
+        Returns the effective charged units.
+        """
+        routed = str(routed_provider or "").strip()
+        executed = str(executed_provider or "").strip()
+        charged = int(charged_units or 0)
+        if charged <= 0 or not routed or not executed or executed == routed:
+            return charged
+
+        executed_entry = await lookup_pricing_entry(
+            self._pricing_repo, executed, "music", sub_model
+        )
+        routed_entry = await lookup_pricing_entry(
+            self._pricing_repo, routed, "music", sub_model
+        )
+        if executed_entry is None or routed_entry is None:
+            logger.warning(
+                "Music settlement skipped: missing pricing routed=%s executed=%s model=%s",
+                routed,
+                executed,
+                sub_model,
+            )
+            return charged
+
+        actual_units = int(executed_entry["credits_per_operation"])
+        delta = actual_units - int(routed_entry["credits_per_operation"])
+        if delta == 0:
+            return charged
+
+        metadata = self._wallet_usage_metadata(
+            operation_type="music",
+            ai_service=executed,
+            sub_model=sub_model,
+            list_credit_units=actual_units,
+            charged_credit_units=charged + delta,
+            purpose="music_price_adjust",
+            routed_provider=routed,
+            routed_model=sub_model,
+            executed_provider=executed,
+            executed_model=sub_model,
+        )
+        metadata["price_adjust"] = True
+
+        if delta > 0:
+            ok = await self._credit_repo.atomic_deduct(
+                user_id,
+                delta,
+                f"music_price_adjust via {executed}",
+                ref_id=ref_id,
+                metadata=metadata,
+            )
+            if not ok:
+                # The song is already delivered; record the shortfall rather
+                # than failing the request.
+                logger.warning(
+                    "Music settlement undercharged user=%s delta=%s routed=%s executed=%s",
+                    user_id,
+                    delta,
+                    routed,
+                    executed,
+                )
+                return charged
+            logger.info(
+                "Music settlement charged %s extra units (routed=%s executed=%s user=%s)",
+                delta,
+                routed,
+                executed,
+                user_id,
+            )
+            return charged + delta
+
+        await self._credit_repo.refund(
+            user_id,
+            -delta,
+            "music_price_adjust",
+            ref_id=ref_id,
+            metadata=metadata,
+        )
+        logger.info(
+            "Music settlement refunded %s units (routed=%s executed=%s user=%s)",
+            -delta,
+            routed,
+            executed,
+            user_id,
+        )
+        return charged + delta
+
     async def reserve_and_hold_before_provider(
         self,
         user_id: UUID,

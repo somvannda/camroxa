@@ -467,7 +467,8 @@ export function matchCurrentPlan(
 }
 
 /**
- * Format credits as songs equivalent (10 credits = 1 generate = 2 songs)
+ * Format credits as songs equivalent (10 credits on our musicapi, 15 on the
+ * sunoapi.org reseller; both = 1 generate = 2 songs)
  */
 export function creditHeadlineNumber(plan: {
   monthly_credits?: number;

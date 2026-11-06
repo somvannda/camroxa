@@ -91,6 +91,15 @@ async def _scan_pricing_units(
                 row_provider = _row_field(row, "ai_service")
                 if restrict_provider and row_provider != provider:
                     continue
+                if row.get("needs_review"):
+                    logger.warning(
+                        "Pricing scan for op '%s' skipped draft row %s/%s "
+                        "(review it on the Credits page)",
+                        op,
+                        row_provider,
+                        target,
+                    )
+                    continue
                 units = _row_units(row)
                 if units is None:
                     continue
@@ -195,6 +204,9 @@ async def resolve_op_list_units(
     image_provider: str | None = None,
     image_sub_model: str | None = None,
     image_operation: str | None = None,
+    routed_provider: str | None = None,
+    routed_sub_model: str | None = None,
+    routed_operation: str | None = None,
 ) -> int:
     fallbacks = _fallbacks_for(
         op,
@@ -203,6 +215,18 @@ async def resolve_op_list_units(
         image_sub_model=image_sub_model,
         image_operation=image_operation,
     )
+    # Text ops: the routed provider/model must win over the static chain, and the
+    # caller's concrete operation (e.g. web_music_lyrics) before the alias op.
+    # Without this the quote falls through to an unordered cross-provider scan.
+    if routed_provider:
+        preferred: list[PricingLookup] = []
+        concrete = str(routed_operation or "").strip().lower()
+        if concrete and concrete != op:
+            preferred.append((routed_provider, concrete, routed_sub_model))
+            preferred.append((routed_provider, concrete, None))
+        preferred.append((routed_provider, op, routed_sub_model))
+        preferred.append((routed_provider, op, None))
+        fallbacks = _dedupe(preferred + list(fallbacks))
     last_error: Exception | None = None
     for ai_service, operation_type, sub_model in fallbacks:
         try:

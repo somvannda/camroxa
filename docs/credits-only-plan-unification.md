@@ -1,5 +1,12 @@
 # Credits-only plan unification — full picture
 
+> **Superseded on one point (2026-11-05):** the music list price is now **15**
+> credits, not 10, for both Suno-compatible providers, so an AI Routing failover
+> between Camxora musicapi and the sunoapi.org reseller is price-neutral. See
+> `docs/changelog/2026-11-05-music-price-15.md` and migration
+> `182_music_price_15.py`. Everything else in this document still describes the
+> charge model; read "10 credits" below as "the music list price" (now 15).
+
 **Spec branch:** `docs/credits-only-plan-unification`  
 **Implementation branch:** `feature/credits-only-api-v3`  
 **Worktree:** `G:\Developments\Projects\Camxora\MusicGenerator-credits-only-api-v3`  

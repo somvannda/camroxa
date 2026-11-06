@@ -152,6 +152,7 @@ def mock_ai_routing_service() -> AsyncMock:
         service_type="image_generation",
     )
     service.resolve = AsyncMock(return_value=routing)
+    service.resolve_music_chain = AsyncMock(return_value=[routing])
     service.resolve_image_chain = AsyncMock(return_value=[routing])
     text_routing = RoutingResult(
         provider="deepseek",

@@ -104,7 +104,8 @@ export function DailyMusicCapSection() {
         <CardDescription>
           Maximum music credits one user can spend per calendar day, across web and desktop. The
           paid Suno accounts are a shared pool, so this stops a single account draining it. A song
-          costs 10 credits, so the current value allows about {songs} songs per user per day.
+          costs 10 credits on our musicapi (15 on the sunoapi.org reseller), so the
+          current value allows about {songs} songs per user per day.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

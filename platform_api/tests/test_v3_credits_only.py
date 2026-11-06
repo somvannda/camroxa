@@ -331,6 +331,9 @@ class FakeRouting:
             raise RuntimeError("no routing")
         return _RoutingResult(self._provider)
 
+    async def resolve_music_chain(self, operation: str) -> list[_RoutingResult]:
+        return [await self.resolve(operation)]
+
 
 @pytest.mark.asyncio
 async def test_quote_uses_routed_music_provider_price(

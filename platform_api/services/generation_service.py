@@ -17,7 +17,7 @@ import logging
 import re
 import unicodedata
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any, Awaitable, Callable, Protocol
 from uuid import UUID, uuid4
 
 import httpx
@@ -1898,8 +1898,10 @@ class GenerationService:
         """
         if self._ai_routing_service is not None:
             try:
-                routing = await self._ai_routing_service.resolve("music")
-                return normalize_music_provider(getattr(routing, "provider", None))
+                # Chain head is the provider billing quotes for (music prices
+                # differ per provider). Falls back on a key miss.
+                chain = await self._ai_routing_service.resolve_music_chain("music")
+                return normalize_music_provider(getattr(chain[0], "provider", None))
             except Exception:
                 logger.debug(
                     "music routing lookup failed; using default provider",
@@ -2754,6 +2756,8 @@ class GenerationService:
         *,
         skip_pricing: bool = False,
         source: str = "studio",
+        allow_music_failover: bool = False,
+        on_executed: Callable[[str], Awaitable[None]] | None = None,
     ) -> str:
         """Submit a music generation request to Suno.
 
@@ -2903,7 +2907,7 @@ class GenerationService:
 
         # Forward to Suno API (Req 11.1)
         try:
-            suno_response = await self._call_suno(
+            suno_response, executed_provider = await self._call_suno_with_provider(
                 model=request.model,
                 title=safe_title,
                 lyrics=safe_lyrics,
@@ -2915,6 +2919,7 @@ class GenerationService:
                 style_weight=request.style_weight,
                 weirdness_constraint=request.weirdness_constraint,
                 audio_weight=request.audio_weight,
+                allow_failover=allow_music_failover,
             )
         except ExternalServiceError as exc:
             # Delivery failure — refund credits (Req 7.6)
@@ -2959,6 +2964,18 @@ class GenerationService:
             source=str(source or "studio"),
         )
         await self._task_repo.create(task)
+
+        if on_executed is not None:
+            try:
+                await on_executed(executed_provider)
+            except Exception:
+                # The song is already submitted; never fail the request because
+                # the price adjustment failed. Log for reconciliation.
+                logger.exception(
+                    "Music price settlement failed after submit (task=%s, provider=%s)",
+                    task.id,
+                    executed_provider,
+                )
 
         logger.info(
             "Suno task created for user %s: task_id=%s, external=%s",
@@ -3681,27 +3698,117 @@ class GenerationService:
         persona_id: str | None = None,
         persona_model: str | None = None,
     ) -> dict[str, Any]:
-        wrapper, _provider = await self._music_pool_wrapper()
-        return await wrapper.execute(
-            lambda api_key: self._suno_client.submit_task(
-                model=model,
-                title=title,
-                lyrics=lyrics,
-                style=style,
-                instrumental=instrumental,
-                callback_url=callback_url,
-                api_key=api_key,
-                negative_tags=negative_tags,
-                vocal_gender=vocal_gender,
-                style_weight=style_weight,
-                weirdness_constraint=weirdness_constraint,
-                audio_weight=audio_weight,
-                image_urls=image_urls,
-                video_urls=video_urls,
-                persona_id=persona_id,
-                persona_model=persona_model,
-            )
+        response, _provider = await self._call_suno_with_provider(
+            model=model,
+            title=title,
+            lyrics=lyrics,
+            style=style,
+            instrumental=instrumental,
+            callback_url=callback_url,
+            negative_tags=negative_tags,
+            vocal_gender=vocal_gender,
+            style_weight=style_weight,
+            weirdness_constraint=weirdness_constraint,
+            audio_weight=audio_weight,
+            image_urls=image_urls,
+            video_urls=video_urls,
+            persona_id=persona_id,
+            persona_model=persona_model,
         )
+        return response
+
+    async def _call_suno_with_provider(
+        self,
+        *,
+        model: str,
+        title: str,
+        lyrics: str,
+        style: str,
+        instrumental: bool,
+        callback_url: str | None,
+        negative_tags: str | None = None,
+        vocal_gender: str | None = None,
+        style_weight: float | None = None,
+        weirdness_constraint: float | None = None,
+        audio_weight: float | None = None,
+        image_urls: list[str] | None = None,
+        video_urls: list[str] | None = None,
+        persona_id: str | None = None,
+        persona_model: str | None = None,
+        allow_failover: bool = False,
+    ) -> tuple[dict[str, Any], str]:
+        """Submit to the music provider chain and report who ran it.
+
+        ``allow_failover`` is opt-in because music prices differ per provider
+        (sunoapi.org 15, musicapi 10): the caller must settle the difference on
+        the executed provider when it lets the chain advance.
+        """
+        providers = await self._music_provider_chain()
+        if not allow_failover:
+            providers = providers[:1]
+
+        last_error: ExternalServiceError | None = None
+        for index, provider in enumerate(providers):
+            wrapper = self._music_pool_wrapper_for(provider)
+            if wrapper is None:
+                continue
+            try:
+                response = await wrapper.execute(
+                    lambda api_key: self._suno_client.submit_task(
+                        model=model,
+                        title=title,
+                        lyrics=lyrics,
+                        style=style,
+                        instrumental=instrumental,
+                        callback_url=callback_url,
+                        api_key=api_key,
+                        negative_tags=negative_tags,
+                        vocal_gender=vocal_gender,
+                        style_weight=style_weight,
+                        weirdness_constraint=weirdness_constraint,
+                        audio_weight=audio_weight,
+                        image_urls=image_urls,
+                        video_urls=video_urls,
+                        persona_id=persona_id,
+                        persona_model=persona_model,
+                    )
+                )
+                return response, provider
+            except ExternalServiceError as exc:
+                last_error = exc
+                if index >= len(providers) - 1:
+                    raise
+                logger.warning(
+                    "Music provider %s failed (%s); trying %s.",
+                    provider,
+                    exc,
+                    providers[index + 1],
+                )
+
+        if last_error is not None:
+            raise last_error
+        raise NoAvailableKeysError(
+            providers[0] if providers else DEFAULT_MUSIC_PROVIDER, {}
+        )
+
+    async def _music_provider_chain(self) -> list[str]:
+        """Ordered music providers that currently have active keys."""
+        if self._ai_routing_service is not None:
+            try:
+                chain = await self._ai_routing_service.resolve_music_chain("music")
+                providers = [
+                    str(item.provider)
+                    for item in chain
+                    if getattr(item, "provider", None)
+                ]
+                if providers:
+                    return providers
+            except Exception:
+                logger.debug(
+                    "music chain lookup failed; using default provider",
+                    exc_info=True,
+                )
+        return [DEFAULT_MUSIC_PROVIDER]
 
     async def poll_suno_generate_status(self, external_task_id: str):
         """Poll Suno generate record-info for one external task id."""

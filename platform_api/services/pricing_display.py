@@ -1,6 +1,7 @@
 """Public pricing display helpers.
 
-Song hints use the Credits-page music list price (fallback 10).
+Song hints use the Credits-page music list price (fallback 10 = our musicapi;
+the reseller is 15 and is read from its pricing row).
 One generate returns two song versions.
 """
 

@@ -8,6 +8,8 @@ from platform_api.services.pricing_display import (
 
 
 def test_credits_to_songs_counts_two_versions_per_generate() -> None:
+    # Fallback price is our musicapi (10 credits); the reseller row is 15 and is
+    # read from credit_pricing, not this constant.
     assert credits_to_songs(50) == 10
     assert credits_to_songs(1000) == 200
     assert credits_to_songs(3500) == 700

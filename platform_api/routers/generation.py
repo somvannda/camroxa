@@ -738,18 +738,31 @@ async def submit_suno(
         user_id=ctx.user_id,
         channel_profile_id=request.channel_profile_id,
     )
-    # Resolve routing for music generation
-    routing = await routing_service.resolve("music")
+    # Resolve routing for music generation. Use the chain head so the price
+    # charged matches the provider that will execute (prices differ per provider).
+    music_chain = await routing_service.resolve_music_chain("music")
+    routing = music_chain[0]
 
     # Enforce credit balance, daily limit, and monthly limit before generation.
     # Raises InsufficientCreditsError (402), QuotaExceededError (429),
     # or ExternalServiceError (503) if checks fail.
-    await enforcement_service.check_and_deduct(
+    charged = await enforcement_service.check_and_deduct(
         user_id=UUID(ctx.user_id),
         channel_profile_id=request.channel_profile_id,
         operation_type="music",
         ai_service=routing.provider,
+        sub_model=request.model,
     )
+
+    async def _settle_music_price(executed_provider: str) -> None:
+        """Charge the provider that actually ran when the chain advanced."""
+        await enforcement_service.settle_music_price(
+            UUID(ctx.user_id),
+            charged_units=int(charged or 0),
+            routed_provider=str(routing.provider),
+            executed_provider=executed_provider,
+            sub_model=request.model,
+        )
 
     suno_request = SunoRequest(
         model=request.model,
@@ -759,7 +772,13 @@ async def submit_suno(
         instrumental=request.instrumental,
     )
 
-    task_id = await generation_service.submit_suno(ctx.user_id, suno_request, skip_pricing=True)
+    task_id = await generation_service.submit_suno(
+        ctx.user_id,
+        suno_request,
+        skip_pricing=True,
+        allow_music_failover=True,
+        on_executed=_settle_music_price,
+    )
 
     return SunoGenerationResponse(task_id=task_id)
 

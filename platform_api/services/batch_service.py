@@ -224,6 +224,7 @@ class GenerationServiceProtocol(Protocol):
 class AIRoutingServiceProtocol(Protocol):
     async def resolve(self, operation: str) -> Any: ...
     async def resolve_image_chain(self, operation: str) -> list[Any]: ...
+    async def resolve_music_chain(self, operation: str) -> list[Any]: ...
 
 
 class ProfileRepositoryProtocol(Protocol):
@@ -2237,7 +2238,7 @@ class BatchService:
         # enqueueing a job guaranteed to fail on insufficient credits (desktops were
         # retrying failed songs on 0-credit accounts in a loop).
         if self._enforcement_service is not None:
-            routing_music = await self._ai_routing_service.resolve("music")
+            routing_music = (await self._ai_routing_service.resolve_music_chain("music"))[0]
             music_provider = str(getattr(routing_music, "provider", "") or "").strip()
             suno_model = await self._resolve_suno_model(batch.user_id)
             suno_price = await self._pricing_service.get_price(
@@ -4399,7 +4400,7 @@ class BatchService:
                     music_sub_model = None
                     if self._ai_routing_service is not None:
                         try:
-                            routing_music = await self._ai_routing_service.resolve("music")
+                            routing_music = (await self._ai_routing_service.resolve_music_chain("music"))[0]
                             music_provider = str(
                                 getattr(routing_music, "provider", "") or "suno"
                             ).strip() or "suno"
@@ -4498,7 +4499,7 @@ class BatchService:
             ) from exc
 
         if auto_gsuno:
-            routing_music = await self._ai_routing_service.resolve("music")
+            routing_music = (await self._ai_routing_service.resolve_music_chain("music"))[0]
             music_provider = str(getattr(routing_music, "provider", "") or "").strip()
             suno_model = await self._resolve_suno_model(user_id)
 
@@ -5298,7 +5299,7 @@ class BatchService:
         billing_applied = False
         try:
             if self._enforcement_service is not None and self._ai_routing_service is not None:
-                routing_music = await self._ai_routing_service.resolve("music")
+                routing_music = (await self._ai_routing_service.resolve_music_chain("music"))[0]
                 music_provider = str(
                     getattr(routing_music, "provider", "") or "suno"
                 ).strip() or "suno"
@@ -5337,6 +5338,21 @@ class BatchService:
                     instrumental=False,
                 ),
                 skip_pricing=self._enforcement_service is not None,
+                allow_music_failover=self._enforcement_service is not None,
+                on_executed=(
+                    (
+                        lambda executed: self._enforcement_service.settle_music_price(
+                            UUID(user_id),
+                            charged_units=int(charged or 0),
+                            routed_provider=music_provider,
+                            executed_provider=executed,
+                            sub_model=music_sub_model,
+                            ref_id=str(song.id),
+                        )
+                    )
+                    if self._enforcement_service is not None
+                    else None
+                ),
             )
             await self._batch_repo.link_suno_task(UUID(task_id), song.id, batch.id)
             fresh_batch = await self._batch_repo.get_batch_by_id(batch.id)

@@ -16,6 +16,11 @@ SUNO_TASK_SOURCE_WEB_MUSIC = "web_music"
 MUSIC_WEB_FREE_RESET_PERIOD_KEY = "music_web_free_reset_period"
 MUSIC_WEB_FREE_RESET_PERIOD_DEFAULT = "daily"
 
+# Default/fallback music price (our musicapi). The real price comes from the
+# routed provider's credit_pricing row: 10 for camxora_music_api, 15 for the
+# sunoapi.org reseller (migration 182). This constant is only used when no quote
+# is available (legacy v2 preflight/refund paths); v3 refunds the recorded
+# charge. Keep it at the cheaper provider so it can never over-refund.
 WEB_MUSIC_CREDITS_PER_SONG = 10
 
 

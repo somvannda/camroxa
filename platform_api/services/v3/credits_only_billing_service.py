@@ -80,7 +80,8 @@ class CreditsOnlyBillingService:
         if self._ai_routing is None:
             return None
         try:
-            routing = await self._ai_routing.resolve("music")
+            chain = await self._ai_routing.resolve_music_chain("music")
+            routing = chain[0]
         except Exception:
             logger.debug("music routing lookup failed; using default price chain", exc_info=True)
             return None
@@ -110,6 +111,30 @@ class CreditsOnlyBillingService:
             logger.debug(
                 "image routing lookup failed for %s; using default price chain",
                 assignment,
+                exc_info=True,
+            )
+            return None, None
+        provider = str(getattr(routing, "provider", "") or "").strip().lower() or None
+        sub_model = str(getattr(routing, "sub_model", "") or "").strip() or None
+        return provider, sub_model
+
+    async def _text_pricing_routing(
+        self, operation: str
+    ) -> tuple[str | None, str | None]:
+        """Routed ``(provider, sub_model)`` for a text operation.
+
+        Keeps text quotes deterministic: the routed provider/model is tried
+        before the static chain, instead of falling through to the unordered
+        cross-provider scan.
+        """
+        if self._ai_routing is None:
+            return None, None
+        try:
+            routing = await self._ai_routing.resolve(operation)
+        except Exception:
+            logger.debug(
+                "text routing lookup failed for %s; using static price chain",
+                operation,
                 exc_info=True,
             )
             return None, None
@@ -190,6 +215,12 @@ class CreditsOnlyBillingService:
             image_provider, image_sub_model = await self._image_pricing_routing(
                 operation
             )
+        routed_provider: str | None = None
+        routed_sub_model: str | None = None
+        if operation_name not in {"music", "image"}:
+            routed_provider, routed_sub_model = await self._text_pricing_routing(
+                operation or operation_name
+            )
         units = await resolve_op_list_units(
             self._pricing,
             operation_name,
@@ -197,6 +228,9 @@ class CreditsOnlyBillingService:
             image_provider=image_provider,
             image_sub_model=image_sub_model,
             image_operation=operation,
+            routed_provider=routed_provider,
+            routed_sub_model=routed_sub_model,
+            routed_operation=operation,
         )
         return QuoteResult(
             op=operation_name,
