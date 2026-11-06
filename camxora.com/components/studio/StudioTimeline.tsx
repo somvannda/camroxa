@@ -21,6 +21,8 @@ export type TimelineClip = {
   duration?: number;
   offset?: number;
   fadeIn?: number;
+  /** Per-clip colour override (clip menu ▸ Clip Color); falls back to the track colour. */
+  color?: string;
   audioUrl?: string | null;
   songId?: string;
 };
@@ -64,7 +66,10 @@ export type StudioTimelineProps = {
   timelineRef?: RefObject<HTMLDivElement | null>;
   onScroll: (left: number, width: number) => void;
   onLanePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  /** Clicking the bar ruler moves the playhead (the lanes are covered by clips). */
+  onRulerSeek: (seconds: number) => void;
   onClipPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, clip: TimelineClip, trackId: string) => void;
+  onClipContextMenu: (event: React.MouseEvent<HTMLButtonElement>, clip: TimelineClip) => void;
   onTrimPointerDown: (
     event: ReactPointerEvent<HTMLElement>,
     clip: TimelineClip,
@@ -99,7 +104,9 @@ export function StudioTimeline(props: StudioTimelineProps) {
     timelineRef,
     onScroll,
     onLanePointerDown,
+    onRulerSeek,
     onClipPointerDown,
+    onClipContextMenu,
     onTrimPointerDown,
     onFadePointerDown,
     onLoopHandleDown,
@@ -114,7 +121,16 @@ export function StudioTimeline(props: StudioTimelineProps) {
         onScroll(el.scrollLeft, el.clientWidth);
       }}
     >
-      <div className="se-ruler-bars" aria-hidden="true">
+      <div
+        className="se-ruler-bars"
+        aria-hidden="true"
+        onPointerDown={(event) => {
+          const inner = event.currentTarget.querySelector(".se-ruler-inner");
+          if (!(inner instanceof HTMLElement)) return;
+          const rect = inner.getBoundingClientRect();
+          onRulerSeek(Math.max(0, ((event.clientX - rect.left) / barWidth) * secondsPerBar));
+        }}
+      >
         <div className="se-ruler-inner" style={{ width: barCount * barWidth }}>
           {Array.from({ length: barCount }).map((_, bar) => (
             <span key={bar} className="se-bar-tick" style={{ left: bar * barWidth }}>
@@ -160,8 +176,9 @@ export function StudioTimeline(props: StudioTimelineProps) {
                       className={`se-clip${isSelected ? " selected" : ""}${
                         isDragging ? " dragging" : ""
                       }${preview ? " trimming" : ""}`}
-                      style={{ left, width, background: track.color }}
+                      style={{ left, width, background: clip.color || track.color }}
                       onPointerDown={(event) => onClipPointerDown(event, clip, track.id)}
+                      onContextMenu={(event) => onClipContextMenu(event, clip)}
                       aria-pressed={isSelected}
                     >
                       <span className="se-clip-head">{clip.title || "Clip"}</span>

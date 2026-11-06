@@ -43,6 +43,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Captured shortcut map (loop, metronome, select all, cut, mute/solo, hide, rename, panels) | §36 / C-07 / gap G44 | keydown handler in `StudioEditorShell`; overlay list in `lib/studio-help.ts` |
 | Trim grips at each end; left trim moves the content offset | S25 / gap G45 | `se-trim` grips + `offset` on clips in `startAudio` / `renderMix` |
 | Fade handle + Shift F; fade applied to playback and export | S25 / gap G46 | `se-fade-handle` + `fadeIn` envelope in `startAudio` / `renderMix` |
+| Clip menu from clip state; split carries the offset | §47 / S26 / gap G47 | `se-clip-menu` in `StudioEditorShell` + `splitClips`; ruler click seeks |
 | Version history: automatic snapshots, throttled, newest 50 kept | §25 / gap G28 | `persist()` → `autoSnapshotStudioProject` + `AUTO_VERSION_MIN_SECONDS` in `web_music_service.py` |
 | Empty project asks how to start | §10 / gap G18 | `components/studio/StudioOnboarding.tsx` |
 | Coarse pointers get 44 px targets | gap G20 | `app/touch-targets.css` |
@@ -77,6 +78,6 @@ which we cannot honour).
 
 - Screenshots: `reference/screens/` (78 files) + `reference/SCREENSHOT_INDEX.md`
 - Measurements: `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §1–§96
-- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (44 of 46 closed; G12 and G21 partial)
+- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (45 of 47 closed; G12 and G21 partial)
 - Audio claims: `window.__buildMasterBus`, `__studioExport`, `__studioMeter`,
   `__studioNormalise` in dev

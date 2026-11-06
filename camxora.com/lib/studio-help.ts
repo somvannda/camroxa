@@ -121,6 +121,8 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Ctrl/⌘ + X", action: "Cut the selection" },
   { keys: "Ctrl/⌘ + V", action: "Paste at the playhead" },
   { keys: "Ctrl/⌘ + D", action: "Duplicate the selection" },
+  { keys: "Ctrl/⌘ + E", action: "Split the selected clip at the playhead" },
+  { keys: "Right-click a clip", action: "Clip menu: copy, split, rename, colour, download, stems" },
   { keys: "Delete / Backspace", action: "Delete the selection" },
   { keys: "Shift M / Shift S", action: "Mute / solo the focused track" },
   { keys: "Shift H", action: "Hide & mute the focused track" },

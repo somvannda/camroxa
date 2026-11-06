@@ -51,6 +51,8 @@ const HISTORY_LIMIT = 50;
 const PANEL_W = 260;
 const LIBRARY_W = 368;
 const ZOOM_LEVELS = [48, 64, 96, 144, 192];
+/** Clip Color swatches in the clip menu (same families as tracks). */
+const CLIP_COLORS = ["#38bdf8", "#a78bfa", "#f472b6", "#fb923c", "#4ade80"];
 
 type ClipLike = {
   id: string;
@@ -63,6 +65,10 @@ type ClipLike = {
   muted?: boolean;
   solo?: boolean;
   groupId?: string | null;
+  audioUrl?: string | null;
+  songId?: string;
+  offset?: number;
+  fadeIn?: number;
 };
 
 function clock(seconds: number): string {
@@ -134,6 +140,11 @@ export function StudioEditorShell() {
   } | null>(null);
   /** Live fade-in length while its handle is dragged (S25). */
   const [fadePreview, setFadePreview] = useState<{ id: string; fadeIn: number } | null>(null);
+  /** Clip context menu (S26/§47): anchored at the click point, built from clip state. */
+  const [clipMenu, setClipMenu] = useState<{ clipId: string; x: number; y: number } | null>(null);
+  const [clipColorOpen, setClipColorOpen] = useState(false);
+  /** Clip rename dialog (clip menu ▸ Rename). */
+  const [clipRename, setClipRename] = useState<{ id: string; value: string } | null>(null);
   const fadePreviewRef = useRef<typeof fadePreview>(null);
   fadePreviewRef.current = fadePreview;
   const fadeRef = useRef<{ id: string; startX: number; fadeIn: number; duration: number } | null>(
@@ -1240,6 +1251,123 @@ export function StudioEditorShell() {
     writeProjectData({ ...data, lanes: remaining, tracks: nextTracks }, "deleting clips", nextTracks);
   }
 
+  /** Clip menu ▸ Clip Color: a per-clip override of the track colour. */
+  function setClipColor(clipId: string, color: string) {
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      { ...data, lanes: lanes.map((clip) => (clip.id === clipId ? { ...clip, color } : clip)) },
+      "the clip colour"
+    );
+  }
+
+  /**
+   * Split at a time (spec §47: Split ctrl E). The right half keeps its musical place by
+   * carrying the source offset forward, so audio does not shift.
+   */
+  function splitClips(ids: string[], at: number) {
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    const stamp = Date.now().toString(36);
+    const replacements = new Map<string, string[]>();
+    const nextLanes: ClipLike[] = [];
+    for (const clip of lanes) {
+      if (!ids.includes(clip.id)) {
+        nextLanes.push(clip);
+        continue;
+      }
+      const start = clip.start ?? 0;
+      const duration = clip.duration ?? 4;
+      if (at <= start + 0.001 || at >= start + duration - 0.001) {
+        nextLanes.push(clip);
+        continue;
+      }
+      const rightId = `${clip.id}-split-${stamp}`;
+      nextLanes.push({ ...clip, duration: at - start });
+      nextLanes.push({
+        ...clip,
+        id: rightId,
+        start: at,
+        duration: start + duration - at,
+        offset: (clip.offset ?? 0) + (at - start),
+        fadeIn: undefined,
+      });
+      replacements.set(clip.id, [clip.id, rightId]);
+    }
+    if (replacements.size === 0) return;
+    const nextTracks = tracks.map((track) => ({
+      ...track,
+      clipIds: track.clipIds.flatMap((id) => replacements.get(id) ?? [id]),
+    }));
+    writeProjectData(
+      { ...data, lanes: nextLanes, tracks: nextTracks },
+      "splitting the clip",
+      nextTracks
+    );
+  }
+
+  function commitClipRename() {
+    if (!clipRename) return;
+    const title = clipRename.value.trim();
+    const id = clipRename.id;
+    setClipRename(null);
+    if (!title) return;
+    const data = currentData();
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    writeProjectData(
+      { ...data, lanes: lanes.map((clip) => (clip.id === id ? { ...clip, title } : clip)) },
+      "renaming the clip"
+    );
+  }
+
+  /** Clip menu ▸ Download .WAV: render just this clip, at unity. */
+  async function downloadClipWav(clipId: string) {
+    setClipMenu(null);
+    try {
+      const clip = clipsRef.current.find((item) => item.id === clipId);
+      if (!clip) return;
+      const buffers = await decodeClips();
+      const exportClips = clipsRef.current.map((item) => ({
+        id: item.id,
+        start: item.start,
+        duration: item.duration,
+        offset: item.offset,
+        fadeIn: item.fadeIn,
+        audioUrl: item.audioUrl ?? null,
+      }));
+      const exportTracks = tracks.map((track) => ({
+        id: track.id,
+        name: track.name,
+        volume: track.volume,
+        muted: track.muted,
+        solo: track.solo,
+        clipIds: track.clipIds,
+      }));
+      const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
+      const wav = await renderMix(buffers, exportClips, exportTracks, {
+        chain,
+        chains,
+        clipIds: new Set([clipId]),
+        honourSolo: false,
+        masterGain: 1,
+      });
+      const name = (clip.title || "clip").replace(/[\\/:*?"<>|]/g, "-");
+      download(wav, `${name}.wav`, "audio/wav");
+    } catch {
+      setError("Could not render this clip.");
+    }
+  }
+
+  /** Right-click a clip: select it and open the state-built menu at the pointer. */
+  function handleClipContextMenu(event: React.MouseEvent<HTMLButtonElement>, clip: ClipLike) {
+    event.preventDefault();
+    event.stopPropagation();
+    setSelectedClip(clip.id);
+    setSelectedIds([clip.id]);
+    setClipColorOpen(false);
+    setClipMenu({ clipId: clip.id, x: event.clientX, y: event.clientY });
+  }
+
   /** After a delete, move real DOM focus to the surviving clip. */
   useEffect(() => {
     if (!focusPendingRef.current) return;
@@ -1247,6 +1375,25 @@ export function StudioEditorShell() {
     const element = document.querySelector<HTMLElement>(".se-clip.selected");
     element?.focus();
   }, [selectedIds]);
+
+  /** Dismiss the clip menu on an outside press or Escape. */
+  useEffect(() => {
+    if (!clipMenu) return;
+    const onPointer = (event: PointerEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest(".se-clip-menu")) return;
+      setClipMenu(null);
+    };
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setClipMenu(null);
+    };
+    document.addEventListener("pointerdown", onPointer);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("pointerdown", onPointer);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [clipMenu]);
 
   /** CTRL/CMD + C / V / D on the arrangement (spec §36). */
   useEffect(() => {
@@ -1418,6 +1565,12 @@ export function StudioEditorShell() {
       if (key === "=" || key === "+") {
         event.preventDefault();
         zoomBy(1);
+        return;
+      }
+      // Split at the playhead (spec §47: ctrl E).
+      if (key === "e") {
+        event.preventDefault();
+        splitClips(activeClipIds(), playhead);
         return;
       }
       if (key === "-") {
@@ -2316,7 +2469,9 @@ export function StudioEditorShell() {
           timelineRef={timelineRef}
           onScroll={(left, width) => setView({ left, width })}
           onLanePointerDown={handleLanePointerDown}
+          onRulerSeek={(seconds) => seekTo(Math.max(0, Math.min(duration, seconds)))}
           onClipPointerDown={handleClipPointerDown}
+          onClipContextMenu={handleClipContextMenu}
           onTrimPointerDown={handleTrimPointerDown}
           onFadePointerDown={handleFadePointerDown}
           onLoopHandleDown={(event) => {
@@ -2357,6 +2512,182 @@ export function StudioEditorShell() {
       />
 
       <StudioMetricsProbe />
+
+      {clipMenu
+        ? (() => {
+            const clip = clips.find((item) => item.id === clipMenu.clipId);
+            if (!clip) return null;
+            const start = clip.start ?? 0;
+            const duration = clip.duration ?? 4;
+            const canSplit = playhead > start + 0.001 && playhead < start + duration - 0.001;
+            return (
+              <div
+                className="se-clip-menu"
+                role="menu"
+                aria-label="Clip options"
+                style={{
+                  left: Math.min(clipMenu.x, Math.max(8, window.innerWidth - 200)),
+                  top: Math.min(clipMenu.y, Math.max(8, window.innerHeight - 400)),
+                }}
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    copySelection();
+                    setClipMenu(null);
+                  }}
+                >
+                  Copy <span>Ctrl C</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={clipboardRef.current.length === 0}
+                  onClick={() => {
+                    pasteSelection();
+                    setClipMenu(null);
+                  }}
+                >
+                  Paste <span>Ctrl V</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    duplicateSelection();
+                    setClipMenu(null);
+                  }}
+                >
+                  Duplicate <span>Ctrl D</span>
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    deleteSelection();
+                    setClipMenu(null);
+                  }}
+                >
+                  Delete <span>Backspace</span>
+                </button>
+                <div className="se-clip-menu-sep" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!canSplit}
+                  onClick={() => {
+                    splitClips([clip.id], playhead);
+                    setClipMenu(null);
+                  }}
+                >
+                  Split <span>Ctrl E</span>
+                </button>
+                <div className="se-clip-menu-sep" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setClipRename({ id: clip.id, value: clip.title || "" });
+                    setClipMenu(null);
+                  }}
+                >
+                  Rename
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  aria-haspopup="true"
+                  aria-expanded={clipColorOpen}
+                  onClick={() => setClipColorOpen((open) => !open)}
+                >
+                  Clip Color <span>▸</span>
+                </button>
+                {clipColorOpen ? (
+                  <div className="se-clip-menu-colors" role="group" aria-label="Clip colour">
+                    {CLIP_COLORS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={`Clip colour ${color}`}
+                        style={{ background: color }}
+                        className={clip.color === color ? "on" : undefined}
+                        onClick={() => {
+                          setClipColor(clip.id, color);
+                          setClipMenu(null);
+                        }}
+                      />
+                    ))}
+                  </div>
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled
+                  title="The clip info panel is not built yet"
+                >
+                  Clip Info
+                </button>
+                <div className="se-clip-menu-sep" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.songId}
+                  title={clip.songId ? undefined : "No source generation for this clip"}
+                  onClick={() => {
+                    setClipMenu(null);
+                    void requestStems();
+                  }}
+                >
+                  Get Stems
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={!clip.audioUrl}
+                  onClick={() => void downloadClipWav(clip.id)}
+                >
+                  Download .WAV
+                </button>
+              </div>
+            );
+          })()
+        : null}
+
+      {clipRename ? (
+        <div className="se-dialog-backdrop" role="dialog" aria-modal="true" aria-label="Rename clip">
+          <div className="se-dialog">
+            <h2>Rename clip</h2>
+            <label className="se-dialog-note" htmlFor="se-clip-title">
+              Clip name
+            </label>
+            <input
+              id="se-clip-title"
+              className="se-pill"
+              value={clipRename.value}
+              autoFocus
+              aria-label="Clip name"
+              onChange={(event) =>
+                setClipRename((current) =>
+                  current ? { ...current, value: event.target.value } : current
+                )
+              }
+              onKeyDown={(event) => {
+                if (event.key === "Enter") commitClipRename();
+                if (event.key === "Escape") setClipRename(null);
+              }}
+            />
+            <div className="se-dialog-foot">
+              <button type="button" className="se-pill" onClick={() => setClipRename(null)}>
+                Cancel
+              </button>
+              <button type="button" className="se-pill on" onClick={commitClipRename}>
+                Save
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <ClipSourceStrip
         source={clipSource}
