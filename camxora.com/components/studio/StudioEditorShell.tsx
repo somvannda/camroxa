@@ -1581,6 +1581,7 @@ export function StudioEditorShell() {
         name: track.name,
         volume: track.volume,
         muted: track.muted,
+        solo: track.solo,
         clipIds: track.clipIds,
       }));
       const chain = ((project.data || {}) as { masterChain?: MasterChainEntry[] }).masterChain;
@@ -1611,6 +1612,7 @@ export function StudioEditorShell() {
             chain,
             chains: trackChains,
             clipIds: new Set(track.clipIds),
+            honourSolo: false,
           });
           const label = (track.name || track.id).replace(/[\\/:*?"<>|]/g, "-");
           download(wav, `${project.title || "project"} — ${label}.wav`, "audio/wav");

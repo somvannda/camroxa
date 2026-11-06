@@ -26,6 +26,7 @@ export type ExportTrack = {
   name?: string;
   volume?: number;
   muted?: boolean;
+  solo?: boolean;
   clipIds: string[];
 };
 
@@ -78,6 +79,11 @@ export type RenderOptions = {
   /** Per-track plugin chains, keyed by track id (applied before the track gain). */
   chains?: Record<string, PluginChainEntry[]>;
   /**
+   * Mix/range renders follow the solo state (like playback); per-track exports must not,
+   * or bouncing a non-soloed track would produce silence.
+   */
+  honourSolo?: boolean;
+  /**
    * Normalise the finished render to this sample-peak target (dBFS). Off when
    * omitted, so a plain render stays byte-identical to what the mix produced.
    */
@@ -113,6 +119,7 @@ export async function renderMix(
   // One gain + optional plugin chain per track, shared by that track's clips so an
   // effect is heard once rather than duplicated per clip.
   const trackNodes = new Map<string, AudioNode>();
+  const anySolo = tracks.some((track) => track.solo);
   function trackInput(trackId: string, volume: number): AudioNode {
     const existing = trackNodes.get(trackId);
     if (existing) return existing;
@@ -139,6 +146,8 @@ export async function renderMix(
     if (start + duration <= from || start >= to) continue;
     const track = tracks.find((item) => item.clipIds.includes(clip.id));
     if (track?.muted) continue;
+    // Bounce what you hear: a soloed track silences the others, exactly like playback.
+    if (options.honourSolo !== false && track && anySolo && !track.solo) continue;
 
     const when = Math.max(0, start - from);
     const offset = Math.max(0, from - start);
