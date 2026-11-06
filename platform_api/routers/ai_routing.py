@@ -74,39 +74,66 @@ async def save_assignments(
     routing_service: AIRoutingServiceDep,
     _: AdminDep,
 ) -> dict:
-    """Persist all assignments atomically."""
+    """Persist all assignments, compensating the settings if pricing sync fails."""
     assignments_dict = {
         op: assgn.model_dump() for op, assgn in request.assignments.items()
     }
-    await routing_service.save_assignments(assignments_dict)
-    if request.text_fallback_chain is not None:
-        await routing_service.save_text_fallback_chain(
-            [item.model_dump() for item in request.text_fallback_chain]
-        )
-    if request.image_fallback_chain is not None:
-        await routing_service.save_image_fallback_chain(
-            [item.model_dump() for item in request.image_fallback_chain]
-        )
 
     from platform_api.dependencies import get_credit_pricing_service
 
     pricing_service = get_credit_pricing_service()
-    text_fallback = (
-        [item.model_dump() for item in request.text_fallback_chain]
-        if request.text_fallback_chain is not None
-        else await routing_service.get_text_fallback_chain()
+    snapshot = await routing_service.snapshot_config()
+
+    try:
+        await routing_service.save_assignments(assignments_dict)
+        if request.text_fallback_chain is not None:
+            await routing_service.save_text_fallback_chain(
+                [item.model_dump() for item in request.text_fallback_chain]
+            )
+        if request.image_fallback_chain is not None:
+            await routing_service.save_image_fallback_chain(
+                [item.model_dump() for item in request.image_fallback_chain]
+            )
+        if request.music_fallback_chain is not None:
+            await routing_service.save_music_fallback_chain(
+                [item.model_dump() for item in request.music_fallback_chain]
+            )
+
+        text_fallback = (
+            [item.model_dump() for item in request.text_fallback_chain]
+            if request.text_fallback_chain is not None
+            else await routing_service.get_text_fallback_chain()
+        )
+        image_fallback = (
+            [item.model_dump() for item in request.image_fallback_chain]
+            if request.image_fallback_chain is not None
+            else await routing_service.get_image_fallback_chain()
+        )
+        music_fallback = (
+            [item.model_dump() for item in request.music_fallback_chain]
+            if request.music_fallback_chain is not None
+            else await routing_service.get_music_fallback_chain()
+        )
+        pricing_sync = await pricing_service.sync_from_routing_config(
+            assignments=assignments_dict,
+            text_fallback_chain=text_fallback,
+            image_fallback_chain=image_fallback,
+            music_fallback_chain=music_fallback,
+        )
+    except Exception:
+        # The four settings writes and the pricing sync are separate statements;
+        # restore the previous routing config so a failed save cannot leave new
+        # routing pointing at old/missing prices.
+        try:
+            await routing_service.restore_config(snapshot)
+        except Exception:
+            logger.exception("Failed to restore routing config after a failed save")
+        raise
+
+    audit = await routing_service.audit_configuration(
+        await pricing_service.get_all_pricing()
     )
-    image_fallback = (
-        [item.model_dump() for item in request.image_fallback_chain]
-        if request.image_fallback_chain is not None
-        else await routing_service.get_image_fallback_chain()
-    )
-    pricing_sync = await pricing_service.sync_from_routing_config(
-        assignments=assignments_dict,
-        text_fallback_chain=text_fallback,
-        image_fallback_chain=image_fallback,
-    )
-    return {"status": "saved", "pricing_sync": pricing_sync}
+    return {"status": "saved", "pricing_sync": pricing_sync, "audit": audit}
 
 
 @router.get("/providers", response_model=ProvidersResponse)
@@ -137,6 +164,7 @@ async def sync_routing_pricing(
         assignments=flat_assignments,
         text_fallback_chain=assignments_data.get("text_fallback_chain", []),
         image_fallback_chain=assignments_data.get("image_fallback_chain", []),
+        music_fallback_chain=assignments_data.get("music_fallback_chain", []),
     )
     return pricing_sync
 

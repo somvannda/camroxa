@@ -52,6 +52,7 @@ class SaveAssignmentsRequest(BaseModel):
     assignments: dict[str, OperationAssignment]
     text_fallback_chain: list[OperationAssignment] | None = None
     image_fallback_chain: list[OperationAssignment] | None = None
+    music_fallback_chain: list[OperationAssignment] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -67,6 +68,7 @@ class AssignmentResponse(BaseModel):
     music_generation: dict[str, OperationAssignment]
     text_fallback_chain: list[OperationAssignment] = Field(default_factory=list)
     image_fallback_chain: list[OperationAssignment] = Field(default_factory=list)
+    music_fallback_chain: list[OperationAssignment] = Field(default_factory=list)
 
 
 class ProvidersResponse(BaseModel):

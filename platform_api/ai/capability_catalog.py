@@ -15,6 +15,7 @@ from platform_api.ai.registry import (
 from platform_api.ai.types import (
     IMAGE_OPERATIONS,
     IMAGE_PROVIDERS,
+    MUSIC_PROVIDERS,
     OPERATION_SERVICE_TYPE,
     PROVIDER_CAPABILITIES,
     TEXT_LLM_PROVIDERS,
@@ -112,6 +113,7 @@ def build_capability_catalog() -> dict[str, Any]:
         "text_operations": list(TEXT_OPERATIONS),
         "image_providers": sorted(IMAGE_PROVIDERS),
         "image_operations": list(IMAGE_OPERATIONS),
+        "music_providers": sorted(MUSIC_PROVIDERS),
     }
 
 
@@ -366,6 +368,7 @@ def audit_routing_configuration(
     assignments: dict[str, dict[str, Any]],
     text_fallback_chain: list[dict[str, Any]],
     image_fallback_chain: list[dict[str, Any]] | None = None,
+    music_fallback_chain: list[dict[str, Any]] | None = None,
     pricing_entries: list[dict[str, Any]],
     active_key_providers: set[str] | None = None,
 ) -> dict[str, Any]:
@@ -434,6 +437,24 @@ def audit_routing_configuration(
                 )
             )
 
+    music_fallback_chain = music_fallback_chain or []
+    for index, item in enumerate(music_fallback_chain):
+        if not _routing_entry_active(item):
+            continue
+        provider = str(item.get("provider") or "").strip().lower()
+        if not provider:
+            continue
+        issues.extend(
+            _check_assignment_pricing(
+                operation=Operation.MUSIC.value,
+                provider=provider,
+                sub_model=None,
+                pricing_keys=pricing_keys,
+                draft_pricing_keys=draft_pricing_keys,
+                label=f"Music fallback #{index + 1}",
+            )
+        )
+
     if active_key_providers is not None:
         seen_providers = {
             str(a.get("provider") or "").strip()
@@ -445,6 +466,9 @@ def audit_routing_configuration(
         )
         seen_providers.update(
             str(item.get("provider") or "").strip() for item in image_fallback_chain
+        )
+        seen_providers.update(
+            str(item.get("provider") or "").strip() for item in music_fallback_chain
         )
         for provider in sorted(p for p in seen_providers if p):
             if provider not in active_key_providers:

@@ -84,6 +84,15 @@ IMAGE_PROVIDERS: frozenset[str] = frozenset(
     if ServiceType.IMAGE_GENERATION in capabilities
 )
 
+# Providers that can execute music generation through the shared Suno-compatible
+# client. ``suno`` is the sunoapi.org reseller; ``camxora_music_api`` is our own
+# musicapi. Both are kept so AI Routing can fail over between upstream hosts.
+MUSIC_PROVIDERS: frozenset[str] = frozenset(
+    provider
+    for provider, capabilities in PROVIDER_CAPABILITIES.items()
+    if ServiceType.MUSIC_GENERATION in capabilities
+)
+
 DEFAULT_PROVIDER: MappingProxyType[ServiceType, str] = MappingProxyType(
     {
         ServiceType.TEXT_GENERATION: "deepseek",

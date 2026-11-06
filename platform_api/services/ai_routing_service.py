@@ -14,7 +14,12 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from platform_api.ai.types import IMAGE_PROVIDERS, TEXT_LLM_PROVIDERS, is_suno_lyric_routing
+from platform_api.ai.types import (
+    IMAGE_PROVIDERS,
+    MUSIC_PROVIDERS,
+    TEXT_LLM_PROVIDERS,
+    is_suno_lyric_routing,
+)
 from platform_api.exceptions import NoAvailableKeysError, ValidationError
 from platform_api.ports.key_pool_service_port import KeyPoolServicePort
 from platform_api.services.settings_service import SettingsRepositoryPort
@@ -27,7 +32,12 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 
-from platform_api.ai.registry import PROVIDER_SUB_MODELS, SUB_MODEL_COST_TIERS, resolve_text_model_id
+from platform_api.ai.registry import (
+    PROVIDER_SUB_MODELS,
+    SUB_MODEL_COST_TIERS,
+    resolve_image_model_id,
+    resolve_text_model_id,
+)
 from platform_api.ai.types import (
     DEFAULT_PROVIDER,
     DEFAULT_SUB_MODEL,
@@ -124,6 +134,7 @@ class RoutingResult:
 _ASSIGNMENTS_KEY = "ai_routing_assignments"
 _TEXT_FALLBACK_CHAIN_KEY = "ai_routing_text_fallback_chain"
 _IMAGE_FALLBACK_CHAIN_KEY = "ai_routing_image_fallback_chain"
+_MUSIC_FALLBACK_CHAIN_KEY = "ai_routing_music_fallback_chain"
 
 # Used when no custom fallback chain is stored. Primary assignment is tried first,
 # then each entry below (deduped) on retryable provider failures.
@@ -138,6 +149,14 @@ DEFAULT_IMAGE_FALLBACK_CHAIN: tuple[dict[str, str | None | bool], ...] = (
     # fal is the intentional last-resort image fallback. OpenAI image keys are
     # not used in production traffic; keep them out of the default chain.
     {"provider": "fal", "sub_model": "flux-pro", "is_active": True},
+)
+
+# Our musicapi first, the sunoapi.org reseller second. Music sub_models are
+# chosen in the app per request, so chain entries never carry one. Prices differ
+# per provider (see migration 182), so the first entry is what billing quotes.
+DEFAULT_MUSIC_FALLBACK_CHAIN: tuple[dict[str, str | None | bool], ...] = (
+    {"provider": "camxora_music_api", "sub_model": None, "is_active": True},
+    {"provider": "suno", "sub_model": None, "is_active": True},
 )
 
 
@@ -180,10 +199,12 @@ class AIRoutingService:
     async def resolve(self, operation: str) -> RoutingResult:
         """Resolve an operation to its assigned provider and sub-model.
 
-        Falls back to the default provider if no assignment exists or if
-        the stored assignment's provider no longer supports the service type.
-        Raises NoAvailableKeysError (503) if the resolved provider has no
-        active keys in the Key Pool.
+        Falls back to the default provider if no assignment exists, if the
+        stored assignment is inactive, or if its provider no longer supports the
+        service type. If the chosen provider has no active keys, the configured
+        fallback chain for that service type is tried before raising.
+        Raises NoAvailableKeysError (503) only when no provider in that chain
+        has active keys in the Key Pool.
 
         Args:
             operation: The operation string (must be a valid Operation enum value).
@@ -198,9 +219,15 @@ class AIRoutingService:
         op = Operation(operation)
         service_type = OPERATION_SERVICE_TYPE[op]
 
-        # Load assignments from system_settings
+        # Load assignments from system_settings. An inactive assignment is treated
+        # as absent so the admin "off" switch actually changes behaviour.
         assignments = await self._load_assignments()
         assignment = assignments.get(operation)
+        if assignment is not None and not _routing_entry_active(assignment):
+            logger.info(
+                "Routing assignment for %s is inactive; using defaults.", operation
+            )
+            assignment = None
 
         if assignment:
             provider = assignment["provider"]
@@ -215,26 +242,71 @@ class AIRoutingService:
             provider = DEFAULT_PROVIDER[service_type]
             sub_model = DEFAULT_SUB_MODEL.get(provider)
 
-        if service_type == ServiceType.TEXT_GENERATION and provider in TEXT_LLM_PROVIDERS:
-            sub_model = resolve_text_model_id(provider, sub_model)
+        candidates: list[RoutingResult] = []
+        seen: set[tuple[str, str | None]] = set()
 
-        # Check Key Pool has active keys
-        pool_status = await self._key_pool.get_pool_status(provider)
-        active_keys = pool_status.get("active_keys", 0)
+        def _add(provider_name: str, model: str | None) -> None:
+            name = str(provider_name or "").strip()
+            if service_type not in PROVIDER_CAPABILITIES.get(name, frozenset()):
+                return
+            if service_type == ServiceType.TEXT_GENERATION:
+                if name not in TEXT_LLM_PROVIDERS:
+                    return
+                if name == "suno" and not is_suno_lyric_routing(
+                    provider=name, operation=operation
+                ):
+                    return
+                model = resolve_text_model_id(name, model)
+            if service_type == ServiceType.MUSIC_GENERATION:
+                if name not in MUSIC_PROVIDERS:
+                    return
+                model = None
+            key = (name, model)
+            if key in seen:
+                return
+            seen.add(key)
+            candidates.append(
+                RoutingResult(
+                    provider=name,
+                    sub_model=model,
+                    service_type=service_type.value,
+                )
+            )
 
-        if active_keys <= 0:
-            # Build status_counts from pool_status for the error
-            status_counts: dict[str, int] = {
-                k: v
-                for k, v in pool_status.items()
-                if k.endswith("_keys") and isinstance(v, int)
-            }
-            raise NoAvailableKeysError(provider, status_counts)
+        _add(provider, sub_model)
 
-        return RoutingResult(
-            provider=provider,
-            sub_model=sub_model,
-            service_type=service_type,
+        # Fall back to the configured chain when the assignment cannot serve.
+        if service_type == ServiceType.TEXT_GENERATION:
+            for item in await self.get_text_fallback_chain():
+                if not _routing_entry_active(item):
+                    continue
+                _add(str(item.get("provider") or ""), item.get("sub_model"))
+        elif service_type == ServiceType.IMAGE_GENERATION:
+            for item in await self.get_image_fallback_chain():
+                if not _routing_entry_active(item):
+                    continue
+                _add(str(item.get("provider") or ""), item.get("sub_model"))
+        else:
+            for item in await self.get_music_fallback_chain():
+                if not _routing_entry_active(item):
+                    continue
+                _add(str(item.get("provider") or ""), None)
+
+        primary_status: dict[str, int] = {}
+        for candidate in candidates:
+            pool_status = await self._key_pool.get_pool_status(candidate.provider)
+            if pool_status.get("active_keys", 0) > 0:
+                return candidate
+            if not primary_status:
+                primary_status = {
+                    k: v
+                    for k, v in pool_status.items()
+                    if k.endswith("_keys") and isinstance(v, int)
+                }
+
+        raise NoAvailableKeysError(
+            candidates[0].provider if candidates else provider,
+            primary_status or {"reason": "no_providers_with_active_keys"},
         )
 
     async def resolve_text_chain(self, operation: str) -> list[RoutingResult]:
@@ -417,6 +489,71 @@ class AIRoutingService:
             )
         return filtered
 
+    async def resolve_music_chain(self, operation: str = "music") -> list[RoutingResult]:
+        """Resolve the music provider order: primary assignment then fallbacks.
+
+        Music prices differ per provider (sunoapi.org 15, musicapi 10), so the
+        *first* entry is the one billing and execution must agree on. Callers
+        that charge for music should use ``resolve_music_chain(...)[0]`` rather
+        than ``resolve()`` so the quoted price matches the provider that runs.
+
+        Only providers with active keys are returned. The chain does not detect
+        a host that is up enough to hold keys but down for requests; that needs
+        the hold/settle failover (W8).
+        """
+        try:
+            primary = await self.resolve(operation)
+        except NoAvailableKeysError:
+            primary = None
+        if primary is None or primary.provider not in MUSIC_PROVIDERS:
+            provider = DEFAULT_PROVIDER[ServiceType.MUSIC_GENERATION]
+            primary = RoutingResult(
+                provider=provider,
+                sub_model=None,
+                service_type=ServiceType.MUSIC_GENERATION.value,
+            )
+
+        assignments = await self._load_assignments()
+        stored = assignments.get(operation)
+        primary_active = (
+            _routing_entry_active(stored) if isinstance(stored, dict) else True
+        )
+
+        chain: list[RoutingResult] = []
+        seen: set[str] = set()
+
+        def _append(provider: str) -> None:
+            name = str(provider or "").strip().lower()
+            if name not in MUSIC_PROVIDERS or name in seen:
+                return
+            seen.add(name)
+            chain.append(
+                RoutingResult(
+                    provider=name,
+                    sub_model=None,
+                    service_type=ServiceType.MUSIC_GENERATION.value,
+                )
+            )
+
+        if primary_active:
+            _append(primary.provider)
+        for item in await self.get_music_fallback_chain():
+            if not _routing_entry_active(item):
+                continue
+            _append(str(item["provider"]))
+
+        filtered: list[RoutingResult] = []
+        for item in chain:
+            pool_status = await self._key_pool.get_pool_status(item.provider)
+            if pool_status.get("active_keys", 0) > 0:
+                filtered.append(item)
+        if not filtered:
+            raise NoAvailableKeysError(
+                primary.provider,
+                {"reason": "no_music_providers_with_active_keys"},
+            )
+        return filtered
+
     async def audit_configuration(
         self,
         pricing_entries: list[dict[str, Any]],
@@ -427,6 +564,7 @@ class AIRoutingService:
         assignments = await self._load_assignments()
         text_fallback = await self.get_text_fallback_chain()
         image_fallback = await self.get_image_fallback_chain()
+        music_fallback = await self.get_music_fallback_chain()
         active_providers: set[str] = set()
         for provider in PROVIDER_CAPABILITIES:
             pool_status = await self._key_pool.get_pool_status(provider)
@@ -436,6 +574,7 @@ class AIRoutingService:
             assignments=assignments,
             text_fallback_chain=text_fallback,
             image_fallback_chain=image_fallback,
+            music_fallback_chain=music_fallback,
             pricing_entries=pricing_entries,
             active_key_providers=active_providers,
         )
@@ -500,6 +639,88 @@ class AIRoutingService:
             {_IMAGE_FALLBACK_CHAIN_KEY: normalized}
         )
 
+    async def get_music_fallback_chain(self) -> list[dict[str, str | None]]:
+        """Return the configured global music fallback chain."""
+        raw = await self._settings_repo.get_system_setting(_MUSIC_FALLBACK_CHAIN_KEY)
+        if raw is None:
+            return [dict(item) for item in DEFAULT_MUSIC_FALLBACK_CHAIN]
+        if isinstance(raw, str):
+            parsed = json.loads(raw)
+        else:
+            parsed = raw
+        if not isinstance(parsed, list):
+            return [dict(item) for item in DEFAULT_MUSIC_FALLBACK_CHAIN]
+        normalized: list[dict[str, str | None]] = []
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            provider = str(item.get("provider") or "").strip().lower()
+            if provider not in MUSIC_PROVIDERS:
+                continue
+            normalized.append(
+                {
+                    "provider": provider,
+                    # Music model is chosen per request, not per routing entry.
+                    "sub_model": None,
+                    "is_active": _routing_entry_active(item),
+                }
+            )
+        return normalized or [dict(item) for item in DEFAULT_MUSIC_FALLBACK_CHAIN]
+
+    async def save_music_fallback_chain(
+        self,
+        chain: list[dict[str, Any]],
+    ) -> None:
+        """Persist the global music fallback provider priority list."""
+        normalized: list[dict[str, str | None]] = []
+        for index, item in enumerate(chain):
+            provider = str(item.get("provider") or "").strip().lower()
+            if not provider:
+                raise ValidationError(
+                    f"Missing provider for music fallback entry #{index + 1}.",
+                    details={"index": index},
+                )
+            if provider not in MUSIC_PROVIDERS:
+                raise ValidationError(
+                    f"Provider '{provider}' cannot be used for music fallback.",
+                    details={"provider": provider, "index": index},
+                )
+            normalized.append(
+                {
+                    "provider": provider,
+                    "sub_model": None,
+                    "is_active": _routing_entry_active(item),
+                }
+            )
+        await self._settings_repo.upsert_system_settings(
+            {_MUSIC_FALLBACK_CHAIN_KEY: normalized}
+        )
+
+    async def snapshot_config(self) -> dict[str, Any]:
+        """Current routing config in a form that can be written back verbatim.
+
+        Used to compensate a partially applied save (settings + pricing sync are
+        separate statements). Values are normalised, so restoring an install that
+        had no stored key writes the effective defaults, which is equivalent.
+        """
+        return {
+            "assignments": await self._load_assignments(),
+            "text_fallback_chain": await self.get_text_fallback_chain(),
+            "image_fallback_chain": await self.get_image_fallback_chain(),
+            "music_fallback_chain": await self.get_music_fallback_chain(),
+        }
+
+    async def restore_config(self, snapshot: dict[str, Any]) -> None:
+        """Write a snapshot from ``snapshot_config`` back to system_settings."""
+        await self._settings_repo.upsert_system_settings(
+            {
+                _ASSIGNMENTS_KEY: snapshot.get("assignments", {}),
+                _TEXT_FALLBACK_CHAIN_KEY: snapshot.get("text_fallback_chain", []),
+                _IMAGE_FALLBACK_CHAIN_KEY: snapshot.get("image_fallback_chain", []),
+                _MUSIC_FALLBACK_CHAIN_KEY: snapshot.get("music_fallback_chain", []),
+            }
+        )
+
     async def get_all_assignments(self) -> dict[str, dict[str, dict[str, Any]]]:
         """Return all current assignments grouped by service type.
 
@@ -546,6 +767,7 @@ class AIRoutingService:
 
         result["text_fallback_chain"] = await self.get_text_fallback_chain()
         result["image_fallback_chain"] = await self.get_image_fallback_chain()
+        result["music_fallback_chain"] = await self.get_music_fallback_chain()
         return result
 
     async def save_assignments(self, assignments: dict[str, dict[str, Any]]) -> None:
@@ -563,6 +785,7 @@ class AIRoutingService:
                 does not support the operation's service type.
         """
         # Validate all assignments before persisting
+        normalized: dict[str, dict[str, Any]] = {}
         for operation_str, assignment in assignments.items():
             # Validate operation is known
             try:
@@ -600,15 +823,47 @@ class AIRoutingService:
                     "Use deepseek, slai, openai, or suno (lyric only).",
                     details={"operation": operation_str, "provider": provider},
                 )
+            if service_type == ServiceType.MUSIC_GENERATION and provider not in MUSIC_PROVIDERS:
+                raise ValidationError(
+                    f"Provider '{provider}' cannot generate music for operation '{operation_str}'. "
+                    "Use suno (sunoapi.org) or camxora_music_api.",
+                    details={"operation": operation_str, "provider": provider},
+                )
             # Music providers (suno / camxora_music_api) choose the model in the
             # app, not per routing entry, so never persist a sub_model.
+            sub_model = assignment.get("sub_model")
             if operation_str == Operation.MUSIC.value:
-                assignment["sub_model"] = None
+                sub_model = None
+            elif sub_model:
+                if service_type == ServiceType.TEXT_GENERATION:
+                    # Persist the canonical id, never the retired alias.
+                    sub_model = resolve_text_model_id(provider, sub_model)
+                elif service_type == ServiceType.IMAGE_GENERATION:
+                    sub_model = resolve_image_model_id(provider, sub_model)
+                registered = PROVIDER_SUB_MODELS.get(provider, {}).get(
+                    service_type, ()
+                )
+                if registered and sub_model not in registered:
+                    raise ValidationError(
+                        f"Model '{sub_model}' is not registered for provider "
+                        f"'{provider}' on '{operation_str}'.",
+                        details={
+                            "operation": operation_str,
+                            "provider": provider,
+                            "sub_model": sub_model,
+                            "registered_models": list(registered),
+                        },
+                    )
+
+            normalized[operation_str] = {
+                **assignment,
+                "provider": provider,
+                "sub_model": sub_model,
+            }
             if provider == "suno" and operation_str != Operation.MUSIC.value:
                 if is_suno_lyric_routing(provider=provider, operation=operation_str):
                     from platform_api.ai.registry import get_text_model_spec
 
-                    sub_model = assignment.get("sub_model")
                     if sub_model and get_text_model_spec("suno", sub_model) is None:
                         raise ValidationError(
                             f"Suno lyric model '{sub_model}' is not registered. Use 'lyrics'.",
@@ -624,9 +879,15 @@ class AIRoutingService:
                         details={"operation": operation_str, "provider": provider},
                     )
 
+        if not normalized:
+            raise ValidationError(
+                "At least one routing assignment is required.",
+                details={"assignments": 0},
+            )
+
         # Persist atomically
         await self._settings_repo.upsert_system_settings(
-            {_ASSIGNMENTS_KEY: assignments}
+            {_ASSIGNMENTS_KEY: normalized}
         )
 
     async def get_available_providers(self) -> dict[str, list[dict[str, Any]]]:

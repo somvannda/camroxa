@@ -734,7 +734,10 @@ async def get_operation_costs(
     items: list[OperationCostResponse] = []
     for operation_type in ("title", "album", "lyric", "music", "background_image"):
         try:
-            routing = await routing_service.resolve(operation_type)
+            if operation_type == "music":
+                routing = (await routing_service.resolve_music_chain("music"))[0]
+            else:
+                routing = await routing_service.resolve(operation_type)
             credits_units = await pricing_service.get_price(
                 routing.provider, operation_type, routing.sub_model
             )
