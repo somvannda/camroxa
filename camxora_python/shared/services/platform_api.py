@@ -931,6 +931,45 @@ class PlatformApi:
 
     # --- Post for Me publishing -------------------------------------------
 
+    def issue_youtube_access_token(self, profile_id: str) -> dict[str, Any]:
+        """1-hour Google token so the desktop uploads straight to YouTube."""
+        data = self._client.request(
+            f"/youtube/profiles/{profile_id}/access-token",
+            method="POST",
+            auth=True,
+        )
+        return data if isinstance(data, dict) else {}
+
+    def report_youtube_upload(
+        self,
+        *,
+        batch_id: str,
+        profile_id: str,
+        role: str,
+        video_id: str,
+        video_url: str | None,
+        title: str,
+        status: str = "success",
+        error_message: str | None = None,
+    ) -> dict[str, Any]:
+        """Record a direct upload so Progress shows the final state."""
+        data = self._client.request(
+            "/youtube/uploads/report",
+            method="POST",
+            auth=True,
+            body={
+                "batch_id": batch_id,
+                "profile_id": profile_id,
+                "role": role,
+                "video_id": video_id,
+                "video_url": video_url,
+                "title": title,
+                "status": status,
+                "error_message": error_message,
+            },
+        )
+        return data if isinstance(data, dict) else {}
+
     def list_publish_accounts(self, profile_id: str | None = None) -> list[PublishAccount]:
         params = {"profile_id": profile_id} if profile_id else None
         data = self._client.request("/publish/accounts", auth=True, params=params)
