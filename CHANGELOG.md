@@ -7,6 +7,17 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.22] - 2026-11-06
+
+### Changed
+
+- **Clearer upload state per row**: `Sending 42%` while the file is still leaving this computer,
+  `Publishing 3m` once YouTube is processing it, `Published` when it is live. Tooltips explain which side is
+  working; no internal provider name is shown anywhere in the UI.
+- **Progress messages are floating**: status and error text appears in the footer badge instead of an inline
+  banner, so the table never shifts while an upload is running.
+- **The footer follows the selected row**: picking a row shows that row's stage and delivery state.
+
 ## [1.5.21] - 2026-11-06
 
 ### Fixed
