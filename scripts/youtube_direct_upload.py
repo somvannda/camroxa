@@ -271,8 +271,10 @@ def _next_publish_time(raw: str) -> str | None:
 def start_session(token: str, *, title: str, description: str, tags: list[str], privacy: str,
                   publish_at: str | None = None, category: str = CATEGORY_MUSIC,
                   made_for_kids: bool = False, contains_synthetic_media: bool = False) -> str:
+    # YouTube rejects "scheduled" as a privacy status; scheduling is a private
+    # upload with publishAt set.
     status: dict[str, Any] = {
-        "privacyStatus": privacy,
+        "privacyStatus": "private" if privacy == "scheduled" else privacy,
         "selfDeclaredMadeForKids": bool(made_for_kids),
         "containsSyntheticMedia": bool(contains_synthetic_media),
     }

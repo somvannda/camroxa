@@ -93,12 +93,16 @@ def build_metadata(profile: Any, video: Path) -> dict[str, Any]:
 
 
 def start_session(access_token: str, meta: dict[str, Any]) -> str:
+    # The API rejects "scheduled": a scheduled video is uploaded private with
+    # publishAt set, which is what YouTube Studio shows as "Scheduled".
+    privacy = meta["visibility"]
+    scheduled = privacy == "scheduled" and bool(meta.get("publish_at"))
     status: dict[str, Any] = {
-        "privacyStatus": meta["visibility"],
+        "privacyStatus": "private" if privacy == "scheduled" else privacy,
         "selfDeclaredMadeForKids": bool(meta["made_for_kids"]),
         "containsSyntheticMedia": bool(meta["contains_synthetic_media"]),
     }
-    if meta["visibility"] == "scheduled" and meta.get("publish_at"):
+    if scheduled:
         status["publishAt"] = meta["publish_at"]
     body = {
         "snippet": {

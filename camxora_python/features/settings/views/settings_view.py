@@ -3878,6 +3878,7 @@ class SettingsView(QWidget):
         self._start_youtube_poll()
 
     def _start_youtube_poll(self) -> None:
+        self._youtube_poll_profile_id = str(self._selected_profile_id() or "")
         self._youtube_poll_timer.start()
         self._poll_youtube_connections()
 
@@ -3900,10 +3901,16 @@ class SettingsView(QWidget):
         self.refresh_data(force=True)
 
     def _set_publish_waiting_ui(self, waiting: bool) -> None:
-        self._youtube_connect_btn.setEnabled(not waiting)
-        self._publish_reopen_btn.setVisible(waiting)
-        self._publish_copy_link_btn.setVisible(waiting)
-        self._publish_cancel_btn.setVisible(waiting)
+        # The Profiles tab and the old Publish tab expose different buttons; the
+        # old tab is not always built, so never assume an attribute exists.
+        for name in ("_youtube_connect_btn", "_profile_youtube_connect_btn"):
+            button = getattr(self, name, None)
+            if button is not None:
+                button.setEnabled(not waiting)
+        for name in ("_publish_reopen_btn", "_publish_copy_link_btn", "_publish_cancel_btn"):
+            widget = getattr(self, name, None)
+            if widget is not None:
+                widget.setVisible(waiting)
 
     def _reopen_publish_auth_url(self) -> None:
         if self._publish_auth_url:
