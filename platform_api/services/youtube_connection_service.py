@@ -512,6 +512,68 @@ class YouTubeConnectionService:
             raise ValidationError("YouTube is not connected for this profile yet.")
         return await self._build_refreshed_credentials(account)
 
+    async def issue_access_token(self, *, user_id: UUID, profile_id: UUID) -> dict[str, Any]:
+        """Mint a short-lived access token so the desktop uploads YouTube directly.
+
+        The refresh token never leaves the server; the client receives a 1-hour
+        token scoped to the already-consented channel, which is what the
+        resumable upload needs and nothing more.
+        """
+        credentials = await self.build_refreshed_credentials_for_profile(
+            user_id=user_id, profile_id=profile_id
+        )
+        from google.auth.transport.requests import Request as GoogleAuthRequest
+
+        if not getattr(credentials, "valid", False) or not getattr(credentials, "token", None):
+            await asyncio.to_thread(credentials.refresh, GoogleAuthRequest())
+        token = str(getattr(credentials, "token", "") or "").strip()
+        if not token:
+            raise ValidationError("Could not obtain a Google access token for this channel.")
+
+        account = await self._connection_repo.get_account_for_user_profile(
+            str(user_id), str(profile_id)
+        )
+        expires_in = 3600
+        expiry = getattr(credentials, "expiry", None)
+        if expiry is not None:
+            moment = expiry if expiry.tzinfo else expiry.replace(tzinfo=timezone.utc)
+            expires_in = max(60, int((moment - datetime.now(timezone.utc)).total_seconds()))
+        return {
+            "access_token": token,
+            "expires_in": expires_in,
+            "channel_id": getattr(account, "channel_id", None),
+            "channel_title": getattr(account, "channel_title", None),
+        }
+
+    async def record_upload_result(
+        self,
+        *,
+        user_id: UUID,
+        batch_id: UUID,
+        profile_id: UUID,
+        role: str,
+        video_id: str,
+        video_url: str | None,
+        title: str,
+        status: str = "success",
+        error_message: str | None = None,
+    ) -> str:
+        """Record the result of a desktop-direct upload so Progress shows it."""
+        from uuid import uuid4 as _uuid4
+
+        return await self._connection_repo.record_upload_result(
+            user_id=str(user_id),
+            batch_id=str(batch_id),
+            profile_id=str(profile_id),
+            role=str(role or "OK").strip().upper() or "OK",
+            job_uid=str(_uuid4()),
+            video_id=video_id,
+            video_url=video_url,
+            title=title,
+            status=status,
+            error_message=error_message,
+        )
+
     async def run_pending_upload_jobs(
         self,
         user_id: str,

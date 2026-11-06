@@ -433,6 +433,85 @@ class YouTubeConnectionRepository:
         )
         return self._row_to_upload_job(row) if row else None
 
+    async def record_upload_result(
+        self,
+        *,
+        user_id: str,
+        batch_id: str,
+        profile_id: str,
+        role: str,
+        job_uid: str,
+        video_id: str,
+        video_url: str | None,
+        title: str,
+        status: str,
+        error_message: str | None,
+    ) -> str:
+        """Store the outcome of a desktop-direct YouTube upload.
+
+        Reuses the newest job row for that slot when one exists; otherwise
+        inserts one, so Progress and the audit trail agree with YouTube.
+        """
+        row = await self._db.fetchrow(
+            """
+            UPDATE youtube_upload_jobs
+            SET status = $5,
+                youtube_video_id = $6,
+                youtube_url = $7,
+                title = COALESCE(NULLIF($8, ''), title),
+                error_message = $9,
+                updated_at = NOW()
+            WHERE id = (
+                SELECT id FROM youtube_upload_jobs
+                WHERE user_id = $1::uuid
+                  AND batch_id = $2::uuid
+                  AND profile_id = $3::uuid
+                  AND role = $4
+                ORDER BY created_at DESC
+                LIMIT 1
+            )
+            RETURNING id
+            """,
+            user_id,
+            batch_id,
+            profile_id,
+            role,
+            status,
+            video_id or None,
+            video_url,
+            title,
+            error_message,
+        )
+        if row is not None:
+            return str(row["id"])
+
+        created = await self._db.fetchrow(
+            """
+            INSERT INTO youtube_upload_jobs (
+                user_id, song_id, job_uid, batch_id, profile_id, role, file_path,
+                title, description, tags, privacy_status, youtube_video_id,
+                youtube_url, status, attempt_count, error_message, created_at, updated_at
+            )
+            VALUES (
+                $1::uuid, NULL, $2, $3::uuid, $4::uuid, $5, NULL,
+                $6, NULL, NULL, 'private', $7,
+                $8, $9, 1, $10, NOW(), NOW()
+            )
+            RETURNING id
+            """,
+            user_id,
+            job_uid,
+            batch_id,
+            profile_id,
+            role,
+            title,
+            video_id or None,
+            video_url,
+            status,
+            error_message,
+        )
+        return str(created["id"]) if created is not None else ""
+
     async def claim_upload_jobs_for_run(
         self,
         user_id: str,

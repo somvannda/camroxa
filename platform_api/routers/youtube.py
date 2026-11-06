@@ -22,6 +22,24 @@ from platform_api.services.youtube_connection_service import (
 )
 
 router = APIRouter(prefix="/youtube", tags=["youtube"])
+
+
+class YouTubeAccessTokenResponse(BaseModel):
+    access_token: str
+    expires_in: int
+    channel_id: str | None = None
+    channel_title: str | None = None
+
+
+class RecordYouTubeUploadRequest(BaseModel):
+    batch_id: UUID
+    profile_id: UUID
+    role: str = "OK"
+    video_id: str
+    video_url: str | None = None
+    title: str = ""
+    status: str = "success"
+    error_message: str | None = None
 logger = logging.getLogger(__name__)
 
 
@@ -392,6 +410,42 @@ async def youtube_oauth_callback(
 </html>
         """.strip()
     )
+
+
+@router.post(
+    "/profiles/{profile_id}/access-token", response_model=YouTubeAccessTokenResponse
+)
+async def issue_youtube_access_token(
+    profile_id: UUID,
+    ctx: CurrentUserDep,
+    service: YouTubeConnectionServiceDep,
+) -> YouTubeAccessTokenResponse:
+    """Short-lived token so the desktop can upload straight to YouTube."""
+    data = await service.issue_access_token(
+        user_id=UUID(ctx.user_id), profile_id=profile_id
+    )
+    return YouTubeAccessTokenResponse(**data)
+
+
+@router.post("/uploads/report")
+async def report_youtube_upload(
+    request: RecordYouTubeUploadRequest,
+    ctx: CurrentUserDep,
+    service: YouTubeConnectionServiceDep,
+) -> dict[str, Any]:
+    """Record a desktop-direct upload so Progress shows the final state."""
+    job_id = await service.record_upload_result(
+        user_id=UUID(ctx.user_id),
+        batch_id=request.batch_id,
+        profile_id=request.profile_id,
+        role=request.role,
+        video_id=request.video_id,
+        video_url=request.video_url,
+        title=request.title,
+        status=request.status,
+        error_message=request.error_message,
+    )
+    return {"ok": True, "job_id": job_id}
 
 
 @router.post("/connect-sessions/{session_id}/select-channel", response_model=YouTubeConnectionResponse)
