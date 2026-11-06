@@ -368,6 +368,7 @@ class MusicHistoryBatch(BaseModel):
     alt_profile_name: str | None = None
     ok_album: str | None = None
     alt_album: str | None = None
+    auto_upload_youtube: bool = False
     created_at: str = ""
     updated_at: str = ""
     songs: list[MusicHistorySong] = Field(default_factory=list)

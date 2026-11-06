@@ -68,12 +68,18 @@ def auto_publish_plan(
     Requires the YouTube Upload toggle, a channel profile, and a merged file.
     Credits and provider errors stay the worker's job (it quotes before upload).
     """
-    if not _truthy((settings or {}).get(AUTO_UPLOAD_SETTING_KEY)):
+    context = dict(merge_context or {})
+    # The batch stores the choice it was created with; fall back to live settings
+    # only for runs created before that flag existed.
+    explicit = context.get(AUTO_UPLOAD_SETTING_KEY)
+    enabled = _truthy(explicit) if explicit is not None else _truthy(
+        (settings or {}).get(AUTO_UPLOAD_SETTING_KEY)
+    )
+    if not enabled:
         return None
     path = str(merged_path or "").strip()
     if not path:
         return None
-    context = dict(merge_context or {})
     profile_id = str(context.get("profile_id") or "").strip()
     if not profile_id:
         return None

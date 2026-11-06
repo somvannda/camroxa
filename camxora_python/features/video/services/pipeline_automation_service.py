@@ -359,6 +359,7 @@ class PipelineAutomationService(QObject):
             "branch": branch,
             "batch_id": candidate.batch_id,
             "role": candidate.role,
+            "auto_upload_youtube": bool(getattr(candidate, "auto_upload_youtube", False)),
             "auto_merge": auto_merge,
             "shuffle": shuffle_merge,
             "mp4_paths": ordered_mp4s,
