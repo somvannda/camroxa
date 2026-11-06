@@ -1527,6 +1527,8 @@ class VideoView(QWidget):
             "completed": len(mp3_list),
             "total": len(mp3_list),
             "profile_id": profile_id,
+            "auto_upload_youtube": bool(getattr(row.meta, "auto_upload_youtube", False)),
+            "autoUploadYouTube": bool(getattr(row.meta, "auto_upload_youtube", False)),
             "ref_base": ref_base,
             **encode_fields,
         }

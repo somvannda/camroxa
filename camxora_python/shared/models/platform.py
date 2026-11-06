@@ -146,6 +146,7 @@ class ProgressRowMeta(BaseModel):
     long_ready: bool = False
     reel_ready: bool = False
     pipeline_complete: bool = False
+    auto_upload_youtube: bool = False
     music_started_at: datetime | None = None
     music_updated_at: datetime | None = None
     image_started_at: datetime | None = None

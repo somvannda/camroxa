@@ -578,6 +578,9 @@ class ProgressRowMeta(BaseModel):
     long_ready: bool = False
     reel_ready: bool = False
     pipeline_complete: bool = False
+    # The batch's stored YouTube choice, so the desktop pipeline does not fall
+    # back to whatever the app setting says at merge time.
+    auto_upload_youtube: bool = False
     expected: int = 0
     saved: int = 0
     download_ready: int = 0

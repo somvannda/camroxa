@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from features.video.lib.desktop_video_automation import (
     branch_is_conclusively_complete,
+    build_auto_video_candidate_from_row,
     build_merge_candidate_from_row,
     select_next_auto_video_candidate,
 )
@@ -42,7 +43,7 @@ def _workspace() -> VideoWorkspaceState:
     )
 
 
-def _row(*, run_dir: str, batch_id: str = "batch-1") -> ProgressRow:
+def _row(*, run_dir: str, batch_id: str = "batch-1", auto_upload_youtube: bool = False) -> ProgressRow:
     return ProgressRow(
         batch="Batch 1",
         run_date="2026-06-29",
@@ -68,6 +69,7 @@ def _row(*, run_dir: str, batch_id: str = "batch-1") -> ProgressRow:
             thumbnail_9x16_path=f"{run_dir}/thumbnail-9x16.png",
             long_ready=True,
             reel_ready=True,
+            auto_upload_youtube=auto_upload_youtube,
             expected=2,
             saved=2,
             download_ready=2,
@@ -97,6 +99,27 @@ def _seed_run_folder(run_dir) -> None:
     (run_dir / "thumbnail-9x16.png").write_bytes(b"th9")
     (run_dir / "1. Track_OK.mp3").write_bytes(b"mp3")
     (run_dir / "2. Track_OK.mp3").write_bytes(b"mp3")
+
+
+def test_candidate_carries_the_batch_youtube_choice(tmp_path) -> None:
+    run_dir = tmp_path / "primary"
+    _seed_run_folder(run_dir)
+
+    enabled = build_auto_video_candidate_from_row(
+        _row(run_dir=str(run_dir), auto_upload_youtube=True),
+        _profile(),
+        "long",
+        workspace=_workspace(),
+    )
+    default = build_auto_video_candidate_from_row(
+        _row(run_dir=str(run_dir)),
+        _profile(),
+        "long",
+        workspace=_workspace(),
+    )
+
+    assert enabled is not None and enabled.auto_upload_youtube is True
+    assert default is not None and default.auto_upload_youtube is False
 
 
 def test_select_next_auto_video_candidate_returns_long_branch(tmp_path) -> None:

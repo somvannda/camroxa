@@ -67,6 +67,7 @@ def _progress_row(
     pipeline_complete: bool = False,
     youtube_success: int = 0,
     background_path: str | None = None,
+    auto_upload_youtube: bool = False,
 ):
     from platform_api.routers.progress import _build_row
 
@@ -80,6 +81,7 @@ def _progress_row(
             "ok_run_dir": r"neon-kicks\2026-09-02_Mercury-Heartline-Stories",
             "alt_run_dir": "",
             "ok_album": "Mercury Heartline Stories",
+            "auto_upload_youtube": auto_upload_youtube,
         },
         role="OK",
         profile_id=profile_id,
@@ -129,6 +131,15 @@ def test_progress_leaves_image_stage_when_background_jobs_succeed_without_local_
     assert "Waiting for image assets" in (row.converter or "")
     assert row.stage != "Merger"
     assert row.stage != "Done"
+
+
+def test_progress_rows_carry_the_batch_youtube_choice() -> None:
+    """The pipeline must publish based on the batch, not live app settings."""
+    enabled = _progress_row(bg_ready=1, bg_total=1, long_ready=True, auto_upload_youtube=True)
+    disabled = _progress_row(bg_ready=1, bg_total=1, long_ready=True)
+
+    assert enabled.meta.auto_upload_youtube is True
+    assert disabled.meta.auto_upload_youtube is False
 
 
 def test_progress_stays_on_image_when_background_jobs_incomplete() -> None:
