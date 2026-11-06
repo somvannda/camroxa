@@ -28,9 +28,12 @@ def pricing_lookup_key(
     operation_type: str,
     sub_model: str | None = None,
 ) -> tuple[str, str, str]:
+    # Provider ids and operation names are canonical lowercase. Model ids keep
+    # case because Suno music models are uppercase (V6) and normalised
+    # separately by ``normalize_suno_pricing_sub_model``.
     return (
-        str(ai_service or "").strip(),
-        str(operation_type or "").strip(),
+        str(ai_service or "").strip().lower(),
+        str(operation_type or "").strip().lower(),
         normalize_pricing_sub_model(sub_model),
     )
 

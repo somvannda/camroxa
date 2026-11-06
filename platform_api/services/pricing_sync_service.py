@@ -37,8 +37,20 @@ _OPERATION_DEFAULT_CREDITS: dict[str, int] = {
     "channel_cover": 8 * CREDIT_SCALE,
     "background_image": 5 * CREDIT_SCALE,
     "thumbnail_image": 5 * CREDIT_SCALE,
-    # List price at ~20% margin over $0.06 music COGS (GCV $0.01 → 6 cost credits).
-    "music": 75 * CREDIT_SCALE // 10,  # 7.5 display credits
+    # Our musicapi list price. The reseller (suno) is priced higher per
+    # provider below; see migration 182.
+    "music": 10 * CREDIT_SCALE,
+}
+
+
+# Per-provider music pricing: the reseller costs more, so it lists higher.
+_MUSIC_LIST_UNITS: dict[str, int] = {
+    "suno": 15 * CREDIT_SCALE,
+    "camxora_music_api": 10 * CREDIT_SCALE,
+}
+_MUSIC_COST_UNITS: dict[str, int] = {
+    "suno": 12 * CREDIT_SCALE,
+    "camxora_music_api": 6 * CREDIT_SCALE,
 }
 
 
@@ -55,6 +67,7 @@ def collect_required_pricing_pairs(
     assignments: dict[str, dict[str, Any]],
     text_fallback_chain: list[dict[str, Any]],
     image_fallback_chain: list[dict[str, Any]],
+    music_fallback_chain: list[dict[str, Any]] | None = None,
 ) -> list[RequiredPricingPair]:
     """Return every (ai_service, operation_type, sub_model) pair routing can bill."""
     seen: set[tuple[str, str, str]] = set()
@@ -110,6 +123,15 @@ def collect_required_pricing_pairs(
         sub_model = item.get("sub_model")
         for image_operation in IMAGE_OPERATIONS:
             _add(provider, image_operation, sub_model, f"image_fallback_{index + 1}")
+
+    for index, item in enumerate(music_fallback_chain or []):
+        if not _routing_entry_active(item):
+            continue
+        provider = str(item.get("provider") or "").strip()
+        if not provider:
+            continue
+        # Music is priced per provider, not per model.
+        _add(provider, "music", None, f"music_fallback_{index + 1}")
 
     return required
 
@@ -197,8 +219,8 @@ def suggest_pricing_values(
         credits = max(credits, 5 * CREDIT_SCALE)
         return credits, max(MIN_CREDIT_UNITS, credits // 2)
     if target_service == ServiceType.MUSIC_GENERATION:
-        # Suno pack economics: COGS $0.06 → 6 cost credits; list 7.5 (~20% margin).
-        list_units = 75 * CREDIT_SCALE // 10
-        cost_units = 6 * CREDIT_SCALE
+        # Price by routed provider (2026-11-05): sunoapi.org 15, musicapi 10.
+        list_units = _MUSIC_LIST_UNITS.get(ai_service, 10 * CREDIT_SCALE)
+        cost_units = _MUSIC_COST_UNITS.get(ai_service, 6 * CREDIT_SCALE)
         return max(credits, list_units), cost_units
     return credits, max(MIN_CREDIT_UNITS, credits // 2)

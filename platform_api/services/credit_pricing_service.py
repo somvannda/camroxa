@@ -21,6 +21,7 @@ from platform_api.exceptions import (
 from platform_api.models.domain import MarginDetails
 from platform_api.models.enums import AIService, ServiceAvailability
 
+from platform_api.ai.types import Operation
 from platform_api.services.credit_units import (
     CREDIT_SCALE,
     MAX_CREDIT_UNITS,
@@ -38,6 +39,34 @@ logger = logging.getLogger(__name__)
 # Suno pack cost basis: 12 credits × ($50/10k) = $0.06 → 6 display credits at GCV $0.01.
 MIN_MUSIC_COST_UNITS = 6 * CREDIT_SCALE
 _MUSIC_OPERATIONS = frozenset({"music", "music_generation", "suno"})
+
+# Canonical pricing keys. Provider ids come from AIService plus the two
+# non-AI services; operations are routing operations plus every other priced
+# op (local video, publish, studio, legacy aliases).
+_EXTRA_PRICING_SERVICES = frozenset({"local", "postforme"})
+_LEGACY_PRICING_OPERATIONS = frozenset(
+    {
+        "image",
+        "video",
+        "video_manual",
+        "video_merge",
+        "merge",
+        "publish",
+        "upload",
+        "studio_edit",
+        "studio_stems_2",
+        "studio_stems_12",
+        "music_generation",
+        "text_generation",
+        "image_generation",
+        "channel_setup",
+        "suno",
+    }
+)
+_KNOWN_PRICING_SERVICES = frozenset(s.value for s in AIService) | _EXTRA_PRICING_SERVICES
+_KNOWN_PRICING_OPERATIONS = (
+    frozenset(op.value for op in Operation) | _LEGACY_PRICING_OPERATIONS
+)
 
 
 # ---------------------------------------------------------------------------
@@ -118,8 +147,15 @@ async def lookup_pricing_entry(
     ai_service: str,
     operation_type: str,
     sub_model: str | None = None,
+    *,
+    allow_draft: bool = False,
 ) -> dict[str, Any] | None:
-    """Resolve pricing for a model, falling back to provider-wide default."""
+    """Resolve pricing for a model, falling back to provider-wide default.
+
+    Raises ``ExternalServiceError`` when the resolved row is still an
+    auto-seeded draft (``needs_review``) unless ``allow_draft`` is set: a draft
+    price must be reviewed before it can be charged.
+    """
     service = str(ai_service or "").strip()
     operation = str(operation_type or "").strip()
     model = normalize_pricing_sub_model(sub_model)
@@ -139,6 +175,18 @@ async def lookup_pricing_entry(
                 service, op, ""
             )
         if entry is not None:
+            if entry.get("needs_review") and not allow_draft:
+                raise ExternalServiceError(
+                    f"Pricing for ai_service '{service}' operation '{operation}' "
+                    f"model '{model or 'default'}' is still a draft. Review it on "
+                    "the Credits page before it can be charged.",
+                    details={
+                        "ai_service": service,
+                        "operation_type": operation,
+                        "sub_model": model,
+                        "code": "PRICING_NEEDS_REVIEW",
+                    },
+                )
             return entry
     return None
 
@@ -207,6 +255,36 @@ class CreditPricingService:
                     "max_units": MAX_CREDIT_UNITS,
                 },
             )
+
+    @staticmethod
+    def _validate_pricing_key(
+        ai_service: str, operation_type: str
+    ) -> tuple[str, str]:
+        """Return canonical lowercase keys or reject unknown ones.
+
+        Pricing rows are matched by exact string; a typo or mixed case silently
+        orphans a row, so writes are validated against the known provider and
+        operation sets.
+        """
+        service = str(ai_service or "").strip().lower()
+        operation = str(operation_type or "").strip().lower()
+        if not service or service not in _KNOWN_PRICING_SERVICES:
+            raise ValidationError(
+                f"Unknown ai_service '{ai_service}'.",
+                details={
+                    "ai_service": ai_service,
+                    "known_services": sorted(_KNOWN_PRICING_SERVICES),
+                },
+            )
+        if not operation or operation not in _KNOWN_PRICING_OPERATIONS:
+            raise ValidationError(
+                f"Unknown pricing operation '{operation_type}'.",
+                details={
+                    "operation_type": operation_type,
+                    "known_operations": sorted(_KNOWN_PRICING_OPERATIONS),
+                },
+            )
+        return service, operation
 
     @staticmethod
     def _is_music_operation(operation_type: str) -> bool:
@@ -364,6 +442,8 @@ class CreditPricingService:
         ai_service: str,
         operation_type: str,
         sub_model: str | None = None,
+        *,
+        allow_draft: bool = False,
     ) -> int:
         """Return credits_per_operation for an ai_service/operation/model combination.
 
@@ -385,7 +465,11 @@ class CreditPricingService:
                 ai_service/operation combination.
         """
         entry = await lookup_pricing_entry(
-            self._pricing_repo, ai_service, operation_type, sub_model
+            self._pricing_repo,
+            ai_service,
+            operation_type,
+            sub_model,
+            allow_draft=allow_draft,
         )
         if entry is None:
             model_label = normalize_pricing_sub_model(sub_model) or "default"
@@ -432,6 +516,9 @@ class CreditPricingService:
         Raises:
             ValidationError: If credits_per_operation is outside [1, 10000].
         """
+        ai_service, operation_type = self._validate_pricing_key(
+            ai_service, operation_type
+        )
         self._validate_credit_units(credits_per_operation)
         self._validate_pricing_economics(
             operation_type, credits_per_operation, external_cost_cents
@@ -512,6 +599,9 @@ class CreditPricingService:
             ValidationError: If credits_per_operation is outside [1, 10000].
             DuplicateError: If a pricing entry already exists for this combination.
         """
+        ai_service, operation_type = self._validate_pricing_key(
+            ai_service, operation_type
+        )
         self._validate_credit_units(credits_per_operation)
         self._validate_pricing_economics(
             operation_type, credits_per_operation, external_cost_cents
@@ -577,6 +667,9 @@ class CreditPricingService:
             ValidationError: If credits_per_operation is outside [1, 10000].
             NotFoundError: If no pricing entry exists for this combination.
         """
+        ai_service, operation_type = self._validate_pricing_key(
+            ai_service, operation_type
+        )
         self._validate_credit_units(credits_per_operation)
         self._validate_pricing_economics(
             operation_type, credits_per_operation, external_cost_cents
@@ -654,6 +747,9 @@ class CreditPricingService:
         Returns:
             True if the entry was deleted, False if it did not exist.
         """
+        ai_service, operation_type = self._validate_pricing_key(
+            ai_service, operation_type
+        )
         model = normalize_pricing_sub_model(sub_model)
         deleted = await self._pricing_repo.delete(
             ai_service, operation_type, sub_model=model
@@ -801,6 +897,7 @@ class CreditPricingService:
         assignments: dict[str, dict[str, Any]],
         text_fallback_chain: list[dict[str, Any]],
         image_fallback_chain: list[dict[str, Any]],
+        music_fallback_chain: list[dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Create draft pricing rows for routing-required pairs that are missing."""
         from platform_api.services.pricing_sync_service import (
@@ -824,6 +921,7 @@ class CreditPricingService:
             assignments=assignments,
             text_fallback_chain=text_fallback_chain,
             image_fallback_chain=image_fallback_chain,
+            music_fallback_chain=music_fallback_chain,
         ):
             key = pricing_lookup_key(
                 pair.ai_service, pair.operation_type, pair.sub_model
@@ -874,6 +972,9 @@ class CreditPricingService:
         sub_model: str | None = None,
     ) -> dict[str, Any]:
         """Clear needs_review for a pricing row."""
+        ai_service, operation_type = self._validate_pricing_key(
+            ai_service, operation_type
+        )
         model = normalize_pricing_sub_model(sub_model)
         existing = await self._pricing_repo.get_by_service_and_operation(
             ai_service, operation_type, model

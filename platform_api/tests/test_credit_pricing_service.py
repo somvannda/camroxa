@@ -235,6 +235,51 @@ class TestGetPrice:
         assert price == cr(14)
 
     @pytest.mark.asyncio
+    async def test_draft_pricing_cannot_be_charged(
+        self, service: CreditPricingService, repo: FakeCreditPricingRepo
+    ) -> None:
+        repo.seed(
+            "deepseek",
+            "web_music_lyrics",
+            cr(5),
+            cr(1),
+            sub_model="deepseek-v4-flash",
+        )
+        repo._entries[("deepseek", "web_music_lyrics", "deepseek-v4-flash")][
+            "needs_review"
+        ] = True
+
+        with pytest.raises(ExternalServiceError) as exc_info:
+            await service.get_price(
+                "deepseek", "web_music_lyrics", "deepseek-v4-flash"
+            )
+
+        assert exc_info.value.details["code"] == "PRICING_NEEDS_REVIEW"
+
+    @pytest.mark.asyncio
+    async def test_allow_draft_returns_draft_price(
+        self, service: CreditPricingService, repo: FakeCreditPricingRepo
+    ) -> None:
+        repo.seed(
+            "deepseek",
+            "web_music_lyrics",
+            cr(5),
+            cr(1),
+            sub_model="deepseek-v4-flash",
+        )
+        repo._entries[("deepseek", "web_music_lyrics", "deepseek-v4-flash")][
+            "needs_review"
+        ] = True
+
+        price = await service.get_price(
+            "deepseek",
+            "web_music_lyrics",
+            "deepseek-v4-flash",
+            allow_draft=True,
+        )
+        assert price == cr(5)
+
+    @pytest.mark.asyncio
     async def test_raises_external_service_error_when_not_configured(
         self, service: CreditPricingService
     ) -> None:
@@ -417,7 +462,7 @@ class TestUpdatePrice:
         self, service: CreditPricingService
     ) -> None:
         with pytest.raises(NotFoundError) as exc_info:
-            await service.update_price("unknown", "unknown_op", cr(10), cr(1))
+            await service.update_price("openai", "lyric", cr(10), cr(1))
         assert "No pricing found" in exc_info.value.message
 
     @pytest.mark.asyncio
@@ -453,7 +498,7 @@ class TestDeletePrice:
     async def test_returns_false_when_not_found(
         self, service: CreditPricingService
     ) -> None:
-        result = await service.delete_price("missing", "missing_op")
+        result = await service.delete_price("openai", "lyric")
         assert result is False
 
 
@@ -486,3 +531,40 @@ class TestDeleteAllPrices:
         entries = await service.get_all_pricing()
         assert len(entries) == 1
         assert entries[0]["ai_service"] == "openai"
+
+
+class TestCanonicalPricingKeys:
+    """W5: provider/operation keys are canonical lowercase and validated."""
+
+    def test_lookup_key_lowercases_provider_and_operation(self) -> None:
+        from platform_api.services.pricing_keys import pricing_lookup_key
+
+        assert pricing_lookup_key(" OpenAI ", " Lyric ", "gpt-4o-mini") == (
+            "openai",
+            "lyric",
+            "gpt-4o-mini",
+        )
+
+    @pytest.mark.asyncio
+    async def test_create_price_normalises_keys(
+        self, service: CreditPricingService, repo: FakeCreditPricingRepo
+    ) -> None:
+        entry = await service.create_price(
+            "OpenAI", "Lyric", cr(3), cr(1), sub_model="gpt-4o-mini"
+        )
+        assert entry["ai_service"] == "openai"
+        assert entry["operation_type"] == "lyric"
+
+    @pytest.mark.asyncio
+    async def test_create_price_rejects_unknown_service(
+        self, service: CreditPricingService, repo: FakeCreditPricingRepo
+    ) -> None:
+        with pytest.raises(ValidationError):
+            await service.create_price("openaai", "lyric", cr(3), cr(1))
+
+    @pytest.mark.asyncio
+    async def test_create_price_rejects_unknown_operation(
+        self, service: CreditPricingService, repo: FakeCreditPricingRepo
+    ) -> None:
+        with pytest.raises(ValidationError):
+            await service.create_price("openai", "liryc", cr(3), cr(1))

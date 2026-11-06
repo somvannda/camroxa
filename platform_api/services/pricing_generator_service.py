@@ -163,6 +163,7 @@ class PricingGeneratorService:
         assignments: dict[str, dict[str, Any]],
         text_fallback_chain: list[dict[str, Any]],
         image_fallback_chain: list[dict[str, Any]],
+        music_fallback_chain: list[dict[str, Any]] | None = None,
         overwrite_existing: bool = False,
         mark_needs_review: bool = True,
     ) -> dict[str, Any]:
@@ -171,6 +172,7 @@ class PricingGeneratorService:
             assignments=assignments,
             text_fallback_chain=text_fallback_chain,
             image_fallback_chain=image_fallback_chain,
+            music_fallback_chain=music_fallback_chain,
         )
         cost_rows = await self._model_cost_repo.get_all()
         existing_pricing = await self._pricing_repo.get_all()
