@@ -7,6 +7,13 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.17] - 2026-11-06
+
+### Added
+
+- Publishing retries transient failures automatically: a busy or unavailable provider is retried twice
+  (2 s, then 6 s) instead of failing the upload outright. Validation and auth errors still fail fast.
+
 ## [1.5.16] - 2026-11-06
 
 ### Fixed
