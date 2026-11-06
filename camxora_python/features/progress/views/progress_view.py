@@ -46,6 +46,7 @@ from shared.services.video_workspace_service import get_video_workspace_service
 from shared.services.workspace_cache import WorkspaceCache
 from shared.widgets.pollable_page import PollablePageMixin
 from shared.workers.data_workers import (
+    YouTubeDirectUploadWorker,
     BatchRetryDraftsWorker,
     BatchRetrySunoWorker,
     ImageRetryJobsWorker,
@@ -1219,6 +1220,39 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._render_table()
         self._announce_selected_row_progress()
 
+    def _profile_uses_native_youtube(self, profile_id: str) -> bool:
+        """True when this profile is connected through CAMXORA's own Google client."""
+        if not profile_id:
+            return False
+        try:
+            for item in self._api.list_youtube_connections():
+                if str(getattr(item, "profile_id", "")) != profile_id:
+                    continue
+                if str(getattr(item, "status", "")).lower() in {"connected", "active"}:
+                    return True
+        except Exception:
+            return False
+        return False
+
+    def _on_native_upload_progress(self, row: object, sent: object, total: object) -> None:
+        try:
+            total_bytes = float(total or 0)
+            sent_bytes = float(sent or 0)
+        except (TypeError, ValueError):
+            return
+        if total_bytes <= 0:
+            return
+        percent = int(sent_bytes * 100 / total_bytes)
+        meta = getattr(row, "meta", None)
+        try:
+            if meta is not None:
+                percent = max(0, min(100, percent))
+                meta.youtube_status = f"uploading {percent}%"
+                meta.youtube_pending = 1
+                self._render_table()
+        except Exception:
+            pass
+
     def _cancel_publish_upload(self, key: str = "") -> None:
         """Stop the upload that owns this row (pipeline or manual)."""
         from shared.lib.publish_activity import cancel as cancel_slot, snapshot
@@ -1267,6 +1301,38 @@ class ProgressView(PollablePageMixin, QScrollArea):
         if self._publish_upload_worker is not None and self._publish_upload_worker.isRunning():
             self._show_retry_notice("A YouTube upload is already in progress.", tone="warning")
             return
+        native_profile_id = str(context.get("profile_id") or "")
+        if self._profile_uses_native_youtube(native_profile_id):
+            self._show_retry_notice("Uploading straight to YouTube…", tone="neutral")
+            worker = YouTubeDirectUploadWorker(
+                self._api,
+                profile_id=native_profile_id,
+                batch_id=str(context.get("batch_id") or ""),
+                role=str(context.get("role") or "OK"),
+                merged_path=str(context.get("merged_path") or ""),
+                parent=self,
+            )
+            worker.status_changed.connect(
+                lambda message: self._show_retry_notice(message, tone="neutral")
+            )
+            worker.progress.connect(
+                lambda sent, total: self._on_native_upload_progress(row, sent, total)
+            )
+            worker.succeeded.connect(
+                lambda result: self._show_retry_notice(
+                    f"Published to YouTube: {getattr(result, 'get', lambda *_: '')('url') or ''}".strip(),
+                    tone="success",
+                )
+            )
+            worker.failed.connect(
+                lambda message: self._show_retry_notice(str(message), tone="error")
+            )
+            worker.finished.connect(lambda: setattr(self, "_publish_upload_worker", None))
+            worker.finished.connect(self.refresh_data)
+            self._publish_upload_worker = worker
+            worker.start()
+            return
+
         self._show_retry_notice("Publishing to YouTube…", tone="neutral")
         worker = PublishUploadWorker(self._api, auto_context=context, parent=self)
         worker.status_changed.connect(

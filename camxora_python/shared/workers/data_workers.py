@@ -2875,6 +2875,124 @@ class _ProgressReader:
 URL_UPLOAD_THRESHOLD_BYTES = 200 * 1024 * 1024
 
 
+class YouTubeDirectUploadWorker(QThread):
+    """Upload one merged video straight to YouTube with a short-lived token."""
+
+    progress = Signal(object, object)
+    status_changed = Signal(str)
+    succeeded = Signal(object)
+    failed = Signal(str)
+
+    def __init__(
+        self,
+        api: PlatformApi,
+        *,
+        profile_id: str,
+        batch_id: str,
+        role: str,
+        merged_path: str,
+        parent=None,
+    ) -> None:
+        super().__init__(parent)
+        self._api = api
+        self._profile_id = str(profile_id or "").strip()
+        self._batch_id = str(batch_id or "").strip()
+        self._role = str(role or "OK").strip().upper() or "OK"
+        self._merged_path = str(merged_path or "").strip()
+        self._activity_key = ""
+
+    def run(self) -> None:
+        from shared.lib import youtube_direct as yt
+        from shared.lib.publish_activity import (
+            begin,
+            finish,
+            mark_provider,
+            progress as activity_progress,
+            slot_key,
+        )
+
+        key = slot_key(self._batch_id, self._profile_id, self._role)
+        self._activity_key = key
+        path = Path(self._merged_path)
+        try:
+            if not path.is_file():
+                raise RuntimeError("The merged video is not on disk any more.")
+            begin(key, label=path.name, total=path.stat().st_size, worker=self)
+
+            self.status_changed.emit("Checking the connected channel…")
+            profiles = self._api.list_profiles()
+            profile = next(
+                (item for item in profiles if str(item.id) == self._profile_id), None
+            )
+            if profile is None:
+                raise RuntimeError("The channel profile for this upload was not found.")
+            meta = yt.build_metadata(profile, path)
+            self.status_changed.emit(f"Preparing “{meta['title']}”…")
+
+            token_data = self._api.issue_youtube_access_token(self._profile_id)
+            access_token = str(token_data.get("access_token") or "")
+            if not access_token:
+                raise RuntimeError("YouTube did not return an access token. Reconnect the channel.")
+
+            session_url = yt.start_session(access_token, meta)
+            self.status_changed.emit("Uploading to YouTube…")
+
+            def _on_progress(sent: int, total: int) -> None:
+                activity_progress(key, sent, total)
+                self.progress.emit(sent, total)
+                percent = int(sent * 100 / max(total, 1))
+                self.status_changed.emit(
+                    f"Uploading to YouTube… {percent}% "
+                    f"({yt.human_bytes(sent)} / {yt.human_bytes(total)})"
+                )
+
+            result = yt.upload_file(
+                session_url,
+                path,
+                on_progress=_on_progress,
+                is_cancelled=self.isInterruptionRequested,
+            )
+            video_id = str(result.get("id") or "")
+            if not video_id:
+                raise RuntimeError("YouTube returned no video id.")
+            url = yt.video_url(video_id)
+            mark_provider(key)
+
+            if meta.get("thumbnail"):
+                warning = yt.set_thumbnail(access_token, video_id, Path(meta["thumbnail"]))
+                if warning:
+                    self.status_changed.emit(warning)
+            if meta.get("playlist"):
+                warning = yt.add_to_playlist(access_token, meta["playlist"], video_id)
+                if warning:
+                    self.status_changed.emit(warning)
+
+            self.status_changed.emit("Recording the result…")
+            self._api.report_youtube_upload(
+                batch_id=self._batch_id,
+                profile_id=self._profile_id,
+                role=self._role,
+                video_id=video_id,
+                video_url=url,
+                title=meta["title"],
+            )
+            self.succeeded.emit(
+                {
+                    "video_id": video_id,
+                    "url": url,
+                    "title": meta["title"],
+                    "privacy": meta["visibility"],
+                }
+            )
+        except Exception as exc:  # noqa: BLE001 - reported to the user
+            if self.isInterruptionRequested():
+                self.failed.emit("Upload cancelled.")
+            else:
+                self.failed.emit(str(exc) or "YouTube upload failed.")
+        finally:
+            finish(key)
+
+
 class PublishUploadWorker(QThread):
     """Create a publish job, upload the media, then charge + create the post."""
 
