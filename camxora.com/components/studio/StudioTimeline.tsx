@@ -37,6 +37,8 @@ export type StudioTimelineProps = {
   barWidth: number;
   barCount: number;
   secondsPerBar: number;
+  /** Beats per bar, so a drag snaps to the project's meter (H-13). */
+  beatsPerBar: number;
   duration: number;
   playhead: number;
   clock: (seconds: number) => string;
@@ -67,6 +69,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
     barWidth,
     barCount,
     secondsPerBar,
+    beatsPerBar,
     duration,
     playhead,
     clock,
@@ -127,7 +130,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
                   const dragOrigin = drag ? drag.origins[clip.id] : undefined;
                   const left =
                     isDragging && drag && dragOrigin !== undefined
-                      ? (dragToStart(dragOrigin, drag.deltaPx, barWidth, secondsPerBar, 4) /
+                      ? (dragToStart(dragOrigin, drag.deltaPx, barWidth, secondsPerBar, beatsPerBar) /
                           secondsPerBar) *
                         barWidth
                       : ((clip.start ?? 0) / secondsPerBar) * barWidth;
@@ -201,7 +204,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
                     drag.deltaPx,
                     barWidth,
                     secondsPerBar,
-                    4
+                    beatsPerBar
                   ) /
                     secondsPerBar) *
                   barWidth,

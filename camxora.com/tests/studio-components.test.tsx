@@ -26,6 +26,7 @@ function headerProps() {
     onRenamed: noop,
     onShowQuickStart: noop,
     timeSignature: "4/4",
+    onTimeSignature: noop,
     clock: "00:01.000",
     barBeat: "001.1.1",
     bpm: 120,

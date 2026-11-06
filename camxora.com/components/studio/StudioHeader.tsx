@@ -2,6 +2,7 @@
 
 import { Icon } from "@/components/Icon";
 import { StudioProjectMenu } from "@/components/studio/StudioProjectMenu";
+import { STUDIO_SIGNATURES } from "@/lib/studio-signature";
 import type { StudioSettings } from "@/lib/studio-settings";
 import { StudioSaveStatus, type SaveStatus } from "@/components/studio/StudioSaveStatus";
 import { formatMeter, type MeterReading } from "@/lib/studio-meter";
@@ -22,6 +23,7 @@ export type StudioHeaderProps = {
   onRenamed: (title: string) => void;
   onShowQuickStart: () => void;
   timeSignature: string;
+  onTimeSignature: (next: string) => void;
   clock: string;
   barBeat: string;
   bpm: number;
@@ -72,6 +74,7 @@ export function StudioHeader(props: StudioHeaderProps) {
     onRenamed,
     onShowQuickStart,
     timeSignature,
+    onTimeSignature,
     clock,
     barBeat,
     bpm,
@@ -190,7 +193,22 @@ export function StudioHeader(props: StudioHeaderProps) {
           }}
           onBlur={onBpmCommit}
         />
-        <span className="se-pill" data-help="time-signature">{timeSignature}</span>
+        <select
+          className="se-pill se-signature"
+          value={timeSignature}
+          aria-label="Time signature"
+          data-help="time-signature"
+          onChange={(event) => onTimeSignature(event.target.value)}
+        >
+          {(STUDIO_SIGNATURES.includes(timeSignature as (typeof STUDIO_SIGNATURES)[number])
+            ? STUDIO_SIGNATURES
+            : [timeSignature, ...STUDIO_SIGNATURES]
+          ).map((signature) => (
+            <option key={signature} value={signature}>
+              {signature}
+            </option>
+          ))}
+        </select>
         <StudioSaveStatus status={saveStatus} onRetry={onRetrySave} />
         <span className="se-pill se-meter" aria-label="Master peak" title="Peak level at the master output" data-help="meter">
           {formatMeter(meter)}

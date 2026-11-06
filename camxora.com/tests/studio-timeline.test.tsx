@@ -32,6 +32,7 @@ function props(overrides: Partial<StudioTimelineProps> = {}): StudioTimelineProp
     barWidth: 96,
     barCount: 4,
     secondsPerBar: 2,
+    beatsPerBar: 4,
     duration: 8,
     playhead: 0,
     clock: (seconds) => `00:${String(Math.floor(seconds)).padStart(2, "0")}`,

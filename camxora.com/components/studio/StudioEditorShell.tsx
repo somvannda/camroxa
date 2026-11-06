@@ -26,6 +26,11 @@ import {
 } from "@/lib/studio-settings";
 import { analyse, formatMeter, type MeterReading } from "@/lib/studio-meter";
 import { beatAt, clicksBetween } from "@/lib/studio-metronome";
+import {
+  barBeatAt,
+  parseBeatsPerBar,
+  secondsPerBar as secondsPerBarFor,
+} from "@/lib/studio-signature";
 import { buildPluginChain } from "@/lib/studio-plugin-audio";
 import { clearDraft, describeDraft, loadDraft, saveDraft, type StudioDraft } from "@/lib/studio-draft";
 import type { PluginChainEntry } from "@/lib/studio-plugins";
@@ -67,10 +72,8 @@ function clock(seconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}.${String(ms).padStart(3, "0")}`;
 }
 
-function barBeat(seconds: number, bpm: number): string {
-  const beats = (seconds * bpm) / 60;
-  const bar = Math.floor(beats / 4) + 1;
-  const beat = Math.floor(beats % 4) + 1;
+function barBeat(seconds: number, bpm: number, signature: string): string {
+  const { bar, beat } = barBeatAt(seconds, bpm, signature);
   return `${String(bar).padStart(3, "0")}.${beat}.1`;
 }
 
@@ -235,6 +238,9 @@ export function StudioEditorShell() {
   const loopDragRef = useRef(false);
   const [metronome, setMetronome] = useState(false);
   const [bpm, setBpm] = useState(120);
+  /** Meter (H-13): editable in the header, persisted in the project columns. */
+  const [timeSignature, setTimeSignature] = useState("4/4");
+  const beatsPerBar = parseBeatsPerBar(timeSignature);
   /** Master level (reference F-01/F-02), persisted in the document. */
   const [masterVolume, setMasterVolume] = useState(85);
   const [masterMuted, setMasterMuted] = useState(false);
@@ -265,6 +271,7 @@ export function StudioEditorShell() {
         if (!active) return;
         setProject(next);
         setBpm(next.bpm || 120);
+        setTimeSignature(next.time_signature || "4/4");
         const master = (next.data || {}) as { masterVolume?: unknown; masterMuted?: unknown };
         if (typeof master.masterVolume === "number" && Number.isFinite(master.masterVolume)) {
           setMasterVolume(Math.max(0, Math.min(100, master.masterVolume)));
@@ -432,7 +439,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-${song.id}-${Date.now().toString(36)}`,
           title: clip.title || song.title || "Song",
-          start: snapToGrid(playhead, secondsPerBar, 4),
+          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
           duration: clip.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -454,7 +461,7 @@ export function StudioEditorShell() {
         clip: {
           id: `clip-upload-${upload.id}-${Date.now().toString(36)}`,
           title,
-          start: snapToGrid(playhead, secondsPerBar, 4),
+          start: snapToGrid(playhead, secondsPerBar, beatsPerBar),
           duration: upload.duration_seconds ?? 8,
           volume: 1,
           pan: 0,
@@ -734,7 +741,7 @@ export function StudioEditorShell() {
       if (!lanes) return;
       const rect = lanes.getBoundingClientRect();
       const seconds = ((event.clientX - rect.left) / barWidth) * secondsPerBar;
-      setLoopEnd(Math.max(loopStart + secondsPerBar / 4, snapToGrid(seconds, secondsPerBar, 4)));
+      setLoopEnd(Math.max(loopStart + secondsPerBar / beatsPerBar, snapToGrid(seconds, secondsPerBar, beatsPerBar)));
     };
     const up = () => {
       if (!loopDragRef.current) return;
@@ -1087,7 +1094,7 @@ export function StudioEditorShell() {
     const entries = clipboardRef.current;
     if (entries.length === 0) return;
     const earliest = Math.min(...entries.map((entry) => entry.clip.start ?? 0));
-    const target = snapToGrid(playhead, secondsPerBar, 4);
+    const target = snapToGrid(playhead, secondsPerBar, beatsPerBar);
     insertClips(duplicateEntries(entries, target - earliest));
   }
 
@@ -1253,7 +1260,7 @@ export function StudioEditorShell() {
     return lanes.map((clip) => {
       const origin = current.origins[clip.id];
       if (origin === undefined) return clip;
-      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, 4);
+      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, beatsPerBar);
       return Math.abs(start - origin) > 0.0001 ? { ...clip, start } : clip;
     });
   }
@@ -1263,7 +1270,7 @@ export function StudioEditorShell() {
     for (const id of current.ids) {
       const origin = current.origins[id];
       if (origin === undefined) continue;
-      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, 4);
+      const start = dragToStart(origin, current.deltaPx, barWidth, secondsPerBar, beatsPerBar);
       if (Math.abs(start - origin) > 0.0001) next[id] = start;
     }
     if (Object.keys(next).length > 0) commitClipStarts(next);
@@ -1329,6 +1336,8 @@ export function StudioEditorShell() {
   playingRef.current = playing;
   const metronomeRef = useRef(metronome);
   metronomeRef.current = metronome;
+  const beatsPerBarRef = useRef(beatsPerBar);
+  beatsPerBarRef.current = beatsPerBar;
   const bpmRef = useRef(bpm);
   bpmRef.current = bpm;
   const rateRef = useRef(playbackRate);
@@ -1439,7 +1448,7 @@ export function StudioEditorShell() {
     const start = Math.max(from, scheduledThroughRef.current);
     if (until <= start) return;
     const context = engine.ctx;
-    for (const click of clicksBetween(start, until, bpmRef.current)) {
+    for (const click of clicksBetween(start, until, bpmRef.current, beatsPerBarRef.current)) {
       const delay = Math.max(0.005, (click.time - from) / rateRef.current);
       const when = context.currentTime + delay;
       const oscillator = context.createOscillator();
@@ -1735,8 +1744,8 @@ export function StudioEditorShell() {
     }
   }, [tracks, playing]);
 
-  const secondsPerBar = 240 / bpm;
-  const barCount = Math.max(1, Math.ceil((duration * bpm) / 240));
+  const secondsPerBar = secondsPerBarFor(bpm, timeSignature);
+  const barCount = Math.max(1, Math.ceil(duration / secondsPerBar));
 
   /** Pointer handling for clip dragging (G7/G8) and marquee selection (G6). */
   useEffect(() => {
@@ -1863,9 +1872,18 @@ export function StudioEditorShell() {
         }}
         onRenamed={(next) => setProject((current) => (current ? { ...current, title: next } : current))}
         onShowQuickStart={() => setQuickStartToken((value) => value + 1)}
-        timeSignature={project?.time_signature || "4/4"}
+        timeSignature={timeSignature}
+        onTimeSignature={(next) => {
+          setTimeSignature(next);
+          if (!projectId) return;
+          persist(
+            (expected) =>
+              updateStudioProject(projectId, { time_signature: next, expectedUpdatedAt: expected }),
+            "Could not save the time signature."
+          );
+        }}
         clock={clock(playhead)}
-        barBeat={barBeat(playhead, bpm)}
+        barBeat={barBeat(playhead, bpm, timeSignature)}
         bpm={bpm}
         onBpmChange={setBpm}
         onBpmCommit={() => {
@@ -1913,7 +1931,7 @@ export function StudioEditorShell() {
             return true;
           })
         }
-        beat={metronome ? beatAt(playhead, bpm) : 0}
+        beat={metronome ? beatAt(playhead, bpm, beatsPerBar) : 0}
         onUndo={undo}
         onRedo={redo}
       />
@@ -1951,6 +1969,7 @@ export function StudioEditorShell() {
           barWidth={barWidth}
           barCount={barCount}
           secondsPerBar={secondsPerBar}
+          beatsPerBar={beatsPerBar}
           duration={duration}
           playhead={playhead}
           clock={clock}

@@ -43,7 +43,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Workspaces (with server-side song counts and a filter), Projects and Uploads tabs wired; the stems tab waits on a finished stems job (B-005) |
-| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 139 tests; Playwright: 41 specs covering every surface exercised here, green over repeated full runs (smoke, persistence, home, library, project menu, conflicts, offline, share page, versions, transport, loop/seek, export bytes, zoom, tracks/sliders/collapse, clipboard, marquee, plugins dry/wet + live, mute/solo, solo-aware bounce, master, help, keys, metronome, writes, metrics, axe ×3). e2e needs local services, so it is not in CI yet |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 145 tests; Playwright: 42 specs covering every surface exercised here, green over repeated full runs (smoke, persistence, home, library, project menu, conflicts, offline, share page, versions, transport, meter, loop/seek, export bytes, zoom, tracks/sliders/collapse, clipboard, marquee, plugins dry/wet + live, mute/solo, solo-aware bounce, master, help, keys, metronome, writes, metrics, axe ×3). e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
@@ -95,6 +95,8 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G41 | Track level/pan bars were decorative, and "Collapse controls" was a no-op | The two bars under each track were `aria-hidden` divs with no input, and the menu item only closed the menu | T-02/T-03 | **done** - real range sliders (volume 0–100, pan −100…100) commit on release, plus a persisted per-track `collapsed` that hides them; e2e checks both values on the server |
 
 | G42 | Stop and Back to start shared one handler | Stop rewound instead of halting, so the two captured transport controls did the same thing | H-05/H-08 | **done** - Stop halts at the playhead (and silences the click), Back to start rewinds to zero; e2e plays, stops, checks the clock held, then rewinds |
+
+| G43 | Time signature was a read-only label, and bar maths assumed 4/4 | The meter could not be changed, and every bar count, beat readout, snap grid and metronome accent assumed four beats | H-13 | **done** - an editable meter (2/4, 3/4, 4/4, 6/8) persisted on the project drives bar length, `bar.beat`, snapping and the click accent; e2e changes to 3/4 and checks the clock/readout and reload |
 
 ## 3. Deliberate non-parity
 

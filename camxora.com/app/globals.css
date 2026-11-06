@@ -4622,7 +4622,7 @@ html{color-scheme:dark}
 .se-settings-section h3{margin:0}
 
 .se-master{display:inline-flex;align-items:center;gap:8px;margin-left:8px}
-.se-master-label{opacity:.7}
+.se-signature{height:32px;padding:0 8px}.se-master-label{opacity:.7}
 .se-master-fader{width:96px}
 .se-master-value{min-width:36px;text-align:right;font-variant-numeric:tabular-nums}
 
