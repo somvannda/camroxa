@@ -21,14 +21,14 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Preset stepper `‹ name ›` + save/clear menu | §90 | `StudioPluginDock` (captured surface) |
 | Take model: audition vs commit, newest on top | §72.1 | captured in spec; take UI still reference-only |
 | Clip remembers its source generation | §70 | `songId` on clip + provenance strip |
-| Library panel: songs with Add, workspace filter with counts, projects with Open, uploads with Add | §19.1 / gap G12 | `components/studio/StudioLibrary.tsx` + `selectLibraryWorkspace` |
+| Library panel: level-1 tile chooser (All Songs / Liked / Stems / Uploads) + Workspaces and Studio Projects sections, then level-2 lists with Add/Open | §19.1 / gap G12 | `components/studio/StudioLibrary.tsx` (`LibraryView`) + `openLibrarySongs` / `openLibraryWorkspace` in `StudioEditorShell.tsx` |
 | Songs grouped under Today / Yesterday / date headers | §19.2 | `lib/studio-library-grouping.ts` |
 | Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (8 wired, 1 disabled with a reason) |
 | Share: view + copy link, naming gate first | §24 / §24.1 | `StudioProjectMenu` share dialog + `createStudioProjectShare` / `listStudioProjectShares` |
 | Public share page: read-only render, comments, fork to a copy | §24 | `app/studio/shared/[token]/page.tsx`; fork opens the returned project id |
 | Ghost drag: hold the pre-drag audio, apply once on drop; read at gesture start | §22 / gap G24 | `lib/studio-settings.ts` (`dragApplyPlan`) + `restartAudio` in `StudioEditorShell` |
 | Learn menu: four rows, `?` shortcut list, "What's This?" hover cards | §7 / §38 / §62.2 / gap G25 | `components/studio/StudioLearn.tsx` + `lib/studio-help.ts` |
-| Add-track menu: Audio A / MIDI M / Upload U | §8.3 / gap G26 | `StudioTrackPanel` add menu; Upload opens the library's Uploads tab |
+| Add-track menu: Audio A / MIDI M / Upload U | §8.3 / gap G26 | `StudioTrackPanel` add menu; Upload opens the library at its level-2 Uploads list |
 | Keyboard: Space, Home/End, A, U, plus the modifiers | §11 / gap G26 | keydown handler in `StudioEditorShell`; list in `lib/studio-help.ts` |
 | Metronome click track with bar accent | H-09 / gap G27 | `lib/studio-metronome.ts` + `scheduleClicks` in `StudioEditorShell` |
 | Loop repeats the selected range; seeking follows while playing | §68 / gap G33 | transport tick + `seekTo` in `StudioEditorShell` |

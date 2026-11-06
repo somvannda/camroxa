@@ -1,33 +1,32 @@
 "use client";
 
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 
 import { Icon } from "@/components/Icon";
 import type { WebMusicGeneration } from "@/lib/library-api";
-import { groupByDay } from "@/lib/studio-library-grouping";
+import { groupByDay, relativeAge } from "@/lib/studio-library-grouping";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
 import type { StudioProject, StudioUpload } from "@/lib/studio-api";
 
 /**
- * Library panel: songs from the generation library (with Add), the workspaces that
- * group them, other Studio projects (with Open) and imported audio uploads (with Add).
- * Extracted from the shell (roadmap G15); it owns no state so the lists can be fetched
- * and refreshed elsewhere.
+ * Library panel (spec §19.1/§19.2): two levels, like the reference.
  *
- * Reference shape note (spec §19.1): the reference is two-level — filter tiles
- * (All Songs / Liked / Stems / Uploads), workspaces and projects, then a dated song
- * list for the chosen workspace. We keep one drawer with tabs: choosing a workspace
- * here switches to Songs filtered to it, which is the same two-level flow without the
- * tile grid. "Stems" and "Liked" stay out: a stem set cannot be listed before a stems
- * job succeeds (B-005), and the like keys we store are per clip, not a song corpus.
+ * Level 1 is the corpus chooser — All Songs / Liked / Stems / Uploads tiles, then the
+ * Workspaces and Studio Projects sections (four rows each, with See all). Level 2 is the
+ * list itself: songs grouped under Today / Yesterday / date headings, or the uploads.
+ *
+ * Stems stays visible but disabled: a stem set cannot be listed before a stems job has
+ * succeeded (B-005), so a tile that opens nothing would be worse than a labelled one.
  */
 
-export type StudioLibraryTab = "songs" | "workspaces" | "projects" | "uploads";
+export type LibraryView =
+  | { kind: "root" }
+  | { kind: "songs"; title: string; filter: "all" | "liked" }
+  | { kind: "uploads" };
 
 export type StudioLibraryProps = {
   width: number;
-  tab: StudioLibraryTab;
-  onTab: (tab: StudioLibraryTab) => void;
+  view: LibraryView;
   query: string;
   onQuery: (value: string) => void;
   songs: WebMusicGeneration[] | null;
@@ -36,19 +35,19 @@ export type StudioLibraryProps = {
   projects: StudioProject[] | null;
   uploads: StudioUpload[] | null;
   currentProjectId: string | null;
+  /** Clip keys the viewer liked (`<songId>:<variant>`), or null while loading. */
+  likedKeys: string[] | null;
   onClose: () => void;
+  onBack: () => void;
+  onOpenSongs: (filter: "all" | "liked") => void;
+  onOpenUploads: () => void;
+  onOpenWorkspace: (workspaceId: string | null) => void;
   onAddSong: (song: WebMusicGeneration) => void;
-  onSelectWorkspace: (workspaceId: string | null) => void;
   onAddUpload: (upload: StudioUpload) => void;
   onOpenProject: (projectId: string) => void;
 };
 
-const TABS: { value: StudioLibraryTab; label: string }[] = [
-  { value: "songs", label: "Songs" },
-  { value: "workspaces", label: "Workspaces" },
-  { value: "projects", label: "Projects" },
-  { value: "uploads", label: "Uploads" },
-];
+const ROOT_ROWS = 4;
 
 /** "2:07" for a known length, "—" when the upload did not report one. */
 export function formatUploadLength(seconds: number | null | undefined): string {
@@ -68,8 +67,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
   function StudioLibrary(props, searchRef) {
     const {
       width,
-      tab,
-      onTab,
+      view,
       query,
       onQuery,
       songs,
@@ -78,18 +76,29 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       projects,
       uploads,
       currentProjectId,
+      likedKeys,
       onClose,
+      onBack,
+      onOpenSongs,
+      onOpenUploads,
+      onOpenWorkspace,
       onAddSong,
-      onSelectWorkspace,
       onAddUpload,
       onOpenProject,
     } = props;
 
+    const [allWorkspaces, setAllWorkspaces] = useState(false);
+    const [allProjects, setAllProjects] = useState(false);
+
     const q = query.trim().toLowerCase();
+    const liked = new Set(likedKeys ?? []);
+    const isLiked = (song: WebMusicGeneration) =>
+      (song.clips ?? []).some((clip) => liked.has(`${song.id}:${clip.variant}`));
+
     const activeWorkspace = (workspaces ?? []).find((item) => item.id === activeWorkspaceId) ?? null;
-    const visibleSongs = (songs ?? []).filter((song) =>
-      q ? `${song.title} ${song.style ?? ""}`.toLowerCase().includes(q) : true
-    );
+    const visibleSongs = (songs ?? [])
+      .filter((song) => (view.kind === "songs" && view.filter === "liked" ? isLiked(song) : true))
+      .filter((song) => (q ? `${song.title} ${song.style ?? ""}`.toLowerCase().includes(q) : true));
     const otherProjects = (projects ?? [])
       .filter((item) => item.id !== currentProjectId)
       .filter((item) => (q ? item.title.toLowerCase().includes(q) : true));
@@ -103,7 +112,16 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
     return (
       <aside className="se-library" aria-label="Library" style={{ width }}>
         <div className="se-library-head">
-          <strong>Library</strong>
+          {view.kind === "root" ? (
+            <strong>Library</strong>
+          ) : (
+            <button type="button" className="se-icon" aria-label="Back to library" onClick={onBack}>
+              <Icon name="fa-chevron-left" />
+            </button>
+          )}
+          {view.kind !== "root" ? (
+            <strong>{view.kind === "songs" ? view.title : "Uploads"}</strong>
+          ) : null}
           <input
             ref={searchRef}
             className="se-lib-search"
@@ -117,32 +135,122 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
           </button>
         </div>
 
-        <div className="se-lib-tabs" role="tablist" aria-label="Library sections">
-          {TABS.map(({ value, label }) => (
-            <button
-              key={value}
-              type="button"
-              role="tab"
-              aria-selected={tab === value}
-              className={`se-lib-tab${tab === value ? " on" : ""}`}
-              onClick={() => onTab(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {view.kind === "root" ? (
+          <div className="se-lib-root">
+            <div className="se-lib-tiles" role="group" aria-label="Library filters">
+              <button type="button" className="se-lib-tile" onClick={() => onOpenSongs("all")}>
+                <Icon name="fa-music" />
+                <span>All Songs</span>
+              </button>
+              <button type="button" className="se-lib-tile" onClick={() => onOpenSongs("liked")}>
+                <Icon name="fa-heart" />
+                <span>Liked</span>
+              </button>
+              <button
+                type="button"
+                className="se-lib-tile"
+                disabled
+                title="Stems need a finished stem separation first"
+              >
+                <Icon name="fa-layer-group" />
+                <span>Stems</span>
+              </button>
+              <button type="button" className="se-lib-tile" onClick={onOpenUploads}>
+                <Icon name="fa-arrow-up-from-bracket" />
+                <span>Uploads</span>
+              </button>
+            </div>
 
-        {tab === "songs" ? (
+            <section className="se-lib-section" aria-label="Workspaces">
+              <div className="se-lib-section-head">
+                <strong>Workspaces</strong>
+                {(workspaces?.length ?? 0) > ROOT_ROWS ? (
+                  <button
+                    type="button"
+                    className="se-lib-seeall"
+                    onClick={() => setAllWorkspaces((value) => !value)}
+                  >
+                    {allWorkspaces ? "Show less" : "See all ›"}
+                  </button>
+                ) : null}
+              </div>
+              {workspaces === null ? (
+                <p className="se-lib-empty">Loading workspaces…</p>
+              ) : visibleWorkspaces.length === 0 ? (
+                <p className="se-lib-empty">No workspaces yet.</p>
+              ) : (
+                <ul className="se-lib-list">
+                  {(allWorkspaces ? visibleWorkspaces : visibleWorkspaces.slice(0, ROOT_ROWS)).map(
+                    (workspace) => (
+                      <li key={workspace.id}>
+                        <button
+                          type="button"
+                          className="se-lib-row se-lib-row-button"
+                          onClick={() => onOpenWorkspace(workspace.id)}
+                          aria-current={workspace.id === activeWorkspaceId}
+                        >
+                          <span className="se-sr-only">Open workspace</span>{" "}
+                          <span className="se-lib-title">{workspace.name}</span>{" "}
+                          <span className="se-lib-meta">
+                            {formatSongCount(workspace.song_count)}
+                          </span>
+                        </button>
+                      </li>
+                    )
+                  )}
+                </ul>
+              )}
+            </section>
+
+            <section className="se-lib-section" aria-label="Studio projects">
+              <div className="se-lib-section-head">
+                <strong>Studio Projects</strong>
+                {otherProjects.length > ROOT_ROWS ? (
+                  <button
+                    type="button"
+                    className="se-lib-seeall"
+                    onClick={() => setAllProjects((value) => !value)}
+                  >
+                    {allProjects ? "Show less" : "See all ›"}
+                  </button>
+                ) : null}
+              </div>
+              {projects === null ? (
+                <p className="se-lib-empty">Loading projects…</p>
+              ) : otherProjects.length === 0 ? (
+                <p className="se-lib-empty">No other projects yet.</p>
+              ) : (
+                <ul className="se-lib-list">
+                  {(allProjects ? otherProjects : otherProjects.slice(0, ROOT_ROWS)).map((item) => (
+                    <li key={item.id}>
+                      <button
+                        type="button"
+                        className="se-lib-row se-lib-row-button"
+                        onClick={() => onOpenProject(item.id)}
+                      >
+                        <span className="se-sr-only">Open project</span>{" "}
+                        <span className="se-lib-title">{item.title}</span>{" "}
+                        <span className="se-lib-meta">
+                          {relativeAge(item.updated_at || item.created_at) || "—"}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </section>
+          </div>
+        ) : view.kind === "songs" ? (
           <>
             {activeWorkspace ? (
               <ul className="se-lib-list">
                 <li className="se-lib-row">
-                  <span className="se-lib-title">{activeWorkspace.name}</span>
-                  <span className="se-lib-meta">workspace filter</span>
+                  <span className="se-lib-title">Workspace filter</span>
+                  <span className="se-lib-meta">{activeWorkspace.name}</span>
                   <button
                     type="button"
                     className="se-pill"
-                    onClick={() => onSelectWorkspace(null)}
+                    onClick={() => onOpenWorkspace(null)}
                     aria-label="Clear workspace filter"
                   >
                     Clear
@@ -152,11 +260,13 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
             ) : null}
             {songs === null ? (
               <p className="se-lib-empty">Loading songs…</p>
-            ) : songs.length === 0 ? (
+            ) : visibleSongs.length === 0 ? (
               <p className="se-lib-empty">
-                {activeWorkspace
-                  ? "No songs in this workspace yet."
-                  : "No songs yet. Create one, then drop it onto a track here."}
+                {view.filter === "liked"
+                  ? "No liked songs yet."
+                  : activeWorkspace
+                    ? "No songs in this workspace yet."
+                    : "No songs yet. Create one, then drop it onto a track here."}
               </p>
             ) : (
               <ul className="se-lib-list">
@@ -186,65 +296,9 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               </ul>
             )}
           </>
-        ) : tab === "workspaces" ? (
-          workspaces === null ? (
-            <p className="se-lib-empty">Loading workspaces…</p>
-          ) : workspaces.length === 0 ? (
-            <p className="se-lib-empty">No workspaces yet.</p>
-          ) : (
-            <ul className="se-lib-list">
-              <li className="se-lib-row">
-                <span className="se-lib-title">All songs</span>
-                <span className="se-lib-meta">every workspace</span>
-                <button
-                  type="button"
-                  className="se-pill"
-                  onClick={() => onSelectWorkspace(null)}
-                  aria-label="Show songs from every workspace"
-                >
-                  Open
-                </button>
-              </li>
-              {visibleWorkspaces.map((workspace) => (
-                <li key={workspace.id} className="se-lib-row">
-                  <span className="se-lib-title">{workspace.name}</span>
-                  <span className="se-lib-meta">{formatSongCount(workspace.song_count)}</span>
-                  <button
-                    type="button"
-                    className="se-pill"
-                    onClick={() => onSelectWorkspace(workspace.id)}
-                    aria-label={`Show songs in ${workspace.name}`}
-                    aria-current={workspace.id === activeWorkspaceId}
-                  >
-                    Open
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )
-        ) : tab === "projects" ? (
-          projects === null ? (
-            <p className="se-lib-empty">Loading projects…</p>
-          ) : otherProjects.length === 0 ? (
-            <p className="se-lib-empty">No other projects yet.</p>
-          ) : (
-            <ul className="se-lib-list">
-              {otherProjects.map((item) => (
-                <li key={item.id} className="se-lib-row">
-                  <span className="se-lib-title">{item.title}</span>
-                  <span className="se-lib-meta">
-                    {item.bpm} BPM · {item.time_signature || "4/4"}
-                  </span>
-                  <button type="button" className="se-pill" onClick={() => onOpenProject(item.id)}>
-                    Open
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )
         ) : uploads === null ? (
           <p className="se-lib-empty">Loading uploads…</p>
-        ) : uploads.length === 0 ? (
+        ) : visibleUploads.length === 0 ? (
           <p className="se-lib-empty">No uploads yet. Audio you import appears here.</p>
         ) : (
           <ul className="se-lib-list">

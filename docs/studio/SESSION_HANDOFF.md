@@ -115,9 +115,12 @@ clip is done. What is left:
 1. **W4.2 stems** and the stems half of **W4.3** — the charge path is fixed and verified
    (D-009); what remains is one genuinely generated clip so musicapi can resolve the
    owning Suno account (blocker B-005).
-2. **G12 remainder** — a stems tab (needs a finished stems job first, B-005). Workspaces,
-   Songs, Projects and Uploads are wired; workspace rows carry the server's song count
-   and selecting one filters the Songs tab (`?workspace_id=`).
+2. **G12 remainder** — a stems tile/list (needs a finished stems job first, B-005). The
+   two-level library is wired: level 1 is the reference's tile chooser (All Songs / Liked
+   / Stems / Uploads) plus Workspaces and Studio Projects sections with See all; level 2
+   lists the chosen corpus (songs grouped by day, uploads with length) with a Back
+   control. Workspace rows carry the server's song count and open level 2 filtered via
+   `?workspace_id=`; Liked filters on `fetchWebMusicLikedKeys`.
 3. **G21 remainder** — per-track Arm (needs recording, which does not exist).
 4. **W6 verification** — the inventory re-walk against a signed-in reference session
    (B-001); that is also where the five capture gaps get filled.

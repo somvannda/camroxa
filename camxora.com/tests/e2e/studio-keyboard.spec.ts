@@ -33,14 +33,12 @@ test("keyboard drives transport and the add-track accelerators", async ({ page }
   await page.keyboard.press("a");
   await expect(page.locator(".se-track")).toHaveCount(2);
 
-  // U opens the library on its Uploads tab.
+  // U opens the library straight on its Uploads list (level 2).
   await page.keyboard.press("u");
   const library = page.getByRole("complementary", { name: "Library" });
   await expect(library).toBeVisible();
-  await expect(library.getByRole("tab", { name: "Uploads" })).toHaveAttribute(
-    "aria-selected",
-    "true"
-  );
+  await expect(library.getByLabel("Back to library")).toBeVisible();
+  await expect(library.getByText("Uploads", { exact: true })).toBeVisible();
 
   // M does nothing: no third track appears.
   await page.keyboard.press("m");

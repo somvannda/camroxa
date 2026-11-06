@@ -4,11 +4,16 @@ import userEvent from "@testing-library/user-event";
 
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
-import { StudioLibrary, formatSongCount, formatUploadLength } from "@/components/studio/StudioLibrary";
+import {
+  StudioLibrary,
+  formatSongCount,
+  formatUploadLength,
+  type LibraryView,
+} from "@/components/studio/StudioLibrary";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import type { StudioTrack } from "@/lib/studio-tracks";
-import type { StudioUpload } from "@/lib/studio-api";
+import type { StudioProject, StudioUpload } from "@/lib/studio-api";
 import type { WebMusicGeneration } from "@/lib/library-api";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
 
@@ -162,22 +167,37 @@ function workspace(overrides: Partial<WebMusicWorkspace> = {}): WebMusicWorkspac
   return { id: "w1", name: "My Workspace", is_default: true, song_count: 946, ...overrides };
 }
 
+function song(overrides: Partial<WebMusicGeneration> = {}): WebMusicGeneration {
+  return {
+    id: "s1",
+    title: "Song one",
+    style: "downtempo",
+    status: "success",
+    created_at: new Date().toISOString(),
+    clips: [],
+    ...overrides,
+  } as WebMusicGeneration;
+}
+
 function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = {}) {
   return {
     width: 368,
-    tab: "songs" as const,
-    onTab: noop,
+    view: { kind: "root" } as LibraryView,
     query: "",
     onQuery: noop,
-    songs: [],
-    workspaces: [],
+    songs: [] as WebMusicGeneration[] | null,
+    workspaces: [] as WebMusicWorkspace[] | null,
     activeWorkspaceId: null,
-    projects: [],
-    uploads: [],
+    projects: [] as StudioProject[] | null,
+    uploads: [] as StudioUpload[] | null,
     currentProjectId: null,
+    likedKeys: [] as string[] | null,
     onClose: noop,
+    onBack: noop,
+    onOpenSongs: noop,
+    onOpenUploads: noop,
+    onOpenWorkspace: noop,
     onAddSong: noop,
-    onSelectWorkspace: noop,
     onAddUpload: noop,
     onOpenProject: noop,
     ...overrides,
@@ -205,84 +225,170 @@ describe("formatSongCount", () => {
 });
 
 describe("StudioLibrary", () => {
-  it("groups songs under date headers", () => {
-    const song = {
-      id: "s1",
-      title: "Song one",
-      style: "downtempo",
-      status: "success",
-      created_at: new Date().toISOString(),
-      clips: [],
-    } as unknown as WebMusicGeneration;
-    render(<StudioLibrary {...libraryProps({ songs: [song] })} />);
+  it("opens on the level-1 tile chooser", async () => {
+    const user = userEvent.setup();
+    const onOpenSongs = vi.fn();
+    const onOpenUploads = vi.fn();
+    render(<StudioLibrary {...libraryProps({ onOpenSongs, onOpenUploads })} />);
+
+    const tiles = screen.getByRole("group", { name: "Library filters" }).querySelectorAll("button");
+    expect([...tiles].map((node) => node.textContent)).toEqual([
+      "All Songs",
+      "Liked",
+      "Stems",
+      "Uploads",
+    ]);
+    // The stems tile is visible but explained rather than silently dead (B-005).
+    expect((screen.getByRole("button", { name: "Stems" }) as HTMLButtonElement).disabled).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: "All Songs" }));
+    expect(onOpenSongs).toHaveBeenCalledWith("all");
+    await user.click(screen.getByRole("button", { name: "Liked" }));
+    expect(onOpenSongs).toHaveBeenLastCalledWith("liked");
+    await user.click(screen.getByRole("button", { name: "Uploads" }));
+    expect(onOpenUploads).toHaveBeenCalled();
+  });
+
+  it("groups songs under date headers on the All Songs level", () => {
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [song()],
+        })}
+      />
+    );
     expect(screen.getByText("Today")).toBeTruthy();
     expect(screen.getByText("Song one")).toBeTruthy();
   });
 
-  it("lists the drawer's four sections in order", () => {
-    render(<StudioLibrary {...libraryProps()} />);
-    const tabs = screen.getAllByRole("tab").map((node) => node.textContent);
-    expect(tabs).toEqual(["Songs", "Workspaces", "Projects", "Uploads"]);
+  it("offers a back control from level 2 to the tile chooser", async () => {
+    const user = userEvent.setup();
+    const onBack = vi.fn();
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          onBack,
+        })}
+      />
+    );
+    await user.click(screen.getByLabelText("Back to library"));
+    expect(onBack).toHaveBeenCalledOnce();
+  });
+
+  it("filters the song list to liked clips and explains an empty result", () => {
+    const likedSong = song({
+      id: "s1",
+      title: "Liked one",
+      clips: [{ variant: "ok", audio_url: "https://example.test/s1.mp3" }],
+    });
+    const otherSong = song({
+      id: "s2",
+      title: "Unliked one",
+      clips: [{ variant: "ok", audio_url: "https://example.test/s2.mp3" }],
+    });
+    const { rerender } = render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "Liked", filter: "liked" },
+          songs: [likedSong, otherSong],
+          likedKeys: ["s1:ok"],
+        })}
+      />
+    );
+    expect(screen.getByText("Liked one")).toBeTruthy();
+    expect(screen.queryByText("Unliked one")).toBeNull();
+
+    rerender(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "Liked", filter: "liked" },
+          songs: [otherSong],
+          likedKeys: [],
+        })}
+      />
+    );
+    expect(screen.getByText("No liked songs yet.")).toBeTruthy();
   });
 
   it("shows each workspace with its song count and opens it", async () => {
     const user = userEvent.setup();
-    const onSelectWorkspace = vi.fn();
+    const onOpenWorkspace = vi.fn();
     render(
       <StudioLibrary
         {...libraryProps({
-          tab: "workspaces",
           workspaces: [workspace(), workspace({ id: "w2", name: "Empty", song_count: 1 })],
-          onSelectWorkspace,
+          onOpenWorkspace,
         })}
       />
     );
 
     expect(screen.getByText("946 songs")).toBeTruthy();
     expect(screen.getByText("1 song")).toBeTruthy();
-    await user.click(screen.getByLabelText("Show songs in My Workspace"));
-    expect(onSelectWorkspace).toHaveBeenCalledWith("w1");
-
-    await user.click(screen.getByLabelText("Show songs from every workspace"));
-    expect(onSelectWorkspace).toHaveBeenLastCalledWith(null);
+    await user.click(screen.getByRole("button", { name: /^Open workspace My Workspace/ }));
+    expect(onOpenWorkspace).toHaveBeenCalledWith("w1");
   });
 
   it("marks the active workspace's Open button as current", () => {
     render(
       <StudioLibrary
-        {...libraryProps({ tab: "workspaces", workspaces: [workspace()], activeWorkspaceId: "w1" })}
+        {...libraryProps({ workspaces: [workspace()], activeWorkspaceId: "w1" })}
       />
     );
-    expect(screen.getByLabelText("Show songs in My Workspace").getAttribute("aria-current")).toBe(
+    expect(screen.getByRole("button", { name: /^Open workspace My Workspace/ }).getAttribute("aria-current")).toBe(
       "true"
     );
   });
 
-  it("shows and clears the workspace filter on the songs tab", async () => {
+  it("shows and clears the workspace filter on the song level", async () => {
     const user = userEvent.setup();
-    const onSelectWorkspace = vi.fn();
+    const onOpenWorkspace = vi.fn();
     render(
       <StudioLibrary
         {...libraryProps({
-          tab: "songs",
+          view: { kind: "songs", title: "My Workspace", filter: "all" },
           workspaces: [workspace()],
           activeWorkspaceId: "w1",
           songs: [],
-          onSelectWorkspace,
+          onOpenWorkspace,
         })}
       />
     );
-    expect(screen.getByText("My Workspace")).toBeTruthy();
+    expect(screen.getByText("Workspace filter")).toBeTruthy();
     expect(screen.getByText("No songs in this workspace yet.")).toBeTruthy();
     await user.click(screen.getByLabelText("Clear workspace filter"));
-    expect(onSelectWorkspace).toHaveBeenCalledWith(null);
+    expect(onOpenWorkspace).toHaveBeenCalledWith(null);
+  });
+
+  it("lists other Studio projects and excludes the one that is open", () => {
+    const recent = new Date(Date.now() - 4 * 60_000).toISOString();
+    const project = (id: string, title: string) =>
+      ({ id, title, bpm: 120, time_signature: "4/4", updated_at: recent }) as StudioProject;
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          projects: [project("p1", "Current"), project("p2", "Other")],
+          currentProjectId: "p1",
+        })}
+      />
+    );
+    expect(screen.queryByText("Current")).toBeNull();
+    expect(screen.getByText("Other")).toBeTruthy();
+    expect(screen.getByText("4m ago")).toBeTruthy();
   });
 
   it("shows uploads with their length and adds one to the timeline", async () => {
     const user = userEvent.setup();
     const onAddUpload = vi.fn();
     render(
-      <StudioLibrary {...libraryProps({ tab: "uploads", uploads: [upload()], onAddUpload })} />
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "uploads" },
+          uploads: [upload()],
+          onAddUpload,
+        })}
+      />
     );
     expect(screen.getByText("take-1.wav")).toBeTruthy();
     expect(screen.getByText("2:07")).toBeTruthy();
@@ -291,12 +397,16 @@ describe("StudioLibrary", () => {
   });
 
   it("disables adding an upload that has no signed url", () => {
-    render(<StudioLibrary {...libraryProps({ tab: "uploads", uploads: [upload({ url: "" })] })} />);
+    render(
+      <StudioLibrary
+        {...libraryProps({ view: { kind: "uploads" }, uploads: [upload({ url: "" })] })}
+      />
+    );
     expect((screen.getByLabelText("Add take-1.wav") as HTMLButtonElement).disabled).toBe(true);
   });
 
   it("explains the empty uploads state", () => {
-    render(<StudioLibrary {...libraryProps({ tab: "uploads", uploads: [] })} />);
+    render(<StudioLibrary {...libraryProps({ view: { kind: "uploads" }, uploads: [] })} />);
     expect(screen.getByText("No uploads yet. Audio you import appears here.")).toBeTruthy();
   });
 
@@ -305,7 +415,12 @@ describe("StudioLibrary", () => {
     const onQuery = vi.fn();
     render(
       <StudioLibrary
-        {...libraryProps({ tab: "uploads", uploads: [upload()], query: "zzz", onQuery })}
+        {...libraryProps({
+          view: { kind: "uploads" },
+          uploads: [upload()],
+          query: "zzz",
+          onQuery,
+        })}
       />
     );
     expect(screen.queryByText("take-1.wav")).toBeNull();

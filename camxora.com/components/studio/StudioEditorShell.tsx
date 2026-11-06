@@ -9,8 +9,12 @@ import { getStudioProject, StudioConflictError, updateStudioProject, type Studio
 import { autoSnapshotStudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import { listStudioProjects, listStudioUploads, type StudioUpload } from "@/lib/studio-api";
-import { listWebMusicWorkspaces, type WebMusicWorkspace } from "@/lib/web-music-api";
-import { StudioLibrary, type StudioLibraryTab } from "@/components/studio/StudioLibrary";
+import {
+  fetchWebMusicLikedKeys,
+  listWebMusicWorkspaces,
+  type WebMusicWorkspace,
+} from "@/lib/web-music-api";
+import { StudioLibrary, type LibraryView } from "@/components/studio/StudioLibrary";
 import { StudioClipInfo } from "@/components/studio/StudioClipInfo";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
@@ -113,7 +117,9 @@ export function StudioEditorShell() {
   /** Server version of the document, kept in sync without waiting for a render. */
   const projectVersionRef = useRef<string | null>(null);
   /** Library panel data (G12): songs, workspaces, other projects and uploads. */
-  const [libraryTab, setLibraryTab] = useState<StudioLibraryTab>("songs");
+  const [libraryView, setLibraryView] = useState<LibraryView>({ kind: "root" });
+  /** Clip keys the viewer liked, for the Liked tile (level 2 filter). */
+  const [likedKeys, setLikedKeys] = useState<string[] | null>(null);
   /** Right rail shows the clip inspector instead of the library (spec §70). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
@@ -485,6 +491,15 @@ export function StudioEditorShell() {
           if (active) setLibraryUploads([]);
         });
     }
+    if (likedKeys === null) {
+      fetchWebMusicLikedKeys()
+        .then((keys) => {
+          if (active) setLikedKeys(keys);
+        })
+        .catch(() => {
+          if (active) setLikedKeys([]);
+        });
+    }
     return () => {
       active = false;
     };
@@ -496,19 +511,47 @@ export function StudioEditorShell() {
     libraryWorkspaces,
     libraryProjects,
     libraryUploads,
+    likedKeys,
   ]);
 
-  /** Choose a workspace: the Songs tab reloads filtered to it (spec §19.1). */
-  function selectLibraryWorkspace(workspaceId: string | null) {
-    setLibraryWorkspaceId(workspaceId);
-    setLibrarySongs(null);
-    setLibraryTab("songs");
+  /** Level 2 of the library: the song list, optionally liked-only (spec §19.1). */
+  function openLibrarySongs(filter: "all" | "liked") {
+    // A tile chooses the whole corpus, so it drops any workspace filter left over from
+    // an earlier workspace visit.
+    if (libraryWorkspaceId) {
+      setLibraryWorkspaceId(null);
+      setLibrarySongs(null);
+    }
+    setLibraryView({
+      kind: "songs",
+      title: filter === "liked" ? "Liked" : "All Songs",
+      filter,
+    });
   }
 
-  /** Add-track ▸ Upload (§8.3) lands on the library's Uploads tab. */
+  /** Add-track ▸ Upload (§8.3) lands on the library's Uploads list. */
   function openUploadLibrary() {
-    setLibraryTab("uploads");
+    setLibraryView({ kind: "uploads" });
     setLibraryOpen(true);
+  }
+
+  /** A workspace row opens its songs (level 2); null clears the filter. */
+  function openLibraryWorkspace(workspaceId: string | null) {
+    setLibraryWorkspaceId(workspaceId);
+    setLibrarySongs(null);
+    const workspace = (libraryWorkspaces ?? []).find((item) => item.id === workspaceId);
+    setLibraryView({
+      kind: "songs",
+      title: workspace?.name || "All Songs",
+      filter: "all",
+    });
+  }
+
+  /** Opening the library always starts at level 1 — the tile chooser. */
+  function toggleLibrary(force?: boolean) {
+    const next = force ?? !libraryOpen;
+    if (next) setLibraryView({ kind: "root" });
+    setLibraryOpen(next);
   }
 
   /** Resolve the selected clip's source song for the provenance strip (G16). */
@@ -1526,7 +1569,7 @@ export function StudioEditorShell() {
         }
         if (event.key === "4") {
           event.preventDefault();
-          setLibraryOpen((open) => !open);
+          toggleLibrary();
           return;
         }
       }
@@ -2395,7 +2438,7 @@ export function StudioEditorShell() {
         normalise={exportNormalise}
         onToggleNormalise={() => setExportNormalise((value) => !value)}
         libraryOpen={libraryOpen}
-        onToggleLibrary={() => setLibraryOpen((open) => !open)}
+        onToggleLibrary={() => toggleLibrary()}
         onBackToStart={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}
         onStop={() => {
           // Stop halts the transport where it is; Back to start is the rewind.
@@ -2506,8 +2549,7 @@ export function StudioEditorShell() {
             <StudioLibrary
               ref={librarySearchRef}
               width={LIBRARY_W}
-              tab={libraryTab}
-              onTab={setLibraryTab}
+              view={libraryView}
               query={libraryQuery}
               onQuery={setLibraryQuery}
               songs={librarySongs}
@@ -2516,9 +2558,13 @@ export function StudioEditorShell() {
               projects={libraryProjects}
               uploads={libraryUploads}
               currentProjectId={projectId}
+              likedKeys={likedKeys}
               onClose={() => setLibraryOpen(false)}
+              onBack={() => setLibraryView({ kind: "root" })}
+              onOpenSongs={openLibrarySongs}
+              onOpenUploads={() => setLibraryView({ kind: "uploads" })}
+              onOpenWorkspace={openLibraryWorkspace}
               onAddSong={addSongToTimeline}
-              onSelectWorkspace={selectLibraryWorkspace}
               onAddUpload={addUploadToTimeline}
               onOpenProject={(id) => {
                 window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;
@@ -2738,10 +2784,10 @@ export function StudioEditorShell() {
         onZoomFit={zoomToFit}
         onZoomIn={() => zoomBy(1)}
         onSearch={() => {
-          setLibraryOpen(true);
+          if (!libraryOpen) toggleLibrary(true);
           setTimeout(() => librarySearchRef.current?.focus(), 60);
         }}
-        onToggleLibrary={() => setLibraryOpen((open) => !open)}
+        onToggleLibrary={() => toggleLibrary()}
         whatsThis={settings.whatsThis}
         onWhatsThis={(next) => {
           const updated = { ...settingsRef.current, whatsThis: next };

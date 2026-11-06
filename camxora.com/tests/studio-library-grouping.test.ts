@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { dayLabel, groupByDay } from "@/lib/studio-library-grouping";
+import { dayLabel, groupByDay, relativeAge } from "@/lib/studio-library-grouping";
 
 const NOW = new Date(2026, 10, 6, 12, 0, 0); // 6 Nov 2026, local time
 
@@ -44,5 +44,28 @@ describe("groupByDay", () => {
 
   it("returns nothing for an empty list", () => {
     expect(groupByDay([], NOW)).toEqual([]);
+  });
+});
+
+describe("relativeAge", () => {
+  const at = (minutesAgo: number) =>
+    new Date(NOW.getTime() - minutesAgo * 60_000).toISOString();
+
+  it("matches the reference's project labels", () => {
+    expect(relativeAge(at(0), NOW)).toBe("just now");
+    expect(relativeAge(at(4), NOW)).toBe("4m ago");
+    expect(relativeAge(at(14), NOW)).toBe("14m ago");
+    expect(relativeAge(at(101), NOW)).toBe("1h, 41m ago");
+    expect(relativeAge(at(120), NOW)).toBe("2h ago");
+    expect(relativeAge(at(60 * 24 * 3), NOW)).toBe("3d ago");
+  });
+
+  it("falls back to a date for older work and blanks for missing dates", () => {
+    const old = new Date(2026, 8, 24, 10, 0, 0).toISOString();
+    expect(relativeAge(old, NOW)).toBe(
+      new Date(old).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+    );
+    expect(relativeAge(null, NOW)).toBe("");
+    expect(relativeAge("not a date", NOW)).toBe("");
   });
 });
