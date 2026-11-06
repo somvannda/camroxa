@@ -164,6 +164,33 @@ describe("StudioProjectMenu", () => {
     expect(api.listStudioProjectVersions).toHaveBeenCalledWith("p1");
   });
 
+  it("renders version history as a dated side panel", async () => {
+    const user = userEvent.setup();
+    api.listStudioProjectVersions.mockResolvedValue({
+      items: [
+        {
+          id: "v1",
+          label: null,
+          title: "Demo",
+          project_id: "p1",
+          bpm: 120,
+          time_signature: "4/4",
+          created_at: "2026-11-05T10:19:16Z",
+        },
+      ],
+      total: 1,
+    });
+    renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Version History" }));
+
+    expect(await screen.findByText("History")).toBeTruthy();
+    expect(screen.getByText("Projects are saved automatically.")).toBeTruthy();
+    expect(screen.getByText(new Date("2026-11-05T10:19:16Z").toLocaleDateString())).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Close version history" })).toBeTruthy();
+  });
+
   it("explains when there are no versions", async () => {
     const user = userEvent.setup();
     api.listStudioProjectVersions.mockResolvedValue({ items: [], total: 0 });

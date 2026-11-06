@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 
 import { Icon } from "@/components/Icon";
 import {
@@ -268,6 +268,20 @@ export function StudioProjectMenu({
     }
   }
 
+  /** Version list grouped under a date heading, like the captured History panel. */
+  const groupedVersions = useMemo(() => {
+    const map = new Map<string, StudioProjectVersion[]>();
+    for (const version of versions ?? []) {
+      const date = version.created_at ? new Date(version.created_at) : null;
+      const day =
+        date && !Number.isNaN(date.getTime()) ? date.toLocaleDateString() : "Unknown date";
+      const list = map.get(day);
+      if (list) list.push(version);
+      else map.set(day, [version]);
+    }
+    return [...map.entries()];
+  }, [versions]);
+
   return (
     <div className="se-project" ref={wrapperRef}>
       <button
@@ -336,7 +350,68 @@ export function StudioProjectMenu({
         </div>
       ) : null}
 
-      {dialog ? (
+      {dialog === "versions" ? (
+        <aside
+          className="se-history"
+          role="dialog"
+          aria-modal="false"
+          aria-label="Version history"
+        >
+          <header className="se-history-head">
+            <strong>History</strong>
+            <button
+              type="button"
+              className="se-icon"
+              aria-label="Close version history"
+              onClick={() => setDialog(null)}
+            >
+              <Icon name="fa-xmark" />
+            </button>
+          </header>
+          <p className="se-history-note">Projects are saved automatically.</p>
+          {versions === null ? (
+            <p className="se-dialog-note">Loading versions…</p>
+          ) : versions.length === 0 ? (
+            <p className="se-dialog-note">
+              No versions yet. Versions are captured automatically as you edit.
+            </p>
+          ) : (
+            <div className="se-history-list">
+              {groupedVersions.map(([day, items]) => (
+                <section key={day}>
+                  <h3 className="se-history-day">{day}</h3>
+                  <ul>
+                    {items.map((version) => {
+                      const at = version.created_at ? new Date(version.created_at) : null;
+                      const time =
+                        at && !Number.isNaN(at.getTime())
+                          ? at.toLocaleTimeString()
+                          : version.label || version.title || "Version";
+                      return (
+                        <li key={version.id} className="se-history-row">
+                          <span>{version.label || time}</span>
+                          <button
+                            type="button"
+                            className="se-pill"
+                            onClick={() => restore(version.id)}
+                            disabled={busy}
+                            aria-label={`Restore ${version.label || version.title || "version"}`}
+                          >
+                            Restore
+                          </button>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </section>
+              ))}
+            </div>
+          )}
+          <p className="se-history-note">
+            Restoring replaces the arrangement and reloads the editor.
+          </p>
+        </aside>
+      ) : dialog ? (
         <div
           className="se-dialog-backdrop"
           role="dialog"
@@ -346,13 +421,11 @@ export function StudioProjectMenu({
               ? "Open project"
               : dialog === "rename"
                 ? "Rename project"
-                : dialog === "versions"
-                  ? "Version history"
-                  : dialog === "share"
-                    ? "Share project"
-                    : dialog === "name-to-share"
-                      ? "Name project before sharing"
-                      : "Studio settings"
+                : dialog === "share"
+                  ? "Share project"
+                  : dialog === "name-to-share"
+                    ? "Name project before sharing"
+                    : "Studio settings"
           }
         >
           <div className="se-dialog">
@@ -394,42 +467,6 @@ export function StudioProjectMenu({
                   onChange={(event) => setRenameValue(event.target.value)}
                   aria-label="Project title"
                 />
-              </>
-            ) : dialog === "versions" ? (
-              <>
-                <h2>Version history</h2>
-                <p className="se-dialog-note">
-                  Projects are saved automatically; these snapshots are captured as you edit.
-                </p>
-                {versions === null ? (
-                  <p className="se-dialog-note">Loading versions…</p>
-                ) : versions.length === 0 ? (
-                  <p className="se-dialog-note">
-                    No versions yet. Versions are captured automatically as you edit.
-                  </p>
-                ) : (
-                  <ul className="se-dialog-list">
-                    {versions.map((version) => (
-                      <li key={version.id} className="se-dialog-row">
-                        <span className="se-dialog-title">
-                          {version.label || version.title || "Version"}
-                        </span>
-                        <button
-                          type="button"
-                          className="se-pill"
-                          onClick={() => restore(version.id)}
-                          disabled={busy}
-                          aria-label={`Restore ${version.label || version.title || "version"}`}
-                        >
-                          Restore
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {versions !== null && versions.length > 0 ? (
-                  <p className="se-dialog-note">Restoring replaces the arrangement and reloads the editor.</p>
-                ) : null}
               </>
             ) : dialog === "name-to-share" ? (
               <>
@@ -545,7 +582,7 @@ export function StudioProjectMenu({
                   </button>
                 </>
               ) : null}
-              {dialog === "open" || dialog === "versions" || dialog === "settings" ? (
+              {dialog === "open" || dialog === "settings" ? (
                 <button type="button" className="se-pill" onClick={() => setDialog(null)} disabled={busy}>
                   Close
                 </button>
