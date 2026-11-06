@@ -7,6 +7,22 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.19] - 2026-11-06
+
+### Added
+
+- **Resumable uploads**: an interrupted transfer (crash, closed app, dropped connection) continues at the
+  first missing 16 MB part instead of restarting the whole file. Part ETags are remembered per file version
+  for 24 hours.
+- **Storage cleanup**: the hosted original is deleted 7 days after a publish, once the signed media URL the
+  provider used has expired (server side).
+
+### Fixed
+
+- **Auto-publish honours the batch's choice** on automated runs. Two bugs made it fall back to live app
+  settings: the coordinator read the settings toggle directly, and the merge context used the database column
+  name while the decision read the settings key. Progress rows now carry the stored flag end to end.
+
 ## [1.5.18] - 2026-11-06
 
 ### Changed
