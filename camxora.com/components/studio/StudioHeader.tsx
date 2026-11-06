@@ -55,6 +55,7 @@ export type StudioHeaderProps = {
   onToggleLibrary: () => void;
 
   onBackToStart: () => void;
+  onStop: () => void;
   onTogglePlay: () => void;
   onToggleLoop: () => void;
   onToggleMetronome: () => void;
@@ -97,6 +98,7 @@ export function StudioHeader(props: StudioHeaderProps) {
     libraryOpen,
     onToggleLibrary,
     onBackToStart,
+    onStop,
     onTogglePlay,
     onToggleLoop,
     onToggleMetronome,
@@ -146,7 +148,7 @@ export function StudioHeader(props: StudioHeaderProps) {
         >
           <Icon name="fa-repeat" />
         </button>
-        <button type="button" className="se-icon" onClick={onBackToStart} aria-label="Stop">
+        <button type="button" className="se-icon" onClick={onStop} aria-label="Stop">
           <Icon name="fa-stop" />
         </button>
         <button

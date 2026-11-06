@@ -1895,6 +1895,12 @@ export function StudioEditorShell() {
         libraryOpen={libraryOpen}
         onToggleLibrary={() => setLibraryOpen((open) => !open)}
         onBackToStart={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}
+        onStop={() => {
+          // Stop halts the transport where it is; Back to start is the rewind.
+          setPlaying(false);
+          void stopAudio();
+          stopClicks();
+        }}
         onTogglePlay={togglePlayback}
         onToggleLoop={toggleLoop}
         onToggleMetronome={() =>

@@ -52,6 +52,7 @@ function headerProps() {
     libraryOpen: false,
     onToggleLibrary: noop,
     onBackToStart: noop,
+    onStop: noop,
     onTogglePlay: noop,
     onToggleLoop: noop,
     onToggleMetronome: noop,
