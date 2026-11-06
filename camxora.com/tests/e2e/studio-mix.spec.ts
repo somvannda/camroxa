@@ -131,6 +131,7 @@ test("the mix export follows solo, like playback", async ({ page }) => {
 
   await page.reload();
   await expect(page.locator(".se-clip")).toHaveCount(2, { timeout: 30_000 });
+  await expect(page.getByText("Saved", { exact: true })).toBeVisible({ timeout: 30_000 });
 
   const exportMix = async () => {
     await page.getByLabel("Export menu").click();

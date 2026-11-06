@@ -787,6 +787,11 @@ export function StudioEditorShell() {
     commitTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
   }
 
+  /** Live slider movement: update state without a history entry; commit on release. */
+  function previewTrack(trackId: string, patch: Partial<StudioTrack>) {
+    setLocalTracks(tracks.map((track) => (track.id === trackId ? { ...track, ...patch } : track)));
+  }
+
   function duplicateTrack(trackId: string) {
     const source = tracks.find((track) => track.id === trackId);
     if (!source) return;
@@ -918,6 +923,7 @@ export function StudioEditorShell() {
         muted: false,
         solo: false,
         hidden: false,
+      collapsed: false,
         groupId: null,
         chain: [],
         clipIds: [addedLanes[index].id],
@@ -961,6 +967,7 @@ export function StudioEditorShell() {
       muted: false,
       solo: false,
       hidden: false,
+      collapsed: false,
       groupId: null,
       chain: [],
       clipIds: [],
@@ -1918,6 +1925,7 @@ export function StudioEditorShell() {
           onToggleMenu={setMenuTrackId}
           onToggleFlag={toggleTrackFlag}
           onUpdateTrack={updateTrack}
+          onPreviewTrack={previewTrack}
           onRenameStart={startRename}
           onRenameChange={setRenameValue}
           onRenameCommit={commitRename}

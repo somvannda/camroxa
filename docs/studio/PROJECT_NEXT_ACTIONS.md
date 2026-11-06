@@ -35,7 +35,7 @@ reference, which has none of them.
 
 | Done | Remaining |
 |---|---|
-| G6 marquee + multi-drag + C/V/D · G7 snap · G8 drag threshold · G9 delete + focus · G16 clip provenance · G17 audition speed · G18 first-run onboarding · G19 visible-window culling · G20 touch targets · G23 project menu · G24 ghost drag + settings · G25 Learn + hover help · G26 add-track menu + keys · G27 metronome click · G28 automatic versions · G29 serialized writes · G30 offline replay · G31 home menu stacking · G32 share fork target · G33 loop playback + seek · G34 fit to content · G35 plugin chains in the engine · G36 live chain edits · G37 live mute/solo · G38 no double graph on first play · G39 solo-aware bounce · G40 master fader + main mute | **G12** library: stems tab (needs a finished stems job, B-005) · **G21** track arm (needs recording) |
+| G6 marquee + multi-drag + C/V/D · G7 snap · G8 drag threshold · G9 delete + focus · G16 clip provenance · G17 audition speed · G18 first-run onboarding · G19 visible-window culling · G20 touch targets · G23 project menu · G24 ghost drag + settings · G25 Learn + hover help · G26 add-track menu + keys · G27 metronome click · G28 automatic versions · G29 serialized writes · G30 offline replay · G31 home menu stacking · G32 share fork target · G33 loop playback + seek · G34 fit to content · G35 plugin chains in the engine · G36 live chain edits · G37 live mute/solo · G38 no double graph on first play · G39 solo-aware bounce · G40 master fader + main mute · G41 track sliders + collapse | **G12** library: stems tab (needs a finished stems job, B-005) · **G21** track arm (needs recording) |
 
 ## Phase 4 — W4 advanced audio, then W5 tests, then W6 verification
 

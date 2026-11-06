@@ -30,6 +30,8 @@ export type StudioTrackPanelProps = {
   onToggleMenu: (trackId: string | null) => void;
   onToggleFlag: (trackId: string, flag: "muted" | "solo") => void;
   onUpdateTrack: (trackId: string, patch: Partial<StudioTrack>) => void;
+  /** Live slider movement without a history entry; commit on release. */
+  onPreviewTrack: (trackId: string, patch: Partial<StudioTrack>) => void;
   onRenameStart: (track: StudioTrack) => void;
   onRenameChange: (value: string) => void;
   onRenameCommit: () => void;
@@ -55,6 +57,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onToggleMenu,
     onToggleFlag,
     onUpdateTrack,
+    onPreviewTrack,
     onRenameStart,
     onRenameChange,
     onRenameCommit,
@@ -127,8 +130,15 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                       />
                     ))}
                   </div>
-                  <button type="button" role="menuitem" onClick={() => onToggleMenu(null)}>
-                    Collapse controls
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      onUpdateTrack(track.id, { collapsed: !track.collapsed });
+                      onToggleMenu(null);
+                    }}
+                  >
+                    {track.collapsed ? "Expand controls" : "Collapse controls"}
                   </button>
                   <button type="button" role="menuitem" onClick={() => onDuplicate(track.id)}>
                     Duplicate
@@ -211,18 +221,41 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                 </span>
               </div>
 
-              <div className="se-track-sliders">
-                <div className="se-track-level" aria-hidden="true">
-                  <span
-                    className="se-track-level-fill"
-                    style={{ width: `${track.volume}%`, background: track.color }}
+              {track.collapsed ? null : (
+                <div className="se-track-sliders">
+                  <input
+                    type="range"
+                    className="se-track-slider"
+                    min={0}
+                    max={100}
+                    step={1}
+                    value={track.volume}
+                    aria-label={`Volume ${track.name}`}
+                    data-help="track-volume"
+                    onChange={(event) =>
+                      onPreviewTrack(track.id, { volume: Number(event.target.value) })
+                    }
+                    onPointerUp={() => onUpdateTrack(track.id, { volume: track.volume })}
+                    onKeyUp={() => onUpdateTrack(track.id, { volume: track.volume })}
+                    onBlur={() => onUpdateTrack(track.id, { volume: track.volume })}
                   />
-                  <span className="se-track-level-handle" style={{ left: `${track.volume}%` }} />
+                  <input
+                    type="range"
+                    className="se-track-slider"
+                    min={-100}
+                    max={100}
+                    step={1}
+                    value={track.pan}
+                    aria-label={`Pan ${track.name}`}
+                    onChange={(event) =>
+                      onPreviewTrack(track.id, { pan: Number(event.target.value) })
+                    }
+                    onPointerUp={() => onUpdateTrack(track.id, { pan: track.pan })}
+                    onKeyUp={() => onUpdateTrack(track.id, { pan: track.pan })}
+                    onBlur={() => onUpdateTrack(track.id, { pan: track.pan })}
+                  />
                 </div>
-                <div className="se-track-level pan" aria-hidden="true">
-                  <span className="se-track-level-handle" style={{ left: `${50 + track.pan / 2}%` }} />
-                </div>
-              </div>
+              )}
             </div>
           );
         })}

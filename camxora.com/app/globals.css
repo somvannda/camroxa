@@ -4517,6 +4517,7 @@ html{color-scheme:dark}
 .se-track{position:relative;display:flex;flex-direction:column;justify-content:center;gap:8px;padding:10px 10px 10px 14px;border-bottom:1px solid rgba(255,255,255,.04);cursor:default}
 .se-track-top{display:flex;align-items:center;gap:8px;min-width:0}
 .se-track-sliders{display:grid;grid-template-columns:minmax(0,1fr) 58px;gap:6px}
+.se-track-slider{width:100%;height:22px;accent-color:hsl(var(--accent))}
 .se-track-level{position:relative;height:22px;border-radius:5px;background:rgba(255,255,255,.05);overflow:hidden}
 .se-track-level:focus-within{outline:1px solid #52d17c;outline-offset:1px}
 .se-track-level.pan{background:rgba(255,255,255,.03)}

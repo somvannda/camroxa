@@ -29,6 +29,8 @@ export type StudioTrack = {
   solo: boolean;
   /** Hidden tracks are excluded from the arrangement but keep state (`SHIFT H`). */
   hidden: boolean;
+  /** Per-track controls collapsed in the panel (reference T-02). */
+  collapsed: boolean;
   /** Visual group A–D from the legacy model. */
   groupId: string | null;
   /** Ordered plugin chain; signal order. */
@@ -81,6 +83,7 @@ export function migrateLanesToTracks(lanes: LegacyClipLike[]): StudioTrack[] {
     muted: Boolean(clip.muted),
     solo: Boolean(clip.solo),
     hidden: false,
+    collapsed: false,
     groupId: clip.groupId ?? null,
     chain: [],
     clipIds: [clip.id],
@@ -110,6 +113,7 @@ export function sanitizeTracks(input: unknown): StudioTrack[] {
       muted: Boolean(candidate.muted),
       solo: Boolean(candidate.solo),
       hidden: Boolean(candidate.hidden),
+      collapsed: Boolean(candidate.collapsed),
       groupId: typeof candidate.groupId === "string" ? candidate.groupId : null,
       chain: [], // chains are sanitised separately, by track id
       clipIds,

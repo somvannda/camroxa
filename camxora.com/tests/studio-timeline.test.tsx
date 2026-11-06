@@ -17,6 +17,7 @@ function track(overrides: Partial<StudioTrack> = {}): StudioTrack {
     muted: false,
     solo: false,
     hidden: false,
+      collapsed: false,
     groupId: null,
     chain: [],
     clipIds: ["c1"],

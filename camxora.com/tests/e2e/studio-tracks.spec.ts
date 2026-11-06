@@ -70,3 +70,44 @@ test("a track can be duplicated, renamed, hidden and deleted", async ({ page }) 
   expect(final.lanes).toBe(1);
   expect(final.names).toEqual(["Track 1"]);
 });
+
+test("track level and pan sliders persist, and collapse hides them", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, { title: `Sliders ${tag}` });
+
+  const track = () =>
+    page.evaluate(async (id) => {
+      const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+      const project = (await response.json()) as {
+        data?: { tracks?: Array<{ volume?: number; pan?: number; collapsed?: boolean }> };
+      };
+      const first = project.data?.tracks?.[0];
+      return { volume: first?.volume, pan: first?.pan, collapsed: first?.collapsed };
+    }, projectId);
+
+  const volume = page.getByRole("slider", { name: "Volume Track 1" });
+  const pan = page.getByRole("slider", { name: "Pan Track 1" });
+  await expect(volume).toBeVisible();
+  await expect(volume).toHaveValue("80");
+
+  await volume.fill("50");
+  await volume.press("Tab");
+  await expect.poll(async () => (await track()).volume, { timeout: 15_000 }).toBe(50);
+
+  await pan.fill("-40");
+  await pan.press("Tab");
+  await expect.poll(async () => (await track()).pan, { timeout: 15_000 }).toBe(-40);
+
+  // Collapse controls hides the sliders and persists the state.
+  await page.getByRole("button", { name: "Options for Track 1", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Collapse controls" }).click();
+  await expect(volume).toHaveCount(0);
+  await expect.poll(async () => (await track()).collapsed, { timeout: 15_000 }).toBe(true);
+
+  await page.getByRole("button", { name: "Options for Track 1", exact: true }).click();
+  await page.getByRole("menuitem", { name: "Expand controls" }).click();
+  await expect(page.getByRole("slider", { name: "Volume Track 1" })).toBeVisible();
+  await expect.poll(async () => (await track()).collapsed, { timeout: 15_000 }).toBe(false);
+});
