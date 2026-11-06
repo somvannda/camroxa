@@ -93,6 +93,8 @@ export function StudioEditorShell() {
     run: (expectedUpdatedAt: string | null) => Promise<StudioProject>;
     failure: string;
   } | null>(null);
+  /** Document data that never reached the server (offline / failed write), for replay. */
+  const unsavedDataRef = useRef<Record<string, unknown> | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
   /** A draft recovered from storage after a failed or offline write (W2.3). */
   const [draft, setDraft] = useState<StudioDraft | null>(null);
@@ -456,7 +458,7 @@ export function StudioEditorShell() {
   function restoreDraft() {
     if (!projectId || !draft) return;
     const data = (draft.data || {}) as StudioProject["data"];
-    setProject((current) => (current ? { ...current, data } : current));
+    setProjectData(data);
     setLocalTracks(null);
     setDraft(null);
     persist(
@@ -477,6 +479,14 @@ export function StudioEditorShell() {
    * than a per-feature afterthought: push the outgoing document, apply the new one
    * optimistically, then persist through the W2.1/W2.2 path.
    */
+  /** Update the document in state *and* in the ref event handlers read. */
+  function setProjectData(next: StudioProject["data"]) {
+    setProject((prev) => (prev ? { ...prev, data: next } : prev));
+    if (projectRef.current) {
+      projectRef.current = { ...projectRef.current, data: next };
+    }
+  }
+
   function writeProjectData(
     next: Record<string, unknown>,
     label: string,
@@ -488,7 +498,7 @@ export function StudioEditorShell() {
     if (history.undo.length > HISTORY_LIMIT) history.undo.shift();
     history.redo = [];
     syncHistory();
-    setProject((prev) => (prev ? { ...prev, data: next } : prev));
+    setProjectData(next);
     if (nextTracks !== undefined) setLocalTracks(nextTracks);
     if (!projectId) return;
     persist(
@@ -504,7 +514,7 @@ export function StudioEditorShell() {
     const opposite = to === "undo" ? history.redo : history.undo;
     opposite.push({ data: current, label: entry.label });
     const data = entry.data as Record<string, unknown>;
-    setProject((prev) => (prev ? { ...prev, data } : prev));
+    setProjectData(data);
     setLocalTracks(null);
     syncHistory();
     persist(
@@ -541,6 +551,7 @@ export function StudioEditorShell() {
     forceRetryRef.current = () => persist(() => run(null), failure);
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
       setSaveStatus("offline");
+      unsavedDataRef.current = (projectRef.current?.data || {}) as Record<string, unknown>;
       if (projectId) saveDraft(projectId, projectRef.current?.data ?? null);
       return;
     }
@@ -580,6 +591,7 @@ export function StudioEditorShell() {
       }
       if (projectId) {
         clearDraft(projectId);
+        unsavedDataRef.current = null;
         // Versions are automatic (§25): the server throttles and bounds them, so this
         // never blocks the save and a failure here must not surface as a save failure.
         void autoSnapshotStudioProject(projectId).catch(() => undefined);
@@ -594,9 +606,11 @@ export function StudioEditorShell() {
         setSaveStatus("error");
         return;
       }
-      // Keep the edit burst so a reload does not lose it (W2.3).
+      // Keep the edit burst so a reload does not lose it (W2.3) and so a reconnect can
+      // replay it (the online handler below).
+      unsavedDataRef.current = (projectRef.current?.data || {}) as Record<string, unknown>;
       if (projectId) saveDraft(projectId, projectRef.current?.data ?? null);
-      setSaveStatus("error");
+      setSaveStatus(navigator.onLine === false ? "offline" : "error");
       setError(failure);
     }
   }
@@ -623,7 +637,18 @@ export function StudioEditorShell() {
   }
 
   useEffect(() => {
-    const goOnline = () => setSaveStatus((current) => (current === "offline" ? "saved" : current));
+    const goOnline = () => {
+      // Do not claim "Saved" for a change the server never received: replay it first.
+      if (unsavedDataRef.current && projectId) {
+        const data = unsavedDataRef.current;
+        persist(
+          (expected) => updateStudioProject(projectId, { data, expectedUpdatedAt: expected }),
+          "Could not save your offline changes."
+        );
+        return;
+      }
+      setSaveStatus((current) => (current === "offline" ? "saved" : current));
+    };
     const goOffline = () => setSaveStatus("offline");
     window.addEventListener("online", goOnline);
     window.addEventListener("offline", goOffline);
@@ -634,7 +659,8 @@ export function StudioEditorShell() {
       window.removeEventListener("online", goOnline);
       window.removeEventListener("offline", goOffline);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [projectId]);
 
   /**
    * Unsaved-changes guard (roadmap W2.4): leaving with a write in flight, a failed
