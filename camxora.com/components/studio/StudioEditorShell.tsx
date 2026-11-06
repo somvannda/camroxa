@@ -87,10 +87,18 @@ export function StudioEditorShell() {
   const retryRef = useRef<(() => void) | null>(null);
   /** Retry that ignores the version check — used by "overwrite" (W2.2). */
   const forceRetryRef = useRef<(() => void) | null>(null);
+  /** Serialized writes: at most one in flight, with the newest pending write queued. */
+  const writeInFlightRef = useRef(false);
+  const queuedWriteRef = useRef<{
+    run: (expectedUpdatedAt: string | null) => Promise<StudioProject>;
+    failure: string;
+  } | null>(null);
   const [conflict, setConflict] = useState<string | null>(null);
   /** A draft recovered from storage after a failed or offline write (W2.3). */
   const [draft, setDraft] = useState<StudioDraft | null>(null);
   const projectRef = useRef<StudioProject | null>(null);
+  /** Server version of the document, kept in sync without waiting for a render. */
+  const projectVersionRef = useRef<string | null>(null);
   /** Library panel data (G12): songs, workspaces, other projects and uploads. */
   const [libraryTab, setLibraryTab] = useState<StudioLibraryTab>("songs");
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
@@ -307,6 +315,8 @@ export function StudioEditorShell() {
 
   /** Keep the freshest project for draft writes made from event handlers. */
   projectRef.current = project;
+  /** Latest server version, updated synchronously so a queued write never goes stale. */
+  projectVersionRef.current = project?.updated_at ?? projectVersionRef.current;
 
   /** Load the library panel's lists the first time it opens (G12). */
   useEffect(() => {
@@ -516,12 +526,17 @@ export function StudioEditorShell() {
   /**
    * Every write goes through here so the header can tell the truth about saving
    * (roadmap W2.1) and so a version mismatch can be resolved (W2.2).
+   *
+   * Writes are serialized. Two edits in quick succession used to send the same
+   * `expected_updated_at` twice, so the second was rejected as a conflict the user never
+   * caused — trivially reproducible on a slow connection. A write that arrives while
+   * another is in flight is coalesced: only the newest runs, with the version the first
+   * response produced.
    */
   function persist(
     run: (expectedUpdatedAt: string | null) => Promise<StudioProject>,
     failure: string
   ) {
-    const expected = project?.updated_at ?? null;
     retryRef.current = () => persist(run, failure);
     forceRetryRef.current = () => persist(() => run(null), failure);
     if (typeof navigator !== "undefined" && navigator.onLine === false) {
@@ -529,34 +544,61 @@ export function StudioEditorShell() {
       if (projectId) saveDraft(projectId, projectRef.current?.data ?? null);
       return;
     }
+    if (writeInFlightRef.current) {
+      queuedWriteRef.current = { run, failure };
+      setSaveStatus("saving");
+      return;
+    }
+    void performWrite(run, failure);
+  }
+
+  async function performWrite(
+    run: (expectedUpdatedAt: string | null) => Promise<StudioProject>,
+    failure: string
+  ) {
+    writeInFlightRef.current = true;
+    // Read the version at send time, not at schedule time: a coalesced write must build
+    // on the version the previous response just produced.
+    const expected = projectVersionRef.current;
     setSaveStatus("saving");
-    void run(expected)
-      .then((saved) => {
-        // The response carries the new version; adopt it so the next write is based
-        // on what the server actually stored.
-        setProject((current) =>
-          current ? { ...current, updated_at: saved.updated_at ?? current.updated_at } : current
-        );
-        setSaveStatus("saved");
-        setError("");
-        if (projectId) {
-          clearDraft(projectId);
-          // Versions are automatic (§25): the server throttles and bounds them, so this
-          // never blocks the save and a failure here must not surface as a save failure.
-          void autoSnapshotStudioProject(projectId).catch(() => undefined);
-        }
-      })
-      .catch((cause: unknown) => {
-        if (cause instanceof StudioConflictError) {
-          setConflict(cause.message);
-          setSaveStatus("error");
-          return;
-        }
-        // Keep the edit burst so a reload does not lose it (W2.3).
-        if (projectId) saveDraft(projectId, projectRef.current?.data ?? null);
+    try {
+      const saved = await run(expected);
+      // The response carries the new version; adopt it so the next write is based
+      // on what the server actually stored.
+      projectVersionRef.current = saved.updated_at ?? projectVersionRef.current;
+      setProject((current) =>
+        current ? { ...current, updated_at: saved.updated_at ?? current.updated_at } : current
+      );
+      setSaveStatus("saved");
+      setError("");
+      writeInFlightRef.current = false;
+      const queued = queuedWriteRef.current;
+      queuedWriteRef.current = null;
+      if (queued) {
+        void performWrite(queued.run, queued.failure);
+        return;
+      }
+      if (projectId) {
+        clearDraft(projectId);
+        // Versions are automatic (§25): the server throttles and bounds them, so this
+        // never blocks the save and a failure here must not surface as a save failure.
+        void autoSnapshotStudioProject(projectId).catch(() => undefined);
+      }
+    } catch (cause) {
+      writeInFlightRef.current = false;
+      // A failure invalidates whatever was queued: it was built on state the server
+      // has not accepted, so replaying it would only produce another error.
+      queuedWriteRef.current = null;
+      if (cause instanceof StudioConflictError) {
+        setConflict(cause.message);
         setSaveStatus("error");
-        setError(failure);
-      });
+        return;
+      }
+      // Keep the edit burst so a reload does not lose it (W2.3).
+      if (projectId) saveDraft(projectId, projectRef.current?.data ?? null);
+      setSaveStatus("error");
+      setError(failure);
+    }
   }
 
   /** Reload the server's version, discarding the local one (W2.2). */

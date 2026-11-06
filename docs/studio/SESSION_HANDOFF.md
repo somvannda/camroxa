@@ -56,7 +56,7 @@ Helpers in `scripts/`:
 | unit (pure helpers) | `npm test` | snap, meter, draft, seed, WAV encode |
 | component | `npm test` | header, footer, library, provenance strip, track panel |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | smoke (move/undo/export), persistence across reload, library tabs + filter + workspaces, project menu (rename, share, settings, automatic versions + throttle), learn/help + tooltip persistence, keyboard + add-track menu, metronome clicks, metric parity, axe ×3 (home, editor + Learn popover, library drawer) |
+| e2e | `npm run test:e2e` | smoke (move/undo/export), persistence across reload, library tabs + filter + workspaces, project menu (rename, share, settings, automatic versions + throttle), learn/help + tooltip persistence, keyboard + add-track menu, metronome clicks, write serialization under a slow PATCH, metric parity, axe ×3 (home, editor + Learn popover, library drawer) |
 
 CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` on
 any PR touching `camxora.com`. The e2e specs are not in CI yet — they need the app plus
@@ -85,6 +85,7 @@ a fresh page.
 | `beforeunload` guard blocks navigation while a save is pending | accept the dialog via the browser tool, or open a new tab |
 | Synthetic pointer events need `pointerdown` **on the element** | a press with no movement is a click; a move past 3 px is a drag |
 | Stale closures in pointer handlers | read live data through refs (`tracksRef`, `clipsRef`) |
+| Two edits in quick succession | writes are serialized; do not "fix" a 409 by loosening the version check — the queue already coalesces (G29) |
 | PowerShell mangles `—`/`§` and nested quotes | write docs with the write/edit tools; put JS in a file |
 | `next dev` re-adds `camxora.com/AGENTS.md` | commit it, or it stays dirty |
 

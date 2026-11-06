@@ -35,7 +35,7 @@ reference, which has none of them.
 
 | Done | Remaining |
 |---|---|
-| G6 marquee + multi-drag + C/V/D · G7 snap · G8 drag threshold · G9 delete + focus · G16 clip provenance · G17 audition speed · G18 first-run onboarding · G19 visible-window culling · G20 touch targets · G23 project menu · G24 ghost drag + settings · G25 Learn + hover help · G26 add-track menu + keys · G27 metronome click · G28 automatic versions | **G12** library: stems tab (needs a finished stems job, B-005) · **G21** track arm (needs recording) |
+| G6 marquee + multi-drag + C/V/D · G7 snap · G8 drag threshold · G9 delete + focus · G16 clip provenance · G17 audition speed · G18 first-run onboarding · G19 visible-window culling · G20 touch targets · G23 project menu · G24 ghost drag + settings · G25 Learn + hover help · G26 add-track menu + keys · G27 metronome click · G28 automatic versions · G29 serialized writes | **G12** library: stems tab (needs a finished stems job, B-005) · **G21** track arm (needs recording) |
 
 ## Phase 4 — W4 advanced audio, then W5 tests, then W6 verification
 

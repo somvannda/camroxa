@@ -43,7 +43,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Workspaces (with server-side song counts and a filter), Projects and Uploads tabs wired; the stems tab waits on a finished stems job (B-005) |
-| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 138 tests (pure modules, components, API contract); Playwright: 15 specs (smoke, persistence, library, project menu + share + settings + versions, learn/help, keyboard + add-track, metronome, metric parity, axe ×3). e2e needs local services, so it is not in CI yet |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 138 tests (pure modules, components, API contract); Playwright: 16 specs (smoke, persistence, library, project menu + share + settings + versions, learn/help, keyboard + add-track, metronome, write serialization, metric parity, axe ×3). e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
@@ -68,6 +68,8 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 
 | G28 | Versions were manual snapshots | §25 captures automatic versions ("Projects are saved automatically") clustering seconds apart; ours only appeared when someone pressed save in code | W3 | **done** - every successful save asks for a snapshot; the server throttles to one per 20 s and keeps the newest 50 (D-015) |
 
+| G29 | Two quick edits could fake a conflict | Both PATCHes carried the same `expected_updated_at`, so on any slow connection the second returned 409 and the user saw "changed since you loaded it" for their own edits | W2.2 | **done** - one write in flight, newest pending write coalesced and sent with the version the previous response produced (e2e with a 600 ms PATCH delay) |
+
 ## 3. Deliberate non-parity
 
 | Item | Why |
@@ -84,6 +86,8 @@ These are wins to protect, not to remove — all of them exist in the web Studio
 - **Four save states** (saved / saving / failed / offline) with retry, plus a 409
   reload-or-overwrite choice and an offline draft. The reference overwrites silently
   (§93, §96).
+- **Serialized writes**: one save in flight, newest pending edit coalesced, so a slow
+  connection cannot make the editor report a conflict the user did not cause.
 - **Export normalisation**: mix and range renders can be gain-matched to a −1 dBFS
   sample peak (D-010).
 - **Project JSON export** that round-trips the arrangement.
