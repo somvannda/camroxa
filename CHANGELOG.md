@@ -7,6 +7,27 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.0] - 2026-11-06
+
+### Added
+
+- **YouTube publishing runs on CAMXORA's own Google client.** Settings → Profiles → Connect /
+  Reconnect / Refresh / Disconnect use the native OAuth flow, the publication Playlist dropdown
+  reads the channel's real playlists, and uploads go **straight from the desktop to YouTube** with a
+  one-hour brokered token — no storage copy and no third-party publisher.
+- **Uploads honour the Publication panel**: title and description templates, tags, category,
+  visibility, scheduled time, AI-use disclosure, the run folder's 16:9 thumbnail, and the playlist.
+- **Resumable transfers** with live per-row percentage, cancel, and automatic resume from the byte
+  offset YouTube reports.
+- **Accounts can supply their own Google OAuth client** (Settings → YouTube) for their own quota;
+  credentials are validated against Google and stored encrypted.
+
+### Changed
+
+- The legacy provider path remains only as a fallback for profiles that are not connected natively.
+- `scripts/youtube_direct_upload.py` is the standalone CLI equivalent (`--dry-run` prints the
+  resolved publication settings without uploading).
+
 ## [1.5.23] - 2026-11-06
 
 ### Fixed
