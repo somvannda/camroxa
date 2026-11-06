@@ -168,6 +168,136 @@ async def _resolve_youtube_callback_url(pool: Any) -> str:
     return build_youtube_oauth_callback_url(api_base)
 
 
+# ---------------------------------------------------------------------------
+# Bring your own Google OAuth client
+# ---------------------------------------------------------------------------
+
+
+class UserOAuthAppResponse(BaseModel):
+    configured: bool = False
+    client_id: str | None = None
+    name: str | None = None
+
+
+class SaveUserOAuthAppRequest(BaseModel):
+    client_id: str
+    client_secret: str
+    name: str = "My Google app"
+
+
+async def _oauth_credentials_work(client_id: str, client_secret: str, callback_url: str) -> tuple[bool, str]:
+    """Ask Google whether this client id/secret pair exists.
+
+    A deliberately invalid authorization code produces `invalid_client` for
+    bad credentials and `invalid_grant` for good ones, so this validates the
+    pair without storing anything.
+    """
+    import httpx
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            response = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "client_id": client_id,
+                    "client_secret": client_secret,
+                    "grant_type": "authorization_code",
+                    "code": "camxora-validation-code",
+                    "redirect_uri": callback_url,
+                },
+            )
+    except Exception as exc:  # noqa: BLE001 - reported to the user
+        return False, f"Could not reach Google: {exc}"
+
+    try:
+        body = response.json()
+    except Exception:
+        body = {}
+    error = str(body.get("error") or "").strip()
+    if error == "invalid_client":
+        return False, "Google rejected that client id / secret pair."
+    if error in {"invalid_grant", "invalid_request", "redirect_uri_mismatch"}:
+        return True, ""
+    if response.status_code < 400:
+        return True, ""
+    return False, f"Google rejected the credentials ({error or response.status_code})."
+
+
+@router.get("/oauth-app", response_model=UserOAuthAppResponse)
+async def get_user_youtube_oauth_app(ctx: CurrentUserDep) -> UserOAuthAppResponse:
+    """Whether this account connected with its own Google client."""
+    from platform_api.dependencies import get_youtube_oauth_app_repo
+
+    app = await get_youtube_oauth_app_repo().get_for_user(ctx.user_id)
+    if app is None:
+        return UserOAuthAppResponse()
+    return UserOAuthAppResponse(configured=True, client_id=app.client_id, name=app.name)
+
+
+@router.put("/oauth-app", response_model=UserOAuthAppResponse)
+async def save_user_youtube_oauth_app(
+    request: SaveUserOAuthAppRequest,
+    ctx: CurrentUserDep,
+    pool: Any = Depends(get_db_pool),
+) -> UserOAuthAppResponse:
+    """Save the user's own Google client so connects use their quota.
+
+    Bring-your-own keeps each account on its own YouTube quota (a shared
+    project allows ~6 uploads/day) and avoids the platform app's verification
+    being a single point of failure.
+    """
+    from fastapi import HTTPException
+
+    from platform_api.dependencies import (
+        get_youtube_oauth_app_repo,
+        get_youtube_oauth_encryption,
+    )
+
+    client_id = str(request.client_id or "").strip()
+    client_secret = str(request.client_secret or "").strip()
+    if not client_id.endswith(".apps.googleusercontent.com"):
+        raise HTTPException(
+            status_code=400,
+            detail="That does not look like a Google OAuth client id.",
+        )
+    if len(client_secret) < 10:
+        raise HTTPException(status_code=400, detail="The client secret is too short.")
+
+    encryption = get_youtube_oauth_encryption()
+    if encryption is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Credential storage is unavailable on this server.",
+        )
+
+    callback_url = await _resolve_youtube_callback_url(pool)
+    ok, reason = await _oauth_credentials_work(client_id, client_secret, callback_url)
+    if not ok:
+        raise HTTPException(status_code=400, detail=reason)
+
+    record = await get_youtube_oauth_app_repo().save_for_user(
+        user_id=ctx.user_id,
+        name=str(request.name or "My Google app").strip() or "My Google app",
+        client_id=client_id,
+        encrypted_client_secret=encryption.encrypt(client_secret),
+    )
+    if record is None:
+        raise HTTPException(status_code=500, detail="Could not save the credentials.")
+    logger.info("User %s saved their own YouTube OAuth app", ctx.user_id)
+    return UserOAuthAppResponse(
+        configured=True, client_id=record.client_id, name=record.name
+    )
+
+
+@router.delete("/oauth-app", status_code=200)
+async def delete_user_youtube_oauth_app(ctx: CurrentUserDep) -> dict[str, Any]:
+    """Forget the user's own client and fall back to the platform app."""
+    from platform_api.dependencies import get_youtube_oauth_app_repo
+
+    removed = await get_youtube_oauth_app_repo().delete_for_user(ctx.user_id)
+    return {"removed": bool(removed)}
+
+
 @router.post("/profiles/{profile_id}/connect", response_model=StartYouTubeConnectionResponse)
 async def start_youtube_connection(
     profile_id: UUID,

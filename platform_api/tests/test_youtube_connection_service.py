@@ -65,6 +65,10 @@ class FakeOAuthAppRepo:
     async def get_default(self):
         return self.default
 
+    async def get_for_user(self, _user_id: str):
+        # No bring-your-own app in this test: fall back to the platform app.
+        return None
+
     async def get_by_id(self, oauth_app_id: str):
         if oauth_app_id == self.default.id:
             return self.default

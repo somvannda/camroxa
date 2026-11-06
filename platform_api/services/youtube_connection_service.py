@@ -192,9 +192,13 @@ class YouTubeConnectionService:
         callback_url: str,
     ) -> YouTubeConnectionStartResult:
         await self._ensure_profile_owned(user_id, profile_id)
-        oauth_app = await self._oauth_app_repo.get_default()
+        # A user-supplied Google client (bring your own OAuth) wins over the
+        # platform app, so their own quota and consent screen are used.
+        oauth_app = await self._oauth_app_repo.get_for_user(str(user_id))
         if oauth_app is None:
-            raise ValidationError("No default YouTube OAuth app is configured yet.")
+            oauth_app = await self._oauth_app_repo.get_default()
+        if oauth_app is None:
+            raise ValidationError("No YouTube OAuth app is configured yet.")
 
         await self._connection_repo.mark_profile_sessions_expired(str(user_id), str(profile_id))
 
