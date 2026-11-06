@@ -29,7 +29,7 @@ export function dayLabel(iso: string | null | undefined, now: Date = new Date())
 
 /**
  * Relative age for the level-1 Studio Projects rows (§19.1): the reference labels each
- * project "4m ago" / "1h, 41m ago", not with its tempo.
+ * project "4m ago" / "1h, 41m ago" / "5d, 9h ago", not with its tempo.
  */
 export function relativeAge(iso: string | null | undefined, now: Date = new Date()): string {
   if (!iso) return "";
@@ -44,7 +44,10 @@ export function relativeAge(iso: string | null | undefined, now: Date = new Date
     return rest > 0 ? `${hours}h, ${rest}m ago` : `${hours}h ago`;
   }
   const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
+  if (days < 7) {
+    const rest = hours % 24;
+    return rest > 0 ? `${days}d, ${rest}h ago` : `${days}d ago`;
+  }
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 

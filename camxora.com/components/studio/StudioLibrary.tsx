@@ -52,6 +52,8 @@ export type StudioLibraryProps = {
   onNewSong: () => void;
   /** Import an audio file into the library (§19.2 toolbar upload). */
   onUploadAudio: (file: File) => Promise<void>;
+  /** Create a workspace from the captured level-1 row. */
+  onNewWorkspace: () => Promise<void>;
   onAddSong: (song: WebMusicGeneration) => void;
   onAddUpload: (upload: StudioUpload) => void;
   onOpenProject: (projectId: string) => void;
@@ -120,6 +122,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       onOpenWorkspace,
       onFilter,
       onNewSong,
+      onNewWorkspace,
       onUploadAudio,
       onAddSong,
       onAddUpload,
@@ -129,6 +132,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
     const [allWorkspaces, setAllWorkspaces] = useState(false);
     const [allProjects, setAllProjects] = useState(false);
     const [uploading, setUploading] = useState(false);
+    const [creatingWorkspace, setCreatingWorkspace] = useState(false);
+    const [workspaceError, setWorkspaceError] = useState("");
     const [uploadError, setUploadError] = useState("");
     const fileRef = useRef<HTMLInputElement | null>(null);
 
@@ -261,6 +266,30 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                   </button>
                 ) : null}
               </div>
+              <button
+                type="button"
+                className="se-lib-new"
+                onClick={() => {
+                  setWorkspaceError("");
+                  setCreatingWorkspace(true);
+                  void onNewWorkspace()
+                    .catch((cause) => {
+                      setWorkspaceError(
+                        cause instanceof Error ? cause.message : "Could not create a workspace."
+                      );
+                    })
+                    .finally(() => setCreatingWorkspace(false));
+                }}
+                disabled={creatingWorkspace}
+              >
+                <Icon name="fa-plus" />
+                <span>{creatingWorkspace ? "Creating…" : "New workspace"}</span>
+              </button>
+              {workspaceError ? (
+                <p className="se-lib-empty" role="alert">
+                  {workspaceError}
+                </p>
+              ) : null}
               {workspaces === null ? (
                 <p className="se-lib-empty">Loading workspaces…</p>
               ) : visibleWorkspaces.length === 0 ? (
@@ -343,33 +372,39 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
         ) : view.kind === "songs" ? (
           <>
             <div className="se-lib-tools" role="toolbar" aria-label="Song filters">
-              <label className="se-lib-filter">
-                <Icon name="fa-filter" />
-                <span className="se-sr-only">Filter songs</span>
-                <select
-                  value={filter}
-                  onChange={(event) => onFilter(event.target.value as SongFilter)}
-                  aria-label="Filter songs"
-                >
-                  <option value="all">All songs</option>
-                  <option value="liked">Liked</option>
-                  <option value="project">In Project</option>
-                  <option value="project-stems" disabled>
-                    Stems
-                  </option>
-                </select>
-              </label>
-              <button type="button" className="se-lib-tool" onClick={onNewSong}>
+              <button
+                type="button"
+                className={`se-lib-chip${filter === "liked" ? " on" : ""}`}
+                aria-label="Liked only"
+                aria-pressed={filter === "liked"}
+                onClick={() => onFilter(filter === "liked" ? "all" : "liked")}
+              >
+                <Icon name="fa-heart" />
+              </button>
+              <button type="button" className="se-lib-chip" onClick={onNewSong}>
                 <Icon name="fa-plus" />
                 <span>New</span>
               </button>
-              {uploadControl}
+              <button
+                type="button"
+                className={`se-lib-chip${filter === "project" ? " on" : ""}`}
+                aria-pressed={filter === "project"}
+                onClick={() => onFilter(filter === "project" ? "all" : "project")}
+              >
+                In Project
+              </button>
+              <button
+                type="button"
+                className="se-lib-chip"
+                disabled
+                title="Stems need a finished stem separation first"
+              >
+                Stems
+              </button>
+              <button type="button" className="se-lib-chip" onClick={onOpenUploads}>
+                Uploads
+              </button>
             </div>
-            {uploadError ? (
-              <p className="se-lib-empty" role="alert">
-                {uploadError}
-              </p>
-            ) : null}
             {activeWorkspace ? (
               <ul className="se-lib-list">
                 <li className="se-lib-row">

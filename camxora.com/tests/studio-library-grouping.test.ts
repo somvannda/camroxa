@@ -58,6 +58,7 @@ describe("relativeAge", () => {
     expect(relativeAge(at(101), NOW)).toBe("1h, 41m ago");
     expect(relativeAge(at(120), NOW)).toBe("2h ago");
     expect(relativeAge(at(60 * 24 * 3), NOW)).toBe("3d ago");
+    expect(relativeAge(at(60 * (24 * 5 + 9)), NOW)).toBe("5d, 9h ago");
   });
 
   it("falls back to a date for older work and blanks for missing dates", () => {

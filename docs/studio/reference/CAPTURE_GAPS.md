@@ -25,6 +25,75 @@ takes or plugins must start from a native project.**
 | S60 moderation | OPEN | Needs a policy-violating prompt. **Do not fabricate** — capture it only if it happens naturally. |
 | S61 credits | OPEN | Needs an account with no credits. Ours has balance, so this cannot be produced honestly. |
 
+## Live-session findings (2026-11-06, signed in)
+
+The gaps were re-exercised with the real Studio. What is now known, and what still needs
+an image:
+
+### S44 — Convolution IR (`PART` → content found, screenshot pending)
+
+The IR slot is fed by the **`Impulse Response`** button in the card's preset row (the
+one that reads `None`), not by drag/drop and not by clicking the slot itself. It opens
+an IR library:
+
+```
+Halls · New England Hall    Halls · Amber Hall      Halls · Boreal Chapel
+Rooms · Timber Room         Rooms · Terrazzo Room   Chambers · La Brea Chamber
+Chambers · Grotto           Outdoors · Sequoia Basin
+Ambiences · Wide Air        Plates · Aria Plate     Plates · Velvet Plate
+```
+
+Selecting one flips the card from `NO ASSET LOADED` to:
+
+```
+Convolution
+Custom
+Halls · New England Hall
+Mix   Gain   Pre   Width
+```
+
+and the trim-timeline widget now draws two stereo waveform canvases (three canvases in
+the card) with the `Enable trim` switch still disabled. The time ruler over the slot is
+`0s / 1s / 2s / 3s`, as captured. Open question for the image: how the tail/trim handles
+render once the waveform has data.
+
+### S30 — warp markers (`PART` → state staged, screenshot pending)
+
+Staged exactly as the gap note suggested: an audio clip on an Audio track, the
+**Stretch** switch `on` (`role=switch`, `aria-checked=true`), **Transients** selected,
+clip editor open, zoom raised two steps, project tempo changed **146 → 108 BPM**.
+No marker DOM exists (the waveform is canvas), so only a screenshot can confirm whether
+ticks draw. If they do not, the negative is now much stronger evidence than before:
+stretch on + Transients + a 38 BPM tempo change still produced no ticks.
+
+### S32 — CC lane (`PART` → tabs reached, draw gesture still unknown)
+
+A generated MIDI clip (from "Write a simple 4-bar bass line") exposes the CC lanes the
+spec described, behind the clip editor's **Parameters** button:
+
+```
+Velocity   Pitch Bend   Modulation
+```
+
+The lanes sit under the note lane and share its x-axis. The Modulation lane's paint
+surface is a canvas with **no React pointer handlers on the canvas or its wrapper**, so
+the draw gesture is not a plain click/drag on the canvas element. Still unknown: whether
+points can be drawn at all.
+
+### Library details confirmed live (for §19.1/§19.2)
+
+- Level-2 toolbar is chips, not a select: `(filter icon)` · `New` · `Liked only` (heart)
+  · `In Project` · `Stems` · `Uploads`.
+- Song tag strip carries `V6 · <key> · <BPM>` (e.g. `V6 · A minor · 146 BPM`).
+- Project ages include the remainder: `5d, 9h ago`, not `5d ago`.
+- `New workspace` creates `New workspace — 0 songs` in place, immediately, with no
+  dialog.
+- The level-1 Workspaces list shows the create row plus **four** workspace rows.
+
+**Caveat:** the capture project was edited during this session (audio clip added, tempo
+left at **108 BPM**, a generated Bass track, one new default-named workspace). It is an
+`Untitled Project`, not `Drum & Bass Demo`.
+
 ## If a next session wants to finish them
 
 1. **S44** — drop any short WAV onto the Convolution slot; if drag-and-drop works the

@@ -133,18 +133,12 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
   const library = page.getByRole("complementary", { name: "Library" });
   await library.getByRole("button", { name: "All Songs" }).click();
 
-  const filter = library.getByLabel("Filter songs");
-  await expect(filter.locator("option")).toHaveCount(4);
-  expect(
-    await filter
-      .locator("option")
-      .nth(3)
-      .evaluate((element) => (element as HTMLOptionElement).disabled)
-  ).toBe(true);
+  // The captured toolbar: Liked only / New / In Project / Stems / Uploads.
+  await expect(library.getByLabel("Liked only")).toBeVisible();
+  await expect(library.getByRole("button", { name: "Stems" })).toBeDisabled();
+  await expect(library.getByRole("button", { name: "Uploads" })).toBeVisible();
 
-  // In Project narrows to songs the open project already uses; this fixture's clip is
-  // not a library song, so the empty explanation is the correct outcome.
-  await filter.selectOption("project");
+  await library.getByRole("button", { name: "In Project" }).click();
   await expect(library.locator(".se-library-head strong")).toHaveText("In Project");
   await expect
     .poll(
@@ -154,8 +148,12 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
     )
     .toBeGreaterThan(0);
 
-  await filter.selectOption("all");
+  await library.getByRole("button", { name: "In Project" }).click();
   await expect(library.locator(".se-library-head strong")).toHaveText("All Songs");
+
+  await library.getByLabel("Liked only").click();
+  await expect(library.locator(".se-library-head strong")).toHaveText("Liked");
+  await library.getByLabel("Liked only").click();
 
   // + New leaves the editor for the generator.
   await library.getByRole("button", { name: "New" }).click();
@@ -169,6 +167,7 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
   await page.getByRole("button", { name: "Library", exact: true }).click();
   const library = page.getByRole("complementary", { name: "Library" });
   await library.getByRole("button", { name: "All Songs" }).click();
+  await library.getByRole("button", { name: "Uploads" }).click();
 
   await library.getByLabel("Choose audio file").setInputFiles("public/seed/demo-loop.wav");
 

@@ -412,3 +412,23 @@ clip the project uses.
 **Consequences.** When the corpus starts recording key/BPM, extend `songTags`; do not
 backfill fake values. Library upload needs streaming storage configured (B-006); until
 then the panel surfaces the backend's reason instead of failing silently.
+
+---
+
+## D-017 — "New workspace" creates a default-named workspace immediately
+
+**Date:** 2026-11-06 **Status:** accepted (G12, spec §19.1)
+
+**Decision.** The level-1 `New workspace` row calls
+`POST /api/v3/web-music/workspaces` with the name **"New workspace"** and prepends the
+returned workspace to the list. No naming dialog.
+
+**Why.** Observed live in the reference on 2026-11-06 (signed-in session): clicking the
+row created `New workspace — 0 songs` in place, above the existing workspaces, with no
+dialog and no inline rename. The row is part of the Workspaces section, not a separate
+surface. Renaming was not captured from that click, so we do not invent a rename step
+here; `updateWebMusicWorkspace` already exists for whatever surface owns renaming.
+
+**Consequences.** Repeated clicks create repeated default-named workspaces, which is what
+the reference did. If a rename affordance is captured later, it belongs on the workspace
+row/menu, not in the create path.

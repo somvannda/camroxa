@@ -22,7 +22,8 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Take model: audition vs commit, newest on top | §72.1 | captured in spec; take UI still reference-only |
 | Clip remembers its source generation | §70 | `songId` on clip + provenance strip |
 | Library panel: level-1 tile chooser (All Songs / Liked / Stems / Uploads) + Workspaces and Studio Projects sections, then level-2 lists with Add/Open | §19.1 / gap G12 | `components/studio/StudioLibrary.tsx` (`LibraryView`) + `openLibrarySongs` / `openLibraryWorkspace` in `StudioEditorShell.tsx` |
-| Level-2 toolbar: filter (All / Liked / In Project / Stems-disabled), + New, upload | §19.2 / D-016 | `StudioLibrary` toolbar; `setLibrarySongFilter`, `uploadLibraryAudio` in `StudioEditorShell.tsx` |
+| Level-2 toolbar: Liked only / New / In Project / Stems-disabled / Uploads | §19.2 / D-016 | `StudioLibrary` toolbar chips; `setLibrarySongFilter`, `uploadLibraryAudio` in `StudioEditorShell.tsx` |
+| New workspace row (creates a default-named workspace) | §19.1 / D-017 | `StudioLibrary` + `createLibraryWorkspace` in `StudioEditorShell.tsx` |
 | Song rows: 44 px artwork, model/variant/length tag strip, In Project filter | §19.2 / D-016 | `primaryClip` / `songTags` in `StudioLibrary.tsx` |
 | Songs grouped under Today / Yesterday / date headers | §19.2 | `lib/studio-library-grouping.ts` |
 | Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (8 wired, 1 disabled with a reason) |

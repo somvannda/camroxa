@@ -200,6 +200,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     onOpenWorkspace: noop,
     onFilter: noop,
     onNewSong: noop,
+    onNewWorkspace: async () => {},
     onUploadAudio: async () => {},
     onAddSong: noop,
     onAddUpload: noop,
@@ -381,45 +382,55 @@ describe("StudioLibrary", () => {
   it("changes the corpus from the level-2 filter toolbar", async () => {
     const user = userEvent.setup();
     const onFilter = vi.fn();
+    const onOpenUploads = vi.fn();
     render(
       <StudioLibrary
         {...libraryProps({
           view: { kind: "songs", title: "All Songs", filter: "all" },
           onFilter,
+          onOpenUploads,
         })}
       />
     );
-    const select = screen.getByLabelText("Filter songs") as HTMLSelectElement;
-    expect([...select.options].map((option) => option.textContent)).toEqual([
-      "All songs",
-      "Liked",
-      "In Project",
-      "Stems",
-    ]);
-    expect(select.options[3].disabled).toBe(true);
-    await user.selectOptions(select, "liked");
+    await user.click(screen.getByRole("button", { name: "In Project" }));
+    expect(onFilter).toHaveBeenCalledWith("project");
+    await user.click(screen.getByLabelText("Liked only"));
     expect(onFilter).toHaveBeenCalledWith("liked");
+    expect((screen.getByRole("button", { name: "Stems" }) as HTMLButtonElement).disabled).toBe(true);
+    await user.click(screen.getByRole("button", { name: "Uploads" }));
+    expect(onOpenUploads).toHaveBeenCalledOnce();
   });
 
   it("offers + New and imports audio from the toolbar", async () => {
     const user = userEvent.setup();
     const onNewSong = vi.fn();
     const onUploadAudio = vi.fn(async () => {});
-    render(
+    const { rerender } = render(
       <StudioLibrary
         {...libraryProps({
           view: { kind: "songs", title: "All Songs", filter: "all" },
           onNewSong,
-          onUploadAudio,
         })}
       />
     );
     await user.click(screen.getByRole("button", { name: /New/ }));
     expect(onNewSong).toHaveBeenCalledOnce();
 
+    // Import lives on the Uploads list, like the reference's toolbar.
+    rerender(
+      <StudioLibrary {...libraryProps({ view: { kind: "uploads" }, onUploadAudio })} />
+    );
     const file = new File(["hello"], "take.wav", { type: "audio/wav" });
     await user.upload(screen.getByLabelText("Choose audio file"), file);
     expect(onUploadAudio).toHaveBeenCalledWith(file);
+  });
+
+  it("creates a workspace from the captured New workspace row", async () => {
+    const user = userEvent.setup();
+    const onNewWorkspace = vi.fn(async () => {});
+    render(<StudioLibrary {...libraryProps({ onNewWorkspace })} />);
+    await user.click(screen.getByRole("button", { name: /New workspace/ }));
+    expect(onNewWorkspace).toHaveBeenCalledOnce();
   });
 
   it("shows each workspace with its song count and opens it", async () => {

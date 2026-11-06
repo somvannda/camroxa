@@ -15,6 +15,7 @@ import {
   type StudioUpload,
 } from "@/lib/studio-api";
 import {
+  createWebMusicWorkspace,
   fetchWebMusicLikedKeys,
   listWebMusicWorkspaces,
   type WebMusicWorkspace,
@@ -557,8 +558,13 @@ export function StudioEditorShell() {
     });
   }
 
-  /** Toolbar upload (§19.2): import the file, then show it in the Uploads list. */
-  async function uploadLibraryAudio(file: File) {
+  /** "New workspace" on level 1 creates a default-named one, like the reference. */
+  async function createLibraryWorkspace() {
+    const workspace = await createWebMusicWorkspace("New workspace");
+    setLibraryWorkspaces((previous) => [workspace, ...(previous ?? [])]);
+  }
+
+  /** Toolbar upload (§19.2): import the file, then show it in the Uploads list. */  async function uploadLibraryAudio(file: File) {
     let duration: number | null = null;
     try {
       const context = new AudioContext();
@@ -2614,6 +2620,7 @@ export function StudioEditorShell() {
               onOpenUploads={() => setLibraryView({ kind: "uploads" })}
               onOpenWorkspace={openLibraryWorkspace}
               onFilter={setLibrarySongFilter}
+              onNewWorkspace={createLibraryWorkspace}
               onNewSong={() => {
                 window.location.href = "/create";
               }}

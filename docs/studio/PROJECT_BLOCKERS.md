@@ -2,28 +2,16 @@
 
 Open items that stop work. Each names the unblocking action and the owner.
 
-## B-001 — No live reference session
+## B-001 — Reference session (RESOLVED 2026-11-06)
 
-**Blocks:** M1 completeness, and every `VERIFIED` transition that depends on
-comparing behaviour with the real Studio (mostly VISUAL/flow questions, not API).
+**State:** the user signed in to the reference in the connected browser on 2026-11-06.
+The live Studio opened, and the three remaining `PART` gaps were exercised against real
+data (S44 IR library, S30 stretch + tempo change, S32 CC lane tabs). Screenshots still
+need the OpenCode desktop window visible; the browser tool refuses to capture while it
+is minimised.
 
-**State:** the pool's `__client` value in `musicapi/accounts.json` is a Clerk
-**refresh** token whose client has **no active sessions**
-(`GET https://auth.suno.com/v1/client` → `sessions: []`). It cannot mint a session
-JWT, so a browser cannot be signed in with it. Cookie injection was attempted and
-correctly did not authenticate.
-
-**Unblock (any one):**
-
-1. A human signs in to the reference in the connected browser once; the session
-   cookie persists for later inspection.
-2. A fresh `__client` **session** cookie (with at least one active session) is added
-   to the pool.
-3. Accept bundle/help-centre evidence as sufficient for the remaining questions and
-   mark those rows `DOCUMENTED`, not `VERIFIED`.
-
-**Impact if unresolved:** we can still build and verify our own product end to end;
-we cannot claim reference parity for ambiguous interactions. No code is blocked.
+**Remaining:** S60 (moderation) and S61 (no-credit account) still need genuine triggers.
+See `reference/CAPTURE_GAPS.md` for the evidence captured and the parts still pending.
 
 ## B-002 — No Studio test harness
 
@@ -84,9 +72,9 @@ Studio operation against someone else's Suno asset.
 | — | Studio charge died on `relation "plans" does not exist` | D-009 — studio ops price from `credit_pricing` |
 
 
-## B-006 � Library upload needs streaming storage
+## B-006 � Library upload needs streaming storage
 
-**Blocks:** the level-2 toolbar upload (�19.2) and the Uploads tile's first-use path.
+**Blocks:** the level-2 toolbar upload (�19.2) and the Uploads tile's first-use path.
 
 **State:** `POST /api/v3/web-music/studio/uploads` answers `503 "Studio uploads are not
 configured."` because `resolve_streaming_storage_config` has no configured bucket
@@ -94,7 +82,7 @@ configured."` because `resolve_streaming_storage_config` has no configured bucke
 backend's message in an alert; no row is invented.
 
 **Unblock:** point `camxora_pfm_sandbox` at a configured streaming bucket (local MinIO is
-enough) and re-run `studio-library.spec.ts` � its upload test accepts either the row or
+enough) and re-run `studio-library.spec.ts` � its upload test accepts either the row or
 the configured-error path.
 
 **Do not** stub the endpoint to return a fake upload: the Add button would then place a
