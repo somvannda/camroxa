@@ -2511,10 +2511,21 @@ class SettingsView(QWidget):
         profile_id = self._publication_profile.currentData()
         connection = self._youtube_connection_for(profile_id)
         if not profile_id or not connection or connection.status != "connected":
+            log_info(
+                "Playlists skipped: profile="
+                f"{profile_id or '-'} connection={'yes' if connection else 'no'} "
+                f"status={getattr(connection, 'status', '-')}",
+                category="settings",
+            )
             return
         profile_key = str(profile_id)
         if profile_key in self._playlist_auth_failed_profiles:
-            return
+            # A previous failure (often mid-connect) must not block forever.
+            self._playlist_auth_failed_profiles.discard(profile_key)
+            self._playlists_loaded_key = ""
+            log_info(
+                f"Retrying YouTube playlists for {profile_key}.", category="settings"
+            )
         load_key = f"{profile_key}:{getattr(connection, 'channel_id', '')}"
         if (
             load_key == getattr(self, "_playlists_loaded_key", "")
