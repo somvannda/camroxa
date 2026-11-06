@@ -1176,10 +1176,9 @@ export function StudioEditorShell() {
         return;
       }
 
-      // Unmodified keys (spec §11): Space transport, Home/End, and the add-track
-      // accelerators A (audio) / U (uploads). M has no meaning here — MIDI tracks are
-      // not built — so it is deliberately unbound rather than adding an audio track.
-      if (!event.metaKey && !event.ctrlKey && !event.altKey) {
+      // Unmodified keys (spec §11/§36): Space transport, Home/End, add-track letters,
+      // and the SHIFT variants captured in the shortcut overlay.
+      if (!event.metaKey && !event.ctrlKey) {
         if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
         if (event.code === "Space") {
           event.preventDefault();
@@ -1200,21 +1199,103 @@ export function StudioEditorShell() {
           seekTo(duration);
           return;
         }
-        const plain = event.key.toLowerCase();
-        if (plain === "a") {
+        if (event.key === "F2") {
+          const focused = tracks.find((track) => track.id === selectedTrack);
+          if (focused) {
+            event.preventDefault();
+            startRename(focused);
+          }
+          return;
+        }
+
+        const letter = event.key.toLowerCase();
+        if (event.altKey && event.shiftKey && letter === "h") {
+          event.preventDefault();
+          showAllHidden();
+          return;
+        }
+        if (event.altKey) return;
+
+        if (event.shiftKey) {
+          if (letter === "c") {
+            event.preventDefault();
+            setMetronome((value) => {
+              if (value) {
+                stopClicks();
+                return false;
+              }
+              scheduledThroughRef.current = playheadRef.current;
+              return true;
+            });
+            return;
+          }
+          if (letter === "t") {
+            event.preventDefault();
+            addTrack();
+            return;
+          }
+          if (letter === "m" && selectedTrack) {
+            const focused = tracks.find((track) => track.id === selectedTrack);
+            if (focused) {
+              event.preventDefault();
+              updateTrack(focused.id, { muted: !focused.muted });
+            }
+            return;
+          }
+          if (letter === "s" && selectedTrack) {
+            const focused = tracks.find((track) => track.id === selectedTrack);
+            if (focused) {
+              event.preventDefault();
+              updateTrack(focused.id, { solo: !focused.solo });
+            }
+            return;
+          }
+          if (letter === "h" && selectedTrack) {
+            event.preventDefault();
+            hideTrack(selectedTrack);
+            return;
+          }
+          return;
+        }
+
+        if (letter === "a") {
           event.preventDefault();
           addTrack();
           return;
         }
-        if (plain === "u") {
+        if (letter === "u") {
           event.preventDefault();
           openUploadLibrary();
+          return;
+        }
+        if (event.key === "4") {
+          event.preventDefault();
+          setLibraryOpen((open) => !open);
           return;
         }
       }
 
       if (!(event.metaKey || event.ctrlKey) || event.altKey) return;
       const key = event.key.toLowerCase();
+      // Toggle loop (spec §36: CTRL L).
+      if (key === "l") {
+        event.preventDefault();
+        toggleLoop();
+        return;
+      }
+      // Select all / cut (spec §36).
+      if (key === "a") {
+        event.preventDefault();
+        setSelectedIds(clipsRef.current.map((clip) => clip.id));
+        setSelectedClip(null);
+        return;
+      }
+      if (key === "x") {
+        event.preventDefault();
+        copySelection();
+        deleteSelection();
+        return;
+      }
       // Undo / redo (spec §36). Shift+Z is redo alongside Y.
       if (key === "z") {
         event.preventDefault();
