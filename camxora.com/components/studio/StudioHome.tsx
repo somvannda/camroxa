@@ -391,7 +391,7 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
                 {visible.map((project) => (
                   <li
                     key={project.id}
-                    className={`studio-card${busyId === project.id ? " is-busy" : ""}${project.archived ? " is-archived" : ""}`}
+                    className={`studio-card${busyId === project.id ? " is-busy" : ""}${project.archived ? " is-archived" : ""}${menuId === project.id ? " is-menu-open" : ""}`}
                   >
                     <button
                       type="button"

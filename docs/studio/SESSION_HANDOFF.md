@@ -56,7 +56,7 @@ Helpers in `scripts/`:
 | unit (pure helpers) | `npm test` | snap, meter, draft, seed, WAV encode |
 | component | `npm test` | header, footer, library, provenance strip, track panel |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` | smoke (move/undo/export), persistence across reload, library tabs + filter + workspaces, project menu (rename, share, settings, automatic versions + throttle), conflict panel (keep mine / reload theirs), offline edit replay + draft recovery, learn/help + tooltip persistence, keyboard + add-track menu, metronome clicks, write serialization (two edits, undo mid-save), metric parity, axe ×3 (home, editor + Learn popover, library drawer) |
+| e2e | `npm run test:e2e` | smoke (move/undo/export), persistence across reload, home actions (rename/duplicate/archive/delete + menu hit-test), library tabs + filter + workspaces, project menu (rename, share, settings, automatic versions + throttle), conflict panel (keep mine / reload theirs), offline edit replay + draft recovery, public share page + fork, version restore, learn/help + tooltip persistence, keyboard + add-track menu, metronome clicks, write serialization (two edits, undo mid-save), metric parity, axe ×3 (home, editor + Learn popover, library drawer) |
 
 CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` on
 any PR touching `camxora.com`. The e2e specs are not in CI yet — they need the app plus
