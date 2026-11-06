@@ -30,6 +30,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Add-track menu: Audio A / MIDI M / Upload U | §8.3 / gap G26 | `StudioTrackPanel` add menu; Upload opens the library's Uploads tab |
 | Keyboard: Space, Home/End, A, U, plus the modifiers | §11 / gap G26 | keydown handler in `StudioEditorShell`; list in `lib/studio-help.ts` |
 | Metronome click track with bar accent | H-09 / gap G27 | `lib/studio-metronome.ts` + `scheduleClicks` in `StudioEditorShell` |
+| Loop repeats the selected range; seeking follows while playing | §68 / gap G33 | transport tick + `seekTo` in `StudioEditorShell` |
 | Version history: automatic snapshots, throttled, newest 50 kept | §25 / gap G28 | `persist()` → `autoSnapshotStudioProject` + `AUTO_VERSION_MIN_SECONDS` in `web_music_service.py` |
 | Empty project asks how to start | §10 / gap G18 | `components/studio/StudioOnboarding.tsx` |
 | Coarse pointers get 44 px targets | gap G20 | `app/touch-targets.css` |
@@ -64,6 +65,6 @@ which we cannot honour).
 
 - Screenshots: `reference/screens/` (78 files) + `reference/SCREENSHOT_INDEX.md`
 - Measurements: `SUNO_STUDIO_IMPLEMENTATION_SPEC.md` §1–§96
-- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (30 of 32 closed; G12 and G21 partial)
+- Gap status: `SUNO_STUDIO_GAP_ANALYSIS.md` (31 of 33 closed; G12 and G21 partial)
 - Audio claims: `window.__buildMasterBus`, `__studioExport`, `__studioMeter`,
   `__studioNormalise` in dev

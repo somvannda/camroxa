@@ -179,7 +179,7 @@ export function StudioEditorShell() {
     };
     setSelectedIds([]);
     setSelectedClip(null);
-    setPlayhead(Math.max(0, Math.min(duration, (x / barWidth) * secondsPerBar)));
+    seekTo(Math.max(0, Math.min(duration, (x / barWidth) * secondsPerBar)));
   }
 
   /** Press on a clip: select it (or keep the group) and start a drag session (G7/G8). */
@@ -1130,7 +1130,7 @@ export function StudioEditorShell() {
         }
         if (event.key === "End") {
           event.preventDefault();
-          setPlayhead(duration);
+          seekTo(duration);
           return;
         }
         const plain = event.key.toLowerCase();
@@ -1223,8 +1223,22 @@ export function StudioEditorShell() {
       const delta = Math.min(0.25, (now - last) / 1000);
       last = now;
       const current = playheadRef.current;
+      const loopActive = loopRef.current && loopEndRef.current > loopStartRef.current;
+      const limit = loopActive ? loopEndRef.current : durationRef.current;
       let next = current + delta * rateRef.current;
-      if (next >= durationRef.current) next = loop ? 0 : durationRef.current;
+      if (limit > 0 && next >= limit) {
+        if (loopActive) {
+          // Loop repeats the selected range, not the whole project (spec §68), and the
+          // engine must follow: restart from the loop start when it wraps.
+          next = loopStartRef.current;
+          restartAudioGuarded(next);
+        } else if (loopRef.current) {
+          next = 0;
+          restartAudioGuarded(0);
+        } else {
+          next = durationRef.current;
+        }
+      }
       // Loop wrap moves the playhead backwards; clicks must restart from there.
       if (next < current) scheduledThroughRef.current = next;
       if (metronomeRef.current) scheduleClicks(current, next + 0.35);
@@ -1256,6 +1270,14 @@ export function StudioEditorShell() {
   rateRef.current = playbackRate;
   const durationRef = useRef(0);
   durationRef.current = duration;
+  const loopRef = useRef(loop);
+  loopRef.current = loop;
+  const loopStartRef = useRef(loopStart);
+  loopStartRef.current = loopStart;
+  const loopEndRef = useRef(loopEnd);
+  loopEndRef.current = loopEnd;
+  /** Guards against stacking stop/start pairs when playback wraps repeatedly. */
+  const restartingRef = useRef(false);
   /** Song time up to which metronome clicks have already been scheduled. */
   const scheduledThroughRef = useRef(0);
   /** Clicks already scheduled, so switching the metronome off can silence them. */
@@ -1280,6 +1302,26 @@ export function StudioEditorShell() {
       await stopAudio();
       await startAudio(from, arrangement);
     })();
+  }
+
+  /** Restart without stacking: a loop wrap can fire while the last restart is running. */
+  function restartAudioGuarded(from: number, arrangement: ClipLike[] = clipsRef.current) {
+    if (restartingRef.current) return;
+    restartingRef.current = true;
+    void (async () => {
+      try {
+        await stopAudio();
+        await startAudio(from, arrangement);
+      } finally {
+        restartingRef.current = false;
+      }
+    })();
+  }
+
+  /** Move the playhead; while playing, the engine follows so audio stays in sync. */
+  function seekTo(seconds: number) {
+    setPlayhead(seconds);
+    if (playingRef.current) restartAudioGuarded(seconds);
   }
 
   /** Silence clicks that were scheduled but have not sounded yet. */
