@@ -43,7 +43,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Workspaces (with server-side song counts and a filter), Projects and Uploads tabs wired; the stems tab waits on a finished stems job (B-005) |
-| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 137 tests (pure modules, components, API contract); Playwright: 14 specs (smoke, persistence, library, project menu + share + settings, learn/help, keyboard + add-track, metronome, metric parity, axe ×3). e2e needs local services, so it is not in CI yet |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 138 tests (pure modules, components, API contract); Playwright: 15 specs (smoke, persistence, library, project menu + share + settings + versions, learn/help, keyboard + add-track, metronome, metric parity, axe ×3). e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
@@ -65,6 +65,8 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G26 | Add-track was a single button; no transport keys | The captured add-track menu (§8.3) and the §11 keys (Space, Home/End, A/U) did not exist, though the help list implied Space worked | W3 | **done** - menu with Audio A / MIDI M / Upload U (MIDI disabled: no MIDI tracks in this editor), Space/Home/End/A/U bound with dialog and typing guards |
 
 | G27 | Metronome was visual-only | The capture lists the button as "Click track" (H-09); ours toggled a state with no sound and said so | W3 | **done** - audible click per beat with a bar accent, lookahead-scheduled from the playhead (survives loop/seek), beat readout on the button, silenced on pause/off |
+
+| G28 | Versions were manual snapshots | §25 captures automatic versions ("Projects are saved automatically") clustering seconds apart; ours only appeared when someone pressed save in code | W3 | **done** - every successful save asks for a snapshot; the server throttles to one per 20 s and keeps the newest 50 (D-015) |
 
 ## 3. Deliberate non-parity
 

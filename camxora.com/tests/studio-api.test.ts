@@ -137,6 +137,15 @@ describe("listStudioUploads", () => {
   });
 });
 
+describe("autoSnapshotStudioProject", () => {
+  it("asks the server for an automatic snapshot rather than labelling one", async () => {
+    const { autoSnapshotStudioProject } = await import("@/lib/studio-api");
+    await autoSnapshotStudioProject("p1");
+    expect(calls[0].url).toContain("/studio/projects/p1/versions");
+    expect(JSON.parse(String(calls[0].init.body))).toEqual({ auto: true });
+  });
+});
+
 describe("204 responses", () => {
   it("does not try to parse an empty body", async () => {
     const { deleteStudioProject } = await import("@/lib/studio-api");

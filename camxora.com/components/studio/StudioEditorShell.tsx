@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
+import { autoSnapshotStudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
 import { listStudioProjects, listStudioUploads, type StudioUpload } from "@/lib/studio-api";
 import { listWebMusicWorkspaces, type WebMusicWorkspace } from "@/lib/web-music-api";
@@ -538,7 +539,12 @@ export function StudioEditorShell() {
         );
         setSaveStatus("saved");
         setError("");
-        if (projectId) clearDraft(projectId);
+        if (projectId) {
+          clearDraft(projectId);
+          // Versions are automatic (§25): the server throttles and bounds them, so this
+          // never blocks the save and a failure here must not surface as a save failure.
+          void autoSnapshotStudioProject(projectId).catch(() => undefined);
+        }
       })
       .catch((cause: unknown) => {
         if (cause instanceof StudioConflictError) {

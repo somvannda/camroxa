@@ -390,6 +390,25 @@ export async function createStudioProjectVersion(
   );
 }
 
+/**
+ * Ask the server for an automatic snapshot (reference §25).
+ *
+ * The server throttles to one per project every 20 seconds and keeps the newest 50, so
+ * callers can fire this after every save without flooding the version list.
+ */
+export async function autoSnapshotStudioProject(
+  projectId: string
+): Promise<StudioProjectVersion> {
+  return studioJson(
+    `/api/v3/web-music/studio/projects/${encodeURIComponent(projectId)}/versions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ auto: true }),
+    }
+  );
+}
+
 export async function restoreStudioProjectVersion(
   projectId: string,
   versionId: string

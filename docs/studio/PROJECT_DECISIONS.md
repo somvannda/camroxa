@@ -322,6 +322,35 @@ shows no card rather than an empty one — `helpFor` returns null.
 
 ---
 
+## D-015 — Project versions are captured automatically, throttled server-side
+
+**Date:** 2026-11-06 · **Status:** accepted (G28)
+
+**Decision.** Every successful project save asks the API for an automatic snapshot. The
+**server** enforces at most one per project per 20 seconds and keeps the newest 50; the
+client fires and forgets, and a snapshot failure never surfaces as a save failure. Manual
+snapshots (labelled) are never throttled.
+
+**Why.**
+
+- §25 captures the reference stating *"Projects are saved automatically"* and shows
+  entries seconds apart, so a version list that only grows when someone calls an endpoint
+  is the wrong shape.
+- Throttling must be server-side: several tabs (or the same account on two devices) would
+  otherwise multiply snapshots for the same document, and a client clock cannot be
+  trusted for a shared resource.
+- The history has to be bounded or the table grows without limit. The existing writer
+  already pruned to 50; the automatic path reuses that writer, so nothing new can leak.
+- Snapshotting after the save (not before) means a version always corresponds to
+  something the server accepted — never to a 409 or an offline draft.
+
+**Consequences.** An editing burst produces versions at most every 20 s, which matches
+the captured clustering without recording every keystroke-sized change. Restoring still
+reloads the editor, and the panel now says versions are automatic rather than
+"snapshots you save on purpose".
+
+---
+
 ## D-010 — Export normalisation is sample-peak, mix-only, opt-in
 
 **Date:** 2026-11-05 · **Status:** accepted (G11)

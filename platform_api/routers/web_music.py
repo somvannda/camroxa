@@ -534,6 +534,7 @@ async def fork_studio_project(
 
 class StudioVersionCreateRequest(BaseModel):
     label: str | None = Field(default=None, max_length=120)
+    auto: bool = False
 
 
 @router.get("/studio/projects/{project_id}/versions")
@@ -561,6 +562,7 @@ async def create_studio_project_version(
         UUID(ctx.user_id),
         project_id,
         label=body.label,
+        auto=body.auto,
     )
 
 

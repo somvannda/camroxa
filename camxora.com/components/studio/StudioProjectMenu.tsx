@@ -396,11 +396,14 @@ export function StudioProjectMenu({
             ) : dialog === "versions" ? (
               <>
                 <h2>Version history</h2>
+                <p className="se-dialog-note">
+                  Projects are saved automatically; these snapshots are captured as you edit.
+                </p>
                 {versions === null ? (
                   <p className="se-dialog-note">Loading versions…</p>
                 ) : versions.length === 0 ? (
                   <p className="se-dialog-note">
-                    No saved versions yet. Versions are snapshots you save on purpose.
+                    No versions yet. Versions are captured automatically as you edit.
                   </p>
                 ) : (
                   <ul className="se-dialog-list">

@@ -175,6 +175,9 @@ _STUDIO_SONG_TITLE_SUFFIX = {
     "replace_section": "Edit",
 }
 
+# Automatic snapshots (§25): at most one per project per this many seconds.
+AUTO_VERSION_MIN_SECONDS = 20
+
 
 def _studio_song_request_hash(operation_id: Any) -> str:
     """Idempotency key that links a feed row to its studio operation."""
@@ -1948,6 +1951,7 @@ class WebMusicService:
         project_id: UUID,
         *,
         label: str | None = None,
+        auto: bool = False,
     ) -> dict[str, Any]:
         project = await self._pool.fetchrow(
             "SELECT * FROM studio_projects WHERE id = $1 AND user_id = $2",
@@ -1959,6 +1963,23 @@ class WebMusicService:
                 "Studio project not found.",
                 details={"project_id": str(project_id)},
             )
+        if auto:
+            # Versions are automatic in the reference (§25) and cluster seconds apart.
+            # Throttle server-side so several tabs cannot multiply snapshots, and so a
+            # burst of edits cannot fill the (bounded) list.
+            newest = await self._pool.fetchrow(
+                """
+                SELECT * FROM studio_project_versions
+                WHERE project_id = $1
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                project_id,
+            )
+            if newest is not None and newest["created_at"] is not None:
+                age = (datetime.now(timezone.utc) - newest["created_at"]).total_seconds()
+                if age < AUTO_VERSION_MIN_SECONDS:
+                    return self._studio_version_payload(newest)
         safe_label = str(label).strip()[:120] if label and str(label).strip() else None
         row = await self._pool.fetchrow(
             """

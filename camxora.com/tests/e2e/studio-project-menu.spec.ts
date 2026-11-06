@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-import { createStudioProject } from "./studio-fixture";
+import { createStudioProject, dragFirstClipOneBar } from "./studio-fixture";
 
 /**
  * Project menu (reference §18.1/G13): the captured items exist, rename persists, and
@@ -50,8 +50,7 @@ test("project menu renames the project and the name survives a reload", async ({
   await expect(page.locator(".se-project .se-chip")).toHaveText(renamed);
 });
 
-test("share creates a view link that resolves without the editor", async ({ page }) => {
-  test.setTimeout(120_000);
+test("share creates a view link that resolves without the editor", async ({ page }) => {  test.setTimeout(120_000);
 
   const tag = Math.random().toString(36).slice(2, 8);
   await createStudioProject(page, { title: `Share ${tag}` });
@@ -76,6 +75,41 @@ test("share creates a view link that resolves without the editor", async ({ page
 
   await dialog.getByRole("button", { name: "Done" }).click();
   await expect(dialog).toHaveCount(0);
+});
+
+test("versions are captured automatically, and throttled within 20 seconds", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const projectId = await createStudioProject(page, { title: `Versions ${tag}` });
+
+  const versionCount = () =>
+    page.evaluate(async (id) => {
+      const response = await fetch(`/api/v3/web-music/studio/projects/${id}/versions`);
+      if (!response.ok) return -1;
+      return ((await response.json()) as { items?: unknown[] }).items?.length ?? 0;
+    }, projectId);
+
+  // The fixture creation does not snapshot; the first edit does.
+  await expect.poll(versionCount, { timeout: 15_000 }).toBe(0);
+  await dragFirstClipOneBar(page);
+  await expect(page.getByText("Saved")).toBeVisible({ timeout: 15_000 });
+  await expect.poll(versionCount, { timeout: 15_000 }).toBeGreaterThan(0);
+  const afterFirst = await versionCount();
+
+  // A second edit inside the 20 s window must not add another snapshot.
+  await dragFirstClipOneBar(page);
+  await expect(page.getByText("Saved")).toBeVisible({ timeout: 15_000 });
+  await page.waitForTimeout(1_500);
+  expect(await versionCount()).toBe(afterFirst);
+
+  // And the panel shows the captured automatic wording with a restorable row.
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "Version History" }).click();
+  const dialog = page.getByRole("dialog", { name: "Version history" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog).toContainText("Projects are saved automatically");
+  await expect(dialog.getByRole("button", { name: /^Restore/ }).first()).toBeVisible();
 });
 
 test("studio settings open with the captured accelerator and persist", async ({ page }) => {

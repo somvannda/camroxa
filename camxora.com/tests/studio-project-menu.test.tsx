@@ -159,7 +159,7 @@ describe("StudioProjectMenu", () => {
     await user.click(screen.getByRole("button", { name: /Demo/ }));
     await user.click(screen.getByRole("menuitem", { name: "Version History" }));
 
-    expect(await screen.findByText(/No saved versions yet/)).toBeTruthy();
+    expect(await screen.findByText(/No versions yet/)).toBeTruthy();
   });
 
   it("lists other projects to open", async () => {
