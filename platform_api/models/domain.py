@@ -349,7 +349,7 @@ class Batch:
     status: str = "pending"
     auto_gen_image: bool = False
     auto_gsuno: bool = False
-    auto_upload_youtube: bool = False
+    auto_upload_youtube: bool | None = None
     planned_from_date: date | None = None
     planned_to_date: date | None = None
     ok_run_dir: str | None = None

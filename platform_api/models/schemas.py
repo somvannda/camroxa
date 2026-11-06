@@ -351,7 +351,7 @@ class MusicHistoryBatchResponse(BaseModel):
     alt_profile_name: str | None = None
     ok_album: str | None = None
     alt_album: str | None = None
-    auto_upload_youtube: bool = False
+    auto_upload_youtube: bool | None = None
     created_at: datetime
     updated_at: datetime
     songs: list[MusicHistorySongResponse] = Field(default_factory=list)
@@ -580,7 +580,7 @@ class ProgressRowMeta(BaseModel):
     pipeline_complete: bool = False
     # The batch's stored YouTube choice, so the desktop pipeline does not fall
     # back to whatever the app setting says at merge time.
-    auto_upload_youtube: bool = False
+    auto_upload_youtube: bool | None = None
     expected: int = 0
     saved: int = 0
     download_ready: int = 0

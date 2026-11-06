@@ -434,7 +434,11 @@ async def list_music_history(
                 alt_profile_name=str(row["alt_profile_name"]) if row["alt_profile_name"] else None,
                 ok_album=str(row["ok_album"]).strip() if _row_value(row, "ok_album") else None,
                 alt_album=str(row["alt_album"]).strip() if _row_value(row, "alt_album") else None,
-                auto_upload_youtube=bool(_row_value(row, "auto_upload_youtube") or False),
+                auto_upload_youtube=(
+                    None
+                    if _row_value(row, "auto_upload_youtube") is None
+                    else bool(_row_value(row, "auto_upload_youtube"))
+                ),
                 created_at=row["created_at"],
                 updated_at=row["updated_at"],
                 songs=songs,

@@ -66,6 +66,9 @@ def test_the_batch_choice_wins_over_live_settings() -> None:
 def test_runs_without_a_stored_choice_fall_back_to_settings() -> None:
     assert auto_publish_plan({"autoUploadYouTube": True}, CONTEXT, "m.mp4") is not None
     assert auto_publish_plan({"autoUploadYouTube": False}, CONTEXT, "m.mp4") is None
+    # An explicit null (no choice recorded) is not "off".
+    unknown = dict(CONTEXT, auto_upload_youtube=None)
+    assert auto_publish_plan({"autoUploadYouTube": True}, unknown, "m.mp4") is not None
 
 
 def test_the_batch_column_spelling_is_honoured() -> None:

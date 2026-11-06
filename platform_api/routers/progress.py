@@ -447,7 +447,11 @@ def _build_row(
             long_ready=long_ready,
             reel_ready=reel_ready,
             pipeline_complete=pipeline_complete,
-            auto_upload_youtube=bool(batch.get("auto_upload_youtube") or False),
+            auto_upload_youtube=(
+                None
+                if batch.get("auto_upload_youtube") is None
+                else bool(batch.get("auto_upload_youtube"))
+            ),
             expected=expected,
             saved=saved,
             download_ready=download_ready,

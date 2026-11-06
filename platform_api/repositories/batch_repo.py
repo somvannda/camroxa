@@ -120,7 +120,7 @@ class BatchRepository:
                 batch.ok_run_dir,
                 batch.alt_run_dir,
                 getattr(batch, "structure_mode", "template") or "template",
-                bool(getattr(batch, "auto_upload_youtube", False)),
+                getattr(batch, "auto_upload_youtube", None),
             )
         except Exception as error:
             if not self._is_batch_schema_drift(error):

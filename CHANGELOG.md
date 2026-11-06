@@ -21,7 +21,8 @@ and this project uses [Semantic Versioning](https://semver.org/).
 
 - **Auto-publish honours the batch's choice** on automated runs. Two bugs made it fall back to live app
   settings: the coordinator read the settings toggle directly, and the merge context used the database column
-  name while the decision read the settings key. Progress rows now carry the stored flag end to end.
+  name while the decision read the settings key. Progress rows now carry the stored flag end to end, and runs
+  created before the choice existed keep following the app setting instead of being treated as "off".
 
 ## [1.5.18] - 2026-11-06
 

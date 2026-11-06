@@ -146,7 +146,7 @@ class ProgressRowMeta(BaseModel):
     long_ready: bool = False
     reel_ready: bool = False
     pipeline_complete: bool = False
-    auto_upload_youtube: bool = False
+    auto_upload_youtube: bool | None = None
     music_started_at: datetime | None = None
     music_updated_at: datetime | None = None
     image_started_at: datetime | None = None
@@ -369,7 +369,7 @@ class MusicHistoryBatch(BaseModel):
     alt_profile_name: str | None = None
     ok_album: str | None = None
     alt_album: str | None = None
-    auto_upload_youtube: bool = False
+    auto_upload_youtube: bool | None = None
     created_at: str = ""
     updated_at: str = ""
     songs: list[MusicHistorySong] = Field(default_factory=list)

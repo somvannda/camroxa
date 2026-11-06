@@ -67,7 +67,7 @@ def _progress_row(
     pipeline_complete: bool = False,
     youtube_success: int = 0,
     background_path: str | None = None,
-    auto_upload_youtube: bool = False,
+    auto_upload_youtube: bool | None = None,
 ):
     from platform_api.routers.progress import _build_row
 
@@ -136,10 +136,13 @@ def test_progress_leaves_image_stage_when_background_jobs_succeed_without_local_
 def test_progress_rows_carry_the_batch_youtube_choice() -> None:
     """The pipeline must publish based on the batch, not live app settings."""
     enabled = _progress_row(bg_ready=1, bg_total=1, long_ready=True, auto_upload_youtube=True)
-    disabled = _progress_row(bg_ready=1, bg_total=1, long_ready=True)
+    disabled = _progress_row(bg_ready=1, bg_total=1, long_ready=True, auto_upload_youtube=False)
+    unknown = _progress_row(bg_ready=1, bg_total=1, long_ready=True)
 
     assert enabled.meta.auto_upload_youtube is True
     assert disabled.meta.auto_upload_youtube is False
+    # A run created before the flag existed has no choice recorded.
+    assert unknown.meta.auto_upload_youtube is None
 
 
 def test_progress_stays_on_image_when_background_jobs_incomplete() -> None:

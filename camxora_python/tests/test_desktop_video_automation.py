@@ -43,7 +43,7 @@ def _workspace() -> VideoWorkspaceState:
     )
 
 
-def _row(*, run_dir: str, batch_id: str = "batch-1", auto_upload_youtube: bool = False) -> ProgressRow:
+def _row(*, run_dir: str, batch_id: str = "batch-1", auto_upload_youtube: bool | None = None) -> ProgressRow:
     return ProgressRow(
         batch="Batch 1",
         run_date="2026-06-29",
@@ -119,7 +119,9 @@ def test_candidate_carries_the_batch_youtube_choice(tmp_path) -> None:
     )
 
     assert enabled is not None and enabled.auto_upload_youtube is True
-    assert default is not None and default.auto_upload_youtube is False
+    # No stored choice (older runs) must stay "unknown", not "off", so the
+    # pipeline can fall back to the app setting.
+    assert default is not None and default.auto_upload_youtube is None
 
 
 def test_select_next_auto_video_candidate_returns_long_branch(tmp_path) -> None:
