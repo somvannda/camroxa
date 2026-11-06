@@ -447,7 +447,7 @@ describe("StudioLibrary", () => {
 
     expect(screen.getByText("946 songs")).toBeTruthy();
     expect(screen.getByText("1 song")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /^My Workspace/ }));
+    await user.click(screen.getByRole("button", { name: /^Open My Workspace/ }));
     expect(onOpenWorkspace).toHaveBeenCalledWith("w1");
   });
 
@@ -457,9 +457,12 @@ describe("StudioLibrary", () => {
         {...libraryProps({ workspaces: [workspace()], activeWorkspaceId: "w1" })}
       />
     );
-    expect(screen.getByRole("button", { name: /^My Workspace/ }).getAttribute("aria-current")).toBe(
-      "true"
-    );
+    expect(
+      screen
+        .getByRole("button", { name: /^Open My Workspace/ })
+        .closest(".se-lib-row")
+        ?.getAttribute("aria-current")
+    ).toBe("true");
   });
 
   it("shows and clears the workspace filter on the song level", async () => {

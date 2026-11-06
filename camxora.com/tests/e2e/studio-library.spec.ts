@@ -65,7 +65,7 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
   // Workspaces are real data: opening one lands on its songs, filtered; Clear drops the
   // filter without leaving the list.
   const workspaces = library.getByRole("region", { name: "Workspaces" });
-  const workspaceButtons = workspaces.locator(".se-lib-row-button");
+  const workspaceButtons = workspaces.getByRole("button", { name: /^Open / });
   if ((await workspaceButtons.count()) > 0) {
     await workspaceButtons.first().click();
     await expect(library.getByLabel("Clear workspace filter")).toBeVisible();
@@ -76,7 +76,7 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
     // Leaving via Back keeps the filter; choosing a tile clears it, because a tile
     // selects the whole corpus.
     await library.getByLabel("Back to library").click();
-    await workspaces.locator(".se-lib-row-button").first().click();
+    await workspaces.getByRole("button", { name: /^Open / }).first().click();
     await expect(library.getByLabel("Clear workspace filter")).toBeVisible();
     await library.getByLabel("Back to library").click();
     await tiles.nth(0).click();

@@ -299,10 +299,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                   {(allWorkspaces ? visibleWorkspaces : visibleWorkspaces.slice(0, ROOT_ROWS)).map(
                     (workspace, index) => (
                       <li key={workspace.id}>
-                        <button
-                          type="button"
+                        <div
                           className="se-lib-row se-lib-row-button"
-                          onClick={() => onOpenWorkspace(workspace.id)}
                           aria-current={workspace.id === activeWorkspaceId}
                         >
                           <span
@@ -311,14 +309,19 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                           >
                             {initialOf(workspace.name)}
                           </span>
-                          <span className="se-lib-title">
-                            {workspace.name}
-                            {" "}
-                          </span>
+                          <span className="se-lib-title">{workspace.name}</span>
                           <span className="se-lib-meta">
                             {formatSongCount(workspace.song_count)}
                           </span>
-                        </button>
+                          <button
+                            type="button"
+                            className="se-lib-row-action"
+                            onClick={() => onOpenWorkspace(workspace.id)}
+                            aria-label={`Open ${workspace.name}`}
+                          >
+                            Open
+                          </button>
+                        </div>
                       </li>
                     )
                   )}
@@ -347,22 +350,23 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                 <ul className="se-lib-list">
                   {(allProjects ? otherProjects : otherProjects.slice(0, ROOT_ROWS)).map((item) => (
                     <li key={item.id}>
-                      <button
-                        type="button"
-                        className="se-lib-row se-lib-row-button"
-                        onClick={() => onOpenProject(item.id)}
-                      >
+                      <div className="se-lib-row se-lib-row-button">
                         <span className="se-lib-thumb se-lib-thumb-project" aria-hidden="true">
                           <Icon name="fa-bars-staggered" />
                         </span>
-                        <span className="se-lib-title">
-                          {item.title}
-                          {" "}
-                        </span>
+                        <span className="se-lib-title">{item.title}</span>
                         <span className="se-lib-meta">
                           {relativeAge(item.updated_at || item.created_at) || "—"}
                         </span>
-                      </button>
+                        <button
+                          type="button"
+                          className="se-lib-row-action"
+                          onClick={() => onOpenProject(item.id)}
+                          aria-label={`Open ${item.title}`}
+                        >
+                          Open
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

@@ -108,7 +108,10 @@ points can be drawn at all.
 - Project ages include the remainder: `5d, 9h ago`, not `5d ago`.
 - `New workspace` creates `New workspace — 0 songs` in place, immediately, with no
   dialog.
-- The level-1 Workspaces list shows the create row plus **four** workspace rows.
+- Level-1 Workspaces list shows the create row plus **four** workspace rows; workspace
+  rows reveal `More` and `Open` on hover, project rows reveal only `Open`. The `More`
+  menu was not reached by synthetic input, so its items remain uncaptured.
+- `See all` expands in place and becomes `Show less`.
 
 **Caveat:** the capture project was edited during this session (audio clip added, tempo
 left at **108 BPM**, a generated Bass track, one new default-named workspace). It is an

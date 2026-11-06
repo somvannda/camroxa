@@ -22,6 +22,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Take model: audition vs commit, newest on top | §72.1 | captured in spec; take UI still reference-only |
 | Clip remembers its source generation | §70 | `songId` on clip + provenance strip |
 | Library panel: level-1 tile chooser (All Songs / Liked / Stems / Uploads) + Workspaces and Studio Projects sections, then level-2 lists with Add/Open | §19.1 / gap G12 | `components/studio/StudioLibrary.tsx` (`LibraryView`) + `openLibrarySongs` / `openLibraryWorkspace` in `StudioEditorShell.tsx` |
+| Level-1 rows: hover `Open` on workspace/project rows (workspaces also show `More` in the reference; its menu was not captured) | §19.1 | `StudioLibrary` `.se-lib-row-action` |
 | Level-2 toolbar: Liked only / New / In Project / Stems-disabled / Uploads | §19.2 / D-016 | `StudioLibrary` toolbar chips; `setLibrarySongFilter`, `uploadLibraryAudio` in `StudioEditorShell.tsx` |
 | New workspace row (creates a default-named workspace) | §19.1 / D-017 | `StudioLibrary` + `createLibraryWorkspace` in `StudioEditorShell.tsx` |
 | Song rows: 44 px artwork, model/variant/length tag strip, In Project filter | §19.2 / D-016 | `primaryClip` / `songTags` in `StudioLibrary.tsx` |
