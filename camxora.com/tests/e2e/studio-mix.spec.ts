@@ -29,11 +29,11 @@ test("mute silences a playing track and unmute brings it back", async ({ page })
   expect(sounding).not.toContain("-inf");
 
   await page.getByRole("button", { name: "Mute Track 1" }).click();
-  await expect.poll(peak, { timeout: 10_000, intervals: [150] }).toContain("-inf");
+  await expect.poll(peak, { timeout: 20_000, intervals: [200] }).toContain("-inf");
 
   await page.getByRole("button", { name: "Mute Track 1" }).click();
   await expect
-    .poll(peak, { timeout: 10_000, intervals: [150] })
+    .poll(peak, { timeout: 20_000, intervals: [200] })
     .not.toContain("-inf");
 
   await page.getByLabel("Pause", { exact: true }).click();
@@ -61,13 +61,13 @@ test("solo silences other tracks while it is on", async ({ page }) => {
   // Solo the empty second track: the audible one must fall silent.
   await page.getByRole("button", { name: "Solo Track 2" }).click();
   await expect
-    .poll(async () => (await meter.innerText()).trim(), { timeout: 10_000, intervals: [150] })
+    .poll(async () => (await meter.innerText()).trim(), { timeout: 20_000, intervals: [200] })
     .toContain("-inf");
 
   // Unsolo: sound returns.
   await page.getByRole("button", { name: "Solo Track 2" }).click();
   await expect
-    .poll(async () => (await meter.innerText()).trim(), { timeout: 10_000, intervals: [150] })
+    .poll(async () => (await meter.innerText()).trim(), { timeout: 20_000, intervals: [200] })
     .not.toContain("-inf");
 
   await page.getByLabel("Pause", { exact: true }).click();

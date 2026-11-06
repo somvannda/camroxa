@@ -19,6 +19,8 @@ export type TimelineClip = {
   title?: string;
   start?: number;
   duration?: number;
+  offset?: number;
+  fadeIn?: number;
   audioUrl?: string | null;
   songId?: string;
 };
@@ -55,6 +57,8 @@ export type StudioTimelineProps = {
   viewLeft: number;
   /** Live geometry while a trim grip is dragged. */
   trimPreview?: { id: string; start: number; duration: number } | null;
+  /** Live fade-in length while the fade handle is dragged. */
+  fadePreview?: { id: string; fadeIn: number } | null;
 
   /** Receives the scroll container so the shell can measure the visible window. */
   timelineRef?: RefObject<HTMLDivElement | null>;
@@ -65,7 +69,8 @@ export type StudioTimelineProps = {
     event: ReactPointerEvent<HTMLElement>,
     clip: TimelineClip,
     edge: "start" | "end"
-  ) => void;  onLoopHandleDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+  ) => void;
+  onFadePointerDown: (event: ReactPointerEvent<HTMLElement>, clip: TimelineClip) => void;  onLoopHandleDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 };
 
 export function StudioTimeline(props: StudioTimelineProps) {
@@ -90,11 +95,13 @@ export function StudioTimeline(props: StudioTimelineProps) {
     viewWidth,
     viewLeft,
     trimPreview,
+    fadePreview,
     timelineRef,
     onScroll,
     onLanePointerDown,
     onClipPointerDown,
     onTrimPointerDown,
+    onFadePointerDown,
     onLoopHandleDown,
   } = props;
 
@@ -177,8 +184,30 @@ export function StudioTimeline(props: StudioTimelineProps) {
                               onTrimPointerDown(event, clip, "end");
                             }}
                           />
+                          <span
+                            className="se-fade-handle"
+                            aria-hidden="true"
+                            onPointerDown={(event) => {
+                              event.stopPropagation();
+                              onFadePointerDown(event, clip);
+                            }}
+                          />
                         </>
                       ) : null}
+                      {(() => {
+                        const fadeIn =
+                          fadePreview?.id === clip.id
+                            ? fadePreview.fadeIn
+                            : clip.fadeIn ?? 0;
+                        if (fadeIn <= 0 || clipDuration <= 0) return null;
+                        return (
+                          <span
+                            className="se-fade"
+                            aria-hidden="true"
+                            style={{ width: `${Math.min(100, (fadeIn / clipDuration) * 100)}%` }}
+                          />
+                        );
+                      })()}
                     </button>
                   );
                 })}

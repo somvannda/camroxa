@@ -20,6 +20,8 @@ export type ExportClip = {
   duration?: number;
   /** Seconds into the source file where the clip begins (left trim). */
   offset?: number;
+  /** Fade-in length in seconds (S25). */
+  fadeIn?: number;
   audioUrl?: string | null;
 };
 
@@ -160,7 +162,21 @@ export async function renderMix(
 
     const source = context.createBufferSource();
     source.buffer = buffer;
-    source.connect(trackInput(track?.id ?? clip.id, track?.volume ?? 80));
+    const trackInputNode = trackInput(track?.id ?? clip.id, track?.volume ?? 80);
+    const fadeIn = Math.min(clip.fadeIn ?? 0, duration);
+    if (fadeIn > 0) {
+      const clipGain = context.createGain();
+      const intoClip = Math.max(0, from - start);
+      const initial = intoClip >= fadeIn ? 1 : intoClip / fadeIn;
+      clipGain.gain.setValueAtTime(initial, when);
+      if (intoClip < fadeIn) {
+        clipGain.gain.linearRampToValueAtTime(1, when + (fadeIn - intoClip));
+      }
+      clipGain.connect(trackInputNode);
+      source.connect(clipGain);
+    } else {
+      source.connect(trackInputNode);
+    }
     const node = source as AudioBufferSourceNode & { start: (w: number, o?: number, d?: number) => void };
     node.start(when, Math.max(0, clip.offset ?? 0) + offset, playable);
   }

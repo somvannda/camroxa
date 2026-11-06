@@ -4535,7 +4535,7 @@ html{color-scheme:dark}
 .se-track-meter span{display:block;height:100%;border-radius:3px;opacity:.85}
 .se-add-track{display:flex;align-items:center;gap:6px;width:100%;height:36px;padding:0 12px;border:0;border-top:1px solid rgba(255,255,255,.06);background:transparent;color:#c9cde0;font:inherit;font-size:12px;cursor:pointer}
 .se-add-track:hover{background:rgba(255,255,255,.05);color:#fff}
-.se-timeline{position:relative;flex:1;min-width:0;overflow:auto;background:repeating-linear-gradient(90deg,rgba(255,255,255,.045) 0 1px,transparent 1px 96px),#101012}
+.se-timeline{user-select:none;-webkit-user-select:none;position:relative;flex:1;min-width:0;overflow:auto;background:repeating-linear-gradient(90deg,rgba(255,255,255,.045) 0 1px,transparent 1px 96px),#101012}
 .se-ruler-bars{position:sticky;top:0;z-index:3;height:24px;background:#181f36;border-bottom:1px solid rgba(255,255,255,.08)}
 .se-ruler-time{position:sticky;bottom:0;z-index:3;height:22px;background:#181f36;border-top:1px solid rgba(255,255,255,.08)}
 .se-ruler-inner{position:relative;height:100%}
@@ -4580,6 +4580,8 @@ html{color-scheme:dark}
 .se-trim-start{left:3px}
 .se-trim-end{right:3px}
 .se-clip.trimming{outline:1px dashed hsl(var(--foreground))}
+.se-fade-handle{position:absolute;left:0;top:0;width:12px;height:12px;cursor:ew-resize;z-index:3;background:linear-gradient(135deg,rgba(255,255,255,.9) 0 2px,transparent 2px)}
+.se-fade{position:absolute;left:0;top:0;bottom:0;pointer-events:none;background:linear-gradient(90deg,rgba(0,0,0,.55),transparent)}
 .se-snap-line{position:absolute;top:0;bottom:0;width:1px;background:hsl(var(--accent));opacity:.7;pointer-events:none;z-index:2}
 
 .se-marquee{position:absolute;border:1px solid hsl(var(--accent));background:hsl(var(--card));opacity:.55;pointer-events:none;z-index:4}

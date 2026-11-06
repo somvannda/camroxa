@@ -124,6 +124,7 @@ export const SHORTCUTS: { keys: string; action: string }[] = [
   { keys: "Delete / Backspace", action: "Delete the selection" },
   { keys: "Shift M / Shift S", action: "Mute / solo the focused track" },
   { keys: "Shift H", action: "Hide & mute the focused track" },
+  { keys: "Shift F", action: "Toggle a short fade on the selected clip" },
   { keys: "Shift Alt H", action: "Show all hidden tracks" },
   { keys: "F2", action: "Rename the focused track" },
   { keys: "4", action: "Toggle the library drawer" },

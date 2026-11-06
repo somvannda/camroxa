@@ -135,8 +135,9 @@ export async function dragFirstClipOneBar(page: Page): Promise<void> {
   const clip = page.locator(".se-clip").first();
   const box = await clip.boundingBox();
   if (!box) throw new Error("clip has no box");
-  await page.mouse.move(box.x + 12, box.y + 10);
+  // Grab below the header band and away from the top-left fade handle.
+  await page.mouse.move(box.x + 40, box.y + 40);
   await page.mouse.down();
-  await page.mouse.move(box.x + 12 + 96, box.y + 10, { steps: 8 });
+  await page.mouse.move(box.x + 40 + 96, box.y + 40, { steps: 8 });
   await page.mouse.up();
 }

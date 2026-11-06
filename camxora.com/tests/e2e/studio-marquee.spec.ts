@@ -41,9 +41,10 @@ test("marquee selects clips and dragging one moves the selection", async ({ page
   // Drag the first selected clip one bar to the right: the second must follow.
   const firstBox = await clips.first().boundingBox();
   if (!firstBox) throw new Error("clip has no box");
-  await page.mouse.move(firstBox.x + 12, firstBox.y + 10);
+  await page.mouse.move(firstBox.x + 40, firstBox.y + 40);
   await page.mouse.down();
-  await page.mouse.move(firstBox.x + 12 + 96, firstBox.y + 10, { steps: 8 });
+  await page.mouse.move(firstBox.x + 40 + 48, firstBox.y + 40, { steps: 4 });
+  await page.mouse.move(firstBox.x + 40 + 96, firstBox.y + 40, { steps: 4 });
   await page.mouse.up();
 
   await expect.poll(() => leftOf(0), { timeout: 10_000 }).not.toBe(before[0]);

@@ -132,6 +132,19 @@ export function StudioEditorShell() {
     duration: number;
     offset: number;
   } | null>(null);
+  /** Live fade-in length while its handle is dragged (S25). */
+  const [fadePreview, setFadePreview] = useState<{ id: string; fadeIn: number } | null>(null);
+  const fadePreviewRef = useRef<typeof fadePreview>(null);
+  fadePreviewRef.current = fadePreview;
+  const fadeRef = useRef<{ id: string; startX: number; fadeIn: number; duration: number } | null>(
+    null
+  );
+  const fadeStartRef = useRef<{ x: number; fadeIn: number; duration: number } | null>(null);
+  /** Freshest pointer handlers, called by one stable pair of window listeners. */
+  const pointerHandlersRef = useRef<{
+    move: (event: PointerEvent) => void;
+    up: (event: PointerEvent) => void;
+  } | null>(null);
   const trimPreviewRef = useRef<typeof trimPreview>(null);
   trimPreviewRef.current = trimPreview;
   const trimRef = useRef<{
@@ -220,8 +233,28 @@ export function StudioEditorShell() {
     setTrimPreview({ id: clip.id, start, duration, offset });
   }
 
-  function commitTrim(preview: { id: string; start: number; duration: number; offset: number }) {
-    // Read through the ref: this can run from the global pointer handler, whose closure
+  /** Grab the fade handle (S25): a diagonal stub at the clip's top-left corner. */
+  function handleFadePointerDown(event: React.PointerEvent<HTMLElement>, clip: ClipLike) {
+    event.stopPropagation();
+    event.preventDefault();
+    const duration = clip.duration ?? 4;
+    const fadeIn = Math.min((clip as { fadeIn?: number }).fadeIn ?? 0, duration);
+    setSelectedClip(clip.id);
+    setSelectedIds([clip.id]);
+    fadeRef.current = { id: clip.id, startX: event.clientX, fadeIn, duration };
+    setFadePreview({ id: clip.id, fadeIn });
+  }
+
+  function commitClipFade(id: string, fadeIn: number) {
+    const data = (projectRef.current?.data || {}) as Record<string, unknown>;
+    const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
+    const updated = lanes.map((clip) =>
+      clip.id === id ? { ...clip, fadeIn: fadeIn > 0.0001 ? fadeIn : undefined } : clip
+    );
+    writeProjectData({ ...data, lanes: updated }, "the clip fade");
+  }
+
+  function commitTrim(preview: { id: string; start: number; duration: number; offset: number }) {    // Read through the ref: this can run from the global pointer handler, whose closure
     // may predate the loaded project.
     const data = (projectRef.current?.data || {}) as Record<string, unknown>;
     const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
@@ -390,6 +423,14 @@ export function StudioEditorShell() {
   /** Latest server version, updated synchronously so a queued write never goes stale. */
   projectVersionRef.current = project?.updated_at ?? projectVersionRef.current;
 
+  /**
+   * Document data read through the ref. Global pointer/key handlers can outlive the
+   * render that created them, so writing `project.data` from their closure can persist a
+   * document from before the project even loaded.
+   */
+  function currentData(): Record<string, unknown> {
+    return (projectRef.current?.data || {}) as Record<string, unknown>;
+  }
   /** Load the library panel's lists the first time it opens (G12). */
   useEffect(() => {
     if (!libraryOpen || !user) return;
@@ -579,7 +620,7 @@ export function StudioEditorShell() {
 
   function applyHistoryEntry(entry: { data: unknown; label: string }, to: "undo" | "redo") {
     if (!projectId) return;
-    const current = (project?.data || {}) as Record<string, unknown>;
+    const current = currentData() as Record<string, unknown>;
     const history = historyRef.current;
     const opposite = to === "undo" ? history.redo : history.undo;
     opposite.push({ data: current, label: entry.label });
@@ -749,14 +790,14 @@ export function StudioEditorShell() {
 
   /** Seed the loop range from the project document (spec §68 persists it). */
   useEffect(() => {
-    const data = (project?.data || {}) as { loopStart?: unknown; loopEnd?: unknown };
+    const data = currentData() as { loopStart?: unknown; loopEnd?: unknown };
     if (typeof data.loopStart === "number") setLoopStart(data.loopStart);
     if (typeof data.loopEnd === "number") setLoopEnd(data.loopEnd);
   }, [project?.id, project?.data]);
 
   /** Persist the loop range — the same document field the reference uses. */
   function commitLoopRange(start: number, end: number) {
-    const data = (project?.data || {}) as Record<string, unknown>;
+    const data = currentData() as Record<string, unknown>;
     writeProjectData({ ...data, loopStart: start, loopEnd: end }, "the loop range");
   }
 
@@ -768,7 +809,7 @@ export function StudioEditorShell() {
 
   /** Persist master volume / mute into the document (undoable, like the loop range). */
   function commitMaster(volume = masterVolume, muted = masterMuted) {
-    const data = (project?.data || {}) as Record<string, unknown>;
+    const data = currentData() as Record<string, unknown>;
     writeProjectData(
       { ...data, masterVolume: volume, masterMuted: muted },
       "the master level"
@@ -865,7 +906,7 @@ export function StudioEditorShell() {
       index: tracks.length,
       clipIds: copies.map((clip) => clip.id),
     };
-    const data = (project?.data || {}) as Record<string, unknown>;
+    const data = currentData() as Record<string, unknown>;
     const nextTracks = [...tracks, copy];
     setMenuTrackId(null);
     writeProjectData(
@@ -902,7 +943,7 @@ export function StudioEditorShell() {
       .filter((candidate) => candidate.id !== trackId)
       .map((candidate, index) => ({ ...candidate, index }));
     const lanes = clips.filter((clip) => !track.clipIds.includes(clip.id));
-    const data = (project?.data || {}) as Record<string, unknown>;
+    const data = currentData() as Record<string, unknown>;
     setMenuTrackId(null);
     setSelectedTrack(null);
     writeProjectData({ ...data, lanes, tracks: nextTracks }, "deleting a track", nextTracks);
@@ -960,7 +1001,7 @@ export function StudioEditorShell() {
       }
 
       const stamp = Date.now().toString(36);
-      const data = (project?.data || {}) as Record<string, unknown>;
+      const data = currentData() as Record<string, unknown>;
       const base = Math.round(playhead * 1000) / 1000;
       const addedLanes = stemsClips.map((stem, index) => ({
         id: `stem-${stamp}-${index}`,
@@ -1011,7 +1052,7 @@ export function StudioEditorShell() {
 
   /** Persist the track list into the project document. */
   function commitTracks(next: StudioTrack[]) {
-    const base = (project?.data || {}) as Record<string, unknown>;
+    const base = currentData() as Record<string, unknown>;
     writeProjectData({ ...base, tracks: next }, "the track list", next);
   }
 
@@ -1063,14 +1104,14 @@ export function StudioEditorShell() {
   function commitChain(trackId: string, next: PluginChainEntry[]) {
     const merged = { ...chains, [trackId]: next };
     setLocalChains(merged);
-    const base = (project?.data || {}) as Record<string, unknown>;
+    const base = currentData() as Record<string, unknown>;
     writeProjectData({ ...base, chains: merged }, "the plugin chain");
   }
 
   /** Persist new start positions for one or more clips (drag result). */
   function commitClipStarts(next: Record<string, number>) {
     if (!projectId) return;
-    const data = (project?.data || {}) as Record<string, unknown>;
+    const data = currentData() as Record<string, unknown>;
     const lanes = Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
     const updated = lanes.map((clip) =>
       next[clip.id] !== undefined ? { ...clip, start: next[clip.id] } : clip
@@ -1092,7 +1133,7 @@ export function StudioEditorShell() {
   /** Insert new clips into their owner tracks and persist lanes + tracks together. */
   function insertClips(entries: { clip: ClipLike; trackId: string }[]) {
     if (!projectId || entries.length === 0) return;
-    const data = (project?.data || {}) as Record<string, unknown>;
+    const data = currentData() as Record<string, unknown>;
     const lanes = [...clips, ...entries.map((entry) => entry.clip)];
     const additions = new Map<string, string[]>();
     entries.forEach((entry) => {
@@ -1195,7 +1236,7 @@ export function StudioEditorShell() {
     setSelectedClip(candidate ? candidate.id : null);
     focusPendingRef.current = Boolean(candidate);
 
-    const data = (project?.data || {}) as Record<string, unknown>;
+    const data = currentData() as Record<string, unknown>;
     writeProjectData({ ...data, lanes: remaining, tracks: nextTracks }, "deleting clips", nextTracks);
   }
 
@@ -1307,6 +1348,19 @@ export function StudioEditorShell() {
             hideTrack(selectedTrack);
             return;
           }
+          if (letter === "f") {
+            const id = selectedClip ?? selectedIds[0];
+            const clip = id ? clipsRef.current.find((item) => item.id === id) : undefined;
+            if (clip) {
+              event.preventDefault();
+              const current = (clip as { fadeIn?: number }).fadeIn ?? 0;
+              commitClipFade(
+                clip.id,
+                current > 0 ? 0 : Math.min(0.5, (clip.duration ?? 4) / 4)
+              );
+            }
+            return;
+          }
           return;
         }
 
@@ -1387,8 +1441,8 @@ export function StudioEditorShell() {
     origins: Record<string, number>;
     deltaPx: number;
   }): ClipLike[] {
-    const lanes = Array.isArray((project?.data || {}).lanes)
-      ? ((project?.data || {}) as { lanes: ClipLike[] }).lanes
+    const lanes = Array.isArray(currentData().lanes)
+      ? (currentData() as { lanes: ClipLike[] }).lanes
       : clipsRef.current;
     return lanes.map((clip) => {
       const origin = current.origins[clip.id];
@@ -1638,7 +1692,7 @@ export function StudioEditorShell() {
 
     // Master chain (W4.1): the bus is a real node graph, not a hard-coded gain.
     const masterChain = ((): MasterChainEntry[] => {
-      const data = (project?.data || {}) as { masterChain?: unknown };
+      const data = currentData() as { masterChain?: unknown };
       const raw = Array.isArray(data.masterChain) ? (data.masterChain as MasterChainEntry[]) : [];
       // A default limiter matches the reference, which ships master with one (§91).
       return raw.length > 0 ? raw : [{ type: "limiter", amount: 0.5 }];
@@ -1696,7 +1750,24 @@ export function StudioEditorShell() {
       // Audition speed (G17): playbackRate scales both the scheduling offset and
       // how long the buffer takes to play, so clips stay in sync with each other.
       source.playbackRate.value = playbackRate;
-      source.connect(trackInput(track?.id ?? clip.id, volume));
+      const destination = trackInput(track?.id ?? clip.id, volume);
+      const fadeIn = Math.min(
+        (clip as { fadeIn?: number }).fadeIn ?? 0,
+        duration
+      );
+      if (fadeIn > 0) {
+        const clipGain = context.createGain();
+        const intoClip = Math.max(0, from - start);
+        const initial = intoClip >= fadeIn ? 1 : intoClip / fadeIn;
+        clipGain.gain.setValueAtTime(initial, when);
+        if (intoClip < fadeIn) {
+          clipGain.gain.linearRampToValueAtTime(1, when + (fadeIn - intoClip) / playbackRate);
+        }
+        clipGain.connect(destination);
+        source.connect(clipGain);
+      } else {
+        source.connect(destination);
+      }
       source.start(
         when,
         Math.max(0, (clip as { offset?: number }).offset ?? 0) + offset,
@@ -1759,6 +1830,8 @@ export function StudioEditorShell() {
         id: clip.id,
         start: clip.start,
         duration: clip.duration,
+        offset: (clip as { offset?: number }).offset,
+        fadeIn: (clip as { fadeIn?: number }).fadeIn,
         audioUrl: (clip as { audioUrl?: string | null }).audioUrl ?? null,
       }));
       const exportTracks: ExportTrack[] = tracks.map((track) => ({
@@ -1769,7 +1842,7 @@ export function StudioEditorShell() {
         solo: track.solo,
         clipIds: track.clipIds,
       }));
-      const chain = ((project.data || {}) as { masterChain?: MasterChainEntry[] }).masterChain;
+      const chain = (currentData() as { masterChain?: MasterChainEntry[] }).masterChain;
       // Mix/range only: per-track files must keep their relative balance (G11).
       const normalise = exportNormalise ? EXPORT_TARGET_PEAK_DB : null;
       const trackChains = chains;
@@ -1889,41 +1962,68 @@ export function StudioEditorShell() {
 
   /** Pointer handling for clip dragging (G7/G8) and marquee selection (G6). */
   useEffect(() => {
+    const computeFade = (session: { id: string; startX: number; fadeIn: number; duration: number }, clientX: number) => {
+      const raw =
+        session.fadeIn + ((clientX - session.startX) / barWidthRef.current) * secondsPerBarRef.current;
+      return {
+        id: session.id,
+        fadeIn: Math.max(
+          0,
+          Math.min(
+            session.duration,
+            snapToGrid(raw, secondsPerBarRef.current, beatsPerBarRef.current)
+          )
+        ),
+      };
+    };
+
+    const computeTrim = (
+      session: { id: string; edge: "start" | "end"; startX: number; start: number; duration: number; offset: number },
+      clientX: number
+    ) => {
+      const deltaSec = ((clientX - session.startX) / barWidthRef.current) * secondsPerBarRef.current;
+      const step = secondsPerBarRef.current / beatsPerBarRef.current;
+      const end = session.start + session.duration;
+      if (session.edge === "end") {
+        const newEnd = Math.max(
+          session.start + step,
+          snapToGrid(end + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
+        );
+        return {
+          id: session.id,
+          start: session.start,
+          duration: newEnd - session.start,
+          offset: session.offset,
+        };
+      }
+      // Left trim moves the start and the content offset together, so the audio under
+      // the remaining clip does not shift.
+      const newStart = Math.max(
+        0,
+        Math.min(
+          end - step,
+          snapToGrid(session.start + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
+        )
+      );
+      return {
+        id: session.id,
+        start: newStart,
+        duration: end - newStart,
+        offset: Math.max(0, session.offset + (newStart - session.start)),
+      };
+    };
+
     const move = (event: PointerEvent) => {
+      const fadeSession = fadeRef.current;
+      if (fadeSession) {
+        const preview = computeFade(fadeSession, event.clientX);
+        fadePreviewRef.current = preview;
+        setFadePreview(preview);
+        return;
+      }
       const trimSession = trimRef.current;
       if (trimSession) {
-        const deltaSec = ((event.clientX - trimSession.startX) / barWidthRef.current) * secondsPerBarRef.current;
-        const step = secondsPerBarRef.current / beatsPerBarRef.current;
-        const end = trimSession.start + trimSession.duration;
-        let next: { id: string; start: number; duration: number; offset: number };
-        if (trimSession.edge === "end") {
-          const newEnd = Math.max(
-            trimSession.start + step,
-            snapToGrid(end + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
-          );
-          next = {
-            id: trimSession.id,
-            start: trimSession.start,
-            duration: newEnd - trimSession.start,
-            offset: trimSession.offset,
-          };
-        } else {
-          // Left trim moves the start and the content offset together, so the audio
-          // under the remaining clip does not shift.
-          const newStart = Math.max(
-            0,
-            Math.min(
-              end - step,
-              snapToGrid(trimSession.start + deltaSec, secondsPerBarRef.current, beatsPerBarRef.current)
-            )
-          );
-          next = {
-            id: trimSession.id,
-            start: newStart,
-            duration: end - newStart,
-            offset: Math.max(0, trimSession.offset + (newStart - trimSession.start)),
-          };
-        }
+        const next = computeTrim(trimSession, event.clientX);
         trimPreviewRef.current = next;
         setTrimPreview(next);
         return;
@@ -1968,16 +2068,32 @@ export function StudioEditorShell() {
       setMarquee({ x1: band.x1, y1: band.y1, x2, y2 });
       setSelectedIds(hit);
     };
-    const up = () => {
+    const up = (event: PointerEvent) => {
+      const cancelled = event.type === "pointercancel";
+      const fadeSession = fadeRef.current;
+      if (fadeSession) {
+        fadeRef.current = null;
+        fadePreviewRef.current = null;
+        setFadePreview(null);
+        if (cancelled) return;
+        // Use the release position: Chrome coalesces pointermove events, so the last
+        // move can be missing and the pointerup carries the true end point.
+        const preview = computeFade(fadeSession, event.clientX);
+        if (Math.abs(preview.fadeIn - fadeSession.fadeIn) > 0.0001) {
+          commitClipFade(preview.id, preview.fadeIn);
+        }
+        return;
+      }
       const trimSession = trimRef.current;
       if (trimSession) {
         trimRef.current = null;
-        const preview = trimPreviewRef.current;
+        trimPreviewRef.current = null;
         setTrimPreview(null);
+        if (cancelled) return;
+        const preview = computeTrim(trimSession, event.clientX);
         if (
-          preview &&
-          (Math.abs(preview.start - trimSession.start) > 0.0001 ||
-            Math.abs(preview.duration - trimSession.duration) > 0.0001)
+          Math.abs(preview.start - trimSession.start) > 0.0001 ||
+          Math.abs(preview.duration - trimSession.duration) > 0.0001
         ) {
           commitTrim(preview);
         }
@@ -1986,10 +2102,17 @@ export function StudioEditorShell() {
       const session = dragRef.current;
       dragRef.current = null;
       if (session) {
-        // Commit from a ref, not from inside a state updater: React double-invokes
-        // updaters, which fired the save twice and turned the second into a 409.
-        const current = dragStateRef.current;
-        if (current && Math.abs(current.deltaPx) > 0) {
+        // A cancel must abort the gesture: its coordinates are not the pointer's.
+        if (cancelled) {
+          dragStateRef.current = null;
+          setDrag(null);
+          return;
+        }
+        // Commit from the release position: the browser may coalesce the final
+        // pointermove, so the last computed delta can be short of the drop.
+        const finalDelta = event.clientX - session.startX;
+        const current = { ids: session.ids, origins: session.origins, deltaPx: finalDelta };
+        if (Math.abs(finalDelta) > 0) {
           // Ghost drag on: nothing moved audio during the gesture, so apply once now.
           const proposed = draggedLanes(current);
           commitDrag(current);
@@ -2007,15 +2130,28 @@ export function StudioEditorShell() {
         if (band.moved) setSelectedIds(band.hit);
       }
     };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-    return () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-    };
+    // Keep the freshest handlers for the single set of listeners registered below. The
+    // old version re-registered on every drag frame; between removal and re-attach the
+    // browser could deliver pointer moves to nobody, so a fast drag only moved once.
+    pointerHandlersRef.current = { move, up };
   }, [drag, secondsPerBar, beatsPerBar, projectId]);
+
+  /** One stable pair of window listeners for clip drag, trim, fade and marquee. */
+  useEffect(() => {
+    const onMove = (event: PointerEvent) => pointerHandlersRef.current?.move(event);
+    const onUp = (event: PointerEvent) => pointerHandlersRef.current?.up(event);
+    const onCancel = (event: PointerEvent) => {
+      pointerHandlersRef.current?.up(event);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onCancel);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onCancel);
+    };
+  }, []);
 
 
   /** Coarse pointers get 44px hit areas without changing desktop density (G20). */
@@ -2176,11 +2312,13 @@ export function StudioEditorShell() {
           viewWidth={view.width}
           viewLeft={view.left}
           trimPreview={trimPreview}
+          fadePreview={fadePreview}
           timelineRef={timelineRef}
           onScroll={(left, width) => setView({ left, width })}
           onLanePointerDown={handleLanePointerDown}
           onClipPointerDown={handleClipPointerDown}
           onTrimPointerDown={handleTrimPointerDown}
+          onFadePointerDown={handleFadePointerDown}
           onLoopHandleDown={(event) => {
             event.stopPropagation();
             loopDragRef.current = true;
