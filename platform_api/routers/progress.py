@@ -308,9 +308,15 @@ def _build_row(
     elif pipeline_complete:
         stage = "Completed"
         status = "Completed"
-        notes = (
-            "Desktop pipeline completed. Local run-folder files may have been moved or archived."
-        )
+        if youtube_failed > 0 or youtube_status == "FAILED":
+            notes = (
+                "Media pipeline completed. The YouTube upload failed — "
+                "right-click → Upload to YouTube to retry (the hosted copy is reused)."
+            )
+        else:
+            notes = (
+                "Desktop pipeline completed. Local run-folder files may have been moved or archived."
+            )
     elif youtube_pending > 0 or youtube_status in {"PENDING", "RUNNING", "PROCESSING"}:
         stage = "YouTube"
         if youtube_status == "PENDING":
