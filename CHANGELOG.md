@@ -7,6 +7,24 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.20] - 2026-11-06
+
+### Fixed
+
+- **Uploading the same video twice** is no longer possible. The server returns the job already stored for
+  that batch/channel/role (queued, processing, or already published) instead of opening a second transfer,
+  charge, and YouTube post; the app stops with "already uploading" instead of starting again. A re-merged
+  file (different size) is still publishable.
+- **Rows stuck on "Uploading"**: the upload-expiry sweep now runs when Progress is polled, not only when
+  publish jobs are listed. Dead upload links from older clients are retired instead of being reported as an
+  upload that never finishes.
+
+### Changed
+
+- The YouTube column shows **elapsed time** while publishing (`Uploading 12m`) and the tooltip names the
+  provider (Post for Me) and explains that it reports no percentage. The row menu shows a disabled
+  *YouTube upload in progress…* / *Already on YouTube* item rather than offering a second upload.
+
 ## [1.5.19] - 2026-11-06
 
 ### Added
