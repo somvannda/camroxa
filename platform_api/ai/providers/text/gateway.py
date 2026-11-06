@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import Any, Protocol
 
 from platform_api.ai.parsing.response_parser import extract_chat_content
@@ -20,6 +21,19 @@ logger = logging.getLogger(__name__)
 _OPENAI_BASE_URL = "https://api.openai.com"
 
 ProviderChain = list[tuple[str, str]]
+
+
+@dataclass(frozen=True)
+class TextGenerationResult:
+    """Content plus the provider/model that actually produced it.
+
+    Billing uses this so a charge follows the executed model after a fallback,
+    instead of the provider that was merely routed (W7).
+    """
+
+    content: str
+    provider: str
+    model: str
 
 
 class LlmChatClient(Protocol):
@@ -208,6 +222,35 @@ class TextProviderGateway:
         draft: bool = False,
         provider_chain: ProviderChain | None = None,
     ) -> str:
+        """Generate text and return only the content (back-compat wrapper)."""
+        result = await self.generate_text_with_meta(
+            provider=provider,
+            model=model,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            response_format=response_format,
+            prefer_json=prefer_json,
+            draft=draft,
+            provider_chain=provider_chain,
+        )
+        return result.content
+
+    async def generate_text_with_meta(
+        self,
+        *,
+        provider: str,
+        model: str,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.8,
+        max_tokens: int = 800,
+        response_format: dict[str, str] | None = None,
+        prefer_json: bool = False,
+        draft: bool = False,
+        provider_chain: ProviderChain | None = None,
+    ) -> TextGenerationResult:
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -243,7 +286,11 @@ class TextProviderGateway:
 
             content = extract_chat_content(response)
             if content:
-                return content
+                return TextGenerationResult(
+                    content=content,
+                    provider=chain_provider,
+                    model=chain_model,
+                )
 
             empty_error = ExternalServiceError(
                 "LLM returned an unexpected response shape.",
