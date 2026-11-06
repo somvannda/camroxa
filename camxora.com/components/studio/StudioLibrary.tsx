@@ -4,6 +4,7 @@ import { forwardRef } from "react";
 
 import { Icon } from "@/components/Icon";
 import type { WebMusicGeneration } from "@/lib/library-api";
+import { groupByDay } from "@/lib/studio-library-grouping";
 import type { WebMusicWorkspace } from "@/lib/web-music-api";
 import type { StudioProject, StudioUpload } from "@/lib/studio-api";
 
@@ -159,18 +160,27 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               </p>
             ) : (
               <ul className="se-lib-list">
-                {visibleSongs.map((song) => (
-                  <li key={song.id} className="se-lib-row">
-                    <span className="se-lib-title">{song.title || "Untitled song"}</span>
-                    <span className="se-lib-meta">{song.style?.slice(0, 44) || "No style"}</span>
-                    <button
-                      type="button"
-                      className="se-pill"
-                      onClick={() => onAddSong(song)}
-                      disabled={!song.clips?.some((clip) => clip.audio_url)}
-                    >
-                      Add
-                    </button>
+                {groupByDay(visibleSongs).map((group) => (
+                  <li key={group.label} className="se-lib-day" aria-label={group.label}>
+                    <span>{group.label}</span>
+                    <ul>
+                      {group.items.map((song) => (
+                        <li key={song.id} className="se-lib-row">
+                          <span className="se-lib-title">{song.title || "Untitled song"}</span>
+                          <span className="se-lib-meta">
+                            {song.style?.slice(0, 44) || "No style"}
+                          </span>
+                          <button
+                            type="button"
+                            className="se-pill"
+                            onClick={() => onAddSong(song)}
+                            disabled={!song.clips?.some((clip) => clip.audio_url)}
+                          >
+                            Add
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
                   </li>
                 ))}
               </ul>

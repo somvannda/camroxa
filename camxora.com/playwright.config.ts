@@ -13,7 +13,7 @@ export default defineConfig({
   fullyParallel: false,
   // The specs share one dev server and one sandbox account and some decode audio; more
   // workers than this starves the machine and turns timing-based checks flaky.
-  workers: 6,
+  workers: 4,
   retries: 0,
   reporter: [["list"]],
   use: {

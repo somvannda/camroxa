@@ -205,6 +205,20 @@ describe("formatSongCount", () => {
 });
 
 describe("StudioLibrary", () => {
+  it("groups songs under date headers", () => {
+    const song = {
+      id: "s1",
+      title: "Song one",
+      style: "downtempo",
+      status: "success",
+      created_at: new Date().toISOString(),
+      clips: [],
+    } as unknown as WebMusicGeneration;
+    render(<StudioLibrary {...libraryProps({ songs: [song] })} />);
+    expect(screen.getByText("Today")).toBeTruthy();
+    expect(screen.getByText("Song one")).toBeTruthy();
+  });
+
   it("lists the drawer's four sections in order", () => {
     render(<StudioLibrary {...libraryProps()} />);
     const tabs = screen.getAllByRole("tab").map((node) => node.textContent);

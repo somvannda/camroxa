@@ -22,6 +22,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Take model: audition vs commit, newest on top | §72.1 | captured in spec; take UI still reference-only |
 | Clip remembers its source generation | §70 | `songId` on clip + provenance strip |
 | Library panel: songs with Add, workspace filter with counts, projects with Open, uploads with Add | §19.1 / gap G12 | `components/studio/StudioLibrary.tsx` + `selectLibraryWorkspace` |
+| Songs grouped under Today / Yesterday / date headers | §19.2 | `lib/studio-library-grouping.ts` |
 | Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (8 wired, 1 disabled with a reason) |
 | Share: view + copy link, naming gate first | §24 / §24.1 | `StudioProjectMenu` share dialog + `createStudioProjectShare` / `listStudioProjectShares` |
 | Public share page: read-only render, comments, fork to a copy | §24 | `app/studio/shared/[token]/page.tsx`; fork opens the returned project id |
