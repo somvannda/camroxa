@@ -151,6 +151,26 @@ class StorageService:
 
         await asyncio.to_thread(_delete)
 
+    async def list_objects(self, prefix: str) -> list[dict[str, Any]]:
+        """Every object under ``prefix`` with its size and last-modified time."""
+
+        def _list() -> list[dict[str, Any]]:
+            client = self._client()
+            paginator = client.get_paginator("list_objects_v2")
+            found: list[dict[str, Any]] = []
+            for page in paginator.paginate(Bucket=self._config.bucket, Prefix=prefix):
+                for item in page.get("Contents") or []:
+                    found.append(
+                        {
+                            "key": str(item.get("Key") or ""),
+                            "size": int(item.get("Size") or 0),
+                            "last_modified": item.get("LastModified"),
+                        }
+                    )
+            return found
+
+        return await asyncio.to_thread(_list)
+
     async def probe(self) -> None:
         """Verify the stored credential can actually reach the bucket.
 

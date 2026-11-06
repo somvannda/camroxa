@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import hmac
 import logging
 import re
+import time
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
@@ -32,6 +34,14 @@ SUPPORTED_PLATFORMS = ("youtube",)
 EXTERNAL_ID_PREFIX = "camxora"
 UPLOAD_URL_TTL = timedelta(minutes=30)
 CONNECT_SESSION_TTL = timedelta(minutes=30)
+
+# Hosted originals: uploaded, fetched by the provider, then safe to delete once
+# the signed URL they came with has expired.
+PUBLISH_MEDIA_PREFIX = "publish/"
+MEDIA_RETENTION_DAYS = 7
+MEDIA_PURGE_INTERVAL_SECONDS = 6 * 3600
+_last_media_purge = 0.0
+_media_purge_lock = asyncio.Lock()
 
 STATUS_PENDING_UPLOAD = "pending_upload"
 STATUS_PENDING_PAYMENT = "pending_payment"
@@ -124,6 +134,60 @@ class PublishService:
         self._billing = billing
         self._enabled = bool(enabled)
         self._webhook_secret = str(webhook_secret or "")
+
+    # --- Hosted media retention --------------------------------------------
+
+    async def _purge_stale_media(self) -> None:
+        """Delete hosted originals older than the media-URL lifetime.
+
+        Every publish pushes the original (often several GB) to B2 and the
+        provider fetches it within minutes; the object then stayed forever.
+        This mirrors the bucket lifecycle rule we would otherwise need, so it
+        works without dashboard access. Runs at most every few hours, from the
+        listing the desktop already polls.
+        """
+        global _last_media_purge
+        now = time.time()
+        if now - _last_media_purge < MEDIA_PURGE_INTERVAL_SECONDS:
+            return
+        async with _media_purge_lock:
+            if time.time() - _last_media_purge < MEDIA_PURGE_INTERVAL_SECONDS:
+                return
+            _last_media_purge = time.time()
+            try:
+                from platform_api.services.storage_service import StorageService
+                from platform_api.services.streaming_config_service import (
+                    resolve_streaming_storage_config,
+                )
+
+                config = await resolve_streaming_storage_config(self._db)
+                if not config.configured:
+                    return
+                storage = StorageService.from_config(config)
+                objects = await storage.list_objects(PUBLISH_MEDIA_PREFIX)
+            except Exception:
+                logger.warning("Publish media listing failed; cleanup skipped.", exc_info=True)
+                return
+            cutoff = datetime.now(timezone.utc) - timedelta(days=MEDIA_RETENTION_DAYS)
+            removed = 0
+            for item in objects:
+                modified = item.get("last_modified")
+                if not isinstance(modified, datetime) or modified >= cutoff:
+                    continue
+                key = str(item.get("key") or "")
+                if not key:
+                    continue
+                try:
+                    await storage.delete_object(key)
+                    removed += 1
+                except Exception:
+                    logger.warning("Could not delete publish media %s", key, exc_info=True)
+            if removed:
+                logger.info(
+                    "Deleted %s publish media object(s) older than %s days.",
+                    removed,
+                    MEDIA_RETENTION_DAYS,
+                )
 
     # --- Feature flag -------------------------------------------------------
 
@@ -663,6 +727,10 @@ class PublishService:
                 logger.info("Marked %s publish job(s) failed after upload-URL expiry.", expired)
         except Exception:
             logger.warning("Publish upload expiry sweep failed.", exc_info=True)
+        try:
+            await self._purge_stale_media()
+        except Exception:
+            logger.warning("Publish media cleanup failed.", exc_info=True)
         jobs = await self._repo.list_jobs(
             user_id, batch_id=batch_id, status=status, limit=limit
         )
