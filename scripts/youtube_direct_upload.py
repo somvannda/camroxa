@@ -46,26 +46,62 @@ THUMB_ENDPOINT = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set"
 CATEGORY_MUSIC = "10"
 
 
+class _FixedBaseStorage:
+    """Storage shim: the desktop app's store, pinned to the production API.
+
+    The repo runs without the bundled build config, so SecureStorage would fall
+    back to localhost. Everything else (sessions, token decoding) still comes
+    from the same file the desktop app writes.
+    """
+
+    def __init__(self, inner: Any, base_url: str) -> None:
+        self._inner = inner
+        self._base_url = base_url
+
+    def get_api_base_url(self) -> str:
+        return self._base_url
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._inner, name)
+
+
 # ---------------------------------------------------------------------------
 # CAMXORA session (reuses the app's stored login)
 # ---------------------------------------------------------------------------
 
 
-def _api():
+def _api(api_base: str = API_BASE, *, login: bool = False):
+    from shared.services.platform_api import PlatformApi
+    from shared.services.platform_client import PlatformClient
+    from shared.services.secure_storage import SecureStorage
     from shared.services.session_service import SessionService
 
-    session = SessionService()
+    store = SecureStorage()
+    client = PlatformClient(storage=_FixedBaseStorage(store, api_base.rstrip("/")))
+    api = PlatformApi(client)
+    session = SessionService(storage=store, api=api)
     tokens = session.get_tokens()
-    if tokens is None:
+    if tokens is None and not login:
         raise SystemExit(
-            "No CAMXORA session found on this machine. Sign in with the desktop app first."
+            "No CAMXORA session found on this machine. Open the desktop app and sign in, "
+            "or re-run with --login."
         )
-    try:
-        session.ensure_fresh_session()
-    except Exception:
-        # An expired access token is fine as long as refresh works; surface real
-        # failures when the first API call is made.
-        pass
+    if login or tokens is None:
+        import getpass
+
+        from shared.models.auth import AuthTokens
+
+        email = input("CAMXORA email: ").strip()
+        password = getpass.getpass("Password: ")
+        response = api.login(email, password)
+        session.set_tokens(AuthTokens.from_token_response(response))
+    else:
+        try:
+            session.ensure_fresh_session()
+        except Exception:
+            # An expired access token is fine as long as refresh works; surface
+            # real failures when the first API call is made.
+            pass
     return session.api
 
 
@@ -260,9 +296,11 @@ def main() -> int:
     parser.add_argument("--batch-id", default=None, help="Batch uuid (to update Progress)")
     parser.add_argument("--role", default="OK")
     parser.add_argument("--chunk-mb", type=int, default=16)
+    parser.add_argument("--api", default=API_BASE, help="CAMXORA API base URL")
+    parser.add_argument("--login", action="store_true", help="Sign in with email/password first")
     args = parser.parse_args()
 
-    api = _api()
+    api = _api(args.api, login=args.login)
 
     if args.list_profiles:
         for profile in api.list_profiles():
