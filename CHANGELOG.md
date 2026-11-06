@@ -7,6 +7,14 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.18] - 2026-11-06
+
+### Changed
+
+- Auto-publish now follows the **batch's stored choice** rather than the app setting at merge time: a run
+  created with YouTube Upload enabled still publishes if the toggle is later turned off (and a run
+  created without it stays unpublished). The flag travels batch → history API → pipeline context.
+
 ## [1.5.17] - 2026-11-06
 
 ### Added
