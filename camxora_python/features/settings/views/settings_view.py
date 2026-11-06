@@ -3848,18 +3848,38 @@ class SettingsView(QWidget):
         self._bind_suno_tab()
 
     def _start_publish_connection(self, profile_id: str | None = None) -> None:
+        """Connect through CAMXORA's own Google client, not a third party."""
         profile_id = profile_id or self._selected_profile_id()
         if not profile_id:
             return
         self._publish_poll_timer.stop()
-        worker = PublishConnectionWorker(
-            self._api, str(profile_id), "youtube", parent=self
+        worker = YouTubeActionWorker(
+            self._api, "start", profile_id=str(profile_id), parent=self
         )
-        worker.succeeded.connect(self._on_publish_connection_started)
+        worker.succeeded.connect(self._on_native_connect_started)
         worker.failed.connect(self._show_error)
-        worker.finished.connect(lambda: setattr(self, "_publish_connection_worker", None))
-        self._publish_connection_worker = worker
+        worker.finished.connect(lambda: setattr(self, "_youtube_worker", None))
+        self._youtube_worker = worker
         worker.start()
+
+    def _on_native_connect_started(self, payload: object) -> None:
+        auth_url = str(getattr(payload, "auth_url", "") or "").strip()
+        if not auth_url:
+            self._refresh_publish_accounts()
+            return
+        self._publish_auth_url = auth_url
+        webbrowser.open(auth_url)
+        self._set_publish_waiting_ui(True)
+        self._profile_youtube_note.setText(
+            "YouTube: choose the Google account that owns this channel. "
+            "Using a different browser? Copy the link and open it there."
+        )
+        self._status_message = "YouTube connect started."
+        self._start_youtube_poll()
+
+    def _start_youtube_poll(self) -> None:
+        self._youtube_poll_timer.start()
+        self._poll_youtube_connections()
 
     def _on_publish_connection_started(self, payload: object) -> None:
         auth_url = getattr(payload, "auth_url", None)
@@ -3934,22 +3954,8 @@ class SettingsView(QWidget):
         self._sync_publish_accounts_during_poll()
 
     def _sync_publish_accounts_during_poll(self) -> None:
-        """Sync (not list) while waiting: the account appears only after a sync."""
-        worker = self._publish_sync_worker
-        if worker is not None and worker.isRunning():
-            return
-        profile_id = str(self._publish_poll_profile_id or "").strip()
-        if not profile_id:
-            self._refresh_publish_accounts()
-            return
-        worker = PublishSyncAccountsWorker(self._api, profile_id, "youtube", parent=self)
-        # Sync links the provider account into our DB; the list below is what the
-        # UI renders, so a sync that returns nothing still shows DB truth.
-        worker.succeeded.connect(lambda _accounts: self._refresh_publish_accounts())
-        worker.failed.connect(self._on_publish_poll_sync_failed)
-        worker.finished.connect(lambda: setattr(self, "_publish_sync_worker", None))
-        self._publish_sync_worker = worker
-        worker.start()
+        """Poll the native connection state; the callback lands there."""
+        self._poll_youtube_connections()
 
     def _on_publish_poll_sync_failed(self, message: str) -> None:
         # A provider hiccup must not end the poll; log and try the next tick.
@@ -3966,18 +3972,10 @@ class SettingsView(QWidget):
         return False
 
     def _refresh_publish_accounts(self, profile_id: str | None = None) -> None:
-        if self._publish_accounts_worker is not None and self._publish_accounts_worker.isRunning():
-            return
+        """Refresh state from the native YouTube connections."""
         if not self._profiles:
             return
-        # Fetch every account so the profile list can badge all connected
-        # profiles, not only the selected one.
-        worker = PublishAccountsWorker(self._api, None, parent=self)
-        worker.succeeded.connect(self._on_publish_accounts_loaded)
-        worker.failed.connect(self._on_publish_accounts_failed)
-        worker.finished.connect(lambda: setattr(self, "_publish_accounts_worker", None))
-        self._publish_accounts_worker = worker
-        worker.start()
+        self._poll_youtube_connections()
 
     def _on_publish_accounts_failed(self, message: str) -> None:
         self._publish_accounts = []
@@ -4029,6 +4027,11 @@ class SettingsView(QWidget):
         self.refresh_data(force=True)
 
     def _disconnect_youtube(self) -> None:
+        profile_id = self._selected_profile_id()
+        connection = self._youtube_connection_for(profile_id) if profile_id else None
+        if connection is not None:
+            self._disconnect_direct_youtube()
+            return
         if self._publish_accounts:
             self._disconnect_publish_account()
             return
