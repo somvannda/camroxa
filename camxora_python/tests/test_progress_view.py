@@ -448,8 +448,8 @@ def test_stage_column_uses_compact_badge_and_progress_bar(qapp: QApplication) ->
     assert card._table.columnWidth(_COL_STAGE) == _STAGE_COLUMN_WIDTH
     assert card._table.columnWidth(_COL_EXPORT) == _EXPORT_COLUMN_WIDTH
     assert card._table.columnWidth(_COL_MERGE) == _MERGE_COLUMN_WIDTH
-    assert "YouTube" not in TABLE_HEADERS
-    assert card._table.columnCount() == 10
+    assert "YouTube" in TABLE_HEADERS
+    assert card._table.columnCount() == 11
     assert card._table.rowHeight(0) == _ROW_HEIGHT
     from PySide6.QtWidgets import QProgressBar
 

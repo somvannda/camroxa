@@ -1223,6 +1223,8 @@ class ProgressView(PollablePageMixin, QScrollArea):
                 try:
                     if meta is not None:
                         meta.youtube_status = f"uploading {percent}%"
+                        meta.youtube_pending = 1
+                        self._render_table()
                 except Exception:
                     pass
                 self._show_retry_notice(

@@ -36,6 +36,7 @@ from shared.lib.progress_presentation import (
     format_run_date_label,
     format_stage_label,
 )
+from features.workflow.lib.workflow_steps import format_upload_status
 from shared.models.platform import ProgressRow, ProgressRowMeta
 from shared.widgets.data_table import create_data_table
 
@@ -49,6 +50,7 @@ TABLE_HEADERS = [
     "Images",
     "Export",
     "Merge",
+    "YouTube",
     "Updated",
 ]
 
@@ -70,7 +72,8 @@ _COL_MUSIC = 5
 _COL_IMAGES = 6
 _COL_EXPORT = 7
 _COL_MERGE = 8
-_COL_UPDATED = 9
+_COL_YOUTUBE = 9
+_COL_UPDATED = 10
 
 _CENTER_ALIGNED_COLUMNS = {
     _COL_STAGE,
@@ -79,6 +82,7 @@ _CENTER_ALIGNED_COLUMNS = {
     _COL_IMAGES,
     _COL_EXPORT,
     _COL_MERGE,
+    _COL_YOUTUBE,
     _COL_UPDATED,
 }
 
@@ -300,11 +304,13 @@ class OperationalRowsCard(StudioPanel):
                 format_images_compact(row.meta),
                 format_export_compact(export_full),
                 format_merge_compact(merge_full),
+                self._format_youtube_cell(row),
                 self._format_updated_cell(entry),
             ]
             tooltips = list(values)
             tooltips[_COL_EXPORT] = export_full
             tooltips[_COL_MERGE] = merge_full
+            tooltips[_COL_YOUTUBE] = str(getattr(row.meta, "youtube_status", "") or "YouTube")
             if row.album:
                 tooltips[_COL_ALBUM] = str(row.album).strip()
             show_start_export = self._can_show_start_export(entry)
@@ -314,7 +320,7 @@ class OperationalRowsCard(StudioPanel):
                 self._table.removeCellWidget(row_index, col_index)
                 item = self._make_cell_item(value, center=col_index in _CENTER_ALIGNED_COLUMNS)
                 item.setToolTip(tooltips[col_index].replace("\n", " · "))
-                if col_index in (_COL_EXPORT, _COL_MERGE):
+                if col_index in (_COL_EXPORT, _COL_MERGE, _COL_YOUTUBE):
                     color = _STATUS_COLORS.get(str(value).strip().lower(), "#E5EDF7")
                     item.setForeground(QColor(color))
                 self._table.setItem(row_index, col_index, item)
@@ -364,6 +370,14 @@ class OperationalRowsCard(StudioPanel):
         self._selected_row_index = row_index
         entry = self._row_at(row_index)
         self.row_selected.emit(entry)
+
+    @staticmethod
+    def _format_youtube_cell(row: ProgressRow) -> str:
+        """Live upload state, or the settled delivery status."""
+        status = str(getattr(row.meta, "youtube_status", "") or "").strip()
+        if status.lower().startswith("uploading"):
+            return status
+        return format_upload_status(row)
 
     def _format_updated_cell(self, entry: EffectiveProgressRow | ProgressRow) -> str:
         if isinstance(entry, EffectiveProgressRow):
