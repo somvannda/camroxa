@@ -37,6 +37,11 @@ from shared.lib.progress_presentation import (
     format_stage_label,
 )
 from features.workflow.lib.workflow_steps import format_upload_status
+from shared.lib.publish_activity import (
+    describe as describe_upload,
+    slot_key as upload_slot_key,
+    snapshot as upload_snapshot,
+)
 from shared.models.platform import ProgressRow, ProgressRowMeta
 from shared.widgets.data_table import create_data_table
 
@@ -196,7 +201,7 @@ class OperationalRowsCard(StudioPanel):
     start_export_requested = Signal(object)
     start_merge_requested = Signal(object)
     upload_youtube_requested = Signal(object, str)
-    cancel_publish_upload_requested = Signal()
+    cancel_publish_upload_requested = Signal(str)
     change_run_folder_requested = Signal(object)
     download_missing_mp3s_requested = Signal(object)
     cancel_job_requested = Signal(object)
@@ -404,6 +409,11 @@ class OperationalRowsCard(StudioPanel):
     @staticmethod
     def _format_youtube_cell(row: ProgressRow) -> str:
         """Live upload state, or the settled delivery status."""
+        live = describe_upload(
+            upload_slot_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
+        )
+        if live:
+            return live
         status = str(getattr(row.meta, "youtube_status", "") or "").strip()
         if status.lower().startswith("uploading"):
             return status
@@ -416,6 +426,20 @@ class OperationalRowsCard(StudioPanel):
 
     @staticmethod
     def _youtube_tooltip(row: ProgressRow) -> str:
+        activity = upload_snapshot(
+            upload_slot_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
+        )
+        if activity is not None:
+            where = (
+                "CAMXORA storage"
+                if activity.stage == "storage"
+                else "Post for Me (our publishing provider)"
+            )
+            label = activity.label or "This video"
+            return (
+                f"{label} — uploading to {where}: {activity.describe()}. "
+                "Right-click → Cancel YouTube upload stops this row's transfer."
+            )
         label = OperationalRowsCard._format_youtube_cell(row)
         if label.startswith("Uploading"):
             return (
@@ -654,8 +678,17 @@ class OperationalRowsCard(StudioPanel):
                 else discover_merged_path(getattr(meta, "run_dir", ""))
             )
             if str(getattr(meta, "profile_id", "") or "").strip():
+                slot = upload_slot_key(meta.batch_id, meta.profile_id, meta.role)
+                activity = upload_snapshot(slot)
                 state = format_upload_status(entry.row)
-                if state == "Uploading":
+                if activity is not None:
+                    busy = menu.addAction(f"YouTube upload in progress — {activity.describe()}")
+                    busy.setEnabled(False)
+                    busy.setToolTip(
+                        f"{activity.label or 'This video'} is uploading to CAMXORA storage. "
+                        "Cancel it below to stop this row."
+                    )
+                elif state == "Uploading":
                     busy = menu.addAction("YouTube upload in progress…")
                     busy.setEnabled(False)
                     busy.setToolTip(
@@ -676,8 +709,8 @@ class OperationalRowsCard(StudioPanel):
                         partial(self.upload_youtube_requested.emit, entry.row, merged_path)
                     )
                 cancel_upload = menu.addAction("Cancel YouTube upload")
-                cancel_upload.setToolTip("Stop the upload to CAMXORA storage that is running now.")
-                cancel_upload.triggered.connect(self.cancel_publish_upload_requested.emit)
+                cancel_upload.setToolTip("Stop this row's upload.")
+                cancel_upload.triggered.connect(partial(self.cancel_publish_upload_requested.emit, slot))
                 menu.addSeparator()
         except Exception as exc:  # pragma: no cover - defensive
             from shared.services.app_logger import log_warn

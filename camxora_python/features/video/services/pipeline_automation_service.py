@@ -846,25 +846,56 @@ class PipelineAutomationService(QObject):
         if not claim_publish(plan.merged_path):
             # The video page already published this file in this session.
             return
-        self._publish_claim_path = plan.merged_path
+        queued_context = worker_context(plan)
+        running = getattr(self, "_publish_worker", None)
+        if running is not None and running.isRunning():
+            # Several merges can finish close together; sending three 2.6 GB
+            # originals at once saturates the uplink and makes the Progress
+            # rows impossible to read. Run them one at a time.
+            queue = getattr(self, "_publish_queue", None)
+            if queue is None:
+                queue = []
+                self._publish_queue = queue
+            queue.append(queued_context)
+            emit_shell_status(
+                "Another YouTube upload is running — this one is queued next.",
+                tone="neutral",
+            )
+            return
+        self._start_publish_worker(queued_context)
+
+    def _start_publish_worker(self, auto_context: dict[str, object]) -> None:
+        from shared.lib.publish_auto import release_publish
+
         try:
             from shared.workers.data_workers import PublishUploadWorker
 
+            self._publish_claim_path = str(auto_context.get("merged_path") or "")
             worker = PublishUploadWorker(
                 self._api,
-                auto_context=worker_context(plan),
+                auto_context=dict(auto_context),
                 parent=self,
             )
             worker.status_changed.connect(lambda text: emit_shell_status(str(text), tone="neutral"))
             worker.succeeded.connect(self._on_publish_succeeded)
             worker.failed.connect(self._on_publish_failed)
-            worker.finished.connect(lambda: setattr(self, "_publish_worker", None))
+            worker.finished.connect(self._on_publish_worker_finished)
             self._publish_worker = worker
             worker.start()
         except Exception as exc:
+            release_publish(str(auto_context.get("merged_path") or ""))
             from shared.services.app_logger import log_warn
 
             log_warn(f"Auto-upload could not start: {exc}", category="export")
+
+    def _on_publish_worker_finished(self) -> None:
+        self._publish_worker = None
+        queue = getattr(self, "_publish_queue", None) or []
+        while queue:
+            next_context = queue.pop(0)
+            if next_context:
+                self._start_publish_worker(next_context)
+                return
 
     def _on_publish_succeeded(self, job: object) -> None:
         status = str(getattr(job, "status", "") or "processing")

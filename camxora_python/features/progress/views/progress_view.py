@@ -205,6 +205,12 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._auto_missing_mp3_timer.setInterval(self._auto_missing_mp3_interval_ms)
         self._auto_missing_mp3_timer.timeout.connect(self._maybe_auto_download_missing_mp3s)
         self._auto_missing_mp3_timer.start()
+        # Uploads started by the pipeline have no server row until the file has
+        # landed, so repaint while any slot reports live activity.
+        self._upload_activity_timer = QTimer(self)
+        self._upload_activity_timer.setInterval(1_000)
+        self._upload_activity_timer.timeout.connect(self._tick_upload_activity)
+        self._upload_activity_timer.start()
         self._pending_auto_continue_key: tuple[str, str, str] | None = None
         self._rows: list[ProgressRow] = []
         self._runtime_by_key: dict[str, ProgressRuntimePresentation] = {}
@@ -1176,8 +1182,25 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._draft_retry_worker = worker
         worker.start()
 
-    def _cancel_publish_upload(self) -> None:
-        """Stop the upload currently running for this page."""
+    def _tick_upload_activity(self) -> None:
+        """Repaint rows while any upload is moving (storage or provider)."""
+        from shared.lib.publish_activity import active
+
+        if active():
+            self._render_table()
+
+    def _cancel_publish_upload(self, key: str = "") -> None:
+        """Stop the upload that owns this row (pipeline or manual)."""
+        from shared.lib.publish_activity import cancel as cancel_slot, snapshot
+
+        if key and snapshot(key) is not None:
+            if cancel_slot(key):
+                self._show_retry_notice("Cancelling the YouTube upload…", tone="neutral")
+            else:
+                self._show_retry_notice(
+                    "That upload has already stopped or finished.", tone="warning"
+                )
+            return
         worker = self._publish_upload_worker
         if worker is None or not worker.isRunning():
             self._show_retry_notice("No YouTube upload is running.", tone="warning")
