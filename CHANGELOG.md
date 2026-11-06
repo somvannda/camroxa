@@ -7,6 +7,14 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.16] - 2026-11-06
+
+### Fixed
+
+- The Progress row repaints while an upload runs, so the percentage advances there and not only in
+  the footer status line. The row's YouTube state is updated on every 5% step instead of once when
+  the transfer starts.
+
 ## [1.5.15] - 2026-11-05
 
 ### Added
