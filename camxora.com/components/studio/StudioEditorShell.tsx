@@ -738,7 +738,22 @@ export function StudioEditorShell() {
   }
 
   function zoomToFit() {
-    setBarWidth(ZOOM_LEVELS[2]);
+    // "Fit" must actually fit the content: derive pixels-per-bar from the viewport and
+    // the end of the arrangement instead of resetting to a preset (which left long or
+    // short projects unchanged and still scrolling).
+    const viewport = timelineRef.current?.clientWidth ?? view.width;
+    const contentEnd = clips.reduce(
+      (max, clip) => Math.max(max, (clip.start ?? 0) + (clip.duration ?? 0)),
+      0
+    );
+    if (!viewport || contentEnd <= 0) {
+      setBarWidth(ZOOM_LEVELS[2]);
+      return;
+    }
+    const bars = contentEnd / secondsPerBar;
+    const next = Math.max(8, Math.min(192, (viewport * 0.95) / Math.max(1, bars)));
+    setBarWidth(next);
+    if (timelineRef.current) timelineRef.current.scrollLeft = 0;
   }
 
   /** Track menu actions (spec §65). All persist through the history-aware write path. */
