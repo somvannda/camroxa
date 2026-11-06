@@ -40,6 +40,14 @@ DESKTOP_ROOT = REPO_ROOT / "camxora_python"
 if str(DESKTOP_ROOT) not in sys.path:
     sys.path.insert(0, str(DESKTOP_ROOT))
 
+# Windows consoles are cp1252 by default and titles legitimately contain
+# emoji from the customer's template.
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")  # type: ignore[attr-defined]
+except Exception:
+    pass
+
 API_BASE = "https://api.camxora.com/api/v3"
 UPLOAD_ENDPOINT = "https://www.googleapis.com/upload/youtube/v3/videos"
 THUMB_ENDPOINT = "https://www.googleapis.com/upload/youtube/v3/thumbnails/set"
@@ -179,18 +187,105 @@ def connect(api, profile, *, timeout_seconds: int = 300) -> None:
 # ---------------------------------------------------------------------------
 
 
-def start_session(token: str, *, title: str, description: str, tags: list[str], privacy: str) -> str:
+def _album_from_path(video: Path) -> str:
+    """'2026-11-07_Northbound-Voice-Rising' -> 'Northbound Voice Rising'."""
+    name = video.parent.name
+    stem = name.split("_", 1)[1] if "_" in name else name
+    return stem.replace("-", " ").replace("_", " ").strip() or video.stem
+
+
+def _render_template(template: str, *, album: str, channel: str) -> str:
+    text = str(template or "{title}")
+    for key, value in (("{title}", album), ("{album}", album), ("{channel}", channel)):
+        text = text.replace(key, value)
+    return " ".join(text.split())
+
+
+def _profile_metadata(profile, video: Path, args) -> dict[str, Any]:
+    """Publication settings from Settings -> profile -> Publication."""
+    config = dict(getattr(profile, "youtube_config", None) or {})
+    album = _album_from_path(video)
+    channel = str(getattr(profile, "name", "") or "")
+
+    title = (args.title or "").strip() or _render_template(
+        str(config.get("title_template") or "{title}"), album=album, channel=channel
+    )
+    description = (args.description or "").strip() or _render_template(
+        str(config.get("description_template") or ""), album=album, channel=channel
+    )
+
+    raw_tags = args.tags or config.get("tags") or ""
+    if isinstance(raw_tags, str):
+        tags = [tag.strip() for tag in raw_tags.split(",") if tag.strip()]
+    else:
+        tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()]
+
+    visibility = (args.privacy or str(config.get("visibility") or "private")).strip().lower()
+    if visibility not in {"private", "unlisted", "public", "scheduled"}:
+        visibility = "private"
+
+    publish_at = None
+    if visibility == "scheduled":
+        publish_at = _next_publish_time(str(config.get("publish_at") or ""))
+
+    thumbnail = args.thumbnail
+    if not thumbnail:
+        candidate = video.parent / "thumbnail-16x9.png"
+        if candidate.is_file():
+            thumbnail = str(candidate)
+
+    return {
+        "title": title[:100],
+        "description": description[:5000],
+        "tags": tags[:30],
+        "visibility": visibility,
+        "publish_at": publish_at,
+        "category": str(config.get("category") or CATEGORY_MUSIC),
+        "made_for_kids": bool(config.get("made_for_kids", False)),
+        "contains_synthetic_media": bool(config.get("ai_use", False)),
+        "playlist": (args.playlist or str(config.get("playlist") or "")).strip(),
+        "thumbnail": thumbnail,
+    }
+
+
+def _next_publish_time(raw: str) -> str | None:
+    """'HH:MM' (local) -> the next occurrence as RFC3339 with an offset."""
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    if "T" in text:
+        return text
+    try:
+        hour, minute = (int(part) for part in text.split(":", 1))
+    except ValueError:
+        return None
+    from datetime import datetime, timedelta, timezone
+
+    local = datetime.now().astimezone()
+    target = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= local:
+        target = target + timedelta(days=1)
+    return target.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def start_session(token: str, *, title: str, description: str, tags: list[str], privacy: str,
+                  publish_at: str | None = None, category: str = CATEGORY_MUSIC,
+                  made_for_kids: bool = False, contains_synthetic_media: bool = False) -> str:
+    status: dict[str, Any] = {
+        "privacyStatus": privacy,
+        "selfDeclaredMadeForKids": bool(made_for_kids),
+        "containsSyntheticMedia": bool(contains_synthetic_media),
+    }
+    if privacy == "scheduled" and publish_at:
+        status["publishAt"] = publish_at
     body = {
         "snippet": {
             "title": title[:100],
             "description": description[:5000],
             "tags": tags[:30],
-            "categoryId": CATEGORY_MUSIC,
+            "categoryId": category or CATEGORY_MUSIC,
         },
-        "status": {
-            "privacyStatus": privacy,
-            "selfDeclaredMadeForKids": False,
-        },
+        "status": status,
     }
     response = requests.post(
         UPLOAD_ENDPOINT,
@@ -262,6 +357,24 @@ def upload(session_url: str, path: Path, *, chunk_mb: int = 16) -> dict[str, Any
     raise SystemExit("Upload ended without a video id.")
 
 
+def add_to_playlist(token: str, playlist_id: str, video_id: str) -> str | None:
+    response = requests.post(
+        "https://www.googleapis.com/youtube/v3/playlistItems",
+        params={"part": "snippet"},
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json={
+            "snippet": {
+                "playlistId": playlist_id,
+                "resourceId": {"kind": "youtube#video", "videoId": video_id},
+            }
+        },
+        timeout=60,
+    )
+    if response.status_code >= 400:
+        return f"playlist failed: {response.status_code} {response.text[:200]}"
+    return None
+
+
 def set_thumbnail(token: str, video_id: str, path: Path) -> str | None:
     mime = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
     with path.open("rb") as handle:
@@ -288,16 +401,23 @@ def main() -> int:
     parser.add_argument("--connect", action="store_true", help="Connect the channel, then exit")
     parser.add_argument("--profile", default=None, help="Profile name or id")
     parser.add_argument("--video", default=None, help="Path to the merged MP4")
-    parser.add_argument("--title", default=None)
+    parser.add_argument("--title", default=None, help="Defaults to the profile title template")
     parser.add_argument("--description", default="")
     parser.add_argument("--tags", default="")
-    parser.add_argument("--privacy", default="private", choices=["private", "unlisted", "public"])
+    parser.add_argument(
+        "--privacy",
+        default=None,
+        choices=["private", "unlisted", "public", "scheduled"],
+        help="Defaults to the profile's Publication setting",
+    )
     parser.add_argument("--thumbnail", default=None)
+    parser.add_argument("--playlist", default=None, help="Defaults to the profile playlist")
     parser.add_argument("--batch-id", default=None, help="Batch uuid (to update Progress)")
     parser.add_argument("--role", default="OK")
     parser.add_argument("--chunk-mb", type=int, default=16)
     parser.add_argument("--api", default=API_BASE, help="CAMXORA API base URL")
     parser.add_argument("--login", action="store_true", help="Sign in with email/password first")
+    parser.add_argument("--dry-run", action="store_true", help="Print resolved settings, upload nothing")
     args = parser.parse_args()
 
     api = _api(args.api, login=args.login)
@@ -316,24 +436,46 @@ def main() -> int:
         if not args.video:
             return 0
 
+    video = Path(args.video)
+    if not video.is_file():
+        raise SystemExit(f"Video not found: {video}")
+
+    meta = _profile_metadata(profile, video, args)
+    if args.dry_run:
+        print("Dry run - no upload performed.")
+        print(f"Profile: {profile.name} ({profile.id})")
+        print(f"Title: {meta['title']}")
+        print(f"Description: {meta['description'][:200]!r}")
+        print(f"Tags: {meta['tags']}")
+        print(f"Category: {meta['category']}  visibility: {meta['visibility']}  at: {meta['publish_at']}")
+        print(f"AI disclosure: {meta['contains_synthetic_media']}  kids: {meta['made_for_kids']}")
+        print(f"Playlist: {meta['playlist'] or '(none)'}")
+        print(f"Thumbnail: {meta['thumbnail'] or '(none)'}")
+        return 0
+
     token_data = api.issue_youtube_access_token(str(profile.id))
     access_token = str(token_data.get("access_token") or "")
     if not access_token:
         raise SystemExit("Could not obtain a YouTube access token for this profile.")
     print(f"Access token acquired for {token_data.get('channel_title') or profile.name}.")
-
-    video = Path(args.video)
-    if not video.is_file():
-        raise SystemExit(f"Video not found: {video}")
-    title = (args.title or video.stem)[:100]
-    tags = [tag.strip() for tag in args.tags.split(",") if tag.strip()]
+    print(f"Title: {meta['title']}")
+    print(f"Visibility: {meta['visibility']}" + (f" at {meta['publish_at']}" if meta["publish_at"] else ""))
+    print(f"AI disclosure: {meta['contains_synthetic_media']}  kids: {meta['made_for_kids']}")
+    if meta["playlist"]:
+        print(f"Playlist: {meta['playlist']}")
+    if meta["thumbnail"]:
+        print(f"Thumbnail: {meta['thumbnail']}")
 
     session_url = start_session(
         access_token,
-        title=title,
-        description=args.description,
-        tags=tags,
-        privacy=args.privacy,
+        title=meta["title"],
+        description=meta["description"],
+        tags=meta["tags"],
+        privacy=meta["visibility"],
+        publish_at=meta["publish_at"],
+        category=meta["category"],
+        made_for_kids=meta["made_for_kids"],
+        contains_synthetic_media=meta["contains_synthetic_media"],
     )
     result = upload(session_url, video, chunk_mb=args.chunk_mb)
     video_id = str(result.get("id") or "")
@@ -342,12 +484,15 @@ def main() -> int:
     url = f"https://www.youtube.com/watch?v={video_id}"
     print(f"\nPublished: {url}")
 
-    if args.thumbnail:
-        thumb = Path(args.thumbnail)
+    if meta["thumbnail"]:
+        thumb = Path(str(meta["thumbnail"]))
         if thumb.is_file():
             warning = set_thumbnail(access_token, video_id, thumb)
-            if warning:
-                print(warning)
+            print(warning or "Thumbnail applied.")
+
+    if meta["playlist"]:
+        warning = add_to_playlist(access_token, str(meta["playlist"]), video_id)
+        print(warning or "Added to playlist.")
 
     if args.batch_id:
         api.report_youtube_upload(
@@ -356,7 +501,7 @@ def main() -> int:
             role=args.role,
             video_id=video_id,
             video_url=url,
-            title=title,
+            title=meta["title"],
         )
         print("Recorded on the Progress row.")
     return 0
