@@ -680,7 +680,14 @@ class SettingsView(QWidget):
                 profile=profile,
             )
         if TAB_LABELS[self._active_tab_index] == "Publication":
-            self._bind_publication_tab()
+            signature = ",".join(
+                f"{getattr(item, 'profile_id', '')}:{getattr(item, 'status', '')}:"
+                f"{getattr(item, 'channel_id', '')}"
+                for item in self._youtube_connections
+            )
+            if signature != getattr(self, "_youtube_connections_signature", ""):
+                self._youtube_connections_signature = signature
+                self._bind_publication_tab()
         self._sync_youtube_poll_timer()
 
         poll_profile_id = self._youtube_poll_profile_id
@@ -2508,6 +2515,13 @@ class SettingsView(QWidget):
         profile_key = str(profile_id)
         if profile_key in self._playlist_auth_failed_profiles:
             return
+        load_key = f"{profile_key}:{getattr(connection, 'channel_id', '')}"
+        if (
+            load_key == getattr(self, "_playlists_loaded_key", "")
+            and self._pub_playlist.count() > 1
+        ):
+            # Already loaded for this channel: a poll must not clear the list.
+            return
         self._playlist_load_generation += 1
         generation = self._playlist_load_generation
         worker = YouTubePlaylistsWorker(self._api, str(profile_id), parent=self)
@@ -2523,6 +2537,10 @@ class SettingsView(QWidget):
         profile_id = self._publication_profile.currentData()
         if profile_id:
             self._playlist_auth_failed_profiles.discard(str(profile_id))
+            connection = self._youtube_connection_for(profile_id)
+            self._playlists_loaded_key = (
+                f"{profile_id}:{getattr(connection, 'channel_id', '')}"
+            )
         playlists = getattr(payload, "playlists", None) or []
         current = self._publication_draft.playlist or self._pub_playlist.currentText()
         self._pub_playlist.blockSignals(True)
