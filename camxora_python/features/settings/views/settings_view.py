@@ -950,7 +950,7 @@ class SettingsView(QWidget):
         youtube_btn_row.addStretch()
         youtube_layout.addLayout(youtube_btn_row)
         youtube_layout.addWidget(
-            note_box("YouTube uploads use Post for Me and cost 5 credits per upload.")
+            note_box("YouTube uploads cost 5 credits per video.")
         )
         self._profile_editor_panel.add_widget(self._profile_youtube_card)
 
@@ -1032,7 +1032,7 @@ class SettingsView(QWidget):
             "YouTube Channels",
             subtitle=(
                 "Connect a YouTube channel to the selected profile. "
-                "Post for Me powers uploads and costs 5 credits per upload."
+                "YouTube uploads cost 5 credits per video."
             ),
             fill_available_height=True,
         )
@@ -3029,7 +3029,7 @@ class SettingsView(QWidget):
                     or getattr(account, "username", None)
                     or "YouTube channel"
                 )
-                youtube_status_text = f"Connected via Post for Me: {name}"
+                youtube_status_text = f"YouTube connected: {name}"
                 youtube_connected = True
             else:
                 connection = self._youtube_connection_for(profile.id if profile else None)
@@ -3998,7 +3998,7 @@ class SettingsView(QWidget):
             self._publish_poll_remaining = 0
             self._publish_auth_url = ""
             self._set_publish_waiting_ui(False)
-            self._profile_youtube_note.setText("YouTube: connected via Post for Me.")
+            self._profile_youtube_note.setText("YouTube: connected.")
             self._show_save_success("YouTube channel connected.")
             self.refresh_data(force=True)
         is_new = self._selected_profile_key == "new"

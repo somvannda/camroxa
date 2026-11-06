@@ -693,7 +693,7 @@ class PublishService:
             await self._refund_job(
                 job,
                 error_code=_error_code(exc, "POST_CREATE_FAILED"),
-                error_message=_error_message(exc, "Post for Me could not create the post."),
+                error_message=_error_message(exc, "The publishing service could not create the post."),
             )
             raise
         post_id = str(post.get("id") or "").strip()
@@ -701,9 +701,9 @@ class PublishService:
             await self._refund_job(
                 job,
                 error_code="POST_CREATE_FAILED",
-                error_message="Post for Me did not return a post id.",
+                error_message="The publishing service did not return a post id.",
             )
-            raise ExternalServiceError("Post for Me did not return a post id.")
+            raise ExternalServiceError("The publishing service did not return a post id.")
         await self._repo.mark_job_posted(
             job.id,
             postforme_post_id=post_id,

@@ -44,10 +44,10 @@ class UploadActivity:
     def describe(self) -> str:
         """Short cell text: the only honest signal while a file is in flight."""
         if self.stage == STAGE_PROVIDER:
-            return f"Uploading {_elapsed(self.started_at)}"
+            return f"Publishing {_elapsed(self.started_at)}"
         if self.total > 0:
-            return f"Storage {self.percent}%"
-        return "Uploading"
+            return f"Sending {self.percent}%"
+        return "Sending"
 
 
 def _elapsed(started_at: float) -> str:

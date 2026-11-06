@@ -137,7 +137,7 @@ def evaluate_music_readiness(
                 complete=connected,
                 required_for_generate=False,
                 required_for_upload=True,
-                hint="Settings → YouTube → Connect Channel or Connect with Post for Me.",
+                hint="Settings → YouTube → Connect Channel.",
             )
         )
         pub_ready = connected and _publication_ready_for_upload(profile)

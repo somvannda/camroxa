@@ -549,6 +549,25 @@ class ProgressView(PollablePageMixin, QScrollArea):
             self._selected_entry = None
             self._detail_card.set_entry(None)
         self._update_export_validation()
+        self._announce_selected_row_progress()
+
+    def _announce_selected_row_progress(self) -> None:
+        """Mirror the selected row's delivery state in the footer."""
+        entry = self._selected_entry
+        if entry is None:
+            return
+        from shared.services.shell_status import emit_shell_status
+
+        row = entry.row
+        channel = str(getattr(row, "channel", "") or "").strip()
+        album = str(getattr(row, "album", "") or "").strip()
+        who = " · ".join(part for part in (channel, album) if part) or str(row.batch)
+        delivery = self._rows_card._format_youtube_cell(row)
+        if delivery and delivery != "Not started":
+            text = f"{who} — YouTube: {delivery}"
+        else:
+            text = f"{who} — Stage: {str(entry.effective_stage or row.stage or '').strip()}"
+        emit_shell_status(text, tone="neutral")
 
     def _enter_loading_state(self) -> None:
         self._loading = True
@@ -563,7 +582,12 @@ class ProgressView(PollablePageMixin, QScrollArea):
         self._loading = False
         self._is_error = True
         self._progress_load_error = str(message or "").strip()
-        self._error_banner.show()
+        from shared.services.action_feedback import notify_action
+
+        self._error_banner.hide()
+        notify_action(
+            self._progress_load_error or "Could not load progress rows.", tone="error"
+        )
         if self._rows:
             self._render()
             return
@@ -1156,13 +1180,17 @@ class ProgressView(PollablePageMixin, QScrollArea):
         )
 
     def _show_retry_notice(self, message: str, *, tone: str = "warning") -> None:
+        """Report an action without moving the page layout.
+
+        The inline banner used to push the table down on every progress update;
+        feedback now goes to the floating footer badge only.
+        """
         from shared.services.action_feedback import notify_action
 
         text = str(message or "").strip()
         if not text:
             return
-        self._error_banner.set_message(text)
-        self._error_banner.show()
+        self._error_banner.hide()
         notify_action(text, tone=tone)
 
     def _retry_failed_drafts(self, batch_id: str, song_ids: list[str]) -> None:
@@ -1186,8 +1214,10 @@ class ProgressView(PollablePageMixin, QScrollArea):
         """Repaint rows while any upload is moving (storage or provider)."""
         from shared.lib.publish_activity import active
 
-        if active():
-            self._render_table()
+        if not active():
+            return
+        self._render_table()
+        self._announce_selected_row_progress()
 
     def _cancel_publish_upload(self, key: str = "") -> None:
         """Stop the upload that owns this row (pipeline or manual)."""

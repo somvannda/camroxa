@@ -159,7 +159,7 @@ class AutomationCard(StudioPanel):
         self._auto_reel = StudioCheckBox("Auto Reel")
         self._auto_upload = StudioCheckBox("YouTube Upload")
         self._auto_upload.setToolTip(
-            "Publish each merged video to YouTube through Post for Me. "
+            "Publish each merged video to YouTube. "
             "Requires a connected channel; uploads are billed per video."
         )
         self._auto_upload.setEnabled(False)
@@ -511,7 +511,7 @@ class AutomationCard(StudioPanel):
 
     def set_auto_upload_hint(self, hint: str) -> None:
         """Explain why the YouTube Upload toggle is unavailable."""
-        base = "Publish each merged video to YouTube through Post for Me."
+        base = "Publish each merged video to YouTube."
         cleaned = str(hint or "").strip()
         self._auto_upload.setToolTip(f"{base}\n{cleaned}" if cleaned else base)
 

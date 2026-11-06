@@ -16,7 +16,7 @@ What's new
 Changed
 -------
 - The automation toggle is now labelled "YouTube Upload" and explains that
-  uploads go through Post for Me and are billed per video.
+  uploads are billed per video.
 - The credit check before generating counts upload credits too, so the button
   total and the server's required total match.
 

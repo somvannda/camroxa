@@ -408,20 +408,28 @@ class OperationalRowsCard(StudioPanel):
 
     @staticmethod
     def _format_youtube_cell(row: ProgressRow) -> str:
-        """Live upload state, or the settled delivery status."""
+        """Plain-language delivery state for one row."""
         live = describe_upload(
             upload_slot_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
         )
         if live:
             return live
-        status = str(getattr(row.meta, "youtube_status", "") or "").strip()
-        if status.lower().startswith("uploading"):
-            return status
+
+        status = str(getattr(row.meta, "youtube_status", "") or "").strip().lower()
+        elapsed = _elapsed_label(getattr(row.meta, "youtube_created_at", None))
+        if status == "pending_upload":
+            # Still leaving this machine; there is no YouTube-side work yet.
+            return f"Sending {elapsed}" if elapsed else "Sending"
+        if status in {"queued", "processing", "pending", "running", "uploading"}:
+            return f"Publishing {elapsed}" if elapsed else "Publishing"
+
         label = format_upload_status(row)
-        if label in {"Uploading", "Uploaded"}:
-            elapsed = _elapsed_label(getattr(row.meta, "youtube_created_at", None))
-            if elapsed and label == "Uploading":
-                return f"Uploading {elapsed}"
+        if label == "Uploaded":
+            return "Published"
+        if label == "Failed":
+            return "Failed"
+        if label == "Uploading":
+            return f"Publishing {elapsed}" if elapsed else "Publishing"
         return label
 
     @staticmethod
@@ -430,26 +438,26 @@ class OperationalRowsCard(StudioPanel):
             upload_slot_key(row.meta.batch_id, row.meta.profile_id, row.meta.role)
         )
         if activity is not None:
-            where = (
-                "CAMXORA storage"
-                if activity.stage == "storage"
-                else "Post for Me (our publishing provider)"
-            )
+            stage = "from this computer" if activity.stage == "storage" else "on YouTube"
             label = activity.label or "This video"
             return (
-                f"{label} — uploading to {where}: {activity.describe()}. "
+                f"{label} — {activity.describe()} {stage}. "
                 "Right-click → Cancel YouTube upload stops this row's transfer."
             )
         label = OperationalRowsCard._format_youtube_cell(row)
-        if label.startswith("Uploading"):
+        if label.startswith("Sending"):
             return (
-                f"{label} — Post for Me (our publishing provider) is uploading this "
-                "video to YouTube. They do not report a percentage, so this is time "
-                "based. Right-click → Cancel YouTube upload to stop."
+                "Still sending this video from this computer. "
+                "Right-click → Cancel YouTube upload to stop it."
             )
-        if label == "Uploaded":
+        if label.startswith("Publishing"):
+            return (
+                "The file has reached YouTube and is being processed. YouTube does "
+                "not report a percentage, so this count is time based."
+            )
+        if label == "Published":
             url = str(getattr(row.meta, "youtube_url", "") or "").strip()
-            return f"Uploaded to YouTube. {url}" if url else "Uploaded to YouTube."
+            return f"Published to YouTube. {url}" if url else "Published to YouTube."
         if label == "Failed":
             return "The YouTube upload failed. Right-click → Upload to YouTube to retry."
         return "Right-click → Upload to YouTube. The original file is sent as-is (no re-encode)."
@@ -692,7 +700,7 @@ class OperationalRowsCard(StudioPanel):
                     busy = menu.addAction("YouTube upload in progress…")
                     busy.setEnabled(False)
                     busy.setToolTip(
-                        "Post for Me is uploading this video to YouTube "
+                        "YouTube is processing this video "
                         "(no percentage from them). Cancel it first to start over."
                     )
                 elif state == "Uploaded":
@@ -702,7 +710,7 @@ class OperationalRowsCard(StudioPanel):
                 else:
                     action = menu.addAction("Upload to YouTube")
                     action.setToolTip(
-                        "Publish this run's merged video through Post for Me "
+                        "Publish this run's merged video to YouTube "
                         "(per-upload credits, original file, no re-encode)."
                     )
                     action.triggered.connect(

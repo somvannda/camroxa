@@ -3043,7 +3043,7 @@ class PublishUploadWorker(QThread):
                 )
             else:
                 self.status_changed.emit(
-                    "This video is already uploading to YouTube through Post for Me. "
+                    "This video is already uploading to YouTube. "
                     "No second upload was started."
                 )
             try:

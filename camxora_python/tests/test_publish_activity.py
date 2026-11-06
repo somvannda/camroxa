@@ -19,7 +19,7 @@ def test_storage_stage_reports_a_real_percentage() -> None:
     activity.begin(key, label="MERGED_OK.mp4", total=1000)
     activity.progress(key, 420, 1000)
 
-    assert activity.describe(key) == "Storage 42%"
+    assert activity.describe(key) == "Sending 42%"
     assert activity.snapshot(key).label == "MERGED_OK.mp4"
 
     activity.finish(key)
@@ -33,7 +33,7 @@ def test_provider_stage_reports_elapsed_instead_of_a_fake_percentage() -> None:
     activity.mark_provider(key)
 
     text = activity.describe(key)
-    assert text.startswith("Uploading ")
+    assert text.startswith("Publishing ")
     assert "%" not in text
 
     activity.finish(key)

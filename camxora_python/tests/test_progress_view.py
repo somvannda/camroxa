@@ -96,8 +96,9 @@ def test_progress_uses_studio_header_controls(qapp: QApplication) -> None:
 def test_error_banner_without_rows(qapp: QApplication) -> None:
     view = ProgressView(PlatformApi())
     view._on_failed("network")
-    assert not view._error_banner.isHidden()
-    assert view._error_banner._label.text() == ERROR_MESSAGE
+    # Feedback is floating (footer badge); the inline banner never pushes the table.
+    assert view._error_banner.isHidden()
+    assert view._progress_load_error == "network"
     assert view._rows_card._table.item(0, 0).text() == EMPTY_MESSAGE
 
 
@@ -107,7 +108,7 @@ def test_stale_data_on_error(qapp: QApplication) -> None:
     result = WorkflowLoadResult(response=ProgressListResponse(rows=[row]), runtime_by_key={})
     view._on_loaded(result)
     view._on_failed("network")
-    assert not view._error_banner.isHidden()
+    assert view._error_banner.isHidden()
     assert view._rows_card._table.rowCount() == 1
     assert view._stats_row._active_card._value.text() == "1"
 
