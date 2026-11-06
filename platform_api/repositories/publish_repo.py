@@ -505,6 +505,33 @@ class PublishRepository:
         )
         return _row_to_job(row) if row else None
 
+    async def latest_job_for_slot(
+        self,
+        *,
+        user_id: str,
+        batch_id: str,
+        profile_id: str,
+        role: str,
+    ) -> PublishJobRecord | None:
+        """Newest job for one batch/channel/role — the unit a publish covers."""
+        row = await self._db.fetchrow(
+            f"""
+            SELECT {_JOB_COLUMNS}
+            FROM youtube_upload_jobs
+            WHERE user_id = $1::uuid
+              AND batch_id = $2::uuid
+              AND profile_id = $3::uuid
+              AND role = $4
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            batch_id,
+            profile_id,
+            role,
+        )
+        return _row_to_job(row) if row else None
+
     async def list_jobs(
         self,
         user_id: str,

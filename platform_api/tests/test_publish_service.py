@@ -173,6 +173,66 @@ class FakeRepo:
         )
 
 
+@pytest.mark.asyncio
+async def test_a_repeat_click_reuses_the_job_already_in_flight() -> None:
+    """No second transfer, charge, or YouTube post for the same slot."""
+    job = replace(_job(), status="processing", file_size_bytes=2_600_000_000)
+    repo = FakeRepo(job)
+    service = _service(repo, FakeBilling(), FakeClient())
+
+    reused = await service._reuse_or_retire_job(job, size_bytes=2_600_000_000)
+
+    assert reused is not None
+    assert reused["existing"] is True
+    assert reused["job_uid"] == job.job_uid
+    assert reused["status"] == "processing"
+    assert reused["upload_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_a_successful_job_is_reported_instead_of_publishing_again() -> None:
+    job = replace(_job(), status="success", file_size_bytes=100)
+    service = _service(FakeRepo(job), FakeBilling(), FakeClient())
+
+    reused = await service._reuse_or_retire_job(job, size_bytes=100)
+
+    assert reused is not None and reused["existing"] is True
+
+
+@pytest.mark.asyncio
+async def test_a_remerged_file_may_be_published_again() -> None:
+    job = replace(_job(), status="success", file_size_bytes=100)
+    service = _service(FakeRepo(job), FakeBilling(), FakeClient())
+
+    assert await service._reuse_or_retire_job(job, size_bytes=200) is None
+
+
+@pytest.mark.asyncio
+async def test_a_stale_pending_upload_is_retired_instead_of_blocking() -> None:
+    """Older clients left these at pending_upload; Progress showed them forever."""
+    job = replace(
+        _job(),
+        status="pending_upload",
+        media_url="https://cdn.example/v.mp4",
+        file_size_bytes=100,
+    )
+    repo = FakeRepo(job)
+    service = _service(repo, FakeBilling(), FakeClient())
+
+    assert await service._reuse_or_retire_job(job, size_bytes=100) is None
+    assert repo.job.status == "failed"
+    assert repo.job.error_code == "UPLOAD_SUPERSEDED"
+
+
+@pytest.mark.asyncio
+async def test_a_real_client_upload_in_progress_is_not_retired() -> None:
+    job = replace(_job(), status="pending_upload", media_url=None, file_size_bytes=100)
+    repo = FakeRepo(job)
+    service = _service(repo, FakeBilling(), FakeClient())
+
+    assert await service._reuse_or_retire_job(job, size_bytes=100) is None
+    assert repo.job.status == "pending_upload"
+
 def _service(repo: FakeRepo, billing: FakeBilling, client: FakeClient) -> PublishService:
     return PublishService(
         db=None,

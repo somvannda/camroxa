@@ -118,6 +118,9 @@ class CreatePublishJobResponse(BaseModel):
     file_name: str = ""
     credits_per_upload: float = 0
     platforms: list[str] = Field(default_factory=list)
+    # True when the server returned the job already stored for this slot
+    # instead of opening a second upload / charge / post.
+    existing: bool = False
 
 
 class CompletePublishJobRequest(BaseModel):

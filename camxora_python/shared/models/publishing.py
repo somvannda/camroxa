@@ -73,6 +73,7 @@ class CreatePublishJobResponse(BaseModel):
     file_name: str = ""
     credits_per_upload: float = 5.0
     platforms: list[str] = Field(default_factory=list)
+    existing: bool = False
 
 
 class PublishJob(BaseModel):

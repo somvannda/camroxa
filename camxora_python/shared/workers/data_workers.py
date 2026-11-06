@@ -2990,6 +2990,25 @@ class PublishUploadWorker(QThread):
             media_url = self._upload_via_storage(request, file_path, size_bytes)
             request = request.model_copy(update={"media_url": media_url})
         job = self._api.create_publish_job(request)
+        if bool(getattr(job, "existing", False)):
+            # The server already has a job for this batch/channel/role: never
+            # open a second transfer, a second charge, or a second YouTube post.
+            if str(job.status) == "success":
+                self.status_changed.emit(
+                    "This video is already on YouTube — nothing was uploaded again."
+                )
+            else:
+                self.status_changed.emit(
+                    "This video is already uploading to YouTube through Post for Me. "
+                    "No second upload was started."
+                )
+            try:
+                current = self._api.get_publish_job(job.job_uid)
+            except Exception:
+                current = None
+            if current is not None:
+                self.succeeded.emit(current)
+            return
         if job.upload_url:
             self.status_changed.emit("Uploading video…")
             self._put(job.upload_url, file_path, "video/mp4")

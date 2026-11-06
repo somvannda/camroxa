@@ -455,6 +455,31 @@ class PublishService:
         if batch_id:
             await self._ensure_batch_owned(user_id, batch_id)
 
+        normalized_role = str(role or "OK").strip().upper() or "OK"
+        if batch_id:
+            # One publish per batch/channel/role. A repeated click (or a retried
+            # upload) must not open a second transfer, charge twice, or create a
+            # second YouTube post.
+            existing = await self._repo.latest_job_for_slot(
+                user_id=user_id,
+                batch_id=batch_id,
+                profile_id=profile_id,
+                role=normalized_role,
+            )
+            reused = await self._reuse_or_retire_job(
+                existing, size_bytes=file_size_bytes
+            )
+            if reused is not None:
+                logger.info(
+                    "Publish job reused instead of creating another: batch=%s role=%s status=%s",
+                    batch_id,
+                    normalized_role,
+                    reused.get("status"),
+                )
+                reused["credits_per_upload"] = await self._quote_credits(user_id)
+                reused["platforms"] = [normalized_platform]
+                return reused
+
         account = await self._account_for_profile(user_id, profile_id, normalized_platform)
         if account is None:
             raise ValidationError(
@@ -536,6 +561,7 @@ class PublishService:
                 "file_name": str(file_name or "").strip(),
                 "credits_per_upload": (await self._quote_credits(user_id)),
                 "platforms": [normalized_platform],
+                "existing": False,
             }
         return {
             "job_uid": job.job_uid,
@@ -548,6 +574,54 @@ class PublishService:
             "file_name": str(file_name or "").strip(),
             "credits_per_upload": (await self._quote_credits(user_id)),
             "platforms": [normalized_platform],
+            "existing": False,
+        }
+
+    async def _reuse_or_retire_job(
+        self,
+        job: Any,
+        *,
+        size_bytes: int | None,
+    ) -> dict[str, Any] | None:
+        """Existing-job view when a repeat click must not start another upload.
+
+        Returns None when a fresh job is allowed. A stale ``pending_upload`` job
+        whose media was already hosted (older clients never finalised those) is
+        retired first so Progress stops reporting it as "Uploading" forever.
+        """
+        if job is None:
+            return None
+        status = str(job.status)
+        different_file = (
+            size_bytes is not None
+            and job.file_size_bytes is not None
+            and int(job.file_size_bytes) != int(size_bytes)
+        )
+        if status in {STATUS_QUEUED, STATUS_PROCESSING, STATUS_SUCCESS} and not different_file:
+            return self._existing_job_view(job, existing=True)
+        if status == STATUS_PENDING_UPLOAD and job.media_url and not different_file:
+            await self._repo.set_job_status(
+                job.id,
+                status=STATUS_FAILED,
+                error_code="UPLOAD_SUPERSEDED",
+                error_message="Superseded by a new upload of the same video.",
+            )
+        return None
+
+    @staticmethod
+    def _existing_job_view(job: Any, *, existing: bool) -> dict[str, Any]:
+        return {
+            "job_uid": job.job_uid,
+            "status": job.status,
+            "upload_url": None,
+            "upload_expires_at": None,
+            "media_url": job.media_url,
+            "thumbnail_upload_url": None,
+            "thumbnail_media_url": job.thumbnail_media_url,
+            "file_name": str(job.title or ""),
+            "credits_per_upload": 0,
+            "platforms": [str(getattr(job, "platform", "") or PUBLISH_PLATFORM)],
+            "existing": bool(existing),
         }
 
     async def complete_job(
