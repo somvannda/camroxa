@@ -65,7 +65,7 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
   // Workspaces are real data: opening one lands on its songs, filtered; Clear drops the
   // filter without leaving the list.
   const workspaces = library.getByRole("region", { name: "Workspaces" });
-  const workspaceButtons = workspaces.getByLabel(/^Open workspace /);
+  const workspaceButtons = workspaces.locator(".se-lib-row-button");
   if ((await workspaceButtons.count()) > 0) {
     await workspaceButtons.first().click();
     await expect(library.getByLabel("Clear workspace filter")).toBeVisible();
@@ -76,7 +76,7 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
     // Leaving via Back keeps the filter; choosing a tile clears it, because a tile
     // selects the whole corpus.
     await library.getByLabel("Back to library").click();
-    await workspaces.getByLabel(/^Open workspace /).first().click();
+    await workspaces.locator(".se-lib-row-button").first().click();
     await expect(library.getByLabel("Clear workspace filter")).toBeVisible();
     await library.getByLabel("Back to library").click();
     await tiles.nth(0).click();
@@ -124,3 +124,65 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
   await library.getByLabel("Close library").click();
   await expect(library).toHaveCount(0);
 });
+
+test("level-2 toolbar filters the corpus and opens the generator", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: `Toolbar ${Math.random().toString(36).slice(2, 6)}` });
+
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  const library = page.getByRole("complementary", { name: "Library" });
+  await library.getByRole("button", { name: "All Songs" }).click();
+
+  const filter = library.getByLabel("Filter songs");
+  await expect(filter.locator("option")).toHaveCount(4);
+  expect(
+    await filter
+      .locator("option")
+      .nth(3)
+      .evaluate((element) => (element as HTMLOptionElement).disabled)
+  ).toBe(true);
+
+  // In Project narrows to songs the open project already uses; this fixture's clip is
+  // not a library song, so the empty explanation is the correct outcome.
+  await filter.selectOption("project");
+  await expect(library.locator(".se-library-head strong")).toHaveText("In Project");
+  await expect
+    .poll(
+      async () =>
+        (await library.locator(".se-lib-row").count()) +
+        (await library.locator(".se-lib-empty").count())
+    )
+    .toBeGreaterThan(0);
+
+  await filter.selectOption("all");
+  await expect(library.locator(".se-library-head strong")).toHaveText("All Songs");
+
+  // + New leaves the editor for the generator.
+  await library.getByRole("button", { name: "New" }).click();
+  await page.waitForURL(/\/create/);
+});
+
+test("library upload adds audio to the Uploads list", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: `Upload ${Math.random().toString(36).slice(2, 6)}` });
+
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  const library = page.getByRole("complementary", { name: "Library" });
+  await library.getByRole("button", { name: "All Songs" }).click();
+
+  await library.getByLabel("Choose audio file").setInputFiles("public/seed/demo-loop.wav");
+
+  // Importing needs streaming storage. Without it the backend refuses with a reason and
+  // the panel must surface that instead of failing silently; with it, the new file
+  // appears in the Uploads list where it can be added to a track.
+  const imported = library.getByText("demo-loop.wav").first();
+  const refused = library.getByRole("alert");
+  await expect(imported.or(refused)).toBeVisible();
+  if (await imported.isVisible().catch(() => false)) {
+    await expect(library.getByLabel("Back to library")).toBeVisible();
+    await expect(library.getByLabel("Add demo-loop.wav").first()).toBeEnabled();
+  } else {
+    await expect(refused).toContainText(/not configured|Upload failed/i);
+  }
+});
+

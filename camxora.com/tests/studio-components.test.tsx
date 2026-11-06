@@ -192,11 +192,15 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     uploads: [] as StudioUpload[] | null,
     currentProjectId: null,
     likedKeys: [] as string[] | null,
+    projectSongIds: [] as string[],
     onClose: noop,
     onBack: noop,
     onOpenSongs: noop,
     onOpenUploads: noop,
     onOpenWorkspace: noop,
+    onFilter: noop,
+    onNewSong: noop,
+    onUploadAudio: async () => {},
     onAddSong: noop,
     onAddUpload: noop,
     onOpenProject: noop,
@@ -312,6 +316,112 @@ describe("StudioLibrary", () => {
     expect(screen.getByText("No liked songs yet.")).toBeTruthy();
   });
 
+  it("shows the captured song tag strip", () => {
+    const tagged = song({
+      id: "s1",
+      title: "Tagged",
+      model_label: "V6",
+      clips: [
+        {
+          variant: "alt",
+          label: "Cover",
+          audio_url: "https://example.test/s1.mp3",
+          duration_seconds: 127,
+        },
+      ],
+    });
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [tagged],
+        })}
+      />
+    );
+    for (const tag of ["V6", "Cover", "2:07"]) {
+      expect(screen.getByText(tag)).toBeTruthy();
+    }
+  });
+
+  it("narrows to songs the open project already uses", () => {
+    const used = song({
+      id: "s1",
+      title: "In the project",
+      clips: [{ variant: "ok", audio_url: "https://example.test/s1.mp3" }],
+    });
+    const unused = song({
+      id: "s2",
+      title: "Not used",
+      clips: [{ variant: "ok", audio_url: "https://example.test/s2.mp3" }],
+    });
+    const { rerender } = render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "In Project", filter: "project" },
+          songs: [used, unused],
+          projectSongIds: ["s1"],
+        })}
+      />
+    );
+    expect(screen.getByText("In the project")).toBeTruthy();
+    expect(screen.queryByText("Not used")).toBeNull();
+
+    rerender(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "In Project", filter: "project" },
+          songs: [unused],
+          projectSongIds: [],
+        })}
+      />
+    );
+    expect(screen.getByText("No songs from this project in the library yet.")).toBeTruthy();
+  });
+
+  it("changes the corpus from the level-2 filter toolbar", async () => {
+    const user = userEvent.setup();
+    const onFilter = vi.fn();
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          onFilter,
+        })}
+      />
+    );
+    const select = screen.getByLabelText("Filter songs") as HTMLSelectElement;
+    expect([...select.options].map((option) => option.textContent)).toEqual([
+      "All songs",
+      "Liked",
+      "In Project",
+      "Stems",
+    ]);
+    expect(select.options[3].disabled).toBe(true);
+    await user.selectOptions(select, "liked");
+    expect(onFilter).toHaveBeenCalledWith("liked");
+  });
+
+  it("offers + New and imports audio from the toolbar", async () => {
+    const user = userEvent.setup();
+    const onNewSong = vi.fn();
+    const onUploadAudio = vi.fn(async () => {});
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          onNewSong,
+          onUploadAudio,
+        })}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: /New/ }));
+    expect(onNewSong).toHaveBeenCalledOnce();
+
+    const file = new File(["hello"], "take.wav", { type: "audio/wav" });
+    await user.upload(screen.getByLabelText("Choose audio file"), file);
+    expect(onUploadAudio).toHaveBeenCalledWith(file);
+  });
+
   it("shows each workspace with its song count and opens it", async () => {
     const user = userEvent.setup();
     const onOpenWorkspace = vi.fn();
@@ -326,7 +436,7 @@ describe("StudioLibrary", () => {
 
     expect(screen.getByText("946 songs")).toBeTruthy();
     expect(screen.getByText("1 song")).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: /^Open workspace My Workspace/ }));
+    await user.click(screen.getByRole("button", { name: /^My Workspace/ }));
     expect(onOpenWorkspace).toHaveBeenCalledWith("w1");
   });
 
@@ -336,7 +446,7 @@ describe("StudioLibrary", () => {
         {...libraryProps({ workspaces: [workspace()], activeWorkspaceId: "w1" })}
       />
     );
-    expect(screen.getByRole("button", { name: /^Open workspace My Workspace/ }).getAttribute("aria-current")).toBe(
+    expect(screen.getByRole("button", { name: /^My Workspace/ }).getAttribute("aria-current")).toBe(
       "true"
     );
   });

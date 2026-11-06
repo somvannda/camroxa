@@ -380,3 +380,35 @@ and lives in component state for the session â€” it is not written into the proj
 the sound; only the final level moves. If LUFS matching is ever wanted, add a real meter
 first â€” do not relabel this one.
 
+
+---
+
+## D-016 — Song rows show the tags our corpus actually has
+
+**Date:** 2026-11-06 **Status:** accepted (G12, spec §19.2)
+
+**Decision.** Level-2 song rows lead with 44 px artwork and a tag strip. The strip shows
+the model label, the clip's label/variant and the clip length — not musical key or BPM,
+which the reference prints. `In Project` filters on the `songId` already stored on every
+clip the project uses.
+
+**Why.**
+
+- The reference's `V6 COVER · D minor · 128 BPM` strip is the point of the row (§19.2),
+  but our generation payload carries no key or tempo. Printing a guessed key would be a
+  lie the user could hear.
+- Model, variant and length are real fields on `WebMusicGeneration`/`WebMusicClip`, and
+  they answer the same question: "is this the version I want, and is it the right
+  length?"
+- `In Project` needs no new backend: clips already record `songId` for provenance (G16),
+  so the filter is a set membership test over the open document.
+- The level-2 toolbar implements the captured actions: filter menu (All / Liked /
+  In Project, Stems disabled), `+ New` (opens `/create`) and `Upload` (same
+  `POST /studio/uploads` endpoint the classic importer uses).
+- Workspace and project rows carry a leading thumbnail tile: gradient + initial for
+  workspaces, a timeline glyph for projects. The reference uses generated artwork and
+  mini-timelines; the list endpoint returns no lane data, so a glyph is honest.
+
+**Consequences.** When the corpus starts recording key/BPM, extend `songTags`; do not
+backfill fake values. Library upload needs streaming storage configured (B-006); until
+then the panel surfaces the backend's reason instead of failing silently.

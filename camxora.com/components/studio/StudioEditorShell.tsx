@@ -8,13 +8,18 @@ import { useAuth } from "@/components/AuthProvider";
 import { getStudioProject, StudioConflictError, updateStudioProject, type StudioProject } from "@/lib/studio-api";
 import { autoSnapshotStudioProject } from "@/lib/studio-api";
 import { getStudioOperation, requestStudioStems } from "@/lib/studio-api";
-import { listStudioProjects, listStudioUploads, type StudioUpload } from "@/lib/studio-api";
+import {
+  listStudioProjects,
+  listStudioUploads,
+  uploadStudioAudio,
+  type StudioUpload,
+} from "@/lib/studio-api";
 import {
   fetchWebMusicLikedKeys,
   listWebMusicWorkspaces,
   type WebMusicWorkspace,
 } from "@/lib/web-music-api";
-import { StudioLibrary, type LibraryView } from "@/components/studio/StudioLibrary";
+import { StudioLibrary, type LibraryView, type SongFilter } from "@/components/studio/StudioLibrary";
 import { StudioClipInfo } from "@/components/studio/StudioClipInfo";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
@@ -406,6 +411,12 @@ export function StudioEditorShell() {
     return Array.isArray(data.lanes) ? (data.lanes as ClipLike[]) : [];
   }, [project]);
 
+  /** Song ids the open project already uses (library "In Project" filter, §19.2). */
+  const projectSongIds = useMemo(() => {
+    const ids = clips.map((clip) => (clip as { songId?: string }).songId);
+    return [...new Set(ids.filter((id): id is string => Boolean(id)))];
+  }, [clips]);
+
   const derivedTracks = useMemo<StudioTrack[]>(() => {
     const data = (project?.data || {}) as { tracks?: unknown };
     const stored = sanitizeTracks(data.tracks);
@@ -527,6 +538,43 @@ export function StudioEditorShell() {
       title: filter === "liked" ? "Liked" : "All Songs",
       filter,
     });
+  }
+
+  /** The level-2 filter menu changes the corpus without leaving the list (§19.2). */
+  function setLibrarySongFilter(filter: SongFilter) {
+    const workspace = (libraryWorkspaces ?? []).find((item) => item.id === libraryWorkspaceId);
+    setLibraryView({
+      kind: "songs",
+      title:
+        filter === "all" && workspace
+          ? workspace.name
+          : filter === "liked"
+            ? "Liked"
+            : filter === "project"
+              ? "In Project"
+              : "All Songs",
+      filter,
+    });
+  }
+
+  /** Toolbar upload (§19.2): import the file, then show it in the Uploads list. */
+  async function uploadLibraryAudio(file: File) {
+    let duration: number | null = null;
+    try {
+      const context = new AudioContext();
+      const buffer = await context.decodeAudioData(await file.arrayBuffer());
+      duration = buffer.duration;
+      await context.close();
+    } catch {
+      duration = null;
+    }
+    const typedFile =
+      file.type && file.type.startsWith("audio/")
+        ? file
+        : new File([file], file.name, { type: "audio/mpeg" });
+    const upload = await uploadStudioAudio(typedFile, duration);
+    setLibraryUploads((previous) => [upload, ...(previous ?? [])]);
+    setLibraryView({ kind: "uploads" });
   }
 
   /** Add-track ▸ Upload (§8.3) lands on the library's Uploads list. */
@@ -2559,11 +2607,17 @@ export function StudioEditorShell() {
               uploads={libraryUploads}
               currentProjectId={projectId}
               likedKeys={likedKeys}
+              projectSongIds={projectSongIds}
               onClose={() => setLibraryOpen(false)}
               onBack={() => setLibraryView({ kind: "root" })}
               onOpenSongs={openLibrarySongs}
               onOpenUploads={() => setLibraryView({ kind: "uploads" })}
               onOpenWorkspace={openLibraryWorkspace}
+              onFilter={setLibrarySongFilter}
+              onNewSong={() => {
+                window.location.href = "/create";
+              }}
+              onUploadAudio={uploadLibraryAudio}
               onAddSong={addSongToTimeline}
               onAddUpload={addUploadToTimeline}
               onOpenProject={(id) => {

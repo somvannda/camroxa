@@ -118,9 +118,12 @@ clip is done. What is left:
 2. **G12 remainder** — a stems tile/list (needs a finished stems job first, B-005). The
    two-level library is wired: level 1 is the reference's tile chooser (All Songs / Liked
    / Stems / Uploads) plus Workspaces and Studio Projects sections with See all; level 2
-   lists the chosen corpus (songs grouped by day, uploads with length) with a Back
-   control. Workspace rows carry the server's song count and open level 2 filtered via
-   `?workspace_id=`; Liked filters on `fetchWebMusicLikedKeys`.
+   lists the chosen corpus (songs grouped by day with artwork + tag strip, uploads with
+   length) and carries the captured toolbar (filter / + New / upload / In Project /
+   Stems). Workspace rows carry the server's song count and open level 2 filtered via
+   `?workspace_id=`; Liked filters on `fetchWebMusicLikedKeys`; In Project filters on the
+   `songId` clips already record. Library upload posts to `POST /studio/uploads` and is
+   blocked by B-006 (streaming storage not configured).
 3. **G21 remainder** — per-track Arm (needs recording, which does not exist).
 4. **W6 verification** — the inventory re-walk against a signed-in reference session
    (B-001); that is also where the five capture gaps get filled.

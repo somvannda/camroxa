@@ -83,3 +83,19 @@ Studio operation against someone else's Suno asset.
 |---|---|---|
 | â€” | Studio charge died on `relation "plans" does not exist` | D-009 â€” studio ops price from `credit_pricing` |
 
+
+## B-006 — Library upload needs streaming storage
+
+**Blocks:** the level-2 toolbar upload (§19.2) and the Uploads tile's first-use path.
+
+**State:** `POST /api/v3/web-music/studio/uploads` answers `503 "Studio uploads are not
+configured."` because `resolve_streaming_storage_config` has no configured bucket
+(`storage_not_configured`). The control exists, posts the file, and the panel shows the
+backend's message in an alert; no row is invented.
+
+**Unblock:** point `camxora_pfm_sandbox` at a configured streaming bucket (local MinIO is
+enough) and re-run `studio-library.spec.ts` — its upload test accepts either the row or
+the configured-error path.
+
+**Do not** stub the endpoint to return a fake upload: the Add button would then place a
+clip whose URL 404s.
