@@ -314,6 +314,11 @@ describe("StudioFooter", () => {
         onToggleLibrary={noop}
         whatsThis={false}
         onWhatsThis={noop}
+        masterVolume={85}
+        masterMuted={false}
+        onMasterVolume={noop}
+        onMasterCommit={noop}
+        onToggleMasterMute={noop}
       />
     );
     expect(screen.getByText("No effects on this track yet.")).toBeTruthy();

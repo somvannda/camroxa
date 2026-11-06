@@ -83,6 +83,8 @@ export type RenderOptions = {
    * or bouncing a non-soloed track would produce silence.
    */
   honourSolo?: boolean;
+  /** Master level multiplier (0–1); defaults to the historical 0.85. */
+  masterGain?: number;
   /**
    * Normalise the finished render to this sample-peak target (dBFS). Off when
    * omitted, so a plain render stays byte-identical to what the mix produced.
@@ -111,7 +113,7 @@ export async function renderMix(
 
   const context = new OfflineAudioContext(2, Math.ceil(seconds * sampleRate), sampleRate);
   const master = context.createGain();
-  master.gain.value = 0.85;
+  master.gain.value = Math.max(0, Math.min(1, options.masterGain ?? 0.85));
   const bus = buildMasterBus(context, options.chain ?? []);
   master.connect(bus.input);
   bus.output.connect(context.destination);

@@ -4620,6 +4620,11 @@ html{color-scheme:dark}
 .se-settings-section{display:flex;flex-direction:column;gap:6px}
 .se-settings-section h3{margin:0}
 
+.se-master{display:inline-flex;align-items:center;gap:8px;margin-left:8px}
+.se-master-label{opacity:.7}
+.se-master-fader{width:96px}
+.se-master-value{min-width:36px;text-align:right;font-variant-numeric:tabular-nums}
+
 .se-add-wrap{position:relative;display:flex;flex-direction:column}
 .se-add-menu{position:absolute;left:0;bottom:38px;display:flex;flex-direction:column;min-width:180px;padding:6px;border-radius:10px;background:hsl(var(--card));border:1px solid hsl(var(--border));z-index:45}
 .se-add-menu button{display:flex;align-items:center;gap:8px;text-align:left;padding:8px 10px;border-radius:8px}

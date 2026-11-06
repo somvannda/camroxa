@@ -37,10 +37,20 @@ test("learn explains a control, then stays off after a reload", async ({ page })
   await shortcuts.getByRole("button", { name: "Close" }).click();
   await expect(shortcuts).toHaveCount(0);
 
-  // Hovering the tempo field explains it.
-  await page.getByLabel("Tempo in BPM").hover();
+  // Hovering the tempo field explains it. Move the pointer away first: a pointer that is
+  // already over the control fires no new pointerover, so a repeated hover would be a
+  // no-op (and the listener may attach just after the first move under load).
+  await expect
+    .poll(
+      async () => {
+        await page.mouse.move(4, 4);
+        await page.getByLabel("Tempo in BPM").hover();
+        return page.getByRole("tooltip").count();
+      },
+      { timeout: 15_000, intervals: [250] }
+    )
+    .toBeGreaterThan(0);
   const card = page.getByRole("tooltip");
-  await expect(card).toBeVisible();
   await expect(card).toContainText("Tempo");
   await expect(card).toContainText("BPM");
 

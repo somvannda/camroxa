@@ -93,6 +93,14 @@ export const HELP_ENTRIES: Record<string, HelpEntry> = {
     title: "Add track",
     body: "Opens the add-track menu. Audio adds an empty track, Upload opens your imported audio, and MIDI is not built in this editor.",
   },
+  master: {
+    title: "Main level",
+    body: "Sets the overall output for playback and for the mix and range exports. Per-track files are bounced without it so they can be reimported.",
+  },
+  "master-mute": {
+    title: "Mute main",
+    body: "Silences everything downstream of the tracks without moving the fader. Exports follow it, so a muted bounce is silent.",
+  },
 };
 
 export function helpFor(id: string | null | undefined): HelpEntry | null {

@@ -235,6 +235,11 @@ export function StudioEditorShell() {
   const loopDragRef = useRef(false);
   const [metronome, setMetronome] = useState(false);
   const [bpm, setBpm] = useState(120);
+  /** Master level (reference F-01/F-02), persisted in the document. */
+  const [masterVolume, setMasterVolume] = useState(85);
+  const [masterMuted, setMasterMuted] = useState(false);
+  const masterStateRef = useRef({ volume: masterVolume, muted: masterMuted });
+  masterStateRef.current = { volume: masterVolume, muted: masterMuted };
   /** Pixels per bar; 96 is the captured default (spec §44.3). */
   const [barWidth, setBarWidth] = useState(96);
   /** Audition speed (G17): 0.5x / 1x / 2x. */
@@ -260,6 +265,11 @@ export function StudioEditorShell() {
         if (!active) return;
         setProject(next);
         setBpm(next.bpm || 120);
+        const master = (next.data || {}) as { masterVolume?: unknown; masterMuted?: unknown };
+        if (typeof master.masterVolume === "number" && Number.isFinite(master.masterVolume)) {
+          setMasterVolume(Math.max(0, Math.min(100, master.masterVolume)));
+        }
+        setMasterMuted(Boolean(master.masterMuted));
         setError("");
         // A draft only surfaces when it is newer than what the server has (W2.3).
         const stored = loadDraft(projectId);
@@ -691,6 +701,21 @@ export function StudioEditorShell() {
     writeProjectData({ ...data, loopStart: start, loopEnd: end }, "the loop range");
   }
 
+  /** Apply the master level to the running graph (F-01/F-02). */
+  function applyMasterGain(volume: number, muted: boolean) {
+    const gain = masterGainRef.current;
+    if (gain) gain.gain.value = muted ? 0 : Math.max(0, Math.min(100, volume)) / 100;
+  }
+
+  /** Persist master volume / mute into the document (undoable, like the loop range). */
+  function commitMaster(volume = masterVolume, muted = masterMuted) {
+    const data = (project?.data || {}) as Record<string, unknown>;
+    writeProjectData(
+      { ...data, masterVolume: volume, masterMuted: muted },
+      "the master level"
+    );
+  }
+
   /** Arming the loop with no range selects the first four bars. */
   function toggleLoop() {
     if (!loop && (!loopEnd || loopEnd <= loopStart)) {
@@ -959,6 +984,8 @@ export function StudioEditorShell() {
   );
   /** Per-track gain nodes for the current playback (live volume / mute / solo). */
   const trackGainRef = useRef<Map<string, GainNode>>(new Map());
+  /** Master gain node for the current playback (live fader / main mute). */
+  const masterGainRef = useRef<GainNode | null>(null);
   /** Structure of the chains the engine was built with (ids, plugins, bypass state). */
   const chainStructureRef = useRef<string>("");
 
@@ -1453,7 +1480,8 @@ export function StudioEditorShell() {
 
     const now = context.currentTime;
     const master = context.createGain();
-    master.gain.value = 0.85;
+    master.gain.value = masterStateRef.current.muted ? 0 : masterStateRef.current.volume / 100;
+    masterGainRef.current = master;
 
     // Master chain (W4.1): the bus is a real node graph, not a hard-coded gain.
     const masterChain = ((): MasterChainEntry[] => {
@@ -1588,12 +1616,14 @@ export function StudioEditorShell() {
       // Mix/range only: per-track files must keep their relative balance (G11).
       const normalise = exportNormalise ? EXPORT_TARGET_PEAK_DB : null;
       const trackChains = chains;
+      const masterGain = masterMuted ? 0 : masterVolume / 100;
 
       if (scope === "mix") {
         const wav = await renderMix(buffers, exportClips, exportTracks, {
           chain,
           chains: trackChains,
           normalise,
+          masterGain,
         });
         download(wav, `${project.title || "mix"}.wav`, "audio/wav");
       } else if (scope === "range") {
@@ -1602,6 +1632,7 @@ export function StudioEditorShell() {
           chain,
           chains: trackChains,
           normalise,
+          masterGain,
           from: loopStart,
           to: loopEnd,
         });
@@ -1994,6 +2025,19 @@ export function StudioEditorShell() {
           const updated = { ...settingsRef.current, whatsThis: next };
           setSettings(updated);
           writeStudioSettings(updated);
+        }}
+        masterVolume={masterVolume}
+        masterMuted={masterMuted}
+        onMasterVolume={(value) => {
+          setMasterVolume(value);
+          applyMasterGain(value, masterMuted);
+        }}
+        onMasterCommit={() => commitMaster()}
+        onToggleMasterMute={() => {
+          const next = !masterMuted;
+          setMasterMuted(next);
+          applyMasterGain(masterVolume, next);
+          commitMaster(masterVolume, next);
         }}
       />
 
