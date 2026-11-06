@@ -77,6 +77,37 @@ test("share creates a view link that resolves without the editor", async ({ page
   await expect(dialog).toHaveCount(0);
 });
 
+test("new and duplicate open a different project", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  const title = `Menu flow ${tag}`;
+  const projectId = await createStudioProject(page, { title });
+
+  // Duplicate: a copy opens, with a different id.
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "Duplicate Project" }).click();
+  await page.waitForURL((url) => url.searchParams.get("project") !== projectId, { timeout: 30_000 });
+  const copyId = new URL(page.url()).searchParams.get("project");
+  expect(copyId).toBeTruthy();
+  expect(copyId).not.toBe(projectId);
+  await expect(page.locator(".se-project .se-chip")).toContainText(`${title} copy`, {
+    timeout: 30_000,
+  });
+
+  // New Project: a fresh empty document.
+  await page.locator(".se-project .se-chip").click();
+  await page.getByRole("menuitem", { name: "New Project" }).click();
+  await page.waitForURL((url) => url.searchParams.get("project") !== copyId, { timeout: 30_000 });
+  const freshId = new URL(page.url()).searchParams.get("project");
+  expect(freshId).toBeTruthy();
+  expect(freshId).not.toBe(copyId);
+  await expect(page.locator(".se-project .se-chip")).toHaveText("Untitled project", {
+    timeout: 30_000,
+  });
+  await expect(page.locator(".se-clip")).toHaveCount(0);
+});
+
 test("versions are captured automatically, and throttled within 20 seconds", async ({ page }) => {
   test.setTimeout(120_000);
 
