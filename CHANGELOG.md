@@ -7,6 +7,16 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.5.23] - 2026-11-06
+
+### Fixed
+
+- **YouTube uploads failed without ever reaching YouTube.** The client built the publish request with the
+  hosted media URL but the request model had no such field, so it was dropped before sending. The server
+  then asked for a second, presigned upload of the same 2.6-2.8 GB file, which exceeded the upload-link TTL
+  and failed as `UPLOAD_EXPIRED` — no post was ever created. The field is now declared (pinned by a test),
+  and the upload-link lifetime is 6 hours so a slow connection cannot expire mid-transfer.
+
 ## [1.5.22] - 2026-11-06
 
 ### Changed
