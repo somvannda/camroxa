@@ -43,7 +43,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Workspaces (with server-side song counts and a filter), Projects and Uploads tabs wired; the stems tab waits on a finished stems job (B-005) |
-| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 139 tests (pure modules, components, API contract); Playwright: 34 specs (… track operations, clipboard, marquee, zoom, plugin chains dry/wet …). e2e needs local services, so it is not in CI yet |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 139 tests (pure modules, components, API contract); Playwright: 35 specs (pure modules, components, API contract; plugin dry/wet + live knob, export downloads, loop/seek, track ops, clipboard, marquee, zoom, share page, versions, conflict, offline, home, library, help, metronome, writes, metrics, axe ×3). e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
@@ -81,6 +81,8 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G34 | "Fit to content" reset to a preset instead of fitting | The button set the default 96 px/bar, so a long arrangement stayed off-screen and a short one did not fill the canvas | W3 | **done** - the pitch is derived from the viewport and the content end (clamped 8–192), and the e2e checks every clip ends inside the canvas |
 
 | G35 | Per-track plugin chains never reached the audio engine | `buildPluginChain` existed but nothing called it: effects persisted and looked live while playback and exports were dry | W4.1 | **done** - playback and `renderMix` route each track through its chain once (shared per track), disposed on stop; an e2e adds an EQ, exports dry vs wet and compares RMS |
+
+| G36 | Chain edits did not affect running audio | Even once the chain was wired, nodes were built at play time and never updated; an EQ knob moved during playback did nothing until a restart | W4.1 | **done** - parameter changes update the live nodes, a shape change (add/remove/reorder/bypass) rebuilds once; e2e turns Gain to +18 dB mid-playback and watches the master peak rise |
 
 ## 3. Deliberate non-parity
 

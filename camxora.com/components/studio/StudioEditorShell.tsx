@@ -953,6 +953,12 @@ export function StudioEditorShell() {
   const chains = localChains ?? derivedChains;
   const chainsRef = useRef(chains);
   chainsRef.current = chains;
+  /** Chain nodes built for the current playback, keyed by track (live param updates). */
+  const chainRuntimeRef = useRef<Map<string, { update: (entryId: string, params: Record<string, number>) => void }>>(
+    new Map()
+  );
+  /** Structure of the chains the engine was built with (ids, plugins, bypass state). */
+  const chainStructureRef = useRef<string>("");
 
   useEffect(() => {
     setLocalChains(null);
@@ -1355,6 +1361,21 @@ export function StudioEditorShell() {
     if (playingRef.current) restartAudioGuarded(seconds);
   }
 
+  /** Identity of a chain's *shape*; parameter values are not part of it. */
+  function chainStructure(entries: PluginChainEntry[] | undefined): string {
+    return (entries ?? [])
+      .map((entry) => `${entry.entryId}:${entry.pluginId}:${entry.bypassed ? 1 : 0}`)
+      .join(">");
+  }
+
+  function chainMapStructure(map: Record<string, PluginChainEntry[] | undefined>): string {
+    return Object.entries(map)
+      .filter(([, entries]) => entries && entries.length > 0)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([trackId, entries]) => `${trackId}=${chainStructure(entries)}`)
+      .join(";");
+  }
+
   /** Silence clicks that were scheduled but have not sounded yet. */
   function stopClicks() {
     clickNodesRef.current.forEach((node) => {
@@ -1442,6 +1463,8 @@ export function StudioEditorShell() {
     bus.output.connect(analyser);
     analyser.connect(context.destination);
     audioRef.current = { ctx: context, sources: [], analyser, disposeChains: [] };
+    chainRuntimeRef.current = new Map();
+    chainStructureRef.current = chainMapStructure(chainsRef.current);
 
     // Per-track input: gain plus the track's plugin chain, shared by its clips so an
     // effect is heard once instead of being duplicated per clip.
@@ -1457,6 +1480,7 @@ export function StudioEditorShell() {
         const chain = buildPluginChain(context, entries);
         chain.output.connect(gain);
         audioRef.current?.disposeChains?.push(chain.dispose);
+        chainRuntimeRef.current.set(trackId, { update: chain.update });
         trackInputs.set(trackId, chain.input);
         return chain.input;
       }
@@ -1630,6 +1654,24 @@ export function StudioEditorShell() {
       return true;
     });
   }
+
+  /**
+   * Chain edits while the transport runs: parameter changes apply to the live nodes, a
+   * change in shape (add/remove/reorder/bypass) rebuilds once so the graph stays valid.
+   */
+  useEffect(() => {
+    if (!playing) return;
+    if (!chainRuntimeRef.current.size && !chainStructureRef.current) return;
+    if (chainMapStructure(chains) !== chainStructureRef.current) {
+      restartAudioGuarded(playheadRef.current);
+      return;
+    }
+    for (const [trackId, nodes] of chainRuntimeRef.current) {
+      for (const entry of chains[trackId] ?? []) {
+        nodes.update(entry.entryId, entry.params);
+      }
+    }
+  }, [chains, playing]);
 
   const secondsPerBar = 240 / bpm;
   const barCount = Math.max(1, Math.ceil((duration * bpm) / 240));

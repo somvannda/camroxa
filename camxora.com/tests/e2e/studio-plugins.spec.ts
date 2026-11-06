@@ -103,3 +103,41 @@ test("an EQ on the track changes the exported mix", async ({ page }) => {
     .toBeGreaterThan(beforePlay);
   await page.getByLabel("Pause", { exact: true }).click();
 });
+
+test("turning an EQ knob while playing changes the live level", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const tag = Math.random().toString(36).slice(2, 8);
+  await createStudioProject(page, {
+    title: `Live EQ ${tag}`,
+    clips: [
+      { id: "audible", title: "Loop", start: 0, duration: 4, audioUrl: "/seed/demo-loop.wav" },
+    ],
+  });
+
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  const dock = page.getByRole("region", { name: "Plugins for Track 1" });
+  await dock.getByRole("button", { name: "Add effect", exact: true }).first().click();
+  await page.getByRole("dialog", { name: "Add a track plugin" }).getByRole("button", { name: /^EQ/ }).click();
+  const gain = page.getByRole("slider", { name: "Gain" });
+  await gain.fill("0");
+
+  const meter = page.getByLabel("Master peak");
+  const peak = async () => {
+    const text = (await meter.innerText()).trim();
+    const value = Number.parseFloat(text);
+    return Number.isFinite(value) ? value : -60;
+  };
+
+  await page.getByLabel("Play", { exact: true }).click();
+  await expect.poll(peak, { timeout: 15_000, intervals: [200] }).toBeGreaterThan(-60);
+  const before = await peak();
+
+  // +18 dB on the only band: the running graph must follow without a restart.
+  await gain.fill("18");
+  await expect
+    .poll(peak, { timeout: 10_000, intervals: [200] })
+    .toBeGreaterThan(before + 3);
+
+  await page.getByLabel("Pause", { exact: true }).click();
+});
