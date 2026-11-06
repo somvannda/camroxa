@@ -2898,12 +2898,48 @@ class PublishUploadWorker(QThread):
         self._api = api
         self._request = request_payload
         self._auto_context = dict(auto_context or {})
+        self._activity_key = ""
+        self.finished.connect(self._clear_activity)
+
+    def _activity_slot(self) -> str:
+        from shared.lib.publish_activity import slot_key
+
+        request = self._request
+        context = self._auto_context
+        batch = context.get("batch_id") or getattr(request, "batch_id", "") or ""
+        profile = context.get("profile_id") or getattr(request, "profile_id", "") or ""
+        role = context.get("role") or getattr(request, "role", "OK") or "OK"
+        return slot_key(batch, profile, role)
+
+    def _clear_activity(self) -> None:
+        if not self._activity_key:
+            return
+        from shared.lib.publish_activity import finish
+
+        finish(self._activity_key)
+        self._activity_key = ""
 
     def run(self) -> None:
         step = "quote"
         try:
             request = self._request or self._build_auto_request()
             self._request = request
+            from shared.lib.publish_activity import begin, mark_provider, progress
+
+            self._activity_key = self._activity_slot()
+            try:
+                size_hint = Path(str(request.file_path or "")).stat().st_size
+            except OSError:
+                size_hint = 0
+            begin(
+                self._activity_key,
+                label=str(request.file_name or ""),
+                total=size_hint,
+                worker=self,
+            )
+            self.progress.connect(
+                lambda sent, total: progress(self._activity_key, sent, total)
+            )
             step = "quote"
             self.status_changed.emit("Checking publishing credits…")
             quote = self._api.get_publish_quote()
@@ -2987,9 +3023,17 @@ class PublishUploadWorker(QThread):
         )
         media_url = ""
         if size_bytes >= URL_UPLOAD_THRESHOLD_BYTES:
-            media_url = self._upload_via_storage(request, file_path, size_bytes)
+            media_url = self._reuse_server_media(request, size_bytes)
+            if media_url:
+                self.status_changed.emit(
+                    "Using the copy already in CAMXORA storage for this video…"
+                )
+            else:
+                media_url = self._upload_via_storage(request, file_path, size_bytes)
             request = request.model_copy(update={"media_url": media_url})
         job = self._api.create_publish_job(request)
+        from shared.lib.publish_activity import mark_provider
+
         if bool(getattr(job, "existing", False)):
             # The server already has a job for this batch/channel/role: never
             # open a second transfer, a second charge, or a second YouTube post.
@@ -3008,10 +3052,14 @@ class PublishUploadWorker(QThread):
                 current = None
             if current is not None:
                 self.succeeded.emit(current)
+            mark_provider(self._activity_key)
             return
         if job.upload_url:
             self.status_changed.emit("Uploading video…")
             self._put(job.upload_url, file_path, "video/mp4")
+        else:
+            # Media was hosted by us; the server already handed it to the provider.
+            mark_provider(self._activity_key)
         if job.thumbnail_upload_url and request.thumbnail_path:
             self.status_changed.emit("Uploading thumbnail…")
             self._put(
@@ -3021,7 +3069,28 @@ class PublishUploadWorker(QThread):
             )
         self.status_changed.emit("Finalizing upload…")
         result = self._api.complete_publish_job(job.job_uid, request.file_checksum)
+        mark_provider(self._activity_key)
         self.succeeded.emit(result)
+
+    def _reuse_server_media(self, request: CreatePublishJobRequest, size_bytes: int) -> str:
+        """A hosted original the server still holds for this slot, or ''.
+
+        The local cache only knows files on this machine: after a re-merge (new
+        mtime), a reinstall, or on another PC it misses while the server still
+        has the exact bytes for this batch/role. Asking the server is what stops
+        a retry from resending several GB.
+        """
+        batch_id = str(getattr(request, "batch_id", "") or "").strip()
+        if not batch_id:
+            return ""
+        role = str(getattr(request, "role", "OK") or "OK").strip().upper() or "OK"
+        try:
+            data = self._api.find_publish_media(
+                batch_id=batch_id, role=role, size_bytes=size_bytes
+            )
+        except Exception:
+            return ""
+        return str((data or {}).get("media_url") or "").strip()
 
     def _upload_via_storage(self, request: CreatePublishJobRequest, file_path: str, size_bytes: int) -> str:
         """Upload the original file to B2 in parts and return the media URL."""

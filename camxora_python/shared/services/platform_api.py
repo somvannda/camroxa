@@ -995,6 +995,21 @@ class PlatformApi:
         )
         return CreatePublishJobResponse.model_validate(data)
 
+    def find_publish_media(
+        self, *, batch_id: str, role: str, size_bytes: int
+    ) -> dict[str, Any]:
+        """An original the server still hosts for this slot (retry without re-upload)."""
+        data = self._client.request(
+            "/publish/media",
+            auth=True,
+            params={
+                "batch_id": str(batch_id),
+                "role": str(role or "OK"),
+                "size_bytes": int(size_bytes),
+            },
+        )
+        return data if isinstance(data, dict) else {}
+
     def create_publish_upload(self, *, file_name: str, content_type: str, size_bytes: int, first_part_count: int = 10) -> dict[str, Any]:
         """Open a multipart upload and get the first presigned part URLs."""
         data = self._client.request(

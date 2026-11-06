@@ -123,6 +123,14 @@ class CreatePublishJobResponse(BaseModel):
     existing: bool = False
 
 
+class ReusableMediaResponse(BaseModel):
+    """An original we already host for a batch/role, so a retry is free."""
+
+    media_url: str | None = None
+    job_uid: str | None = None
+    size_bytes: int | None = None
+
+
 class CompletePublishJobRequest(BaseModel):
     checksum: str | None = None
 
@@ -371,6 +379,31 @@ async def publish_quote(
 ) -> PublishQuoteResponse:
     data = await service.quote(ctx.user_id)
     return PublishQuoteResponse(**data)
+
+
+@router.get("/media", response_model=ReusableMediaResponse)
+async def reusable_publish_media(
+    ctx: CurrentUserDep,
+    batch_id: str,
+    role: str,
+    size_bytes: int,
+) -> ReusableMediaResponse:
+    """An original already hosted for this batch/role, so a retry skips the transfer."""
+    from platform_api.dependencies import get_publish_repo
+
+    job = await get_publish_repo().latest_media_job(
+        user_id=ctx.user_id,
+        batch_id=batch_id,
+        role=str(role or "OK").strip().upper() or "OK",
+        size_bytes=int(size_bytes),
+    )
+    if job is None or not job.media_url:
+        return ReusableMediaResponse()
+    return ReusableMediaResponse(
+        media_url=job.media_url,
+        job_uid=job.job_uid,
+        size_bytes=job.file_size_bytes,
+    )
 
 
 @router.post("/jobs", response_model=CreatePublishJobResponse, status_code=201)

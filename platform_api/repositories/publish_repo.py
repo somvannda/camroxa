@@ -505,6 +505,37 @@ class PublishRepository:
         )
         return _row_to_job(row) if row else None
 
+    async def latest_media_job(
+        self,
+        *,
+        user_id: str,
+        batch_id: str,
+        role: str,
+        size_bytes: int,
+        max_age_days: int = 6,
+    ) -> PublishJobRecord | None:
+        """Newest job for this slot whose original is still hosted and readable."""
+        row = await self._db.fetchrow(
+            f"""
+            SELECT {_JOB_COLUMNS}
+            FROM youtube_upload_jobs
+            WHERE user_id = $1::uuid
+              AND batch_id = $2::uuid
+              AND role = $3
+              AND media_url IS NOT NULL
+              AND file_size_bytes = $4
+              AND created_at > NOW() - make_interval(days => $5)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+            batch_id,
+            role,
+            int(size_bytes),
+            int(max_age_days),
+        )
+        return _row_to_job(row) if row else None
+
     async def latest_job_for_slot(
         self,
         *,
