@@ -52,6 +52,29 @@ def test_accepts_string_flags_from_persisted_settings() -> None:
         assert auto_publish_plan({"autoUploadYouTube": value}, CONTEXT, "m.mp4") is None
 
 
+def test_the_batch_choice_wins_over_live_settings() -> None:
+    stored_on = dict(CONTEXT, auto_upload_youtube=True)
+    stored_off = dict(CONTEXT, auto_upload_youtube=False)
+
+    # The run was created with the toggle on: it still publishes after the
+    # toggle is turned off in settings.
+    assert auto_publish_plan({"autoUploadYouTube": False}, stored_on, "m.mp4") is not None
+    # And a run created without it stays unpublished even if the toggle is on.
+    assert auto_publish_plan({"autoUploadYouTube": True}, stored_off, "m.mp4") is None
+
+
+def test_runs_without_a_stored_choice_fall_back_to_settings() -> None:
+    assert auto_publish_plan({"autoUploadYouTube": True}, CONTEXT, "m.mp4") is not None
+    assert auto_publish_plan({"autoUploadYouTube": False}, CONTEXT, "m.mp4") is None
+
+
+def test_the_batch_column_spelling_is_honoured() -> None:
+    # Producers may send the database column name instead of the settings key.
+    context = dict(CONTEXT, auto_upload_youtube=True)
+    assert auto_publish_plan({"autoUploadYouTube": False}, context, "m.mp4") is not None
+    assert auto_publish_plan({"autoUploadYouTube": True}, dict(CONTEXT, auto_upload_youtube=False), "m.mp4") is None
+
+
 def test_manual_context_needs_only_a_file_and_profile() -> None:
     from types import SimpleNamespace
 

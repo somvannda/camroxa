@@ -12,6 +12,10 @@ from pathlib import Path
 from typing import Any, Mapping
 
 AUTO_UPLOAD_SETTING_KEY = "autoUploadYouTube"
+# Contexts carry the batch's stored choice; accept the batch column's spelling
+# too so a producer that sends `auto_upload_youtube` still gates correctly.
+AUTO_UPLOAD_CONTEXT_KEYS = (AUTO_UPLOAD_SETTING_KEY, "auto_upload_youtube")
+
 
 # Merged files already claimed for publishing in this process. Both the video
 # page and the pipeline automation service can finish the same merge; this keeps
@@ -71,7 +75,11 @@ def auto_publish_plan(
     context = dict(merge_context or {})
     # The batch stores the choice it was created with; fall back to live settings
     # only for runs created before that flag existed.
-    explicit = context.get(AUTO_UPLOAD_SETTING_KEY)
+    explicit: Any = None
+    for key in AUTO_UPLOAD_CONTEXT_KEYS:
+        if key in context and context[key] is not None:
+            explicit = context[key]
+            break
     enabled = _truthy(explicit) if explicit is not None else _truthy(
         (settings or {}).get(AUTO_UPLOAD_SETTING_KEY)
     )

@@ -360,6 +360,7 @@ class PipelineAutomationService(QObject):
             "batch_id": candidate.batch_id,
             "role": candidate.role,
             "auto_upload_youtube": bool(getattr(candidate, "auto_upload_youtube", False)),
+            "autoUploadYouTube": bool(getattr(candidate, "auto_upload_youtube", False)),
             "auto_merge": auto_merge,
             "shuffle": shuffle_merge,
             "mp4_paths": ordered_mp4s,
@@ -825,31 +826,33 @@ class PipelineAutomationService(QObject):
         self._schedule_progress_local_sync()
 
     def _maybe_auto_publish(self, merged_output: str, context: dict[str, Any]) -> None:
-        if not bool(self._settings.get("autoUploadYouTube")):
-            return
+        """Publish this merge when the batch asked for it, not live settings.
+
+        The decision is the same pure helper the video page uses, so the batch's
+        stored YouTube choice wins over the toggle's current state.
+        """
         if is_app_quitting():
             return
-        profile_id = str(context.get("profile_id") or "").strip()
-        if not profile_id:
-            return
-        from shared.lib.publish_auto import claim_publish, release_publish
+        from shared.lib.publish_auto import (
+            auto_publish_plan,
+            claim_publish,
+            worker_context,
+        )
 
-        if not claim_publish(merged_output):
+        plan = auto_publish_plan(self._settings, context, merged_output)
+        if plan is None:
+            return
+
+        if not claim_publish(plan.merged_path):
             # The video page already published this file in this session.
             return
-        self._publish_claim_path = merged_output
+        self._publish_claim_path = plan.merged_path
         try:
             from shared.workers.data_workers import PublishUploadWorker
 
             worker = PublishUploadWorker(
                 self._api,
-                auto_context={
-                    "profile_id": profile_id,
-                    "batch_id": str(context.get("batch_id") or "").strip(),
-                    "role": str(context.get("role") or "OK").strip().upper() or "OK",
-                    "run_dir": str(context.get("run_dir") or "").strip(),
-                    "merged_path": merged_output,
-                },
+                auto_context=worker_context(plan),
                 parent=self,
             )
             worker.status_changed.connect(lambda text: emit_shell_status(str(text), tone="neutral"))
