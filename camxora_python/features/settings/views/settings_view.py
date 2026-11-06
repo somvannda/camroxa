@@ -680,14 +680,7 @@ class SettingsView(QWidget):
                 profile=profile,
             )
         if TAB_LABELS[self._active_tab_index] == "Publication":
-            signature = ",".join(
-                f"{getattr(item, 'profile_id', '')}:{getattr(item, 'status', '')}:"
-                f"{getattr(item, 'channel_id', '')}"
-                for item in self._youtube_connections
-            )
-            if signature != getattr(self, "_youtube_connections_signature", ""):
-                self._youtube_connections_signature = signature
-                self._bind_publication_tab()
+            self._load_publication_playlists()
         self._sync_youtube_poll_timer()
 
         poll_profile_id = self._youtube_poll_profile_id
@@ -1234,7 +1227,7 @@ class SettingsView(QWidget):
         self._pub_category.currentIndexChanged.connect(lambda *_: self._on_publication_field_changed())
         form.addWidget(form_row("Category", self._pub_category))
         self._pub_playlist = QComboBox()
-        self._pub_playlist.setEditable(True)
+        self._pub_playlist.setEditable(False)
         self._pub_playlist.currentTextChanged.connect(self._on_publication_field_changed)
         form.addWidget(form_row("Playlist", self._pub_playlist))
 
@@ -2507,10 +2500,15 @@ class SettingsView(QWidget):
                 break
         self._profile_list.blockSignals(False)
 
-    def _load_publication_playlists(self) -> None:
+    def _load_publication_playlists(self, *, force: bool = False) -> None:
+        """Populate the Playlist dropdown for the selected profile's channel."""
         profile_id = self._publication_profile.currentData()
+        if not profile_id:
+            return
+        if self._playlists_worker is not None and self._playlists_worker.isRunning():
+            return
         connection = self._youtube_connection_for(profile_id)
-        if not profile_id or not connection or connection.status != "connected":
+        if connection is None or connection.status != "connected":
             log_info(
                 "Playlists skipped: profile="
                 f"{profile_id or '-'} connection={'yes' if connection else 'no'} "
@@ -2519,19 +2517,13 @@ class SettingsView(QWidget):
             )
             return
         profile_key = str(profile_id)
-        if profile_key in self._playlist_auth_failed_profiles:
-            # A previous failure (often mid-connect) must not block forever.
-            self._playlist_auth_failed_profiles.discard(profile_key)
-            self._playlists_loaded_key = ""
-            log_info(
-                f"Retrying YouTube playlists for {profile_key}.", category="settings"
-            )
+        self._playlist_auth_failed_profiles.discard(profile_key)
         load_key = f"{profile_key}:{getattr(connection, 'channel_id', '')}"
         if (
-            load_key == getattr(self, "_playlists_loaded_key", "")
+            not force
+            and load_key == getattr(self, "_playlists_loaded_key", "")
             and self._pub_playlist.count() > 1
         ):
-            # Already loaded for this channel: a poll must not clear the list.
             return
         self._playlist_load_generation += 1
         generation = self._playlist_load_generation
@@ -2559,11 +2551,12 @@ class SettingsView(QWidget):
         self._pub_playlist.addItem("No playlist", "")
         for item in playlists:
             self._pub_playlist.addItem(getattr(item, "title", str(item)), getattr(item, "id", ""))
-        index = self._pub_playlist.findText(current)
+        saved_id = str(getattr(self._publication_draft, "playlist", "") or "").strip()
+        index = self._pub_playlist.findData(saved_id) if saved_id else -1
+        if index < 0 and current:
+            index = self._pub_playlist.findText(current)
         if index >= 0:
             self._pub_playlist.setCurrentIndex(index)
-        else:
-            self._pub_playlist.setEditText(current)
         self._pub_playlist.blockSignals(False)
 
     def _on_playlists_failed(self, message: str, generation: int) -> None:
