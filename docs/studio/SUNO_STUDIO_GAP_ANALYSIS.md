@@ -33,7 +33,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 |---|---|---|---|---|
 | G1 | No Studio home; `/studio` is marketing | Users cannot discover, resume, or manage projects without entering the DAW | W1.1-W1.3 | **done** — route added 2026-11-01; the home component already had the rest |
 | G2 | No deep link `?project=` in the editor | Home cannot open a specific project; refreshes fall back to "most recent" | W1.2 | **done** — home navigates with `?project=`; the editor reads it on mount and every e2e fixture opens that way |
-| G3 | No conflict resolution UI on save | Concurrent edits can overwrite | W2.2 | **done** — version check + reload/overwrite panel |
+| G3 | No conflict resolution UI on save | Concurrent edits can overwrite | W2.2 | **done** — version check + reload/overwrite panel; both buttons are covered by e2e (keep mine wins, reload theirs replaces the document) |
 | G4 | No offline draft | A network blip loses the last edit burst | W2.3 | **done** — draft stored on failure, offered on reopen |
 | G5 | No unsaved-changes guard | Navigation can drop a pending write | W2.4 | **done** — `beforeunload` while a save is pending, failed or offline |
 | G6 | No marquee multi-select / multi-drag / copy-paste | Slower bulk arrangement work | W3 | **done** — marquee, multi-drag and C/V/D |
@@ -43,7 +43,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — Songs, Workspaces (with server-side song counts and a filter), Projects and Uploads tabs wired; the stems tab waits on a finished stems job (B-005) |
-| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 138 tests (pure modules, components, API contract); Playwright: 16 specs (smoke, persistence, library, project menu + share + settings + versions, learn/help, keyboard + add-track, metronome, write serialization, metric parity, axe ×3). e2e needs local services, so it is not in CI yet |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 138 tests (pure modules, components, API contract); Playwright: 18 specs (smoke, persistence, library, project menu + share + settings + versions, conflict panel both paths, learn/help, keyboard + add-track, metronome, write serialization, metric parity, axe ×3). e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations after fixes |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
