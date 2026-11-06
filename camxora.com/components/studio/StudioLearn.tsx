@@ -85,6 +85,8 @@ export function StudioLearn({ whatsThis, onWhatsThis }: StudioLearnProps) {
       ) {
         return;
       }
+      // A dialog owns the keyboard while it is open; do not open help behind it.
+      if (document.querySelector('[role="dialog"][aria-modal="true"], [role="alertdialog"]')) return;
       event.preventDefault();
       setOpen(false);
       setCard(null);

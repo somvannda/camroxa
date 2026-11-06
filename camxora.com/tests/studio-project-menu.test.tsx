@@ -101,6 +101,19 @@ describe("StudioProjectMenu", () => {
     expect(await screen.findByRole("dialog", { name: "Studio settings" })).toBeTruthy();
   });
 
+  it("does not stack settings on top of an open dialog", async () => {
+    const user = userEvent.setup();
+    renderMenu();
+
+    await user.click(screen.getByRole("button", { name: /Demo/ }));
+    await user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    expect(await screen.findByRole("dialog", { name: "Rename project" })).toBeTruthy();
+
+    await user.keyboard("{Control>}{Shift>},<{/Shift}{/Control}");
+    expect(screen.getByRole("dialog", { name: "Rename project" })).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Studio settings" })).toBeNull();
+  });
+
   it("renames through the API and reports the new title", async () => {
     const user = userEvent.setup();
     api.updateStudioProject.mockResolvedValue({ id: "p1", title: "Renamed" });

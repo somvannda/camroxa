@@ -121,6 +121,8 @@ export function StudioProjectMenu({
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!event.ctrlKey || !event.shiftKey || event.key !== ",") return;
+      // Do not stack Settings on top of another dialog the user is already in.
+      if (dialog !== null) return;
       const target = event.target as HTMLElement | null;
       if (
         target &&
@@ -135,7 +137,7 @@ export function StudioProjectMenu({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [dialog]);
 
   function navigate(id: string) {
     window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;

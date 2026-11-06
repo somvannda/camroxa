@@ -1087,7 +1087,7 @@ export function StudioEditorShell() {
       // accelerators A (audio) / U (uploads). M has no meaning here — MIDI tracks are
       // not built — so it is deliberately unbound rather than adding an audio track.
       if (!event.metaKey && !event.ctrlKey && !event.altKey) {
-        if (document.querySelector('[role="dialog"]')) return;
+        if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
         if (event.code === "Space") {
           event.preventDefault();
           togglePlayback();

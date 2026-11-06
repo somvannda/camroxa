@@ -49,3 +49,34 @@ test("a second edit during an in-flight save does not conflict", async ({ page }
   expect(saved.lanes).toBe(1);
   expect(saved.start).toBeGreaterThan(0);
 });
+
+test("undo during an in-flight save lands at the origin and persists", async ({ page }) => {
+  test.setTimeout(120_000);
+
+  const projectId = await createStudioProject(page, { title: "Undo race" });
+
+  await page.route("**/api/v3/web-music/studio/projects/*", async (route) => {
+    if (route.request().method() === "PATCH") {
+      await new Promise((resolve) => setTimeout(resolve, 600));
+    }
+    await route.continue();
+  });
+
+  const clip = page.locator(".se-clip").first();
+  const left = () => clip.evaluate((element) => (element as HTMLElement).style.left);
+
+  await dragFirstClipOneBar(page);
+  await expect.poll(left, { timeout: 10_000 }).not.toBe("0px");
+  await page.keyboard.press("Control+z");
+
+  await expect(page.getByText(/changed since you loaded/)).toHaveCount(0);
+  await expect.poll(left, { timeout: 10_000 }).toBe("0px");
+  await expect(page.getByText("Saved")).toBeVisible({ timeout: 15_000 });
+
+  const start = await page.evaluate(async (id) => {
+    const response = await fetch(`/api/v3/web-music/studio/projects/${id}`);
+    const project = (await response.json()) as { data?: { lanes?: Array<{ start?: number }> } };
+    return project.data?.lanes?.[0]?.start ?? null;
+  }, projectId);
+  expect(start).toBe(0);
+});
