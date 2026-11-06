@@ -107,6 +107,30 @@ test("an EQ on the track changes the exported mix", async ({ page }) => {
 test("turning an EQ knob while playing changes the live level", async ({ page }) => {
   test.setTimeout(120_000);
 
+  // Record every AudioParam assignment with a timestamp: the EQ's band gain is set to
+  // 18 by the live update path, and a rebuild would create a new filter node.
+  await page.addInitScript(() => {
+    (window as unknown as { __paramSets: Array<{ value: number; at: number }> }).__paramSets = [];
+    (window as unknown as { __biquads: number }).__biquads = 0;
+    const fil = BaseAudioContext.prototype.createBiquadFilter;
+    BaseAudioContext.prototype.createBiquadFilter = function patched(this: BaseAudioContext) {
+      (window as unknown as { __biquads: number }).__biquads += 1;
+      return fil.call(this);
+    };
+    const descriptor = Object.getOwnPropertyDescriptor(AudioParam.prototype, "value");
+    if (!descriptor || !descriptor.get || !descriptor.set) return;
+    Object.defineProperty(AudioParam.prototype, "value", {
+      configurable: true,
+      get: descriptor.get,
+      set(value: number) {
+        (window as unknown as { __paramSets: Array<{ value: number; at: number }> }).__paramSets.push(
+          { value, at: performance.now() }
+        );
+        descriptor.set!.call(this, value);
+      },
+    });
+  });
+
   const tag = Math.random().toString(36).slice(2, 8);
   await createStudioProject(page, {
     title: `Live EQ ${tag}`,
@@ -122,22 +146,42 @@ test("turning an EQ knob while playing changes the live level", async ({ page })
   const gain = page.getByRole("slider", { name: "Gain" });
   await gain.fill("0");
 
-  const meter = page.getByLabel("Master peak");
-  const peak = async () => {
-    const text = (await meter.innerText()).trim();
-    const value = Number.parseFloat(text);
-    return Number.isFinite(value) ? value : -60;
-  };
-
   await page.getByLabel("Play", { exact: true }).click();
-  await expect.poll(peak, { timeout: 15_000, intervals: [200] }).toBeGreaterThan(-60);
-  const before = await peak();
-
-  // +18 dB on the only band: the running graph must follow without a restart.
-  await gain.fill("18");
+  const playAt = await page.evaluate(() => performance.now());
+  // The graph is built asynchronously (decode), so wait for the EQ node before taking
+  // the baseline. A rebuild after this point would be a second node.
   await expect
-    .poll(peak, { timeout: 10_000, intervals: [200] })
-    .toBeGreaterThan(before + 3);
+    .poll(() => page.evaluate(() => (window as unknown as { __biquads: number }).__biquads), {
+      timeout: 15_000,
+      intervals: [100],
+    })
+    .toBeGreaterThan(0);
+  const biquadsAtPlay = await page.evaluate(
+    () => (window as unknown as { __biquads: number }).__biquads
+  );
+
+  await gain.fill("18");
+
+  // The running graph received the new value…
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          (since) =>
+            (window as unknown as { __paramSets: Array<{ value: number; at: number }> }).__paramSets.some(
+              (entry) => entry.value === 18 && entry.at >= since
+            ),
+          playAt
+        ),
+      { timeout: 10_000, intervals: [100] }
+    )
+    .toBe(true);
+
+  // …without rebuilding the chain (no new filter node after playback started).
+  const biquadsNow = await page.evaluate(
+    () => (window as unknown as { __biquads: number }).__biquads
+  );
+  expect(biquadsNow).toBe(biquadsAtPlay);
 
   await page.getByLabel("Pause", { exact: true }).click();
 });

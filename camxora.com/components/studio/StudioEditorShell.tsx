@@ -344,7 +344,7 @@ export function StudioEditorShell() {
         });
     }
     if (libraryProjects === null) {
-      listStudioProjects(20, 0, false)
+      listStudioProjects(50, 0, false)
         .then((result) => {
           if (active) setLibraryProjects(result.items ?? []);
         })
@@ -957,6 +957,8 @@ export function StudioEditorShell() {
   const chainRuntimeRef = useRef<Map<string, { update: (entryId: string, params: Record<string, number>) => void }>>(
     new Map()
   );
+  /** Per-track gain nodes for the current playback (live volume / mute / solo). */
+  const trackGainRef = useRef<Map<string, GainNode>>(new Map());
   /** Structure of the chains the engine was built with (ids, plugins, bypass state). */
   const chainStructureRef = useRef<string>("");
 
@@ -1425,6 +1427,11 @@ export function StudioEditorShell() {
   }
 
   async function startAudio(from: number, arrangement: ClipLike[] = clips) {
+    // Record the structure before any await: the live-chain effect may run while the
+    // graph is still decoding, and must not mistake that for a shape change.
+    chainStructureRef.current = chainMapStructure(chainsRef.current);
+    chainRuntimeRef.current = new Map();
+    trackGainRef.current = new Map();
     const context = audioRef.current?.ctx ?? new AudioContext();
     await context.resume();
 
@@ -1463,8 +1470,6 @@ export function StudioEditorShell() {
     bus.output.connect(analyser);
     analyser.connect(context.destination);
     audioRef.current = { ctx: context, sources: [], analyser, disposeChains: [] };
-    chainRuntimeRef.current = new Map();
-    chainStructureRef.current = chainMapStructure(chainsRef.current);
 
     // Per-track input: gain plus the track's plugin chain, shared by its clips so an
     // effect is heard once instead of being duplicated per clip.
@@ -1475,6 +1480,7 @@ export function StudioEditorShell() {
       const gain = context.createGain();
       gain.gain.value = Math.max(0, volume) / 100;
       gain.connect(master);
+      trackGainRef.current.set(trackId, gain);
       const entries = chainsRef.current[trackId] ?? [];
       if (entries.length > 0) {
         const chain = buildPluginChain(context, entries);
@@ -1496,10 +1502,11 @@ export function StudioEditorShell() {
       const duration = clip.duration ?? buffer.duration;
       if (start + duration <= from) continue;
       const track = tracks.find((item) => item.clipIds.includes(clip.id));
-      // Solo wins over mute, and any solo silences everything not soloed (G21).
+      // Sources are always scheduled; mute/solo are applied through the track gain so
+      // toggling them mid-playback is heard immediately (and undoable by unmuting).
       const anySolo = tracks.some((item) => item.solo);
-      if (track?.muted) continue;
-      if (anySolo && !track?.solo) continue;
+      const audible = track ? !track.muted && (!anySolo || track.solo) : true;
+      const volume = audible ? (track?.volume ?? 80) : 0;
 
       const when = now + Math.max(0, start - from) / playbackRate;
       const offset = Math.max(0, from - start);
@@ -1508,7 +1515,7 @@ export function StudioEditorShell() {
       // Audition speed (G17): playbackRate scales both the scheduling offset and
       // how long the buffer takes to play, so clips stay in sync with each other.
       source.playbackRate.value = playbackRate;
-      source.connect(trackInput(track?.id ?? clip.id, track?.volume ?? 80));
+      source.connect(trackInput(track?.id ?? clip.id, volume));
       source.start(when, offset, Math.max(0.05, duration - offset));
       audioRef.current?.sources.push(source);
     }
@@ -1672,6 +1679,21 @@ export function StudioEditorShell() {
       }
     }
   }, [chains, playing]);
+
+  /**
+   * Track mix changes while playing: volume, mute and solo used to be applied only when
+   * sources were scheduled, so pressing M/S mid-playback changed the button and nothing
+   * else. The gain nodes already exist per track, so follow them live.
+   */
+  useEffect(() => {
+    if (!playing) return;
+    const anySolo = tracks.some((track) => track.solo);
+    for (const [trackId, gain] of trackGainRef.current) {
+      const track = tracks.find((candidate) => candidate.id === trackId);
+      const audible = track ? !track.muted && (!anySolo || track.solo) : true;
+      gain.gain.value = audible ? Math.max(0, track?.volume ?? 80) / 100 : 0;
+    }
+  }, [tracks, playing]);
 
   const secondsPerBar = 240 / bpm;
   const barCount = Math.max(1, Math.ceil((duration * bpm) / 240));

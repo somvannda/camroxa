@@ -35,9 +35,12 @@ test("restoring a version brings the arrangement back", async ({ page }) => {
   const dialog = page.getByRole("dialog", { name: "Version history" });
   await expect(dialog.getByText("Original")).toBeVisible();
 
+  // Restore reloads the editor with the restored document; wait for that load before
+  // touching the DOM, or an evaluate can land in the destroyed context.
+  const reloaded = page.waitForEvent("load", { timeout: 30_000 });
   await dialog.getByRole("button", { name: "Restore Original" }).click();
+  await reloaded;
 
-  // Restore reloads the editor with the restored document.
   await expect(page.locator(".se-clip").first()).toBeVisible({ timeout: 30_000 });
   await expect
     .poll(() => page.locator(".se-clip").first().evaluate((el) => (el as HTMLElement).style.left), {
