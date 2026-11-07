@@ -195,6 +195,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     currentProjectId: null,
     likedKeys: [] as string[] | null,
     playingSongId: null as string | null,
+    playingUploadId: null as string | null,
     projectSongIds: [] as string[],
     onOpenSong: noop,
     onClose: noop,
@@ -209,6 +210,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     onAddSong: noop,
     onTogglePlay: noop,
     onToggleLike: noop,
+    onToggleUploadPlay: noop,
     onAddUpload: noop,
     onOpenProject: noop,
     ...overrides,
@@ -619,6 +621,22 @@ describe("StudioLibrary", () => {
     expect(screen.getByText("2:07")).toBeTruthy();
     await user.click(screen.getByLabelText("Add take-1.wav"));
     expect(onAddUpload).toHaveBeenCalledWith(upload());
+  });
+
+  it("auditions an upload from its row", async () => {
+    const user = userEvent.setup();
+    const onToggleUploadPlay = vi.fn();
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "uploads" },
+          uploads: [upload()],
+          onToggleUploadPlay,
+        })}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Play take-1.wav" }));
+    expect(onToggleUploadPlay).toHaveBeenCalledWith(upload());
   });
 
   it("disables adding an upload that has no signed url", () => {

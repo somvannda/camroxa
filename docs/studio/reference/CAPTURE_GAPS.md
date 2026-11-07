@@ -117,6 +117,9 @@ The lanes sit under the note lane and share its x-axis. Evidence from 2026-11-06
   rows reveal `More` and `Open` on hover, project rows reveal only `Open`. The `More`
   menu was not reached by synthetic input, so its items remain uncaptured.
 - `See all` expands in place and becomes `Show less`.
+- Uploads is the **same date-grouped list** as songs, with a `Play` per row rather than
+  only a filename list. Ours now groups by `created_at` and auditions through the shared
+  preview element.
 - Double-clicking a song row opens a **song detail rail** (title, `key · BPM · duration ·
   date`, Remix/Like/Dislike/More, ±44 px Play, Info/Stems tabs, Styles with copy + show
   more, Lyrics with copy + show more, Comments and notes). It dismisses the list and does

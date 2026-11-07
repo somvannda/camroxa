@@ -4701,7 +4701,7 @@ html{color-scheme:dark}
 .se-lib-upload{grid-template-columns:36px minmax(0,1fr) auto;grid-template-rows:auto auto;column-gap:10px}
 .se-lib-upload .se-lib-title{grid-column:2;grid-row:1}
 .se-lib-upload .se-lib-meta{grid-column:2;grid-row:2}
-.se-lib-upload .se-pill{grid-column:3;grid-row:1 / span 2}
+.se-lib-upload .se-lib-song-actions{grid-column:3;grid-row:1 / span 2}
 .se-lib-song .se-pill{grid-column:3}
 .se-lib-row .se-lib-title{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .se-lib-row .se-lib-meta{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;opacity:.65}

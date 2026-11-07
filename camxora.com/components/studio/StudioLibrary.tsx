@@ -42,6 +42,8 @@ export type StudioLibraryProps = {
   likedKeys: string[] | null;
   /** Song id currently auditioning, or null. */
   playingSongId: string | null;
+  /** Upload id currently auditioning, or null. */
+  playingUploadId: string | null;
   /** Song ids the open project already uses, for the In Project filter. */
   projectSongIds: string[];
   /** Double-clicking a row opens its detail rail (§100). */
@@ -63,6 +65,8 @@ export type StudioLibraryProps = {
   onTogglePlay: (song: WebMusicGeneration) => void;
   /** Like button (reference rows have Like); nextLiked is the requested state. */
   onToggleLike: (song: WebMusicGeneration, nextLiked: boolean) => void;
+  /** Audition an upload (reference uploads rows have Play). */
+  onToggleUploadPlay: (upload: StudioUpload) => void;
   onAddUpload: (upload: StudioUpload) => void;
   onOpenProject: (projectId: string) => void;
 };
@@ -126,6 +130,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       currentProjectId,
       likedKeys,
       playingSongId,
+      playingUploadId,
       projectSongIds,
       onOpenSong,
       onClose,
@@ -140,6 +145,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       onAddSong,
       onTogglePlay,
       onToggleLike,
+      onToggleUploadPlay,
       onAddUpload,
       onOpenProject,
     } = props;
@@ -576,24 +582,64 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               <p className="se-lib-empty">No uploads yet. Audio you import appears here.</p>
             ) : (
               <ul className="se-lib-list">
-                {visibleUploads.map((upload) => (
-                  <li key={upload.id} className="se-lib-row se-lib-upload">
-                    <span className="se-lib-thumb se-lib-thumb-upload" aria-hidden="true">
-                      <Icon name="fa-file-audio" />
-                    </span>
-                    <span className="se-lib-title">{upload.filename}</span>
-                    <span className="se-lib-meta">
-                      {formatUploadLength(upload.duration_seconds)}
-                    </span>
+                {groupByDay(visibleUploads).map((group) => (
+                  <li key={group.label} className="se-lib-day" aria-label={group.label}>
                     <button
                       type="button"
-                      className="se-pill"
-                      onClick={() => onAddUpload(upload)}
-                      disabled={!upload.url}
-                      aria-label={`Add ${upload.filename}`}
+                      className="se-lib-day-head"
+                      aria-expanded={!collapsedDays.includes(group.label)}
+                      onClick={() =>
+                        setCollapsedDays((previous) =>
+                          previous.includes(group.label)
+                            ? previous.filter((label) => label !== group.label)
+                            : [...previous, group.label]
+                        )
+                      }
                     >
-                      Add
+                      <span>{group.label}</span>
+                      <span aria-hidden="true">
+                        {collapsedDays.includes(group.label) ? "›" : "⌄"}
+                      </span>
                     </button>
+                    {collapsedDays.includes(group.label) ? null : (
+                      <ul>
+                        {group.items.map((upload) => (
+                          <li key={upload.id} className="se-lib-row se-lib-upload">
+                            <span className="se-lib-thumb se-lib-thumb-upload" aria-hidden="true">
+                              <Icon name="fa-file-audio" />
+                            </span>
+                            <span className="se-lib-title">{upload.filename}</span>
+                            <span className="se-lib-meta">
+                              {formatUploadLength(upload.duration_seconds)}
+                            </span>
+                            <span className="se-lib-song-actions">
+                              <button
+                                type="button"
+                                className="se-lib-icon"
+                                aria-label={`${
+                                  playingUploadId === upload.id ? "Pause" : "Play"
+                                } ${upload.filename}`}
+                                onClick={() => onToggleUploadPlay(upload)}
+                                disabled={!upload.url}
+                              >
+                                <Icon
+                                  name={playingUploadId === upload.id ? "fa-pause" : "fa-play"}
+                                />
+                              </button>
+                              <button
+                                type="button"
+                                className="se-pill"
+                                onClick={() => onAddUpload(upload)}
+                                disabled={!upload.url}
+                                aria-label={`Add ${upload.filename}`}
+                              >
+                                Add
+                              </button>
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </li>
                 ))}
               </ul>

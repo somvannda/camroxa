@@ -140,6 +140,7 @@ export function StudioEditorShell() {
   const [detailSong, setDetailSong] = useState<WebMusicGeneration | null>(null);
   /** Song auditioning from the library, and its audio element. */
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+  const [playingUploadId, setPlayingUploadId] = useState<string | null>(null);
   const previewRef = useRef<HTMLAudioElement | null>(null);
   /** Right rail shows the clip inspector instead of the library (spec §70). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
@@ -557,6 +558,7 @@ export function StudioEditorShell() {
     previewRef.current?.pause();
     previewRef.current = null;
     setPlayingSongId(null);
+    setPlayingUploadId(null);
     setDetailSong(null);
   }, [libraryOpen]);
   useEffect(() => () => previewRef.current?.pause(), []);
@@ -566,6 +568,7 @@ export function StudioEditorShell() {
     previewRef.current?.pause();
     previewRef.current = null;
     setPlayingSongId(null);
+    setPlayingUploadId(null);
   }, [playing]);
 
   /** Level 2 of the library: the song list, optionally liked-only (spec §19.1). */
@@ -613,12 +616,35 @@ export function StudioEditorShell() {
     previewRef.current?.pause();
     const audio = new Audio(clip.audio_url);
     previewRef.current = audio;
+    setPlayingUploadId(null);
     setPlayingSongId(song.id);
     audio.onended = () => {
       setPlayingSongId((current) => (current === song.id ? null : current));
     };
     void audio.play().catch(() => {
       setPlayingSongId((current) => (current === song.id ? null : current));
+    });
+  }
+
+  /** Audition an imported upload; shares the single preview element with songs. */
+  function toggleUploadPreview(upload: StudioUpload) {
+    if (playingUploadId === upload.id) {
+      previewRef.current?.pause();
+      previewRef.current = null;
+      setPlayingUploadId(null);
+      return;
+    }
+    if (!upload.url) return;
+    previewRef.current?.pause();
+    const audio = new Audio(upload.url);
+    previewRef.current = audio;
+    setPlayingSongId(null);
+    setPlayingUploadId(upload.id);
+    audio.onended = () => {
+      setPlayingUploadId((current) => (current === upload.id ? null : current));
+    };
+    void audio.play().catch(() => {
+      setPlayingUploadId((current) => (current === upload.id ? null : current));
     });
   }
 
@@ -2770,6 +2796,7 @@ export function StudioEditorShell() {
               currentProjectId={projectId}
               likedKeys={likedKeys}
               playingSongId={playingSongId}
+              playingUploadId={playingUploadId}
               projectSongIds={projectSongIds}
               onOpenSong={(song) => setDetailSong(song)}
               onClose={() => setLibraryOpen(false)}
@@ -2786,6 +2813,7 @@ export function StudioEditorShell() {
               onAddSong={addSongToTimeline}
               onTogglePlay={toggleSongPreview}
               onToggleLike={(song, nextLiked) => void toggleSongLike(song, nextLiked)}
+              onToggleUploadPlay={toggleUploadPreview}
               onAddUpload={addUploadToTimeline}
               onOpenProject={(id) => {
                 window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;

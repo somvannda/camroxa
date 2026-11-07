@@ -326,6 +326,7 @@ export type StudioUpload = {
   size_bytes: number;
   duration_seconds?: number | null;
   url: string;
+  created_at?: string | null;
 };
 
 export async function uploadStudioAudio(
