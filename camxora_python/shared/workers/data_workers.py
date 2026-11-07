@@ -2929,6 +2929,17 @@ class YouTubeDirectUploadWorker(QThread):
             meta = yt.build_metadata(profile, path)
             self.status_changed.emit(f"Preparing “{meta['title']}”…")
 
+            try:
+                quota = self._api.get_youtube_quota()
+            except Exception:
+                quota = {}
+            if int(quota.get("remaining", 1) or 0) <= 0:
+                raise RuntimeError(
+                    f"Daily YouTube quota reached ({quota.get('used', '?')}/"
+                    f"{quota.get('limit', '?')} uploads today) — uploads resume "
+                    "tomorrow, or connect your own Google app for more."
+                )
+
             token_data = self._api.issue_youtube_access_token(self._profile_id)
             access_token = str(token_data.get("access_token") or "")
             if not access_token:

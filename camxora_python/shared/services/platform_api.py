@@ -931,6 +931,11 @@ class PlatformApi:
 
     # --- Post for Me publishing -------------------------------------------
 
+    def get_youtube_quota(self) -> dict[str, Any]:
+        """Uploads used today against Google's per-project allowance."""
+        data = self._client.request("/youtube/quota", auth=True)
+        return data if isinstance(data, dict) else {}
+
     def issue_youtube_access_token(self, profile_id: str) -> dict[str, Any]:
         """1-hour Google token so the desktop uploads straight to YouTube."""
         data = self._client.request(

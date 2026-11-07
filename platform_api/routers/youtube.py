@@ -412,6 +412,23 @@ async def youtube_oauth_callback(
     )
 
 
+class YouTubeQuotaResponse(BaseModel):
+    limit: int
+    used: int
+    remaining: int
+    resets_at: str
+
+
+@router.get("/quota", response_model=YouTubeQuotaResponse)
+async def youtube_quota(
+    ctx: CurrentUserDep,
+    service: YouTubeConnectionServiceDep,
+) -> YouTubeQuotaResponse:
+    """Uploads used today against Google's per-project daily allowance."""
+    data = await service.quota_status(UUID(ctx.user_id))
+    return YouTubeQuotaResponse(**data)
+
+
 @router.post(
     "/profiles/{profile_id}/access-token", response_model=YouTubeAccessTokenResponse
 )

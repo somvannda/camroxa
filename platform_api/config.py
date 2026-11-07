@@ -195,6 +195,9 @@ class Settings(BaseSettings):
     image_output_cache_dir: str = "./image_output_cache"
 
     # --- Desktop release installer uploads (admin portal) ---
+    # videos.insert costs 1,600 of YouTube's 10,000 daily units, so a fresh
+    # project allows six uploads per day. Raise after a quota extension.
+    youtube_daily_upload_limit: int = 6
     desktop_release_storage_path: str = "./desktop_release_storage"
     desktop_release_public_base_url: str = ""
     desktop_release_max_upload_mb: int = 500

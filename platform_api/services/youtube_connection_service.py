@@ -512,6 +512,47 @@ class YouTubeConnectionService:
             raise ValidationError("YouTube is not connected for this profile yet.")
         return await self._build_refreshed_credentials(account)
 
+    async def quota_status(self, user_id: UUID) -> dict[str, Any]:
+        """Uploads used and remaining for Google's quota day (midnight Pacific).
+
+        YouTube charges videos.insert 1,600 of the project's 10,000 daily units,
+        so the practical ceiling is six uploads. Counting here means a customer
+        sees "resumes tomorrow" instead of a provider rejection mid-transfer.
+        """
+        from datetime import datetime, time as dtime, timezone as _tz
+        from zoneinfo import ZoneInfo
+
+        from platform_api.config import get_settings
+
+        limit = max(1, int(getattr(get_settings(), "youtube_daily_upload_limit", 6) or 6))
+        pacific = ZoneInfo("America/Los_Angeles")
+        now_local = datetime.now(_tz.utc).astimezone(pacific)
+        day_start_local = datetime.combine(now_local.date(), dtime.min, tzinfo=pacific)
+        day_end_local = day_start_local + (datetime.combine(now_local.date(), dtime.max, tzinfo=pacific) - day_start_local) + (
+            dtime.resolution
+        )
+        start_utc = day_start_local.astimezone(_tz.utc)
+        end_utc = day_end_local.astimezone(_tz.utc)
+        used = await self._db.fetchval(
+            """
+            SELECT count(*) FROM youtube_upload_jobs
+            WHERE user_id = $1::uuid
+              AND created_at >= $2
+              AND created_at < $3
+              AND status <> 'cancelled'
+            """,
+            str(user_id),
+            start_utc,
+            end_utc,
+        )
+        used_int = int(used or 0)
+        return {
+            "limit": limit,
+            "used": used_int,
+            "remaining": max(0, limit - used_int),
+            "resets_at": end_utc.isoformat(),
+        }
+
     async def issue_access_token(self, *, user_id: UUID, profile_id: UUID) -> dict[str, Any]:
         """Mint a short-lived access token so the desktop uploads YouTube directly.
 
@@ -519,6 +560,17 @@ class YouTubeConnectionService:
         token scoped to the already-consented channel, which is what the
         resumable upload needs and nothing more.
         """
+        quota = await self.quota_status(user_id)
+        if quota["remaining"] <= 0:
+            raise ValidationError(
+                "Daily YouTube quota reached — uploads resume tomorrow.",
+                details={
+                    "error_code": "YOUTUBE_QUOTA_REACHED",
+                    "limit": quota["limit"],
+                    "resets_at": quota["resets_at"],
+                },
+            )
+
         credentials = await self.build_refreshed_credentials_for_profile(
             user_id=user_id, profile_id=profile_id
         )
