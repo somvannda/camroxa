@@ -55,7 +55,8 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S48 | `screens/S48-master-limiter.jpeg` | Master chain — `Main` selected, dock shows a single Limiter |
 | S48b | `screens/S48-master-limiter-detail.jpeg` | 2× crop — orange master accent, Lookahead/Pre Gain/Attack/Release/Link |
 | S47 | `screens/S47-no-mixer-tool-cluster.jpeg` | Footer tool cluster — four tools, no mixer |
-| S30 | `screens/S30-stretch-modes.jpeg` | Stretch section — `On Beat` / `Transients` / `Start and End`, Formant toggle |
+| S30 | `screens/S30-stretch-modes.jpeg` | Stretch section - `On Beat` / `Transients` / `Start and End`, Formant toggle |
+| S30 | `screens/S30-warp-markers.jpeg` | Warp markers drawn - white pennant heads on the waveform, dense at transients (§97) |
 | S45 | `screens/S45-plugin-designer-result.jpeg` | Designer output — `Warm Tape`, `Audio effect · Drag onto a track` |
 | S62 | `screens/S62-offline-cold-load.jpeg` | Cold load while offline → `ERR_INTERNET_DISCONNECTED`, no app shell |
 | S33 | `screens/S33-velocity-lane.jpeg` | Velocity lane — one lollipop per note, flat-velocity comb |

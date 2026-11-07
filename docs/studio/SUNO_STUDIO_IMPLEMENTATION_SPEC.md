@@ -3471,7 +3471,7 @@ UI we are adding something the reference does not have — and given a DAW where
 people can plausibly open the same project, that may well be the right call. The
 reference's answer is "don't worry about it".
 
-## 94. S30 — warp markers `PART` (stretch modes captured, markers not drawn)
+## 94. S30 - warp markers `L` (stretch modes; markers closed by 97)
 
 Capture `screens/S30-stretch-modes.jpeg`.
 
@@ -3585,3 +3585,37 @@ your project is safe" state — which is new scope, not parity.
 
 
 
+
+## 97. S30 - warp markers, closed `L`
+
+Capture: `screens/S30-warp-markers.jpeg`, 1261 x 1245 at DPR 1. This closes the
+`PART` left by 94: the markers **do** draw.
+
+**How it was reached.** A native `Untitled Project`, an audio clip from the library on
+an Audio track, `Stretch` switched on, **`Transients`** selected, clip editor open, zoom
+raised two steps, project tempo changed **146 -> 108 BPM**.
+
+**What the image shows.**
+
+- A row of small **white pennant heads** sits exactly on the waveform's top edge, one
+  per marker, each with a hairline stem dropping into the waveform. They are clipped to
+  the clip's bounds - the row starts and ends where the audio does.
+- Density follows the audio, not the grid: the opening is sparse (roughly one head
+  every 60-80 px at this zoom) and tightens sharply through the busy section (heads
+  every ~15-20 px), which is what "placed on transients" means visually.
+- The playhead (blue) is a separate, taller marker above the lane; it is not part of the
+  warp row.
+- Clip Settings stays open alongside: `Volume +0.0 dB`, `Loop`, `Reverse`, `Pitch 0 / 00`,
+  `Stretch` with `On Beat` / `Transients` / `Start and End`, `Formant 0%`, `Speed 1/2 x2`,
+  `Quantize` with `Triplets 1/2..1/32`.
+
+**Model, from the project document (same session).** The markers are stored per clip in
+`markersRegistry` as `warp_<hash>` -> map of *source position (beats)* to *timeline time
+(seconds)*. The captured clip held **at least 358 pairs**, from `0.00294` -> `-0.0109 s`
+to `176.96218` -> `430.4977 s`. So the three Stretch modes differ only in which
+positions they auto-generate; the marker list itself is the editable object (94's
+shortcut map already records `CTRL A` select-all and `SHIFT Q` quantize for it).
+
+**What is still not captured:** dragging/adding/deleting a marker by hand, and whether
+the heads are keyboard-focusable. The image settles the existence and rendering; the
+editing gestures remain unobserved.

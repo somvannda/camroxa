@@ -12,7 +12,7 @@ Resume here. **Execution order only** — the authoritative plans live elsewhere
 
 ## Phase 0 — Capture: **complete**
 
-65 screens: **60 DONE, 3 PART, 2 OPEN-by-design**, 78 images, spec through §96.
+65 screens: **61 DONE, 2 PART, 2 OPEN-by-design**, 79 images, spec through §97.
 
 The three `PART` (S30 warp markers, S32 CC lane, S44 convolution IR) and the two
 `OPEN` (S60 moderation, S61 credits) are parked in `reference/CAPTURE_GAPS.md`. They

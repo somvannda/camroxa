@@ -2,7 +2,7 @@
 
 Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`.
 
-**Final state: 60 DONE · 3 PART · 2 OPEN** of 65. Spec through §96, 69 images.
+**Final state: 61 DONE · 2 PART · 2 OPEN** of 65. Spec through §97, 79 images.
 
 Everything `DONE` has an image and a measured section — including six captured
 **negatives** where the screen we expected does not exist (S47 mixer, S50/S51 export
@@ -15,13 +15,12 @@ Opening an `Untitled Project` from the library fixed both instantly, which is wh
 cleared S37, S29, S50/S51 and S45. **Any future capture involving export, generation,
 takes or plugins must start from a native project.**
 
-## The 5 that remain
+## The 4 that remain
 
 | Screen | State | Exactly what is missing |
 |---|---|---|
-| S30 warp markers | PART §94 | The system is captured (Stretch modes with "Markers placed on transients and note starts"). **Live 2026-11-06:** markers *are* generated — an audio clip with stretch on + Transients produced a `markersRegistry` entry with 358+ source→timeline marker pairs. What is still missing is only the rendering check: no marker ticks were seen on the waveform canvas, and a screenshot is needed to close that. |
 | S32 CC lane | PART §74 | The `Modulation` lane renders but accepts no drawn points; the lane tabs (`Velocity` / `Pitch Bend` / `Modulation`) were reached live on 2026-11-06 behind the clip editor's **Parameters** button. The lane canvas has no React pointer handlers, so the draw gesture is not a plain click/drag. Needs the gesture or a project with CC data. |
-| S44 convolution IR | PART §78 | **Live 2026-11-06:** the IR slot is fed by the `Impulse Response` button in the preset row, which opens an 11-entry IR library (halls/rooms/chambers/outdoors/ambiences/plates). Selecting one flips the card to `Custom · Halls · New England Hall` and draws the stereo waveform. Screenshot of the loaded card is the remaining evidence. |
+| S44 convolution IR | PART §78 | **Live 2026-11-06:** the IR slot is fed by the `Impulse Response` button in the preset row, which opens an 11-entry IR library. Selecting one flips the card to `Custom · Halls · New England Hall` and draws the stereo waveform. A screenshot of the loaded card is the remaining evidence. |
 | S60 moderation | OPEN | Needs a policy-violating prompt. **Do not fabricate** — capture it only if it happens naturally. |
 | S61 credits | OPEN | Needs an account with no credits. Ours has balance, so this cannot be produced honestly. |
 
@@ -57,13 +56,16 @@ the card) with the `Enable trim` switch still disabled. The time ruler over the 
 `0s / 1s / 2s / 3s`, as captured. Open question for the image: how the tail/trim handles
 render once the waveform has data.
 
-### S30 — warp markers (`PART` → marker model found, screenshot pending)
+### S30 — warp markers (`DONE`, §97)
 
 Staged exactly as the gap note suggested: an audio clip on an Audio track, the
 **Stretch** switch `on` (`role=switch`, `aria-checked=true`), **Transients** selected,
 clip editor open, zoom raised two steps, project tempo changed **146 → 108 BPM**.
+`screens/S30-warp-markers.jpeg` shows the markers drawing: white pennant heads on the
+waveform's top edge, hairline stems, density following transients, clipped to the clip's
+bounds. §97 has the measurements and the registry extract below.
 
-The project document then contains a real warp-marker registry:
+The project document contains a real warp-marker registry:
 
 ```json
 "markersRegistry": {
@@ -80,11 +82,9 @@ The project document then contains a real warp-marker registry:
 At least **358 markers** were generated for the clip, spanning 0 → ~177 beats (source
 positions) mapped to -0.01 → 430.5 seconds of timeline. The key is the marker's source
 position, the value its timeline time; the registry is keyed `warp_<hash>` and lives on
-the project, not on the clip row. So the model S30 was missing is confirmed: **markers
-are auto-generated per clip by the Stretch mode**, and the three modes differ only in
-which positions they choose. No marker DOM exists (the waveform is canvas), so the
-remaining question — and the only reason this stays `PART` — is whether ticks are drawn
-on the waveform at that zoom.
+the project, not on the clip row. So the model is confirmed: **markers are auto-generated
+per clip by the Stretch mode**, and the three modes differ only in which positions they
+choose.
 
 ### S32 — CC lane (`PART` → tabs reached, draw gesture still unknown)
 
@@ -121,14 +121,10 @@ left at **108 BPM**, a generated Bass track, one new default-named workspace). I
 
 1. **S44** — with the window visible, screenshot the Convolution card after selecting
    `Halls · New England Hall` (state already reachable). One image closes it.
-2. **S30** — same session: select the audio clip, open Clip editor, keep `Transients`,
-   and screenshot the waveform at 2×. Markers are confirmed in the document; the image
-   decides whether ticks draw (DONE) or whether the system is model-only (documented
-   negative).
-3. **S32** — the lane tabs are reached; the draw gesture is not a plain click/drag on
+2. **S32** — the lane tabs are reached; the draw gesture is not a plain click/drag on
    the canvas. Try modifier-drag and right-click on the lane's wrapper, or open a
    project that already has CC data.
-4. **S60 / S61** — only with a genuine trigger. Both would be captured as
+3. **S60 / S61** — only with a genuine trigger. Both would be captured as
    "error taxonomy" evidence, not as a screen we can stage.
 
 ## Editing caveat

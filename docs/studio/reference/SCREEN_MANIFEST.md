@@ -45,7 +45,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S27 | Clip Info panel | DONE §70 |
 | S28 | Clip colour submenu | DONE §71 |
 | S29 | Take lanes expanded | DONE §72.1 |
-| S30 | Warp markers | PART §94 — stretch modes captured, markers not drawn |
+| S30 | Warp markers | DONE §97 - 358 markers, white pennants on the waveform |
 | S31 | MIDI clip editor | DONE §73 |
 | S32 | Automation lane — CC | PART §74 — empty lane only |
 | S33 | Automation lane — velocity | DONE §75 |
