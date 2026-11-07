@@ -30,6 +30,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Drag a library song onto a lane; clip lands at the drop point, grid-snapped | §19.2 / D-016 | `SONG_DRAG_TYPE` + draggable rows; `dropSongOnLane` in `StudioEditorShell.tsx`, lane drop props in `StudioTimeline.tsx` |
 | Uploads list: date-grouped rows with Play/Pause audition and Add | §19.2 / D-016 | `StudioLibrary` uploads view; `toggleUploadPreview` in `StudioEditorShell.tsx` |
 | Song detail rail on row double-click: back, Remix/Like/Dislike/More, big Play, Info/Stems, Styles/Lyrics copy + show-more, comments | §100 / D-018 | `components/studio/StudioSongDetail.tsx`; `detailSong` in `StudioEditorShell.tsx` |
+| Arm one track + record a microphone take (upload → `Take N` clip at the playhead) | G21 / D-020 | `StudioTrackPanel` arm button; `startRecording` / `finishRecording` in `StudioEditorShell.tsx`; `StudioHeader` Record |
 | Songs grouped under Today / Yesterday / date headers, each collapsible from its heading | §19.2 | `lib/studio-library-grouping.ts`; `StudioLibrary` day headings |
 | Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (8 wired, 1 disabled with a reason) |
 | Share: view + copy link, naming gate first | §24 / §24.1 | `StudioProjectMenu` share dialog + `createStudioProjectShare` / `listStudioProjectShares` |

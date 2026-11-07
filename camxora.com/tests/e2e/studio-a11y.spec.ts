@@ -34,6 +34,10 @@ test("studio home has no axe violations", async ({ page }) => {
   await signIn(page);
   await page.reload();
   await expect(page.locator("main.studio-home")).toBeVisible({ timeout: 30_000 });
+  // The skeleton also renders a main; wait for the real heading before auditing.
+  await expect(page.getByRole("heading", { level: 1, name: "Your projects" })).toBeVisible({
+    timeout: 30_000,
+  });
 
   expect(await audit(page)).toEqual([]);
 });

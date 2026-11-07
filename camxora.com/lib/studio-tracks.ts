@@ -29,6 +29,8 @@ export type StudioTrack = {
   solo: boolean;
   /** Hidden tracks are excluded from the arrangement but keep state (`SHIFT H`). */
   hidden: boolean;
+  /** Armed for recording; one track at a time (see D-020). */
+  armed?: boolean;
   /** Per-track controls collapsed in the panel (reference T-02). */
   collapsed: boolean;
   /** Visual group A–D from the legacy model. */
@@ -113,6 +115,7 @@ export function sanitizeTracks(input: unknown): StudioTrack[] {
       muted: Boolean(candidate.muted),
       solo: Boolean(candidate.solo),
       hidden: Boolean(candidate.hidden),
+      armed: Boolean(candidate.armed),
       collapsed: Boolean(candidate.collapsed),
       groupId: typeof candidate.groupId === "string" ? candidate.groupId : null,
       chain: [], // chains are sanitised separately, by track id

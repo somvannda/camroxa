@@ -148,8 +148,10 @@ buttons.
   no take** on the armed MIDI track (no clip, no take lane, no new text). With no input
   device, the result is silence rather than a failure message.
 
-So the transport state machine and labels are captured; the take/render path and the
-`Options` menu are not. This is why G21's Arm stays disabled in our build.
+**Implemented as D-020.** Our build records microphone takes on one armed track
+(`MediaRecorder` → upload → `Take N` clip), with no count-in, monitoring, take lanes or
+`Options` menu because none of that was captured. The reference's take/render path
+remains unobserved; treat D-020 as a documented divergence, not parity.
 
 ## Editing caveat
 

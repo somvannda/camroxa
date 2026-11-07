@@ -4529,7 +4529,9 @@ html{color-scheme:dark}
 .se-track-name{border:0;background:transparent;padding:0;color:#f4f5fb;font:inherit;font-size:12px;font-weight:600;text-align:left;cursor:pointer;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .se-track-buttons{display:flex;gap:4px}
 .se-track-buttons{display:flex;align-items:center;gap:3px;margin-left:auto}
-.se-track-buttons button{display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(255,255,255,.12);border-radius:4px;background:transparent;color:#8b90a6;font:inherit;font-size:11px;cursor:not-allowed}
+.se-track-buttons button{display:grid;place-items:center;width:24px;height:24px;border:1px solid rgba(255,255,255,.12);border-radius:4px;background:transparent;color:#8b90a6;font:inherit;font-size:11px;cursor:pointer}
+.se-track-buttons button:disabled{cursor:not-allowed;opacity:.5}
+.se-track-buttons button[data-help="track-arm"].on{background:#b91c1c;border-color:#b91c1c;color:#fff}
 .se-track-buttons .icon,.se-track-buttons svg{width:11px;height:11px}
 .se-track-meter{height:6px;border-radius:3px;background:rgba(255,255,255,.06);overflow:hidden}
 .se-track-meter span{display:block;height:100%;border-radius:3px;opacity:.85}
@@ -4617,6 +4619,9 @@ html{color-scheme:dark}
 .se-history-list ul{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:4px}
 .se-history-row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-variant-numeric:tabular-nums}
 .se-snap-line{position:absolute;top:0;bottom:0;width:1px;background:hsl(var(--accent));opacity:.7;pointer-events:none;z-index:2}
+.se-record-dot{display:block;width:10px;height:10px;border-radius:50%;background:#dc2626}
+.se-record.on .se-record-dot{border-radius:2px}
+.se-record.on{background:rgba(220,38,38,.18);border-color:#dc2626}
 
 .se-marquee{position:absolute;border:1px solid hsl(var(--accent));background:hsl(var(--card));opacity:.55;pointer-events:none;z-index:4}
 

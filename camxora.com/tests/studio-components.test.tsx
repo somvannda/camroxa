@@ -62,6 +62,8 @@ function headerProps() {
     onBackToStart: noop,
     onStop: noop,
     onTogglePlay: noop,
+    onToggleRecord: noop,
+    recording: false,
     onToggleLoop: noop,
     onToggleMetronome: noop,
     onUndo: noop,
@@ -151,10 +153,28 @@ describe("StudioHeader", () => {
       screen.getByRole("menuitemcheckbox", { name: /Normalise mix/ }).getAttribute("aria-checked")
     ).toBe("true");
   });
+  it("labels Record and toggles it, disabled until a track is armed", async () => {
+    const user = userEvent.setup();
+    const onToggleRecord = vi.fn();
+    const { rerender } = render(
+      <StudioHeader {...headerProps()} onToggleRecord={onToggleRecord} recordDisabled />
+    );
+    expect((screen.getByRole("button", { name: "Record" }) as HTMLButtonElement).disabled).toBe(
+      true
+    );
+
+    rerender(<StudioHeader {...headerProps()} onToggleRecord={onToggleRecord} />);
+    await user.click(screen.getByRole("button", { name: "Record" }));
+    expect(onToggleRecord).toHaveBeenCalledOnce();
+
+    rerender(<StudioHeader {...headerProps()} onToggleRecord={onToggleRecord} recording />);
+    expect(
+      screen.getByRole("button", { name: "Stop recording" }).getAttribute("aria-pressed")
+    ).toBe("true");
+  });
 });
 
-function upload(overrides: Partial<StudioUpload> = {}): StudioUpload {
-  return {
+function upload(overrides: Partial<StudioUpload> = {}): StudioUpload {  return {
     id: "u1",
     filename: "take-1.wav",
     content_type: "audio/wav",
@@ -838,6 +858,7 @@ describe("StudioTrackPanel", () => {
       onSelectTrack: noop,
       onToggleMenu: noop,
       onToggleFlag: noop,
+      onToggleArm: noop,
       onUpdateTrack: noop,
       onPreviewTrack: noop,
       onRenameStart: noop,
@@ -881,11 +902,19 @@ describe("StudioTrackPanel", () => {
     expect(screen.getByLabelText("Solo Track 1").getAttribute("aria-pressed")).toBe("true");
   });
 
-  it("keeps arm disabled and says why", () => {
-    render(<StudioTrackPanel {...panelProps()} />);
-    const arm = screen.getByLabelText(/^Arm Track 1/);
-    expect((arm as HTMLButtonElement).disabled).toBe(true);
-    expect(arm.getAttribute("aria-label")).toContain("recording not implemented");
+  it("arms one track at a time and exposes the state", async () => {
+    const user = userEvent.setup();
+    const onToggleArm = vi.fn();
+    const { rerender } = render(<StudioTrackPanel {...panelProps({ onToggleArm })} />);
+    const arm = screen.getByRole("button", { name: "Arm Track 1" });
+    expect(arm.getAttribute("aria-pressed")).toBe("false");
+    await user.click(arm);
+    expect(onToggleArm).toHaveBeenCalledWith("t1");
+
+    rerender(<StudioTrackPanel {...panelProps({ tracks: [track({ armed: true })] })} />);
+    expect(
+      screen.getByRole("button", { name: "Disarm Track 1" }).getAttribute("aria-pressed")
+    ).toBe("true");
   });
 
   it("offers the captured add-track menu with its letters", async () => {

@@ -489,3 +489,33 @@ lie when the request 500'd. The rest of the editor already refuses to hide failu
 **Consequences.** The alert sits under the header on every level, so a failure reached
 from a tile is visible without navigating back. The keys request is auxiliary; a stale
 like state alone does not raise the strip.
+
+---
+
+## D-020 — Microphone recording is our own flow, deliberately
+
+**Date:** 2026-11-07 **Status:** accepted (G21)
+
+**Decision.** Arm **one** track at a time, press **Record**, and the browser captures the
+microphone with `MediaRecorder`. The transport rolls while recording. **Stop recording**
+(or Stop) ends capture, decodes the blob for its duration, uploads it to
+`POST /studio/uploads`, and inserts a `Take N` clip at the armed track's playhead
+position, snapped to the grid.
+
+**Why this is a divergence.** The reference's transport states were captured (Arm flips
+to `Disarm track`; Record becomes `Stop recording` with an `Options` disclosure; Play
+becomes Pause; the clock runs) but its **take path was never observed** - with no input
+device it produced no take, no take lane and no message. Rather than leave the button
+dead, this implements the smallest honest workflow the captured controls imply. There is
+**no count-in, no monitoring, no take lanes, no punch/overdub** and no `Options` menu;
+those were not captured, so they are not invented.
+
+**Consequences.**
+
+- Arm is exclusive (arming another track disarms the previous one); arming is disabled
+  while recording, and Stop stops both the take and the transport.
+- A denied permission or an empty take surfaces as an error strip, not a silent no-op.
+- The take is an ordinary clip: it can be moved, trimmed, faded, deleted and exported,
+  and it uses the same upload row as the library.
+- If the reference's take flow is captured later, replace this workflow rather than
+  layering take lanes on top of it.

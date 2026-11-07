@@ -59,6 +59,11 @@ export type StudioHeaderProps = {
   onBackToStart: () => void;
   onStop: () => void;
   onTogglePlay: () => void;
+  /** Microphone capture (D-020): toggles Record / Stop recording. */
+  recording: boolean;
+  onToggleRecord: () => void;
+  recordDisabled?: boolean;
+  recordTitle?: string;
   onToggleLoop: () => void;
   onToggleMetronome: () => void;
   onUndo: () => void;
@@ -103,6 +108,10 @@ export function StudioHeader(props: StudioHeaderProps) {
     onBackToStart,
     onStop,
     onTogglePlay,
+    recording,
+    onToggleRecord,
+    recordDisabled,
+    recordTitle,
     onToggleLoop,
     onToggleMetronome,
     onUndo,
@@ -139,6 +148,18 @@ export function StudioHeader(props: StudioHeaderProps) {
       <div className="se-head-center">
         <button type="button" className="se-icon" onClick={onBackToStart} aria-label="Back to start" data-help="back-to-start">
           <Icon name="fa-backward-step" />
+        </button>
+        <button
+          type="button"
+          className={`se-icon se-record${recording ? " on" : ""}`}
+          onClick={onToggleRecord}
+          aria-label={recording ? "Stop recording" : "Record"}
+          aria-pressed={recording}
+          disabled={recordDisabled && !recording}
+          title={recordTitle}
+          data-help="record"
+        >
+          <span className="se-record-dot" aria-hidden="true" />
         </button>
         <button
           type="button"

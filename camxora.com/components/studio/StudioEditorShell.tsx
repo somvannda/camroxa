@@ -142,6 +142,16 @@ export function StudioEditorShell() {
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const [playingUploadId, setPlayingUploadId] = useState<string | null>(null);
   const previewRef = useRef<HTMLAudioElement | null>(null);
+  /** Microphone capture state (D-020). */
+  const [recording, setRecording] = useState(false);
+  const [recordError, setRecordError] = useState("");
+  const recorderRef = useRef<{
+    recorder: MediaRecorder;
+    stream: MediaStream;
+    chunks: Blob[];
+    start: number;
+    trackId: string;
+  } | null>(null);
   /** Right rail shows the clip inspector instead of the library (spec §70). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
@@ -566,8 +576,7 @@ export function StudioEditorShell() {
     dislikedKeys,
   ]);
 
-  /** Stop the audition when the drawer closes or the editor unmounts. */
-  useEffect(() => {
+  /** Stop the audition when the drawer closes or the editor unmounts. */  useEffect(() => {
     if (libraryOpen) return;
     previewRef.current?.pause();
     previewRef.current = null;
@@ -576,6 +585,14 @@ export function StudioEditorShell() {
     setDetailSong(null);
   }, [libraryOpen]);
   useEffect(() => () => previewRef.current?.pause(), []);
+  /** Never leave the microphone open after the editor unmounts. */
+  useEffect(
+    () => () => {
+      recorderRef.current?.recorder.stop();
+      recorderRef.current?.stream.getTracks().forEach((track) => track.stop());
+    },
+    []
+  );
   /** Transport playback wins over a library audition; never run both at once. */
   useEffect(() => {
     if (!playing) return;
@@ -617,7 +634,116 @@ export function StudioEditorShell() {
     });
   }
 
-  /** Audition a library song: one preview at a time, toggled by the row's Play. */
+  /** Arm exactly one track; arming another disarms the previous one. */
+  function toggleArm(trackId: string) {
+    if (recording) return;
+    const target = tracks.find((track) => track.id === trackId);
+    if (!target) return;
+    const armed = !target.armed;
+    commitTracks(tracks.map((track) => ({ ...track, armed: track.id === trackId ? armed : false })));
+  }
+
+  /** Start a microphone take on the armed track and roll the transport. */
+  async function startRecording() {
+    setRecordError("");
+    const target = tracks.find((track) => track.armed);
+    if (!target) {
+      setRecordError("Arm a track before recording.");
+      return;
+    }
+    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setRecordError("This browser cannot record audio.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data.size > 0) chunks.push(event.data);
+      };
+      const active = { recorder, stream, chunks, start: playheadRef.current, trackId: target.id };
+      recorder.onstop = () => {
+        void finishRecording(active);
+      };
+      recorder.start();
+      recorderRef.current = active;
+      setRecording(true);
+      if (!playing) togglePlayback();
+    } catch {
+      setRecordError("Microphone permission was denied.");
+    }
+  }
+
+  /** Stop capture; the take is uploaded and inserted by `finishRecording`. */
+  function stopRecording() {
+    const active = recorderRef.current;
+    if (!active) {
+      setRecording(false);
+      return;
+    }
+    try {
+      active.recorder.stop();
+    } catch {
+      /* already stopped */
+    }
+    active.stream.getTracks().forEach((track) => track.stop());
+    recorderRef.current = null;
+    setRecording(false);
+  }
+
+  async function finishRecording(active: {
+    recorder: MediaRecorder;
+    stream: MediaStream;
+    chunks: Blob[];
+    start: number;
+    trackId: string;
+  }) {
+    const blob = new Blob(active.chunks, { type: "audio/webm" });
+    if (blob.size === 0) {
+      setRecordError("The take was empty.");
+      return;
+    }
+    let duration = Math.max(1, playheadRef.current - active.start);
+    try {
+      const context = new AudioContext();
+      const buffer = await context.decodeAudioData(await blob.arrayBuffer());
+      duration = buffer.duration;
+      await context.close();
+    } catch {
+      /* fall back to the elapsed transport time */
+    }
+    const owner = tracksRef.current.find((track) => track.id === active.trackId);
+    const take = (owner?.clipIds.length ?? 0) + 1;
+    try {
+      const upload = await uploadStudioAudio(
+        new File([blob], `take-${Date.now()}.webm`, { type: "audio/webm" }),
+        duration
+      );
+      insertClips([
+        {
+          trackId: active.trackId,
+          clip: {
+            id: `clip-take-${upload.id}`,
+            title: `Take ${take}`,
+            start: snapToGrid(active.start, secondsPerBar, beatsPerBar),
+            duration,
+            volume: 1,
+            pan: 0,
+            audioUrl: upload.url,
+            uploadId: upload.id,
+          } as ClipLike & { audioUrl?: string | null; uploadId?: string },
+        },
+      ]);
+    } catch (cause) {
+      setRecordError(cause instanceof Error ? cause.message : "Could not save the take.");
+    }
+  }
+
+  function toggleRecord() {
+    if (recording) stopRecording();
+    else void startRecording();
+  }
   function toggleSongPreview(song: WebMusicGeneration) {
     if (playingSongId === song.id) {
       previewRef.current?.pause();
@@ -2687,11 +2813,16 @@ export function StudioEditorShell() {
         onBackToStart={() => { setPlaying(false); void stopAudio(); setPlayhead(0); }}
         onStop={() => {
           // Stop halts the transport where it is; Back to start is the rewind.
+          if (recording) stopRecording();
           setPlaying(false);
           void stopAudio();
           stopClicks();
         }}
         onTogglePlay={togglePlayback}
+        recording={recording}
+        onToggleRecord={toggleRecord}
+        recordDisabled={!tracks.some((track) => track.armed)}
+        recordTitle={tracks.some((track) => track.armed) ? undefined : "Arm a track first"}
         onToggleLoop={toggleLoop}
         onToggleMetronome={() =>
           setMetronome((value) => {
@@ -2720,6 +2851,7 @@ export function StudioEditorShell() {
           onSelectTrack={setSelectedTrack}
           onToggleMenu={setMenuTrackId}
           onToggleFlag={toggleTrackFlag}
+          onToggleArm={toggleArm}
           onUpdateTrack={updateTrack}
           onPreviewTrack={previewTrack}
           onRenameStart={startRename}
@@ -3096,6 +3228,11 @@ export function StudioEditorShell() {
       />
 
       {error ? <div className="se-error" role="alert">{error}</div> : null}
+      {recordError ? (
+        <div className="se-error" role="alert">
+          {recordError}
+        </div>
+      ) : null}
 
       {conflict ? (
         <div className="se-conflict" role="alertdialog" aria-label="Project changed elsewhere">

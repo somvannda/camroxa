@@ -19,7 +19,7 @@ State as of 2026-11-07. A new session should need only this file plus
 | Half | State |
 |---|---|
 | **Capture** (65 screens → screenshot + spec) | **63 DONE / 0 PART / 2 OPEN**, spec §1–§99, 82 images. The two remaining are S60/S61 and are documented in `reference/CAPTURE_GAPS.md`; neither blocks the build. |
-| **Build** (close gaps against that spec) | W1 ✅, W2 ✅ (all four), W3 ✅ (9 done, G12 partial), W4 ✅ 1/3/4 — only the stems-dependent items remain. |
+| **Build** (close gaps against that spec) | W1 ✅, W2 ✅ (all four), W3 ✅ (9 done, G12 partial), W4 ✅ 1/3/4 — only the stems-dependent items remain; G21 arm+record done (D-020). |
 
 ## Running the app (the part that costs time)
 
@@ -57,7 +57,7 @@ Helpers in `scripts/`:
 | unit (pure helpers) | `npm test` | snap, meter, draft, seed, WAV encode |
 | component | `npm test` | header, footer, library, provenance strip, track panel |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
-| e2e | `npm run test:e2e` (set `STUDIO_EXPECT_UPLOADS=1` when the API has a bucket) | smoke, persistence, home + search, library + date grouping, project menu, clip menu + split, clip info, conflicts, offline, share page, versions, transport, meter, shortcuts, trim, fade, snap guideline, track colour, loop/seek, export bytes, zoom, tracks, clipboard, marquee, plugins dry/wet + live, mute/solo, solo-aware bounce, master, help, keys, metronome, writes, metrics, axe ×3 |
+| e2e | `npm run test:e2e` (set `STUDIO_EXPECT_UPLOADS=1` when the API has a bucket) | smoke, persistence, home + search, library + date grouping, project menu, clip menu + split, clip info, conflicts, offline, share page, versions, transport, meter, shortcuts, trim, fade, snap guideline, track colour, loop/seek, export bytes, zoom, tracks, clipboard, marquee, plugins dry/wet + live, mute/solo, solo-aware bounce, master, help, keys, metronome, writes, metrics, classic editor, recording, axe ×3 |
 
 CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` + `npm run build` on
 any PR touching `camxora.com`. The production build gate exists because a missing
@@ -125,7 +125,7 @@ pane not being visible when the screenshot runs. What is left:
    tag strips, the captured toolbar, and the §100 song-detail rail on double-click.
    Library upload is **verified locally** against a moto S3 stand-in (B-006); production
    still needs a real bucket.
-3. **G21 remainder** — per-track Arm (needs recording, which does not exist).
+3. **G21** - arm + microphone takes are implemented as a documented divergence (D-020); the reference take flow itself is still uncaptured.
 4. **§100 image + S60/S61** — an image of the detail rail when the pane is visible, and
    the two forced states (moderation, no credits). Neither blocks the build.
 5. **e2e in CI** — the specs exist and pass locally (57 tests); CI has no app/API/DB to

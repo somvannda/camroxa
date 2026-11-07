@@ -21,5 +21,9 @@ export default defineConfig({
     trace: "off",
     screenshot: "only-on-failure",
     ...devices["Desktop Chrome"],
+    // Recording specs need a synthetic microphone; harmless for the others.
+    launchOptions: {
+      args: ["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"],
+    },
   },
 });

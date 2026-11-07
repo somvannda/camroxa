@@ -29,6 +29,8 @@ export type StudioTrackPanelProps = {
   onSelectTrack: (trackId: string) => void;
   onToggleMenu: (trackId: string | null) => void;
   onToggleFlag: (trackId: string, flag: "muted" | "solo") => void;
+  /** Arm exactly one track for recording (D-020). */
+  onToggleArm: (trackId: string) => void;
   onUpdateTrack: (trackId: string, patch: Partial<StudioTrack>) => void;
   /** Live slider movement without a history entry; commit on release. */
   onPreviewTrack: (trackId: string, patch: Partial<StudioTrack>) => void;
@@ -56,6 +58,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
     onSelectTrack,
     onToggleMenu,
     onToggleFlag,
+    onToggleArm,
     onUpdateTrack,
     onPreviewTrack,
     onRenameStart,
@@ -206,7 +209,14 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   >
                     S
                   </button>
-                  <button type="button" disabled aria-label={`Arm ${track.name} (recording not implemented)`} data-help="track-arm">
+                  <button
+                    type="button"
+                    aria-label={`${track.armed ? "Disarm" : "Arm"} ${track.name}`}
+                    aria-pressed={Boolean(track.armed)}
+                    className={track.armed ? "on" : undefined}
+                    onClick={() => onToggleArm(track.id)}
+                    data-help="track-arm"
+                  >
                     A
                   </button>
                   <button
