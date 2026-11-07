@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 
 import { Icon } from "@/components/Icon";
+import { Waveform } from "@/components/studio/Waveform";
 import type { WebMusicGeneration } from "@/lib/library-api";
 
 /**
@@ -45,46 +46,6 @@ function mmss(seconds: number | undefined): string {
 export function StudioClipInfo(props: StudioClipInfoProps) {
   const { width, clip, trackName, source, stems, onRequestStems, onClose } = props;
   const [tab, setTab] = useState<"info" | "stems">("info");
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-
-  // Draw the real waveform from the clip's audio, not a decorative shape.
-  useEffect(() => {
-    const url = clip.audioUrl;
-    if (!url) return;
-    let cancelled = false;
-    const context = new AudioContext();
-    void fetch(url)
-      .then((response) => (response.ok ? response.arrayBuffer() : null))
-      .then((buffer) => (buffer ? context.decodeAudioData(buffer) : null))
-      .then((decoded) => {
-        if (cancelled || !decoded) return;
-        const canvas = canvasRef.current;
-        const ctx = canvas?.getContext("2d");
-        if (!canvas || !ctx) return;
-        const data = decoded.getChannelData(0);
-        const w = canvas.width;
-        const h = canvas.height;
-        ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = "#4ade80";
-        const step = Math.max(1, Math.floor(data.length / w));
-        for (let x = 0; x < w; x += 1) {
-          let peak = 0;
-          for (let i = 0; i < step; i += 1) {
-            const value = Math.abs(data[x * step + i] ?? 0);
-            if (value > peak) peak = value;
-          }
-          const bar = Math.max(1, peak * h * 0.9);
-          ctx.fillRect(x, (h - bar) / 2, 1, bar);
-        }
-      })
-      .catch(() => {
-        /* no audio: the panel keeps its metadata */
-      });
-    return () => {
-      cancelled = true;
-      void context.close();
-    };
-  }, [clip.audioUrl]);
 
   return (
     <aside className="se-inspector" aria-label="Clip info" style={{ width }}>
@@ -120,13 +81,13 @@ export function StudioClipInfo(props: StudioClipInfoProps) {
           </div>
         </dl>
 
-        <canvas
-          ref={canvasRef}
-          className="se-inspector-wave"
+        <Waveform
+          url={clip.audioUrl}
           width={320}
           height={56}
-          aria-label="Clip waveform"
-          role="img"
+          className="se-inspector-wave"
+          label="Clip waveform"
+          color="#4ade80"
         />
 
         <div className="se-lib-tabs" role="tablist" aria-label="Clip sections">
