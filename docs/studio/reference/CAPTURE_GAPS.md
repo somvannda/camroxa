@@ -85,7 +85,7 @@ the project, not on the clip row. So the model is confirmed: **markers are auto-
 per clip by the Stretch mode**, and the three modes differ only in which positions they
 choose.
 
-### S32 — CC lane (`PART` → tabs reached, draw gesture still unknown)
+### S32 — CC lane (`PART` → tabs reached, no draw gesture found)
 
 A generated MIDI clip (from "Write a simple 4-bar bass line") exposes the CC lanes the
 spec described, behind the clip editor's **Parameters** button:
@@ -94,10 +94,18 @@ spec described, behind the clip editor's **Parameters** button:
 Velocity   Pitch Bend   Modulation
 ```
 
-The lanes sit under the note lane and share its x-axis. The Modulation lane's paint
-surface is a canvas with **no React pointer handlers on the canvas or its wrapper**, so
-the draw gesture is not a plain click/drag on the canvas element. Still unknown: whether
-points can be drawn at all.
+The lanes sit under the note lane and share its x-axis. Evidence from 2026-11-06/07:
+
+- The Modulation lane's paint surface is a canvas with **no React pointer handlers on the
+  canvas or its wrapper**, so nothing at the element level receives a gesture.
+- With `Modulation` selected on a real MIDI clip, each of these was dispatched at the
+  lane: single click, drag, alt-drag, right-click (`contextmenu`) and double-click. The
+  project issued **no save request** afterwards and no point elements appeared, so the
+  lane did not change.
+- Conclusion so far: the lane is likely **read-only in this build**; the tabs exist, the
+  data model may, but the editor does not expose a draw gesture. The remaining proof is
+  a screenshot of the lane in this state (view is staged: Bass clip → Parameters →
+  Modulation), plus a project with existing CC data to see the point rendering.
 
 ### Library details confirmed live (for §19.1/§19.2)
 
