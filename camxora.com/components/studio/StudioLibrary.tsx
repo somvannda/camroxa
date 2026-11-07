@@ -95,7 +95,7 @@ export function songTags(song: WebMusicGeneration): string[] {
   const clip = primaryClip(song);
   const tags: string[] = [];
   if (song.model_label) tags.push(song.model_label);
-  if (clip?.label) tags.push(clip.label);
+  if (clip?.label && clip.label.length <= 12) tags.push(clip.label);
   else if (clip?.variant) tags.push(clip.variant);
   if (clip?.duration_seconds) tags.push(formatUploadLength(clip.duration_seconds));
   return tags;
