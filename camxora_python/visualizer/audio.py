@@ -640,10 +640,6 @@ class AudioAnalyzer:
         hop_length: int,
         duration_sec: float,
         mag: np.ndarray,
-        freqs: np.ndarray,
-        bass_idx: np.ndarray,
-        mid_idx: np.ndarray,
-        treble_idx: np.ndarray,
         onset_env: np.ndarray,
         beat_frames: np.ndarray,
     ) -> AudioAnalyzer:
@@ -654,10 +650,13 @@ class AudioAnalyzer:
         inst._n_fft = int(n_fft)
         inst._hop_length = int(hop_length)
         inst._mag = np.asarray(mag, dtype=np.float32)
-        inst._freqs = np.asarray(freqs, dtype=np.float32)
-        inst._bass_idx = np.asarray(bass_idx)
-        inst._mid_idx = np.asarray(mid_idx)
-        inst._treble_idx = np.asarray(treble_idx)
+        # Frequency bins and band indices are cheap to rebuild and are not
+        # persisted; keeping them derived guarantees they always match n_fft.
+        freqs = _fft_freqs(inst._sr, inst._n_fft)
+        inst._freqs = freqs
+        inst._bass_idx = np.where((freqs >= 20.0) & (freqs < 200.0))[0]
+        inst._mid_idx = np.where((freqs >= 200.0) & (freqs < 2000.0))[0]
+        inst._treble_idx = np.where((freqs >= 2000.0) & (freqs < 8000.0))[0]
         inst._onset_env = np.asarray(onset_env, dtype=np.float32)
         inst._beat_set = {int(x) for x in np.asarray(beat_frames).tolist()}
         duration = float(duration_sec)
