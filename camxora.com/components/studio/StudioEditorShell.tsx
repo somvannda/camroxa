@@ -543,6 +543,13 @@ export function StudioEditorShell() {
     setPlayingSongId(null);
   }, [libraryOpen]);
   useEffect(() => () => previewRef.current?.pause(), []);
+  /** Transport playback wins over a library audition; never run both at once. */
+  useEffect(() => {
+    if (!playing) return;
+    previewRef.current?.pause();
+    previewRef.current = null;
+    setPlayingSongId(null);
+  }, [playing]);
 
   /** Level 2 of the library: the song list, optionally liked-only (spec §19.1). */
   function openLibrarySongs(filter: "all" | "liked") {
