@@ -34,6 +34,12 @@ from platform_api.services.youtube_upload_runtime import (
     upload_video,
 )
 
+# Google can return scopes the account already granted (openid, userinfo.email)
+# next to the ones we request, and oauthlib raises "Scope has changed" unless it
+# is told to tolerate that. Connecting failed on exactly this for accounts that
+# had previously signed in with Google.
+os.environ.setdefault("OAUTHLIB_RELAX_TOKEN_SCOPE", "1")
+
 YOUTUBE_UPLOAD_SCOPES = [
     "https://www.googleapis.com/auth/youtube.upload",
     "https://www.googleapis.com/auth/youtube.readonly",
