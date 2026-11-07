@@ -602,7 +602,7 @@ class PublishService:
             # hours was abandoned (webhook lost, provider outage). Treating it as
             # "already uploading" blocked every retry of that video forever.
             stamp = job.updated_at or job.created_at
-            if stamp is not None and _as_utc(stamp) < _utcnow() - timedelta(hours=2):
+            if stamp is not None and _as_utc(stamp) < _utcnow() - timedelta(minutes=45):
                 await self._repo.set_job_status(
                     job.id,
                     status=STATUS_FAILED,
