@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import { StudioEditorView } from "@/components/StudioEditorView";
 
@@ -8,5 +9,9 @@ export const metadata: Metadata = {
 
 /** Previous editor, kept reachable while the reference-layout shell takes over. */
 export default function StudioEditorClassicPage() {
-  return <StudioEditorView />;
+  return (
+    <Suspense fallback={null}>
+      <StudioEditorView />
+    </Suspense>
+  );
 }
