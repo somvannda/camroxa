@@ -65,25 +65,43 @@ readiness endpoint reports as `suno_callback_base_url: false`), then request ste
 **Do not** point a seeded task at another user's real asset id: it would run a paid
 Studio operation against someone else's Suno asset.
 
+## B-006 — Library upload needs streaming storage (RESOLVED LOCALLY 2026-11-07)
+
+**State:** `POST /api/v3/web-music/studio/uploads` answered `503 "Studio uploads are not
+configured."` because `resolve_streaming_storage_config` found no bucket. The control
+existed and posted the file; the panel showed the backend's message.
+
+**Resolved locally** with an S3-compatible server and the env fallbacks the resolver
+already reads (no database rows needed):
+
+```
+# S3 stand-in (moto is in the Python env; no Docker image needed)
+python -m moto.server -p 9000
+python -c "import boto3; boto3.client('s3', endpoint_url='http://127.0.0.1:9000',
+  aws_access_key_id='minioadmin', aws_secret_access_key='minioadmin',
+  region_name='us-east-1').create_bucket(Bucket='camxora-studio')"
+
+# restart platform_api with:
+PLATFORM_STREAMING_B2_KEY_ID=minioadmin
+PLATFORM_STREAMING_B2_APPLICATION_KEY=minioadmin
+PLATFORM_STREAMING_B2_BUCKET=camxora-studio
+PLATFORM_STREAMING_B2_REGION=us-east-1
+PLATFORM_STREAMING_B2_ENDPOINT=http://127.0.0.1:9000
+```
+
+With that, the browser upload returns the new row (no alert): verified through the Studio
+drawer and `studio-library.spec.ts` (which still accepts either the row or an explained
+refusal, so it stays portable).
+
+**Production unblock remains:** a real bucket (B2/S3) configured the same way. The
+sandbox API is currently running with the moto env; restart it without those five
+variables to return to the previous behaviour.
+
+**Do not** stub the endpoint to return a fake upload: the Add button would then place a
+clip whose URL 404s.
+
 ## Closed
 
 | ID | Was | Closed by |
 |---|---|---|
 | — | Studio charge died on `relation "plans" does not exist` | D-009 — studio ops price from `credit_pricing` |
-
-
-## B-006 � Library upload needs streaming storage
-
-**Blocks:** the level-2 toolbar upload (�19.2) and the Uploads tile's first-use path.
-
-**State:** `POST /api/v3/web-music/studio/uploads` answers `503 "Studio uploads are not
-configured."` because `resolve_streaming_storage_config` has no configured bucket
-(`storage_not_configured`). The control exists, posts the file, and the panel shows the
-backend's message in an alert; no row is invented.
-
-**Unblock:** point `camxora_pfm_sandbox` at a configured streaming bucket (local MinIO is
-enough) and re-run `studio-library.spec.ts` � its upload test accepts either the row or
-the configured-error path.
-
-**Do not** stub the endpoint to return a fake upload: the Add button would then place a
-clip whose URL 404s.

@@ -120,7 +120,8 @@ pane not being visible when the screenshot runs. What is left:
    wired: level 1 tile chooser + Workspaces (with `New workspace`) + Studio Projects;
    level 2 with collapsible date headings, Play/Like row actions, draggable rows,
    tag strips, the captured toolbar, and the §100 song-detail rail on double-click.
-   Library upload posts to `POST /studio/uploads` and is blocked by B-006.
+   Library upload is **verified locally** against a moto S3 stand-in (B-006); production
+   still needs a real bucket.
 3. **G21 remainder** — per-track Arm (needs recording, which does not exist).
 4. **§100 image + S60/S61** — an image of the detail rail when the pane is visible, and
    the two forced states (moderation, no credits). Neither blocks the build.
