@@ -485,6 +485,13 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                             key={song.id}
                             className="se-lib-row se-lib-song"
                             draggable
+                            tabIndex={0}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                onOpenSong(song);
+                              }
+                            }}
                             onDoubleClick={() => onOpenSong(song)}
                             onDragStart={(event) => {
                               event.dataTransfer.setData(SONG_DRAG_TYPE, song.id);

@@ -4687,6 +4687,7 @@ html{color-scheme:dark}
 .se-lib-thumb-project{background:linear-gradient(135deg,#1c1c1f,#3a3a40);color:#c9cde0;font-size:12px}
 .se-lib-thumb-upload{background:linear-gradient(135deg,#181f36,#3a3a40);color:#8b90a6;font-size:12px}
 .se-lib-song{grid-template-columns:44px minmax(0,1fr) auto;align-items:center;column-gap:10px;row-gap:0}
+.se-lib-song:focus-visible{outline:2px solid hsl(var(--accent));outline-offset:2px}
 .se-lib-song-actions{grid-column:3;display:flex;align-items:center;gap:4px}
 .se-lib-icon{display:grid;place-items:center;width:28px;height:28px;border-radius:7px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:inherit;cursor:pointer}
 .se-lib-icon:hover{border-color:hsl(var(--accent))}

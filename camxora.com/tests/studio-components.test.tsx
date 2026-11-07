@@ -314,6 +314,23 @@ describe("StudioLibrary", () => {
     expect(unlike.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("opens the detail rail from the keyboard", () => {
+    const onOpenSong = vi.fn();
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [song()],
+          onOpenSong,
+        })}
+      />
+    );
+    const row = screen.getByText("Song one").closest("li") as HTMLLIElement;
+    expect(row.getAttribute("tabindex")).toBe("0");
+    fireEvent.keyDown(row, { key: "Enter" });
+    expect(onOpenSong).toHaveBeenCalledOnce();
+  });
+
   it("makes song rows draggable with the song id on the data transfer", () => {
     render(
       <StudioLibrary
