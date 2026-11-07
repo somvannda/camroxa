@@ -661,6 +661,11 @@ export function StudioEditorShell() {
         return [...list];
       });
     apply(nextLiked);
+    // Liking clears an existing dislike; the two are mutually exclusive.
+    if (nextLiked && (dislikedKeys ?? []).includes(key)) {
+      setDislikedKeys((previous) => (previous ?? []).filter((item) => item !== key));
+      void dislikeWebMusicGeneration(song.id, clip.variant, false).catch(() => {});
+    }
     try {
       await likeWebMusicGeneration(song.id, clip.variant, nextLiked);
     } catch {
@@ -681,6 +686,11 @@ export function StudioEditorShell() {
         return [...list];
       });
     apply(nextDisliked);
+    // Disliking clears an existing like; the two are mutually exclusive.
+    if (nextDisliked && (likedKeys ?? []).includes(key)) {
+      setLikedKeys((previous) => (previous ?? []).filter((item) => item !== key));
+      void likeWebMusicGeneration(song.id, clip.variant, false).catch(() => {});
+    }
     try {
       await dislikeWebMusicGeneration(song.id, clip.variant, nextDisliked);
     } catch {

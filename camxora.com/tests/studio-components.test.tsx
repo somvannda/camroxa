@@ -331,6 +331,9 @@ describe("StudioLibrary", () => {
     expect(row.getAttribute("tabindex")).toBe("0");
     fireEvent.keyDown(row, { key: "Enter" });
     expect(onOpenSong).toHaveBeenCalledOnce();
+    // Enter on a control inside the row must act on that control, not open the rail.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Add" }), { key: "Enter" });
+    expect(onOpenSong).toHaveBeenCalledOnce();
   });
 
   it("makes song rows draggable with the song id on the data transfer", () => {

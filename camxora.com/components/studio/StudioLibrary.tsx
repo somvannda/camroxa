@@ -493,6 +493,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                             draggable
                             tabIndex={0}
                             onKeyDown={(event) => {
+                              if (event.target !== event.currentTarget) return;
                               if (event.key === "Enter") {
                                 event.preventDefault();
                                 onOpenSong(song);
