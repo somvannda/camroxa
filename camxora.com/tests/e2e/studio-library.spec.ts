@@ -224,10 +224,15 @@ test("library upload adds audio to the Uploads list", async ({ page }) => {
 
   // Importing needs streaming storage. Without it the backend refuses with a reason and
   // the panel must surface that instead of failing silently; with it, the new file
-  // appears in the Uploads list where it can be added to a track.
+  // appears in the Uploads list where it can be added to a track. Set
+  // STUDIO_EXPECT_UPLOADS=1 when the API is pointed at a bucket (B-006).
   const imported = library.getByText("demo-loop.wav").first();
   const refused = library.getByRole("alert");
   await expect(imported.or(refused)).toBeVisible();
+  if (process.env.STUDIO_EXPECT_UPLOADS === "1") {
+    await expect(imported).toBeVisible();
+    await expect(refused).toHaveCount(0);
+  }
   if (await imported.isVisible().catch(() => false)) {
     await expect(library.getByLabel("Back to library")).toBeVisible();
     await expect(library.getByLabel("Add demo-loop.wav").first()).toBeEnabled();
