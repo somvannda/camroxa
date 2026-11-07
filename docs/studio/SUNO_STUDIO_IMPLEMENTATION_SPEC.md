@@ -2992,7 +2992,7 @@ So the order that actually works is: **new empty project → generate a short lo
 export and regenerate there**. Do not attempt any of these on the demo, and do not
 read the generic toast as a transient error.
 
-## 78. S44 — Convolution card `PART` (no IR loaded)
+## 78. S44 - Convolution card `L` (empty; loaded state closed by 98)
 
 Capture `screens/S44-convolution-card.jpeg`, taken after adding `Convolution` from
 the catalog.
@@ -3619,3 +3619,38 @@ shortcut map already records `CTRL A` select-all and `SHIFT Q` quantize for it).
 **What is still not captured:** dragging/adding/deleting a marker by hand, and whether
 the heads are keyboard-focusable. The image settles the existence and rendering; the
 editing gestures remain unobserved.
+
+## 98. S44 - Convolution with an IR loaded `L`
+
+Capture: `screens/S44-convolution-ir-loaded.jpeg`, 1261 x 1245 at DPR 1. This closes the
+`PART` left by 78: the card **with** an impulse response.
+
+**How it was reached.** Add `Convolution` to a track, then use the **`Impulse Response`**
+button in the preset row (it reads `None` when empty). That button - not the slot - opens
+the IR library:
+
+```
+Halls � New England Hall    Halls � Amber Hall      Halls � Boreal Chapel
+Rooms � Timber Room         Rooms � Terrazzo Room   Chambers � La Brea Chamber
+Chambers � Grotto           Outdoors � Sequoia Basin
+Ambiences � Wide Air        Plates � Aria Plate     Plates � Velvet Plate
+```
+
+Selecting `Halls � New England Hall` is what the image shows.
+
+**What the loaded card looks like.**
+
+| Element | Loaded state |
+|---|---|
+| Header | dot -> `Convolution` -> preset label **`Custom`** -> popout -> `x` (same as 78) |
+| IR slot | the 0-3 s ruler is replaced by an in-slot ruler reading **`0s` / `~2s`** at this width |
+| Waveform | a single orange impulse trace: a sharp spike at the very start, then a near-flat decaying tail to the right edge. It is drawn against the slot's dark surface, not as separate stereo channels |
+| Empty copy | `NO ASSET LOADED` is gone |
+| Preset row | `None ?` is replaced by the asset name **`Halls � New England Hall`** |
+| Knobs | `Mix` - `Gain` - `Pre` - `Width`, 2 x 2, unchanged |
+| Trim | the small dot at the slot's top-right is still **disabled** - loading an IR does not enable trimming on its own |
+
+**Consequences for the clone.** The empty slot is not the interaction: the preset row is.
+The asset name is the only text that identifies what is loaded, and the waveform is the
+only confirmation that it decoded - a boolean "loaded" flag would not be enough. An
+editor must keep the `0s..3s` time axis and place the IR on it, as 78 argued.

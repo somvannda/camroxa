@@ -18,7 +18,7 @@ State as of 2026-11-03. A new session should need only this file plus
 
 | Half | State |
 |---|---|
-| **Capture** (65 screens → screenshot + spec) | **61 DONE / 2 PART / 2 OPEN**, spec §1–§97, 79 images. Remaining four are documented in `reference/CAPTURE_GAPS.md` and are not blocking. |
+| **Capture** (65 screens → screenshot + spec) | **62 DONE / 1 PART / 2 OPEN**, spec §1–§98, 80 images. Remaining three are documented in `reference/CAPTURE_GAPS.md` and are not blocking. |
 | **Build** (close gaps against that spec) | W1 ✅, W2 ✅ (all four), W3 ✅ (9 done, G12 partial), W4 ✅ 1/3/4 — only the stems-dependent items remain. |
 
 ## Running the app (the part that costs time)
@@ -150,6 +150,6 @@ instead of by ear — that is how W4.1, W4.3 and W4.4 were verified.
 
 ## Capture position
 
-65 screens: **61 DONE / 2 PART / 2 OPEN**, 79 images, spec §1–§97. The four remaining
-are in `reference/CAPTURE_GAPS.md`; two need a Studio-native clip in a specific
+65 screens: **62 DONE / 1 PART / 2 OPEN**, 80 images, spec §1–§98. The three remaining
+are in `reference/CAPTURE_GAPS.md`; one needs a Studio-native clip in a specific
 state, two need a forced account state. None block the build.

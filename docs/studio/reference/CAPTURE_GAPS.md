@@ -2,7 +2,7 @@
 
 Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`.
 
-**Final state: 61 DONE · 2 PART · 2 OPEN** of 65. Spec through §97, 79 images.
+**Final state: 62 DONE · 1 PART · 2 OPEN** of 65. Spec through §98, 80 images.
 
 Everything `DONE` has an image and a measured section — including six captured
 **negatives** where the screen we expected does not exist (S47 mixer, S50/S51 export
@@ -15,12 +15,11 @@ Opening an `Untitled Project` from the library fixed both instantly, which is wh
 cleared S37, S29, S50/S51 and S45. **Any future capture involving export, generation,
 takes or plugins must start from a native project.**
 
-## The 4 that remain
+## The 3 that remain
 
 | Screen | State | Exactly what is missing |
 |---|---|---|
 | S32 CC lane | PART §74 | The `Modulation` lane renders but accepts no drawn points; the lane tabs (`Velocity` / `Pitch Bend` / `Modulation`) were reached live on 2026-11-06 behind the clip editor's **Parameters** button. The lane canvas has no React pointer handlers, so the draw gesture is not a plain click/drag. Needs the gesture or a project with CC data. |
-| S44 convolution IR | PART §78 | **Live 2026-11-06:** the IR slot is fed by the `Impulse Response` button in the preset row, which opens an 11-entry IR library. Selecting one flips the card to `Custom · Halls · New England Hall` and draws the stereo waveform. A screenshot of the loaded card is the remaining evidence. |
 | S60 moderation | OPEN | Needs a policy-violating prompt. **Do not fabricate** — capture it only if it happens naturally. |
 | S61 credits | OPEN | Needs an account with no credits. Ours has balance, so this cannot be produced honestly. |
 
@@ -29,7 +28,7 @@ takes or plugins must start from a native project.**
 The gaps were re-exercised with the real Studio. What is now known, and what still needs
 an image:
 
-### S44 — Convolution IR (`PART` → content found, screenshot pending)
+### S44 — Convolution IR (`DONE`, §98)
 
 The IR slot is fed by the **`Impulse Response`** button in the card's preset row (the
 one that reads `None`), not by drag/drop and not by clicking the slot itself. It opens
@@ -51,10 +50,10 @@ Halls · New England Hall
 Mix   Gain   Pre   Width
 ```
 
-and the trim-timeline widget now draws two stereo waveform canvases (three canvases in
-the card) with the `Enable trim` switch still disabled. The time ruler over the slot is
-`0s / 1s / 2s / 3s`, as captured. Open question for the image: how the tail/trim handles
-render once the waveform has data.
+and the image (`screens/S44-convolution-ir-loaded.jpeg`) shows the loaded card: preset
+label `Custom`, asset name `Halls · New England Hall`, a single orange impulse trace
+(spike at the start, decaying tail) on the slot's time axis, and `Enable trim` still
+disabled. §98 has the element-by-element table.
 
 ### S30 — warp markers (`DONE`, §97)
 
@@ -119,12 +118,10 @@ left at **108 BPM**, a generated Bass track, one new default-named workspace). I
 
 ## If a next session wants to finish them
 
-1. **S44** — with the window visible, screenshot the Convolution card after selecting
-   `Halls · New England Hall` (state already reachable). One image closes it.
-2. **S32** — the lane tabs are reached; the draw gesture is not a plain click/drag on
+1. **S32** — the lane tabs are reached; the draw gesture is not a plain click/drag on
    the canvas. Try modifier-drag and right-click on the lane's wrapper, or open a
    project that already has CC data.
-3. **S60 / S61** — only with a genuine trigger. Both would be captured as
+2. **S60 / S61** — only with a genuine trigger. Both would be captured as
    "error taxonomy" evidence, not as a screen we can stage.
 
 ## Editing caveat
