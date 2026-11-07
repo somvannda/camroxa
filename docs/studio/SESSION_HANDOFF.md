@@ -59,8 +59,10 @@ Helpers in `scripts/`:
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
 | e2e | `npm run test:e2e` (set `STUDIO_EXPECT_UPLOADS=1` when the API has a bucket) | smoke, persistence, home + search, library + date grouping, project menu, clip menu + split, clip info, conflicts, offline, share page, versions, transport, meter, shortcuts, trim, fade, snap guideline, track colour, loop/seek, export bytes, zoom, tracks, clipboard, marquee, plugins dry/wet + live, mute/solo, solo-aware bounce, master, help, keys, metronome, writes, metrics, axe ×3 |
 
-CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` on
-any PR touching `camxora.com`. The e2e specs are not in CI yet — they need the app plus
+CI job `camxora-web-checks` in `pr-checks.yml` runs typecheck + check:ui + `npm test` + `npm run build` on
+any PR touching `camxora.com`. The production build gate exists because a missing
+Suspense boundary once broke `/studio/editor/classic` at build time while typecheck and
+unit tests stayed green. The e2e specs are not in CI yet — they need the app plus
 the platform API and a database, which the workflow does not provision. They build their
 own fixtures through the API (`tests/e2e/studio-fixture.ts`) and leave those fixture
 projects in the sandbox database, so the sandbox accumulates test projects by design;

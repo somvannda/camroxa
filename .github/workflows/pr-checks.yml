@@ -491,3 +491,12 @@ jobs:
         if: steps.changes.outputs.run == 'true'
         working-directory: camxora.com
         run: npm test
+
+      # `next build` catches prerender/boundary mistakes that typecheck cannot (a
+      # missing Suspense around useSearchParams broke /studio/editor/classic once).
+      - name: production build
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        env:
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
