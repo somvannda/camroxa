@@ -106,6 +106,9 @@ export function initialOf(name: string | null | undefined): string {
   return (name ?? "").trim().charAt(0).toUpperCase() || "?";
 }
 
+/** Data-transfer type for dragging a library song onto a track lane. */
+export const SONG_DRAG_TYPE = "application/x-camxora-studio-song";
+
 export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
   function StudioLibrary(props, searchRef) {
     const {
@@ -475,7 +478,15 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                         const clip = primaryClip(song);
                         const tags = songTags(song);
                         return (
-                          <li key={song.id} className="se-lib-row se-lib-song">
+                          <li
+                            key={song.id}
+                            className="se-lib-row se-lib-song"
+                            draggable
+                            onDragStart={(event) => {
+                              event.dataTransfer.setData(SONG_DRAG_TYPE, song.id);
+                              event.dataTransfer.effectAllowed = "copy";
+                            }}
+                          >
                             <span className="se-lib-art" aria-hidden="true">
                               {clip?.image_url ? (
                                 // eslint-disable-next-line @next/next/no-img-element

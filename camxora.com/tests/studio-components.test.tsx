@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import { StudioHeader } from "@/components/studio/StudioHeader";
 import { StudioFooter } from "@/components/studio/StudioFooter";
 import {
+  SONG_DRAG_TYPE,
   StudioLibrary,
   formatSongCount,
   formatUploadLength,
@@ -309,6 +310,27 @@ describe("StudioLibrary", () => {
     expect(screen.getByRole("button", { name: "Pause Row actions" })).toBeTruthy();
     const unlike = screen.getByRole("button", { name: "Unlike Row actions" });
     expect(unlike.getAttribute("aria-pressed")).toBe("true");
+  });
+
+  it("makes song rows draggable with the song id on the data transfer", () => {
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [song()],
+        })}
+      />
+    );
+    const row = screen.getByText("Song one").closest("li") as HTMLLIElement;
+    expect(row.getAttribute("draggable")).toBe("true");
+    const data = new Map<string, string>();
+    fireEvent.dragStart(row, {
+      dataTransfer: {
+        setData: (type: string, value: string) => data.set(type, value),
+        effectAllowed: "none",
+      },
+    });
+    expect(data.get(SONG_DRAG_TYPE)).toBe("s1");
   });
 
   it("collapses a date group from its heading", async () => {

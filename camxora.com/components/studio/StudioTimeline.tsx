@@ -1,6 +1,6 @@
 "use client";
 
-import type { PointerEvent as ReactPointerEvent, RefObject } from "react";
+import type { DragEvent as ReactDragEvent, PointerEvent as ReactPointerEvent, RefObject } from "react";
 
 import { dragToStart } from "@/lib/studio-snap";
 import type { StudioTrack } from "@/lib/studio-tracks";
@@ -66,6 +66,10 @@ export type StudioTimelineProps = {
   timelineRef?: RefObject<HTMLDivElement | null>;
   onScroll: (left: number, width: number) => void;
   onLanePointerDown: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  /** Dragging a library song over a lane; preventDefault to allow the drop. */
+  onLaneDragOver?: (event: ReactDragEvent<HTMLDivElement>) => void;
+  /** Dropping a library song on a lane. */
+  onLaneDrop?: (event: ReactDragEvent<HTMLDivElement>, trackId: string) => void;
   /** Clicking the bar ruler moves the playhead (the lanes are covered by clips). */
   onRulerSeek: (seconds: number) => void;
   onClipPointerDown: (event: ReactPointerEvent<HTMLButtonElement>, clip: TimelineClip, trackId: string) => void;
@@ -104,6 +108,8 @@ export function StudioTimeline(props: StudioTimelineProps) {
     timelineRef,
     onScroll,
     onLanePointerDown,
+    onLaneDragOver,
+    onLaneDrop,
     onRulerSeek,
     onClipPointerDown,
     onClipContextMenu,
@@ -143,7 +149,13 @@ export function StudioTimeline(props: StudioTimelineProps) {
       <div className="se-lanes" onPointerDown={onLanePointerDown}>
         <div className="se-lanes-inner" style={{ width: barCount * barWidth }}>
           {tracks.map((track) => (
-            <div key={track.id} className="se-lane" style={{ height: rowStep }}>
+            <div
+              key={track.id}
+              className="se-lane"
+              style={{ height: rowStep }}
+              onDragOver={onLaneDragOver}
+              onDrop={onLaneDrop ? (event) => onLaneDrop(event, track.id) : undefined}
+            >
               {clips
                 .filter((clip) => track.clipIds.includes(clip.id))
                 .filter((clip) => {

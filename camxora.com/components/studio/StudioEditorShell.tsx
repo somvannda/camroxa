@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from "react";
 
 import { Icon } from "@/components/Icon";
 import { useAuth } from "@/components/AuthProvider";
@@ -21,7 +21,12 @@ import {
   listWebMusicWorkspaces,
   type WebMusicWorkspace,
 } from "@/lib/web-music-api";
-import { StudioLibrary, type LibraryView, type SongFilter } from "@/components/studio/StudioLibrary";
+import {
+  SONG_DRAG_TYPE,
+  StudioLibrary,
+  type LibraryView,
+  type SongFilter,
+} from "@/components/studio/StudioLibrary";
 import { StudioClipInfo } from "@/components/studio/StudioClipInfo";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
@@ -726,6 +731,33 @@ export function StudioEditorShell() {
           audioUrl: upload.url,
           uploadId: upload.id,
         } as ClipLike & { audioUrl?: string | null; uploadId?: string },
+      },
+    ]);
+  }
+
+  /** Drop a library song on a lane: insert where the pointer landed, snapped. */
+  function dropSongOnLane(event: ReactDragEvent<HTMLDivElement>, trackId: string) {
+    const songId = event.dataTransfer.getData(SONG_DRAG_TYPE);
+    if (!songId) return;
+    event.preventDefault();
+    const song = (librarySongs ?? []).find((item) => item.id === songId);
+    const clip = song?.clips?.find((candidate) => candidate.audio_url);
+    if (!song || !clip) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const seconds = Math.max(0, ((event.clientX - rect.left) / barWidth) * secondsPerBar);
+    insertClips([
+      {
+        trackId,
+        clip: {
+          id: `clip-${song.id}-${Date.now().toString(36)}`,
+          title: clip.title || song.title || "Song",
+          start: snapToGrid(seconds, secondsPerBar, beatsPerBar),
+          duration: clip.duration_seconds ?? 8,
+          volume: 1,
+          pan: 0,
+          audioUrl: clip.audio_url,
+          songId: song.id,
+        } as ClipLike & { audioUrl?: string | null; songId?: string },
       },
     ]);
   }
@@ -2623,6 +2655,10 @@ export function StudioEditorShell() {
           timelineRef={timelineRef}
           onScroll={(left, width) => setView({ left, width })}
           onLanePointerDown={handleLanePointerDown}
+          onLaneDragOver={(event) => {
+            if (event.dataTransfer.types.includes(SONG_DRAG_TYPE)) event.preventDefault();
+          }}
+          onLaneDrop={(event, trackId) => dropSongOnLane(event, trackId)}
           onRulerSeek={(seconds) => seekTo(Math.max(0, Math.min(duration, seconds)))}
           onClipPointerDown={handleClipPointerDown}
           onClipContextMenu={handleClipContextMenu}

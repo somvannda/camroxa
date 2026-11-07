@@ -408,8 +408,12 @@ clip the project uses.
 - Rows carry the captured **Play/Pause** and **Like** actions. Play auditions one clip at
   a time through a single `Audio` element, stopped when the drawer closes; Like posts to
   the same `/like?variant=` endpoint the web library uses and updates the Liked filter
-  optimistically. **Add** is ours, because drag-from-library is not built yet — the
-  reference places songs by dragging.
+  optimistically.
+- Rows are **draggable** onto a timeline lane, matching the reference's
+  `application/x-suno-studio-clip` gesture (ours uses
+  `application/x-camxora-studio-song` with the song id). The clip lands at the drop
+  position, snapped to the grid. **Add** stays as a keyboard/touch alternative; it and
+  drag produce the same clip.
 - Workspace and project rows carry a leading thumbnail tile: gradient + initial for
   workspaces, a timeline glyph for projects. The reference uses generated artwork and
   mini-timelines; the list endpoint returns no lane data, so a glyph is honest.

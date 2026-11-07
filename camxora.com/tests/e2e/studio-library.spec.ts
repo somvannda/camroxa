@@ -167,6 +167,24 @@ test("level-2 toolbar filters the corpus and opens the generator", async ({ page
   await page.waitForURL(/\/create/);
 });
 
+test("dragging a song onto a lane places a clip where it was dropped", async ({ page }) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: `Drag ${Math.random().toString(36).slice(2, 6)}` });
+
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  const library = page.getByRole("complementary", { name: "Library" });
+  await library.getByRole("button", { name: "All Songs" }).click();
+
+  const rows = library.locator(".se-lib-song");
+  await expect.poll(async () => rows.count()).toBeGreaterThan(0);
+
+  const before = await page.locator(".se-clip").count();
+  await rows.first().dragTo(page.locator(".se-lane").first(), {
+    targetPosition: { x: 200, y: 40 },
+  });
+  await expect(page.locator(".se-clip")).toHaveCount(before + 1);
+});
+
 test("library upload adds audio to the Uploads list", async ({ page }) => {
   test.setTimeout(120_000);
   await createStudioProject(page, { title: `Upload ${Math.random().toString(36).slice(2, 6)}` });
