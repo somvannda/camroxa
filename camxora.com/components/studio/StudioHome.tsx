@@ -239,7 +239,7 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
 
   if (authLoading) {
     return (
-      <div className="studio-home" aria-busy="true">
+      <main className="studio-home" aria-busy="true">
         <div className="studio-home-inner">
           <div className="studio-home-hero sh-skeleton" />
           <div className="studio-home-grid">
@@ -248,7 +248,7 @@ export function StudioHome({ marketing }: { marketing: ReactNode }) {
             ))}
           </div>
         </div>
-      </div>
+      </main>
     );
   }
 

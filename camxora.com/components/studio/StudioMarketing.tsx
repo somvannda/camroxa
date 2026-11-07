@@ -31,7 +31,7 @@ const features = [
  */
 export function StudioMarketing() {
   return (
-    <div className="page">
+    <main className="page">
       <div className="page-head">
         <div>
           <div className="eyebrow">Product</div>
@@ -121,6 +121,6 @@ export function StudioMarketing() {
         <div><b>Session</b>24-bit / 48 kHz, stem export</div>
         <div><b>Account</b>Camxora account with credits</div>
       </div>
-    </div>
+    </main>
   );
 }
