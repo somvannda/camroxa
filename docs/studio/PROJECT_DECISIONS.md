@@ -441,3 +441,29 @@ here; `updateWebMusicWorkspace` already exists for whatever surface owns renamin
 **Consequences.** Repeated clicks create repeated default-named workspaces, which is what
 the reference did. If a rename affordance is captured later, it belongs on the workspace
 row/menu, not in the create path.
+
+---
+
+## D-018 — Song detail rail, with the uncaptured controls disabled
+
+**Date:** 2026-11-07 **Status:** accepted (extra capture §100)
+
+**Decision.** Double-clicking a library row swaps the rail to a song detail panel:
+`Go back · <title>`, Remix/Like/Dislike/More, a 44 px Play, `Info` / `Stems` tabs, then
+Styles (copy + show-more), Lyrics (copy + show-more) and Comments. Like/Dislike post to
+the same `/like` and `/dislike` endpoints as the rows; Play reuses the single audition
+element.
+
+**Why.**
+
+- The surface was observed live (§100) with its geometry, so the layout is captured, not
+  guessed.
+- `Remix`, `More`, the comment field and `Stems` have no captured contract here. They are
+  rendered **disabled with a reason** (D-011), not hidden and not faked.
+- Key and BPM appear in the reference's facts line but do not exist in our corpus, so the
+  line shows duration and date only (D-016). When the corpus gains key/BPM, extend the
+  same line - do not invent values now.
+
+**Consequences.** The rail is a third state (list / detail / clip inspector) and the
+shell clears it whenever the drawer closes. Copy uses `navigator.clipboard` with a
+transient "Copied" label; it is not persisted.

@@ -4649,6 +4649,25 @@ html{color-scheme:dark}
 .se-lib-new{display:flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:8px;border:1px dashed hsl(var(--border));background:transparent;color:inherit;font:inherit;font-size:12px;text-align:left;cursor:pointer}
 .se-lib-new:hover:not(:disabled){border-color:hsl(var(--accent))}
 .se-lib-new:disabled{opacity:.55;cursor:not-allowed}
+.se-song-back{display:flex;align-items:center;gap:6px;flex:1;min-width:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
+.se-song-back span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
+.se-song-actions{display:flex;align-items:center;gap:6px;padding:10px 12px 6px}
+.se-song-play{display:grid;place-items:center;width:44px;height:44px;margin:0 12px 8px;border-radius:999px;border:0;background:hsl(var(--accent));color:hsl(var(--accent-foreground));cursor:pointer}
+.se-song-play:disabled{opacity:.5;cursor:not-allowed}
+.se-song-body{display:flex;flex-direction:column;gap:14px;padding:12px;flex:1;min-height:0;overflow:auto}
+.se-song-title{margin:8px 0 0;font-size:16px;font-weight:600}
+.se-song-facts{margin:0;font-size:12px;opacity:.65}
+.se-song-section{display:flex;flex-direction:column;gap:6px}
+.se-song-section header{display:flex;align-items:center;justify-content:space-between;font-weight:600;opacity:.8}
+.se-song-section p{margin:0;font-size:12px;line-height:1.5;opacity:.8}
+.se-song-clamp{display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.se-song-lyrics{white-space:pre-wrap}
+.se-song-more{align-self:flex-start;padding:0;border:0;background:transparent;color:inherit;font:inherit;font-size:12px;opacity:.7;cursor:pointer}
+.se-song-more:hover{opacity:1}
+.se-song-copied{font-size:11px;opacity:.7}
+.se-song-comment{display:flex;gap:6px}
+.se-song-comment input{flex:1;min-width:0;height:32px;padding:0 8px;border-radius:7px;border:1px solid hsl(var(--border));background:hsl(var(--card));color:inherit;font:inherit;font-size:12px}
+.se-song-comment input:disabled{opacity:.6}
 .se-lib-list{list-style:none;margin:0;padding:0 12px;display:flex;flex-direction:column;gap:8px}
 .se-lib-section .se-lib-list{padding:0}
 .se-lib-row{display:grid;grid-template-columns:1fr auto;align-items:center;gap:2px 8px;padding:8px 10px;border-radius:8px;background:hsl(var(--card))}

@@ -3691,3 +3691,42 @@ reference does not demonstrate; if CC editing is wanted, it is new scope, not pa
 
 **Still unobserved:** how a point *renders* if a project already carries CC data. No such
 project was reachable, and fabricating one would not answer the question.
+
+## 100. EXTRA - library song detail rail `L`
+
+Not one of the 65: this surface appears when a library row is **double-clicked**, and it
+replaces the list inside the same 360 px rail. Measured 2026-11-07 at a 1263 px pane;
+image pending (the row list is `S53-library-songs.jpeg`).
+
+**Header.** `Go back` button carrying the song title (146 x 24), then the close `x`.
+The back control is the only way out; `Escape` does not close the rail.
+
+**Action row** (y +133, 32 px tall): `Remix` (69 x 32) · `Like` (32 sq) · `Dislike`
+(32 sq) · `More` (32 sq), right-aligned in that order.
+
+**Play.** A 44 x 44 circular transport button directly under the action row, left
+aligned. It is the song's own player, independent of the arrangement transport.
+
+**Tabs.** `Info` and `Stems`, two equal 180 x 31 halves spanning the rail. `Info` is the
+default.
+
+**Info content, top to bottom.**
+
+- Title, then one facts line: `C minor · 145 BPM · 3:04 · Nov 3, 2026` - rendered as
+  `key · BPM · duration · date`.
+- `Styles` header with two 20 x 20 icon buttons at its right: **copy styles** and
+  **edit song details**; the style text follows, clamped, with a full-width
+  `Show more` / `Show less` button (312 x 41).
+- `Lyrics` header with **copy lyrics**; the lyrics block, clamped, with its own
+  `Show more`.
+- `Comments and notes`: a text field plus a 34 x 34 `Send`.
+
+**Stems tab.** Exists on the panel; in this session it was never opened with data.
+
+**Clone mapping.** Ours renders the same header/action/play/tab geometry and the
+Info sections. Deliberate gaps, each visible rather than faked:
+
+- key/BPM are omitted because the corpus has no such fields (D-016);
+- `Remix`, `More` and the comment field are disabled with a reason - their menus were
+  not captured (D-011);
+- `Stems` explains B-005 instead of listing an empty set.

@@ -185,6 +185,32 @@ test("dragging a song onto a lane places a clip where it was dropped", async ({ 
   await expect(page.locator(".se-clip")).toHaveCount(before + 1);
 });
 
+test("double-clicking a song opens its detail rail and Back returns to the list", async ({
+  page,
+}) => {
+  test.setTimeout(120_000);
+  await createStudioProject(page, { title: `Detail ${Math.random().toString(36).slice(2, 6)}` });
+
+  await page.getByRole("button", { name: "Library", exact: true }).click();
+  const library = page.getByRole("complementary", { name: "Library" });
+  await library.getByRole("button", { name: "All Songs" }).click();
+  const rows = library.locator(".se-lib-song");
+  await expect.poll(async () => rows.count()).toBeGreaterThan(0);
+
+  await rows.first().dblclick();
+  const detail = page.getByRole("complementary", { name: "Song details" });
+  await expect(detail).toBeVisible();
+  await expect(detail.getByRole("tab", { name: "Info" })).toHaveAttribute(
+    "aria-selected",
+    "true"
+  );
+  await expect(detail.getByRole("tab", { name: "Stems" })).toBeVisible();
+
+  await detail.getByLabel("Back to library").click();
+  await expect(page.getByRole("complementary", { name: "Library" })).toBeVisible();
+});
+
+
 test("library upload adds audio to the Uploads list", async ({ page }) => {
   test.setTimeout(120_000);
   await createStudioProject(page, { title: `Upload ${Math.random().toString(36).slice(2, 6)}` });

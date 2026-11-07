@@ -117,11 +117,10 @@ The lanes sit under the note lane and share its x-axis. Evidence from 2026-11-06
   rows reveal `More` and `Open` on hover, project rows reveal only `Open`. The `More`
   menu was not reached by synthetic input, so its items remain uncaptured.
 - `See all` expands in place and becomes `Show less`.
-- Double-clicking a song row opens a **song detail view** in the drawer (title,
-  description, duration `3:16`) and dismisses the list; it did not add a clip (the
-  timeline end stayed `07:09`, and two save requests followed from the view switch). Not
-  copied yet: we have no song-detail surface, and inventing one from this glimpse would
-  be guessing.
+- Double-clicking a song row opens a **song detail rail** (title, `key · BPM · duration ·
+  date`, Remix/Like/Dislike/More, ±44 px Play, Info/Stems tabs, Styles with copy + show
+  more, Lyrics with copy + show more, Comments and notes). It dismisses the list and does
+  not add a clip. Captured as an EXTRA in §100 and implemented as D-018.
 
 **Caveat:** the capture project was edited during this session (audio clip added, tempo
 left at **108 BPM**, a generated Bass track, one new default-named workspace). It is an

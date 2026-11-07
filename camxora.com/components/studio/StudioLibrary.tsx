@@ -44,6 +44,8 @@ export type StudioLibraryProps = {
   playingSongId: string | null;
   /** Song ids the open project already uses, for the In Project filter. */
   projectSongIds: string[];
+  /** Double-clicking a row opens its detail rail (§100). */
+  onOpenSong: (song: WebMusicGeneration) => void;
   onClose: () => void;
   onBack: () => void;
   onOpenSongs: (filter: "all" | "liked") => void;
@@ -125,6 +127,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       likedKeys,
       playingSongId,
       projectSongIds,
+      onOpenSong,
       onClose,
       onBack,
       onOpenSongs,
@@ -482,6 +485,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                             key={song.id}
                             className="se-lib-row se-lib-song"
                             draggable
+                            onDoubleClick={() => onOpenSong(song)}
                             onDragStart={(event) => {
                               event.dataTransfer.setData(SONG_DRAG_TYPE, song.id);
                               event.dataTransfer.effectAllowed = "copy";

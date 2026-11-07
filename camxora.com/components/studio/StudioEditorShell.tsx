@@ -16,6 +16,8 @@ import {
 } from "@/lib/studio-api";
 import {
   createWebMusicWorkspace,
+  dislikeWebMusicGeneration,
+  fetchWebMusicDislikedKeys,
   fetchWebMusicLikedKeys,
   likeWebMusicGeneration,
   listWebMusicWorkspaces,
@@ -28,6 +30,7 @@ import {
   type SongFilter,
 } from "@/components/studio/StudioLibrary";
 import { StudioClipInfo } from "@/components/studio/StudioClipInfo";
+import { StudioSongDetail } from "@/components/studio/StudioSongDetail";
 import { fetchGenerations, type WebMusicGeneration } from "@/lib/library-api";
 import { colorForTrackName, migrateLanesToTracks, sanitizeTracks, type StudioTrack } from "@/lib/studio-tracks";
 import { dragToStart, isDrag, snapToGrid } from "@/lib/studio-snap";
@@ -132,6 +135,9 @@ export function StudioEditorShell() {
   const [libraryView, setLibraryView] = useState<LibraryView>({ kind: "root" });
   /** Clip keys the viewer liked, for the Liked tile (level 2 filter). */
   const [likedKeys, setLikedKeys] = useState<string[] | null>(null);
+  const [dislikedKeys, setDislikedKeys] = useState<string[] | null>(null);
+  /** Song whose detail rail replaces the list after a row double-click (§100). */
+  const [detailSong, setDetailSong] = useState<WebMusicGeneration | null>(null);
   /** Song auditioning from the library, and its audio element. */
   const [playingSongId, setPlayingSongId] = useState<string | null>(null);
   const previewRef = useRef<HTMLAudioElement | null>(null);
@@ -521,6 +527,15 @@ export function StudioEditorShell() {
           if (active) setLikedKeys([]);
         });
     }
+    if (dislikedKeys === null) {
+      fetchWebMusicDislikedKeys()
+        .then((keys) => {
+          if (active) setDislikedKeys(keys);
+        })
+        .catch(() => {
+          if (active) setDislikedKeys([]);
+        });
+    }
     return () => {
       active = false;
     };
@@ -533,6 +548,7 @@ export function StudioEditorShell() {
     libraryProjects,
     libraryUploads,
     likedKeys,
+    dislikedKeys,
   ]);
 
   /** Stop the audition when the drawer closes or the editor unmounts. */
@@ -541,6 +557,7 @@ export function StudioEditorShell() {
     previewRef.current?.pause();
     previewRef.current = null;
     setPlayingSongId(null);
+    setDetailSong(null);
   }, [libraryOpen]);
   useEffect(() => () => previewRef.current?.pause(), []);
   /** Transport playback wins over a library audition; never run both at once. */
@@ -622,6 +639,26 @@ export function StudioEditorShell() {
       await likeWebMusicGeneration(song.id, clip.variant, nextLiked);
     } catch {
       apply(!nextLiked);
+    }
+  }
+
+  /** Dislike the row's primary clip; mirrors the Like path. */
+  async function toggleSongDislike(song: WebMusicGeneration, nextDisliked: boolean) {
+    const clip = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
+    if (!clip) return;
+    const key = `${song.id}:${clip.variant}`;
+    const apply = (disliked: boolean) =>
+      setDislikedKeys((previous) => {
+        const list = new Set(previous ?? []);
+        if (disliked) list.add(key);
+        else list.delete(key);
+        return [...list];
+      });
+    apply(nextDisliked);
+    try {
+      await dislikeWebMusicGeneration(song.id, clip.variant, nextDisliked);
+    } catch {
+      apply(!nextDisliked);
     }
   }
 
@@ -2695,6 +2732,28 @@ export function StudioEditorShell() {
               />
             );
           }
+          if (libraryOpen && detailSong) {
+            const detailClip =
+              detailSong.clips?.find((candidate) => candidate.audio_url) ?? detailSong.clips?.[0];
+            const detailKey = detailClip ? `${detailSong.id}:${detailClip.variant}` : "";
+            return (
+              <StudioSongDetail
+                width={LIBRARY_W}
+                song={detailSong}
+                liked={(likedKeys ?? []).includes(detailKey)}
+                disliked={(dislikedKeys ?? []).includes(detailKey)}
+                playing={playingSongId === detailSong.id}
+                onBack={() => setDetailSong(null)}
+                onClose={() => {
+                  setDetailSong(null);
+                  setLibraryOpen(false);
+                }}
+                onTogglePlay={toggleSongPreview}
+                onToggleLike={(song, next) => void toggleSongLike(song, next)}
+                onToggleDislike={(song, next) => void toggleSongDislike(song, next)}
+              />
+            );
+          }
           if (!libraryOpen) return null;
           return (
             <StudioLibrary
@@ -2712,6 +2771,7 @@ export function StudioEditorShell() {
               likedKeys={likedKeys}
               playingSongId={playingSongId}
               projectSongIds={projectSongIds}
+              onOpenSong={(song) => setDetailSong(song)}
               onClose={() => setLibraryOpen(false)}
               onBack={() => setLibraryView({ kind: "root" })}
               onOpenSongs={openLibrarySongs}

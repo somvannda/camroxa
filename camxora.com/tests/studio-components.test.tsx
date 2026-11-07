@@ -11,6 +11,7 @@ import {
   formatUploadLength,
   type LibraryView,
 } from "@/components/studio/StudioLibrary";
+import { StudioSongDetail } from "@/components/studio/StudioSongDetail";
 import { ClipSourceStrip } from "@/components/studio/ClipSourceStrip";
 import { StudioTrackPanel } from "@/components/studio/StudioTrackPanel";
 import type { StudioTrack } from "@/lib/studio-tracks";
@@ -195,6 +196,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     likedKeys: [] as string[] | null,
     playingSongId: null as string | null,
     projectSongIds: [] as string[],
+    onOpenSong: noop,
     onClose: noop,
     onBack: noop,
     onOpenSongs: noop,
@@ -632,6 +634,68 @@ describe("StudioLibrary", () => {
     expect(screen.queryByText("take-1.wav")).toBeNull();
     await user.type(screen.getByLabelText("Search library"), "a");
     expect(onQuery).toHaveBeenCalled();
+  });
+});
+
+describe("StudioSongDetail", () => {
+  const detailSong = {
+    id: "s1",
+    title: "Sunlit One",
+    style: "EDM, electronic dance music",
+    lyrics: "[Intro]\nTonight",
+    status: "success",
+    created_at: "2026-11-03T10:00:00.000Z",
+    clips: [{ variant: "ok", audio_url: "https://example.test/s1.mp3", duration_seconds: 184 }],
+  } as unknown as WebMusicGeneration;
+
+  function detailProps(overrides: Partial<Parameters<typeof StudioSongDetail>[0]> = {}) {
+    return {
+      width: 368,
+      song: detailSong,
+      liked: false,
+      disliked: false,
+      playing: false,
+      onBack: noop,
+      onClose: noop,
+      onTogglePlay: noop,
+      onToggleLike: noop,
+      onToggleDislike: noop,
+      ...overrides,
+    };
+  }
+
+  it("shows the song's info, styles and lyrics", () => {
+    render(<StudioSongDetail {...detailProps()} />);
+    expect(screen.getAllByText("Sunlit One").length).toBeGreaterThan(0);
+    expect(screen.getByText(/3:04/)).toBeTruthy();
+    expect(screen.getByText("EDM, electronic dance music")).toBeTruthy();
+    expect(screen.getByText(/Tonight/)).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Info" }).getAttribute("aria-selected")).toBe("true");
+  });
+
+  it("likes, dislikes and plays from the header", async () => {
+    const user = userEvent.setup();
+    const onToggleLike = vi.fn();
+    const onToggleDislike = vi.fn();
+    const onTogglePlay = vi.fn();
+    render(
+      <StudioSongDetail
+        {...detailProps({ onToggleLike, onToggleDislike, onTogglePlay })}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Like Sunlit One" }));
+    expect(onToggleLike).toHaveBeenCalledWith(detailSong, true);
+    await user.click(screen.getByRole("button", { name: "Dislike Sunlit One" }));
+    expect(onToggleDislike).toHaveBeenCalledWith(detailSong, true);
+    await user.click(screen.getByRole("button", { name: "Play Sunlit One" }));
+    expect(onTogglePlay).toHaveBeenCalledWith(detailSong);
+  });
+
+  it("explains the blocked Stems tab instead of pretending", async () => {
+    const user = userEvent.setup();
+    render(<StudioSongDetail {...detailProps()} />);
+    await user.click(screen.getByRole("tab", { name: "Stems" }));
+    expect(screen.getByText(/B-005/)).toBeTruthy();
   });
 });
 
