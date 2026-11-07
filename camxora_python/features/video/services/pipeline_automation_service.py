@@ -868,12 +868,15 @@ class PipelineAutomationService(QObject):
         from shared.lib.publish_auto import release_publish
 
         try:
-            from shared.workers.data_workers import PublishUploadWorker
+            from shared.workers.data_workers import YouTubeDirectUploadWorker
 
             self._publish_claim_path = str(auto_context.get("merged_path") or "")
-            worker = PublishUploadWorker(
+            worker = YouTubeDirectUploadWorker(
                 self._api,
-                auto_context=dict(auto_context),
+                profile_id=str(auto_context.get("profile_id") or ""),
+                batch_id=str(auto_context.get("batch_id") or ""),
+                role=str(auto_context.get("role") or "OK"),
+                merged_path=str(auto_context.get("merged_path") or ""),
                 parent=self,
             )
             worker.status_changed.connect(lambda text: emit_shell_status(str(text), tone="neutral"))
@@ -898,8 +901,12 @@ class PipelineAutomationService(QObject):
                 return
 
     def _on_publish_succeeded(self, job: object) -> None:
-        status = str(getattr(job, "status", "") or "processing")
-        message = f"YouTube upload queued ({status})."
+        if isinstance(job, dict):
+            status = "success" if job.get("video_id") else "processing"
+            message = f"YouTube upload published ({job.get('url') or ''})." if job.get("video_id") else "YouTube upload queued."
+        else:
+            status = str(getattr(job, "status", "") or "processing")
+            message = f"YouTube upload queued ({status})."
         emit_shell_status(message, tone="neutral")
         from shared.services.app_logger import log_info
 

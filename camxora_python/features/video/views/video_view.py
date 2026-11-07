@@ -3110,9 +3110,14 @@ class VideoView(QWidget):
         if not claim_publish(plan.merged_path):
             # Another path already published this file (video page vs pipeline).
             return
-        worker = PublishUploadWorker(
+        from shared.workers.data_workers import YouTubeDirectUploadWorker
+
+        worker = YouTubeDirectUploadWorker(
             self._api,
-            auto_context=worker_context(plan),
+            profile_id=plan.profile_id,
+            batch_id=str(plan.batch_id or ""),
+            role=plan.role,
+            merged_path=plan.merged_path,
             parent=self,
         )
         worker.status_changed.connect(lambda message: notify_action(message, tone="neutral"))
