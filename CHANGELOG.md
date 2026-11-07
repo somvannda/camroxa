@@ -7,6 +7,27 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.2] - 2026-11-07
+
+### Fixed
+
+- **Opening the Diagnostics route no longer crashes.** `app/router.py` imported
+  `features.logs.views.log_view`, which did not exist, so navigating to `/app/log` (and the
+  route smoke test) raised `ModuleNotFoundError`. The support-only console is now implemented, and
+  `.gitignore`'s bare `logs` rule no longer hides the `features/logs` package.
+- **The audio-analysis cache no longer grows without limit.** Entries are now float16 (no derived
+  arrays, roughly half the size), unused entries expire after 30 days, and the directory is
+  LRU-trimmed to 2 GB (`CAMXORA_AUDIO_CACHE_MAX_MB` overrides it). Settings → Preferences → Storage
+  shows the current size and can clear it.
+- Leftover update installers (`CamxoraSetup-update.exe` reached 417 MB) are removed after a
+  successful install and swept after 24 hours, and the unbounded `audio-load-diag.log` /
+  `preview-gl-diag.log` diagnostics now rotate at 8 MB.
+
+### Changed
+
+- `CACHE_VERSION` is 4, so existing audio-analysis caches are discarded on first launch and tracks
+  are re-analyzed once. The saved data is otherwise identical.
+
 ## [1.6.1] - 2026-11-07
 
 ### Fixed
@@ -15,10 +36,6 @@ and this project uses [Semantic Versioning](https://semver.org/).
   partial tick (e.g. `8 / 10`) before switching to `Publishing`.
 - Recording a finished upload retries transient failures twice, so a video already live on YouTube is
   never left unrecorded or uncharged because of a network blip.
-- **Opening the Diagnostics route no longer crashes.** `app/router.py` imported
-  `features.logs.views.log_view`, which did not exist, so navigating to `/app/log` (and the
-  route smoke test) raised `ModuleNotFoundError`. The support-only console is now implemented, and
-  `.gitignore`'s bare `logs` rule no longer hides the `features/logs` package.
 
 ## [1.6.0] - 2026-11-07
 
@@ -52,11 +69,6 @@ and this project uses [Semantic Versioning](https://semver.org/).
   editable combo that looked like an empty text field, and a stale auth-failure flag blocked loading
   permanently.
 - Connection polling stops once a channel is connected instead of refreshing every two seconds.
-- **The audio-analysis cache no longer grows without limit.** Entries are now float16 (no derived
-  arrays), unused entries expire after 30 days, and the directory is LRU-trimmed to 2 GB
-  (`CAMXORA_AUDIO_CACHE_MAX_MB` overrides it). Settings → Preferences → Storage shows the current size
-  and can clear it. Leftover update installers and the unbounded `audio-load-diag.log` are also
-  cleaned up now.
 
 ## [1.5.23] - 2026-11-06
 
