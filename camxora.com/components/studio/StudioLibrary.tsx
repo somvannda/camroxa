@@ -40,6 +40,8 @@ export type StudioLibraryProps = {
   currentProjectId: string | null;
   /** Clip keys the viewer liked (`<songId>:<variant>`), or null while loading. */
   likedKeys: string[] | null;
+  /** Song id currently auditioning, or null. */
+  playingSongId: string | null;
   /** Song ids the open project already uses, for the In Project filter. */
   projectSongIds: string[];
   onClose: () => void;
@@ -55,6 +57,10 @@ export type StudioLibraryProps = {
   /** Create a workspace from the captured level-1 row. */
   onNewWorkspace: () => Promise<void>;
   onAddSong: (song: WebMusicGeneration) => void;
+  /** Audition button (reference rows have Play/Pause). */
+  onTogglePlay: (song: WebMusicGeneration) => void;
+  /** Like button (reference rows have Like); nextLiked is the requested state. */
+  onToggleLike: (song: WebMusicGeneration, nextLiked: boolean) => void;
   onAddUpload: (upload: StudioUpload) => void;
   onOpenProject: (projectId: string) => void;
 };
@@ -114,6 +120,7 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       uploads,
       currentProjectId,
       likedKeys,
+      playingSongId,
       projectSongIds,
       onClose,
       onBack,
@@ -125,6 +132,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       onNewWorkspace,
       onUploadAudio,
       onAddSong,
+      onTogglePlay,
+      onToggleLike,
       onAddUpload,
       onOpenProject,
     } = props;
@@ -488,14 +497,37 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                                 </span>
                               ) : null}
                             </span>
-                            <button
-                              type="button"
-                              className="se-pill"
-                              onClick={() => onAddSong(song)}
-                              disabled={!clip?.audio_url}
-                            >
-                              Add
-                            </button>
+                            <span className="se-lib-song-actions">
+                              <button
+                                type="button"
+                                className="se-lib-icon"
+                                aria-label={`${playingSongId === song.id ? "Pause" : "Play"} ${
+                                  song.title || "song"
+                                }`}
+                                onClick={() => onTogglePlay(song)}
+                              >
+                                <Icon name={playingSongId === song.id ? "fa-pause" : "fa-play"} />
+                              </button>
+                              <button
+                                type="button"
+                                className={`se-lib-icon${isLiked(song) ? " on" : ""}`}
+                                aria-label={`${isLiked(song) ? "Unlike" : "Like"} ${
+                                  song.title || "song"
+                                }`}
+                                aria-pressed={isLiked(song)}
+                                onClick={() => onToggleLike(song, !isLiked(song))}
+                              >
+                                <Icon name="fa-heart" />
+                              </button>
+                              <button
+                                type="button"
+                                className="se-pill"
+                                onClick={() => onAddSong(song)}
+                                disabled={!clip?.audio_url}
+                              >
+                                Add
+                              </button>
+                            </span>
                           </li>
                         );
                       })}

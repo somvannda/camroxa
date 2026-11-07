@@ -383,18 +383,18 @@ first â€” do not relabel this one.
 
 ---
 
-## D-016 — Song rows show the tags our corpus actually has
+## D-016 ï¿½ Song rows show the tags our corpus actually has
 
-**Date:** 2026-11-06 **Status:** accepted (G12, spec §19.2)
+**Date:** 2026-11-06 **Status:** accepted (G12, spec ï¿½19.2)
 
 **Decision.** Level-2 song rows lead with 44 px artwork and a tag strip. The strip shows
-the model label, the clip's label/variant and the clip length — not musical key or BPM,
+the model label, the clip's label/variant and the clip length ï¿½ not musical key or BPM,
 which the reference prints. `In Project` filters on the `songId` already stored on every
 clip the project uses.
 
 **Why.**
 
-- The reference's `V6 COVER · D minor · 128 BPM` strip is the point of the row (§19.2),
+- The reference's `V6 COVER ï¿½ D minor ï¿½ 128 BPM` strip is the point of the row (ï¿½19.2),
   but our generation payload carries no key or tempo. Printing a guessed key would be a
   lie the user could hear.
 - Model, variant and length are real fields on `WebMusicGeneration`/`WebMusicClip`, and
@@ -405,6 +405,11 @@ clip the project uses.
 - The level-2 toolbar implements the captured actions: filter menu (All / Liked /
   In Project, Stems disabled), `+ New` (opens `/create`) and `Upload` (same
   `POST /studio/uploads` endpoint the classic importer uses).
+- Rows carry the captured **Play/Pause** and **Like** actions. Play auditions one clip at
+  a time through a single `Audio` element, stopped when the drawer closes; Like posts to
+  the same `/like?variant=` endpoint the web library uses and updates the Liked filter
+  optimistically. **Add** is ours, because drag-from-library is not built yet â€” the
+  reference places songs by dragging.
 - Workspace and project rows carry a leading thumbnail tile: gradient + initial for
   workspaces, a timeline glyph for projects. The reference uses generated artwork and
   mini-timelines; the list endpoint returns no lane data, so a glyph is honest.
@@ -415,16 +420,16 @@ then the panel surfaces the backend's reason instead of failing silently.
 
 ---
 
-## D-017 — "New workspace" creates a default-named workspace immediately
+## D-017 ï¿½ "New workspace" creates a default-named workspace immediately
 
-**Date:** 2026-11-06 **Status:** accepted (G12, spec §19.1)
+**Date:** 2026-11-06 **Status:** accepted (G12, spec ï¿½19.1)
 
 **Decision.** The level-1 `New workspace` row calls
 `POST /api/v3/web-music/workspaces` with the name **"New workspace"** and prepends the
 returned workspace to the list. No naming dialog.
 
 **Why.** Observed live in the reference on 2026-11-06 (signed-in session): clicking the
-row created `New workspace — 0 songs` in place, above the existing workspaces, with no
+row created `New workspace ï¿½ 0 songs` in place, above the existing workspaces, with no
 dialog and no inline rename. The row is part of the Workspaces section, not a separate
 surface. Renaming was not captured from that click, so we do not invent a rename step
 here; `updateWebMusicWorkspace` already exists for whatever surface owns renaming.

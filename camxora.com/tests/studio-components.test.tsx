@@ -192,6 +192,7 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     uploads: [] as StudioUpload[] | null,
     currentProjectId: null,
     likedKeys: [] as string[] | null,
+    playingSongId: null as string | null,
     projectSongIds: [] as string[],
     onClose: noop,
     onBack: noop,
@@ -203,6 +204,8 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     onNewWorkspace: async () => {},
     onUploadAudio: async () => {},
     onAddSong: noop,
+    onTogglePlay: noop,
+    onToggleLike: noop,
     onAddUpload: noop,
     onOpenProject: noop,
     ...overrides,
@@ -265,6 +268,47 @@ describe("StudioLibrary", () => {
     );
     expect(screen.getByText("Today")).toBeTruthy();
     expect(screen.getByText("Song one")).toBeTruthy();
+  });
+
+  it("auditions and likes a song from its row actions", async () => {
+    const user = userEvent.setup();
+    const onTogglePlay = vi.fn();
+    const onToggleLike = vi.fn();
+    const target = song({
+      id: "s1",
+      title: "Row actions",
+      clips: [{ variant: "ok", audio_url: "https://example.test/s1.mp3" }],
+    });
+    const { rerender } = render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [target],
+          onTogglePlay,
+          onToggleLike,
+        })}
+      />
+    );
+    await user.click(screen.getByRole("button", { name: "Play Row actions" }));
+    expect(onTogglePlay).toHaveBeenCalledWith(target);
+    await user.click(screen.getByRole("button", { name: "Like Row actions" }));
+    expect(onToggleLike).toHaveBeenCalledWith(target, true);
+
+    rerender(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [target],
+          playingSongId: "s1",
+          likedKeys: ["s1:ok"],
+          onTogglePlay,
+          onToggleLike,
+        })}
+      />
+    );
+    expect(screen.getByRole("button", { name: "Pause Row actions" })).toBeTruthy();
+    const unlike = screen.getByRole("button", { name: "Unlike Row actions" });
+    expect(unlike.getAttribute("aria-pressed")).toBe("true");
   });
 
   it("collapses a date group from its heading", async () => {

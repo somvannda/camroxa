@@ -17,6 +17,7 @@ import {
 import {
   createWebMusicWorkspace,
   fetchWebMusicLikedKeys,
+  likeWebMusicGeneration,
   listWebMusicWorkspaces,
   type WebMusicWorkspace,
 } from "@/lib/web-music-api";
@@ -126,6 +127,9 @@ export function StudioEditorShell() {
   const [libraryView, setLibraryView] = useState<LibraryView>({ kind: "root" });
   /** Clip keys the viewer liked, for the Liked tile (level 2 filter). */
   const [likedKeys, setLikedKeys] = useState<string[] | null>(null);
+  /** Song auditioning from the library, and its audio element. */
+  const [playingSongId, setPlayingSongId] = useState<string | null>(null);
+  const previewRef = useRef<HTMLAudioElement | null>(null);
   /** Right rail shows the clip inspector instead of the library (spec §70). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
@@ -526,6 +530,15 @@ export function StudioEditorShell() {
     likedKeys,
   ]);
 
+  /** Stop the audition when the drawer closes or the editor unmounts. */
+  useEffect(() => {
+    if (libraryOpen) return;
+    previewRef.current?.pause();
+    previewRef.current = null;
+    setPlayingSongId(null);
+  }, [libraryOpen]);
+  useEffect(() => () => previewRef.current?.pause(), []);
+
   /** Level 2 of the library: the song list, optionally liked-only (spec §19.1). */
   function openLibrarySongs(filter: "all" | "liked") {
     // A tile chooses the whole corpus, so it drops any workspace filter left over from
@@ -558,8 +571,49 @@ export function StudioEditorShell() {
     });
   }
 
-  /** "New workspace" on level 1 creates a default-named one, like the reference. */
-  async function createLibraryWorkspace() {
+  /** Audition a library song: one preview at a time, toggled by the row's Play. */
+  function toggleSongPreview(song: WebMusicGeneration) {
+    if (playingSongId === song.id) {
+      previewRef.current?.pause();
+      previewRef.current = null;
+      setPlayingSongId(null);
+      return;
+    }
+    const clip = song.clips?.find((candidate) => candidate.audio_url);
+    if (!clip?.audio_url) return;
+    previewRef.current?.pause();
+    const audio = new Audio(clip.audio_url);
+    previewRef.current = audio;
+    setPlayingSongId(song.id);
+    audio.onended = () => {
+      setPlayingSongId((current) => (current === song.id ? null : current));
+    };
+    void audio.play().catch(() => {
+      setPlayingSongId((current) => (current === song.id ? null : current));
+    });
+  }
+
+  /** Like/unlike the row's primary clip, updating the Liked filter optimistically. */
+  async function toggleSongLike(song: WebMusicGeneration, nextLiked: boolean) {
+    const clip = song.clips?.find((candidate) => candidate.audio_url) ?? song.clips?.[0];
+    if (!clip) return;
+    const key = `${song.id}:${clip.variant}`;
+    const apply = (liked: boolean) =>
+      setLikedKeys((previous) => {
+        const list = new Set(previous ?? []);
+        if (liked) list.add(key);
+        else list.delete(key);
+        return [...list];
+      });
+    apply(nextLiked);
+    try {
+      await likeWebMusicGeneration(song.id, clip.variant, nextLiked);
+    } catch {
+      apply(!nextLiked);
+    }
+  }
+
+  /** "New workspace" on level 1 creates a default-named one, like the reference. */  async function createLibraryWorkspace() {
     const workspace = await createWebMusicWorkspace("New workspace");
     setLibraryWorkspaces((previous) => [workspace, ...(previous ?? [])]);
   }
@@ -2613,6 +2667,7 @@ export function StudioEditorShell() {
               uploads={libraryUploads}
               currentProjectId={projectId}
               likedKeys={likedKeys}
+              playingSongId={playingSongId}
               projectSongIds={projectSongIds}
               onClose={() => setLibraryOpen(false)}
               onBack={() => setLibraryView({ kind: "root" })}
@@ -2626,6 +2681,8 @@ export function StudioEditorShell() {
               }}
               onUploadAudio={uploadLibraryAudio}
               onAddSong={addSongToTimeline}
+              onTogglePlay={toggleSongPreview}
+              onToggleLike={(song, nextLiked) => void toggleSongLike(song, nextLiked)}
               onAddUpload={addUploadToTimeline}
               onOpenProject={(id) => {
                 window.location.href = `/studio/editor?project=${encodeURIComponent(id)}`;

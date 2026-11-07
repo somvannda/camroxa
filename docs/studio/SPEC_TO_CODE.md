@@ -26,6 +26,7 @@ implements it, and how it was verified. Only rows that exist are listed.
 | Level-2 toolbar: Liked only / New / In Project / Stems-disabled / Uploads | §19.2 / D-016 | `StudioLibrary` toolbar chips; `setLibrarySongFilter`, `uploadLibraryAudio` in `StudioEditorShell.tsx` |
 | New workspace row (creates a default-named workspace) | §19.1 / D-017 | `StudioLibrary` + `createLibraryWorkspace` in `StudioEditorShell.tsx` |
 | Song rows: 44 px artwork, model/variant/length tag strip, In Project filter | §19.2 / D-016 | `primaryClip` / `songTags` in `StudioLibrary.tsx` |
+| Song row actions: Play/Pause audition (one at a time) and Like toggle, plus our Add | §19.2 / D-016 | `StudioLibrary` row actions; `toggleSongPreview` / `toggleSongLike` in `StudioEditorShell.tsx` |
 | Songs grouped under Today / Yesterday / date headers, each collapsible from its heading | §19.2 | `lib/studio-library-grouping.ts`; `StudioLibrary` day headings |
 | Project menu: 9 captured items anchored under the project chip | §18.1 / §44.2 / gap G23 | `components/studio/StudioProjectMenu.tsx` (8 wired, 1 disabled with a reason) |
 | Share: view + copy link, naming gate first | §24 / §24.1 | `StudioProjectMenu` share dialog + `createStudioProjectShare` / `listStudioProjectShares` |

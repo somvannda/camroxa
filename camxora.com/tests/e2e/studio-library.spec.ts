@@ -59,6 +59,13 @@ test("library is a two-level drawer with tiles, sections and search", async ({ p
         (await library.locator(".se-lib-empty").count())
     )
     .toBeGreaterThan(0);
+
+  // Rows carry the reference's row actions: Play, Like and a way to place the clip.
+  if ((await library.locator(".se-lib-song").count()) > 0) {
+    const row = library.locator(".se-lib-song").first();
+    await expect(row.locator("button[aria-label^='Play ']")).toBeVisible();
+    await expect(row.locator("button[aria-label*='Like ']").first()).toBeVisible();
+  }
   await library.getByLabel("Back to library").click();
   await expect(tiles.nth(0)).toBeVisible();
 
