@@ -3706,7 +3706,7 @@ control is the only way out; `Escape` does not close the rail.
 (32 sq) � `More` (32 sq), right-aligned in that order.
 
 **Play.** A 44 x 44 circular transport button directly under the action row, left
-aligned, followed by a **green segmented waveform strip** with the playhead. It is the
+aligned, followed by a **green segmented waveform strip** with the playhead (a canvas decoded from the clip audio). It is the
 song's own player, independent of the arrangement transport.
 
 **Tabs.** `Info` and `Stems`, two equal 180 x 31 halves spanning the rail. `Info` is the

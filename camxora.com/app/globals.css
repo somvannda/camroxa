@@ -4652,7 +4652,9 @@ html{color-scheme:dark}
 .se-song-back{display:flex;align-items:center;gap:6px;flex:1;min-width:0;border:0;background:transparent;color:inherit;font:inherit;text-align:left;cursor:pointer}
 .se-song-back span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:600}
 .se-song-actions{display:flex;align-items:center;gap:6px;padding:10px 12px 6px}
-.se-song-play{display:grid;place-items:center;width:44px;height:44px;margin:0 12px 8px;border-radius:999px;border:0;background:hsl(var(--accent));color:hsl(var(--accent-foreground));cursor:pointer}
+.se-song-player{display:flex;align-items:center;gap:10px;padding:0 12px 8px}
+.se-song-wave{flex:1;min-width:0;height:40px;border-radius:8px;background:rgba(255,255,255,.04)}
+.se-song-play{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:999px;border:0;background:hsl(var(--accent));color:hsl(var(--accent-foreground));cursor:pointer}
 .se-song-play:disabled{opacity:.5;cursor:not-allowed}
 .se-song-body{display:flex;flex-direction:column;gap:14px;padding:12px;flex:1;min-height:0;overflow:auto}
 .se-song-title{margin:8px 0 0;font-size:16px;font-weight:600}

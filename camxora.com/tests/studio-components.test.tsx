@@ -708,6 +708,7 @@ describe("StudioSongDetail", () => {
     expect(screen.getByText(/3:04/)).toBeTruthy();
     expect(screen.getByText("EDM, electronic dance music")).toBeTruthy();
     expect(screen.getByText(/Tonight/)).toBeTruthy();
+    expect(screen.getByRole("img", { name: "Song waveform" })).toBeTruthy();
     expect(screen.getByRole("tab", { name: "Info" }).getAttribute("aria-selected")).toBe("true");
   });
 

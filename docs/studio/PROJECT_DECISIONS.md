@@ -466,8 +466,7 @@ element.
 
 **Consequences.** The rail is a third state (list / detail / clip inspector) and the
 shell clears it whenever the drawer closes. Copy uses `navigator.clipboard` with a
-transient "Copied" label; it is not persisted. Two captured details are **not** built
-yet and are recorded rather than faked: the green **waveform strip** beside Play and the
-**sticky mini-player** at the rail's bottom (artwork, description, actions, waveform,
-`0:08 / 3:16`). Our Play button uses the shared preview element, so the mini-player would
-duplicate it; add it only with a real waveform source.
+transient "Copied" label; it is not persisted. The captured **waveform strip** beside
+Play is decoded from the clip's audio (the same canvas path as the clip inspector); the
+**sticky mini-player** at the rail's bottom is not built yet, because it would duplicate
+the same preview and needs its own layout capture at a list-behind state.
