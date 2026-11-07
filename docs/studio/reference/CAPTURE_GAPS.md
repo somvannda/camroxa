@@ -2,7 +2,7 @@
 
 Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`.
 
-**Final state: 63 DONE · 0 PART · 2 OPEN** of 65. Spec through §99, 80 images.
+**Final state: 63 DONE · 0 PART · 2 OPEN** of 65. Spec through §99, 82 images.
 
 Everything `DONE` has an image and a measured section — including six captured
 **negatives** where the screen we expected does not exist (S47 mixer, S50/S51 export
