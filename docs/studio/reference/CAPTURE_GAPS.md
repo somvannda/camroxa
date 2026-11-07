@@ -134,6 +134,23 @@ left at **108 BPM**, a generated Bass track, one new default-named workspace). I
 1. **S60 / S61** — only with a genuine trigger. Both would be captured as
    "error taxonomy" evidence, not as a screen we can stage.
 
+### Recording (G21) — observed with no input device
+
+Not a manifest screen; recorded here because Arm/Record were previously only known as
+buttons.
+
+- **Arm** toggles the button's own tooltip between `Arm track for recording` and
+  `Disarm track`; there is no other visible state change on the row in this capture.
+- **Record** swaps the transport's `Record` for **`Stop recording`** with a small
+  `Options` disclosure beside it, and swaps `Play` for **`Pause`**. The clock advances
+  while recording; no count-in overlay appeared.
+- No microphone permission prompt or error surfaced in the page, and **stopping produced
+  no take** on the armed MIDI track (no clip, no take lane, no new text). With no input
+  device, the result is silence rather than a failure message.
+
+So the transport state machine and labels are captured; the take/render path and the
+`Options` menu are not. This is why G21's Arm stays disabled in our build.
+
 ## Editing caveat
 
 While testing warping, the `Drum & Bass Demo` tempo was changed from **174 → 110 BPM**
