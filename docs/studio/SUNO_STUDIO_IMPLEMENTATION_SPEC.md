@@ -3695,31 +3695,34 @@ project was reachable, and fabricating one would not answer the question.
 ## 100. EXTRA - library song detail rail `L`
 
 Not one of the 65: this surface appears when a library row is **double-clicked**, and it
-replaces the list inside the same 360 px rail. Measured 2026-11-07 at a 1263 px pane;
-image pending (the row list is `S53-library-songs.jpeg`).
+replaces the list inside the same 360 px rail. Capture:
+`screens/EXTRA-library-song-detail.jpeg`, 1261 x 1245 at DPR 1.
 
-**Header.** `Go back` button carrying the song title (146 x 24), then the close `x`.
-The back control is the only way out; `Escape` does not close the rail.
+**Header.** Artwork thumbnail, the song title, then one facts line -
+`A minor Â· 146 BPM Â· 3:16 Â· Nov 3, 2026` (`key Â· BPM Â· duration Â· date`). The back
+control is the only way out; `Escape` does not close the rail.
 
-**Action row** (y +133, 32 px tall): `Remix` (69 x 32) · `Like` (32 sq) · `Dislike`
-(32 sq) · `More` (32 sq), right-aligned in that order.
+**Action row** (y +133, 32 px tall): `Remix` (69 x 32) ï¿½ `Like` (32 sq) ï¿½ `Dislike`
+(32 sq) ï¿½ `More` (32 sq), right-aligned in that order.
 
 **Play.** A 44 x 44 circular transport button directly under the action row, left
-aligned. It is the song's own player, independent of the arrangement transport.
+aligned, followed by a **green segmented waveform strip** with the playhead. It is the
+song's own player, independent of the arrangement transport.
 
 **Tabs.** `Info` and `Stems`, two equal 180 x 31 halves spanning the rail. `Info` is the
 default.
 
 **Info content, top to bottom.**
 
-- Title, then one facts line: `C minor · 145 BPM · 3:04 · Nov 3, 2026` - rendered as
-  `key · BPM · duration · date`.
-- `Styles` header with two 20 x 20 icon buttons at its right: **copy styles** and
-  **edit song details**; the style text follows, clamped, with a full-width
-  `Show more` / `Show less` button (312 x 41).
-- `Lyrics` header with **copy lyrics**; the lyrics block, clamped, with its own
-  `Show more`.
-- `Comments and notes`: a text field plus a 34 x 34 `Send`.
+- Title, then one facts line: `C minor ï¿½ 145 BPM ï¿½ 3:04 ï¿½ Nov 3, 2026` - rendered as
+  `key ï¿½ BPM ï¿½ duration ï¿½ date`.
+- `Styles` card: `EDM, electronic dance music` and a second row `Variety Default`, with a
+  copy icon; the `Show more` toggle sits centred at the card's bottom.
+- `Lyrics` card: the lyric text with a copy icon, then `Show more`.
+- `Comments and notes`: collapsible, with a comment field that carries the current
+  timestamp (e.g. `0:08`) and an upward send arrow at its right.
+- A **sticky mini-player** sits at the rail's bottom when the list is behind it: artwork,
+  title, description, Like/Dislike/More, Play plus the waveform strip, and `0:08 / 3:16`.
 
 **Stems tab.** Exists on the panel; in this session it was never opened with data.
 

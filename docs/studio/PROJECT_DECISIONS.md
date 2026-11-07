@@ -444,19 +444,19 @@ row/menu, not in the create path.
 
 ---
 
-## D-018 — Song detail rail, with the uncaptured controls disabled
+## D-018 ï¿½ Song detail rail, with the uncaptured controls disabled
 
-**Date:** 2026-11-07 **Status:** accepted (extra capture §100)
+**Date:** 2026-11-07 **Status:** accepted (extra capture ï¿½100)
 
 **Decision.** Double-clicking a library row swaps the rail to a song detail panel:
-`Go back · <title>`, Remix/Like/Dislike/More, a 44 px Play, `Info` / `Stems` tabs, then
+`Go back ï¿½ <title>`, Remix/Like/Dislike/More, a 44 px Play, `Info` / `Stems` tabs, then
 Styles (copy + show-more), Lyrics (copy + show-more) and Comments. Like/Dislike post to
 the same `/like` and `/dislike` endpoints as the rows; Play reuses the single audition
 element.
 
 **Why.**
 
-- The surface was observed live (§100) with its geometry, so the layout is captured, not
+- The surface was observed live (ï¿½100) with its geometry, so the layout is captured, not
   guessed.
 - `Remix`, `More`, the comment field and `Stems` have no captured contract here. They are
   rendered **disabled with a reason** (D-011), not hidden and not faked.
@@ -466,4 +466,8 @@ element.
 
 **Consequences.** The rail is a third state (list / detail / clip inspector) and the
 shell clears it whenever the drawer closes. Copy uses `navigator.clipboard` with a
-transient "Copied" label; it is not persisted.
+transient "Copied" label; it is not persisted. Two captured details are **not** built
+yet and are recorded rather than faked: the green **waveform strip** beside Play and the
+**sticky mini-player** at the rail's bottom (artwork, description, actions, waveform,
+`0:08 / 3:16`). Our Play button uses the shared preview element, so the mini-player would
+duplicate it; add it only with a real waveform source.
