@@ -470,3 +470,22 @@ transient "Copied" label; it is not persisted. The captured **waveform strip** b
 Play is decoded from the clip's audio (the same canvas path as the clip inspector); the
 **sticky mini-player** at the rail's bottom is not built yet, because it would duplicate
 the same preview and needs its own layout capture at a list-behind state.
+
+---
+
+## D-019 — A failed library request says so and offers a retry
+
+**Date:** 2026-11-07 **Status:** accepted (reliability family, D-004)
+
+**Decision.** When any of the drawer's requests (songs, workspaces, projects, uploads,
+liked/disliked keys) fails, the panel raises one `role="alert"` strip -
+"Some library data could not load." - with a **Retry** that clears the cached lists and
+re-runs the loaders.
+
+**Why.** Empty lists are indistinguishable from failures: "No other projects yet" is a
+lie when the request 500'd. The rest of the editor already refuses to hide failures
+(save status, draft recovery), so the library should not be the one surface that does.
+
+**Consequences.** The alert sits under the header on every level, so a failure reached
+from a tile is visible without navigating back. The keys request is auxiliary; a stale
+like state alone does not raise the strip.
