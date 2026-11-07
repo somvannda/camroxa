@@ -1231,7 +1231,10 @@ class ProgressView(PollablePageMixin, QScrollArea):
                 if str(getattr(item, "status", "")).lower() in {"connected", "active"}:
                     return True
         except Exception:
-            return False
+            # A transient auth/network error must not silently route the upload
+            # through the legacy provider (which charges credits and cannot
+            # publish). The native worker reports a clear error instead.
+            return True
         return False
 
     def _on_native_upload_progress(self, row: object, sent: object, total: object) -> None:

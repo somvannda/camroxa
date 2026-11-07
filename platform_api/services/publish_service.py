@@ -597,7 +597,21 @@ class PublishService:
             and job.file_size_bytes is not None
             and int(job.file_size_bytes) != int(size_bytes)
         )
-        if status in {STATUS_QUEUED, STATUS_PROCESSING, STATUS_SUCCESS} and not different_file:
+        if status in {STATUS_QUEUED, STATUS_PROCESSING} and not different_file:
+            # A provider job that never produced a video and has not moved for
+            # hours was abandoned (webhook lost, provider outage). Treating it as
+            # "already uploading" blocked every retry of that video forever.
+            stamp = job.updated_at or job.created_at
+            if stamp is not None and _as_utc(stamp) < _utcnow() - timedelta(hours=2):
+                await self._repo.set_job_status(
+                    job.id,
+                    status=STATUS_FAILED,
+                    error_code="UPLOAD_STALLED",
+                    error_message="The publishing provider never confirmed this upload.",
+                )
+                return None
+            return self._existing_job_view(job, existing=True)
+        if status == STATUS_SUCCESS and not different_file:
             return self._existing_job_view(job, existing=True)
         if status == STATUS_PENDING_UPLOAD and job.media_url and not different_file:
             await self._repo.set_job_status(
