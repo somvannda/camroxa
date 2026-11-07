@@ -51,6 +51,12 @@ async def _sweep_expired_publish_uploads() -> None:
         expired = await get_publish_repo().expire_pending_uploads()
         if expired:
             logger.info("Marked %s publish job(s) failed after upload-URL expiry.", expired)
+        try:
+            from platform_api.dependencies import get_publish_service
+
+            await get_publish_service().reconcile_refunds()
+        except Exception:
+            logger.warning("Publish refund reconciliation failed.", exc_info=True)
     except Exception:
         logger.warning("Progress publish expiry sweep failed.", exc_info=True)
 

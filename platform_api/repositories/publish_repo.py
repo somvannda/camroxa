@@ -604,6 +604,22 @@ class PublishRepository:
         )
         return [_row_to_job(row) for row in rows]
 
+    async def list_charged_without_video(self) -> list[PublishJobRecord]:
+        """Jobs that took credits but never produced a YouTube video."""
+        rows = await self._db.fetch(
+            f"""
+            SELECT {_JOB_COLUMNS}
+            FROM youtube_upload_jobs
+            WHERE credits_charged_units > 0
+              AND youtube_video_id IS NULL
+              AND status IN ('failed', 'cancelled', 'processing', 'queued')
+              AND updated_at < NOW() - INTERVAL '45 minutes'
+            ORDER BY created_at ASC
+            LIMIT 50
+            """
+        )
+        return [_row_to_job(row) for row in rows or []]
+
     async def expire_pending_uploads(self) -> int:
         """Fail jobs whose presigned upload URL expired before the file arrived.
 

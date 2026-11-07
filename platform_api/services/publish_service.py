@@ -137,6 +137,34 @@ class PublishService:
 
     # --- Hosted media retention --------------------------------------------
 
+    async def reconcile_refunds(self) -> int:
+        """Refund charged uploads that never published.
+
+        The retirement path refunds when a retry supersedes a stalled job, but
+        jobs that got stuck earlier (or were retired by an operator) still owed
+        the customer credits. This sweep is idempotent: the refund zeroes
+        credits_charged_units, so a job is only refunded once.
+        """
+        try:
+            jobs = await self._repo.list_charged_without_video()
+        except Exception:
+            logger.warning("Could not list refundable uploads.", exc_info=True)
+            return 0
+        refunded = 0
+        for job in jobs:
+            try:
+                await self._refund_job(
+                    job,
+                    error_code="UPLOAD_STALLED",
+                    error_message="Upload never produced a video; credits refunded automatically.",
+                )
+                refunded += 1
+            except Exception:
+                logger.warning("Refund failed for job %s", job.job_uid, exc_info=True)
+        if refunded:
+            logger.info("Refunded %s stalled upload(s).", refunded)
+        return refunded
+
     async def _purge_stale_media(self) -> None:
         """Delete hosted originals older than the media-URL lifetime.
 
