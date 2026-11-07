@@ -467,13 +467,16 @@ element.
 **Consequences.** The rail is a third state (list / detail / clip inspector) and the
 shell clears it whenever the drawer closes. Copy uses `navigator.clipboard` with a
 transient "Copied" label; it is not persisted. The captured **waveform strip** beside
-Play is decoded from the clip's audio (the same canvas path as the clip inspector); the
-**sticky mini-player** at the rail's bottom is not built yet, because it would duplicate
-the same preview and needs its own layout capture at a list-behind state.
+Play is decoded from the clip's audio (the same canvas path as the clip inspector). The
+**sticky mini-player** is deliberately not built: measured in the browser, the rail's
+content fits its own height (`scrollHeight == clientHeight`, 624 px at a 720 px
+viewport), so the main player never scrolls away. The reference's mini exists because
+its rail scrolls as one column; here it would be a duplicate control that never appears.
+If the rail ever grows past its height, build it then.
 
 ---
 
-## D-019 — A failed library request says so and offers a retry
+## D-019 ï¿½ A failed library request says so and offers a retry
 
 **Date:** 2026-11-07 **Status:** accepted (reliability family, D-004)
 
@@ -492,7 +495,7 @@ like state alone does not raise the strip.
 
 ---
 
-## D-020 — Microphone recording is our own flow, deliberately
+## D-020 ï¿½ Microphone recording is our own flow, deliberately
 
 **Date:** 2026-11-07 **Status:** accepted (G21)
 
