@@ -109,26 +109,23 @@ future "parity" work should not delete them.
 
 ## Next moves, in order
 
-Everything that does **not** depend on a missing backend endpoint or a real generated
-clip is done. What is left:
+Capture is **63/65** (S60/S61 need forced states) and the signed-in reference session is
+available; the one missing image is §100's song-detail rail, blocked only by the Review
+pane not being visible when the screenshot runs. What is left:
 
 1. **W4.2 stems** and the stems half of **W4.3** — the charge path is fixed and verified
    (D-009); what remains is one genuinely generated clip so musicapi can resolve the
    owning Suno account (blocker B-005).
-2. **G12 remainder** — a stems tile/list (needs a finished stems job first, B-005). The
-   two-level library is wired: level 1 is the reference's tile chooser (All Songs / Liked
-   / Stems / Uploads) plus Workspaces and Studio Projects sections with See all; level 2
-   lists the chosen corpus (songs grouped by day with artwork + tag strip, uploads with
-   length) and carries the captured toolbar (filter / + New / upload / In Project /
-   Stems). Workspace rows carry the server's song count and open level 2 filtered via
-   `?workspace_id=`; Liked filters on `fetchWebMusicLikedKeys`; In Project filters on the
-   `songId` clips already record. Library upload posts to `POST /studio/uploads` and is
-   blocked by B-006 (streaming storage not configured).
+2. **G12 remainder** — only the stems tile/list (B-005). The two-level library is fully
+   wired: level 1 tile chooser + Workspaces (with `New workspace`) + Studio Projects;
+   level 2 with collapsible date headings, Play/Like row actions, draggable rows,
+   tag strips, the captured toolbar, and the §100 song-detail rail on double-click.
+   Library upload posts to `POST /studio/uploads` and is blocked by B-006.
 3. **G21 remainder** — per-track Arm (needs recording, which does not exist).
-4. **W6 verification** — the inventory re-walk against a signed-in reference session
-   (B-001); that is also where the five capture gaps get filled.
-5. **e2e in CI** — the specs exist and pass locally; CI has no app/API/DB to run them.
-   Adding a service-backed job is an infrastructure decision, not a code gap.
+4. **§100 image + S60/S61** — an image of the detail rail when the pane is visible, and
+   the two forced states (moderation, no credits). Neither blocks the build.
+5. **e2e in CI** — the specs exist and pass locally (57 tests); CI has no app/API/DB to
+   run them. Adding a service-backed job is an infrastructure decision, not a code gap.
 
 ## Modules added this session (each with a dev handle for measurement)
 

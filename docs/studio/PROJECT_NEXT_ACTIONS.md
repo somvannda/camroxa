@@ -14,10 +14,11 @@ Resume here. **Execution order only** — the authoritative plans live elsewhere
 
 65 screens: **63 DONE, 0 PART, 2 OPEN-by-design**, 80 images, spec through §99.
 
-The three `PART` (S30 warp markers, S32 CC lane, S44 convolution IR) and the two
-`OPEN` (S60 moderation, S61 credits) are parked in `reference/CAPTURE_GAPS.md`. They
-are **opportunistic**, not blocking: fill them when the trigger happens naturally.
-Do not spend another session on interactive archaeology for them.
+The two `OPEN` rows (S60 moderation, S61 credits) are parked in
+`reference/CAPTURE_GAPS.md`; both need a genuine trigger, so they are opportunistic and
+not blocking. S30, S32 and S44 are closed (§97–§99, with S32 as a negative). The only
+pending evidence is an image of the §100 song-detail rail, which needs the Review pane
+visible.
 
 ## Phase 1 — W1 Studio entry: **DONE**
 
