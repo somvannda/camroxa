@@ -267,8 +267,24 @@ describe("StudioLibrary", () => {
     expect(screen.getByText("Song one")).toBeTruthy();
   });
 
-  it("offers a back control from level 2 to the tile chooser", async () => {
+  it("collapses a date group from its heading", async () => {
     const user = userEvent.setup();
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          view: { kind: "songs", title: "All Songs", filter: "all" },
+          songs: [song()],
+        })}
+      />
+    );
+    expect(screen.getByText("Song one")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Today" }));
+    expect(screen.queryByText("Song one")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Today" }));
+    expect(screen.getByText("Song one")).toBeTruthy();
+  });
+
+  it("offers a back control from level 2 to the tile chooser", async () => {    const user = userEvent.setup();
     const onBack = vi.fn();
     render(
       <StudioLibrary

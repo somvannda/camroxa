@@ -131,6 +131,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
 
     const [allWorkspaces, setAllWorkspaces] = useState(false);
     const [allProjects, setAllProjects] = useState(false);
+    /** Date headings collapse their group, like the reference's heading buttons. */
+    const [collapsedDays, setCollapsedDays] = useState<string[]>([]);
     const [uploading, setUploading] = useState(false);
     const [creatingWorkspace, setCreatingWorkspace] = useState(false);
     const [workspaceError, setWorkspaceError] = useState("");
@@ -441,9 +443,26 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
               <ul className="se-lib-list">
                 {groupByDay(visibleSongs).map((group) => (
                   <li key={group.label} className="se-lib-day" aria-label={group.label}>
-                    <span>{group.label}</span>
-                    <ul>
-                      {group.items.map((song) => {
+                    <button
+                      type="button"
+                      className="se-lib-day-head"
+                      aria-expanded={!collapsedDays.includes(group.label)}
+                      onClick={() =>
+                        setCollapsedDays((previous) =>
+                          previous.includes(group.label)
+                            ? previous.filter((label) => label !== group.label)
+                            : [...previous, group.label]
+                        )
+                      }
+                    >
+                      <span>{group.label}</span>
+                      <span aria-hidden="true">
+                        {collapsedDays.includes(group.label) ? "›" : "⌄"}
+                      </span>
+                    </button>
+                    {collapsedDays.includes(group.label) ? null : (
+                      <ul>
+                        {group.items.map((song) => {
                         const clip = primaryClip(song);
                         const tags = songTags(song);
                         return (
@@ -480,7 +499,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                           </li>
                         );
                       })}
-                    </ul>
+                      </ul>
+                    )}
                   </li>
                 ))}
               </ul>
