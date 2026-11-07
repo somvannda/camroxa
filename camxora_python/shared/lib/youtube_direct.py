@@ -184,6 +184,8 @@ def upload_file(
     with httpx.Client(timeout=timeout) as client:
         probe = client.put(session_url, headers={"Content-Range": f"bytes */{size}"})
         if probe.status_code in (200, 201):
+            if on_progress:
+                on_progress(size, size)
             return probe.json()
         if probe.status_code == 308:
             received = probe.headers.get("Range", "")
@@ -207,6 +209,8 @@ def upload_file(
                     },
                 )
                 if response.status_code in (200, 201):
+                    if on_progress:
+                        on_progress(size, size)
                     return response.json()
                 if response.status_code != 308:
                     raise RuntimeError(
