@@ -65,7 +65,7 @@ own fixtures through the API (`tests/e2e/studio-fixture.ts`) and leave those fix
 projects in the sandbox database, so the sandbox accumulates test projects by design;
 they never touch a non-sandbox account.
 
-**Backend suite:** `python -m pytest platform_api/tests -q` → **3163 passed, 0 failed**
+**Backend suite:** `python -m pytest platform_api/tests -q` → **3167 passed, 0 failed**
 at `3215e3d1`. Two tests that still asserted the retired plan machinery were rewritten to
 the credits-only contract: `test_user_spend_service` now expects every spender to be
 reported Free (no plan meters, over-allowance from soft overages), and
