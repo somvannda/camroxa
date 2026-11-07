@@ -2979,14 +2979,30 @@ class YouTubeDirectUploadWorker(QThread):
                     self.status_changed.emit(warning)
 
             self.status_changed.emit("Recording the result…")
-            self._api.report_youtube_upload(
-                batch_id=self._batch_id,
-                profile_id=self._profile_id,
-                role=self._role,
-                video_id=video_id,
-                video_url=url,
-                title=meta["title"],
-            )
+            # The video is already on YouTube: losing the bookkeeping write
+            # would leave it uncharged and missing from Progress, so retry it.
+            from shared.lib.publish_retry import backoff_for, should_retry
+
+            import time as _time
+
+            report_attempt = 1
+            while True:
+                try:
+                    self._api.report_youtube_upload(
+                        batch_id=self._batch_id,
+                        profile_id=self._profile_id,
+                        role=self._role,
+                        video_id=video_id,
+                        video_url=url,
+                        title=meta["title"],
+                    )
+                    break
+                except Exception as exc:  # noqa: BLE001 - retried below
+                    status = getattr(exc, "status", None)
+                    if report_attempt >= 3 or not should_retry(status, str(exc)):
+                        raise
+                    report_attempt += 1
+                    _time.sleep(backoff_for(report_attempt - 1))
             self.succeeded.emit(
                 {
                     "video_id": video_id,
