@@ -151,6 +151,8 @@ export function StudioEditorShell() {
   const [libraryProjects, setLibraryProjects] = useState<StudioProject[] | null>(null);
   const [libraryUploads, setLibraryUploads] = useState<StudioUpload[] | null>(null);
   const [libraryQuery, setLibraryQuery] = useState("");
+  /** A failed library request; the panel offers a retry instead of pretending it is empty. */
+  const [libraryError, setLibraryError] = useState<string | null>(null);
   const librarySearchRef = useRef<HTMLInputElement | null>(null);
   /** Source generation of the selected clip, when it came from the library (G16). */
   const [clipSource, setClipSource] = useState<WebMusicGeneration | null>(null);
@@ -489,7 +491,10 @@ export function StudioEditorShell() {
           if (active) setLibrarySongs(items);
         })
         .catch(() => {
-          if (active) setLibrarySongs([]);
+          if (active) {
+            setLibrarySongs([]);
+            setLibraryError("Some library data could not load.");
+          }
         });
     }
     if (libraryWorkspaces === null) {
@@ -498,7 +503,10 @@ export function StudioEditorShell() {
           if (active) setLibraryWorkspaces(result.items ?? []);
         })
         .catch(() => {
-          if (active) setLibraryWorkspaces([]);
+          if (active) {
+            setLibraryWorkspaces([]);
+            setLibraryError("Some library data could not load.");
+          }
         });
     }
     if (libraryProjects === null) {
@@ -507,7 +515,10 @@ export function StudioEditorShell() {
           if (active) setLibraryProjects(result.items ?? []);
         })
         .catch(() => {
-          if (active) setLibraryProjects([]);
+          if (active) {
+            setLibraryProjects([]);
+            setLibraryError("Some library data could not load.");
+          }
         });
     }
     if (libraryUploads === null) {
@@ -516,7 +527,10 @@ export function StudioEditorShell() {
           if (active) setLibraryUploads(result.items ?? []);
         })
         .catch(() => {
-          if (active) setLibraryUploads([]);
+          if (active) {
+            setLibraryUploads([]);
+            setLibraryError("Some library data could not load.");
+          }
         });
     }
     if (likedKeys === null) {
@@ -696,6 +710,17 @@ export function StudioEditorShell() {
     } catch {
       apply(!nextDisliked);
     }
+  }
+
+  /** Retry every library request after a failure, instead of showing empty lists. */
+  function retryLibrary() {
+    setLibraryError(null);
+    setLibrarySongs(null);
+    setLibraryWorkspaces(null);
+    setLibraryProjects(null);
+    setLibraryUploads(null);
+    setLikedKeys(null);
+    setDislikedKeys(null);
   }
 
   /** "New workspace" on level 1 creates a default-named one, like the reference. */  async function createLibraryWorkspace() {
@@ -2808,6 +2833,8 @@ export function StudioEditorShell() {
               playingSongId={playingSongId}
               playingUploadId={playingUploadId}
               projectSongIds={projectSongIds}
+              error={libraryError}
+              onRetry={retryLibrary}
               onOpenSong={(song) => setDetailSong(song)}
               onClose={() => setLibraryOpen(false)}
               onBack={() => setLibraryView({ kind: "root" })}

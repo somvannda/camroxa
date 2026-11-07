@@ -4553,6 +4553,7 @@ html{color-scheme:dark}
 .se-library{flex:none;display:flex;flex-direction:column;border-left:1px solid rgba(255,255,255,.08);background:#0a0d18}
 .se-library-head{display:flex;align-items:center;justify-content:space-between;height:34px;padding:0 10px;border-bottom:1px solid rgba(255,255,255,.06)}
 .se-lib-empty{padding:14px;color:#8b90a6;font-size:12px;line-height:1.5}
+.se-lib-error{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0;padding:8px 12px;border-bottom:1px solid hsl(var(--border));font-size:12px}
 .se-foot{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:12px;height:44px;flex:none;padding:0 12px;border-top:1px solid rgba(255,255,255,.08);background:#0a0d18}
 .se-foot-tools{display:flex;align-items:center;gap:2px}
 .se-foot-right{display:flex;align-items:center;gap:2px;justify-self:end}

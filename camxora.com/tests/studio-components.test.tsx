@@ -196,6 +196,8 @@ function libraryProps(overrides: Partial<Parameters<typeof StudioLibrary>[0]> = 
     likedKeys: [] as string[] | null,
     playingSongId: null as string | null,
     playingUploadId: null as string | null,
+    error: null as string | null,
+    onRetry: noop,
     projectSongIds: [] as string[],
     onOpenSong: noop,
     onClose: noop,
@@ -529,6 +531,22 @@ describe("StudioLibrary", () => {
     const file = new File(["hello"], "take.wav", { type: "audio/wav" });
     await user.upload(screen.getByLabelText("Choose audio file"), file);
     expect(onUploadAudio).toHaveBeenCalledWith(file);
+  });
+
+  it("surfaces a failed load with a retry", async () => {
+    const user = userEvent.setup();
+    const onRetry = vi.fn();
+    render(
+      <StudioLibrary
+        {...libraryProps({
+          error: "Some library data could not load.",
+          onRetry,
+        })}
+      />
+    );
+    expect(screen.getByRole("alert").textContent).toContain("could not load");
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(onRetry).toHaveBeenCalledOnce();
   });
 
   it("creates a workspace from the captured New workspace row", async () => {

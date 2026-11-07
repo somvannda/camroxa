@@ -48,6 +48,9 @@ export type StudioLibraryProps = {
   projectSongIds: string[];
   /** Double-clicking a row opens its detail rail (§100). */
   onOpenSong: (song: WebMusicGeneration) => void;
+  /** Failed library request, surfaced with a retry instead of an empty list. */
+  error?: string | null;
+  onRetry?: () => void;
   onClose: () => void;
   onBack: () => void;
   onOpenSongs: (filter: "all" | "liked") => void;
@@ -132,6 +135,8 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
       playingSongId,
       playingUploadId,
       projectSongIds,
+      error,
+      onRetry,
       onOpenSong,
       onClose,
       onBack,
@@ -249,6 +254,15 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
             <Icon name="fa-xmark" />
           </button>
         </div>
+
+        {error ? (
+          <p className="se-lib-error" role="alert">
+            <span>{error}</span>
+            <button type="button" className="se-pill" onClick={onRetry}>
+              Retry
+            </button>
+          </p>
+        ) : null}
 
         {view.kind === "root" ? (
           <div className="se-lib-root">
