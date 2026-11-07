@@ -47,7 +47,7 @@ Status: `DONE` captured and documented · `PART` partially captured · `OPEN` no
 | S29 | Take lanes expanded | DONE §72.1 |
 | S30 | Warp markers | DONE §97 - 358 markers, white pennants on the waveform |
 | S31 | MIDI clip editor | DONE §73 |
-| S32 | Automation lane — CC | PART §74 — empty lane only |
+| S32 | Automation lane - CC | DONE §99 - tabs reachable; lane is read-only (negative) |
 | S33 | Automation lane — velocity | DONE §75 |
 
 ## 3. Magic Bar (S34–S38)

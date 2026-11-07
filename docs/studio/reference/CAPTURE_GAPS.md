@@ -2,7 +2,7 @@
 
 Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`.
 
-**Final state: 62 DONE · 1 PART · 2 OPEN** of 65. Spec through §98, 80 images.
+**Final state: 63 DONE · 0 PART · 2 OPEN** of 65. Spec through §99, 80 images.
 
 Everything `DONE` has an image and a measured section — including six captured
 **negatives** where the screen we expected does not exist (S47 mixer, S50/S51 export
@@ -15,11 +15,10 @@ Opening an `Untitled Project` from the library fixed both instantly, which is wh
 cleared S37, S29, S50/S51 and S45. **Any future capture involving export, generation,
 takes or plugins must start from a native project.**
 
-## The 3 that remain
+## The 2 that remain
 
 | Screen | State | Exactly what is missing |
 |---|---|---|
-| S32 CC lane | PART §74 | The `Modulation` lane renders but accepts no drawn points; the lane tabs (`Velocity` / `Pitch Bend` / `Modulation`) were reached live on 2026-11-06 behind the clip editor's **Parameters** button. The lane canvas has no React pointer handlers, so the draw gesture is not a plain click/drag. Needs the gesture or a project with CC data. |
 | S60 moderation | OPEN | Needs a policy-violating prompt. **Do not fabricate** — capture it only if it happens naturally. |
 | S61 credits | OPEN | Needs an account with no credits. Ours has balance, so this cannot be produced honestly. |
 
@@ -85,7 +84,7 @@ the project, not on the clip row. So the model is confirmed: **markers are auto-
 per clip by the Stretch mode**, and the three modes differ only in which positions they
 choose.
 
-### S32 — CC lane (`PART` → tabs reached, no draw gesture found)
+### S32 — CC lane (`DONE`, §99)
 
 A generated MIDI clip (from "Write a simple 4-bar bass line") exposes the CC lanes the
 spec described, behind the clip editor's **Parameters** button:
@@ -102,10 +101,9 @@ The lanes sit under the note lane and share its x-axis. Evidence from 2026-11-06
   lane: single click, drag, alt-drag, right-click (`contextmenu`) and double-click. The
   project issued **no save request** afterwards and no point elements appeared, so the
   lane did not change.
-- Conclusion so far: the lane is likely **read-only in this build**; the tabs exist, the
-  data model may, but the editor does not expose a draw gesture. The remaining proof is
-  a screenshot of the lane in this state (view is staged: Bass clip → Parameters →
-  Modulation), plus a project with existing CC data to see the point rendering.
+- Conclusion: the lane is **read-only in this build**; the tabs exist, the lane paints,
+  but no gesture edits it. Closed as a documented negative in **§99** (image: the
+  existing `S32-modulation-lane-empty.jpeg`).
 
 ### Library details confirmed live (for §19.1/§19.2)
 
@@ -126,10 +124,7 @@ left at **108 BPM**, a generated Bass track, one new default-named workspace). I
 
 ## If a next session wants to finish them
 
-1. **S32** — the lane tabs are reached; the draw gesture is not a plain click/drag on
-   the canvas. Try modifier-drag and right-click on the lane's wrapper, or open a
-   project that already has CC data.
-2. **S60 / S61** — only with a genuine trigger. Both would be captured as
+1. **S60 / S61** — only with a genuine trigger. Both would be captured as
    "error taxonomy" evidence, not as a screen we can stage.
 
 ## Editing caveat

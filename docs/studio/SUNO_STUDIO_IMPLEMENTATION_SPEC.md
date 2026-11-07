@@ -2875,7 +2875,7 @@ Two decisions worth copying:
   the editor's own toolbar because they apply to this clip; the project tempo and
   signature stay in the header.
 
-## 74. S32 — automation lane, CC `PART` (empty state only)
+## 74. S32 - automation lane, CC `L` (closed as a negative by 99)
 
 Capture `screens/S32-modulation-lane-empty.jpeg`.
 
@@ -3654,3 +3654,40 @@ Selecting `Halls � New England Hall` is what the image shows.
 The asset name is the only text that identifies what is loaded, and the waveform is the
 only confirmation that it decoded - a boolean "loaded" flag would not be enough. An
 editor must keep the `0s..3s` time axis and place the IR on it, as 78 argued.
+
+## 99. S32 - the Modulation lane is read-only (negative) `L`
+
+Image: `screens/S32-modulation-lane-empty.jpeg` (74). This closes the `PART`: the lane
+is not empty because we failed to find the gesture - it is empty because **no gesture
+in this build produces a point**.
+
+**Staging.** A generated MIDI clip (`Write a simple 4-bar bass line`), clip editor open,
+`Parameters` expanded. The lane tabs appear exactly as 74 describes:
+
+```
+Velocity   Pitch Bend   Modulation
+```
+
+The lane spans the same x-axis as the note lane, with the baseline at the bottom.
+
+**What was tried on 2026-11-07**, each dispatched at the lane's canvas:
+
+| Gesture | Result |
+|---|---|
+| single click | no point, no save request |
+| press-drag across the lane | no point, no save request |
+| alt-drag | no point, no save request |
+| right-click (`contextmenu`) | no menu, no point |
+| double-click | no point, no save request |
+
+The project's save endpoint was not called after any of them, so nothing changed in the
+document. At the element level, neither the lane canvas nor its wrapper exposes pointer
+handlers - the lane is painted, not edited.
+
+**Conclusion.** Treat the CC lanes as **read-only in the Studio build captured here**.
+The tabs and the lane chrome exist (74), but there is no draw, quantise or clear
+affordance. A clone that ships a drawable Modulation lane would be adding behaviour the
+reference does not demonstrate; if CC editing is wanted, it is new scope, not parity.
+
+**Still unobserved:** how a point *renders* if a project already carries CC data. No such
+project was reachable, and fabricating one would not answer the question.
