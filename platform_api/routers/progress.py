@@ -877,6 +877,7 @@ async def list_progress_rows(
             LEFT JOIN songs s ON s.id = y.song_id
             WHERE y.user_id = $1
               AND COALESCE(y.batch_id, s.batch_id) = ANY($2::uuid[])
+            ORDER BY y.created_at ASC
             """,
             user_id,
             batch_ids,
@@ -942,7 +943,11 @@ async def list_progress_rows(
             target_groups = [group] if group is batch_group else [group, batch_group]
             for target_group in target_groups:
                 if status == "success":
+                    # The newest job wins: a video that eventually published
+                    # must not keep showing an earlier failed attempt.
                     target_group["success"] += 1
+                    target_group["failed"] = 0
+                    target_group["pending"] = 0
                 elif status in {
                     "pending",
                     "pending_upload",
@@ -959,7 +964,7 @@ async def list_progress_rows(
                     target_group["youtube_url"] = f"https://www.youtube.com/watch?v={row['youtube_video_id']}"
                 elif row["youtube_url"]:
                     target_group["youtube_url"] = str(row["youtube_url"])
-                if target_group["created_at"] is None or row["created_at"] < target_group["created_at"]:
+                if target_group["created_at"] is None or row["created_at"] > target_group["created_at"]:
                     target_group["created_at"] = row["created_at"]
                 if target_group["updated_at"] is None or row["updated_at"] >= target_group["updated_at"]:
                     target_group["updated_at"] = row["updated_at"]
