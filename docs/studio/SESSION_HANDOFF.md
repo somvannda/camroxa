@@ -128,8 +128,7 @@ pane not being visible when the screenshot runs. What is left:
 3. **G21** - arm + microphone takes are implemented as a documented divergence (D-020); the reference take flow itself is still uncaptured.
 4. **§100 image + S60/S61** — an image of the detail rail when the pane is visible, and
    the two forced states (moderation, no credits). Neither blocks the build.
-5. **e2e in CI** — the specs exist and pass locally (57 tests); CI has no app/API/DB to
-   run them. Adding a service-backed job is an infrastructure decision, not a code gap.
+5. **e2e in CI** - a service-backed job (`camxora-e2e`) now provisions Postgres, musicapi, platform_api, the web app and Playwright. It is `continue-on-error` until a green run is observed, then flip that flag.
 
 ## Modules added this session (each with a dev handle for measurement)
 

@@ -500,3 +500,132 @@ jobs:
         env:
           NEXT_TELEMETRY_DISABLED: "1"
         run: npm run build
+
+  # The Studio e2e specs need the real stack: Postgres + musicapi + platform_api + the web
+  # app. This job provisions all of it from scratch. It is NON-BLOCKING until someone can
+  # watch a green run end to end; flip `continue-on-error` then.
+  camxora-e2e:
+    name: camxora.com Playwright e2e (services, non-blocking until green)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: sunoapi
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/sunoapi
+      JWT_SECRET: ci-e2e-jwt-secret-0123456789abcdef0123456789abcdef
+      COOKIE_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      PLATFORM_DATABASE_URL: postgresql+asyncpg://postgres:postgres@localhost:5432/camxora_pfm_sandbox
+      PLATFORM_STUDIO_INTERNAL_TOKEN: ci-studio-token
+      PLATFORM_SUNO_API_BASE_URL: http://127.0.0.1:4003
+      PLATFORM_API_URL: http://127.0.0.1:8100
+      PYTHONIOENCODING: utf-8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect camxora.com changes
+        id: changes
+        shell: bash
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          if git diff --name-only "$BASE"...HEAD -- camxora.com/ .github/workflows/pr-checks.yml | grep -q .; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create the Studio database
+        if: steps.changes.outputs.run == 'true'
+        run: PGPASSWORD=postgres psql -h localhost -U postgres -c "CREATE DATABASE camxora_pfm_sandbox"
+
+      - uses: actions/setup-python@v5
+        if: steps.changes.outputs.run == 'true'
+        with:
+          python-version: "3.11"
+
+      - name: Install platform_api
+        if: steps.changes.outputs.run == 'true'
+        run: pip install -e "./platform_api[dev]"
+
+      - uses: actions/setup-node@v4
+        if: steps.changes.outputs.run == 'true'
+        with:
+          node-version: "22"
+
+      - name: musicapi dependencies + migrations
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi
+        run: |
+          npm ci --no-audit --no-fund
+          ./node_modules/.bin/tsx scripts/migrate.ts
+
+      - name: Start musicapi
+        if: steps.changes.outputs.run == 'true'
+        working-directory: musicapi
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run serve > /tmp/musicapi.log 2>&1 &
+          for _ in $(seq 1 40); do
+            curl -fsS http://127.0.0.1:4003/health >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:4003/health
+
+      # platform_api migrates on startup, so seed after it is healthy.
+      - name: Start platform_api
+        if: steps.changes.outputs.run == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m uvicorn platform_api.main:app --host 127.0.0.1 --port 8100 --log-level warning > /tmp/platform.log 2>&1 &
+          for _ in $(seq 1 90); do
+            curl -fsS http://127.0.0.1:8100/health >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8100/health || { tail -n 80 /tmp/platform.log; exit 1; }
+
+      - name: Seed the sandbox account
+        if: steps.changes.outputs.run == 'true'
+        run: python scripts/seed_sandbox_user.py
+
+      - name: camxora.com dependencies
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        run: npm ci --no-audit --no-fund
+
+      - name: Start the web app
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run dev > /tmp/web.log 2>&1 &
+          for _ in $(seq 1 60); do
+            curl -fsS http://127.0.0.1:3103/studio >/dev/null 2>&1 && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:3103/studio || { tail -n 80 /tmp/web.log; exit 1; }
+
+      - name: Install Playwright browsers
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        run: npx playwright install --with-deps chromium
+
+      - name: e2e
+        if: steps.changes.outputs.run == 'true'
+        working-directory: camxora.com
+        run: npx playwright test
