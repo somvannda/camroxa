@@ -603,9 +603,10 @@ class PublishService:
             # "already uploading" blocked every retry of that video forever.
             stamp = job.updated_at or job.created_at
             if stamp is not None and _as_utc(stamp) < _utcnow() - timedelta(minutes=45):
-                await self._repo.set_job_status(
-                    job.id,
-                    status=STATUS_FAILED,
+                # A charged job that never produced a video must give the
+                # credits back automatically - the customer got nothing.
+                await self._refund_job(
+                    job,
                     error_code="UPLOAD_STALLED",
                     error_message="The publishing provider never confirmed this upload.",
                 )
