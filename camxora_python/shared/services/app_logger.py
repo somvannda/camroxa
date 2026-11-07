@@ -30,6 +30,9 @@ UI_RING_MAX = 5000
 WRITE_QUEUE_MAX = 2000
 FILE_RETENTION_DAYS = 14
 MAX_FILE_BYTES = 25 * 1024 * 1024  # rotate within a day if huge
+# audio-load-diag.log / preview-gl-diag.log are written by their own modules and
+# are not part of the camxora-YYYYMMDD.log rotation, so cap them here.
+DIAG_LOG_MAX_BYTES = 8 * 1024 * 1024
 SYNC_MAX_LINES = 5000
 SYNC_MAX_CHARS = 800_000
 
@@ -290,7 +293,32 @@ class AppLogger:
                         path.unlink(missing_ok=True)
                 except OSError:
                     continue
+            for path in log_dir.glob("*.log"):
+                if path.name.startswith("camxora-"):
+                    continue
+                try:
+                    stat = path.stat()
+                    if stat.st_mtime < cutoff:
+                        path.unlink(missing_ok=True)
+                    elif stat.st_size > DIAG_LOG_MAX_BYTES:
+                        self._rotate_diag_log(path)
+                except OSError:
+                    continue
         except Exception:
+            return
+
+    @staticmethod
+    def _rotate_diag_log(path: Path) -> None:
+        """Keep one bounded ``.1`` copy of a diagnostic log that grows forever.
+
+        Writers open the path per line, so renaming is safe: the next append
+        recreates the original file.
+        """
+        try:
+            rotated = path.with_name(f"{path.name}.1")
+            rotated.unlink(missing_ok=True)
+            path.rename(rotated)
+        except OSError:
             return
 
     def shutdown(self) -> None:

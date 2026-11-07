@@ -62,6 +62,36 @@ def _install_global_excepthook() -> None:
     threading.excepthook = _handle_thread
 
 
+def _start_local_storage_maintenance() -> None:
+    """Trim local caches off the UI thread (audio analysis, update leftovers)."""
+
+    def _worker() -> None:
+        try:
+            from shared.services.audio_analysis_cache import prune_audio_analysis_cache
+            from shared.services.app_logger import log_info
+
+            stats = prune_audio_analysis_cache()
+            if stats.get("deletedEntries"):
+                log_info(
+                    "audio analysis cache pruned: "
+                    f"{stats['deletedEntries']} entries, "
+                    f"{stats['deletedBytes'] / (1024 * 1024):.1f} MB freed",
+                    category="cache",
+                )
+        except Exception:
+            pass
+        try:
+            from shared.services.software_update_installer import cleanup_stale_update_packages
+
+            cleanup_stale_update_packages()
+        except Exception:
+            pass
+
+    import threading
+
+    threading.Thread(target=_worker, name="local-storage-maintenance", daemon=True).start()
+
+
 def run() -> int:
     from shared.lib.app_install import get_or_seed_install_datetime
     from shared.lib.env_loader import load_desktop_env
@@ -149,6 +179,10 @@ def run() -> int:
         log_info("Camxora desktop starting", category="app")
     except Exception:
         pass
+
+    # Disk housekeeping (audio-analysis cache, stale installers) on a daemon
+    # thread — must not delay the splash or touch the UI thread.
+    _start_local_storage_maintenance()
 
     window = RootWindow()
     guard.set_activate_handler(window.bring_to_front)

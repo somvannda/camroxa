@@ -6,6 +6,7 @@ import logging
 import os
 import shutil
 import sys
+import time
 import zipfile
 from pathlib import Path
 from urllib.parse import urlparse
@@ -285,6 +286,20 @@ function Assert-CamxoraVersion([string]$ExePath, [string]$TargetVersion) {{
   Write-CamxoraUpdateStatus '{PHASE_DONE}' 0 $installed
   return $installed
 }}
+function Remove-CamxoraPackage([string]$Path) {{
+  if (-not $Path) {{ return }}
+  if (-not (Test-Path -LiteralPath $Path)) {{ return }}
+  # The installer may still hold the file briefly; retry, but never fail the
+  # update because the leftover package could not be deleted.
+  for ($i = 0; $i -lt 10; $i++) {{
+    try {{
+      Remove-Item -LiteralPath $Path -Force -ErrorAction Stop
+      return
+    }} catch {{
+      Start-Sleep -Milliseconds 500
+    }}
+  }}
+}}
 """
 
     @classmethod
@@ -361,6 +376,7 @@ Assert-CamxoraVersion $exe $targetVersion | Out-Null
 if (Test-Path -LiteralPath $exe) {{
   Start-Process -FilePath $exe
 }}
+Remove-CamxoraPackage $setup
 """
 
     @classmethod
@@ -399,6 +415,7 @@ Assert-CamxoraVersion $exe $targetVersion | Out-Null
 if (Test-Path -LiteralPath $exe) {{
   Start-Process -FilePath $exe
 }}
+Remove-CamxoraPackage $msi
 """
 
     @staticmethod
@@ -420,3 +437,42 @@ if (Test-Path -LiteralPath $exe) {{
                 str(script_path),
             ],
         )
+
+
+# A staged installer only matters while the apply script is still waiting for
+# the old process to exit (seconds). Anything this old is a failed/abandoned
+# update and just wastes hundreds of megabytes.
+STALE_UPDATE_ARTIFACT_HOURS = 24.0
+
+
+def cleanup_stale_update_packages(*, max_age_hours: float = STALE_UPDATE_ARTIFACT_HOURS) -> int:
+    """Delete leftover installers and zip staging directories from ``updates/``.
+
+    The apply scripts remove their own package on success; this sweep catches
+    failed installs and versions that predate that cleanup.
+    """
+    work_dir = get_updates_work_dir()
+    cutoff = time.time() - max(1.0, float(max_age_hours)) * 3600
+    removed = 0
+    try:
+        candidates = list(work_dir.glob("CamxoraSetup-update*")) + list(work_dir.glob("staging"))
+    except OSError:
+        return 0
+    for path in candidates:
+        try:
+            if path.is_dir():
+                if path.stat().st_mtime < cutoff:
+                    shutil.rmtree(path, ignore_errors=True)
+                    removed += 1
+                continue
+            if path.suffix.lower() not in {".exe", ".msi", ".zip"}:
+                continue
+            if path.stat().st_mtime < cutoff:
+                path.unlink(missing_ok=True)
+                removed += 1
+        except OSError:
+            continue
+    if removed:
+        logger.info("removed %d stale update artifact(s) from %s", removed, work_dir)
+    return removed
+
