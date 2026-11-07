@@ -15,6 +15,10 @@ and this project uses [Semantic Versioning](https://semver.org/).
   partial tick (e.g. `8 / 10`) before switching to `Publishing`.
 - Recording a finished upload retries transient failures twice, so a video already live on YouTube is
   never left unrecorded or uncharged because of a network blip.
+- **Opening the Diagnostics route no longer crashes.** `app/router.py` imported
+  `features.logs.views.log_view`, which did not exist, so navigating to `/app/log` (and the
+  route smoke test) raised `ModuleNotFoundError`. The support-only console is now implemented, and
+  `.gitignore`'s bare `logs` rule no longer hides the `features/logs` package.
 
 ## [1.6.0] - 2026-11-07
 

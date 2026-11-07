@@ -20,7 +20,6 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import IntEnum
 from pathlib import Path
-from typing import Callable
 
 from PySide6.QtCore import QObject, Signal
 
@@ -162,6 +161,11 @@ class AppLogger:
         if max_lines > 0 and len(items) > max_lines:
             return items[-max_lines:]
         return items
+
+    def record_count(self) -> int:
+        """Cheap size probe for the Diagnostics console (no list copy)."""
+        with self._lock:
+            return len(self._records)
 
     def snapshot_text(self, *, max_lines: int = SYNC_MAX_LINES, max_chars: int = SYNC_MAX_CHARS) -> str:
         lines = [redact_text(rec.format_line()) for rec in self.snapshot(max_lines=max_lines)]
