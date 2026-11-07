@@ -152,6 +152,8 @@ export function StudioEditorShell() {
     start: number;
     trackId: string;
   } | null>(null);
+  /** Guards the permission await so a double-click cannot open two streams. */
+  const recordStartingRef = useRef(false);
   /** Right rail shows the clip inspector instead of the library (spec §70). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
@@ -645,16 +647,22 @@ export function StudioEditorShell() {
 
   /** Start a microphone take on the armed track and roll the transport. */
   async function startRecording() {
+    if (recordStartingRef.current || recorderRef.current) return;
     setRecordError("");
     const target = tracks.find((track) => track.armed);
     if (!target) {
       setRecordError("Arm a track before recording.");
       return;
     }
-    if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    if (
+      typeof navigator === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    ) {
       setRecordError("This browser cannot record audio.");
       return;
     }
+    recordStartingRef.current = true;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
@@ -672,6 +680,8 @@ export function StudioEditorShell() {
       if (!playing) togglePlayback();
     } catch {
       setRecordError("Microphone permission was denied.");
+    } finally {
+      recordStartingRef.current = false;
     }
   }
 
