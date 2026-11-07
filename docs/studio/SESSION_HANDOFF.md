@@ -53,6 +53,7 @@ Helpers in `scripts/`:
 
 | Layer | Command | Count |
 |---|---|---|
+| production build | `npm run build` | passes; the classic editor page is wrapped in Suspense like the shell |
 | unit (pure helpers) | `npm test` | snap, meter, draft, seed, WAV encode |
 | component | `npm test` | header, footer, library, provenance strip, track panel |
 | API contract | `npm test` | paging, version field, 409 mapping, 204 |
