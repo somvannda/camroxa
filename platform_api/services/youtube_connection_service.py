@@ -94,12 +94,15 @@ def _oauth_transport_context(callback_url: str):
     try:
         yield
     finally:
-        if not enable_insecure_transport:
-            return
-        if previous is None:
-            os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
-        else:
-            os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = previous
+        # Never return early here: a bare return inside a contextmanager's
+        # finally swallows whatever exception the body raised, which turned
+        # every failed Google callback into "cannot access local variable
+        # credentials" instead of the real reason.
+        if enable_insecure_transport:
+            if previous is None:
+                os.environ.pop("OAUTHLIB_INSECURE_TRANSPORT", None)
+            else:
+                os.environ["OAUTHLIB_INSECURE_TRANSPORT"] = previous
 
 
 @dataclass(frozen=True, slots=True)
