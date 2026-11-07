@@ -7,6 +7,15 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.1] - 2026-11-07
+
+### Fixed
+
+- A native upload now reports **100%** when the last chunk lands; the row used to stop at the last
+  partial tick (e.g. `8 / 10`) before switching to `Publishing`.
+- Recording a finished upload retries transient failures twice, so a video already live on YouTube is
+  never left unrecorded or uncharged because of a network blip.
+
 ## [1.6.0] - 2026-11-07
 
 ### Added
