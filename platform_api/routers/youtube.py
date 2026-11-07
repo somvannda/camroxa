@@ -450,7 +450,12 @@ async def report_youtube_upload(
     ctx: CurrentUserDep,
     service: YouTubeConnectionServiceDep,
 ) -> dict[str, Any]:
-    """Record a desktop-direct upload so Progress shows the final state."""
+    """Record a desktop-direct upload, then charge it once it is live.
+
+    Native uploads used to bypass billing entirely while the legacy provider
+    path charged, so the same action cost different amounts depending on the
+    route. The charge is applied here, exactly once per job row.
+    """
     job_id = await service.record_upload_result(
         user_id=UUID(ctx.user_id),
         batch_id=request.batch_id,
@@ -462,7 +467,43 @@ async def report_youtube_upload(
         status=request.status,
         error_message=request.error_message,
     )
+    if job_id and str(request.status) == "success":
+        await _charge_native_upload(UUID(ctx.user_id), job_id)
+
     return {"ok": True, "job_id": job_id}
+
+
+async def _charge_native_upload(user_id: UUID, job_id: str) -> None:
+    """Charge the publish price once, guarded by the job's charged column."""
+    from platform_api.dependencies import get_v3_billing_service
+    from platform_api.services.publish_pricing import POSTFORME_PUBLISH_OP
+
+    pool = get_db_pool()
+    try:
+        row = await pool.fetchrow(
+            "SELECT credits_charged_units, credit_ref_id FROM youtube_upload_jobs "
+            "WHERE id = $1::uuid",
+            job_id,
+        )
+        if row is None or int(row["credits_charged_units"] or 0) > 0:
+            return
+        charge = await get_v3_billing_service().charge(
+            user_id=user_id,
+            op=POSTFORME_PUBLISH_OP,
+            ref_id=f"youtube-upload:{job_id}",
+            product="desktop",
+        )
+        units = int(charge.get("amount_units") or 0)
+        await pool.execute(
+            "UPDATE youtube_upload_jobs SET credits_charged_units = $2, "
+            "credit_ref_id = $3, updated_at = NOW() WHERE id = $1::uuid "
+            "AND credits_charged_units = 0",
+            job_id,
+            units,
+            f"youtube-upload:{job_id}",
+        )
+    except Exception:
+        logger.warning("Could not charge native YouTube upload %s", job_id, exc_info=True)
 
 
 @router.post("/connect-sessions/{session_id}/select-channel", response_model=YouTubeConnectionResponse)
