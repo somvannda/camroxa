@@ -52,6 +52,11 @@ and this project uses [Semantic Versioning](https://semver.org/).
   editable combo that looked like an empty text field, and a stale auth-failure flag blocked loading
   permanently.
 - Connection polling stops once a channel is connected instead of refreshing every two seconds.
+- **The audio-analysis cache no longer grows without limit.** Entries are now float16 (no derived
+  arrays), unused entries expire after 30 days, and the directory is LRU-trimmed to 2 GB
+  (`CAMXORA_AUDIO_CACHE_MAX_MB` overrides it). Settings → Preferences → Storage shows the current size
+  and can clear it. Leftover update installers and the unbounded `audio-load-diag.log` are also
+  cleaned up now.
 
 ## [1.5.23] - 2026-11-06
 

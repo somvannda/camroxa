@@ -1507,6 +1507,34 @@ class SettingsView(QWidget):
             root.addWidget(sample_packs_panel)
             root.addWidget(library_panel)
 
+        storage_panel = SettingsPanel(
+            "Storage",
+            subtitle=(
+                "Local audio-analysis cache used by preview and export. "
+                "Clearing it is safe — tracks are analyzed again the next time they open."
+            ),
+        )
+        self._cache_size_label = QLabel("Audio-analysis cache: measuring…")
+        self._cache_size_label.setObjectName(SUBTITLE_LABEL_ID)
+        self._cache_size_label.setWordWrap(True)
+        storage_panel.add_widget(self._cache_size_label)
+        self._clear_audio_cache_btn = QPushButton("Clear audio cache")
+        self._clear_audio_cache_btn.setObjectName(SETTINGS_SECONDARY_BUTTON_ID)
+        self._clear_audio_cache_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._clear_audio_cache_btn.setToolTip(
+            "Delete cached audio analysis for this PC. The next preview or export re-analyzes."
+        )
+        self._clear_audio_cache_btn.clicked.connect(self._on_clear_audio_cache_clicked)
+        storage_panel.add_widget(self._clear_audio_cache_btn)
+        storage_panel.add_widget(
+            note_box(
+                "Each cached track is roughly 10–25 MB. Camxora keeps the most recently "
+                "used entries up to 2 GB (set CAMXORA_AUDIO_CACHE_MAX_MB to change it) "
+                "and drops anything unused for 30 days automatically."
+            )
+        )
+        root.addWidget(storage_panel)
+
         diagnostics_panel = SettingsPanel(
             "Diagnostics",
             subtitle=(
@@ -3291,6 +3319,49 @@ class SettingsView(QWidget):
             self._pref_bg_random.setChecked(draft.image_bg_random)
             self._pref_th_random.setChecked(draft.image_thumb_random)
             self._refresh_sample_library_lists()
+        self._refresh_audio_cache_stats()
+
+    def _refresh_audio_cache_stats(self) -> None:
+        label = getattr(self, "_cache_size_label", None)
+        if label is None:
+            return
+        try:
+            from shared.services.audio_analysis_cache import audio_analysis_cache_stats
+
+            stats = audio_analysis_cache_stats()
+        except Exception:
+            label.setText("Audio-analysis cache: unavailable")
+            return
+        size_mb = stats["totalBytes"] / (1024 * 1024)
+        cap_mb = stats["maxBytes"] / (1024 * 1024)
+        label.setText(
+            f"Audio-analysis cache: {size_mb:,.0f} MB across {stats['entries']:,} "
+            f"track(s) — limit {cap_mb:,.0f} MB."
+        )
+
+    def _on_clear_audio_cache_clicked(self) -> None:
+        confirmed = QMessageBox.question(
+            self,
+            "Clear Audio Cache",
+            "Delete the local audio-analysis cache? Preview and export will re-analyze "
+            "each track the next time it opens.",
+        )
+        if confirmed != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            from shared.services.audio_analysis_cache import clear_audio_analysis_cache
+
+            result = clear_audio_analysis_cache()
+        except Exception as exc:
+            self._show_error(f"Could not clear the audio cache: {exc}")
+            return
+        freed_mb = result.get("deletedBytes", 0) / (1024 * 1024)
+        self._refresh_audio_cache_stats()
+        self._set_footer_notice(
+            f"Cleared audio cache ({freed_mb:,.0f} MB freed).",
+            tone="success",
+            auto_reset_ms=5000,
+        )
 
     def _bind_text_library_tab(self, kind: str) -> None:
         options = self._prompt_options_for_kind(kind)
