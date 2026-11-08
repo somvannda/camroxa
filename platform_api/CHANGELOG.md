@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-08] - Web-music read path coalesces Suno polls
+
+### Fixed
+
+- `GET /api/v3/web-music/generations/{id}` polled Suno inline across every pool key (30s each), up to three times per request, and the browser calls that route every few seconds. In production those requests reached **215s** and 681 of them exceeded 5s in two hours, queueing unrelated work including `POST /api/v3/auth/refresh` (p95 **13.5s**, max **89.7s**). Read-path polls are now coalesced process-wide: one bounded poll per task per 5s (12s cap), shared across request instances, with the cached row served while another poll runs. See `docs/changelog/2026-11-08-web-music-poll-coalescing.md`.
+
 ## [2026-11-08] - Refresh retries after a dropped/slow response
 
 ### Fixed

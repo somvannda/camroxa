@@ -108,6 +108,24 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_SLIDER_VALUE = 0.5
 
+# Read-path provider polls are only a fallback for a missing callback. Every
+# `GET /web-music/generations/{id}` used to poll Suno inline across *all* pool
+# keys (up to PLATFORM_SUNO_TIMEOUT_SECONDS each), and the browser polls that
+# route every few seconds. Under load those requests piled up for minutes and
+# starved the API: production auth refresh took 13-90s and returned 499/502.
+# Coalesce them process-wide: at most one bounded poll per task per window.
+_PENDING_POLL_TTL_SECONDS = 5.0
+_PENDING_POLL_TIMEOUT_SECONDS = 12.0
+_PENDING_POLL_CACHE_MAX = 5000
+_pending_poll_results: dict[str, tuple[float, Any]] = {}
+_pending_poll_inflight: set[str] = set()
+
+
+def reset_pending_poll_cache() -> None:
+    """Test hook: clear the read-path poll coalescer."""
+    _pending_poll_results.clear()
+    _pending_poll_inflight.clear()
+
 
 def _b2_key_is_task_scoped(storage_key: str | None, task_id: UUID) -> bool:
     """True when the object path contains this task id (not a shared untitled-ok.mp3)."""
@@ -5574,6 +5592,49 @@ class WebMusicService:
         )
         return len(rows)
 
+    async def _poll_pending_coalesced(self, external_task_id: str):
+        """Poll the provider at most once per task per window, process-wide.
+
+        Returns the poll result, or ``None`` when this request should serve the
+        cached row (another request is polling, or the provider is slow). The
+        read path must never block a browser poll for the full multi-key scan.
+        """
+        key = str(external_task_id or "").strip()
+        if not key:
+            return None
+        now = time.monotonic()
+        cached = _pending_poll_results.get(key)
+        if cached is not None and now - cached[0] < _PENDING_POLL_TTL_SECONDS:
+            return cached[1]
+        if key in _pending_poll_inflight:
+            return None
+        _pending_poll_inflight.add(key)
+        try:
+            result = await asyncio.wait_for(
+                self._poll_suno_task_status(key),
+                timeout=_PENDING_POLL_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.info(
+                "Web music Suno poll timed out for %s; serving cached row.", key
+            )
+            return None
+        except Exception as exc:
+            logger.warning("Web music Suno poll failed for %s: %s", key, exc)
+            return None
+        finally:
+            _pending_poll_inflight.discard(key)
+        _pending_poll_results[key] = (time.monotonic(), result)
+        if len(_pending_poll_results) > _PENDING_POLL_CACHE_MAX:
+            cutoff = time.monotonic() - 3600.0
+            for stale_key in [
+                cached_key
+                for cached_key, (at, _value) in _pending_poll_results.items()
+                if at < cutoff
+            ]:
+                _pending_poll_results.pop(stale_key, None)
+        return result
+
     async def _poll_suno_task_status(self, external_task_id: str):
         """Poll record-info across the pool's keys.
 
@@ -5594,10 +5655,8 @@ class WebMusicService:
         external_id = str(_row_value(row, "external_task_id") or "").strip()
         if not external_id:
             return row
-        try:
-            polled = await self._poll_suno_task_status(external_id)
-        except Exception as exc:
-            logger.warning("Web music Suno poll failed for %s: %s", row["id"], exc)
+        polled = await self._poll_pending_coalesced(external_id)
+        if polled is None:
             return row
         if polled.state == "success":
             urls = urls_from_generate_poll(polled)
@@ -5692,10 +5751,8 @@ class WebMusicService:
         external_id = str(_row_value(row, "external_task_id") or "").strip()
         if not external_id:
             return row
-        try:
-            polled = await self._poll_suno_task_status(external_id)
-        except Exception as exc:
-            logger.warning("Web music Suno cover poll failed for %s: %s", row["id"], exc)
+        polled = await self._poll_pending_coalesced(external_id)
+        if polled is None:
             return row
         if polled.state != "success":
             return row
@@ -5749,10 +5806,8 @@ class WebMusicService:
         external_id = str(_row_value(row, "external_task_id") or "").strip()
         if not external_id:
             return row
-        try:
-            polled = await self._poll_suno_task_status(external_id)
-        except Exception as exc:
-            logger.warning("Web music duration poll failed for %s: %s", row["id"], exc)
+        polled = await self._poll_pending_coalesced(external_id)
+        if polled is None:
             return row
         if polled.state != "success":
             return row
