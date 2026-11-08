@@ -25,7 +25,7 @@ from shared.services.local_user_scope import (
     get_active_workspace_context,
 )
 from shared.services.platform_api import PlatformApi
-from shared.services.platform_client import PlatformApiError
+from shared.services.platform_client import PlatformApiError, RefreshOutcome
 from shared.services.secure_storage import TOKENS_STORAGE_KEY, SecureStorage
 from shared.services.workspace_cache import WorkspaceCache
 from shared.services.workspace_prefs_sync import pull_workspace_prefs_from_settings
@@ -73,7 +73,7 @@ class SessionService:
 
         self._api.client.set_session_handlers(
             get_tokens=self.get_tokens,
-            refresh_session=self.ensure_fresh_session,
+            refresh_session=self.refresh_session,
             clear_session=self.clear,
         )
 
@@ -175,13 +175,28 @@ class SessionService:
         deactivate_local_user_scope()
 
     def ensure_fresh_session(self, force: bool = False, *, failed_access_token: str = "") -> bool:
+        """Renew tokens when needed; ``True`` when a usable session remains."""
+        return self.refresh_session(
+            force=force,
+            failed_access_token=failed_access_token,
+        ) in (RefreshOutcome.REFRESHED, RefreshOutcome.NOT_NEEDED)
+
+    def refresh_session(
+        self, force: bool = False, *, failed_access_token: str = ""
+    ) -> RefreshOutcome:
+        """Renew the access token and report *why* renewal did or did not happen.
+
+        Callers use the outcome to distinguish a real sign-out (the server
+        rejected the refresh token) from a temporary network/server problem,
+        which must keep the saved session intact.
+        """
         with self._refresh_lock:
             if self._refresh_inflight is not None:
                 self._refresh_inflight.wait(timeout=30)
 
             tokens = self.get_tokens()
             if tokens is None:
-                return False
+                return RefreshOutcome.REJECTED
 
             now_ms = int(time.time() * 1000)
             needs_refresh = now_ms > tokens.expiresAt - 120_000
@@ -194,37 +209,74 @@ class SessionService:
             elif force:
                 needs_refresh = needs_refresh or now_ms > tokens.expiresAt - 5_000
             if not needs_refresh:
-                return True
+                return RefreshOutcome.NOT_NEEDED
 
             if self._refresh_inflight is not None:
                 self._refresh_inflight.wait(timeout=30)
-                return self.get_tokens() is not None
+                if self.get_tokens() is None:
+                    return RefreshOutcome.REJECTED
+                return RefreshOutcome.NOT_NEEDED
 
             event = threading.Event()
             self._refresh_inflight = event
+            attempted_refresh = ""
             try:
                 tokens = self.get_tokens()
                 if tokens is None or not tokens.refreshToken:
-                    return False
-                refreshed = self._api.refresh(tokens.refreshToken)
+                    return RefreshOutcome.REJECTED
+                attempted_refresh = tokens.refreshToken
+                refreshed = self._api.refresh(attempted_refresh)
                 self.set_tokens(AuthTokens.from_token_response(refreshed))
-                return True
+                return RefreshOutcome.REFRESHED
             except Exception as exc:
-                from shared.services.app_logger import log_error, log_warn
-                from shared.services.platform_client import PlatformApiError
-
-                if isinstance(exc, PlatformApiError) and exc.status == 401:
-                    log_warn(
-                        f"Session refresh rejected: {exc}. Sign in again.",
-                        category="auth",
-                    )
-                    self.clear()
-                else:
-                    log_error("Session token refresh failed", category="auth", exc=exc)
-                return False
+                return self._classify_refresh_failure(exc, attempted_refresh)
             finally:
                 event.set()
                 self._refresh_inflight = None
+
+    def _classify_refresh_failure(self, exc: Exception, attempted_refresh: str) -> RefreshOutcome:
+        """Map a failed refresh to a sign-out or a retryable, non-destructive error."""
+        from shared.services.app_logger import log_error, log_warn
+
+        if isinstance(exc, PlatformApiError) and exc.status == 401:
+            if self._adopt_rotated_tokens(attempted_refresh) is not None:
+                log_warn(
+                    "Session refresh was already rotated by another thread or app "
+                    "instance; continuing with the saved token pair.",
+                    category="auth",
+                )
+                return RefreshOutcome.NOT_NEEDED
+            log_warn(
+                f"Session refresh rejected: {exc}. Sign in again.",
+                category="auth",
+            )
+            self.clear()
+            return RefreshOutcome.REJECTED
+        log_error("Session token refresh failed", category="auth", exc=exc)
+        return RefreshOutcome.TRANSIENT
+
+    def _adopt_rotated_tokens(self, attempted_refresh: str) -> AuthTokens | None:
+        """Adopt a newer token pair another app instance may have saved.
+
+        Two studio windows share one encrypted store; when the first rotates the
+        refresh token, the second must re-read it instead of signing the user out.
+        """
+        reload_store = getattr(self._storage, "reload", None)
+        if callable(reload_store):
+            try:
+                reload_store()
+            except Exception:
+                return None
+        stored = _parse_tokens(self._storage.get(TOKENS_STORAGE_KEY))
+        if stored is None or not attempted_refresh:
+            return None
+        if stored.refreshToken == attempted_refresh:
+            return None
+        self._tokens = stored
+        mark_fresh = getattr(self._api.client, "mark_tokens_fresh", None)
+        if callable(mark_fresh):
+            mark_fresh()
+        return stored
 
     def run_bootstrap(self, report: ReportFn | None = None) -> BootstrapResult:
         def _report(label: str, detail: str, progress: int) -> None:
@@ -245,10 +297,19 @@ class SessionService:
         now_ms = int(time.time() * 1000)
         if now_ms > tokens.expiresAt - 30_000:
             _report("Refreshing session", "Renewing your login session.", 35)
-            if not self.ensure_fresh_session(force=True):
+            outcome = self.refresh_session(force=True)
+            if outcome is RefreshOutcome.REJECTED:
                 self.clear()
                 _report("Opening sign in", "Session expired.", 100)
                 return BootstrapResult(BootstrapDestination.LOGIN, message="Session expired. Please sign in again.")
+            if outcome is RefreshOutcome.TRANSIENT:
+                # A network/gateway failure is not a sign-out: keep the saved
+                # tokens so the next launch or retry can renew them.
+                _report("Waiting for network", "Your session is saved; the server is unreachable.", 100)
+                return BootstrapResult(
+                    BootstrapDestination.LOGIN,
+                    message="Cannot reach Camxora servers right now. Your sign-in is saved — try again.",
+                )
 
         _report("Validating session", "Checking account session.", 55)
         try:
@@ -261,23 +322,33 @@ class SessionService:
                 message="Unable to read your account profile. Please sign in again.",
             )
         except PlatformApiError as exc:
-            self.clear()
-            _report("Opening sign in", "Paid plan required." if is_desktop_plan_required_error(exc) else "Session expired.", 100)
             if is_desktop_plan_required_error(exc):
+                self.clear()
+                _report("Opening sign in", "Paid plan required.", 100)
                 return BootstrapResult(
                     BootstrapDestination.LOGIN,
                     message=DESKTOP_REQUIRES_PAID_PLAN_MESSAGE,
                 )
-            return BootstrapResult(
-                BootstrapDestination.LOGIN,
-                message="Unable to verify your account. Please sign in again.",
-            )
-        except Exception:
+            if exc.status in (0, 408, 429) or exc.status >= 500:
+                # Transient outage: do not throw away a perfectly good session.
+                _report("Waiting for network", "The server is temporarily unavailable.", 100)
+                return BootstrapResult(
+                    BootstrapDestination.LOGIN,
+                    message="Cannot reach Camxora servers right now. Your sign-in is saved — try again.",
+                )
             self.clear()
             _report("Opening sign in", "Session expired.", 100)
             return BootstrapResult(
                 BootstrapDestination.LOGIN,
                 message="Unable to verify your account. Please sign in again.",
+            )
+        except Exception:
+            # Unknown failure (bad payload, bug, flaky connection): keep the
+            # session rather than forcing a fresh sign-in.
+            _report("Opening sign in", "Session check failed.", 100)
+            return BootstrapResult(
+                BootstrapDestination.LOGIN,
+                message="Unable to verify your account right now. Please try again.",
             )
 
         if not user_can_use_desktop_studio(me):

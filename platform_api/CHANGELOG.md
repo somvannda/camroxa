@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-08] - Refresh retries after a dropped/slow response
+
+### Fixed
+
+- `POST /api/v3/auth/refresh` treated a rotated-token retry after **15 seconds** as credential theft. Production refreshes take 17–146s under load, so a client whose response was lost (nginx 499/502) retried too late and was forced to sign in again — the desktop showed `Unauthenticated` until it did. The reuse grace is now configurable (`PLATFORM_REFRESH_REUSE_GRACE_SECONDS`, default **180s**) and still rejects genuinely stale tokens beyond it. See `docs/changelog/2026-11-08-desktop-session-refresh-resilience.md`.
+
 ## [2026-11-06] — SLAI image model `cx/gpt-6-sol-image`
 
 ### Added

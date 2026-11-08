@@ -7,6 +7,19 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+
+- **A dropped or slow session refresh no longer signs the user out.** The desktop
+  used to clear the saved tokens on any refresh failure — including timeouts,
+  connection drops and 5xx gateway errors — then showed `Unauthenticated` on every
+  poll while the footer still showed cached credits. Production refreshes were
+  observed taking 17–146s (with 499/502 replies); only a real server `401` for the
+  refresh token now clears the session. A second studio window also adopts the pair
+  rotated by the first instead of clearing itself. See
+  `docs/changelog/2026-11-08-desktop-session-refresh-resilience.md`.
+
 ## [1.6.2] - 2026-11-07
 
 ### Fixed

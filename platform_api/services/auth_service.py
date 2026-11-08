@@ -78,19 +78,25 @@ class RefreshTokenRepository(Protocol):
 _BCRYPT_ROUNDS = 12
 
 # Concurrent refresh requests can arrive on different API workers with the
-# same refresh token (desktop retry, multiple tabs, network replay). A token
-# revoked within this window is treated as a benign race, not credential
-# theft, so one duplicate refresh cannot log the whole account out.
-REFRESH_REUSE_GRACE_SECONDS = 15
+# same refresh token (desktop retry after a dropped or slow response, multiple
+# tabs, network replay). A token revoked within this window is treated as a
+# benign race, not credential theft, so one duplicate refresh cannot log the
+# whole account out. Production refreshes have been observed taking 17–146s
+# under database pressure, so the window must comfortably exceed a client
+# retry cycle (the desktop polls every 20–60s).
+REFRESH_REUSE_GRACE_SECONDS = 180
 
 
-def _revoked_within_grace(revoked_at: object) -> bool:
+def _revoked_within_grace(
+    revoked_at: object,
+    grace_seconds: float = REFRESH_REUSE_GRACE_SECONDS,
+) -> bool:
     if not isinstance(revoked_at, datetime):
         return False
     value = revoked_at
     if value.tzinfo is None:
         value = value.replace(tzinfo=timezone.utc)
-    return (datetime.now(timezone.utc) - value).total_seconds() <= REFRESH_REUSE_GRACE_SECONDS
+    return (datetime.now(timezone.utc) - value).total_seconds() <= grace_seconds
 
 
 # ---------------------------------------------------------------------------
@@ -167,7 +173,9 @@ class AuthService:
             raise AuthenticationError("Refresh token not found.")
 
         if stored.get("revoked_at") is not None:
-            if _revoked_within_grace(stored.get("revoked_at")):
+            if _revoked_within_grace(
+                stored.get("revoked_at"), self._config.refresh_reuse_grace_seconds
+            ):
                 logger.info(
                     "Concurrent refresh for user %s within grace window; issuing a new pair.",
                     stored.get("user_id"),
@@ -200,7 +208,9 @@ class AuthService:
         claimed = await self._refresh_token_repo.revoke(token_hash)
         if not claimed:
             latest = await self._refresh_token_repo.get_by_hash(token_hash)
-            if latest is not None and _revoked_within_grace(latest.get("revoked_at")):
+            if latest is not None and _revoked_within_grace(
+                latest.get("revoked_at"), self._config.refresh_reuse_grace_seconds
+            ):
                 logger.info(
                     "Concurrent refresh for user %s within grace window; issuing a new pair.",
                     latest.get("user_id"),
