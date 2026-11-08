@@ -77,6 +77,83 @@ async def _global_exception_handler(request: Request, exc: Exception) -> JSONRes
     )
 
 
+# Keep in sync with create_pool(max_size=...) in the lifespan below.
+_DB_POOL_MAX_SIZE = 8
+
+
+def _pool_is_saturated(pool: Any, *, max_size: int) -> bool:
+    """True when every pooled connection is checked out."""
+    try:
+        return pool.get_idle_size() <= 0 and pool.get_size() >= max_size
+    except Exception:
+        return False
+
+
+def _db_busy_response() -> JSONResponse:
+    """503 for temporary back-pressure, so clients retry instead of hanging."""
+    return JSONResponse(
+        status_code=503,
+        content={
+            "error": {
+                "code": "DATABASE_BUSY",
+                "message": "The service is busy. Please try again in a moment.",
+            }
+        },
+        headers={"Retry-After": "2"},
+    )
+
+
+async def _db_pool_timeout_handler(request: Request, exc: Exception) -> JSONResponse:
+    """A pooled-connection acquire timeout is back-pressure, not a server fault."""
+    logger.warning(
+        "Database pool acquire timeout on %s %s (limit %.0fs)",
+        request.method,
+        request.url.path,
+        get_settings().db_pool_acquire_timeout_seconds,
+    )
+    return _db_busy_response()
+
+
+async def _watch_pool_saturation(
+    pool: Any,
+    *,
+    max_size: int,
+    warn_after_seconds: float,
+    interval_seconds: float = 5.0,
+) -> None:
+    """Log when the pool stays fully checked out — the cause of queued requests."""
+    loop = asyncio.get_running_loop()
+    busy_since: float | None = None
+    last_warned: float | None = None
+    while True:
+        await asyncio.sleep(interval_seconds)
+        if not _pool_is_saturated(pool, max_size=max_size):
+            if busy_since is not None:
+                logger.info(
+                    "Database pool recovered (size=%s idle=%s).",
+                    pool.get_size(),
+                    pool.get_idle_size(),
+                )
+            busy_since = None
+            last_warned = None
+            continue
+        now = loop.time()
+        busy_since = busy_since if busy_since is not None else now
+        busy_for = now - busy_since
+        if busy_for < warn_after_seconds:
+            continue
+        if last_warned is not None and now - last_warned < warn_after_seconds:
+            continue
+        logger.warning(
+            "Database pool saturated: size=%s idle=%s for %.0fs (acquire limit %.0fs)",
+            pool.get_size(),
+            pool.get_idle_size(),
+            busy_for,
+            get_settings().db_pool_acquire_timeout_seconds,
+        )
+        last_warned = now
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Manage application startup and shutdown lifecycle.
@@ -119,6 +196,7 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     pipeline_stuck_task: asyncio.Task | None = None
     subscription_maintenance_task: asyncio.Task | None = None
     b2_backfill_task: asyncio.Task | None = None
+    pool_watch_task: asyncio.Task | None = None
 
     configure_api_logging()
     logger.info("API logging ready — batch/music, image, and credit progress appear in this terminal.")
@@ -159,9 +237,25 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if dsn.startswith("postgresql+asyncpg://"):
             dsn = dsn.replace("postgresql+asyncpg://", "postgresql://", 1)
 
-        db_pool = await asyncpg.create_pool(dsn, min_size=4, max_size=8)
+        db_pool = await asyncpg.create_pool(
+            dsn,
+            min_size=4,
+            max_size=_DB_POOL_MAX_SIZE,
+            timeout=settings.db_pool_acquire_timeout_seconds,
+        )
         set_db_pool(db_pool)
-        logger.info("Database connection pool created.")
+        logger.info(
+            "Database connection pool created (max %s, acquire timeout %.0fs).",
+            _DB_POOL_MAX_SIZE,
+            settings.db_pool_acquire_timeout_seconds,
+        )
+        pool_watch_task = asyncio.create_task(
+            _watch_pool_saturation(
+                db_pool,
+                max_size=_DB_POOL_MAX_SIZE,
+                warn_after_seconds=float(settings.db_pool_saturation_log_seconds),
+            )
+        )
 
         from platform_api.dependencies import get_settings_repo
 
@@ -533,6 +627,15 @@ async def _lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         except Exception as exc:
             logger.warning("Error stopping B2 backfill task: %s", exc)
 
+    if pool_watch_task is not None:
+        pool_watch_task.cancel()
+        try:
+            await pool_watch_task
+        except asyncio.CancelledError:
+            pass
+        except Exception as exc:
+            logger.warning("Error stopping DB pool monitor: %s", exc)
+
     try:
         from platform_api.services.telegram_ops_alert_service import (
             drain_telegram_ops,
@@ -625,6 +728,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # --- Global Exception Handlers ---
     app.add_exception_handler(PlatformAPIError, _platform_error_handler)  # type: ignore[arg-type]
+    app.add_exception_handler(asyncio.TimeoutError, _db_pool_timeout_handler)  # type: ignore[arg-type]
     app.add_exception_handler(Exception, _global_exception_handler)
 
     # --- Router Registration ---

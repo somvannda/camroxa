@@ -6,6 +6,12 @@ Backend REST/WebSocket API â€” generation, billing, streaming, image jobs, 
 **Policy:** [`docs/CHANGELOG_GUIDE.md`](../docs/CHANGELOG_GUIDE.md)
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+## [2026-11-08] - DB pool acquire timeout + saturation warnings
+
+### Fixed
+
+- Each worker's `asyncpg` pool had **no acquire timeout**, so when all 8 connections were busy a request waited indefinitely. Production `POST /auth/refresh` was seen at 13–90s during the web-music polling incident — the desktop then treated a slow refresh as a dead session. Connections now time out after **10s** (`PLATFORM_DB_POOL_ACQUIRE_TIMEOUT_SECONDS`) with `503 DATABASE_BUSY` + `Retry-After: 2`, and a monitor warns when the pool stays saturated for 30s. See `docs/changelog/2026-11-08-db-pool-backpressure.md`.
+
 ## [2026-11-08] - Web-music read path coalesces Suno polls
 
 ### Fixed

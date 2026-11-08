@@ -54,6 +54,13 @@ class Settings(BaseSettings):
 
     # --- Database (PostgreSQL) ---
     database_url: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/platform_db"
+    # Bound how long a request waits for a pooled connection. Without a limit a
+    # saturated pool queues requests indefinitely: production auth refresh was
+    # seen taking 13-90s behind slow web-music reads. Failing fast lets the
+    # client retry (the desktop treats this as a transient, non-sign-out error).
+    db_pool_acquire_timeout_seconds: float = 10.0
+    # Warn when every pooled connection stays busy this long (seconds).
+    db_pool_saturation_log_seconds: int = 30
 
     # --- Redis ---
     redis_url: str = "redis://localhost:6379/0"
