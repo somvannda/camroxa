@@ -38,7 +38,14 @@ describe("help registry", () => {
     }
   });
 
-  it("mentions recording is not implemented where it would be misleading", () => {
-    expect(HELP_ENTRIES["track-arm"].body.toLowerCase()).toContain("not implemented");
+  it("explains recording now that it is implemented", () => {
+    const arm = HELP_ENTRIES["track-arm"].body.toLowerCase();
+    expect(arm).toContain("armed");
+    expect(arm).toContain("record");
+    expect(HELP_ENTRIES.record.body.toLowerCase()).toContain("microphone");
+    expect(HELP_ENTRIES["record-input"].body.toLowerCase()).toContain("microphone");
+    expect(Object.values(HELP_ENTRIES).some((entry) => /not implemented/.test(entry.body))).toBe(
+      false
+    );
   });
 });

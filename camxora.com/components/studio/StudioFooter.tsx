@@ -56,7 +56,7 @@ export function StudioFooter(props: StudioFooterProps) {
         <button type="button" className="se-icon" disabled aria-label="Tools (not wired)"><Icon name="fa-sliders" /></button>
         <button type="button" className="se-icon" disabled aria-label="Draw (not wired)"><Icon name="fa-pen" /></button>
         <button type="button" className="se-icon" disabled aria-label="List (not wired)"><Icon name="fa-bars" /></button>
-        <button type="button" className="se-icon" disabled aria-label="Microphone (not wired)"><Icon name="fa-microphone" /></button>
+        <button type="button" className="se-icon" disabled aria-label="Microphone input (use Record in the transport)" title="Recording lives in the transport: arm a track, then Record"><Icon name="fa-microphone" /></button>
       </div>
 
       <div className="se-master" data-help="master">

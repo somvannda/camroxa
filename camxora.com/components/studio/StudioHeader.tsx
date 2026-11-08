@@ -179,6 +179,7 @@ export function StudioHeader(props: StudioHeaderProps) {
             aria-label="Choose input for recording"
             aria-expanded={inputOpen}
             onClick={onToggleInput}
+            data-help="record-input"
             title={
               inputDevices.find((device) => device.id === inputDeviceId)?.label ?? "System default"
             }

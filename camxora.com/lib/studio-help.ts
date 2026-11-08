@@ -79,7 +79,15 @@ export const HELP_ENTRIES: Record<string, HelpEntry> = {
   },
   "track-arm": {
     title: "Arm track",
-    body: "Recording is not implemented in this build, so arming is disabled rather than pretending to record.",
+    body: "Picks the track Record captures onto. One track is armed at a time; Record in the transport starts and stops the take.",
+  },
+  record: {
+    title: "Record",
+    body: "Captures the chosen microphone onto the armed track and rolls the transport. Stop recording ends the take and places it at the playhead.",
+  },
+  "record-input": {
+    title: "Recording input",
+    body: "Chooses which microphone Record uses. The setting belongs to this browser, not the project, so it never syncs.",
   },
   "track-volume": {
     title: "Track level",
