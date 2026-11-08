@@ -28,7 +28,7 @@ function headerProps() {
   return {
     title: "Demo",
     projectId: "p1" as string | null,
-    settings: { ghostDrag: true, whatsThis: true },
+    settings: { ghostDrag: true, whatsThis: true, inputDeviceId: null },
     onSettingsChange: noop,
     onRenamed: noop,
     onShowQuickStart: noop,
@@ -64,6 +64,11 @@ function headerProps() {
     onTogglePlay: noop,
     onToggleRecord: noop,
     recording: false,
+    inputDeviceId: null as string | null,
+    inputDevices: [] as { id: string; label: string }[],
+    inputOpen: false,
+    onToggleInput: noop,
+    onPickInput: noop,
     onToggleLoop: noop,
     onToggleMetronome: noop,
     onUndo: noop,
@@ -153,6 +158,32 @@ describe("StudioHeader", () => {
       screen.getByRole("menuitemcheckbox", { name: /Normalise mix/ }).getAttribute("aria-checked")
     ).toBe("true");
   });
+  it("lists recording inputs and picks one", async () => {
+    const user = userEvent.setup();
+    const onPickInput = vi.fn();
+    render(
+      <StudioHeader
+        {...headerProps()}
+        inputOpen
+        onPickInput={onPickInput}
+        inputDeviceId="mic2"
+        inputDevices={[
+          { id: "mic1", label: "Built-in Microphone" },
+          { id: "mic2", label: "USB Microphone" },
+        ]}
+      />
+    );
+    const menu = screen.getByRole("menu", { name: "Recording input" });
+    expect(menu).toBeTruthy();
+    expect(
+      screen.getByRole("menuitemradio", { name: "USB Microphone" }).getAttribute("aria-checked")
+    ).toBe("true");
+    await user.click(screen.getByRole("menuitemradio", { name: "Built-in Microphone" }));
+    expect(onPickInput).toHaveBeenCalledWith("mic1");
+    await user.click(screen.getByRole("menuitemradio", { name: "System default" }));
+    expect(onPickInput).toHaveBeenLastCalledWith(null);
+  });
+
   it("labels Record and toggles it, disabled until a track is armed", async () => {
     const user = userEvent.setup();
     const onToggleRecord = vi.fn();
@@ -943,3 +974,4 @@ describe("StudioTrackPanel", () => {
     expect(onAddUploadTrack).toHaveBeenCalledOnce();
   });
 });
+

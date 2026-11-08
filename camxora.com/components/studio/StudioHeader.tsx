@@ -64,6 +64,12 @@ export type StudioHeaderProps = {
   onToggleRecord: () => void;
   recordDisabled?: boolean;
   recordTitle?: string;
+  /** Recording input picker (the captured "Choose input for recording" control). */
+  inputDeviceId: string | null;
+  inputDevices: { id: string; label: string }[];
+  inputOpen: boolean;
+  onToggleInput: () => void;
+  onPickInput: (deviceId: string | null) => void;
   onToggleLoop: () => void;
   onToggleMetronome: () => void;
   onUndo: () => void;
@@ -112,6 +118,11 @@ export function StudioHeader(props: StudioHeaderProps) {
     onToggleRecord,
     recordDisabled,
     recordTitle,
+    inputDeviceId,
+    inputDevices,
+    inputOpen,
+    onToggleInput,
+    onPickInput,
     onToggleLoop,
     onToggleMetronome,
     onUndo,
@@ -149,18 +160,58 @@ export function StudioHeader(props: StudioHeaderProps) {
         <button type="button" className="se-icon" onClick={onBackToStart} aria-label="Back to start" data-help="back-to-start">
           <Icon name="fa-backward-step" />
         </button>
-        <button
-          type="button"
-          className={`se-icon se-record${recording ? " on" : ""}`}
-          onClick={onToggleRecord}
-          aria-label={recording ? "Stop recording" : "Record"}
-          aria-pressed={recording}
-          disabled={recordDisabled && !recording}
-          title={recordTitle}
-          data-help="record"
-        >
-          <span className="se-record-dot" aria-hidden="true" />
-        </button>
+        <div className="se-record-wrap">
+          <button
+            type="button"
+            className={`se-icon se-record${recording ? " on" : ""}`}
+            onClick={onToggleRecord}
+            aria-label={recording ? "Stop recording" : "Record"}
+            aria-pressed={recording}
+            disabled={recordDisabled && !recording}
+            title={recordTitle}
+            data-help="record"
+          >
+            <span className="se-record-dot" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            className="se-icon se-input-toggle"
+            aria-label="Choose input for recording"
+            aria-expanded={inputOpen}
+            onClick={onToggleInput}
+            title={
+              inputDevices.find((device) => device.id === inputDeviceId)?.label ?? "System default"
+            }
+          >
+            <Icon name="fa-chevron-down" />
+          </button>
+          {inputOpen ? (
+            <div className="se-input-menu" role="menu" aria-label="Recording input">
+              <button
+                type="button"
+                role="menuitemradio"
+                aria-checked={!inputDeviceId}
+                onClick={() => onPickInput(null)}
+              >
+                System default
+              </button>
+              {inputDevices.map((device) => (
+                <button
+                  key={device.id}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={inputDeviceId === device.id}
+                  onClick={() => onPickInput(device.id)}
+                >
+                  {device.label}
+                </button>
+              ))}
+              {inputDevices.length === 0 ? (
+                <p className="se-input-empty">No inputs listed yet; allow microphone access.</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
         <button
           type="button"
           className={`se-icon${loop ? " on" : ""}`}

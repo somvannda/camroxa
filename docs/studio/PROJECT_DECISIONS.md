@@ -517,6 +517,10 @@ those were not captured, so they are not invented.
 
 - Arm is exclusive (arming another track disarms the previous one); arming is disabled
   while recording, and Stop stops both the take and the transport.
+- The transport carries the captured **input chooser**: a disclosure next to Record lists
+  `enumerateDevices()` microphones and stores the chosen `deviceId` in the browser
+  profile, not the project. Because browsers expose one input per capture, this is one
+  global choice rather than the reference's per-track routing.
 - A denied permission or an empty take surfaces as an error strip, not a silent no-op.
 - The take is an ordinary clip: it can be moved, trimmed, faded, deleted and exported,
   and it uses the same upload row as the library.

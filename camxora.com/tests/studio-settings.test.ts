@@ -25,7 +25,13 @@ describe("parseStudioSettings", () => {
   });
 
   it("keeps a stored false", () => {
-    expect(parseStudioSettings('{"ghostDrag":false}')).toEqual({ ghostDrag: false, whatsThis: true });
+    expect(parseStudioSettings('{"ghostDrag":false}')).toEqual({ ghostDrag: false, whatsThis: true, inputDeviceId: null });
+  });
+
+  it("keeps a stored microphone and rejects an empty one", () => {
+    expect(parseStudioSettings('{"inputDeviceId":"mic-2"}').inputDeviceId).toBe("mic-2");
+    expect(parseStudioSettings('{"inputDeviceId":""}').inputDeviceId).toBeNull();
+    expect(parseStudioSettings('{"inputDeviceId":7}').inputDeviceId).toBeNull();
   });
 
   it("falls back per field instead of dropping the whole blob", () => {
@@ -42,19 +48,19 @@ describe("parseStudioSettings", () => {
 describe("readStudioSettings / writeStudioSettings", () => {
   it("round-trips through storage", () => {
     const store = storage();
-    writeStudioSettings({ ghostDrag: false, whatsThis: true }, store);
-    expect(readStudioSettings(store)).toEqual({ ghostDrag: false, whatsThis: true });
+    writeStudioSettings({ ghostDrag: false, whatsThis: true, inputDeviceId: null }, store);
+    expect(readStudioSettings(store)).toEqual({ ghostDrag: false, whatsThis: true, inputDeviceId: null });
   });
 
   it("uses the studio key and a readable payload", () => {
     const store = storage();
-    writeStudioSettings({ ghostDrag: false, whatsThis: true }, store);
-    expect(JSON.parse(store.map.get("studio:settings") ?? "{}")).toEqual({ ghostDrag: false, whatsThis: true });
+    writeStudioSettings({ ghostDrag: false, whatsThis: true, inputDeviceId: null }, store);
+    expect(JSON.parse(store.map.get("studio:settings") ?? "{}")).toEqual({ ghostDrag: false, whatsThis: true, inputDeviceId: null });
   });
 
   it("never throws without storage (SSR, private mode)", () => {
     expect(readStudioSettings(null)).toEqual(DEFAULT_STUDIO_SETTINGS);
-    expect(() => writeStudioSettings({ ghostDrag: false, whatsThis: true }, null)).not.toThrow();
+    expect(() => writeStudioSettings({ ghostDrag: false, whatsThis: true, inputDeviceId: null }, null)).not.toThrow();
     const failing = {
       getItem: () => {
         throw new Error("blocked");
@@ -64,12 +70,12 @@ describe("readStudioSettings / writeStudioSettings", () => {
       },
     };
     expect(readStudioSettings(failing)).toEqual(DEFAULT_STUDIO_SETTINGS);
-    expect(() => writeStudioSettings({ ghostDrag: false, whatsThis: true }, failing)).not.toThrow();
+    expect(() => writeStudioSettings({ ghostDrag: false, whatsThis: true, inputDeviceId: null }, failing)).not.toThrow();
   });
 
   it("does not mutate the shared default object", () => {
     const store = storage();
-    writeStudioSettings({ ghostDrag: false, whatsThis: true }, store);
+    writeStudioSettings({ ghostDrag: false, whatsThis: true, inputDeviceId: null }, store);
     expect(DEFAULT_STUDIO_SETTINGS.ghostDrag).toBe(true);
   });
 });
@@ -98,7 +104,8 @@ describe("write failures", () => {
     const setItem = vi.fn(() => {
       throw new Error("QuotaExceededError");
     });
-    expect(() => writeStudioSettings({ ghostDrag: true, whatsThis: true }, { setItem })).not.toThrow();
+    expect(() => writeStudioSettings({ ghostDrag: true, whatsThis: true, inputDeviceId: null }, { setItem })).not.toThrow();
     expect(setItem).toHaveBeenCalledOnce();
   });
 });
+

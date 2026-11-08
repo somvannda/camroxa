@@ -154,6 +154,9 @@ export function StudioEditorShell() {
   } | null>(null);
   /** Guards the permission await so a double-click cannot open two streams. */
   const recordStartingRef = useRef(false);
+  /** Microphone choices for the captured input picker (D-020). */
+  const [inputDevices, setInputDevices] = useState<{ id: string; label: string }[]>([]);
+  const [inputOpen, setInputOpen] = useState(false);
   /** Right rail shows the clip inspector instead of the library (spec §70). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
@@ -664,7 +667,10 @@ export function StudioEditorShell() {
     }
     recordStartingRef.current = true;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const deviceId = settingsRef.current.inputDeviceId;
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: deviceId ? { deviceId: { exact: deviceId } } : true,
+      });
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
       recorder.ondataavailable = (event) => {
@@ -683,6 +689,33 @@ export function StudioEditorShell() {
     } finally {
       recordStartingRef.current = false;
     }
+  }
+
+  /** List the microphones for the captured input picker, then toggle it. */
+  async function toggleInputPicker() {
+    if (!inputOpen) {
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        setInputDevices(
+          devices
+            .filter((device) => device.kind === "audioinput")
+            .map((device, index) => ({
+              id: device.deviceId,
+              label: device.label || `Input ${index + 1}`,
+            }))
+        );
+      } catch {
+        setInputDevices([]);
+      }
+    }
+    setInputOpen((open) => !open);
+  }
+
+  function pickInputDevice(deviceId: string | null) {
+    const updated = { ...settingsRef.current, inputDeviceId: deviceId };
+    setSettings(updated);
+    writeStudioSettings(updated);
+    setInputOpen(false);
   }
 
   /** Stop capture; the take is uploaded and inserted by `finishRecording`. */
@@ -2833,6 +2866,11 @@ export function StudioEditorShell() {
         onToggleRecord={toggleRecord}
         recordDisabled={!tracks.some((track) => track.armed)}
         recordTitle={tracks.some((track) => track.armed) ? undefined : "Arm a track first"}
+        inputDeviceId={settings.inputDeviceId}
+        inputDevices={inputDevices}
+        inputOpen={inputOpen}
+        onToggleInput={() => void toggleInputPicker()}
+        onPickInput={pickInputDevice}
         onToggleLoop={toggleLoop}
         onToggleMetronome={() =>
           setMetronome((value) => {

@@ -25,7 +25,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | Collaboration | Share links, comments, presence | View + copy links, comments and presence APIs, fork; the editor exposes sharing only | **Partial** — comments/presence have no captured panel |
 | Library | Songs / liked / stems / uploads / workspaces / projects | Songs, workspaces (with counts + filter), projects, uploads | **Partial** — stems tab waits on a real stems job (B-005); "liked" is per clip, not a song corpus |
 | Reliability | Autosave with silent overwrite | Save status, 409 reload/overwrite, offline draft, unsaved guard | **Beyond parity** (deliberate, D-004 family) |
-| Quality gates | n/a | 177 unit/component/API tests, 59 Playwright tests, axe-clean routes | **Present** — e2e is local until CI provisioning exists |
+| Quality gates | n/a | 179 unit/component/API tests, 59 Playwright tests, axe-clean routes | **Present** — e2e is local until CI provisioning exists |
 
 ## 2. Detailed gaps
 
@@ -43,7 +43,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G10 | No master loudness/true-peak readout | Cannot verify a master professionally | W4.4 | **done** - peak + RMS + 4x inter-sample estimate in the header |
 | G11 | No mastering presets / export normalisation | Export loudness varies | W4.1 | **done** — export menu can gain-match the mix/range to a −1 dBFS sample peak (`lib/studio-normalise.ts`, optional, off by default; per-track exports stay at unity so balance survives) |
 | G12 | Library lacks stems/projects/upload tabs | Sources scattered across surfaces | W3 | **partial** — two-level library: level 1 is the reference's tile chooser (All Songs / Liked / Stems / Uploads) plus Workspaces (with the captured `New workspace` create row) and Studio Projects sections (four rows each, See all); level 2 is the list (songs grouped under Today / Yesterday / date headers per §19.2, each collapsible from its heading), with the captured toolbar (Liked only / New / In Project / Stems / Uploads) and 44 px artwork + Play/Like row actions + draggable rows + model/variant/length tag strip; double-click opens the captured song detail rail (§100/D-018). Liked filters on the viewer's liked clips; In Project filters on the `songId` already recorded on clips. Stems stays visible-but-disabled until a finished stems job exists (B-005); library upload needs streaming storage (B-006); key/BPM are absent because the corpus does not carry them (D-016) |
-| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 177 tests; Playwright: 59 tests covering every surface exercised here, green over repeated full runs (smoke, persistence, home + search, library + date grouping, project menu incl. new/duplicate/share gate, clip menu + split, clip info, conflicts, offline, share page, versions, transport, meter, shortcuts, trim, fade, snap guideline, track colour, loop/seek, export bytes, zoom, tracks/sliders/collapse, clipboard, marquee, plugins dry/wet + live, mute/solo, solo-aware bounce, master, help, keys, metronome, writes, metrics, classic editor route, recording, axe ×3). Workers capped at 4 so audio-timing specs are not starved. e2e needs local services, so it is not in CI yet |
+| G13 | No Studio test suite | Regressions found by hand | W5 | **done** — vitest: 179 tests; Playwright: 59 tests covering every surface exercised here, green over repeated full runs (smoke, persistence, home + search, library + date grouping, project menu incl. new/duplicate/share gate, clip menu + split, clip info, conflicts, offline, share page, versions, transport, meter, shortcuts, trim, fade, snap guideline, track colour, loop/seek, export bytes, zoom, tracks/sliders/collapse, clipboard, marquee, plugins dry/wet + live, mute/solo, solo-aware bounce, master, help, keys, metronome, writes, metrics, classic editor route, recording, axe ×3). Workers capped at 4 so audio-timing specs are not starved. e2e needs local services, so it is not in CI yet |
 | G14 | No axe/Lighthouse pass on Studio routes | Unknown a11y debt | W5.5 | **done** - axe run on both routes, 0 violations; Lighthouse 100 accessibility / 100 best-practices / 100 SEO on /studio and the editor (the signed-out marketing and loading skeleton now both render a <main> landmark) |
 | G15 | 6.9k-line editor component | Slow review, hard extraction | after W3 | **done** - six components extracted (header, footer, library, provenance, track panel, timeline); shell 1,967 -> 1,560 lines |
 | G16 | No generation history view | Users cannot retrace how a clip was made | W3 | **done** - clips record their source generation and show model, date and style |
@@ -52,7 +52,7 @@ Scoped to the **web Studio** (`camxora.com/components/studio`), not the legacy d
 | G19 | Long-project rendering not virtualised | Perf cliff | W3 | **done** - clips culled to the visible window (300 -> 80..140 rendered) |
 | G20 | No touch-target sizing | Unusable on tablets | W3 | **done** - coarse pointers get 44x44 hit plates |
 
-| G21 | Track mute / solo / arm were visual-only | The reference has working per-track mute and solo (spec 52.1) | W3 | **done** - mute + solo wired and persisted; **Arm + Record** record a microphone take (`MediaRecorder` → `POST /studio/uploads` → `Take N` clip at the playhead). Take lanes/count-in/overdub were not captured and are not invented (D-020) |
+| G21 | Track mute / solo / arm were visual-only | The reference has working per-track mute and solo (spec 52.1) | W3 | **done** - mute + solo wired and persisted; **Arm + Record** record a microphone take with an input picker (`MediaRecorder` → `POST /studio/uploads` → `Take N` clip at the playhead). Take lanes/count-in/overdub were not captured and are not invented (D-020) |
 
 | G22 | Undo / redo were placeholders | The reference binds CTRL Z / CTRL SHIFT Z (spec 36) | W3 | **done** - single write path + 50-document history |
 
@@ -136,7 +136,7 @@ These are wins to protect, not to remove — all of them exist in the web Studio
 - **Workspace filtering with server-side song counts** in the library drawer.
 - **Keyboard focus management** on delete, 44 px coarse-pointer targets, and axe-clean
   routes — including the Learn popover.
-- **A test suite**: 177 unit/component/API tests and 59 Playwright tests.
+- **A test suite**: 179 unit/component/API tests and 59 Playwright tests.
 
 ## 5. Verification debt
 

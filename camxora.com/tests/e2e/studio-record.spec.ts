@@ -20,6 +20,13 @@ test("arming a track and recording a take inserts a clip", async ({ page }) => {
   await page.getByRole("button", { name: /^Arm / }).first().click();
   await expect(page.getByRole("button", { name: /^Disarm / }).first()).toBeVisible();
 
+  // The captured input chooser is available before recording; default stays selected.
+  await page.getByRole("button", { name: "Choose input for recording" }).click();
+  const inputMenu = page.getByRole("menu", { name: "Recording input" });
+  await expect(inputMenu).toBeVisible();
+  await inputMenu.getByRole("menuitemradio", { name: "System default" }).click();
+  await expect(inputMenu).toHaveCount(0);
+
   await page.getByRole("button", { name: "Record", exact: true }).click();
   await expect(page.getByRole("button", { name: "Stop recording", exact: true })).toBeVisible();
   await page.waitForTimeout(1200);

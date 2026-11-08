@@ -23,9 +23,18 @@ export type StudioSettings = {
    * captured Learn menu state.
    */
   whatsThis: boolean;
+  /**
+   * Microphone used by Record (D-020). `null` follows the system default. Stored in the
+   * browser profile, never in the project.
+   */
+  inputDeviceId: string | null;
 };
 
-export const DEFAULT_STUDIO_SETTINGS: StudioSettings = { ghostDrag: true, whatsThis: true };
+export const DEFAULT_STUDIO_SETTINGS: StudioSettings = {
+  ghostDrag: true,
+  whatsThis: true,
+  inputDeviceId: null,
+};
 
 const KEY = "studio:settings";
 
@@ -55,6 +64,10 @@ export function parseStudioSettings(raw: string | null): StudioSettings {
         typeof parsed.whatsThis === "boolean"
           ? parsed.whatsThis
           : DEFAULT_STUDIO_SETTINGS.whatsThis,
+      inputDeviceId:
+        typeof parsed.inputDeviceId === "string" && parsed.inputDeviceId
+          ? parsed.inputDeviceId
+          : null,
     };
   } catch {
     return { ...DEFAULT_STUDIO_SETTINGS };
