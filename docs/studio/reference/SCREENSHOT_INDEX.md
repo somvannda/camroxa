@@ -7,7 +7,7 @@ Evidence archive for the 65-screen contract. One file per captured screen, named
 spec section and a file listed here. `PART` means the section exists but the
 evidence is incomplete.
 
-**82 captures across the archive** (five extras with no manifest row). Every `DONE`
+**83 captures across the archive** (six extras with no manifest row). Every `DONE`
 row has at least one image; `PART` rows have a section and a partial image.
 
 ## Captured
@@ -67,6 +67,7 @@ row has at least one image; `PART` rows have a section and a partial image.
 | S44 | `screens/S44-convolution-ir-loaded.jpeg` | Convolution with an IR loaded - `Custom`, `Halls · New England Hall`, impulse waveform (§98) |
 | EXTRA | `screens/EXTRA-library-uploads.jpeg` | Uploads level - date headings, artwork/description rows, `UPLOAD` meta, BPM chip, toolbar chips |
 | EXTRA | `screens/EXTRA-library-song-detail.jpeg` | Song detail rail - facts line, Remix/Like/Dislike/More, waveform strip, Info/Stems, Styles/Lyrics cards, comments, sticky mini-player (§100) |
+| EXTRA | `screens/EXTRA-take-lanes-empty.jpeg` | Take lanes empty state - `Create a clip to see alternate takes here` (§101) |
 | S45 | `screens/S45-plugin-designer-entry.jpeg` | `Create new plugin` entry — Magic Bar in design mode, `Make me a new plugin…`, active send |
 | S36 | `screens/S36-magicbar-conversation.jpeg` | Magic Bar docked bottom-left as a conversation — chip, truncated prompt, attach `+` |
 | S43 | `screens/S46-compressor-routing-list.jpeg` | Compressor sidechain — every track twice as `Pre-fx` / `Post-fader` |

@@ -3733,3 +3733,21 @@ Info sections. Deliberate gaps, each visible rather than faked:
 - `Remix`, `More` and the comment field are disabled with a reason - their menus were
   not captured (D-011);
 - `Stems` explains B-005 instead of listing an empty set.
+
+## 101. EXTRA - Take lanes, empty state `L`
+
+Capture: `screens/EXTRA-take-lanes-empty.jpeg`, 1261 x 1245 at DPR 1. Reached from the
+track's `Take lanes` section button with no clip selected.
+
+**What it shows.** The bottom panel clears its clip controls and centres one muted line
+- `Create a clip to see alternate takes here` - with the track's `Add Track Effects`
+button still at the panel's bottom. The right rail (song detail) and the arrangement are
+unaffected.
+
+**What it establishes.** "Take lanes" are **per selected clip**, not a global view: the
+message asks for a clip, so alternate takes belong to the clip's take stack. With no clip
+there is nothing to list; the section does not show an empty rail or a placeholder lane.
+
+**Still uncaptured:** the populated take lane - how alternates are listed, which one is
+active, and whether comping exists. Our build has no sections framework yet (Plugins /
+Automation / Clip editor / Take lanes), so this is recorded, not implemented.

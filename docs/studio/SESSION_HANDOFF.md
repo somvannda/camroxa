@@ -18,7 +18,7 @@ State as of 2026-11-07. A new session should need only this file plus
 
 | Half | State |
 |---|---|
-| **Capture** (65 screens → screenshot + spec) | **63 DONE / 0 PART / 2 OPEN**, spec §1–§99, 82 images. The two remaining are S60/S61 and are documented in `reference/CAPTURE_GAPS.md`; neither blocks the build. |
+| **Capture** (65 screens → screenshot + spec) | **63 DONE / 0 PART / 2 OPEN**, spec §1–§101, 83 images. The two remaining are S60/S61 and are documented in `reference/CAPTURE_GAPS.md`; neither blocks the build. |
 | **Build** (close gaps against that spec) | W1 ✅, W2 ✅ (all four), W3 ✅ (9 done, G12 partial), W4 ✅ 1/3/4 — only the stems-dependent items remain; G21 arm+record done (D-020). |
 
 ## Running the app (the part that costs time)
@@ -150,5 +150,5 @@ instead of by ear — that is how W4.1, W4.3 and W4.4 were verified.
 
 ## Capture position
 
-65 screens: **63 DONE / 0 PART / 2 OPEN**, 82 images, spec §1–§99. The two remaining
+65 screens: **63 DONE / 0 PART / 2 OPEN**, 83 images, spec §1–§101. The two remaining
 are the forced account states in `reference/CAPTURE_GAPS.md`. None block the build.

@@ -2,7 +2,7 @@
 
 Companion to `SCREEN_MANIFEST.md` and `SCREENSHOT_INDEX.md`.
 
-**Final state: 63 DONE · 0 PART · 2 OPEN** of 65. Spec through §99, 82 images.
+**Final state: 63 DONE · 0 PART · 2 OPEN** of 65. Spec through §101, 83 images.
 
 Everything `DONE` has an image and a measured section — including six captured
 **negatives** where the screen we expected does not exist (S47 mixer, S50/S51 export
@@ -157,3 +157,11 @@ remains unobserved; treat D-020 as a documented divergence, not parity.
 
 While testing warping, the `Drum & Bass Demo` tempo was changed from **174 → 110 BPM**
 and left there. It is a library copy; revert with the tempo popover or `CTRL Z`.
+
+### Take lanes (extra, �101)
+
+Clicking the track's `Take lanes` section with no clip selected shows the empty state
+`Create a clip to see alternate takes here` (`EXTRA-take-lanes-empty.jpeg`). That proves
+takes are a **clip-level** stack, but the populated lane (alternate list, active take,
+comping) is still uncaptured. Our build has no sections framework, so nothing is
+implemented from this yet.

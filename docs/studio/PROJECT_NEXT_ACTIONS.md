@@ -12,7 +12,7 @@ Resume here. **Execution order only** — the authoritative plans live elsewhere
 
 ## Phase 0 — Capture: **complete**
 
-65 screens: **63 DONE, 0 PART, 2 OPEN-by-design**, 82 images, spec through §99.
+65 screens: **63 DONE, 0 PART, 2 OPEN-by-design**, 83 images, spec through §101.
 
 The two `OPEN` rows (S60 moderation, S61 credits) are parked in
 `reference/CAPTURE_GAPS.md`; both need a genuine trigger, so they are opportunistic and
