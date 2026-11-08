@@ -158,7 +158,7 @@ remains unobserved; treat D-020 as a documented divergence, not parity.
 While testing warping, the `Drum & Bass Demo` tempo was changed from **174 â†’ 110 BPM**
 and left there. It is a library copy; revert with the tempo popover or `CTRL Z`.
 
-### Take lanes (extra, §101)
+### Take lanes (extra, ï¿½101)
 
 Clicking the track's `Take lanes` section with no clip selected shows the empty state
 `Create a clip to see alternate takes here` (`EXTRA-take-lanes-empty.jpeg`). That proves
