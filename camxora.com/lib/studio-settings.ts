@@ -28,12 +28,15 @@ export type StudioSettings = {
    * browser profile, never in the project.
    */
   inputDeviceId: string | null;
+  /** One bar of clicks before a take starts (D-021). Off by default. */
+  countIn: boolean;
 };
 
 export const DEFAULT_STUDIO_SETTINGS: StudioSettings = {
   ghostDrag: true,
   whatsThis: true,
   inputDeviceId: null,
+  countIn: false,
 };
 
 const KEY = "studio:settings";
@@ -68,6 +71,8 @@ export function parseStudioSettings(raw: string | null): StudioSettings {
         typeof parsed.inputDeviceId === "string" && parsed.inputDeviceId
           ? parsed.inputDeviceId
           : null,
+      countIn:
+        typeof parsed.countIn === "boolean" ? parsed.countIn : DEFAULT_STUDIO_SETTINGS.countIn,
     };
   } catch {
     return { ...DEFAULT_STUDIO_SETTINGS };

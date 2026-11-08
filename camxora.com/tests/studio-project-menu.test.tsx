@@ -39,7 +39,7 @@ function renderMenu(overrides: Partial<Parameters<typeof StudioProjectMenu>[0]> 
     <StudioProjectMenu
       projectId="p1"
       title="Demo"
-      settings={{ ghostDrag: true, whatsThis: true, inputDeviceId: null }}
+      settings={{ ghostDrag: true, whatsThis: true, inputDeviceId: null, countIn: false }}
       onSettingsChange={onSettingsChange}
       onRenamed={onRenamed}
       onShowQuickStart={onShowQuickStart}
@@ -91,7 +91,7 @@ describe("StudioProjectMenu", () => {
     const ghost = screen.getByRole("checkbox", { name: "Ghost drag for arrangement moves" }) as HTMLInputElement;
     expect(ghost.checked).toBe(true);
     await user.click(ghost);
-    expect(onSettingsChange).toHaveBeenCalledWith({ ghostDrag: false, whatsThis: true, inputDeviceId: null });
+    expect(onSettingsChange).toHaveBeenCalledWith({ ghostDrag: false, whatsThis: true, inputDeviceId: null, countIn: false });
   });
 
   it("opens settings with ctrl shift ,", async () => {
@@ -336,4 +336,5 @@ describe("StudioProjectMenu sharing", () => {
     expect(screen.getByText(/Share “Night drive”/)).toBeTruthy();
   });
 });
+
 

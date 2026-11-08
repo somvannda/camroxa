@@ -4628,6 +4628,7 @@ html{color-scheme:dark}
 .se-input-menu button{text-align:left;padding:8px 10px;border-radius:7px}
 .se-input-menu button[aria-checked="true"]{background:rgba(168,85,247,.16)}
 .se-input-empty{margin:0;padding:6px 10px;font-size:12px;opacity:.7}
+.se-count-in{padding:2px 8px;border-radius:999px;background:rgba(220,38,38,.18);color:#fecaca;font-size:12px;white-space:nowrap}
 
 .se-marquee{position:absolute;border:1px solid hsl(var(--accent));background:hsl(var(--card));opacity:.55;pointer-events:none;z-index:4}
 

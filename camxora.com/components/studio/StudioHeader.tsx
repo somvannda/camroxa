@@ -70,6 +70,10 @@ export type StudioHeaderProps = {
   inputOpen: boolean;
   onToggleInput: () => void;
   onPickInput: (deviceId: string | null) => void;
+  /** One-bar count-in before a take (D-021). */
+  countIn: boolean;
+  onToggleCountIn: () => void;
+  countInBeat: number;
   onToggleLoop: () => void;
   onToggleMetronome: () => void;
   onUndo: () => void;
@@ -123,6 +127,9 @@ export function StudioHeader(props: StudioHeaderProps) {
     inputOpen,
     onToggleInput,
     onPickInput,
+    countIn,
+    onToggleCountIn,
+    countInBeat,
     onToggleLoop,
     onToggleMetronome,
     onUndo,
@@ -167,8 +174,8 @@ export function StudioHeader(props: StudioHeaderProps) {
             onClick={onToggleRecord}
             aria-label={recording ? "Stop recording" : "Record"}
             aria-pressed={recording}
-            disabled={recordDisabled && !recording}
-            title={recordTitle}
+            disabled={(recordDisabled && !recording) || countInBeat > 0}
+            title={countInBeat > 0 ? "Count-in…" : recordTitle}
             data-help="record"
           >
             <span className="se-record-dot" aria-hidden="true" />
@@ -210,9 +217,24 @@ export function StudioHeader(props: StudioHeaderProps) {
               {inputDevices.length === 0 ? (
                 <p className="se-input-empty">No inputs listed yet; allow microphone access.</p>
               ) : null}
+              <div className="se-clip-menu-sep" />
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                aria-checked={countIn}
+                onClick={onToggleCountIn}
+                data-help="record-count-in"
+              >
+                Count-in (1 bar)
+              </button>
             </div>
           ) : null}
         </div>
+        {countInBeat > 0 ? (
+          <span className="se-count-in" role="status">
+            Count-in {countInBeat}
+          </span>
+        ) : null}
         <button
           type="button"
           className={`se-icon${loop ? " on" : ""}`}

@@ -157,6 +157,8 @@ export function StudioEditorShell() {
   /** Microphone choices for the captured input picker (D-020). */
   const [inputDevices, setInputDevices] = useState<{ id: string; label: string }[]>([]);
   const [inputOpen, setInputOpen] = useState(false);
+  /** 1-based beat while a one-bar count-in runs; 0 when idle (D-021). */
+  const [countInBeat, setCountInBeat] = useState(0);
   /** Right rail shows the clip inspector instead of the library (spec §70). */
   const [inspectorOpen, setInspectorOpen] = useState(false);
   const [librarySongs, setLibrarySongs] = useState<WebMusicGeneration[] | null>(null);
@@ -671,6 +673,7 @@ export function StudioEditorShell() {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: deviceId ? { deviceId: { exact: deviceId } } : true,
       });
+      if (settingsRef.current.countIn) await runCountIn();
       const recorder = new MediaRecorder(stream);
       const chunks: Blob[] = [];
       recorder.ondataavailable = (event) => {
@@ -689,6 +692,37 @@ export function StudioEditorShell() {
     } finally {
       recordStartingRef.current = false;
     }
+  }
+
+  /** One bar of clicks before the take starts (D-021). */
+  async function runCountIn() {
+    const beats = Math.max(1, beatsPerBar);
+    const beatMs = 60_000 / Math.max(30, bpm);
+    const context = new AudioContext();
+    void context.resume();
+    for (let index = 0; index < beats; index += 1) {
+      const when = context.currentTime + 0.03;
+      const oscillator = context.createOscillator();
+      const gain = context.createGain();
+      oscillator.type = "square";
+      oscillator.frequency.value = index === 0 ? 1760 : 1100;
+      gain.gain.setValueAtTime(0.0001, when);
+      gain.gain.linearRampToValueAtTime(index === 0 ? 0.16 : 0.09, when + 0.002);
+      gain.gain.exponentialRampToValueAtTime(0.0001, when + 0.045);
+      oscillator.connect(gain).connect(context.destination);
+      oscillator.start(when);
+      oscillator.stop(when + 0.06);
+      setCountInBeat(index + 1);
+      await new Promise((resolve) => setTimeout(resolve, beatMs));
+    }
+    await context.close();
+    setCountInBeat(0);
+  }
+
+  function toggleCountInSetting() {
+    const updated = { ...settingsRef.current, countIn: !settingsRef.current.countIn };
+    setSettings(updated);
+    writeStudioSettings(updated);
   }
 
   /** List the microphones for the captured input picker, then toggle it. */
@@ -2871,6 +2905,9 @@ export function StudioEditorShell() {
         inputOpen={inputOpen}
         onToggleInput={() => void toggleInputPicker()}
         onPickInput={pickInputDevice}
+        countIn={settings.countIn}
+        onToggleCountIn={toggleCountInSetting}
+        countInBeat={countInBeat}
         onToggleLoop={toggleLoop}
         onToggleMetronome={() =>
           setMetronome((value) => {

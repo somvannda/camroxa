@@ -89,6 +89,10 @@ export const HELP_ENTRIES: Record<string, HelpEntry> = {
     title: "Recording input",
     body: "Chooses which microphone Record uses. The setting belongs to this browser, not the project, so it never syncs.",
   },
+  "record-count-in": {
+    title: "Count-in",
+    body: "Plays one bar of clicks before a take starts, at the project tempo and meter. Off by default; the setting is per browser.",
+  },
   "track-volume": {
     title: "Track level",
     body: "Level applied to every clip on this track, during playback and export.",

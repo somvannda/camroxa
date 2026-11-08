@@ -28,7 +28,7 @@ function headerProps() {
   return {
     title: "Demo",
     projectId: "p1" as string | null,
-    settings: { ghostDrag: true, whatsThis: true, inputDeviceId: null },
+    settings: { ghostDrag: true, whatsThis: true, inputDeviceId: null, countIn: false },
     onSettingsChange: noop,
     onRenamed: noop,
     onShowQuickStart: noop,
@@ -69,6 +69,9 @@ function headerProps() {
     inputOpen: false,
     onToggleInput: noop,
     onPickInput: noop,
+    countIn: false,
+    onToggleCountIn: noop,
+    countInBeat: 0,
     onToggleLoop: noop,
     onToggleMetronome: noop,
     onUndo: noop,
@@ -182,6 +185,23 @@ describe("StudioHeader", () => {
     expect(onPickInput).toHaveBeenCalledWith("mic1");
     await user.click(screen.getByRole("menuitemradio", { name: "System default" }));
     expect(onPickInput).toHaveBeenLastCalledWith(null);
+  });
+
+  it("toggles the one-bar count-in from the input menu", async () => {
+    const user = userEvent.setup();
+    const onToggleCountIn = vi.fn();
+    render(
+      <StudioHeader
+        {...headerProps()}
+        inputOpen
+        onToggleCountIn={onToggleCountIn}
+        countIn={false}
+      />
+    );
+    const item = screen.getByRole("menuitemcheckbox", { name: "Count-in (1 bar)" });
+    expect(item.getAttribute("aria-checked")).toBe("false");
+    await user.click(item);
+    expect(onToggleCountIn).toHaveBeenCalledOnce();
   });
 
   it("labels Record and toggles it, disabled until a track is armed", async () => {
@@ -974,4 +994,5 @@ describe("StudioTrackPanel", () => {
     expect(onAddUploadTrack).toHaveBeenCalledOnce();
   });
 });
+
 

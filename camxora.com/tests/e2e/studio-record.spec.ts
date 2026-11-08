@@ -26,9 +26,20 @@ test("arming a track and recording a take inserts a clip", async ({ page }) => {
   await expect(inputMenu).toBeVisible();
   await inputMenu.getByRole("menuitemradio", { name: "System default" }).click();
   await expect(inputMenu).toHaveCount(0);
+  // Picking an input closes the menu; reopen it for the count-in toggle.
+  await page.getByRole("button", { name: "Choose input for recording" }).click();
+  await page
+    .getByRole("menu", { name: "Recording input" })
+    .getByRole("menuitemcheckbox", { name: "Count-in (1 bar)" })
+    .click();
+  await page.getByRole("button", { name: "Choose input for recording" }).click();
+  await expect(inputMenu).toHaveCount(0);
 
   await page.getByRole("button", { name: "Record", exact: true }).click();
-  await expect(page.getByRole("button", { name: "Stop recording", exact: true })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("Count-in");
+  await expect(page.getByRole("button", { name: "Stop recording", exact: true })).toBeVisible({
+    timeout: 10_000,
+  });
   await page.waitForTimeout(1200);
   await page.getByRole("button", { name: "Stop recording", exact: true }).click();
   await expect(page.getByRole("button", { name: "Record", exact: true })).toBeVisible();

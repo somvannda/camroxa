@@ -510,8 +510,9 @@ to `Disarm track`; Record becomes `Stop recording` with an `Options` disclosure;
 becomes Pause; the clock runs) but its **take path was never observed** - with no input
 device it produced no take, no take lane and no message. Rather than leave the button
 dead, this implements the smallest honest workflow the captured controls imply. There is
-**no count-in, no monitoring, no take lanes, no punch/overdub** and no `Options` menu;
-those were not captured, so they are not invented.
+**no monitoring, no take lanes, no punch/overdub** and no `Options` menu; those were not
+captured, so they are not invented. A one-bar **count-in** exists as our own opt-in
+addition (D-021).
 
 **Consequences.**
 
@@ -526,3 +527,25 @@ those were not captured, so they are not invented.
   and it uses the same upload row as the library.
 - If the reference's take flow is captured later, replace this workflow rather than
   layering take lanes on top of it.
+
+---
+
+## D-021 � One-bar count-in before a take (our own addition)
+
+**Date:** 2026-11-08 **Status:** accepted (G21, extension of D-020)
+
+**Decision.** A **Count-in (1 bar)** checkbox in the recording-input menu plays one bar of
+clicks at the project tempo and meter before capture starts. It is **off by default** and
+stored in the browser profile with the input choice. While it runs, the transport does
+not move, the Record button is disabled, and a `Count-in N` status shows the beat.
+
+**Why.** The reference's recording options menu was never captured (its `Options`
+disclosure could not be opened by synthetic input), so its count-in behaviour is unknown.
+A one-bar count-in is the smallest, standard aid the captured Record flow implies; making
+it opt-in keeps the default behaviour identical to D-020 and avoids surprising anyone who
+expects an instant take.
+
+**Consequences.** Capture starts only after the count-in; a slower tempo means a longer
+wait (`60/bpm` seconds per beat). Monitoring, take lanes, punch and comping are still not
+implemented; when the reference's Options menu is captured, align the labels and defaults
+rather than layering a second mechanism.
