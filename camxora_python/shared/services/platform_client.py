@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import time
+from enum import Enum
 from typing import Any, Literal
 
 import httpx
@@ -12,6 +13,26 @@ from shared.services.build_config import is_api_url_locked
 from shared.services.secure_storage import SecureStorage
 
 Method = Literal["GET", "POST", "PUT", "PATCH", "DELETE"]
+
+
+class RefreshOutcome(str, Enum):
+    """Result of an access-token renewal attempt.
+
+    Only ``REJECTED`` means the server refused the refresh token itself and the
+    user must sign in again. Network drops, timeouts, gateway errors and slow
+    replies are ``TRANSIENT``: they must never destroy a saved session.
+    """
+
+    REFRESHED = "refreshed"
+    NOT_NEEDED = "not_needed"
+    REJECTED = "rejected"
+    TRANSIENT = "transient"
+
+
+_TRANSIENT_REFRESH_MESSAGE = (
+    "Could not renew your session right now. Your sign-in is still saved — "
+    "check your connection and try again."
+)
 
 
 class PlatformApiError(Exception):
@@ -227,6 +248,7 @@ class PlatformClient:
         _retry: bool = True,
         accept: str = "application/json",
         timeout: float | None = None,
+        _refreshed: bool = False,
     ) -> httpx.Response:
         effective_timeout = timeout if timeout is not None else self._default_timeout
         url = f"{self.base_url()}{path if path.startswith('/') else f'/{path}'}"
@@ -234,14 +256,27 @@ class PlatformClient:
         if body is not None:
             headers["Content-Type"] = "application/json"
 
+        access_token = ""
         if auth:
             tokens = self._tokens_provider() if self._tokens_provider else None
             if tokens is None:
                 raise PlatformApiError(401, "Unauthenticated")
-            if self._invalidated_token and tokens.accessToken == self._invalidated_token:
-                self._handle_unauthenticated()
-                raise PlatformApiError(401, "Session expired")
-            headers["Authorization"] = f"Bearer {tokens.accessToken}"
+            access_token = str(tokens.accessToken or "")
+            if self._invalidated_token and access_token == self._invalidated_token:
+                # Another request already hit a 401 for this exact token. Renew
+                # it instead of signing out — the refresh may still be running.
+                outcome = self._run_refresh(access_token)
+                if outcome in (RefreshOutcome.REFRESHED, RefreshOutcome.NOT_NEEDED):
+                    tokens = self._tokens_provider() if self._tokens_provider else None
+                    if tokens is None:
+                        raise PlatformApiError(401, "Unauthenticated")
+                    access_token = str(tokens.accessToken or "")
+                elif outcome is RefreshOutcome.REJECTED:
+                    self._handle_unauthenticated()
+                    raise PlatformApiError(401, "Session expired")
+                else:
+                    raise PlatformApiError(0, _TRANSIENT_REFRESH_MESSAGE)
+            headers["Authorization"] = f"Bearer {access_token}"
 
         try:
             response = httpx.request(
@@ -280,22 +315,44 @@ class PlatformClient:
 
         if response.status_code == 401 and auth:
             payload = _read_json(response)
-            tokens = self._tokens_provider() if self._tokens_provider else None
-            failed_access = tokens.accessToken if tokens is not None else ""
-            if failed_access:
-                self._invalidated_token = failed_access
-            refreshed = False
-            if self._refresh_callback:
-                try:
-                    refreshed = bool(
-                        self._refresh_callback(
-                            True,
-                            failed_access_token=failed_access,
-                        )
-                    )
-                except TypeError:
-                    refreshed = bool(self._refresh_callback(force=True))
-            if refreshed and _retry:
+            current = self._tokens_provider() if self._tokens_provider else None
+            current_access = str(getattr(current, "accessToken", "") or "")
+            # Another thread or app instance may have renewed the session while
+            # this request was in flight. Retry with the newer token instead of
+            # treating a stale 401 as a sign-out.
+            if current_access and current_access != access_token and not _refreshed:
+                return self._send(
+                    path,
+                    method=method,
+                    body=body,
+                    params=params,
+                    auth=auth,
+                    _retry=False,
+                    accept=accept,
+                    timeout=effective_timeout,
+                    _refreshed=True,
+                )
+            if _refreshed:
+                # A token minted moments ago was rejected as well. Do not sign
+                # the user out on this single round-trip — the next request will
+                # retry with the tokens we already hold. Keep the token marked
+                # fresh so a flaky server cannot trigger a refresh storm.
+                err = PlatformApiError(0, _TRANSIENT_REFRESH_MESSAGE, payload)
+                _log_api_error(method, path, err)
+                raise err
+            if access_token:
+                self._invalidated_token = access_token
+            outcome = self._run_refresh(access_token)
+            if outcome is RefreshOutcome.REJECTED:
+                self._handle_unauthenticated()
+                err = PlatformApiError(401, "Session expired", payload)
+                _log_api_error(method, path, err)
+                raise err
+            if outcome is RefreshOutcome.TRANSIENT:
+                err = PlatformApiError(0, _TRANSIENT_REFRESH_MESSAGE, payload)
+                _log_api_error(method, path, err)
+                raise err
+            if _retry:
                 self._invalidated_token = None
                 return self._send(
                     path,
@@ -306,9 +363,9 @@ class PlatformClient:
                     _retry=False,
                     accept=accept,
                     timeout=effective_timeout,
+                    _refreshed=True,
                 )
-            self._handle_unauthenticated()
-            err = PlatformApiError(401, "Session expired", payload)
+            err = PlatformApiError(0, _TRANSIENT_REFRESH_MESSAGE, payload)
             _log_api_error(method, path, err)
             raise err
 
@@ -325,6 +382,29 @@ class PlatformClient:
             raise err
 
         return response
+
+    def _run_refresh(self, failed_access_token: str) -> RefreshOutcome:
+        """Ask the session layer to renew tokens and classify the result.
+
+        A refresh that fails because the network dropped, timed out or the
+        gateway returned 5xx is ``TRANSIENT`` — the saved session stays intact.
+        Only a server-side 401 for the refresh token itself is ``REJECTED``.
+        """
+        callback = self._refresh_callback
+        if callback is None:
+            return RefreshOutcome.TRANSIENT
+        try:
+            try:
+                raw = callback(True, failed_access_token=failed_access_token)
+            except TypeError:
+                raw = callback(force=True)
+        except PlatformApiError as exc:
+            return RefreshOutcome.REJECTED if exc.status == 401 else RefreshOutcome.TRANSIENT
+        except Exception:
+            return RefreshOutcome.TRANSIENT
+        if isinstance(raw, RefreshOutcome):
+            return raw
+        return RefreshOutcome.REFRESHED if raw else RefreshOutcome.REJECTED
 
     def _handle_unauthenticated(self) -> None:
         if self._logout_callback:

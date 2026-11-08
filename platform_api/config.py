@@ -69,6 +69,9 @@ class Settings(BaseSettings):
     # Phase 3: shorter access TTL reduces stolen JWT window (H8).
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
+    # A rotated refresh token reused within this window is treated as a benign
+    # client retry (dropped/slow response, second app window), not theft.
+    refresh_reuse_grace_seconds: int = 180
 
     # --- CORS ---
     cors_origins: list[str] = [
