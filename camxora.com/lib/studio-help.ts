@@ -69,6 +69,10 @@ export const HELP_ENTRIES: Record<string, HelpEntry> = {
     title: "Project",
     body: "Project menu: new, open, rename, duplicate, versions, sharing, settings and the quick-start overlay.",
   },
+  clip: {
+    title: "Clip",
+    body: "Drag to move the clip, double-click to open its editor, or right-click for split, rename, colour, stems and download.",
+  },
   "track-mute": {
     title: "Mute track",
     body: "Silences this track. Any soloed track overrides mute, so solo wins while it is on.",

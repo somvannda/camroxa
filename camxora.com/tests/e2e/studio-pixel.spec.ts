@@ -472,6 +472,50 @@ test("master strip is pinned to the captured track panel bottom", async ({ page 
   expect(info?.footerMaster).toBe(0);
 });
 
+test("selecting a track highlights its panel row and lane", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel lane" });
+  await page.getByRole("button", { name: "Track 1", exact: true }).click();
+  const info = await page.evaluate(() => {
+    const row = document.querySelector(".se-track");
+    const lane = document.querySelector(".se-lane");
+    return {
+      rowSelected: row?.classList.contains("selected") ?? false,
+      laneSelected: lane?.classList.contains("selected") ?? false,
+      rowBackground: row ? getComputedStyle(row).backgroundColor : null,
+      laneBackground: lane ? getComputedStyle(lane).backgroundColor : null,
+    };
+  });
+  // S25: the selected track tints both the gutter row and its lane.
+  expect(info.rowSelected).toBe(true);
+  expect(info.laneSelected).toBe(true);
+  expect(info.rowBackground).toBe("rgba(255, 255, 255, 0.06)");
+  expect(info.laneBackground).toBe("rgba(255, 255, 255, 0.05)");
+});
+
+test("hovering a clip explains it with the captured card", async ({ page }) => {
+  test.setTimeout(120_000);
+  await page.setViewportSize(REFERENCE_VIEWPORT);
+  await createStudioProject(page, { title: "Pixel clip help" });
+  await page.locator(".se-clip").first().hover();
+  const tip = page.getByRole("tooltip");
+  await expect(tip).toBeVisible();
+  await expect(tip).toContainText("Clip");
+  const box = await tip.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      width: Math.round(rect.width),
+      radius: getComputedStyle(element).borderTopLeftRadius,
+      background: getComputedStyle(element).backgroundColor,
+    };
+  });
+  // §7.1: the per-control card is the same 256 px light surface as the intro card.
+  expect(box.width).toBe(256);
+  expect(box.radius).toBe("16px");
+  expect(box.background).toBe("rgb(210, 208, 206)");
+});
+
 test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);

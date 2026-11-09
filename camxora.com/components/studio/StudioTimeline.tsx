@@ -69,6 +69,7 @@ export type StudioTimelineProps = {
   clock: (seconds: number) => string;
   rowStep: number;
 
+  selectedTrack?: string | null;
   selectedClip: string | null;
   selectedIds: string[];
   drag: TimelineDrag | null;
@@ -115,6 +116,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
     playhead,
     clock,
     rowStep,
+    selectedTrack,
     selectedClip,
     selectedIds,
     drag,
@@ -186,7 +188,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
           {tracks.map((track) => (
             <div
               key={track.id}
-              className="se-lane"
+              className={`se-lane${selectedTrack === track.id ? " selected" : ""}`}
               style={{ height: rowStep }}
               onDragOver={onLaneDragOver}
               onDrop={onLaneDrop ? (event) => onLaneDrop(event, track.id) : undefined}
@@ -231,6 +233,7 @@ export function StudioTimeline(props: StudioTimelineProps) {
                       }}
                       onPointerDown={(event) => onClipPointerDown(event, clip, track.id)}
                       onContextMenu={(event) => onClipContextMenu(event, clip)}
+                      data-help="clip"
                       aria-pressed={isSelected}
                     >
                       <span className="se-clip-head">{clip.title || "Clip"}</span>

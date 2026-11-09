@@ -2978,6 +2978,7 @@ export function StudioEditorShell() {
           playhead={playhead}
           clock={clock}
           rowStep={ROW_STEP}
+          selectedTrack={selectedTrack}
           selectedClip={selectedClip}
           selectedIds={selectedIds}
           drag={drag}
