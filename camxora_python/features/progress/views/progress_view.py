@@ -750,7 +750,7 @@ class ProgressView(PollablePageMixin, QScrollArea):
         # Stats follow Active + Stage (same set as the table before Limit).
         entries = self._matching_effective_rows()
         active = sum(
-            1 for entry in entries if entry.effective_stage.lower() not in {"done", "error"}
+            1 for entry in entries if entry.effective_stage.lower() not in {"done", "completed", "error"}
         )
         converter = sum(
             1
