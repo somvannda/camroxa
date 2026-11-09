@@ -15,6 +15,7 @@ session can resume without re-discovering anything.
 | 1 | [PROJECT_PROGRESS.md](PROJECT_PROGRESS.md) | What is done, what changed, what was tested. |
 | 2 | [PROJECT_MASTER_PLAN.md](PROJECT_MASTER_PLAN.md) | Milestones M0–M12 and their gates. |
 | 3 | [PROJECT_DECISIONS.md](PROJECT_DECISIONS.md) | Architectural decisions and why. |
+| 3b | [PIXEL_PARITY.md](PIXEL_PARITY.md) | D-022 pixel-parity log: measured targets, matched regions, recorded divergences. |
 | 4 | [PROJECT_BLOCKERS.md](PROJECT_BLOCKERS.md) | What cannot proceed and what unblocks it. |
 | 5 | [SUNO_STUDIO_FEATURE_INVENTORY.md](SUNO_STUDIO_FEATURE_INVENTORY.md) | Every observed reference feature, with ID. |
 | 6 | [SUNO_STUDIO_FEATURE_MATRIX.md](SUNO_STUDIO_FEATURE_MATRIX.md) | Coverage dashboard: status per feature. |
