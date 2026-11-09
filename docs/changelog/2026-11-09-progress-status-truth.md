@@ -27,10 +27,13 @@ The Progress page reported three contradictions at once:
   a failed attempt, so the row reads **Failed** with a retryable message instead
   of staying on an old state or reading Published. A live video is never
   downgraded by a later failed re-attempt.
-- `Done` / `Completed` rows report **Export = Completed, Merge = Completed**
-  (a publish can only exist after a merged file).
-- Completed rows report **100%** progress, and the **Active Runs** card no
-  longer counts finished media pipelines.
+- `Completed` rows (including published ones) report **Export = Completed,
+  Merge = Completed** and **Progress = 100%**. Publishing no longer creates a
+  separate `Done` stage: the Stage column stays **Completed**, and the YouTube
+  column says **Published** in green.
+- While an upload is in flight, the **row, footer, and ROW DETAIL inspector** all
+  show the same live text (`Sending 73%`, then `Publishing`), instead of the
+  inspector saying "Not started" until the server records the upload.
 
 ## Technical impact
 
@@ -40,8 +43,9 @@ The Progress page reported three contradictions at once:
   - `youtube_upload_jobs` no longer populate the batch aggregate when a slot
     key exists; the batch fallback is limited to batches with **no** slot rows.
   - `_build_row()` takes `youtube_legacy_batches`; terminal stages report
-    Export/Merge as `Completed`; a failed upload becomes stage `YouTube` /
-    status `Failed`; `youtube_text` covers cancelled/refunded/error.
+    Export/Merge as `Completed`; a successful upload keeps stage/status
+    `Completed`; a failed upload becomes stage `YouTube` / status `Failed`;
+    `youtube_text` covers cancelled/refunded/error.
 - `platform_api/repositories/youtube_connection_repo.py`
   - `record_upload_result()` never downgrades a published slot; it updates the
     existing row or inserts a failed one.
@@ -52,19 +56,28 @@ The Progress page reported three contradictions at once:
 - `camxora_python/shared/lib/progress_presentation.py`
   - `compute_stage_progress_percent()` returns `100%` for `Completed`.
 - `camxora_python/features/progress/views/progress_view.py`
-  - Active Runs excludes `Completed`.
+  - Active Runs excludes `Completed`; the inspector re-binds to the selected row
+    on every poll/upload tick.
+- `camxora_python/features/progress/widgets/progress_detail_card.py`
+  - The YouTube step reads the live `publish_activity` registry, so it shows
+    `Sending n%` / `Publishing` while the upload is in flight.
+- `camxora_python/features/progress/widgets/operational_rows_card.py`
+  - `Published` is green in the YouTube column.
 
 ## Files touched
 
 | File | Change |
 |---|---|
-| `platform_api/routers/progress.py` | Per-slot YouTube aggregation, terminal Export/Merge, failed-upload stage |
+| `platform_api/routers/progress.py` | Per-slot YouTube aggregation; published rows stay `Completed`; terminal Export/Merge; failed-upload stage |
 | `platform_api/repositories/youtube_connection_repo.py` | `record_upload_result` success guard |
-| `platform_api/tests/test_progress_router.py` | Sibling-channel, legacy fallback, newest attempt, terminal Export/Merge tests |
+| `platform_api/tests/test_progress_router.py` | Sibling-channel, legacy fallback, newest attempt, Completed-stage, terminal Export/Merge tests |
 | `camxora_python/shared/workers/data_workers.py` | Report failed direct uploads |
 | `camxora_python/shared/lib/progress_presentation.py` | `Completed` → 100% |
-| `camxora_python/features/progress/views/progress_view.py` | Active Runs excludes Completed |
+| `camxora_python/features/progress/views/progress_view.py` | Active Runs excludes Completed; inspector re-binds on poll/tick |
+| `camxora_python/features/progress/widgets/progress_detail_card.py` | Live `Sending n%` / `Publishing` in the YouTube step |
+| `camxora_python/features/progress/widgets/operational_rows_card.py` | `Published` is green |
 | `camxora_python/tests/test_progress_presentation.py` | Completed-percent regression test |
+| `camxora_python/tests/test_progress_view.py` | Live-percent inspector + Published-color tests |
 
 ## Tests
 

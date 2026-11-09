@@ -140,7 +140,7 @@ def test_progress_leaves_image_stage_when_background_jobs_succeed_without_local_
     assert row.meta.background_16x9_path is None
     assert "Waiting for image assets" in (row.converter or "")
     assert row.stage != "Merger"
-    assert row.stage != "Done"
+    assert row.stage not in {"Done", "Completed"}
 
 
 @pytest.mark.asyncio
@@ -215,9 +215,12 @@ def test_progress_keeps_error_when_thumbnail_failed() -> None:
     assert row.stage == "Error"
 
 
-def test_progress_keeps_done_when_youtube_succeeded() -> None:
+def test_progress_keeps_completed_when_youtube_succeeded() -> None:
     row = _progress_row(bg_ready=1, bg_total=1, long_ready=False, youtube_success=1)
-    assert row.stage == "Done"
+    # Publishing does not create a separate "Done" stage; the YouTube column
+    # carries the Published state.
+    assert row.stage == "Completed"
+    assert row.status == "Completed"
     # A published video can only exist after a merged file, even though the API
     # host cannot list the desktop run folder.
     assert row.converter == "Completed"
@@ -231,7 +234,7 @@ def test_progress_does_not_publish_a_row_from_a_sibling_channels_upload() -> Non
         long_ready=False,
         youtube_batch_success=1,
     )
-    assert row.stage != "Done"
+    assert row.stage not in {"Done", "Completed"}
     assert row.meta.youtube_success == 0
     assert row.youtube != "Ready"
 
@@ -244,7 +247,7 @@ def test_progress_uses_batch_aggregate_only_for_legacy_slotless_uploads() -> Non
         youtube_batch_success=1,
         youtube_legacy=True,
     )
-    assert row.stage == "Done"
+    assert row.stage == "Completed"
     assert row.meta.youtube_success == 1
 
 

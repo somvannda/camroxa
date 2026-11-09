@@ -7,6 +7,18 @@ This is **not** the changelog for user portal, music portal, admin portal, platf
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project uses [Semantic Versioning](https://semver.org/).
 
+## [1.6.6] - 2026-11-09
+
+### Fixed
+
+- **ROW DETAIL follows a live YouTube upload.** The inspector read only the
+  server row, which does not exist until the transfer finishes, so a row that
+  the table showed as `Sending 73%` said `YouTube: Not started` on the right.
+  The inspector now reads the same live activity registry as the row and footer
+  and re-binds on every poll/upload tick.
+- **Stage stays `Completed` after publishing**, and `Published` is green in the
+  YouTube column. Publishing is the delivery step, not a separate `Done` stage.
+
 ## [1.6.5] - 2026-11-09
 
 ### Fixed

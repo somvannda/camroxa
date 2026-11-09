@@ -730,6 +730,35 @@ class ProgressView(PollablePageMixin, QScrollArea):
             self._detail_card.set_syncing_batch_id(self._syncing_batch_id)
             self._rows_card.set_rows(filtered)
         self._update_meta_label(len(filtered))
+        self._sync_selected_detail(filtered)
+
+    def _sync_selected_detail(self, entries: list[EffectiveProgressRow]) -> None:
+        """Refresh the inspector from the current rows.
+
+        Polls and the 1s upload tick rebuild the table; if the selected row is
+        still present, re-bind it so live YouTube text and server state update
+        without requiring a new mouse click.
+        """
+        current = self._selected_entry
+        if current is None:
+            return
+        meta = current.row.meta
+        wanted = (
+            str(meta.batch_id or ""),
+            str(meta.profile_id or ""),
+            str(meta.role or "").strip().upper(),
+        )
+        for entry in entries:
+            emeta = entry.row.meta
+            key = (
+                str(emeta.batch_id or ""),
+                str(emeta.profile_id or ""),
+                str(emeta.role or "").strip().upper(),
+            )
+            if key == wanted:
+                self._selected_entry = entry
+                self._detail_card.set_entry(entry)
+                return
 
     def _update_meta_label(self, visible_count: int) -> None:
         stage_label = self._stage_filter.currentText()

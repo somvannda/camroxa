@@ -488,6 +488,50 @@ def test_detail_card_uses_compact_title_and_pipeline_rows(qapp: QApplication) ->
     )
 
 
+def test_detail_card_follows_the_live_upload_percent(qapp: QApplication) -> None:
+    """The inspector must not say Not started while the row is Sending 73%."""
+    from features.progress.widgets.operational_rows_card import EffectiveProgressRow
+    from features.progress.widgets.progress_detail_card import ProgressDetailCard
+    from shared.lib import publish_activity
+
+    row = _sample_row()
+    card = ProgressDetailCard()
+    key = publish_activity.slot_key(
+        row.meta.batch_id, row.meta.profile_id, row.meta.role
+    )
+    try:
+        publish_activity.begin(key, label="video.mp4", total=100)
+        publish_activity.progress(key, 73, 100)
+        card.set_entry(
+            EffectiveProgressRow(
+                row=row,
+                effective_status="Completed",
+                effective_converter="Completed",
+                effective_merge="Completed",
+                effective_stage="Completed",
+                effective_notes="",
+            )
+        )
+        assert "Sending 73%" in card._youtube_label.text()
+    finally:
+        publish_activity.finish(key)
+
+
+def test_published_youtube_cell_is_green_and_only_for_uploaded_rows() -> None:
+    from features.progress.widgets.operational_rows_card import (
+        OperationalRowsCard,
+        _STATUS_COLORS,
+    )
+
+    assert _STATUS_COLORS["published"] == "#00C878"
+    row = _sample_row()
+    row.meta.youtube_success = 1
+    assert OperationalRowsCard._format_youtube_cell(row) == "Published"
+    row.meta.youtube_success = 0
+    row.meta.youtube_url = None
+    assert OperationalRowsCard._format_youtube_cell(row) != "Published"
+
+
 def test_detail_status_tones_pending_vs_downloading() -> None:
     from features.progress.widgets.progress_detail_card import _status_tone
 
