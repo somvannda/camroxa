@@ -53,10 +53,14 @@ export function StudioFooter(props: StudioFooterProps) {
   return (
     <footer className="se-foot">
       <div className="se-foot-tools">
-        <button type="button" className="se-icon" disabled aria-label="Tools (not wired)"><Icon name="fa-sliders" /></button>
-        <button type="button" className="se-icon" disabled aria-label="Draw (not wired)"><Icon name="fa-pen" /></button>
-        <button type="button" className="se-icon" disabled aria-label="List (not wired)"><Icon name="fa-bars" /></button>
-        <button type="button" className="se-icon" disabled aria-label="Microphone input (use Record in the transport)" title="Recording lives in the transport: arm a track, then Record"><Icon name="fa-microphone" /></button>
+        <span className="se-foot-group">
+          <button type="button" className="se-icon" disabled aria-label="Tools (not wired)"><Icon name="fa-sliders" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Draw (not wired)"><Icon name="fa-pen" /></button>
+        </span>
+        <span className="se-foot-group">
+          <button type="button" className="se-icon" disabled aria-label="List (not wired)"><Icon name="fa-bars" /></button>
+          <button type="button" className="se-icon" disabled aria-label="Microphone input (use Record in the transport)" title="Recording lives in the transport: arm a track, then Record"><Icon name="fa-microphone" /></button>
+        </span>
       </div>
 
       <div className="se-master" data-help="master">
@@ -101,11 +105,15 @@ export function StudioFooter(props: StudioFooterProps) {
       </div>
 
       <div className="se-foot-right">
-        <Link className="se-icon" href="/studio" aria-label="All projects"><Icon name="fa-folder" /></Link>
-        <button type="button" className="se-icon" aria-label="Search library" onClick={onSearch}><Icon name="fa-magnifying-glass" /></button>
-        <button type="button" className="se-icon" onClick={onZoomOut} aria-label="Zoom out" data-help="zoom"><Icon name="fa-magnifying-glass-minus" /></button>
-        <button type="button" className="se-icon" onClick={onZoomFit} aria-label="Fit to content" data-help="zoom"><Icon name="fa-maximize" /></button>
-        <button type="button" className="se-icon" onClick={onZoomIn} aria-label="Zoom in" data-help="zoom"><Icon name="fa-magnifying-glass-plus" /></button>
+        <span className="se-foot-group">
+          <Link className="se-icon" href="/studio" aria-label="All projects"><Icon name="fa-folder" /></Link>
+        </span>
+        <span className="se-foot-group">
+          <button type="button" className="se-icon" aria-label="Search library" onClick={onSearch}><Icon name="fa-magnifying-glass" /></button>
+          <button type="button" className="se-icon" onClick={onZoomOut} aria-label="Zoom out" data-help="zoom"><Icon name="fa-magnifying-glass-minus" /></button>
+          <button type="button" className="se-icon" onClick={onZoomFit} aria-label="Fit to content" data-help="zoom"><Icon name="fa-maximize" /></button>
+          <button type="button" className="se-icon" onClick={onZoomIn} aria-label="Zoom in" data-help="zoom"><Icon name="fa-magnifying-glass-plus" /></button>
+        </span>
         <button type="button" className="se-icon" onClick={onToggleLibrary} aria-label="Toggle library" data-help="library"><Icon name="fa-table-columns" /></button>
         <button type="button" className={`se-icon${loop ? " on" : ""}`} onClick={onLoop} aria-label="Loop" aria-pressed={loop} data-help="loop"><Icon name="fa-repeat" /></button>
         <StudioLearn whatsThis={whatsThis} onWhatsThis={onWhatsThis} />

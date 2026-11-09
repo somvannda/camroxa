@@ -187,9 +187,8 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                     {track.name}
                   </button>
                 )}
-              </div>
 
-              <span className="se-track-buttons">
+                <span className="se-track-buttons">
                 <button
                   type="button"
                   aria-label={`Mute ${track.name}`}
@@ -230,6 +229,7 @@ export function StudioTrackPanel(props: StudioTrackPanelProps) {
                   <Icon name="fa-chevron-down" />
                 </button>
               </span>
+              </div>
 
               {track.collapsed ? null : (
                 <div className="se-track-sliders">

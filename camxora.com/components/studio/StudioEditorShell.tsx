@@ -2835,8 +2835,10 @@ export function StudioEditorShell() {
     );
   }
 
+  const railOpen = libraryOpen || inspectorOpen;
+
   return (
-    <div className={`se-shell${touchMode ? " is-touch" : ""}`}>
+    <div className={`se-shell${touchMode ? " is-touch" : ""}${railOpen ? " has-rail" : ""}`}>
       <StudioHeader
         title={project?.title || "Untitled project"}
         projectId={projectId}

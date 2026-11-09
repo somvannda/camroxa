@@ -57,7 +57,8 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(frame.lane?.height).toBe(86);
   expect(frame.lane?.x).toBe(260);
 
-  // Track header internals: name at x48 / 11 px, controls 28×32 (extend 16×32).
+  // Track header internals: name at x48 / 11 px, controls 24×24 (extend 16),
+  // faders 167 px + 50 px at x28 and y132.
   const track = await page.evaluate(() => {
     const name = document.querySelector(".se-track-name")?.getBoundingClientRect();
     const buttons = Array.from(
@@ -66,20 +67,57 @@ test("global frame matches the captured metrics", async ({ page }) => {
       const rect = element.getBoundingClientRect();
       return { x: Math.round(rect.x), width: Math.round(rect.width), height: Math.round(rect.height) };
     });
+    const sliders = Array.from(document.querySelectorAll(".se-track-slider")).map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { x: Math.round(rect.x), y: Math.round(rect.y), width: Math.round(rect.width), height: Math.round(rect.height) };
+    });
     return {
       nameX: name ? Math.round(name.x) : null,
       nameFont: document.querySelector(".se-track-name")
         ? getComputedStyle(document.querySelector(".se-track-name") as Element).fontSize
         : null,
       buttons,
+      sliders,
     };
   });
   expect(track.nameX).toBe(48);
   expect(track.nameFont).toBe("11px");
-  expect(track.buttons.slice(0, 3).every((button) => button.height === 32)).toBe(true);
-  expect(track.buttons.slice(0, 3).every((button) => button.width === 28)).toBe(true);
+  expect(track.buttons.slice(0, 3).every((button) => button.width === 24)).toBe(true);
+  expect(track.buttons.slice(0, 3).every((button) => button.height === 24)).toBe(true);
   expect(track.buttons[3]?.width).toBe(16);
-  expect(Math.abs((track.buttons[0]?.x ?? 0) - 150)).toBeLessThanOrEqual(2);
+  expect(Math.abs((track.buttons[0]?.x ?? 0) - 162)).toBeLessThanOrEqual(6);
+  expect(track.sliders).toHaveLength(2);
+  expect(track.sliders[0]?.x).toBe(28);
+  expect(track.sliders[0]?.width).toBe(167);
+  expect(track.sliders[0]?.height).toBe(25);
+  expect(Math.abs((track.sliders[0]?.y ?? 0) - 126)).toBeLessThanOrEqual(1);
+  expect(track.sliders[1]).toMatchObject({ x: 201, width: 50 });
+
+  // §4 ruler: 30 px band, first lane at y82, clip 82 px tall from y84.
+  const timeline = await page.evaluate(() => {
+    const rect = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      const box = element.getBoundingClientRect();
+      return {
+        y: Math.round(box.y),
+        height: Math.round(box.height),
+        background: getComputedStyle(element).backgroundColor,
+      };
+    };
+    return {
+      ruler: rect(".se-ruler-bars"),
+      lane: rect(".se-lane"),
+      clip: rect(".se-clip"),
+      radius: document.querySelector(".se-clip")
+        ? getComputedStyle(document.querySelector(".se-clip") as Element).borderTopLeftRadius
+        : null,
+    };
+  });
+  expect(timeline.ruler).toMatchObject({ height: 30, background: "rgb(16, 16, 18)" });
+  expect(timeline.lane?.y).toBe(82);
+  expect(timeline.clip).toMatchObject({ y: 84, height: 82 });
+  expect(timeline.radius).toBe("8px");
 
   // §44.3 ruler pitch: adjacent bar ticks are 96 px apart at the default zoom.
   const ticks = await page.locator(".se-bar-tick").evaluateAll((nodes) =>
@@ -89,7 +127,7 @@ test("global frame matches the captured metrics", async ({ page }) => {
   expect(ticks[1] - ticks[0]).toBe(96);
 });
 
-test("library rail is 360 px and uses the panel surface", async ({ page }) => {
+test("library rail is a 360 px floating card inset 8 px", async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize(REFERENCE_VIEWPORT);
   await createStudioProject(page, { title: "Pixel rail" });
@@ -98,14 +136,46 @@ test("library rail is 360 px and uses the panel surface", async ({ page }) => {
   await expect(library).toBeVisible();
   const box = await library.evaluate((element) => {
     const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
     return {
       width: Math.round(rect.width),
       x: Math.round(rect.x),
-      background: getComputedStyle(element).backgroundColor,
+      y: Math.round(rect.y),
+      bottom: Math.round(rect.bottom),
+      radius: style.borderTopLeftRadius,
+      background: style.backgroundColor,
     };
   });
-  // §19.1: panel pinned right at 360 px, surface #101012.
-  expect(box.width).toBe(360);
-  expect(box.x + box.width).toBe(REFERENCE_VIEWPORT.width);
-  expect(box.background).toBe("rgb(16, 16, 18)");
+  // §19.1: floating card pinned 8 px from the top/right/bottom, 360 px wide.
+  expect(box).toMatchObject({
+    width: 360,
+    x: REFERENCE_VIEWPORT.width - 368,
+    y: 8,
+    bottom: REFERENCE_VIEWPORT.height - 8,
+    radius: "12px",
+    background: "rgb(16, 16, 18)",
+  });
+
+  // The shell shrinks while the rail is open: header and footer stop at the card edge.
+  const edges = await page.evaluate(() => {
+    const right = (selector: string) => {
+      const element = document.querySelector(selector);
+      if (!element) return null;
+      return Math.round(element.getBoundingClientRect().right);
+    };
+    const last = (selector: string) => {
+      const nodes = document.querySelectorAll(selector);
+      const element = nodes[nodes.length - 1];
+      return element ? Math.round(element.getBoundingClientRect().right) : null;
+    };
+    return {
+      head: right(".se-head"),
+      foot: right(".se-foot"),
+      timeline: right(".se-body"),
+      lastFoot: last(".se-foot .se-icon"),
+    };
+  });
+  expect(edges.head).toBe(REFERENCE_VIEWPORT.width);
+  expect(edges.timeline).toBe(REFERENCE_VIEWPORT.width);
+  expect(edges.lastFoot).toBeLessThan(REFERENCE_VIEWPORT.width - 360);
 });

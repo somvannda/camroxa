@@ -84,6 +84,18 @@
       "feature": "Transport band",
       "functional": "wired",
       "note": "captured footer band is 52 px"
+    },
+    {
+      "id": "footerGroupHeight",
+      "label": "Footer control pill height",
+      "selector": ".se-foot-group",
+      "measure": "height",
+      "expected": 36,
+      "tolerance": 0,
+      "spec": "7",
+      "feature": "Footer transport band",
+      "functional": "visual",
+      "note": "captured footer pills are 36 px tall"
     }
   ]
 }

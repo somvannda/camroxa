@@ -268,11 +268,11 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
           <div className="se-lib-root">
             <div className="se-lib-tiles" role="group" aria-label="Library filters">
               <button type="button" className="se-lib-tile" onClick={() => onOpenSongs("all")}>
-                <Icon name="fa-music" />
+                <span className="se-lib-tile-icon" data-tone="songs"><Icon name="fa-music" /></span>
                 <span>All Songs</span>
               </button>
               <button type="button" className="se-lib-tile" onClick={() => onOpenSongs("liked")}>
-                <Icon name="fa-heart" />
+                <span className="se-lib-tile-icon" data-tone="liked"><Icon name="fa-heart" /></span>
                 <span>Liked</span>
               </button>
               <button
@@ -281,11 +281,11 @@ export const StudioLibrary = forwardRef<HTMLInputElement, StudioLibraryProps>(
                 disabled
                 title="Stems need a finished stem separation first"
               >
-                <Icon name="fa-layer-group" />
+                <span className="se-lib-tile-icon" data-tone="stems"><Icon name="fa-layer-group" /></span>
                 <span>Stems</span>
               </button>
               <button type="button" className="se-lib-tile" onClick={onOpenUploads}>
-                <Icon name="fa-arrow-up-from-bracket" />
+                <span className="se-lib-tile-icon" data-tone="uploads"><Icon name="fa-arrow-up-from-bracket" /></span>
                 <span>Uploads</span>
               </button>
             </div>
