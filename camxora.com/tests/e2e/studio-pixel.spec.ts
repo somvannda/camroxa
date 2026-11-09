@@ -155,6 +155,22 @@ test("global frame matches the captured metrics", async ({ page }) => {
   );
   expect(ticks).toHaveLength(2);
   expect(ticks[1] - ticks[0]).toBe(96);
+
+  // §4 playhead: a 1 px line with a 10 px flag at the ruler's bottom edge.
+  const playhead = await page.evaluate(() => {
+    const flag = document.querySelector(".se-playhead-flag")?.getBoundingClientRect();
+    const line = document.querySelector(".se-playhead");
+    const lineBox = line?.getBoundingClientRect();
+    return {
+      flagX: flag ? Math.round(flag.x) : null,
+      flagWidth: flag ? Math.round(flag.width) : null,
+      lineX: lineBox ? Math.round(lineBox.x) : null,
+      lineColor: line ? getComputedStyle(line).backgroundColor : null,
+    };
+  });
+  expect(playhead.flagX).not.toBeNull();
+  expect(Math.abs((playhead.flagX ?? 0) - (playhead.lineX ?? 0))).toBeLessThanOrEqual(5);
+  expect(playhead.lineColor).toBe("rgb(247, 244, 239)");
 });
 
 test("library song rows use the captured anatomy", async ({ page }) => {

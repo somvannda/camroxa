@@ -166,6 +166,11 @@ export function StudioTimeline(props: StudioTimelineProps) {
               </span>
             );
           })}
+          <span
+            className="se-playhead-flag"
+            style={{ left: (playhead / secondsPerBar) * barWidth }}
+            aria-hidden="true"
+          />
         </div>
       </div>
 

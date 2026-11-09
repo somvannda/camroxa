@@ -4503,8 +4503,9 @@ html{color-scheme:dark}
 .se-head-group .se-icon:last-child{border-radius:0 999px 999px 0}
 .se-head-group.se-time{gap:12px;padding:0 12px}
 .se-head-group.se-time .se-readout{min-width:0;padding:0}
-.se-head-group.se-tempo{gap:4px;padding:0 6px}
+.se-head-group.se-tempo{gap:4px;padding:0 10px}
 .se-head-group.se-tempo .se-pill{background:transparent}
+.se-bpm-unit{font-size:11px;color:#c2c2c1}
 .se-logo{font-size:13px;font-weight:800;letter-spacing:.14em;color:#fff;margin-right:6px}
 .se-chip{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border:0;border-radius:999px;background:#1c1c1e;color:#f7f4ef;font:inherit;font-size:12px;max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .se-icon{display:grid;place-items:center;width:32px;height:32px;border:0;border-radius:7px;background:transparent;color:#c9cde0;cursor:pointer}
@@ -4515,7 +4516,7 @@ html{color-scheme:dark}
 .se-readout{min-width:87px;padding:6px 8px;border-radius:6px;background:#1c1c1f;font-variant-numeric:tabular-nums;font-size:12px;text-align:center;color:#f7f4ef}
 .se-pill{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid rgba(255,255,255,.1);border-radius:8px;background:#1c1c1f;color:#c2c2c1;font:inherit;font-size:12px;cursor:pointer}
 .se-head .se-pill{height:36px;padding:0 14px;border:0;border-radius:999px;background:#1c1c1e;color:#f7f4ef}
-.se-bpm{width:74px;text-align:center;font-variant-numeric:tabular-nums}
+.se-bpm{width:52px;text-align:center;font-variant-numeric:tabular-nums;font-size:12px}
 .se-bpm::-webkit-outer-spin-button,.se-bpm::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .se-pill.on{color:#efe9ff;border-color:rgba(168,85,247,.5);background:rgba(168,85,247,.16)}
 .se-pill:disabled{opacity:.55;cursor:not-allowed}
@@ -4565,7 +4566,8 @@ html{color-scheme:dark}
 .se-clip-body{position:relative;flex:1;min-height:0}
 .se-clip-head{display:block;width:100%;padding:14px 12px 2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500;font-size:12px}
 .se-clip-body canvas{display:block;width:100%;height:100%}
-.se-playhead{position:absolute;top:0;bottom:0;width:1px;background:#fff;pointer-events:none}
+.se-playhead{position:absolute;top:0;bottom:0;width:1px;background:#f7f4ef;pointer-events:none}
+.se-playhead-flag{position:absolute;bottom:0;width:0;height:0;margin-left:-5px;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #f7f4ef;pointer-events:none}
 .se-empty{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:#8b90a6;font-size:13px}
 .se-empty strong{color:#f4f5fb;font-size:15px}
 .se-library{flex:none;display:flex;flex-direction:column;border-left:1px solid rgba(255,255,255,.08);background:#101012}
@@ -4808,7 +4810,7 @@ html{color-scheme:dark}
 .se-settings-section h3{margin:0}
 
 .se-master{display:inline-flex;align-items:center;gap:8px;margin-left:8px}
-.se-signature{height:32px;padding:0 8px}.se-master-label{opacity:.7}
+.se-signature{height:36px;width:50px;padding:0;text-align:center;font-size:11px;-webkit-appearance:none;appearance:none}.se-master-label{opacity:.7}
 .se-master-fader{width:96px}
 .se-master-value{min-width:36px;text-align:right;font-variant-numeric:tabular-nums}
 

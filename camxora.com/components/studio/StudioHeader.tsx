@@ -295,6 +295,7 @@ export function StudioHeader(props: StudioHeaderProps) {
             }}
             onBlur={onBpmCommit}
           />
+          <span className="se-bpm-unit">BPM</span>
           <select
             className="se-pill se-signature"
             value={timeSignature}
