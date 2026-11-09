@@ -20,7 +20,7 @@ functional controls the capture does not show (listed below).
 | Track panel | 260 px `#1c1c1e`, head 29 px | same |
 | Track row | 85 px, name x48 y100 11 px, controls 24×24, faders 167+50 at x28 y126 | same (y125) |
 | Colour strip | x8, 10 px wide | same |
-| Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom | same |
+| Ruler | 30 px `#101012`, labels 11 px centred, pitch 96 px at the captured zoom, labels thin 1/2/4/8 bars as it drops | same |
 | Lane | 86 px, starts y82 | same |
 | Clip | starts y84, 82 px tall, radius 10, label at +17 | same; waveform painted from the decoded clip audio (peaks cached per URL) |
 | Footer band | 52 px `#0a0a0a`, control pills 36 px | same |
@@ -43,7 +43,7 @@ functional controls the capture does not show (listed below).
 | Divergence | Why |
 |---|---|
 | CAMXORA wordmark and our copy | D-022 boundary: brand/copy stay ours |
-| Save status, master meter, audition speed | wired status controls the capture does not show; hidden below 1600 px |
+| Save status, master meter, audition speed | wired status controls the capture does not show; meter and speed leave below 1600 px, save only when the rail is open below 1400 px |
 | Record-input picker, count-in, metronome, Stop | wired recording/transport features (D-020/D-021) |
 | Library close `X` | explicit close affordance in addition to the header toggle |
 | Search collapses to the magnifier | matches the capture; it expands on focus/typing |
